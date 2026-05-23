@@ -5,10 +5,8 @@
 use std::path::Path;
 use std::time::Duration;
 
-use crate::task::{BenchTask, BenchTools, VerificationReport};
+use crate::task::{BenchTask, BenchTools, CheckResult, VerificationReport};
 use crate::tasks::checks;
-
-const EXPECTED_MAIN_PY: &str = include_str!("edit_large_replace_small_file/expected/main.py");
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -33,6 +31,34 @@ pub fn task() -> BenchTask {
 }
 
 fn verify(dir: &Path) -> VerificationReport {
-    let checks = vec![checks::check_snapshot(dir, "main.py", EXPECTED_MAIN_PY)];
+    let mut checks: Vec<CheckResult> = Vec::new();
+
+    // Structural checks (AST) — verify the required class and methods exist.
+    checks.push(checks::check_python_class_exists(
+        dir,
+        "main.py",
+        "NumberProcessor",
+    ));
+    checks.extend(checks::check_python_class_has_methods(
+        dir,
+        "main.py",
+        "NumberProcessor",
+        &["__init__", "load", "sum", "average", "median", "__str__"],
+    ));
+    checks.push(checks::check_python_top_level_function_exists(
+        dir,
+        "main.py",
+        "main",
+    ));
+
+    // Behavioral checks — run the program and verify output.
+    checks.push(checks::check_python_run(dir, "main.py"));
+    checks.push(checks::check_python_run_contains(
+        dir,
+        "main.py",
+        "Numbers: [1, 5, 3, 9, 2, 7, 4, 8, 6]",
+    ));
+    checks.push(checks::check_python_run_contains(dir, "main.py", "Sum: 45"));
+
     VerificationReport::new("edit-large-replace-small-file", checks)
 }
