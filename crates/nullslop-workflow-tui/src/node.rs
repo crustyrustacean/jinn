@@ -367,7 +367,8 @@ fn set_cell_abs(buf: &mut Buffer, col: i32, row: i32, symbol: &str, style: Style
 /// Produced by [`VisualNode::shifted_i32()`]. Unlike the node's native `u16`
 /// positions, this can represent negative coordinates (node scrolled off-screen).
 pub struct ShiftedNode<'a> {
-    inner: &'a VisualNode,
+    /// The underlying node.
+    pub inner: &'a VisualNode,
     /// Shifted x position (can be negative).
     pub x: i32,
     /// Shifted y position (can be negative).
