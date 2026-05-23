@@ -9,7 +9,7 @@ use nullslop_workflow::engine::NodeStatus;
 use nullslop_workflow::graph::WorkflowGraph;
 use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
 
-use crate::connection::{ConnectionRouter, SimpleRouter};
+use crate::connection::{insert_path_into_grid, render_merged_grid, CellInfo, ConnectionRouter, SimpleRouter};
 use crate::layout::{self, GraphLayout};
 use crate::node::VisualNode;
 use crate::viewport::ViewportState;
@@ -56,6 +56,7 @@ impl<'a> WorkflowWidget<'a> {
         area: Rect,
     ) {
         let node_rects: Vec<Rect> = layout.nodes.iter().map(|n| n.rect()).collect();
+        let mut grid: HashMap<(i32, i32), CellInfo> = HashMap::new();
 
         for edge in self.graph.edges() {
             // Find the output port position on the source node.
@@ -91,8 +92,10 @@ impl<'a> WorkflowWidget<'a> {
             let ty = i32::from(ty) - i32::from(self.viewport.offset_y);
 
             let path = SimpleRouter::route((sx, sy), (tx, ty), &node_rects);
-            crate::connection::render_path(buf, &path, edge.port_type, area);
+            insert_path_into_grid(&mut grid, &path, edge.port_type);
         }
+
+        render_merged_grid(buf, &grid, area);
     }
 }
 
@@ -147,6 +150,20 @@ mod tests {
             Self {
                 name,
                 inputs: vec![PortDef::string("in")],
+                outputs: vec![],
+            }
+        }
+        fn passthrough(name: &'static str) -> Self {
+            Self {
+                name,
+                inputs: vec![PortDef::string("in")],
+                outputs: vec![PortDef::string("out")],
+            }
+        }
+        fn merge_sink(name: &'static str) -> Self {
+            Self {
+                name,
+                inputs: vec![PortDef::string("in_1"), PortDef::string("in_2")],
                 outputs: vec![],
             }
         }
@@ -289,5 +306,42 @@ mod tests {
             }
         }
         assert!(has_spinner, "should find spinner frame ⠋ for Running node");
+    }
+
+    #[test]
+    fn widget_diamond_graph_has_tee_junctions() {
+        // Given a diamond graph: source → b, c → merge_sink.
+        let mut b = WorkflowGraphBuilder::new();
+        b.add_node("a".to_owned(), Box::new(TestNode::source("a")));
+        b.add_node("b".to_owned(), Box::new(TestNode::passthrough("b")));
+        b.add_node("c".to_owned(), Box::new(TestNode::passthrough("c")));
+        b.add_node("d".to_owned(), Box::new(TestNode::merge_sink("d")));
+        b.connect("a", "out", "b", "in").unwrap();
+        b.connect("a", "out", "c", "in").unwrap();
+        b.connect("b", "out", "d", "in_1").unwrap();
+        b.connect("c", "out", "d", "in_2").unwrap();
+        let graph = b.build().unwrap();
+
+        let statuses = all_pending(&graph);
+        let viewport = ViewportState::new();
+        let widget = WorkflowWidget::new(&graph, &statuses, &viewport, 0);
+
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 120,
+            height: 30,
+        };
+        let mut buf = Buffer::empty(area);
+        widget.render(area, &mut buf);
+
+        // Then at least one tee junction character appears in the buffer.
+        let has_tee = (0..area.height).any(|row| {
+            (0..area.width).any(|col| {
+                let cell = buf.cell(ratatui::layout::Position::new(col, row)).unwrap();
+                matches!(cell.symbol(), "┬" | "┴" | "├" | "┤" | "┼")
+            })
+        });
+        assert!(has_tee, "diamond graph should have at least one tee junction");
     }
 }
