@@ -313,6 +313,7 @@ pub fn scope_for_focus(focus: &nullslop_domain::FocusScope) -> Scope {
         FocusScope::ArgInput => Scope::ArgInput,
         FocusScope::RenameSessionInput => Scope::RenameSessionInput,
         FocusScope::SidebarResize => Scope::SidebarResize,
-        FocusScope::Workflow | FocusScope::Normal => Scope::Normal,
+        FocusScope::Workflow => Scope::Workflow,
+        FocusScope::Normal => Scope::Normal,
     }
 }

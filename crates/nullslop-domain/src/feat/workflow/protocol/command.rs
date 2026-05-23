@@ -13,8 +13,6 @@ pub struct StartWorkflow {
     pub name: String,
     /// A unique ID for this workflow execution.
     pub workflow_id: WorkflowId,
-    /// The user's prompt/topic text, passed to the graph builder.
-    pub user_prompt: String,
 }
 
 /// Request to cancel a running workflow.

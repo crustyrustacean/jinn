@@ -280,6 +280,15 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         });
     });
 
+    // Workflow scope — workflow tab browsing.
+    keymap.scope(Scope::Workflow, |b| {
+        b
+        .bind("<Tab>", Intent::SwitchTab, KeyCategory::Navigation)
+        .bind("q", Intent::Quit, KeyCategory::General)
+        .bind("<c-c>", Intent::Quit, KeyCategory::General)
+        .bind("?", Intent::ToggleWhichkey, KeyCategory::General);
+    });
+
     keymap.on_mouse(|mouse: event::MouseEvent, _scope: &Scope| {
         match mouse.kind {
             MouseEventKind::ScrollUp => Some(Intent::MouseScrollUp),

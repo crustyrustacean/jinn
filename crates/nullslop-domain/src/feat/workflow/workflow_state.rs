@@ -1,15 +1,16 @@
 //! Workflow runtime state types.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
-use nullslop_workflow::NodeStatus;
-use nullslop_workflow::graph::WorkflowGraph;
+use nullslop_workflow::execution::WorkflowExecution;
+use nullslop_workflow::port::PortValues;
 use tokio_util::sync::CancellationToken;
 
 use crate::protocol::SessionId;
 
 /// Unique identifier for a workflow execution.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct WorkflowId(String);
 
 impl WorkflowId {
@@ -38,10 +39,9 @@ pub struct WorkflowState {
     pub id: WorkflowId,
     /// The registered workflow name.
     pub name: String,
-    /// A copy of the graph for rendering (the engine takes ownership of the original).
-    pub graph_render_copy: Option<WorkflowGraph>,
-    /// Per-node execution statuses.
-    pub statuses: HashMap<String, NodeStatus>,
+    /// Shared execution state — holds topology and node statuses.
+    /// The engine writes status updates; the renderer reads snapshots.
+    pub execution: Arc<WorkflowExecution>,
     /// Maps node name → session ID (for correlating StreamCompleted events).
     pub node_sessions: HashMap<String, SessionId>,
     /// Currently selected node in the UI.
@@ -53,23 +53,12 @@ pub struct WorkflowState {
 }
 
 impl WorkflowState {
-    /// Create a new workflow state with the given graph builder result.
-    ///
-    /// Note: The caller should clone the graph before passing it to the engine
-    /// if they need it for rendering. The engine's `execute()` takes ownership.
-    pub fn new(name: String, graph: WorkflowGraph) -> Self {
-        let mut statuses = HashMap::new();
-        for name in graph.node_names() {
-            statuses.insert(name.to_owned(), NodeStatus::Pending);
-        }
-        let graph_render_copy = Some(graph);
-        // Note: graph is consumed by engine on execute, so render_copy must be set
-        // before calling engine. The engine takes ownership via execute().
+    /// Create a new workflow state with the given execution.
+    pub fn new(name: String, execution: Arc<WorkflowExecution>) -> Self {
         Self {
             id: WorkflowId::new(),
             name,
-            graph_render_copy,
-            statuses,
+            execution,
             node_sessions: HashMap::new(),
             selected_node: None,
             cancel: CancellationToken::new(),
@@ -82,23 +71,21 @@ impl WorkflowState {
 #[derive(Debug)]
 pub struct WorkflowResult {
     /// Final output values from all terminal nodes.
-    pub outputs: HashMap<String, nullslop_workflow::port::PortValues>,
+    pub outputs: HashMap<String, PortValues>,
     /// Whether the workflow completed successfully.
     pub success: bool,
 }
 
-use serde::{Deserialize, Serialize};
-
 /// Map of loaded workflows with one active at a time.
 ///
-/// Mirrors the [`SessionMap`] pattern — a non-empty map of workflow states
-/// with an active (focused) entry.
+/// Mirrors the [`SessionMap`](crate::common::session_map::SessionMap) pattern —
+/// a map of workflow states with an active (focused) entry.
+/// Unlike `SessionMap`, empty is a valid state (no workflows running).
 #[derive(Default)]
 pub struct WorkflowMap {
     workflows: HashMap<WorkflowId, WorkflowState>,
     active: Option<WorkflowId>,
 }
-
 
 impl std::fmt::Debug for WorkflowMap {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
