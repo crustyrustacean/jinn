@@ -1,0 +1,65 @@
+# Web server configuration
+# Generated: 2024-01-15
+
+server:
+  host: 0.0.0.0
+  port: 9090
+  workers: 4
+  max_connections: 1000
+  keep_alive_timeout: 30
+  read_timeout: 60
+  write_timeout: 60
+
+database:
+  host: localhost
+  port: 5432
+  name: app_production
+  user: app_user
+  password: ${DB_PASSWORD}
+  pool_size: 20
+  connection_timeout: 10
+  idle_timeout: 300
+  max_lifetime: 1800
+
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+  password: ${REDIS_PASSWORD}
+  pool_size: 10
+
+logging:
+  level: info
+  format: json
+  output: stdout
+  access_log: true
+  error_log: true
+  log_slow_queries: true
+  slow_query_threshold: 1000
+
+security:
+  secret_key: ${SECRET_KEY}
+  allowed_hosts:
+    - example.com
+    - www.example.com
+  cors:
+    allowed_origins:
+      - https://example.com
+    allowed_methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+    max_age: 86400
+
+cache:
+  enabled: true
+  backend: redis
+  default_ttl: 300
+  max_size: 100mb
+
+email:
+  smtp_host: smtp.example.com
+  smtp_port: 587
+  use_tls: true
+  from_address: noreply@example.com
