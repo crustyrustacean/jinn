@@ -22,13 +22,13 @@ use crate::tasks;
 ///
 /// Call this before creating the actor system so the session actor can
 /// dispatch bench lifecycle setup/teardown to the correct handler.
-pub fn register_bench_tasks(registry: &mut BuiltinRegistry, artifact_dir: Option<PathBuf>) {
+pub fn register_bench_tasks(registry: &mut BuiltinRegistry, artifact_dir: Option<&Path>) {
     for task in tasks::bench_tasks() {
         let handler = BenchTaskHandler {
             name: task.name.to_owned(),
             fixture_dir: task.fixture_dir.map(str::to_owned),
             verify: task.verify,
-            artifact_dir: artifact_dir.clone(),
+            artifact_dir: artifact_dir.map(std::borrow::ToOwned::to_owned),
         };
         registry.register(BuiltinId(task.name.to_owned()), Arc::new(handler));
     }
@@ -51,6 +51,7 @@ pub struct BenchTaskHandler {
         dead_code,
         reason = "verify is called by the bench actor, not this handler"
     )]
+    /// Verify function for the bench task.
     verify: fn(&Path) -> VerificationReport,
     /// When set, create work directories here instead of /tmp.
     artifact_dir: Option<PathBuf>,

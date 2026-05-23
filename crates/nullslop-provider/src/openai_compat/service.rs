@@ -147,7 +147,7 @@ impl OpenAiCompatibleService {
             return Err(crate::service::classify_http_error(
                 status,
                 &error_text,
-                &self.config.name,
+                self.config.name,
                 retry_after_header,
             ));
         }

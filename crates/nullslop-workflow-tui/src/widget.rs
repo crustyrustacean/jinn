@@ -55,7 +55,7 @@ impl<'a> WorkflowWidget<'a> {
         node_map: &HashMap<&str, &VisualNode>,
         area: Rect,
     ) {
-        let node_rects: Vec<Rect> = layout.nodes.iter().map(|n| n.rect()).collect();
+        let node_rects: Vec<Rect> = layout.nodes.iter().map(super::node::VisualNode::rect).collect();
         let mut grid: HashMap<(i32, i32), CellInfo> = HashMap::new();
 
         for edge in self.graph.edges() {
@@ -298,11 +298,10 @@ mod tests {
         let mut has_spinner = false;
         for row in 0..area.height {
             for col in 0..area.width {
-                if let Some(cell) = buf.cell(ratatui::layout::Position::new(col, row)) {
-                    if cell.symbol() == "\u{280b}" {
+                if let Some(cell) = buf.cell(ratatui::layout::Position::new(col, row))
+                    && cell.symbol() == "\u{280b}" {
                         has_spinner = true;
                     }
-                }
             }
         }
         assert!(has_spinner, "should find spinner frame ⠋ for Running node");

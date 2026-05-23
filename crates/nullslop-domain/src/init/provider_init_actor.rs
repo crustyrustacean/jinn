@@ -126,8 +126,8 @@ impl ProviderInitActor {
             let state = self.state.read();
             state.active_session().profile().model.clone()
         };
-        if active_session_model == crate::feat::provider_infra::NO_PROVIDER_ID {
-            if let Some(ref model) = prefs.last_model {
+        if active_session_model == crate::feat::provider_infra::NO_PROVIDER_ID
+            && let Some(ref model) = prefs.last_model {
                 let id = crate::feat::provider_infra::ProviderId::new(model.clone());
                 let api_keys = self.services.api_keys.read();
                 if self.services.provider_registry.is_available(&id, &api_keys) {
@@ -142,7 +142,6 @@ impl ProviderInitActor {
                     tracing::warn!(last_model = %model, "provider-init: last_model not available, skipping");
                 }
             }
-        }
     }
 }
 
