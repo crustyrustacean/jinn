@@ -145,13 +145,114 @@ pub fn show_results(csv_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("{table}");
+
+    let (per_model, grand) = summarize(&results);
+    print_summary_table(&per_model, &grand);
+    print_grand_total_line(&grand);
+
     Ok(())
 }
 
-/// Formats milliseconds as a human-readable duration string.
+/// Formats milliseconds as a human-readable duration string (for individual rows).
 fn format_duration(ms: u64) -> String {
     let secs = f64::from(u32::try_from(ms).unwrap_or(u32::MAX)) / 1000.0;
     format!("{secs:.1}s")
+}
+
+/// Formats milliseconds as a human-readable duration string (handles large totals).
+fn format_duration_ms(ms: u64) -> String {
+    let secs = ms as f64 / 1000.0;
+    format!("{secs:.1}s")
+}
+
+/// Renders the per-model summary table and grand-total row.
+fn print_summary_table(per_model: &[(String, BenchSummary)], grand: &BenchSummary) {
+    if per_model.is_empty() {
+        println!("\nNo results to summarize.");
+        return;
+    }
+
+    let mut table = Table::new();
+    table.load_preset(UTF8_FULL_CONDENSED);
+    table.set_header(vec![
+        "Model",
+        "Tasks",
+        "Turns",
+        "Tokens \u{2191}",
+        "Tokens \u{2193}",
+        "Cost",
+        "Time",
+        "Avg Time",
+        "Passed",
+        "Failed",
+        "Timeout",
+        "Rate",
+    ]);
+
+    for (model, s) in per_model {
+        table.add_row(summary_row(model, s));
+    }
+
+    table.add_row(summary_row("TOTAL", grand));
+
+    println!("\nSummary:");
+    println!("{table}");
+}
+
+/// Builds a single table row from a label and summary.
+fn summary_row(label: &str, s: &BenchSummary) -> Vec<Cell> {
+    let rate = match s.pass_rate() {
+        Some(r) => format!("{r:.1}%"),
+        None => "N/A".to_owned(),
+    };
+    let avg = match s.avg_time_ms() {
+        Some(ms) => format_duration_ms(ms),
+        None => "N/A".to_owned(),
+    };
+    vec![
+        Cell::new(label),
+        Cell::new(s.tasks),
+        Cell::new(s.turns),
+        Cell::new(s.tokens_in),
+        Cell::new(s.tokens_out),
+        Cell::new(format!("${:.4}", s.cost)),
+        Cell::new(format_duration_ms(s.wall_time_ms)),
+        Cell::new(avg),
+        Cell::new(s.passed_count),
+        Cell::new(s.failed_count),
+        Cell::new(s.timeout_count),
+        Cell::new(rate),
+    ]
+}
+
+/// Prints the grand-total summary as a single text line.
+fn print_grand_total_line(grand: &BenchSummary) {
+    if grand.tasks == 0 {
+        return;
+    }
+
+    let rate = grand
+        .pass_rate()
+        .map_or_else(|| "N/A".to_owned(), |r| format!("{r:.1}%"));
+
+    let avg = grand
+        .avg_time_ms()
+        .map_or_else(|| "N/A".to_owned(), format_duration_ms);
+
+    println!(
+        "TOTAL: {} tasks | {} passed, {} failed, {} timeout ({}) | {} turns | {} \u{2191} / {} \u{2193} | ${:.4} | {} total, {} avg",
+        grand.tasks,
+        grand.passed_count,
+        grand.failed_count,
+        grand.timeout_count,
+        rate,
+        grand.turns,
+        grand.tokens_in,
+        grand.tokens_out,
+        grand.cost,
+        format_duration_ms(grand.wall_time_ms),
+        avg,
+    );
 }
 
 /// Reads a bench CSV file into a vector of results.
