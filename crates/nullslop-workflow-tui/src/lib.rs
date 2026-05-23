@@ -16,3 +16,4 @@ pub mod node;
 pub mod port;
 pub mod status;
 pub mod viewport;
+pub mod widget;
