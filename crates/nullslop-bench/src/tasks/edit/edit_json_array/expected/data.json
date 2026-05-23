@@ -1,0 +1,135 @@
+[
+  {
+    "id": 1,
+    "name": "User 001",
+    "email": "user001@example.com",
+    "role": "editor",
+    "active": true
+  },
+  {
+    "id": 2,
+    "name": "User 002",
+    "email": "user002@example.com",
+    "role": "viewer",
+    "active": true
+  },
+  {
+    "id": 3,
+    "name": "User 003",
+    "email": "user003@example.com",
+    "role": "admin",
+    "active": true
+  },
+  {
+    "id": 4,
+    "name": "User 004",
+    "email": "user004@example.com",
+    "role": "editor",
+    "active": true
+  },
+  {
+    "id": 5,
+    "name": "User 005",
+    "email": "user005@example.com",
+    "role": "viewer",
+    "active": false
+  },
+  {
+    "id": 6,
+    "name": "User 006",
+    "email": "user006@example.com",
+    "role": "admin",
+    "active": true
+  },
+  {
+    "id": 7,
+    "name": "User 007",
+    "email": "user007@example.com",
+    "role": "editor",
+    "active": true
+  },
+  {
+    "id": 8,
+    "name": "User 008",
+    "email": "user008@example.com",
+    "role": "viewer",
+    "active": true
+  },
+  {
+    "id": 9,
+    "name": "User 009",
+    "email": "user009@example.com",
+    "role": "admin",
+    "active": true
+  },
+  {
+    "id": 10,
+    "name": "User 010",
+    "email": "user010@example.com",
+    "role": "editor",
+    "active": false
+  },
+  {
+    "id": 11,
+    "name": "User 011",
+    "email": "user011@example.com",
+    "role": "viewer",
+    "active": true
+  },
+  {
+    "id": 12,
+    "name": "User 012",
+    "email": "user012@example.com",
+    "role": "admin",
+    "active": true
+  },
+  {
+    "id": 13,
+    "name": "User 013",
+    "email": "user013@example.com",
+    "role": "editor",
+    "active": true
+  },
+  {
+    "id": 14,
+    "name": "User 014",
+    "email": "user014@example.com",
+    "role": "viewer",
+    "active": true
+  },
+  {
+    "id": 15,
+    "name": "User 015",
+    "email": "user015@example.com",
+    "role": "admin",
+    "active": false
+  },
+  {
+    "id": 16,
+    "name": "User 016",
+    "email": "user016@example.com",
+    "role": "editor",
+    "active": true
+  },
+  {
+    "id": 18,
+    "name": "User 018",
+    "email": "user018@example.com",
+    "role": "admin",
+    "active": true
+  },
+  {
+    "id": 19,
+    "name": "User 019",
+    "email": "user019@example.com",
+    "role": "editor",
+    "active": true
+  },
+  {
+    "id": 20,
+    "name": "User 020",
+    "email": "user020@example.com",
+    "role": "viewer",
+    "active": false
+  }
+]
