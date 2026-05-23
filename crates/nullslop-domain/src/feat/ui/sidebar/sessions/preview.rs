@@ -56,8 +56,7 @@ impl SessionPreviewCache {
         history_len: HistoryLen,
         width: ContentWidth,
     ) -> Option<&Vec<Line<'static>>> {
-        self.entries
-            .get(&(session_id.clone(), history_len, width))
+        self.entries.get(&(session_id.clone(), history_len, width))
     }
 
     /// Stores preview lines for the given key.
@@ -141,8 +140,7 @@ pub fn render_session_preview_for_state(
         let popup_width = preview_width(frame_area);
         popup_width.saturating_sub(2)
     };
-    let content_lines =
-        build_preview_lines(session, inner_width.max(1), theme, tool_max, cache);
+    let content_lines = build_preview_lines(session, inner_width.max(1), theme, tool_max, cache);
     let line_count = content_lines.len();
 
     let popup_rect = session_preview_popup_rect(frame_area, sessions_top_y, line_count);

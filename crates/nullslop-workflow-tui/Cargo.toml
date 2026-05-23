@@ -1,0 +1,17 @@
+[package]
+name = "nullslop-workflow-tui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nullslop-workflow = { path = "../nullslop-workflow" }
+ratatui = { workspace = true }
+
+[dev-dependencies]
+async-trait = { workspace = true }
+crossterm = { workspace = true }
+error-stack = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true
