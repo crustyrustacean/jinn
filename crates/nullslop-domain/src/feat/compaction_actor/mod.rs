@@ -32,6 +32,9 @@ use crate::feat::session::chat_session::SessionPhase;
 use crate::feat::session::protocol::history_appended::HistoryAppended;
 use crate::protocol::{Command, Event};
 
+/// Hardcoded compaction system prompt.
+const COMPACTION_PROMPT: &str = include_str!("compaction.md");
+
 /// Errors during compaction.
 #[derive(Debug, Error)]
 #[error("compaction error")]
@@ -362,7 +365,6 @@ async fn perform_compaction(
 
     // Step 3: Call LLM for summarization.
     let summary = generate_summary(
-        state,
         services,
         handle,
         &serialized,
@@ -392,7 +394,6 @@ async fn perform_compaction(
 /// Generate a summary using the LLM.
 #[allow(clippy::too_many_arguments)]
 async fn generate_summary(
-    state: &State,
     services: &Services,
     runtime_handle: &Handle,
     serialized_entries: &str,
@@ -428,19 +429,7 @@ async fn generate_summary(
     // Wrap with retry decorator — compaction retries are logged at warn level.
     let service = RetryingLlmService::new(service, retry_config.clone(), Box::new(NoOpOnRetry));
 
-    // Build the prompt — prefer template from store, fall back to bundled default.
-    let system_prompt = state
-        .read()
-        .context
-        .prompt_templates
-        .find_by_name("compaction")
-        .map_or_else(
-            || {
-                crate::feat::context::strategy::compaction_prompt::DEFAULT_COMPACTION_PROMPT
-                    .to_owned()
-            },
-            |t| t.body.clone(),
-        );
+    let system_prompt = COMPACTION_PROMPT.to_owned();
 
     let mut user_content = String::new();
     if let Some(prev) = previous_summary {
