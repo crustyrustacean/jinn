@@ -298,4 +298,94 @@ mod tests {
         let content = std::fs::read_to_string(&file_path).expect("read written file");
         assert_eq!(content, "relative content");
     }
+
+    #[rstest::rstest]
+    fn parse_args_missing_path_defaults_to_empty() {
+        // Given JSON with only a content field.
+        let raw = r#"{"content":"hi"}"#;
+
+        // When parsing arguments.
+        let (path, content) = parse_args(raw).expect("parse");
+
+        // Then path defaults to empty and content is preserved.
+        assert_eq!(path, "");
+        assert_eq!(content, "hi");
+    }
+
+    #[rstest::rstest]
+    fn parse_args_missing_content_defaults_to_empty() {
+        // Given JSON with only a path field.
+        let raw = r#"{"path":"f.txt"}"#;
+
+        // When parsing arguments.
+        let (path, content) = parse_args(raw).expect("parse");
+
+        // Then path is preserved and content defaults to empty.
+        assert_eq!(path, "f.txt");
+        assert_eq!(content, "");
+    }
+
+    #[rstest::rstest]
+    fn parse_args_both_missing_defaults_to_empty() {
+        // Given an empty JSON object.
+        let raw = "{}";
+
+        // When parsing arguments.
+        let (path, content) = parse_args(raw).expect("parse");
+
+        // Then both default to empty strings.
+        assert_eq!(path, "");
+        assert_eq!(content, "");
+    }
+
+    #[rstest::rstest]
+    fn parse_args_path_is_integer_defaults_to_empty() {
+        // Given JSON where path is an integer instead of a string.
+        let raw = r#"{"path":42,"content":"hi"}"#;
+
+        // When parsing arguments.
+        let (path, content) = parse_args(raw).expect("parse");
+
+        // Then path defaults to empty (as_str returns None for non-strings).
+        assert_eq!(path, "");
+        assert_eq!(content, "hi");
+    }
+
+    #[rstest::rstest]
+    fn parse_args_content_is_boolean_defaults_to_empty() {
+        // Given JSON where content is a boolean instead of a string.
+        let raw = r#"{"path":"f.txt","content":true}"#;
+
+        // When parsing arguments.
+        let (path, content) = parse_args(raw).expect("parse");
+
+        // Then content defaults to empty (as_str returns None for non-strings).
+        assert_eq!(path, "f.txt");
+        assert_eq!(content, "");
+    }
+
+    #[rstest::rstest]
+    fn parse_args_extra_fields_are_ignored() {
+        // Given JSON with extra unknown fields.
+        let raw = r#"{"path":"f.txt","content":"hi","extra":123}"#;
+
+        // When parsing arguments.
+        let (path, content) = parse_args(raw).expect("parse");
+
+        // Then the known fields are extracted and extras are ignored.
+        assert_eq!(path, "f.txt");
+        assert_eq!(content, "hi");
+    }
+
+    #[rstest::rstest]
+    fn parse_args_invalid_json_returns_error() {
+        // Given a string that is not valid JSON.
+        let raw = "not json";
+
+        // When parsing arguments.
+        let result = parse_args(raw);
+
+        // Then the result is an error.
+        assert!(result.is_err());
+    }
 }
