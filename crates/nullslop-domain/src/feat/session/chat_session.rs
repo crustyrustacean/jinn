@@ -1437,7 +1437,10 @@ impl ChatSessionState {
             return;
         }
         let items = self.visual_items().clone();
-        if !items.is_empty() {
+        if items.is_empty() {
+            // Fallback: use raw history index when visual items not yet computed.
+            self.ui.selected_entry_index = Some(range.start);
+        } else {
             let mut idx = range.start;
             while idx < range.end {
                 let selectable = match items.get(idx) {
@@ -1464,9 +1467,6 @@ impl ChatSessionState {
                     self.ui.selected_entry_index = Some(idx);
                 }
             }
-        } else {
-            // Fallback: use raw history index when visual items not yet computed.
-            self.ui.selected_entry_index = Some(range.start);
         }
     }
 
@@ -1480,7 +1480,10 @@ impl ChatSessionState {
             return;
         }
         let items = self.visual_items().clone();
-        if !items.is_empty() {
+        if items.is_empty() {
+            // Fallback: use raw history index when visual items not yet computed.
+            self.ui.selected_entry_index = Some(range.end.saturating_sub(1));
+        } else {
             let mut idx = range.end.saturating_sub(1);
             while idx > range.start {
                 let selectable = match items.get(idx) {
@@ -1505,9 +1508,6 @@ impl ChatSessionState {
             if selectable {
                 self.ui.selected_entry_index = Some(idx);
             }
-        } else {
-            // Fallback: use raw history index when visual items not yet computed.
-            self.ui.selected_entry_index = Some(range.end.saturating_sub(1));
         }
     }
 
