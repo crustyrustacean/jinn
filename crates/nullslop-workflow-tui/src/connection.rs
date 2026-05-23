@@ -3,11 +3,8 @@
 //! Provides the [`ConnectionRouter`] trait and [`SimpleRouter`] which produces
 //! L-shaped paths (right → vertical → right) between output and input ports.
 
-use ratatui::{
-    buffer::Buffer,
-    layout::{Position, Rect},
-    style::Color,
-};
+use ratatui::buffer::Buffer;
+use ratatui::layout::{Position, Rect};
 
 use crate::port::port_type_color;
 use nullslop_workflow::port::PortType;

@@ -69,7 +69,10 @@ impl ViewportState {
     ///
     /// If nothing is selected, selects the first node. If the list is empty,
     /// does nothing.
-    #[expect(clippy::indexing_slicing, reason = "next is bounded by node_names.len() via modular arithmetic")]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "next is bounded by node_names.len() via modular arithmetic"
+    )]
     pub fn select_next(&mut self, node_names: &[String]) {
         if node_names.is_empty() {
             return;
@@ -77,10 +80,7 @@ impl ViewportState {
         let next = match &self.selected {
             None => 0,
             Some(current) => {
-                let idx = node_names
-                    .iter()
-                    .position(|n| n == current)
-                    .unwrap_or(0);
+                let idx = node_names.iter().position(|n| n == current).unwrap_or(0);
                 (idx + 1) % node_names.len()
             }
         };
@@ -91,7 +91,10 @@ impl ViewportState {
     ///
     /// If nothing is selected, selects the last node. If the list is empty,
     /// does nothing.
-    #[expect(clippy::indexing_slicing, reason = "prev is bounded by node_names.len() via modular arithmetic")]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "prev is bounded by node_names.len() via modular arithmetic"
+    )]
     pub fn select_prev(&mut self, node_names: &[String]) {
         if node_names.is_empty() {
             return;
@@ -99,10 +102,7 @@ impl ViewportState {
         let prev = match &self.selected {
             None => node_names.len() - 1,
             Some(current) => {
-                let idx = node_names
-                    .iter()
-                    .position(|n| n == current)
-                    .unwrap_or(0);
+                let idx = node_names.iter().position(|n| n == current).unwrap_or(0);
                 if idx == 0 {
                     node_names.len() - 1
                 } else {
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn is_selected_checks_current() {
-        let mut vp = ViewportState::with_selected("b".into());
+        let vp = ViewportState::with_selected("b".into());
         assert!(vp.is_selected("b"));
         assert!(!vp.is_selected("a"));
     }

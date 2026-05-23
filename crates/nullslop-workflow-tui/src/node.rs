@@ -330,6 +330,21 @@ impl VisualNode {
         let port = &self.output_ports[index];
         (self.x + self.width, self.y + port.row_offset)
     }
+
+    /// Returns a new VisualNode shifted by the given offset (for viewport scrolling).
+    #[must_use]
+    pub fn shifted(&self, dx: u16, dy: u16) -> Self {
+        Self {
+            name: self.name.clone(),
+            x: self.x.saturating_sub(dx),
+            y: self.y.saturating_sub(dy),
+            width: self.width,
+            height: self.height,
+            input_ports: self.input_ports.clone(),
+            output_ports: self.output_ports.clone(),
+            status: self.status,
+        }
+    }
 }
 
 /// Truncates a string to at most `max_len` characters.
