@@ -569,7 +569,8 @@ fn entering_pins_saves_history_position() {
     state.frontend.scope_stack.push(FocusScope::SidebarPersona);
     state.frontend.persona_section.cursor = Some(0);
     state.active_session_mut().ui.scroll_offset = Some(42);
-    state.active_session_mut().ui.selected_entry_index = Some(0);
+    let entry_id_0 = state.active_session().history()[0].id.clone();
+    state.active_session_mut().set_selected_entry_index(0);
 
     // When navigating down into Pins.
     navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
@@ -582,7 +583,7 @@ fn entering_pins_saves_history_position() {
         .as_ref()
         .expect("saved");
     assert_eq!(saved.scroll_offset, Some(42));
-    assert_eq!(saved.selected_entry_index, Some(0));
+    assert_eq!(saved.selected_cursor_id, Some(entry_id_0));
     // And the selected entry was changed by sync_chat_log_cursor
     // (or stayed at 0 if the pin is at index 0 — what matters is that save captured pre-change).
     assert!(state.active_session().has_saved_history_position());
@@ -596,7 +597,7 @@ fn leaving_pins_to_persona_restores_history_position() {
     let first_id = state.sorted_pinned_ids()[0].clone();
     state.frontend.pins.select_by_id(first_id);
     state.active_session_mut().ui.scroll_offset = Some(42);
-    state.active_session_mut().ui.selected_entry_index = Some(0);
+    state.active_session_mut().set_selected_entry_index(0);
     state.active_session_mut().save_history_position();
 
     // When navigating up to Persona.
@@ -617,7 +618,7 @@ fn jump_from_pins_to_persona_restores_history_position() {
     let first_id = state.sorted_pinned_ids()[0].clone();
     state.frontend.pins.select_by_id(first_id);
     state.active_session_mut().ui.scroll_offset = Some(42);
-    state.active_session_mut().ui.selected_entry_index = Some(0);
+    state.active_session_mut().set_selected_entry_index(0);
     state.active_session_mut().save_history_position();
 
     // When jumping to previous section (Persona).
@@ -636,12 +637,12 @@ fn sidebar_leave_discards_saved_position() {
     let first_id = state.sorted_pinned_ids()[0].clone();
     state.frontend.pins.select_by_id(first_id);
     state.active_session_mut().ui.scroll_offset = Some(42);
-    state.active_session_mut().ui.selected_entry_index = Some(0);
+    state.active_session_mut().set_selected_entry_index(0);
     state.active_session_mut().save_history_position();
 
     // Modify state to simulate pin view.
     state.active_session_mut().ui.scroll_offset = Some(10);
-    state.active_session_mut().ui.selected_entry_index = Some(2);
+    state.active_session_mut().set_selected_entry_index(2);
 
     // When leaving the sidebar.
     crate::feat::ui::sidebar::intent::handle_sidebar_leave(&mut state);
@@ -660,7 +661,7 @@ fn full_cycle_saves_and_restores() {
     state.frontend.scope_stack.push(FocusScope::SidebarPersona);
     state.frontend.persona_section.cursor = Some(0);
     state.active_session_mut().ui.scroll_offset = Some(42);
-    state.active_session_mut().ui.selected_entry_index = Some(0);
+    state.active_session_mut().set_selected_entry_index(0);
 
     // When navigating to Pins.
     navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
@@ -691,7 +692,7 @@ fn jump_roundtrip_saves_and_restores() {
     state.frontend.scope_stack.push(FocusScope::SidebarPersona);
     state.frontend.persona_section.cursor = Some(0);
     state.active_session_mut().ui.scroll_offset = Some(42);
-    state.active_session_mut().ui.selected_entry_index = Some(0);
+    state.active_session_mut().set_selected_entry_index(0);
 
     // When jumping to Pins.
     jump_to_section(&SidebarIntent::MoveDown, &mut state);

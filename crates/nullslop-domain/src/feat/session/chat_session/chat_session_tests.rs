@@ -1078,7 +1078,7 @@ fn select_prev_entry_clamps_at_zero() {
     session.push_entry(ChatEntry::user("b"));
     session.push_entry(ChatEntry::user("c"));
     // push_entry auto-selects last (2). Move to index 0.
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
 
     // When selecting prev.
     session.select_prev_entry();
@@ -1134,7 +1134,7 @@ fn selected_entry_returns_entry_at_index() {
     session.push_entry(ChatEntry::user("b"));
     session.push_entry(ChatEntry::user("c"));
     // push_entry auto-selects last (2). Move to index 1.
-    session.ui.selected_entry_index = Some(1);
+    session.set_selected_entry_index(1);
 
     // When getting the selected entry.
     let entry = session.selected_entry();
@@ -1354,7 +1354,7 @@ fn push_entry_preserves_selection_when_not_at_last() {
     session.push_entry(ChatEntry::user("b"));
     session.push_entry(ChatEntry::user("c"));
     // Move cursor to first entry (not last).
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
 
     // When pushing a new entry.
     session.push_entry(ChatEntry::user("d"));
@@ -1372,7 +1372,7 @@ fn push_entry_resets_scroll_only_when_at_last() {
     session.push_entry(ChatEntry::user("c"));
     // Scroll up and move cursor away from last.
     session.ui.scroll_offset = Some(0);
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
 
     // When pushing a new entry.
     session.push_entry(ChatEntry::user("d"));
@@ -1461,7 +1461,7 @@ fn begin_thinking_preserves_selection_when_not_at_last() {
         .begin_streaming()
         .build();
     // Move cursor to user entry (not the assistant).
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
 
     // When beginning thinking.
     session.begin_thinking();
@@ -2115,7 +2115,8 @@ fn save_history_position_captures_current_state() {
         .with_user_entry("third")
         .build();
     session.ui.scroll_offset = Some(10);
-    session.ui.selected_entry_index = Some(1);
+    let second_id = session.history()[1].id.clone();
+    session.set_selected_entry_index(1);
 
     // When saving history position.
     session.save_history_position();
@@ -2124,7 +2125,7 @@ fn save_history_position_captures_current_state() {
     assert!(session.has_saved_history_position());
     let saved = session.ui.saved_history_position.as_ref().expect("saved");
     assert_eq!(saved.scroll_offset, Some(10));
-    assert_eq!(saved.selected_entry_index, Some(1));
+    assert_eq!(saved.selected_cursor_id, Some(second_id));
 }
 
 #[rstest::rstest]
@@ -2135,17 +2136,17 @@ fn restore_history_position_restores_and_clears() {
         .with_user_entry("second")
         .build();
     session.ui.scroll_offset = Some(5);
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
     session.save_history_position();
 
     // When modifying the state and then restoring.
     session.ui.scroll_offset = Some(99);
-    session.ui.selected_entry_index = Some(1);
+    session.set_selected_entry_index(1);
     session.restore_history_position();
 
     // Then the state is restored to the saved values.
     assert_eq!(session.ui.scroll_offset, Some(5));
-    assert_eq!(session.ui.selected_entry_index, Some(0));
+    assert_eq!(session.selected_entry_index(), Some(0));
     // And the saved position is cleared.
     assert!(!session.has_saved_history_position());
 }
@@ -2158,17 +2159,17 @@ fn discard_saved_history_position_clears_without_restoring() {
         .with_user_entry("second")
         .build();
     session.ui.scroll_offset = Some(5);
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
     session.save_history_position();
 
     // When modifying state and then discarding.
     session.ui.scroll_offset = Some(99);
-    session.ui.selected_entry_index = Some(1);
+    session.set_selected_entry_index(1);
     session.discard_saved_history_position();
 
     // Then the state is NOT restored.
     assert_eq!(session.ui.scroll_offset, Some(99));
-    assert_eq!(session.ui.selected_entry_index, Some(1));
+    assert_eq!(session.selected_entry_index(), Some(1));
     // And the saved position is cleared.
     assert!(!session.has_saved_history_position());
 }
@@ -2181,18 +2182,19 @@ fn save_history_position_does_not_overwrite_existing() {
         .with_user_entry("second")
         .build();
     session.ui.scroll_offset = Some(5);
-    session.ui.selected_entry_index = Some(0);
+    let first_id = session.history()[0].id.clone();
+    session.set_selected_entry_index(0);
     session.save_history_position();
 
     // When modifying state and saving again.
     session.ui.scroll_offset = Some(99);
-    session.ui.selected_entry_index = Some(1);
+    session.set_selected_entry_index(1);
     session.save_history_position();
 
     // Then the original saved position is kept.
     let saved = session.ui.saved_history_position.as_ref().expect("saved");
     assert_eq!(saved.scroll_offset, Some(5));
-    assert_eq!(saved.selected_entry_index, Some(0));
+    assert_eq!(saved.selected_cursor_id, Some(first_id));
 }
 
 #[rstest::rstest]
@@ -2200,14 +2202,14 @@ fn restore_is_noop_when_nothing_saved() {
     // Given a session with no saved position.
     let mut session = ChatSessionState::builder().with_user_entry("first").build();
     session.ui.scroll_offset = Some(10);
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
 
     // When restoring with nothing saved.
     session.restore_history_position();
 
     // Then the state is unchanged.
     assert_eq!(session.ui.scroll_offset, Some(10));
-    assert_eq!(session.ui.selected_entry_index, Some(0));
+    assert_eq!(session.selected_entry_index(), Some(0));
 }
 
 // --- Empty assistant navigation skip tests ---
@@ -2219,7 +2221,7 @@ fn select_next_entry_skips_empty_assistant() {
     session.push_entry(ChatEntry::user("a"));
     session.push_entry(ChatEntry::assistant(""));
     session.push_entry(ChatEntry::user("c"));
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
 
     // When selecting next.
     session.select_next_entry();
@@ -2235,7 +2237,7 @@ fn select_prev_entry_skips_empty_assistant() {
     session.push_entry(ChatEntry::user("a"));
     session.push_entry(ChatEntry::assistant(""));
     session.push_entry(ChatEntry::user("c"));
-    session.ui.selected_entry_index = Some(2);
+    session.set_selected_entry_index(2);
 
     // When selecting previous.
     session.select_prev_entry();
@@ -2250,7 +2252,7 @@ fn select_next_entry_stays_put_when_only_empty_assistant_remains() {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
     session.push_entry(ChatEntry::assistant(""));
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
 
     // When selecting next.
     session.select_next_entry();
@@ -2265,7 +2267,7 @@ fn select_prev_entry_stays_put_when_only_empty_assistant_remains() {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::assistant(""));
     session.push_entry(ChatEntry::user("b"));
-    session.ui.selected_entry_index = Some(1);
+    session.set_selected_entry_index(1);
 
     // When selecting previous.
     session.select_prev_entry();

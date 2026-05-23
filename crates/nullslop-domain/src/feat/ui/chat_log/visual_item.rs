@@ -99,6 +99,60 @@ pub fn build_visual_items(
     items
 }
 
+/// Find the visual-item index for a given entry ID.
+///
+/// Scans the visual items list for an entry with the given ID.
+/// If the entry is inside a [`CollapsedIgnoredBlock`], returns that block's
+/// visual-item index (so the cursor lands on the collapsed block).
+///
+/// Returns `None` if the entry ID is not found in any visual item.
+pub fn resolve_entry_id_to_vi_index(
+    entry_id: &ChatEntryId,
+    items: &[VisualItem],
+    history: &[ChatEntry],
+) -> Option<usize> {
+    for (vi_idx, item) in items.iter().enumerate() {
+        match item {
+            VisualItem::Entry(hist_idx) => {
+                if history
+                    .get(*hist_idx)
+                    .is_some_and(|e| &e.id == entry_id)
+                {
+                    return Some(vi_idx);
+                }
+            }
+            VisualItem::CollapsedIgnoredBlock { start, count } => {
+                for j in *start..*start + count {
+                    if history.get(j).is_some_and(|e| &e.id == entry_id) {
+                        return Some(vi_idx);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Get the representative entry ID for a visual item.
+///
+/// For [`Entry`], returns that entry's ID.
+/// For [`CollapsedIgnoredBlock`], returns the first entry's ID (the block
+/// representative).
+///
+/// [`Entry`]: VisualItem::Entry
+/// [`CollapsedIgnoredBlock`]: VisualItem::CollapsedIgnoredBlock
+pub fn entry_id_from_visual_item(
+    item: &VisualItem,
+    history: &[ChatEntry],
+) -> Option<ChatEntryId> {
+    match item {
+        VisualItem::Entry(hist_idx) => history.get(*hist_idx).map(|e| e.id.clone()),
+        VisualItem::CollapsedIgnoredBlock { start, .. } => {
+            history.get(*start).map(|e| e.id.clone())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::needless_range_loop)]
