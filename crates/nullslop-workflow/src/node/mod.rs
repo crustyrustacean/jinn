@@ -1,8 +1,13 @@
-//! Node trait and execution context.
+//! Node trait, execution context, and built-in node types.
 //!
 //! A [`WorkflowNode`] is the core unit of computation in a workflow graph.
 //! Each node declares its input and output ports, then executes when all
 //! input ports are satisfied.
+//!
+//! # Built-in nodes
+//!
+//! - [`CodeNode`] — wraps an async closure for quick custom logic.
+//! - [`DelayNode`] — sleeps for a configured duration, then passes inputs through.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -12,6 +17,12 @@ use wherror::Error;
 
 use crate::engine::NodeStatus;
 use crate::port::PortValues;
+
+pub mod code;
+pub mod delay;
+
+pub use code::CodeNode;
+pub use delay::DelayNode;
 
 /// Execution context passed to nodes during execution.
 ///

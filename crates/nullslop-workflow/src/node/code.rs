@@ -33,7 +33,7 @@ type ExecuteFn = Arc<
 /// # Examples
 ///
 /// ```rust,ignore
-/// use nullslop_workflow::nodes::CodeNode;
+/// use nullslop_workflow::node::CodeNode;
 /// use nullslop_workflow::port::{PortDef, PortValues, PortValue};
 ///
 /// let node = CodeNode::new(
