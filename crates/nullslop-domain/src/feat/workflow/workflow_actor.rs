@@ -4,6 +4,7 @@
 //! Manages the lifecycle of workflow executions by coordinating between
 //! the workflow engine and the actor bus.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
@@ -13,7 +14,7 @@ use crate::feat::provider::protocol::event::StreamCompleted;
 use crate::feat::workflow::domain_node_context::DomainNodeContext;
 use crate::feat::workflow::protocol::command::{CancelWorkflow, StartWorkflow};
 use crate::feat::workflow::protocol::event::{WorkflowCompleted, WorkflowStarted};
-use crate::feat::workflow::workflow_registry;
+use crate::feat::workflow::workflow_registry::WorkflowRegistry;
 use crate::feat::workflow::workflow_state::WorkflowState;
 use crate::protocol::{Command, Event};
 
@@ -26,6 +27,8 @@ pub struct WorkflowActor {
     ctx: Arc<DomainNodeContext>,
     /// Shared application state.
     state: State,
+    /// Workflow registry (injected, not global).
+    registry: Arc<WorkflowRegistry>,
 }
 
 /// Dependencies for [`WorkflowActor`].
@@ -34,6 +37,8 @@ pub struct WorkflowActorDeps {
     pub state: State,
     /// Runtime services.
     pub services: Services,
+    /// Workflow registry (built during startup).
+    pub registry: Arc<WorkflowRegistry>,
 }
 
 impl Actor for WorkflowActor {
@@ -52,6 +57,7 @@ impl Actor for WorkflowActor {
         Self {
             ctx: domain_ctx,
             state: deps.state,
+            registry: deps.registry,
         }
     }
 
@@ -86,14 +92,14 @@ impl WorkflowActor {
         let name = &payload.name;
         let workflow_id = payload.workflow_id.clone();
 
-        // Look up the graph builder.
-        let Some(builder) = workflow_registry::get_workflow(name) else {
+        // Look up the graph builder from the injected registry.
+        let Some(builder) = self.registry.get(name) else {
             tracing::warn!(name = %name, "unknown workflow requested");
             return;
         };
 
         // Build the graph once and wrap in a WorkflowExecution.
-        let execution = Arc::new(nullslop_workflow::execution::WorkflowExecution::new(builder(payload.user_prompt.clone())));
+        let execution = Arc::new(nullslop_workflow::execution::WorkflowExecution::new(builder()));
 
         // Create workflow state with the shared execution.
         let mut workflow_state = WorkflowState::new(name.clone(), execution.clone());
@@ -192,5 +198,3 @@ impl WorkflowActor {
         self.ctx.resolve_completed(&payload.session_id, response);
     }
 }
-
-use std::collections::HashMap;
