@@ -31,6 +31,7 @@ pub fn render_workflow_tab(frame: &mut Frame<'_>, area: Rect, state: &AppState, 
     frame.render_widget(widget, area);
 }
 
+/// Renders a placeholder when no workflow graph is available.
 fn render_no_workflow_placeholder(frame: &mut Frame<'_>, area: Rect) {
     let line = Line::from(vec![
         Span::styled(

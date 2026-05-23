@@ -322,8 +322,7 @@ fn execute_slash_command(
             // Parse the workflow name and topic from the display text: "/workflow <name> [topic]"
             let args = display
                 .strip_prefix("/workflow")
-                .map(|s| s.trim())
-                .unwrap_or("");
+                .map_or("", str::trim);
             if args.is_empty() {
                 state
                     .frontend

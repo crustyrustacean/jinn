@@ -62,6 +62,7 @@ impl ViewportState {
     ) {
         let (cw, ch) = content_size;
         let (vw, vh) = viewport_size;
+        #[expect(clippy::similar_names, reason = "half cell width / half cell height")]
         let half_cw = i32::from(cw / 2);
         let half_ch = i32::from(ch / 2);
 

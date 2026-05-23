@@ -78,7 +78,7 @@ impl CodeNode {
         Fut: Future<Output = Result<PortValues, Report<NodeError>>> + Send + 'static,
     {
         Self {
-            name: name.into(),
+            name,
             input_ports: inputs,
             output_ports: outputs,
             execute_fn: Arc::new(move |inputs, ctx| Box::pin(execute_fn(inputs, ctx))),
@@ -89,10 +89,7 @@ impl CodeNode {
 #[async_trait::async_trait]
 impl WorkflowNode for CodeNode {
     fn name(&self) -> &'static str {
-        #[expect(
-            clippy::unnecessary_safety_comment,
-            reason = "leak is intentional for 'static name"
-        )]
+        // Intentional leak for 'static name.
         Box::leak(self.name.clone().into_boxed_str())
     }
 

@@ -78,7 +78,7 @@ impl VisualNode {
         output_defs: &[PortDef],
         status: NodeStatus,
     ) -> Self {
-        let content_width = Self::compute_content_width(&name, &input_defs, &output_defs);
+        let content_width = Self::compute_content_width(&name, input_defs, output_defs);
         let width = u16::try_from(content_width + 2 + 2 * H_PAD).unwrap_or(u16::MAX);
 
         let input_count = input_defs.len().max(1);
@@ -399,6 +399,7 @@ impl ShiftedNode<'_> {
         self.render_status(buf, tick);
     }
 
+    /// Sets a cell in the buffer at the given local coordinates.
     fn set_cell(
         &self,
         buf: &mut Buffer,
@@ -412,6 +413,7 @@ impl ShiftedNode<'_> {
         set_cell_abs(buf, col, row, symbol, style);
     }
 
+    /// Renders the rounded border around the node.
     fn render_borders(&self, buf: &mut Buffer, style: Style) {
         let width = usize::from(self.inner.width);
         let height = usize::from(self.inner.height);
@@ -456,6 +458,7 @@ impl ShiftedNode<'_> {
         );
     }
 
+    /// Renders the node title text on the top border.
     fn render_title(&self, buf: &mut Buffer, border_style: Style, _tick: u8) {
         let start_col = 2;
         let max_title_len = usize::from(self.inner.width).saturating_sub(4);
@@ -468,6 +471,7 @@ impl ShiftedNode<'_> {
         }
     }
 
+    /// Renders the status indicator on the top border.
     fn render_status(&self, buf: &mut Buffer, tick: u8) {
         let symbol = status_symbol(self.inner.status, tick);
         let color = status_color(self.inner.status);
@@ -475,6 +479,7 @@ impl ShiftedNode<'_> {
         self.set_cell(buf, col, 0, symbol, Style::default().fg(color));
     }
 
+    /// Renders the port name labels inside the node body.
     fn render_port_labels(&self, buf: &mut Buffer) {
         let content_start = 1 + H_PAD;
         let content_width = usize::from(self.inner.width).saturating_sub(2 + 2 * H_PAD);
@@ -498,6 +503,7 @@ impl ShiftedNode<'_> {
         }
     }
 
+    /// Renders the port indicator circles on the node borders.
     fn render_port_indicators(&self, buf: &mut Buffer) {
         let style = Style::default().add_modifier(Modifier::BOLD);
 
@@ -518,6 +524,7 @@ impl ShiftedNode<'_> {
         }
     }
 
+    /// Renders a text string at the given position within the node.
     fn render_text(&self, buf: &mut Buffer, start_col: usize, row: u16, text: &str, style: Style) {
         for (i, ch) in text.chars().enumerate() {
             let col = u16::try_from(start_col + i).unwrap_or(u16::MAX);

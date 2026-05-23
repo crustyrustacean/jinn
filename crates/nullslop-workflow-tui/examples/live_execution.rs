@@ -31,6 +31,7 @@ use ratatui::widgets::{Paragraph, Widget};
 struct Ctx;
 impl NodeContext for Ctx {}
 
+/// Builds the workflow graph for the live execution example.
 fn build_graph() -> nullslop_workflow::graph::WorkflowGraph {
     let mut b = WorkflowGraphBuilder::new();
     // First node: source (no inputs, one output) — use make_node since DelayNode mirrors ports.
@@ -53,6 +54,7 @@ fn build_graph() -> nullslop_workflow::graph::WorkflowGraph {
 }
 
 #[tokio::main]
+#[expect(clippy::expect_used, reason = "example code")]
 async fn main() {
     let mut terminal = common::setup_terminal();
 
