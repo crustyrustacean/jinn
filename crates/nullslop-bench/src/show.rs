@@ -61,11 +61,18 @@ fn format_duration(ms: u64) -> String {
 
 /// Reads a bench CSV file into a vector of results.
 pub(crate) fn read_csv(path: &Path) -> Result<Vec<BenchResult>, Box<dyn std::error::Error>> {
-    let mut reader = csv::Reader::from_path(path)?;
+    let mut reader = csv::Reader::from_path(path).map_err(|e| {
+        format!("Failed to open '{}' as CSV: {e}", path.display())
+    })?;
     let mut results = Vec::new();
 
     for record in reader.records() {
-        let record = record?;
+        let record = record.map_err(|e| {
+            format!(
+                "Failed to parse '{}' as CSV — is this actually a CSV file? {e}",
+                path.display()
+            )
+        })?;
         let passed = record
             .get(8)
             .is_some_and(|v| v.eq_ignore_ascii_case("true"));

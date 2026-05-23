@@ -20,6 +20,8 @@ tracing = { workspace = true }
 
 strip-ansi-escapes = { workspace = true }
 tempfile = { workspace = true }
+tree-sitter = { workspace = true }
+tree-sitter-python = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

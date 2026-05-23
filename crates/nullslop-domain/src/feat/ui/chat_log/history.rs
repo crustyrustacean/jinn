@@ -273,6 +273,8 @@ impl<'a> HistoryRender<'a> {
                             .tool_entry_max_lines
                             .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
                         let paired_status = self.paired_status_for_entry(entry);
+                        let is_streaming = matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
+                            && self.state.active_session().is_tool_call_streaming(&entry.id);
                         let ctx = RenderContext {
                             content_width: self.content_width,
                             _is_selected: is_selected,
@@ -280,6 +282,7 @@ impl<'a> HistoryRender<'a> {
                             tool_entry_max_lines: max_lines,
                             theme: self.theme.clone(),
                             paired_status,
+                            is_streaming,
                         };
                         let lines = entry_to_lines(entry, &ctx);
                         let wrapped_count: u16 = if self.content_width == 0 {
@@ -414,6 +417,8 @@ impl<'a> HistoryRender<'a> {
                             lines
                         } else {
                             let paired_status = self.paired_status_for_entry(entry);
+                            let is_streaming = matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
+                                && self.state.active_session().is_tool_call_streaming(&entry.id);
                             let ctx = RenderContext {
                                 content_width: self.content_width,
                                 _is_selected: is_selected,
@@ -421,6 +426,7 @@ impl<'a> HistoryRender<'a> {
                                 tool_entry_max_lines: max_lines,
                                 theme: self.theme.clone(),
                                 paired_status,
+                                is_streaming,
                             };
                             entry_to_lines(entry, &ctx)
                         };
