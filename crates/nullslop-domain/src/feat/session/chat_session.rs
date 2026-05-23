@@ -325,8 +325,8 @@ impl Default for SessionCore {
 pub(crate) struct SavedHistoryPosition {
     /// The scroll offset at the time of capture.
     pub(crate) scroll_offset: Option<u16>,
-    /// The selected entry index at the time of capture.
-    pub(crate) selected_entry_index: Option<usize>,
+    /// The entry ID of the cursor at the time of capture.
+    pub(crate) selected_cursor_id: Option<ChatEntryId>,
 }
 
 /// UI state for a session — owned by IntentHandler (exempt from ownership restrictions).
@@ -341,11 +341,12 @@ pub struct SessionUi {
     /// `None` means "show the bottom of the conversation" (auto-scroll).
     /// `Some(n)` means the user has manually scrolled to offset `n`.
     pub(crate) scroll_offset: Option<u16>,
-    /// The index of the currently selected chat entry, if any.
+    /// The entry ID of the currently selected cursor position, if any.
     ///
-    /// Used by j/k navigation in Normal mode for targeting entries
-    /// for actions like pinning. `None` means no entry is selected.
-    pub(crate) selected_entry_index: Option<usize>,
+    /// This is the source of truth for selection. The visual-item index
+    /// is resolved on demand via `selected_entry_index()`.
+    /// `None` means no entry is selected.
+    pub(crate) selected_cursor_id: Option<ChatEntryId>,
     /// The maximum scroll offset computed during the last render.
     ///
     /// Used by scroll handlers to resolve the "at bottom" sentinel into
@@ -392,7 +393,7 @@ impl Clone for SessionUi {
         Self {
             chat_input: self.chat_input.clone(),
             scroll_offset: self.scroll_offset,
-            selected_entry_index: self.selected_entry_index,
+            selected_cursor_id: self.selected_cursor_id.clone(),
             last_max_offset: AtomicU16::new(self.last_max_offset.load(Ordering::Relaxed)),
             entry_line_ranges: RwLock::new(
                 self.entry_line_ranges
@@ -420,7 +421,7 @@ impl Default for SessionUi {
         Self {
             chat_input: ChatInputBoxState::new(),
             scroll_offset: None,
-            selected_entry_index: None,
+            selected_cursor_id: None,
             last_max_offset: AtomicU16::new(0),
             entry_line_ranges: RwLock::new(Vec::new()),
             viewport_height: AtomicU16::new(0),
@@ -552,14 +553,16 @@ impl ChatSessionState {
     /// code to use the `PushChatEntry` command (which also triggers persistence).
     #[allow(clippy::missing_panics_doc)]
     pub fn push_entry(&mut self, entry: ChatEntry) -> usize {
-        let prev_last = self.core.history.len().saturating_sub(1);
-        let was_at_last = self.ui.selected_entry_index.is_none_or(|i| i == prev_last);
+        let was_at_last = self.ui.selected_cursor_id.as_ref().is_none_or(|id| {
+            self.core.history.last().is_some_and(|e| &e.id == id)
+        });
         let index = self.core.history.len();
         self.core.history.push(entry);
         if was_at_last {
             self.reset_scroll();
-            let new_last = self.core.history.len() - 1;
-            self.ui.selected_entry_index = Some(new_last);
+            if let Some(entry) = self.core.history.last() {
+                self.ui.selected_cursor_id = Some(entry.id.clone());
+            }
         }
         index
     }
@@ -1289,7 +1292,7 @@ impl ChatSessionState {
     ///
     /// No-op if no entry is selected or if line range data is unavailable.
     pub fn scroll_to_selected(&mut self) {
-        let Some(selected_idx) = self.ui.selected_entry_index else {
+        let Some(selected_idx) = self.selected_entry_index() else {
             return;
         };
 
@@ -1439,7 +1442,7 @@ impl ChatSessionState {
         let items = self.visual_items().clone();
         if items.is_empty() {
             // Fallback: use raw history index when visual items not yet computed.
-            self.ui.selected_entry_index = Some(range.start);
+            self.set_selected_entry_index(range.start);
         } else {
             let mut idx = range.start;
             while idx < range.end {
@@ -1464,7 +1467,7 @@ impl ChatSessionState {
                     None => false,
                 };
                 if selectable {
-                    self.ui.selected_entry_index = Some(idx);
+                    self.set_selected_entry_index(idx);
                 }
             }
         }
@@ -1482,7 +1485,7 @@ impl ChatSessionState {
         let items = self.visual_items().clone();
         if items.is_empty() {
             // Fallback: use raw history index when visual items not yet computed.
-            self.ui.selected_entry_index = Some(range.end.saturating_sub(1));
+            self.set_selected_entry_index(range.end.saturating_sub(1));
         } else {
             let mut idx = range.end.saturating_sub(1);
             while idx > range.start {
@@ -1506,7 +1509,7 @@ impl ChatSessionState {
                 None => false,
             };
             if selectable {
-                self.ui.selected_entry_index = Some(idx);
+                self.set_selected_entry_index(idx);
             }
         }
     }
@@ -1520,9 +1523,9 @@ impl ChatSessionState {
     pub fn restore_history(&mut self, entries: Vec<ChatEntry>) {
         self.core.history.replace_all(entries);
         if self.core.history.is_empty() {
-            self.ui.selected_entry_index = None;
-        } else {
-            self.ui.selected_entry_index = Some(self.core.history.len() - 1);
+            self.ui.selected_cursor_id = None;
+        } else if let Some(entry) = self.core.history.last() {
+            self.ui.selected_cursor_id = Some(entry.id.clone());
         }
         self.reset_scroll();
     }
@@ -1572,8 +1575,8 @@ impl ChatSessionState {
 
         let max = items.len() - 1;
         let start = self
-            .ui
-            .selected_entry_index
+            
+            .selected_entry_index()
             .map_or(0, |i| i.saturating_add(1).min(max));
         let mut idx = start;
         while idx < max {
@@ -1591,7 +1594,7 @@ impl ChatSessionState {
             VisualItem::Entry(hist_idx) => !self.core.history[hist_idx].is_empty_assistant(),
         };
         if selectable {
-            self.ui.selected_entry_index = Some(idx);
+            self.set_selected_entry_index(idx);
         }
     }
 
@@ -1612,8 +1615,8 @@ impl ChatSessionState {
         }
 
         let start = self
-            .ui
-            .selected_entry_index
+            
+            .selected_entry_index()
             .map_or(items.len().saturating_sub(1), |i| i.saturating_sub(1));
         let mut idx = start;
         while idx > 0 {
@@ -1631,13 +1634,13 @@ impl ChatSessionState {
             VisualItem::Entry(hist_idx) => !self.core.history[hist_idx].is_empty_assistant(),
         };
         if selectable {
-            self.ui.selected_entry_index = Some(idx);
+            self.set_selected_entry_index(idx);
         }
     }
 
     /// Clear the entry selection.
     pub fn clear_selection(&mut self) {
-        self.ui.selected_entry_index = None;
+        self.ui.selected_cursor_id = None;
     }
 
     /// Set the selected entry index directly.
@@ -1645,7 +1648,19 @@ impl ChatSessionState {
     /// Use for programmatic selection (e.g., sidebar pin sync).
     /// Does not validate bounds — caller must ensure index is valid.
     pub fn set_selected_entry_index(&mut self, index: usize) {
-        self.ui.selected_entry_index = Some(index);
+        let id = {
+            let items = self.visual_items();
+            if items.is_empty() {
+                self.core.history.get(index).map(|e| e.id.clone())
+            } else {
+                items.get(index).and_then(|item| {
+                    crate::feat::ui::chat_log::visual_item::entry_id_from_visual_item(item, &self.core.history)
+                })
+            }
+        };
+        if let Some(id) = id {
+            self.ui.selected_cursor_id = Some(id);
+        }
     }
 
     /// Fallback: select next entry by walking raw history.
@@ -1656,15 +1671,15 @@ impl ChatSessionState {
         }
         let max = self.core.history.len() - 1;
         let start = self
-            .ui
-            .selected_entry_index
+            
+            .selected_entry_index()
             .map_or(0, |i| i.saturating_add(1).min(max));
         let mut idx = start;
         while idx < max && self.core.history[idx].is_empty_assistant() {
             idx = idx.saturating_add(1);
         }
         if !self.core.history[idx].is_empty_assistant() {
-            self.ui.selected_entry_index = Some(idx);
+            self.set_selected_entry_index(idx);
         }
     }
 
@@ -1675,8 +1690,8 @@ impl ChatSessionState {
             return;
         }
         let start = self
-            .ui
-            .selected_entry_index
+            
+            .selected_entry_index()
             .map_or(self.core.history.len().saturating_sub(1), |i| {
                 i.saturating_sub(1)
             });
@@ -1685,7 +1700,7 @@ impl ChatSessionState {
             idx = idx.saturating_sub(1);
         }
         if !self.core.history[idx].is_empty_assistant() {
-            self.ui.selected_entry_index = Some(idx);
+            self.set_selected_entry_index(idx);
         }
     }
 
@@ -1702,7 +1717,7 @@ impl ChatSessionState {
         }
         self.ui.saved_history_position = Some(SavedHistoryPosition {
             scroll_offset: self.ui.scroll_offset,
-            selected_entry_index: self.ui.selected_entry_index,
+            selected_cursor_id: self.ui.selected_cursor_id.clone(),
         });
     }
 
@@ -1712,7 +1727,7 @@ impl ChatSessionState {
     pub(crate) fn restore_history_position(&mut self) {
         if let Some(saved) = self.ui.saved_history_position.take() {
             self.ui.scroll_offset = saved.scroll_offset;
-            self.ui.selected_entry_index = saved.selected_entry_index;
+            self.ui.selected_cursor_id = saved.selected_cursor_id;
         }
     }
 
@@ -1731,7 +1746,20 @@ impl ChatSessionState {
 
     /// The index of the currently selected entry, if any.
     pub fn selected_entry_index(&self) -> Option<usize> {
-        self.ui.selected_entry_index
+        let cursor_id = self.ui.selected_cursor_id.as_ref()?;
+        let items = self.visual_items();
+        if items.is_empty() {
+            return self.core.history.iter().position(|e| &e.id == cursor_id);
+        }
+        crate::feat::ui::chat_log::visual_item::resolve_entry_id_to_vi_index(cursor_id, &items, &self.core.history)
+    }
+
+    /// The stored cursor ID (source of truth for selection).
+    ///
+    /// Unlike `selected_entry_id()` which returns `None` for collapsed blocks,
+    /// this always returns the stored ID even when a collapsed block is selected.
+    pub fn selected_cursor_id(&self) -> Option<&ChatEntryId> {
+        self.ui.selected_cursor_id.as_ref()
     }
 
     /// The currently selected entry, if any.
@@ -1741,7 +1769,7 @@ impl ChatSessionState {
     /// Falls back to direct history indexing when visual items are empty
     /// (before the first render).
     pub fn selected_entry(&self) -> Option<&ChatEntry> {
-        let vi_idx = self.ui.selected_entry_index?;
+        let vi_idx = self.selected_entry_index()?;
         let items = self.visual_items();
         if items.is_empty() {
             // Before first render, visual items haven't been computed yet.
@@ -1825,7 +1853,7 @@ impl ChatSessionState {
     pub fn selected_visual_item(
         &self,
     ) -> Option<crate::feat::ui::chat_log::visual_item::VisualItem> {
-        let idx = self.ui.selected_entry_index?;
+        let idx = self.selected_entry_index()?;
         self.ui.visual_items.read().unwrap_or_else(std::sync::PoisonError::into_inner).get(idx).cloned()
     }
 
@@ -1834,7 +1862,7 @@ impl ChatSessionState {
     /// Returns `None` if nothing is selected or the selected item is a
     /// collapsed block (not a real entry).
     pub fn selected_history_index(&self) -> Option<usize> {
-        let vi_idx = self.ui.selected_entry_index?;
+        let vi_idx = self.selected_entry_index()?;
         let items = self.ui.visual_items.read().unwrap_or_else(std::sync::PoisonError::into_inner);
         if items.is_empty() {
             // Before first render, visual items haven't been computed yet.
