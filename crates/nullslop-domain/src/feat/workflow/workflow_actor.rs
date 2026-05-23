@@ -92,8 +92,9 @@ impl WorkflowActor {
             return;
         };
 
-        // Build the graph.
+        // Build the graph and wrap in a WorkflowExecution.
         let graph_for_engine = builder(payload.user_prompt.clone());
+        let execution = Arc::new(nullslop_workflow::execution::WorkflowExecution::new(graph_for_engine));
 
         // Build a second copy for rendering (WorkflowGraph is not Clone).
         let graph_for_rendering = builder(payload.user_prompt.clone());
@@ -128,7 +129,7 @@ impl WorkflowActor {
 
         tokio::spawn(async move {
             let result = nullslop_workflow::engine::execute_with_cancel(
-                graph_for_engine,
+                execution,
                 domain_ctx.clone(),
                 cancel,
             )

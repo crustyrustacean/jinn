@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use nullslop_workflow::engine::{self, NodeStatus};
+use nullslop_workflow::execution::WorkflowExecution;
 use nullslop_workflow::graph::WorkflowGraphBuilder;
 use nullslop_workflow::node::NodeContext;
 use nullslop_workflow::node::delay::DelayNode;
@@ -62,8 +63,9 @@ async fn main() {
     let render_graph = build_graph();
     let node_names: Vec<String> = render_graph.node_names().map(std::borrow::ToOwned::to_owned).collect();
 
-    // Spawn the engine in a background task with its own graph.
-    let engine_handle = tokio::spawn(async { engine::execute(build_graph(), Arc::new(Ctx)).await });
+    // Spawn the engine in a background task.
+    let execution = Arc::new(WorkflowExecution::new(build_graph()));
+    let engine_handle = tokio::spawn(async move { engine::execute(execution, Arc::new(Ctx)).await });
     let viewport = ViewportState::new();
     let mut tick: u8 = 0;
 
