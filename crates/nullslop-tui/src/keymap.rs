@@ -135,6 +135,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("p", Intent::ChatEntryPinSelected, KeyCategory::Context)
             // Expand/collapse tool entry
             .bind("e", Intent::ExpandToolEntry, KeyCategory::Navigation)
+            // Toggle ignored block visibility
+            .bind("h", Intent::ToggleIgnoredBlockVisibility, KeyCategory::Navigation)
             // Fork session from selected entry
             .bind("f", Intent::ForkFromEntry, KeyCategory::General)
             // Yank (copy) selected entry to clipboard

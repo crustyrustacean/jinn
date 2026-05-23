@@ -3,6 +3,7 @@
 use crate::common::app_state::AppState;
 use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
+use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{Command, IntentResult, PinPosition};
 
 use super::validator;
@@ -122,6 +123,43 @@ pub fn handle_expand_tool_entry(state: &mut AppState) -> IntentResult {
     };
 
     state.active_session_mut().toggle_expand_entry(entry_id);
+    IntentResult::empty()
+}
+
+/// Toggles visibility of ignored entries in the selected visual item's block.
+///
+/// - If the selected item is a `CollapsedIgnoredBlock` → expand it.
+/// - If the selected item is an ignored entry in an expanded block → collapse the block.
+/// - If the selected item is a non-ignored entry → no-op.
+/// - If nothing is selected → no-op.
+pub fn handle_toggle_ignored_block(state: &mut AppState) -> IntentResult {
+    let session = state.active_session();
+    let vi_idx = match session.selected_entry_index() {
+        Some(idx) => idx,
+        None => return IntentResult::empty(),
+    };
+
+    let history = session.history();
+    let items = session.visual_items();
+
+    let entry_id = match items.get(vi_idx) {
+        Some(VisualItem::CollapsedIgnoredBlock { start, .. }) => {
+            // Block is collapsed → expand it.
+            history[*start].id.clone()
+        }
+        Some(VisualItem::Entry(hist_idx)) => {
+            // Entry might be in an expanded ignored block → collapse it.
+            let entry = &history[*hist_idx];
+            if !entry.ignored {
+                return IntentResult::empty();
+            }
+            entry.id.clone()
+        }
+        None => return IntentResult::empty(),
+    };
+
+    drop(items);
+    state.active_session_mut().toggle_ignored_block_visibility(&entry_id);
     IntentResult::empty()
 }
 
