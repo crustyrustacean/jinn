@@ -83,6 +83,22 @@ impl StreamResponseParser {
             Err(_) => return results,
         };
 
+        // Check for top-level error object (e.g., OpenRouter context_length_exceeded).
+        if let Some(error_obj) = chunk.get("error") {
+            let error_type = error_obj
+                .get("type")
+                .and_then(|t| t.as_str())
+                .unwrap_or("unknown_error")
+                .to_owned();
+            let message = error_obj
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("Unknown error")
+                .to_owned();
+            results.push(StreamEvent::Error { error_type, message });
+            return results;
+        }
+
         let choices = if let Some(c) = chunk.get("choices").and_then(|c| c.as_array()) { c } else {
             // No choices — but we can still enrich pending_done with usage.
             self.try_enrich_pending_usage(&chunk);
@@ -633,5 +649,39 @@ mod tests {
         assert_eq!(usage.cost, Some(0.005));
         assert_eq!(usage.prompt_tokens, Some(10));
         assert_eq!(usage.completion_tokens, Some(20));
+    }
+
+    #[rstest::rstest]
+    fn top_level_error_object_produces_stream_error() {
+        // Given an OpenRouter-style error response.
+        let json = r#"{"error":{"type":"invalid_request_error","message":"context_length_exceeded"}}"#;
+
+        // When parsing.
+        let events = parse_single(json);
+
+        // Then it produces a single StreamEvent::Error.
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            &events[0],
+            StreamEvent::Error { error_type, message }
+            if error_type == "invalid_request_error" && message == "context_length_exceeded"
+        ));
+    }
+
+    #[rstest::rstest]
+    fn error_object_with_missing_fields_produces_error_with_defaults() {
+        // Given an error object with no type or message.
+        let json = r#"{"error":{}}"#;
+
+        // When parsing.
+        let events = parse_single(json);
+
+        // Then it produces a StreamEvent::Error with defaults.
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            &events[0],
+            StreamEvent::Error { error_type, message }
+            if error_type == "unknown_error" && message == "Unknown error"
+        ));
     }
 }
