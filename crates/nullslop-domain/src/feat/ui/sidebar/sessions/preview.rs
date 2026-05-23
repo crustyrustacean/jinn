@@ -343,6 +343,7 @@ fn build_preview_lines(
         tool_entry_max_lines: tool_entry_max_lines.unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES),
         theme: theme.clone(),
         paired_status: None,
+        is_streaming: false,
     };
 
     let mut all_lines = Vec::new();
