@@ -96,7 +96,7 @@ impl SessionPersistenceActor {
             None => None,
         };
 
-        let (old_phase, new_phase);
+        let (old_phase, new_phase, total_tokens);
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
@@ -159,9 +159,11 @@ impl SessionPersistenceActor {
             }
 
             new_phase = session.phase();
+            total_tokens = super::super::helpers::estimate_total_tokens(session);
         }
 
         super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
+        super::super::helpers::emit_history_appended(ctx, &event.session_id, total_tokens);
 
         // Persist session after stream finishes (not on cancel).
         if should_save {
