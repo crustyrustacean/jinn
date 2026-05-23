@@ -560,7 +560,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     lifecycle_name,
                     lifecycle_args,
                     ephemeral: _ephemeral, // runtime-only state, not persisted
-                    session_state: _,
+                    session_state,
                     lifecycle_script_state,
                 },
             ui: _ui, // runtime-only UI state, not persisted
@@ -594,7 +594,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
             lifecycle_args: serde_json::to_string(lifecycle_args)
                 .change_context(SessionStoreError)
                 .attach("failed to serialize lifecycle_args")?,
-            archived: false,
+            archived: *session_state == SessionState::Archived,
             lifecycle_script_state: serde_json::to_string(&lifecycle_script_state)
                 .change_context(SessionStoreError)
                 .attach("failed to serialize lifecycle_script_state")?,
