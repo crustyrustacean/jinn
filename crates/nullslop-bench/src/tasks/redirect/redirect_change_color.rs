@@ -10,6 +10,7 @@ use crate::task::{BenchTask, BenchTools, CheckResult, VerificationReport};
 pub fn task() -> BenchTask {
     BenchTask {
         name: "redirect-change-color",
+        category: "redirect",
         messages: vec![
             "Change the background color of index.html from blue to red.",
             "Actually, I changed my mind — make the background dark gray (#333333) \

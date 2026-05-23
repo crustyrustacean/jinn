@@ -11,6 +11,7 @@ use crate::tasks::checks;
 pub fn task() -> BenchTask {
     BenchTask {
         name: "fix-syntax-broken-rust",
+        category: "fix_code",
         messages: vec![
             "There is a syntax error in src/main.rs. Find and fix it, then run the \
              program with `cargo run` to confirm it prints the correct sum (15).",

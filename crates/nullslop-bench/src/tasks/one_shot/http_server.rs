@@ -11,6 +11,7 @@ use crate::tasks::checks;
 pub fn task() -> BenchTask {
     BenchTask {
         name: "http-server",
+        category: "one_shot",
         messages: vec![
             "Write a minimal HTTP server in Rust (src/main.rs) that listens on \
              127.0.0.1:18091 and responds to GET / with \"ok\". Do NOT start the \

@@ -66,8 +66,10 @@ pub fn render_rename_session_input(frame: &mut Frame<'_>, area: Rect, state: &Ap
         return;
     }
 
-    // Input line: "> {input}"
-    let input_line = Line::from(Span::raw(format!("> {}", input_state.input)));
+    // Input line: "> {input}" — the ">" uses focus_accent for consistency.
+    let prefix = Span::styled("> ", Style::default().fg(theme.focus_accent));
+    let input_span = Span::raw(&input_state.input);
+    let input_line = Line::from(vec![prefix, input_span]);
     let input_para = Paragraph::new(input_line);
     frame.render_widget(input_para, Rect::new(inner.x, inner.y, inner.width, 1));
 
@@ -163,6 +165,43 @@ mod tests {
         assert!(
             row_text.starts_with("> Hello World"),
             "expected '> Hello World' on input line, got: {row_text}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn rename_popup_prefix_uses_focus_accent_color() {
+        // Given a state with input "Test".
+        let mut state = AppState::default();
+        let expected_color = state.frontend.theme.focus_accent;
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::RenameSessionInput);
+        state.frontend.rename_session_input = RenameSessionInputState {
+            input: "Test".to_owned(),
+            cursor_pos: 4,
+        };
+        let (mut terminal, area) = setup_term(80, 24);
+
+        // When rendering the popup.
+        terminal
+            .draw(|frame| {
+                render_rename_session_input(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the ">" prefix uses focus_accent color.
+        let buffer = terminal.backend().buffer().clone();
+        let popup_area = rename_session_popup_rect(area);
+        let inner_x = popup_area.x + 1;
+        let inner_y = popup_area.y + 1;
+
+        let gt_cell = buffer.cell((inner_x, inner_y)).expect("> cell exists");
+        assert_eq!(gt_cell.symbol(), ">");
+        assert_eq!(
+            gt_cell.style().fg,
+            Some(expected_color),
+            "> prefix should use focus_accent color"
         );
     }
 
