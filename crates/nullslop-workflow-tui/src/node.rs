@@ -331,18 +331,199 @@ impl VisualNode {
         (self.x + self.width, self.y + port.row_offset)
     }
 
-    /// Returns a new VisualNode shifted by the given offset (for viewport scrolling).
+    /// Returns a viewport-shifted wrapper with `i32` positions for rendering.
+    ///
+    /// Unlike the old `shifted()` method, this uses `i32` arithmetic so nodes
+    /// at `x=0` can scroll off-screen to the left/top.
     #[must_use]
-    pub fn shifted(&self, dx: u16, dy: u16) -> Self {
-        Self {
-            name: self.name.clone(),
-            x: self.x.saturating_sub(dx),
-            y: self.y.saturating_sub(dy),
-            width: self.width,
-            height: self.height,
-            input_ports: self.input_ports.clone(),
-            output_ports: self.output_ports.clone(),
-            status: self.status,
+    pub fn shifted_i32(&self, dx: u16, dy: u16) -> ShiftedNode<'_> {
+        ShiftedNode {
+            inner: self,
+            x: i32::from(self.x) - i32::from(dx),
+            y: i32::from(self.y) - i32::from(dy),
+        }
+    }
+}
+
+/// Sets a buffer cell at `i32` absolute coordinates, skipping negative/out-of-range.
+fn set_cell_abs(buf: &mut Buffer, col: i32, row: i32, symbol: &str, style: Style) {
+    if col < 0 || row < 0 {
+        return;
+    }
+    let Ok(col) = u16::try_from(col) else {
+        return;
+    };
+    let Ok(row) = u16::try_from(row) else {
+        return;
+    };
+    if let Some(cell) = buf.cell_mut(Position::new(col, row)) {
+        cell.set_symbol(symbol);
+        cell.set_style(style);
+    }
+}
+
+/// A [`VisualNode`] with viewport-shifted `i32` positions for rendering.
+///
+/// Produced by [`VisualNode::shifted_i32()`]. Unlike the node's native `u16`
+/// positions, this can represent negative coordinates (node scrolled off-screen).
+pub struct ShiftedNode<'a> {
+    inner: &'a VisualNode,
+    /// Shifted x position (can be negative).
+    pub x: i32,
+    /// Shifted y position (can be negative).
+    pub y: i32,
+}
+
+impl<'a> ShiftedNode<'a> {
+    /// Returns true if any part of the node is visible (not fully scrolled off-screen).
+    #[must_use]
+    pub fn is_visible(&self) -> bool {
+        self.x + i32::from(self.inner.width) > 0
+            && self.y + i32::from(self.inner.height) > 0
+    }
+
+    /// Renders the node into the buffer at the shifted position.
+    pub fn render(&self, buf: &mut Buffer, selected: bool, tick: u8) {
+        let border_color = if selected {
+            Color::White
+        } else {
+            Color::DarkGray
+        };
+        let border_style = Style::default().fg(border_color);
+
+        self.render_borders(buf, border_style);
+        self.render_title(buf, border_style, tick);
+        self.render_port_labels(buf);
+        self.render_port_indicators(buf);
+        self.render_status(buf, tick);
+    }
+
+    fn set_cell(
+        &self,
+        buf: &mut Buffer,
+        local_col: u16,
+        local_row: u16,
+        symbol: &str,
+        style: Style,
+    ) {
+        let col = self.x + i32::from(local_col);
+        let row = self.y + i32::from(local_row);
+        set_cell_abs(buf, col, row, symbol, style);
+    }
+
+    fn render_borders(&self, buf: &mut Buffer, style: Style) {
+        let width = usize::from(self.inner.width);
+        let height = usize::from(self.inner.height);
+
+        // Top border: ╭─...─╮
+        self.set_cell(buf, 0, 0, "╭", style);
+        for col in 1..width.saturating_sub(1) {
+            self.set_cell(buf, u16::try_from(col).unwrap_or(u16::MAX), 0, "─", style);
+        }
+        self.set_cell(buf, self.inner.width.saturating_sub(1), 0, "╮", style);
+
+        // Side borders: │ ... │
+        for row in 1..height.saturating_sub(1) {
+            self.set_cell(buf, 0, u16::try_from(row).unwrap_or(u16::MAX), "│", style);
+            self.set_cell(
+                buf,
+                self.inner.width.saturating_sub(1),
+                u16::try_from(row).unwrap_or(u16::MAX),
+                "│",
+                style,
+            );
+        }
+
+        // Bottom border: ╰─...─╯
+        let last_row = self.inner.height.saturating_sub(1);
+        self.set_cell(buf, 0, last_row, "╰", style);
+        for col in 1..width.saturating_sub(1) {
+            self.set_cell(
+                buf,
+                u16::try_from(col).unwrap_or(u16::MAX),
+                last_row,
+                "─",
+                style,
+            );
+        }
+        self.set_cell(buf, self.inner.width.saturating_sub(1), last_row, "╯", style);
+    }
+
+    fn render_title(&self, buf: &mut Buffer, border_style: Style, _tick: u8) {
+        let start_col = 2;
+        let max_title_len = usize::from(self.inner.width).saturating_sub(4);
+        let title = truncate_str(&self.inner.name, max_title_len);
+        for (i, ch) in title.chars().enumerate() {
+            let col = start_col + u16::try_from(i).unwrap_or(u16::MAX);
+            if col < self.inner.width.saturating_sub(2) {
+                self.set_cell(buf, col, 0, &ch.to_string(), border_style);
+            }
+        }
+    }
+
+    fn render_status(&self, buf: &mut Buffer, tick: u8) {
+        let symbol = status_symbol(self.inner.status, tick);
+        let color = status_color(self.inner.status);
+        let col = self.inner.width.saturating_sub(2);
+        self.set_cell(buf, col, 0, symbol, Style::default().fg(color));
+    }
+
+    fn render_port_labels(&self, buf: &mut Buffer) {
+        let content_start = 1 + H_PAD;
+        let content_width = usize::from(self.inner.width).saturating_sub(2 + 2 * H_PAD);
+
+        for port in &self.inner.input_ports {
+            let label = format!("{} {}", port_type_label(port.port_type), port.name);
+            let label = truncate_str(&label, content_width);
+            let style = Style::default().fg(port_type_color(port.port_type));
+            self.render_text(buf, content_start, port.row_offset, &label, style);
+        }
+
+        for port in &self.inner.output_ports {
+            let label = format!("{} {}", port_type_label(port.port_type), port.name);
+            let label = truncate_str(&label, content_width);
+            let style = Style::default().fg(port_type_color(port.port_type));
+            let label_len = label.chars().count();
+            let start_col = (content_start + content_width)
+                .saturating_sub(label_len)
+                .max(content_start);
+            self.render_text(buf, start_col, port.row_offset, &label, style);
+        }
+    }
+
+    fn render_port_indicators(&self, buf: &mut Buffer) {
+        let style = Style::default().add_modifier(Modifier::BOLD);
+
+        for port in &self.inner.input_ports {
+            let color = port_type_color(port.port_type);
+            self.set_cell(buf, 0, port.row_offset, "○", style.fg(color));
+        }
+
+        for port in &self.inner.output_ports {
+            let color = port_type_color(port.port_type);
+            self.set_cell(
+                buf,
+                self.inner.width.saturating_sub(1),
+                port.row_offset,
+                "○",
+                style.fg(color),
+            );
+        }
+    }
+
+    fn render_text(
+        &self,
+        buf: &mut Buffer,
+        start_col: usize,
+        row: u16,
+        text: &str,
+        style: Style,
+    ) {
+        for (i, ch) in text.chars().enumerate() {
+            let col = u16::try_from(start_col + i).unwrap_or(u16::MAX);
+            if col < self.inner.width.saturating_sub(1) {
+                self.set_cell(buf, col, row, &ch.to_string(), style);
+            }
         }
     }
 }
