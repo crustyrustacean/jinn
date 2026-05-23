@@ -95,8 +95,8 @@ pub use common::services::actor_channel;
 // Re-export protocol types at crate root
 pub use protocol::entries_to_messages;
 pub use protocol::{
-    ActorName, AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Command, Event, Intent, IntentResult,
-    Key, KeyEvent, Mode, Modifiers, PickerKind, PinPosition, PromptTemplate,
+    ActiveTab, ActorName, AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Command, Event, Intent,
+    IntentResult, Key, KeyEvent, Mode, Modifiers, PickerKind, PinPosition, PromptTemplate,
 };
 pub use protocol::{CommandMsg, CommandName, EventMsg, EventTypeName, PickerEntry};
 

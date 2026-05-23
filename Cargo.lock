@@ -2059,6 +2059,8 @@ dependencies = [
  "nullslop-domain",
  "nullslop-selection-widget",
  "nullslop-testutil",
+ "nullslop-workflow",
+ "nullslop-workflow-tui",
  "parking_lot",
  "ratatui",
  "ratatui-which-key",

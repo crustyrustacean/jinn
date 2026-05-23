@@ -112,6 +112,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Navigation — scrolling and tab switching
             .bind("k", Intent::ChatEntrySelectPrev, KeyCategory::Navigation)
             .bind("j", Intent::ChatEntrySelectNext, KeyCategory::Navigation)
+            .bind("<Tab>", Intent::SwitchTab, KeyCategory::Navigation)
             .bind("<c-u>", Intent::ScrollUp, KeyCategory::Navigation)
             .bind("<c-d>", Intent::ScrollDown, KeyCategory::Navigation)
             // Input — external editor

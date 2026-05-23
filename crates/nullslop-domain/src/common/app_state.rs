@@ -168,6 +168,8 @@ pub enum FocusScope {
     RenameSessionInput,
     /// Sidebar resize mode — adjusting sidebar width with h/l keys.
     SidebarResize,
+    /// Workflow tab — browsing workflow node status.
+    Workflow,
 }
 
 impl FocusScope {
@@ -179,7 +181,8 @@ impl FocusScope {
             | Self::SidebarPersona
             | Self::SidebarPins
             | Self::SidebarSessions
-            | Self::SidebarResize => Mode::Normal,
+            | Self::SidebarResize
+            | Self::Workflow => Mode::Normal,
             Self::Input | Self::ArgInput | Self::RenameSessionInput => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
         }
@@ -198,6 +201,7 @@ impl std::fmt::Display for FocusScope {
             Self::ArgInput => write!(f, "ArgInput"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
+            Self::Workflow => write!(f, "Workflow"),
         }
     }
 }
@@ -437,6 +441,10 @@ pub struct FrontendState {
     /// Sidebar width in columns, synced from preferences.
     /// OWNER: PreferencesStateSyncActor (on PreferencesUpdated).
     pub sidebar_width: u16,
+
+    /// Currently active tab in the main area.
+    /// OWNER: IntentHandler (SwitchTab intent).
+    pub active_tab: crate::protocol::tab::ActiveTab,
 }
 
 impl Default for FrontendState {
@@ -463,6 +471,7 @@ impl Default for FrontendState {
             arg_input: ArgInputState::default(),
             rename_session_input: RenameSessionInputState::default(),
             sidebar_width: 30,
+            active_tab: crate::protocol::tab::ActiveTab::default(),
         }
     }
 }
