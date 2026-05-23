@@ -497,8 +497,9 @@ class Foo:
 
         // Then all checks pass.
         assert_eq!(results.len(), 2);
-        assert!(results[0].passed);
-        assert!(results[1].passed);
+        for result in &results {
+            assert!(result.passed, "{} should pass", result.name);
+        }
     }
 
     #[test]
@@ -522,9 +523,11 @@ class Foo:
 
         // Then load passes and save fails.
         assert_eq!(results.len(), 2);
-        assert!(results[0].passed);
-        assert!(!results[1].passed);
-        assert!(results[1].detail.contains("missing method: save"));
+        let load_result = results.iter().find(|r| r.name.contains("load")).expect("load result");
+        let save_result = results.iter().find(|r| r.name.contains("save")).expect("save result");
+        assert!(load_result.passed);
+        assert!(!save_result.passed);
+        assert!(save_result.detail.contains("missing method: save"));
     }
 
     #[test]
@@ -543,8 +546,9 @@ class Foo:
 
         // Then a single failure result is returned.
         assert_eq!(results.len(), 1);
-        assert!(!results[0].passed);
-        assert!(results[0].detail.contains("class Foo not found"));
+        let result = results.first().expect("result");
+        assert!(!result.passed);
+        assert!(result.detail.contains("class Foo not found"));
     }
 
     #[test]
