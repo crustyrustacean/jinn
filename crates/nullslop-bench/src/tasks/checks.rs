@@ -210,6 +210,110 @@ pub fn check_python_run_contains(dir: &Path, script: &str, expected: &str) -> Ch
     }
 }
 
+/// Check that a Python file contains a class with the given name.
+///
+/// Uses Tree-sitter to parse the file and look for a `class_definition`
+/// node with a matching name. Cosmetic differences like docstrings,
+/// comments, type hints, and formatting are ignored.
+pub fn check_python_class_exists(
+    dir: &Path,
+    filename: &str,
+    class_name: &str,
+) -> CheckResult {
+    let check_name = format!("python_class_exists({filename}, {class_name})");
+    let source = std::fs::read_to_string(dir.join(filename)).unwrap_or_default();
+
+    let Some(tree) = crate::ast::python::parse(&source) else {
+        return CheckResult::fail(check_name, "failed to parse Python source");
+    };
+
+    let root = tree.root_node();
+    let bytes = source.as_bytes();
+    if crate::ast::python::find_class(&root, bytes, class_name).is_some() {
+        CheckResult::pass(check_name)
+    } else {
+        CheckResult::fail(
+            check_name,
+            format!("class {class_name} not found in {filename}"),
+        )
+    }
+}
+
+/// Check that a Python class has all the specified methods.
+///
+/// Returns one [`CheckResult`] per method name, allowing the report to show
+/// which methods are present and which are missing.
+pub fn check_python_class_has_methods(
+    dir: &Path,
+    filename: &str,
+    class_name: &str,
+    methods: &[&str],
+) -> Vec<CheckResult> {
+    let source = std::fs::read_to_string(dir.join(filename)).unwrap_or_default();
+
+    let Some(tree) = crate::ast::python::parse(&source) else {
+        return vec![CheckResult::fail(
+            format!("method_exists({class_name}.*)"),
+            "failed to parse Python source",
+        )];
+    };
+
+    let root = tree.root_node();
+    let bytes = source.as_bytes();
+
+    let Some(class_node) = crate::ast::python::find_class(&root, bytes, class_name) else {
+        return vec![CheckResult::fail(
+            format!("method_exists({class_name}.*)"),
+            format!("class {class_name} not found in {filename}"),
+        )];
+    };
+
+    let found = crate::ast::python::method_names(&class_node, bytes);
+    methods
+        .iter()
+        .map(|method| {
+            let check_name = format!("method_exists({class_name}.{method})");
+            if found.iter().any(|m| m == method) {
+                CheckResult::pass(check_name)
+            } else {
+                CheckResult::fail(
+                    check_name,
+                    format!("class {class_name} missing method: {method}"),
+                )
+            }
+        })
+        .collect()
+}
+
+/// Check that a Python file contains a top-level function with the given name.
+///
+/// Uses Tree-sitter to parse the file and look for a `function_definition`
+/// node at the module level with a matching name.
+pub fn check_python_top_level_function_exists(
+    dir: &Path,
+    filename: &str,
+    func_name: &str,
+) -> CheckResult {
+    let check_name = format!("python_function_exists({filename}, {func_name})");
+    let source = std::fs::read_to_string(dir.join(filename)).unwrap_or_default();
+
+    let Some(tree) = crate::ast::python::parse(&source) else {
+        return CheckResult::fail(check_name, "failed to parse Python source");
+    };
+
+    let root = tree.root_node();
+    let bytes = source.as_bytes();
+    let funcs = crate::ast::python::find_top_level_functions(&root, bytes);
+    if funcs.iter().any(|f| f == func_name) {
+        CheckResult::pass(check_name)
+    } else {
+        CheckResult::fail(
+            check_name,
+            format!("function {func_name} not found at top level in {filename}"),
+        )
+    }
+}
+
 /// Custom check for FizzBuzz: verify that stdout contains "FizzBuzz" as a
 /// standalone line (not just as part of another word).
 pub fn check_fizzbuzz_output(dir: &Path) -> CheckResult {
@@ -340,5 +444,134 @@ mod tests {
             "detail should show actual: {}",
             result.detail
         );
+    }
+
+    #[test]
+    fn check_python_class_exists_passes_when_present() {
+        // Given a temp directory with a Python file containing class Foo.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(root.path().join("main.py"), "class Foo:\n    pass\n").expect("write");
+
+        // When checking for class Foo.
+        let result = check_python_class_exists(root.path(), "main.py", "Foo");
+
+        // Then it passes.
+        assert!(result.passed);
+        assert_eq!(result.name, "python_class_exists(main.py, Foo)");
+    }
+
+    #[test]
+    fn check_python_class_exists_fails_when_absent() {
+        // Given a temp directory with a Python file without the target class.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(root.path().join("main.py"), "x = 1\n").expect("write");
+
+        // When checking for class Foo.
+        let result = check_python_class_exists(root.path(), "main.py", "Foo");
+
+        // Then it fails with a useful message.
+        assert!(!result.passed);
+        assert!(result.detail.contains("class Foo not found"));
+    }
+
+    #[test]
+    fn check_python_class_has_methods_passes_when_all_present() {
+        // Given a temp directory with a class that has all required methods.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let source = "\
+class Foo:
+    def load(self):
+        pass
+    def save(self):
+        pass
+";
+        std::fs::write(root.path().join("main.py"), source).expect("write");
+
+        // When checking for methods load and save.
+        let results = check_python_class_has_methods(
+            root.path(),
+            "main.py",
+            "Foo",
+            &["load", "save"],
+        );
+
+        // Then all checks pass.
+        assert_eq!(results.len(), 2);
+        assert!(results[0].passed);
+        assert!(results[1].passed);
+    }
+
+    #[test]
+    fn check_python_class_has_methods_fails_for_missing() {
+        // Given a temp directory with a class missing some methods.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let source = "\
+class Foo:
+    def load(self):
+        pass
+";
+        std::fs::write(root.path().join("main.py"), source).expect("write");
+
+        // When checking for methods load and save.
+        let results = check_python_class_has_methods(
+            root.path(),
+            "main.py",
+            "Foo",
+            &["load", "save"],
+        );
+
+        // Then load passes and save fails.
+        assert_eq!(results.len(), 2);
+        assert!(results[0].passed);
+        assert!(!results[1].passed);
+        assert!(results[1].detail.contains("missing method: save"));
+    }
+
+    #[test]
+    fn check_python_class_has_methods_fails_when_class_absent() {
+        // Given a temp directory without the target class.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(root.path().join("main.py"), "x = 1\n").expect("write");
+
+        // When checking methods on a non-existent class.
+        let results = check_python_class_has_methods(
+            root.path(),
+            "main.py",
+            "Foo",
+            &["load"],
+        );
+
+        // Then a single failure result is returned.
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].passed);
+        assert!(results[0].detail.contains("class Foo not found"));
+    }
+
+    #[test]
+    fn check_python_top_level_function_exists_passes() {
+        // Given a temp directory with a Python file containing def main().
+        let root = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(root.path().join("main.py"), "def main():\n    pass\n").expect("write");
+
+        // When checking for function main.
+        let result = check_python_top_level_function_exists(root.path(), "main.py", "main");
+
+        // Then it passes.
+        assert!(result.passed);
+        assert_eq!(result.name, "python_function_exists(main.py, main)");
+    }
+
+    #[test]
+    fn check_python_top_level_function_exists_fails_when_absent() {
+        // Given a temp directory with a Python file without the target function.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(root.path().join("main.py"), "x = 1\n").expect("write");
+
+        // When checking for function main.
+        let result = check_python_top_level_function_exists(root.path(), "main.py", "main");
+
+        // Then it fails.
+        assert!(!result.passed);
+        assert!(result.detail.contains("function main not found"));
     }
 }
