@@ -4,17 +4,115 @@
 //! The [`SessionTreeEntry`] struct and [`TreeItem`] implementation live
 //! in `picker_entry.rs`.
 
+use std::collections::HashMap;
+
 use crate::common::app_state::AppState;
 use crate::common::services::Services;
 use crate::feat::session::picker_entry::SessionTreeEntry;
 use crate::feat::theme::Theme;
+use crate::protocol::SessionId;
 
 use super::SessionStoreService;
 
-/// Loads session tree entries from the session store, sorted by session state then `updated_at`.
+/// Sorts session entries so that whole trees move as a unit.
 ///
-/// Loaded sessions appear first (sorted by `updated_at` descending),
-/// followed by archived sessions (sorted by `updated_at` descending).
+/// Each tree's position is determined by the most recent `updated_at`
+/// across all nodes in the tree. Loaded trees appear before Archived trees.
+/// Within each tree, children are sorted by `updated_at` descending.
+pub(crate) fn sort_entries_tree_aware(entries: &mut Vec<SessionTreeEntry>) {
+    if entries.is_empty() {
+        return;
+    }
+
+    // 1. Index by session_id.
+    let id_to_idx: HashMap<SessionId, usize> = entries
+        .iter()
+        .enumerate()
+        .map(|(i, e)| (e.session_id.clone(), i))
+        .collect();
+
+    // 2 & 3. Build parent→children map and identify roots.
+    let mut children_map: HashMap<SessionId, Vec<usize>> = HashMap::new();
+    let mut roots: Vec<usize> = Vec::new();
+
+    for (idx, entry) in entries.iter().enumerate() {
+        match &entry.parent_id {
+            Some(pid) if id_to_idx.contains_key(pid) => {
+                children_map
+                    .entry(pid.clone())
+                    .or_default()
+                    .push(idx);
+            }
+            _ => {
+                roots.push(idx);
+            }
+        }
+    }
+
+    // 4. Compute tree-max updated_at for each root.
+    let tree_max: HashMap<SessionId, jiff::Timestamp> = roots
+        .iter()
+        .map(|&root_idx| {
+            let max_ts = compute_subtree_max(root_idx, &children_map, entries);
+            (entries[root_idx].session_id.clone(), max_ts)
+        })
+        .collect();
+
+    // 5 & 6. Sort roots: session_state ascending (Loaded < Archived → Loaded first), then tree-max updated_at descending.
+    roots.sort_by(|&a, &b| {
+        entries[a]
+            .session_state
+            .cmp(&entries[b].session_state)
+            .then_with(|| tree_max[&entries[b].session_id].cmp(&tree_max[&entries[a].session_id]))
+    });
+
+    // 7. Flatten in DFS order, sorting children by updated_at descending.
+    let mut sorted = Vec::with_capacity(entries.len());
+    for &root_idx in &roots {
+        emit_tree(root_idx, &children_map, entries, &mut sorted);
+    }
+    *entries = sorted;
+}
+
+/// Returns the maximum `updated_at` across a node and all its descendants.
+fn compute_subtree_max(
+    idx: usize,
+    children_map: &HashMap<SessionId, Vec<usize>>,
+    entries: &[SessionTreeEntry],
+) -> jiff::Timestamp {
+    let mut max_ts = entries[idx].updated_at;
+    if let Some(children) = children_map.get(&entries[idx].session_id) {
+        for &child_idx in children {
+            let child_max = compute_subtree_max(child_idx, children_map, entries);
+            max_ts = max_ts.max(child_max);
+        }
+    }
+    max_ts
+}
+
+/// Emits a node and all its descendants in DFS order.
+/// Children within each parent are sorted by `updated_at` descending.
+fn emit_tree(
+    idx: usize,
+    children_map: &HashMap<SessionId, Vec<usize>>,
+    entries: &[SessionTreeEntry],
+    result: &mut Vec<SessionTreeEntry>,
+) {
+    result.push(entries[idx].clone());
+    if let Some(mut children) = children_map.get(&entries[idx].session_id).cloned() {
+        children.sort_by(|&a, &b| entries[b].updated_at.cmp(&entries[a].updated_at));
+        for &child_idx in &children {
+            emit_tree(child_idx, children_map, entries, result);
+        }
+    }
+}
+
+/// Loads session tree entries from the session store, sorted with tree-aware ordering.
+///
+/// Whole trees move as a unit: each tree's position is determined by the most
+/// recent `updated_at` across all nodes in the tree. Loaded trees appear first,
+/// followed by archived trees. Within each tree, children are sorted by
+/// `updated_at` descending.
 /// Errors are logged and result in an empty list.
 pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<SessionTreeEntry> {
     match services.session_store.load_summaries().await {
@@ -32,12 +130,9 @@ pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<Ses
                     )
                 })
                 .collect();
-            // Loaded first, then by updated_at descending within each group.
-            entries.sort_by(|a, b| {
-                b.session_state
-                    .cmp(&a.session_state)
-                    .then_with(|| b.updated_at.cmp(&a.updated_at))
-            });
+            // Tree-aware sort: whole trees move as a unit, positioned by
+            // the most recent updated_at in the tree. Loaded first.
+            sort_entries_tree_aware(&mut entries);
             entries
         }
         Err(e) => {
@@ -79,12 +174,9 @@ pub async fn load_session_entries_from_store(
                     )
                 })
                 .collect();
-            // Loaded first, then by updated_at descending within each group.
-            entries.sort_by(|a, b| {
-                b.session_state
-                    .cmp(&a.session_state)
-                    .then_with(|| b.updated_at.cmp(&a.updated_at))
-            });
+            // Tree-aware sort: whole trees move as a unit, positioned by
+            // the most recent updated_at in the tree. Loaded first.
+            sort_entries_tree_aware(&mut entries);
             entries
         }
         Err(e) => {
