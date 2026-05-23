@@ -251,9 +251,11 @@ mod tests {
     #[test]
     fn pass_rate_computes_percentage() {
         // Given a summary with 2 passed out of 4 tasks.
-        let mut summary = BenchSummary::default();
-        summary.tasks = 4;
-        summary.passed_count = 2;
+        let summary = BenchSummary {
+            tasks: 4,
+            passed_count: 2,
+            ..Default::default()
+        };
 
         // When computing pass rate.
         let rate = summary.pass_rate().unwrap();
