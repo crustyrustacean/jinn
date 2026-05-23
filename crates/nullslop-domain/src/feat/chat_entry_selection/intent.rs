@@ -536,4 +536,115 @@ mod tests {
         });
         assert_eq!(ordinal, Some(3));
     }
+
+    // --- Yank Selected Entry ---
+
+    #[rstest::rstest]
+    fn yank_selected_sets_yank_text_when_entry_selected() {
+        // Given a state with a selected user entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().select_next_entry();
+
+        // When handling yank selected.
+        let _result = handle_yank_selected(&mut state);
+
+        // Then yank_text is set to the entry text.
+        assert_eq!(
+            state.frontend.tui_signals.yank_text,
+            Some("hello".to_string())
+        );
+    }
+
+    #[rstest::rstest]
+    fn yank_selected_returns_no_commands() {
+        // Given a state with a selected entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().select_next_entry();
+
+        // When handling yank selected.
+        let result = handle_yank_selected(&mut state);
+
+        // Then no commands are emitted.
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn yank_selected_noop_with_no_selection() {
+        // Given a state with no entries.
+        let mut state = AppState::default();
+
+        // When handling yank selected.
+        let result = handle_yank_selected(&mut state);
+
+        // Then yank_text is not set and no commands are emitted.
+        assert!(state.frontend.tui_signals.yank_text.is_none());
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn yank_selected_preserves_selection_index() {
+        // Given a state with 2 entries, first selected.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("b"));
+        state.active_session_mut().select_prev_entry();
+        assert_eq!(state.active_session().selected_entry_index(), Some(0));
+
+        // When handling yank selected.
+        let _result = handle_yank_selected(&mut state);
+
+        // Then the selection index is unchanged.
+        assert_eq!(state.active_session().selected_entry_index(), Some(0));
+    }
+
+    #[rstest::rstest]
+    fn yank_selected_extracts_assistant_text() {
+        // Given a state with a selected assistant entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("response text"));
+        state.active_session_mut().select_next_entry();
+
+        // When handling yank selected.
+        let _result = handle_yank_selected(&mut state);
+
+        // Then yank_text contains the assistant text.
+        assert_eq!(
+            state.frontend.tui_signals.yank_text,
+            Some("response text".to_string())
+        );
+    }
+
+    #[rstest::rstest]
+    fn yank_selected_extracts_tool_result_text() {
+        // Given a state with a selected tool result.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_result(
+                "id",
+                "bash",
+                "output text",
+                ToolResultStatus::Success,
+            ));
+        state.active_session_mut().select_next_entry();
+
+        // When handling yank selected.
+        let _result = handle_yank_selected(&mut state);
+
+        // Then yank_text contains "bash: output text" (ChatEntry.text() format).
+        assert_eq!(
+            state.frontend.tui_signals.yank_text,
+            Some("bash: output text".to_string())
+        );
+    }
 }
