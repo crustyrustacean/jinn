@@ -716,4 +716,164 @@ mod tests {
         assert_eq!(content.len(), 1_000_000);
         assert_eq!(content, original);
     }
+
+    // ── Phase 3: Path edge cases ──
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_writes_file_with_spaces_in_name() {
+        // Given a temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("my file.txt");
+
+        let call = ToolCall {
+            id: "call_p1".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": "spaces in name"
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the file is created with the spaced name.
+        assert!(result.success, "expected success, got: {}", result.content);
+        let content = std::fs::read_to_string(&file_path).expect("read written file");
+        assert_eq!(content, "spaces in name");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_writes_file_with_unicode_name() {
+        // Given a temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("\u{30D5}\u{30A1}\u{30A4}\u{30EB}.txt");
+
+        let call = ToolCall {
+            id: "call_p2".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": "unicode name"
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the file is created with the Unicode name.
+        assert!(result.success, "expected success, got: {}", result.content);
+        let content = std::fs::read_to_string(&file_path).expect("read written file");
+        assert_eq!(content, "unicode name");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_writes_deeply_nested_path() {
+        // Given a temp directory with a 6-level deep path.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir
+            .path()
+            .join("a")
+            .join("b")
+            .join("c")
+            .join("d")
+            .join("e")
+            .join("f.txt");
+
+        let call = ToolCall {
+            id: "call_p3".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": "deeply nested"
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then all parent directories are created and the file is written.
+        assert!(result.success, "expected success, got: {}", result.content);
+        let content = std::fs::read_to_string(&file_path).expect("read written file");
+        assert_eq!(content, "deeply nested");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_resolves_dot_slash_relative_path() {
+        // Given a temp directory as CWD.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let ctx = ToolContext {
+            cwd: dir.path().to_owned(),
+            timeout: None,
+            state: None,
+            session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
+            sink: None,
+            max_output_lines: None,
+            max_output_bytes: None,
+        };
+
+        let call = ToolCall {
+            id: "call_p4".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": "./local.txt",
+                "content": "dot slash"
+            })
+            .to_string(),
+        };
+
+        // When executing with a ./ relative path.
+        let result = execute(call, ctx).await;
+
+        // Then the file is created via CWD resolution.
+        assert!(result.success, "expected success, got: {}", result.content);
+        let file_path = dir.path().join("local.txt");
+        let content = std::fs::read_to_string(&file_path).expect("read written file");
+        assert_eq!(content, "dot slash");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_writes_absolute_path() {
+        // Given a temp directory with an absolute path.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("absolute.txt");
+
+        let ctx = ToolContext {
+            cwd: PathBuf::from("/completely/different/cwd"),
+            timeout: None,
+            state: None,
+            session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
+            sink: None,
+            max_output_lines: None,
+            max_output_bytes: None,
+        };
+
+        let call = ToolCall {
+            id: "call_p5".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": "absolute path"
+            })
+            .to_string(),
+        };
+
+        // When executing with an absolute path and a different CWD.
+        let result = execute(call, ctx).await;
+
+        // Then the absolute path is used, not CWD.
+        assert!(result.success, "expected success, got: {}", result.content);
+        let content = std::fs::read_to_string(&file_path).expect("read written file");
+        assert_eq!(content, "absolute path");
+    }
 }
