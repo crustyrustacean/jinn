@@ -45,33 +45,31 @@ impl ViewportState {
         self.selected.as_deref()
     }
 
-    /// Translates the camera by (`dx`, `dy`) cells, clamped so at least half
-    /// the viewport always shows content.
+    /// Translates the camera by (`dx`, `dy`) cells, clamped so content can
+    /// scroll at most half its own size off any edge.
     ///
     /// Positive `dx` moves the camera right (content shifts left).
     /// Positive `dy` moves the camera down (content shifts up).
     ///
-    /// The offset is clamped to `[-(viewport / 2), content - (viewport / 2)]`
-    /// on each axis, ensuring at least half the viewport always has content.
+    /// The offset is clamped to `[-(content / 2), content / 2]`
+    /// on each axis. For a 100-wide graph, the offset range is `[-50, 50]`.
     pub fn translate(
         &mut self,
         dx: i32,
         dy: i32,
         content_size: (u16, u16),
-        viewport_size: (u16, u16),
     ) {
         let (cw, ch) = content_size;
-        let (vw, vh) = viewport_size;
-        let half_vw = i32::from(vw / 2);
-        let half_vh = i32::from(vh / 2);
+        let half_cw = i32::from(cw / 2);
+        let half_ch = i32::from(ch / 2);
 
         self.offset_x = self.offset_x.saturating_add(dx);
         self.offset_y = self.offset_y.saturating_add(dy);
 
-        let min_x = -half_vw;
-        let max_x = i32::from(cw).saturating_sub(half_vw);
-        let min_y = -half_vh;
-        let max_y = i32::from(ch).saturating_sub(half_vh);
+        let min_x = -half_cw;
+        let max_x = half_cw;
+        let min_y = -half_ch;
+        let max_y = half_ch;
 
         self.offset_x = self.offset_x.clamp(min_x, max_x);
         self.offset_y = self.offset_y.clamp(min_y, max_y);
@@ -145,7 +143,7 @@ mod tests {
     #[test]
     fn translate_positive_dx_moves_camera_right() {
         let mut vp = ViewportState::new();
-        vp.translate(5, 0, (200, 200), (80, 24));
+        vp.translate(5, 0, (200, 200));
         assert_eq!(vp.offset_x, 5);
     }
 
@@ -153,49 +151,67 @@ mod tests {
     fn translate_negative_dx_moves_camera_left() {
         let mut vp = ViewportState::new();
         vp.offset_x = 10;
-        vp.translate(-3, 0, (200, 200), (80, 24));
+        vp.translate(-3, 0, (200, 200));
         assert_eq!(vp.offset_x, 7);
     }
 
     #[test]
     fn translate_positive_dy_moves_camera_down() {
         let mut vp = ViewportState::new();
-        vp.translate(0, 5, (200, 200), (80, 24));
+        vp.translate(0, 5, (200, 200));
         assert_eq!(vp.offset_y, 5);
     }
 
     #[test]
     fn translate_can_go_negative() {
         let mut vp = ViewportState::new();
-        vp.translate(-3, -7, (200, 200), (80, 24));
+        vp.translate(-3, -7, (200, 200));
         assert_eq!(vp.offset_x, -3);
         assert_eq!(vp.offset_y, -7);
     }
 
     #[test]
-    fn translate_clamps_at_negative_half_viewport() {
+    fn translate_clamps_at_negative_half_content() {
         let mut vp = ViewportState::new();
-        // Trying to scroll far left: offset should clamp to -(80/2) = -40.
-        vp.translate(-100, 0, (200, 200), (80, 24));
-        assert_eq!(vp.offset_x, -40);
+        // Content 200 wide → clamp to -(200/2) = -100.
+        vp.translate(-200, 0, (200, 200));
+        assert_eq!(vp.offset_x, -100);
     }
 
     #[test]
-    fn translate_clamps_at_content_minus_half_viewport() {
+    fn translate_clamps_at_half_content() {
         let mut vp = ViewportState::new();
-        // Trying to scroll far right: offset should clamp to 200 - 40 = 160.
-        vp.translate(1000, 0, (200, 200), (80, 24));
-        assert_eq!(vp.offset_x, 160);
+        // Content 200 wide → clamp to 200/2 = 100.
+        vp.translate(1000, 0, (200, 200));
+        assert_eq!(vp.offset_x, 100);
     }
 
     #[test]
-    fn translate_content_smaller_than_viewport() {
+    fn translate_small_content_has_tight_range() {
         let mut vp = ViewportState::new();
-        // content 40, viewport 80 → clamp range [-40, 0].
-        vp.translate(10, 0, (40, 40), (80, 80));
-        assert_eq!(vp.offset_x, 0, "should clamp to max (0)");
-        vp.translate(-100, 0, (40, 40), (80, 80));
-        assert_eq!(vp.offset_x, -40, "should clamp to min (-40)");
+        // Content 40 → clamp range [-20, 20].
+        vp.translate(100, 0, (40, 40));
+        assert_eq!(vp.offset_x, 20, "should clamp to max (20)");
+        vp.translate(-200, 0, (40, 40));
+        assert_eq!(vp.offset_x, -20, "should clamp to min (-20)");
+    }
+
+    #[test]
+    fn translate_zero_content_stays_at_zero() {
+        let mut vp = ViewportState::new();
+        // Content (0, 0) → clamp range [0, 0].
+        vp.translate(10, 10, (0, 0));
+        assert_eq!(vp.offset_x, 0);
+        assert_eq!(vp.offset_y, 0);
+    }
+
+    #[test]
+    fn translate_initial_offset_stays_valid() {
+        // Given offset (0, 0) is always within [-content/2, content/2].
+        let mut vp = ViewportState::new();
+        vp.translate(0, 0, (100, 10));
+        assert_eq!(vp.offset_x, 0);
+        assert_eq!(vp.offset_y, 0);
     }
 
     #[test]
