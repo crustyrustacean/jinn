@@ -254,7 +254,7 @@ pub fn create_core_with_actor_host(
                     nullslop_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new();
                 nullslop_bench::bench_tasks::register_bench_tasks(
                     &mut registry,
-                    bench_artifact_dir,
+                    bench_artifact_dir.as_deref(),
                 );
                 registry
             },
@@ -335,7 +335,7 @@ pub fn create_core_with_actor_host(
         &shutdown_tracker,
         nullslop_domain::feat::queue_actor::QueueActorDeps {
             state: state.clone(),
-            counter: token_counter.clone(),
+            counter: token_counter,
         },
     );
 

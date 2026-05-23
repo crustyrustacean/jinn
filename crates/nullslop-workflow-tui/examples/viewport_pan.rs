@@ -81,7 +81,7 @@ fn main() {
         b.build().unwrap()
     };
 
-    let node_names: Vec<String> = graph.node_names().map(|n| n.to_owned()).collect();
+    let node_names: Vec<String> = graph.node_names().map(std::borrow::ToOwned::to_owned).collect();
 
     let statuses = HashMap::from([
         ("load_data".to_owned(), NodeStatus::Completed),
@@ -136,8 +136,8 @@ fn main() {
 
         tick = tick.wrapping_add(1);
 
-        if ratatui::crossterm::event::poll(Duration::from_millis(80)).expect("poll") {
-            if let Event::Key(key) = ratatui::crossterm::event::read().expect("read") {
+        if ratatui::crossterm::event::poll(Duration::from_millis(80)).expect("poll")
+            && let Event::Key(key) = ratatui::crossterm::event::read().expect("read") {
                 if key.kind != KeyEventKind::Press {
                     continue;
                 }
@@ -152,7 +152,6 @@ fn main() {
                     _ => {}
                 }
             }
-        }
     }
 
     common::restore_terminal(&mut terminal);

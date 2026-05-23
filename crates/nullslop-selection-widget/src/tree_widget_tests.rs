@@ -3,7 +3,6 @@
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
-use ratatui::layout::Rect;
 use ratatui::text::Line;
 
 use crate::TreePickerState;

@@ -74,8 +74,8 @@ impl VisualNode {
     #[must_use]
     pub fn compute(
         name: String,
-        input_defs: Vec<PortDef>,
-        output_defs: Vec<PortDef>,
+        input_defs: &[PortDef],
+        output_defs: &[PortDef],
         status: NodeStatus,
     ) -> Self {
         let content_width = Self::compute_content_width(&name, &input_defs, &output_defs);
@@ -375,7 +375,7 @@ pub struct ShiftedNode<'a> {
     pub y: i32,
 }
 
-impl<'a> ShiftedNode<'a> {
+impl ShiftedNode<'_> {
     /// Returns true if any part of the node is visible (not fully scrolled off-screen).
     #[must_use]
     pub fn is_visible(&self) -> bool {
@@ -558,8 +558,8 @@ mod tests {
         // Given a node with 2 inputs and 1 output.
         let node = VisualNode::compute(
             "foo".to_owned(),
-            vec![string_port("prompt"), json_port("config")],
-            vec![string_port("result")],
+            &[string_port("prompt"), json_port("config")],
+            &[string_port("result")],
             NodeStatus::Pending,
         );
 
@@ -580,8 +580,8 @@ mod tests {
         // Given a source node (0 inputs, 1 output).
         let node = VisualNode::compute(
             "source".to_owned(),
-            vec![],
-            vec![string_port("out")],
+            &[],
+            &[string_port("out")],
             NodeStatus::Pending,
         );
 
@@ -597,8 +597,8 @@ mod tests {
         // Given a sink node (1 input, 0 outputs).
         let node = VisualNode::compute(
             "sink".to_owned(),
-            vec![string_port("in")],
-            vec![],
+            &[string_port("in")],
+            &[],
             NodeStatus::Pending,
         );
 
@@ -614,8 +614,8 @@ mod tests {
         // Given a node with 2 inputs and 2 outputs.
         let node = VisualNode::compute(
             "node".to_owned(),
-            vec![string_port("a"), string_port("b")],
-            vec![string_port("x"), string_port("y")],
+            &[string_port("a"), string_port("b")],
+            &[string_port("x"), string_port("y")],
             NodeStatus::Pending,
         );
 
@@ -636,8 +636,8 @@ mod tests {
         // Given a simple node.
         let node = VisualNode::compute(
             "test".to_owned(),
-            vec![string_port("in")],
-            vec![string_port("out")],
+            &[string_port("in")],
+            &[string_port("out")],
             NodeStatus::Pending,
         );
 
@@ -681,8 +681,8 @@ mod tests {
         // Given a node with 1 input and 1 output.
         let node = VisualNode::compute(
             "test".to_owned(),
-            vec![string_port("in")],
-            vec![string_port("out")],
+            &[string_port("in")],
+            &[string_port("out")],
             NodeStatus::Pending,
         );
 
@@ -716,8 +716,8 @@ mod tests {
         // Given a pending node.
         let node = VisualNode::compute(
             "test".to_owned(),
-            vec![string_port("in")],
-            vec![string_port("out")],
+            &[string_port("in")],
+            &[string_port("out")],
             NodeStatus::Pending,
         );
 
@@ -741,8 +741,8 @@ mod tests {
         // Given a completed node.
         let node = VisualNode::compute(
             "test".to_owned(),
-            vec![string_port("in")],
-            vec![string_port("out")],
+            &[string_port("in")],
+            &[string_port("out")],
             NodeStatus::Completed,
         );
 

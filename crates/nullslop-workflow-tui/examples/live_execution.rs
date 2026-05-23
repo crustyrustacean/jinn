@@ -58,7 +58,7 @@ async fn main() {
 
     // Build a separate graph for rendering (the engine consumes its graph).
     let render_graph = build_graph();
-    let node_names: Vec<String> = render_graph.node_names().map(|n| n.to_owned()).collect();
+    let node_names: Vec<String> = render_graph.node_names().map(std::borrow::ToOwned::to_owned).collect();
 
     // Spawn the engine in a background task with its own graph.
     let engine_handle = tokio::spawn(async { engine::execute(build_graph(), Arc::new(Ctx)).await });
@@ -103,15 +103,13 @@ async fn main() {
 
         tick = tick.wrapping_add(1);
 
-        if ratatui::crossterm::event::poll(Duration::from_millis(80)).expect("poll") {
-            if let Event::Key(key) = ratatui::crossterm::event::read().expect("read") {
-                if key.kind == KeyEventKind::Press && key.code == KeyCode::Char('q') {
+        if ratatui::crossterm::event::poll(Duration::from_millis(80)).expect("poll")
+            && let Event::Key(key) = ratatui::crossterm::event::read().expect("read")
+                && key.kind == KeyEventKind::Press && key.code == KeyCode::Char('q') {
                     engine_handle.abort();
                     common::restore_terminal(&mut terminal);
                     return;
                 }
-            }
-        }
 
         if engine_handle.is_finished() {
             break;
@@ -157,13 +155,11 @@ async fn main() {
 
     // Wait for user to quit.
     loop {
-        if ratatui::crossterm::event::poll(Duration::from_millis(100)).expect("poll") {
-            if let Event::Key(key) = ratatui::crossterm::event::read().expect("read") {
-                if key.kind == KeyEventKind::Press && key.code == KeyCode::Char('q') {
+        if ratatui::crossterm::event::poll(Duration::from_millis(100)).expect("poll")
+            && let Event::Key(key) = ratatui::crossterm::event::read().expect("read")
+                && key.kind == KeyEventKind::Press && key.code == KeyCode::Char('q') {
                     break;
                 }
-            }
-        }
     }
 
     common::restore_terminal(&mut terminal);

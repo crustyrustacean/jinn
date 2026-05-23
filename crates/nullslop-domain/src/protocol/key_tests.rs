@@ -1,6 +1,8 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
-use crate::protocol::key::{Key, KeyEvent, Modifiers};
+use crate::protocol::key::Modifiers;
+#[cfg(feature = "which-key")]
+use crate::{Key, KeyEvent};
 
 #[rstest::rstest]
 #[case::ctrl(Modifiers::none(), "ctrl", false)]

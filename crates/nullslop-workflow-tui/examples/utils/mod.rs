@@ -9,7 +9,7 @@ use nullslop_workflow::node::{NodeContext, NodeError, WorkflowNode};
 use nullslop_workflow::port::{PortDef, PortValues};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use ratatui::crossterm::event::{self};
 use ratatui::crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
@@ -44,10 +44,6 @@ pub fn restore_terminal(terminal: &mut Term) {
 ///
 /// The node's `execute` method returns empty `PortValues`.
 /// Intended for visual examples where you want to see the node rendering without real logic.
-#[expect(
-    dead_code,
-    reason = "shared across examples, not all use this function"
-)]
 pub fn make_node(
     name: &'static str,
     inputs: Vec<PortDef>,
