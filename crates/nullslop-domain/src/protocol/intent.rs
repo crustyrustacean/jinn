@@ -160,6 +160,8 @@ pub enum Intent {
     ExpandToolEntry,
     /// Fork the session at the currently selected chat entry.
     ForkFromEntry,
+    /// Yank (copy) the currently selected chat entry to the system clipboard.
+    YankSelectedEntry,
 
     // --- Session Lifecycle ---
     /// Run a lifecycle setup command to create a new session.
@@ -274,6 +276,7 @@ impl std::fmt::Display for Intent {
             Intent::ChatEntryPinSelected => write!(f, "pin selected entry"),
             Intent::ExpandToolEntry => write!(f, "expand tool entry"),
             Intent::ForkFromEntry => write!(f, "fork from entry"),
+            Intent::YankSelectedEntry => write!(f, "yank selected entry"),
 
             Intent::SessionLifecycleSetup { lifecycle_name, .. } => {
                 write!(f, "session lifecycle setup: {lifecycle_name}")
