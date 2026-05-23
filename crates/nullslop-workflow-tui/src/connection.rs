@@ -3,6 +3,8 @@
 //! Provides the [`ConnectionRouter`] trait and [`SimpleRouter`] which produces
 //! L-shaped paths (right → vertical → right) between output and input ports.
 
+use std::collections::HashSet;
+
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 
@@ -90,49 +92,57 @@ impl ConnectionRouter for SimpleRouter {
     }
 }
 
-/// Given the previous, current, and next cell positions, pick the correct
-/// box-drawing character.
-fn box_char(prev: Option<(i32, i32)>, curr: (i32, i32), next: Option<(i32, i32)>) -> char {
-    // Compute the direction from the corner toward each neighbor.
-    let d_prev = prev.and_then(|p| dir_toward(curr, p));
-    let d_next = next.and_then(|n| dir_toward(curr, n));
+/// Selects the correct box-drawing character for a cell given the set of
+/// directions in which wires extend from it.
+///
+/// Handles straight lines (2 dirs), corners (2 dirs), tee junctions (3 dirs),
+/// crosses (4 dirs), and end caps (1 dir).
+fn box_char_from_dirs(dirs: &HashSet<Dir2D>) -> char {
+    let has_up = dirs.contains(&Dir2D::Up);
+    let has_down = dirs.contains(&Dir2D::Down);
+    let has_left = dirs.contains(&Dir2D::Left);
+    let has_right = dirs.contains(&Dir2D::Right);
 
-    match (d_prev, d_next) {
+    match (has_up, has_down, has_left, has_right) {
         // Straight lines
-        (Some(Dir2D::Left), Some(Dir2D::Right))
-        | (Some(Dir2D::Right), Some(Dir2D::Left)) => '─',
-        (Some(Dir2D::Up), Some(Dir2D::Down))
-        | (Some(Dir2D::Down), Some(Dir2D::Up)) => '│',
-        // End caps (only one direction)
-        (None, Some(Dir2D::Left))
-        | (None, Some(Dir2D::Right))
-        | (Some(Dir2D::Left), None)
-        | (Some(Dir2D::Right), None) => '─',
-        (None, Some(Dir2D::Up))
-        | (None, Some(Dir2D::Down))
-        | (Some(Dir2D::Up), None)
-        | (Some(Dir2D::Down), None) => '│',
-        // Corners — classified by which directions the arms extend from the corner.
-        // ╭ arms extend RIGHT and DOWN (corner is at top-left)
-        (Some(Dir2D::Right), Some(Dir2D::Down))
-        | (Some(Dir2D::Down), Some(Dir2D::Right)) => '╭',
-        // ╮ arms extend LEFT and DOWN (corner is at top-right)
-        (Some(Dir2D::Left), Some(Dir2D::Down))
-        | (Some(Dir2D::Down), Some(Dir2D::Left)) => '╮',
-        // ╰ arms extend RIGHT and UP (corner is at bottom-left)
-        (Some(Dir2D::Right), Some(Dir2D::Up))
-        | (Some(Dir2D::Up), Some(Dir2D::Right)) => '╰',
-        // ╯ arms extend LEFT and UP (corner is at bottom-right)
-        (Some(Dir2D::Left), Some(Dir2D::Up))
-        | (Some(Dir2D::Up), Some(Dir2D::Left)) => '╯',
-        // Fallback
+        (false, false, true, true) => '─',
+        (true, true, false, false) => '│',
+        // End caps (single direction)
+        (false, false, true, false) | (false, false, false, true) => '─',
+        (true, false, false, false) | (false, true, false, false) => '│',
+        // Corners
+        (false, true, false, true) => '╭',
+        (false, true, true, false) => '╮',
+        (true, false, false, true) => '╰',
+        (true, false, true, false) => '╯',
+        // Tee junctions
+        (false, true, true, true) => '┬',
+        (true, false, true, true) => '┴',
+        (true, true, false, true) => '├',
+        (true, true, true, false) => '┤',
+        // Cross
+        (true, true, true, true) => '┼',
+        // Fallback (should not happen with valid dirs)
         _ => '┼',
     }
 }
 
+/// Given the previous, current, and next cell positions, pick the correct
+/// box-drawing character.
+fn box_char(prev: Option<(i32, i32)>, curr: (i32, i32), next: Option<(i32, i32)>) -> char {
+    let mut dirs = HashSet::new();
+    if let Some(d) = prev.and_then(|p| dir_toward(curr, p)) {
+        dirs.insert(d);
+    }
+    if let Some(d) = next.and_then(|n| dir_toward(curr, n)) {
+        dirs.insert(d);
+    }
+    box_char_from_dirs(&dirs)
+}
+
 /// Direction from one cell toward an adjacent cell.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Dir2D {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum Dir2D {
     Up,
     Down,
     Left,
@@ -142,7 +152,7 @@ enum Dir2D {
 /// Computes the direction from `curr` toward `other`.
 ///
 /// Returns `None` if the cells are not orthogonally adjacent.
-fn dir_toward(curr: (i32, i32), other: (i32, i32)) -> Option<Dir2D> {
+pub(crate) fn dir_toward(curr: (i32, i32), other: (i32, i32)) -> Option<Dir2D> {
     let dx = other.0 - curr.0;
     let dy = other.1 - curr.1;
     match (dx.signum(), dy.signum()) {
@@ -286,5 +296,96 @@ mod tests {
             string_color, json_color,
             "String and Json should have different colors"
         );
+    }
+
+    // --- box_char_from_dirs tests ---
+
+    fn dirs(set: &[Dir2D]) -> HashSet<Dir2D> {
+        set.iter().copied().collect()
+    }
+
+    #[test]
+    fn dirs_straight_horizontal() {
+        assert_eq!(box_char_from_dirs(&dirs(&[Dir2D::Left, Dir2D::Right])), '─');
+    }
+
+    #[test]
+    fn dirs_straight_vertical() {
+        assert_eq!(box_char_from_dirs(&dirs(&[Dir2D::Up, Dir2D::Down])), '│');
+    }
+
+    #[test]
+    fn dirs_corner_top_left() {
+        assert_eq!(box_char_from_dirs(&dirs(&[Dir2D::Right, Dir2D::Down])), '╭');
+    }
+
+    #[test]
+    fn dirs_corner_top_right() {
+        assert_eq!(box_char_from_dirs(&dirs(&[Dir2D::Left, Dir2D::Down])), '╮');
+    }
+
+    #[test]
+    fn dirs_corner_bottom_left() {
+        assert_eq!(box_char_from_dirs(&dirs(&[Dir2D::Right, Dir2D::Up])), '╰');
+    }
+
+    #[test]
+    fn dirs_corner_bottom_right() {
+        assert_eq!(box_char_from_dirs(&dirs(&[Dir2D::Left, Dir2D::Up])), '╯');
+    }
+
+    #[test]
+    fn dirs_tee_down() {
+        assert_eq!(
+            box_char_from_dirs(&dirs(&[Dir2D::Left, Dir2D::Right, Dir2D::Down])),
+            '┬'
+        );
+    }
+
+    #[test]
+    fn dirs_tee_up() {
+        assert_eq!(
+            box_char_from_dirs(&dirs(&[Dir2D::Left, Dir2D::Right, Dir2D::Up])),
+            '┴'
+        );
+    }
+
+    #[test]
+    fn dirs_tee_right() {
+        assert_eq!(
+            box_char_from_dirs(&dirs(&[Dir2D::Up, Dir2D::Down, Dir2D::Right])),
+            '├'
+        );
+    }
+
+    #[test]
+    fn dirs_tee_left() {
+        assert_eq!(
+            box_char_from_dirs(&dirs(&[Dir2D::Up, Dir2D::Down, Dir2D::Left])),
+            '┤'
+        );
+    }
+
+    #[test]
+    fn dirs_cross() {
+        assert_eq!(
+            box_char_from_dirs(&dirs(&[
+                Dir2D::Up,
+                Dir2D::Down,
+                Dir2D::Left,
+                Dir2D::Right
+            ])),
+            '┼'
+        );
+    }
+
+    #[test]
+    fn dirs_end_cap_right() {
+        assert_eq!(box_char_from_dirs(&dirs(&[Dir2D::Right])), '─');
+    }
+
+    #[test]
+    fn dirs_end_cap_down() {
+        assert_eq!(box_char_from_dirs(&dirs(&[Dir2D::Down])), '│');
     }
 }
