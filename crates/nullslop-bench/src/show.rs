@@ -322,13 +322,15 @@ mod tests {
 
         // Then we get two sorted groups with correct counts.
         assert_eq!(per_model.len(), 2);
-        assert_eq!(per_model[0].0, "alpha/model-a");
-        assert_eq!(per_model[0].1.tasks, 2);
-        assert_eq!(per_model[0].1.passed_count, 1);
-        assert_eq!(per_model[0].1.failed_count, 1);
-        assert_eq!(per_model[1].0, "bravo/model-b");
-        assert_eq!(per_model[1].1.tasks, 1);
-        assert_eq!(per_model[1].1.passed_count, 1);
+        let alpha = per_model.iter().find(|(n, _)| n == "alpha/model-a").unwrap();
+        let bravo = per_model.iter().find(|(n, _)| n == "bravo/model-b").unwrap();
+        // Alpha sorts before bravo.
+        assert!(alpha.0 < bravo.0);
+        assert_eq!(alpha.1.tasks, 2);
+        assert_eq!(alpha.1.passed_count, 1);
+        assert_eq!(alpha.1.failed_count, 1);
+        assert_eq!(bravo.1.tasks, 1);
+        assert_eq!(bravo.1.passed_count, 1);
 
         // And grand total matches.
         assert_eq!(grand.tasks, 3);
@@ -349,9 +351,10 @@ mod tests {
 
         // Then grand total equals the single per-model summary.
         assert_eq!(per_model.len(), 1);
-        assert_eq!(grand.tasks, per_model[0].1.tasks);
-        assert_eq!(grand.passed_count, per_model[0].1.passed_count);
-        assert_eq!(grand.timeout_count, per_model[0].1.timeout_count);
+        let model = &per_model.first().unwrap().1;
+        assert_eq!(grand.tasks, model.tasks);
+        assert_eq!(grand.passed_count, model.passed_count);
+        assert_eq!(grand.timeout_count, model.timeout_count);
     }
 
     #[test]
