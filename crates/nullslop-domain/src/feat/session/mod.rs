@@ -13,6 +13,8 @@ pub mod chat_entry;
 
 #[cfg(test)]
 mod chat_entry_tests;
+#[cfg(test)]
+mod entries_tests;
 pub mod chat_session;
 pub mod entries;
 pub mod intent;
