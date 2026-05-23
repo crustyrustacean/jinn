@@ -2087,6 +2087,8 @@ dependencies = [
 name = "nullslop-workflow-tui"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "error-stack",
  "nullslop-workflow",
  "ratatui",
 ]

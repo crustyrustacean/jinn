@@ -10,6 +10,7 @@
 //! - [`port`] — Port type color legend.
 //! - [`status`] — Status indicator symbols and colors.
 
+pub mod layout;
 pub mod node;
 pub mod port;
 pub mod status;
