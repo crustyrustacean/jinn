@@ -16,7 +16,11 @@ pub fn handle_select_next(state: &mut AppState) -> IntentResult {
     let session = state.active_session_mut();
     let visible = session.visible_entry_range();
     let current = session.selected_entry_index();
-    let max = session.history().len().saturating_sub(1);
+    let max = if session.visual_items().is_empty() {
+        session.history().len().saturating_sub(1)
+    } else {
+        session.visual_items().len().saturating_sub(1)
+    };
 
     if let Some(cur) = current {
         if cur >= max {
