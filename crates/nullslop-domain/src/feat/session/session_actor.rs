@@ -171,7 +171,7 @@ impl SessionPersistenceActor {
             Event::ToolCallReceived(payload) => self.on_tool_call_received(payload),
             Event::ToolCallStreaming(payload) => self.on_tool_call_streaming(payload),
             Event::ToolExecutionCompleted(payload) => {
-                self.on_tool_execution_completed(payload).await;
+                self.on_tool_execution_completed(payload, ctx).await;
             }
             Event::ToolBatchCompleted(payload) => {
                 self.on_tool_batch_completed(payload, ctx);

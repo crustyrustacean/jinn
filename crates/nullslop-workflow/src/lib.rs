@@ -14,9 +14,11 @@
 //! - **Engine** — executes a graph, pushing data from sources to sinks.
 
 pub mod engine;
+pub mod execution;
 pub mod graph;
 pub mod node;
 pub mod port;
 
 pub use engine::NodeStatus;
+pub use execution::{ExecutionSnapshot, NodePorts, OwnedEdgeInfo, WorkflowExecution, WorkflowStructure};
 pub use graph::EdgeInfo;

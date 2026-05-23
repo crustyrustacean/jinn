@@ -49,7 +49,8 @@ impl SessionPersistenceActor {
                     }
                     session.push_entry(payload.entry.clone());
                     session.begin_sending();
-                    EnqueueAction::DispatchDirectly
+                    let total_tokens = super::super::helpers::estimate_total_tokens(session);
+                    (EnqueueAction::DispatchDirectly, total_tokens)
                 }
                 SessionPhase::Sending
                 | SessionPhase::Streaming
@@ -59,13 +60,20 @@ impl SessionPersistenceActor {
                     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
                         payload.entry.clone(),
                     ));
-                    EnqueueAction::Queued
+                    (EnqueueAction::Queued, 0)
                 }
             }
         };
 
+        let (action, total_tokens) = action;
+
         match action {
             EnqueueAction::DispatchDirectly => {
+                super::super::helpers::emit_history_appended(
+                    ctx,
+                    &payload.session_id,
+                    total_tokens,
+                );
                 // Assemble the prompt directly and emit SendToLlmProvider.
                 let assembled = {
                     let guard = self.state.read();

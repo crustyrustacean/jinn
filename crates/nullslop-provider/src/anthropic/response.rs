@@ -57,6 +57,7 @@ impl AnthropicStreamParser {
             "content_block_delta" => self.handle_content_block_delta(index, &response),
             "content_block_stop" => self.handle_content_block_stop(index),
             "message_delta" => self.handle_message_delta(&response),
+            "error" => self.handle_error_event(&response),
             _ => None,
         }
     }
@@ -193,6 +194,20 @@ impl AnthropicStreamParser {
             usage,
         })
     }
+    fn handle_error_event(&self, response: &serde_json::Value) -> Option<StreamEvent> {
+        let error_obj = response.get("error")?;
+        let error_type = error_obj
+            .get("type")
+            .and_then(|t| t.as_str())
+            .unwrap_or("unknown_error")
+            .to_owned();
+        let message = error_obj
+            .get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("Unknown streaming error")
+            .to_owned();
+        Some(StreamEvent::Error { error_type, message })
+    }
 }
 
 #[cfg(test)]
@@ -321,5 +336,37 @@ mod tests {
     #[rstest::rstest]
     fn invalid_json_produces_none() {
         assert!(parse_single("not json").is_none());
+    }
+
+    #[rstest::rstest]
+    fn error_event_produces_stream_error() {
+        // Given an Anthropic error event.
+        let json = r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#;
+
+        // When parsing.
+        let event = parse_single(json);
+
+        // Then it produces a StreamEvent::Error with the error details.
+        assert!(matches!(
+            event,
+            Some(StreamEvent::Error { ref error_type, ref message })
+            if error_type == "overloaded_error" && message == "Overloaded"
+        ));
+    }
+
+    #[rstest::rstest]
+    fn error_event_with_missing_fields_produces_error_with_defaults() {
+        // Given an error event with missing fields.
+        let json = r#"{"type":"error","error":{}}"#;
+
+        // When parsing.
+        let event = parse_single(json);
+
+        // Then it produces a StreamEvent::Error with default values.
+        assert!(matches!(
+            event,
+            Some(StreamEvent::Error { ref error_type, ref message })
+            if error_type == "unknown_error" && message == "Unknown streaming error"
+        ));
     }
 }
