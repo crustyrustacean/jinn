@@ -139,6 +139,8 @@ impl ConnectionRouter for SimpleRouter {
             for y in (y2..y1).rev() {
                 cells.push((mid_x, y));
             }
+        } else {
+            // y1 == y2: no vertical segment needed.
         }
 
         // Horizontal right from midpoint to target.
@@ -278,6 +280,7 @@ pub fn render_path(buf: &mut Buffer, path: &[PathCell], port_type: PortType, are
 
 #[cfg(test)]
 #[expect(clippy::indexing_slicing, reason = "test indices are known-valid")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 

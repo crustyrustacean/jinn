@@ -23,6 +23,7 @@ use nullslop_workflow_tui::viewport::ViewportState;
 use nullslop_workflow_tui::widget::WorkflowWidget;
 use ratatui::widgets::Widget;
 
+#[expect(clippy::expect_used, reason = "example code")]
 fn main() {
     let mut terminal = common::setup_terminal();
 

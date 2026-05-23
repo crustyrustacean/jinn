@@ -68,6 +68,7 @@ impl<'de> Deserialize<'de> for LifecycleCommand {
         use serde::de::{self, MapAccess, Visitor};
 
         /// Helper struct for deserializing the `{ builtin = "name" }` form.
+        #[expect(dead_code, reason = "field accessed by serde deserialization")]
         #[derive(Deserialize)]
         struct BuiltinForm {
             builtin: String,

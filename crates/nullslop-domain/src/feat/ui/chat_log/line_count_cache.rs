@@ -116,6 +116,7 @@ impl EntryLineCache {
     }
 
     /// Store a wrapped line count for an entry (without rendered lines).
+    #[expect(dead_code, reason = "public API available for future use")]
     pub fn insert(
         &mut self,
         entry: &ChatEntry,

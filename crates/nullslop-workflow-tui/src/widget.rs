@@ -21,9 +21,13 @@ use crate::viewport::ViewportState;
 /// Constructed fresh each frame (standard ratatui pattern). Renders the entire
 /// graph — nodes with status indicators, typed ports, and L-shaped connections.
 pub struct WorkflowWidget<'a> {
+    /// Documentation for the `graph` field.
     graph: &'a WorkflowGraph,
+    /// Documentation for the `statuses` field.
     statuses: &'a HashMap<String, NodeStatus>,
+    /// Documentation for the `viewport` field.
     viewport: &'a ViewportState,
+    /// Documentation for the `tick` field.
     tick: u8,
 }
 
@@ -171,6 +175,7 @@ mod tests {
         }
     }
 
+    #[expect(dead_code, reason = "test helper implementing trait")]
     struct TestContext;
     impl NodeContext for TestContext {}
 
