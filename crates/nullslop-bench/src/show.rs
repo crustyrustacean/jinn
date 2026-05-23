@@ -21,22 +21,23 @@ pub fn show_results(csv_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     table.load_preset(UTF8_FULL_CONDENSED);
     table.set_header(vec![
         "Task",
+        "Category",
         "Model",
         "Turns",
-        "Tokens ↑",
-        "Tokens ↓",
+        "Tokens \u{2191}",
+        "Tokens \u{2193}",
         "Cost",
         "Time",
         "Passed",
         "Status",
-        "Detail",
     ]);
 
     for r in &results {
-        let check = if r.passed { "✓" } else { "✗" };
+        let check = if r.passed { "\u{2713}" } else { "\u{2717}" };
         let time = format_duration(r.wall_time_ms);
         table.add_row(vec![
             Cell::new(&r.name),
+            Cell::new(&r.category),
             Cell::new(&r.model),
             Cell::new(r.turns),
             Cell::new(r.tokens_in),
@@ -45,7 +46,6 @@ pub fn show_results(csv_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
             Cell::new(time),
             Cell::new(check),
             Cell::new(&r.status),
-            Cell::new(&r.detail),
         ]);
     }
 
@@ -67,19 +67,19 @@ pub(crate) fn read_csv(path: &Path) -> Result<Vec<BenchResult>, Box<dyn std::err
     for record in reader.records() {
         let record = record?;
         let passed = record
-            .get(7)
+            .get(8)
             .is_some_and(|v| v.eq_ignore_ascii_case("true"));
         results.push(BenchResult {
             name: record.get(0).unwrap_or_default().to_owned(),
-            model: record.get(1).unwrap_or_default().to_owned(),
-            turns: record.get(2).unwrap_or_default().parse().unwrap_or(0),
-            tokens_in: record.get(3).unwrap_or_default().parse().unwrap_or(0),
-            tokens_out: record.get(4).unwrap_or_default().parse().unwrap_or(0),
-            cost: record.get(5).unwrap_or_default().parse().unwrap_or(0.0),
-            wall_time_ms: record.get(6).unwrap_or_default().parse().unwrap_or(0),
+            category: record.get(1).unwrap_or_default().to_owned(),
+            model: record.get(2).unwrap_or_default().to_owned(),
+            turns: record.get(3).unwrap_or_default().parse().unwrap_or(0),
+            tokens_in: record.get(4).unwrap_or_default().parse().unwrap_or(0),
+            tokens_out: record.get(5).unwrap_or_default().parse().unwrap_or(0),
+            cost: record.get(6).unwrap_or_default().parse().unwrap_or(0.0),
+            wall_time_ms: record.get(7).unwrap_or_default().parse().unwrap_or(0),
             passed,
-            status: record.get(8).unwrap_or_default().to_owned(),
-            detail: record.get(9).unwrap_or_default().to_owned(),
+            status: record.get(9).unwrap_or_default().to_owned(),
         });
     }
 

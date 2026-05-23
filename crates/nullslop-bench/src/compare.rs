@@ -39,15 +39,15 @@ pub fn compare_results(csv_a: &Path, csv_b: &Path) -> Result<(), Box<dyn std::er
     table.load_preset(UTF8_FULL_CONDENSED);
     table.set_header(vec![
         "Task",
+        "Category",
         "Model",
         "Turns",
-        "Tokens ↑",
-        "Tokens ↓",
+        "Tokens \u{2191}",
+        "Tokens \u{2193}",
         "Cost",
         "Time",
         "Passed",
         "Status",
-        "Detail",
     ]);
 
     for key in keys {
@@ -64,20 +64,20 @@ pub fn compare_results(csv_a: &Path, csv_b: &Path) -> Result<(), Box<dyn std::er
                 let cost_cell = diff_cell_f64(a.cost, b.cost);
                 let time_cell = diff_cell_ms(a.wall_time_ms, b.wall_time_ms);
                 let passed_cell = if a.passed == b.passed {
-                    Cell::new(if a.passed { "✓" } else { "✗" })
+                    Cell::new(if a.passed { "\u{2713}" } else { "\u{2717}" })
                 } else {
                     let text = format!(
-                        "{}→{}",
-                        if a.passed { "✓" } else { "✗" },
-                        if b.passed { "✓" } else { "✗" }
+                        "{}\u{2192}{}",
+                        if a.passed { "\u{2713}" } else { "\u{2717}" },
+                        if b.passed { "\u{2713}" } else { "\u{2717}" }
                     );
                     Cell::new(text).fg(Color::Yellow)
                 };
                 let status_cell = Cell::new(&b.status);
-                let detail_cell = Cell::new(&b.detail);
 
                 table.add_row(vec![
                     Cell::new(name),
+                    Cell::new(&b.category),
                     Cell::new(model),
                     turns_cell,
                     tokens_in_cell,
@@ -86,35 +86,34 @@ pub fn compare_results(csv_a: &Path, csv_b: &Path) -> Result<(), Box<dyn std::er
                     time_cell,
                     passed_cell,
                     status_cell,
-                    detail_cell,
                 ]);
             }
             (None, Some(b)) => {
                 table.add_row(vec![
                     Cell::new(name),
+                    Cell::new(&b.category),
                     Cell::new(model),
                     Cell::new("NEW").fg(Color::Green),
                     Cell::new(b.tokens_in),
                     Cell::new(b.tokens_out),
                     Cell::new(format!("${:.4}", b.cost)),
                     Cell::new(format_duration(b.wall_time_ms)),
-                    Cell::new(if b.passed { "✓" } else { "✗" }),
+                    Cell::new(if b.passed { "\u{2713}" } else { "\u{2717}" }),
                     Cell::new(&b.status),
-                    Cell::new(&b.detail),
                 ]);
             }
             (Some(a), None) => {
                 table.add_row(vec![
                     Cell::new(name),
+                    Cell::new(&a.category),
                     Cell::new(model),
                     Cell::new("REMOVED").fg(Color::Red),
                     Cell::new(a.tokens_in),
                     Cell::new(a.tokens_out),
                     Cell::new(format!("${:.4}", a.cost)),
                     Cell::new(format_duration(a.wall_time_ms)),
-                    Cell::new(if a.passed { "✓" } else { "✗" }),
+                    Cell::new(if a.passed { "\u{2713}" } else { "\u{2717}" }),
                     Cell::new(&a.status),
-                    Cell::new(&a.detail),
                 ]);
             }
             (None, None) => {
