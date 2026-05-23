@@ -281,6 +281,10 @@ pub struct SessionCore {
     /// OWNER: session-actor (advances only after script success).
     #[serde(default)]
     pub(crate) lifecycle_script_state: LifecycleScriptState,
+    /// Whether this session was created by a workflow node.
+    /// OWNER: workflow-actor (set on creation).
+    #[serde(default)]
+    pub(crate) is_workflow: bool,
     /// Runtime-only state — not persisted across restarts.
     #[serde(skip)]
     pub(crate) ephemeral: SessionCoreEphemeral,
@@ -304,6 +308,7 @@ impl Default for SessionCore {
             lifecycle_args: Vec::new(),
             session_state: SessionState::Loaded,
             lifecycle_script_state: LifecycleScriptState::NothingRan,
+            is_workflow: false,
             ephemeral: SessionCoreEphemeral::default(),
         }
     }

@@ -73,6 +73,10 @@ pub fn run_migrations(conn: &mut SqliteConnection) -> Result<(), Report<SessionS
         migrate_v10(conn)?;
         record_version(conn, 10, "consolidate_to_compaction_strategy")?;
     }
+    if current < 11 {
+        migrate_v11(conn)?;
+        record_version(conn, 11, "add_is_workflow_column")?;
+    }
     Ok(())
 }
 
@@ -381,6 +385,19 @@ fn rewrite_profile_strategy(raw: &str) -> String {
     serde_json::to_string(&serde_json::Value::Object(map)).unwrap_or_else(|_| raw.to_owned())
 }
 
+/// v11: Add `is_workflow` column to sessions.
+///
+/// Marks sessions created by workflow LLM nodes. Enables filtering
+/// workflow sessions in the sidebar and elsewhere.
+/// Default is `false` — regular chat sessions are not workflow sessions.
+fn migrate_v11(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    sql_query("ALTER TABLE sessions ADD COLUMN is_workflow BOOLEAN NOT NULL DEFAULT FALSE")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("v11: add is_workflow column to sessions")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
@@ -421,7 +438,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 11);
+        assert_eq!(rows.len(), 12);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -444,6 +461,8 @@ mod tests {
         assert_eq!(rows[9].name, "rename_session_entries_to_session_history");
         assert_eq!(rows[10].version, 10);
         assert_eq!(rows[10].name, "consolidate_to_compaction_strategy");
+        assert_eq!(rows[11].version, 11);
+        assert_eq!(rows[11].name, "add_is_workflow_column");
     }
 
     #[test]
@@ -467,7 +486,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 11);
+        assert_eq!(rows[0].count, 12);
     }
 
     #[test]

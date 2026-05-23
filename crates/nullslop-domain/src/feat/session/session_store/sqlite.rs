@@ -491,6 +491,8 @@ struct PersistableCore {
     lifecycle_name: Option<String>,
     lifecycle_args: Vec<String>,
     lifecycle_script_state: LifecycleScriptState,
+    #[serde(default)]
+    is_workflow: bool,
 }
 
 impl From<&SessionCore> for PersistableCore {
@@ -508,6 +510,7 @@ impl From<&SessionCore> for PersistableCore {
             lifecycle_name: core.lifecycle_name.clone(),
             lifecycle_args: core.lifecycle_args.clone(),
             lifecycle_script_state: core.lifecycle_script_state,
+            is_workflow: core.is_workflow,
         }
     }
 }
@@ -531,6 +534,7 @@ impl From<PersistableCore> for SessionCore {
             session_state: SessionState::Loaded, // overridden by TryFrom<SessionLoadContext> from archived column
             lifecycle_script_state: core.lifecycle_script_state,
             ephemeral: SessionCoreEphemeral::default(),
+            is_workflow: core.is_workflow,
         }
     }
 }
@@ -561,6 +565,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     ephemeral: _ephemeral, // runtime-only state, not persisted
                     session_state,
                     lifecycle_script_state,
+                    is_workflow: _,
                 },
             ui: _ui, // runtime-only UI state, not persisted
         } = session;
@@ -679,6 +684,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 session_state: SessionState::Loaded,
                 lifecycle_script_state: serde_json::from_str(&lifecycle_script_state)
                     .unwrap_or_default(),
+                is_workflow: false,
             }
         };
 

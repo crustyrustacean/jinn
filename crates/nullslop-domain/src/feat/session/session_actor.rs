@@ -283,7 +283,9 @@ impl SessionPersistenceActor {
             | Command::RescanPersonas(..)
             | Command::UpdatePreferences(..)
             | Command::CompactContext(..)
-            | Command::EnqueueCompaction(..) => {}
+            | Command::EnqueueCompaction(..)
+            | Command::StartWorkflow(..)
+            | Command::CancelWorkflow(..) => {}
         }
     }
 }
