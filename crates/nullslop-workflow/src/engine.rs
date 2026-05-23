@@ -12,7 +12,7 @@ use petgraph::visit::EdgeRef;
 use tokio_util::sync::CancellationToken;
 use wherror::Error;
 
-use crate::graph::WorkflowGraph;
+use crate::execution::WorkflowExecution;
 use crate::node::{NodeContext, WorkflowNode};
 use crate::port::PortValues;
 
@@ -71,17 +71,18 @@ enum CompletionMsg {
 
 /// Executes a validated workflow graph.
 ///
-/// Takes ownership of the graph (nodes are consumed). Returns when all
-/// reachable nodes have completed or failed.
+/// Takes a [`WorkflowExecution`] shared reference. The execution tracks
+/// node statuses atomically — consumers can read snapshots at any time.
+/// Returns when all reachable nodes have completed or failed.
 ///
 /// # Errors
 ///
 /// Returns an error if the engine encounters an internal failure.
 pub async fn execute(
-    graph: WorkflowGraph,
+    execution: Arc<WorkflowExecution>,
     ctx: Arc<dyn NodeContext>,
 ) -> Result<WorkflowResult, Report<EngineError>> {
-    execute_with_cancel(graph, ctx, CancellationToken::new()).await
+    execute_with_cancel(execution, ctx, CancellationToken::new()).await
 }
 
 /// Executes a workflow with cancellation support.
@@ -97,10 +98,11 @@ pub async fn execute(
 ///
 /// Panics if internal invariant is violated (e.g., channel closed unexpectedly).
 pub async fn execute_with_cancel(
-    graph: WorkflowGraph,
+    execution: Arc<WorkflowExecution>,
     ctx: Arc<dyn NodeContext>,
     cancel: CancellationToken,
 ) -> Result<WorkflowResult, Report<EngineError>> {
+    let graph = execution.graph();
     let inner = graph.inner();
     let name_to_index = graph.name_to_index();
 
@@ -139,6 +141,7 @@ pub async fn execute_with_cancel(
             &ctx,
             &tx,
             &mut handles,
+            &execution,
         );
     }
 
@@ -179,6 +182,7 @@ pub async fn execute_with_cancel(
                     &mut completed_count,
                     &ctx,
                     &tx,
+                    &execution,
                 );
             }
             // Check for panicked tasks: any Running handle that is_finished()
@@ -190,6 +194,7 @@ pub async fn execute_with_cancel(
                     handle.abort();
                 }
                 statuses.insert(panic_name.clone(), NodeStatus::Failed);
+                execution.set_status(&panic_name, NodeStatus::Failed);
                 completed_count += 1;
 
                 // Propagate skip to downstream.
@@ -198,7 +203,7 @@ pub async fn execute_with_cancel(
                 for down_name in &downstream {
                     if statuses.get(down_name) == Some(&NodeStatus::Pending) {
                         statuses.insert(down_name.clone(), NodeStatus::Skipped);
-                        ctx.update_node_status(down_name, NodeStatus::Skipped);
+                        execution.set_status(down_name, NodeStatus::Skipped);
                         completed_count += 1;
                     }
                 }
@@ -209,10 +214,16 @@ pub async fn execute_with_cancel(
                     handle.abort();
                 }
                 // Mark running as Failed, pending as Skipped.
-                for status in statuses.values_mut() {
+                for (name, status) in &mut statuses {
                     match status {
-                        NodeStatus::Running => *status = NodeStatus::Failed,
-                        NodeStatus::Pending => *status = NodeStatus::Skipped,
+                        NodeStatus::Running => {
+                            execution.set_status(name, NodeStatus::Failed);
+                            *status = NodeStatus::Failed;
+                        }
+                        NodeStatus::Pending => {
+                            execution.set_status(name, NodeStatus::Skipped);
+                            *status = NodeStatus::Skipped;
+                        }
                         _ => {}
                     }
                 }
@@ -262,6 +273,7 @@ fn handle_completion(
     completed_count: &mut usize,
     ctx: &Arc<dyn NodeContext>,
     tx: &tokio::sync::mpsc::Sender<CompletionMsg>,
+    execution: &Arc<WorkflowExecution>,
 ) {
     match msg {
         CompletionMsg::Success {
@@ -269,7 +281,7 @@ fn handle_completion(
             outputs: node_outputs,
         } => {
             statuses.insert(name.clone(), NodeStatus::Completed);
-            ctx.update_node_status(&name, NodeStatus::Completed);
+            execution.set_status(&name, NodeStatus::Completed);
             outputs.insert(name.clone(), node_outputs.clone());
             handles.remove(&name);
             *completed_count += 1;
@@ -303,13 +315,14 @@ fn handle_completion(
                         ctx,
                         tx,
                         handles,
+                        execution,
                     );
                 }
             }
         }
         CompletionMsg::Failed { name } => {
             statuses.insert(name.clone(), NodeStatus::Failed);
-            ctx.update_node_status(&name, NodeStatus::Failed);
+            execution.set_status(&name, NodeStatus::Failed);
             handles.remove(&name);
             *completed_count += 1;
 
@@ -319,7 +332,7 @@ fn handle_completion(
             for down_name in &downstream {
                 if statuses.get(down_name) == Some(&NodeStatus::Pending) {
                     statuses.insert(down_name.clone(), NodeStatus::Skipped);
-                    ctx.update_node_status(down_name, NodeStatus::Skipped);
+                    execution.set_status(down_name, NodeStatus::Skipped);
                     *completed_count += 1;
                 }
             }
@@ -328,6 +341,7 @@ fn handle_completion(
 }
 
 /// Spawns a node execution as a tokio task.
+#[expect(clippy::too_many_arguments, reason = "internal helper with many mutable state references")]
 fn spawn_node(
     name: String,
     node_map: &HashMap<String, Box<dyn WorkflowNode>>,
@@ -336,13 +350,14 @@ fn spawn_node(
     ctx: &Arc<dyn NodeContext>,
     tx: &tokio::sync::mpsc::Sender<CompletionMsg>,
     handles: &mut HashMap<String, tokio::task::JoinHandle<()>>,
+    execution: &Arc<WorkflowExecution>,
 ) {
     let node = node_map[&name].clone_box();
     let tx = tx.clone();
     let ctx = Arc::clone(ctx);
 
     statuses.insert(name.clone(), NodeStatus::Running);
-    ctx.update_node_status(&name, NodeStatus::Running);
+    execution.set_status(&name, NodeStatus::Running);
 
     let node_name = name.clone();
     let handle = tokio::spawn(async move {
@@ -688,9 +703,10 @@ mod tests {
         builder.connect("a", "out", "b", "in").expect("a→b");
         builder.connect("b", "out", "c", "in").expect("b→c");
         let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
 
         // When executing.
-        let result = execute(graph, ctx).await.expect("execute");
+        let result = execute(execution, ctx).await.expect("execute");
 
         // Then all nodes completed and C's output is "HELLO-world".
         assert_eq!(status(&result, "a"), NodeStatus::Completed);
@@ -714,9 +730,10 @@ mod tests {
         builder.connect("a", "out", "b", "in").expect("a→b");
         builder.connect("a", "out", "c", "in").expect("a→c");
         let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
 
         // When executing.
-        let result = execute(graph, ctx).await.expect("execute");
+        let result = execute(execution, ctx).await.expect("execute");
 
         // Then both branches completed with correct results.
         assert_eq!(status(&result, "b"), NodeStatus::Completed);
@@ -737,9 +754,10 @@ mod tests {
         builder.connect("a", "out", "c", "left").expect("a→c");
         builder.connect("b", "out", "c", "right").expect("b→c");
         let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
 
         // When executing.
-        let result = execute(graph, ctx).await.expect("execute");
+        let result = execute(execution, ctx).await.expect("execute");
 
         // Then C received both inputs and concatenated them.
         assert_eq!(status(&result, "c"), NodeStatus::Completed);
@@ -764,9 +782,10 @@ mod tests {
         builder.connect("b", "out", "d", "left").expect("b→d");
         builder.connect("c", "out", "d", "right").expect("c→d");
         let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
 
         // When executing.
-        let result = execute(graph, ctx).await.expect("execute");
+        let result = execute(execution, ctx).await.expect("execute");
 
         // Then D received both paths.
         assert_eq!(status(&result, "d"), NodeStatus::Completed);
@@ -826,9 +845,10 @@ mod tests {
         builder.connect("d", "out1", "c", "in").expect("d→c");
         builder.connect("d", "out2", "e", "in").expect("d→e");
         let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
 
         // When executing.
-        let result = execute(graph, ctx).await.expect("execute");
+        let result = execute(execution, ctx).await.expect("execute");
 
         // Then multi-port node routed correctly.
         assert_eq!(status(&result, "d"), NodeStatus::Completed);
@@ -855,9 +875,10 @@ mod tests {
         builder.connect("b", "out", "c", "in").expect("b→c");
         builder.connect("a", "out", "d", "in").expect("a→d");
         let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
 
         // When executing.
-        let result = execute(graph, ctx).await.expect("execute");
+        let result = execute(execution, ctx).await.expect("execute");
 
         // Then B failed, C skipped, A and D completed.
         assert_eq!(status(&result, "a"), NodeStatus::Completed);
@@ -878,6 +899,7 @@ mod tests {
             .add_node("b".to_owned(), delay_node(Duration::from_secs(5)));
         builder.connect("a", "out", "b", "in").expect("a→b");
         let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
 
         // Cancel after a short delay.
         let cancel_clone = cancel.clone();
@@ -887,7 +909,7 @@ mod tests {
         });
 
         // When executing with cancellation.
-        let result = execute_with_cancel(graph, ctx, cancel)
+        let result = execute_with_cancel(execution, ctx, cancel)
             .await
             .expect("execute");
 
@@ -908,10 +930,11 @@ mod tests {
         builder.connect("a", "out", "b", "in").expect("a→b");
         builder.connect("a", "out", "c", "in").expect("a→c");
         let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
 
         // When executing and measuring wall clock.
         let start = std::time::Instant::now();
-        let result = execute(graph, ctx).await.expect("execute");
+        let result = execute(execution, ctx).await.expect("execute");
         let elapsed = start.elapsed();
 
         // Then both completed and wall clock is less than sum of delays.
@@ -935,9 +958,10 @@ mod tests {
         builder.connect("a", "out", "b", "in").expect("a→b");
         builder.connect("b", "out", "c", "in").expect("b→c");
         let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
 
         // When executing.
-        let result = execute(graph, ctx).await.expect("execute");
+        let result = execute(execution, ctx).await.expect("execute");
 
         // Then B failed (panicked), C skipped.
         assert_eq!(status(&result, "a"), NodeStatus::Completed);
