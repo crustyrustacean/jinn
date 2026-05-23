@@ -17,6 +17,7 @@ use crate::node::WorkflowNode;
 use crate::port::{PortDef, PortType};
 
 /// Internal storage for a node in the graph.
+#[expect(clippy::field_scoped_visibility_modifiers, reason = "pub(crate) on pub(crate) struct keeps fields crate-local")]
 pub(crate) struct NodeData {
     /// Node name.
     #[expect(dead_code, reason = "used for graph introspection")]
@@ -27,6 +28,7 @@ pub(crate) struct NodeData {
 
 /// Internal storage for an edge in the graph.
 #[derive(Debug)]
+#[expect(clippy::field_scoped_visibility_modifiers, reason = "pub(crate) on pub(crate) struct keeps fields crate-local")]
 pub(crate) struct EdgeData {
     /// The output port name on the source node.
     pub(crate) source_port: String,
@@ -486,6 +488,7 @@ fn find_port_type(ports: &[PortDef], name: &str) -> Option<PortType> {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::node::NodeContext;
