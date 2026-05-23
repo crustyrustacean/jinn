@@ -23,6 +23,32 @@ pub struct GraphLayout {
     pub nodes: Vec<VisualNode>,
 }
 
+impl GraphLayout {
+    /// Returns the bounding box of all nodes as `(width, height)`.
+    ///
+    /// Width = `max(node.x + node.width)`, height = `max(node.y + node.height)`.
+    /// Returns `(0, 0)` for empty layouts.
+    #[must_use]
+    pub fn content_size(&self) -> (u16, u16) {
+        if self.nodes.is_empty() {
+            return (0, 0);
+        }
+        let max_x = self
+            .nodes
+            .iter()
+            .map(|n| n.x.saturating_add(n.width))
+            .max()
+            .unwrap_or(0);
+        let max_y = self
+            .nodes
+            .iter()
+            .map(|n| n.y.saturating_add(n.height))
+            .max()
+            .unwrap_or(0);
+        (max_x, max_y)
+    }
+}
+
 /// Computes the layout for a workflow graph.
 ///
 /// Assigns each node a column based on topological depth, then stacks
@@ -351,5 +377,63 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn layout_content_size_empty_graph() {
+        // Given an empty layout.
+        let layout = GraphLayout { nodes: vec![] };
+
+        // Then content_size returns (0, 0).
+        assert_eq!(layout.content_size(), (0, 0));
+    }
+
+    #[test]
+    fn layout_content_size_single_node() {
+        // Given a single-node layout at position (5, 10).
+        let mut node = VisualNode::compute(
+            "a".to_string(),
+            vec![],
+            vec![PortDef::string("out")],
+            NodeStatus::Pending,
+        );
+        node.x = 5;
+        node.y = 10;
+        let layout = GraphLayout { nodes: vec![node] };
+
+        // Then content_size includes position + dimensions.
+        let (w, h) = layout.content_size();
+        assert_eq!(w, 5 + layout.nodes[0].width);
+        assert_eq!(h, 10 + layout.nodes[0].height);
+    }
+
+    #[test]
+    fn layout_content_size_linear_graph() {
+        // Given a 3-node linear graph.
+        let graph = build_linear();
+        let statuses = all_pending(&graph);
+        let layout = compute(&graph, &statuses);
+
+        // Then content_size returns non-zero bounds.
+        let (w, h) = layout.content_size();
+        assert!(w > 0, "linear graph should have non-zero width");
+        assert!(h > 0, "linear graph should have non-zero height");
+    }
+
+    #[test]
+    fn layout_content_size_diamond_graph() {
+        // Given a diamond graph (fan-out + fan-in).
+        let graph = build_diamond();
+        let statuses = all_pending(&graph);
+        let layout = compute(&graph, &statuses);
+
+        // Then content_size returns bounds larger than a single node.
+        let (w, h) = layout.content_size();
+        assert!(w > 0, "diamond graph should have non-zero width");
+        assert!(h > 0, "diamond graph should have non-zero height");
+        assert!(
+            h > 5,
+            "diamond graph should be taller than a single node"
+        );
     }
 }
