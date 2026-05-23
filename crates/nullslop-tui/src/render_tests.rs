@@ -6,9 +6,12 @@
 
 use super::render::*;
 use nullslop_domain::feat::ui::chat_log::GUTTER_WIDTH;
+use nullslop_domain::feat::session::chat_entry::ChatEntry;
+use nullslop_domain::FocusScope;
 use nullslop_selection_widget::compute_popup_rect;
 use nullslop_testutil::setup_term;
 use ratatui::layout::Rect;
+use ratatui::style::Color;
 
 /// Creates a minimal `TuiApp` for render testing.
 fn render_test_app() -> crate::TuiApp {
@@ -128,6 +131,79 @@ fn content_area_rect_is_selectable() {
 /// Helper to create a Rect matching the terminal dimensions.
 fn frame_area(w: u16, h: u16) -> Rect {
     Rect::new(0, 0, w, h)
+}
+
+/// Helper to find the minimap arrow cell position.
+///
+/// The arrow renders at the rightmost column of the chat_log_area at the
+/// midpoint row (chat_log_height / 2). The chat_log_area is the content area
+/// minus 2 bottom lines.
+fn arrow_cell_position(layout: &AppLayout) -> (u16, u16) {
+    let bottom_lines: u16 = 2;
+    let chat_log_height = layout.content.height.saturating_sub(bottom_lines);
+    let midpoint = chat_log_height / 2;
+    let x = layout.content.x + layout.content.width.saturating_sub(1);
+    let y = layout.content.y + midpoint;
+    (x, y)
+}
+
+#[rstest::rstest]
+fn minimap_arrow_is_yellow_when_normal_scope() {
+    // Given a TuiApp rendered with Normal scope and one chat entry.
+    let mut app = render_test_app();
+    app.core
+        .state
+        .write()
+        .active_session_mut()
+        .push_entry(ChatEntry::user("hello"));
+    let (mut terminal, _area) = setup_term(80, 24);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then the minimap arrow is Yellow (focus_accent).
+    let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
+    let (x, y) = arrow_cell_position(&layout);
+    let buffer = terminal.backend().buffer();
+    let cell = buffer.cell((x, y)).expect("minimap arrow cell");
+    assert_eq!(cell.symbol(), ">");
+    assert_eq!(cell.fg, Color::Yellow);
+}
+
+#[rstest::rstest]
+fn minimap_arrow_is_darkgray_when_input_scope() {
+    // Given a TuiApp rendered with Input scope and one chat entry.
+    let mut app = render_test_app();
+    app.core
+        .state
+        .write()
+        .frontend
+        .scope_stack
+        .push(FocusScope::Input);
+    app.core
+        .state
+        .write()
+        .active_session_mut()
+        .push_entry(ChatEntry::user("hello"));
+    let (mut terminal, _area) = setup_term(80, 24);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then the minimap arrow is DarkGray (border_unfocused).
+    let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
+    let (x, y) = arrow_cell_position(&layout);
+    let buffer = terminal.backend().buffer();
+    let cell = buffer.cell((x, y)).expect("minimap arrow cell");
+    assert_eq!(cell.fg, Color::DarkGray);
 }
 
 #[rstest::rstest]
