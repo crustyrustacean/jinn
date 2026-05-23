@@ -57,6 +57,13 @@ pub enum Commands {
         #[command(subcommand)]
         subcommand: BenchCommands,
     },
+
+    /// Fetch reference data from external sources.
+    Fetch {
+        /// The fetch subcommand to run.
+        #[command(subcommand)]
+        subcommand: FetchCommands,
+    },
 }
 
 /// Headless subcommands.
@@ -72,6 +79,13 @@ pub enum HeadlessCommands {
         /// Path to a script file with one key sequence per line.
         path: String,
     },
+}
+
+/// Fetch subcommands.
+#[derive(Debug, Subcommand)]
+pub enum FetchCommands {
+    /// Fetch model metadata from models.dev and save locally.
+    Models,
 }
 
 /// Bench subcommands.
