@@ -97,6 +97,7 @@ fn main() {
 
     let mut viewport = ViewportState::new();
     let mut tick: u8 = 0;
+    let mut viewport_dims = (80u16, 24u16);
 
     loop {
         terminal
@@ -117,6 +118,8 @@ fn main() {
 
                 let widget = WorkflowWidget::new(&graph, &statuses, &viewport, tick);
                 widget.render(main_area, f.buffer_mut());
+
+                viewport_dims = (main_area.width, main_area.height);
 
                 let help = format!(
                     " ←↑↓→ move │ Tab/Shift+Tab select │ q quit │ selected: {} │ offset: ({}, {})",
@@ -140,10 +143,10 @@ fn main() {
                 }
                 match key.code {
                     KeyCode::Char('q') => break,
-                    KeyCode::Left => viewport.translate(3, 0, content_size),
-                    KeyCode::Right => viewport.translate(-3, 0, content_size),
-                    KeyCode::Up => viewport.translate(0, 1, content_size),
-                    KeyCode::Down => viewport.translate(0, -1, content_size),
+                    KeyCode::Left => viewport.translate(3, 0, content_size, viewport_dims),
+                    KeyCode::Right => viewport.translate(-3, 0, content_size, viewport_dims),
+                    KeyCode::Up => viewport.translate(0, 1, content_size, viewport_dims),
+                    KeyCode::Down => viewport.translate(0, -1, content_size, viewport_dims),
                     KeyCode::Tab => viewport.select_next(&node_names),
                     KeyCode::BackTab => viewport.select_prev(&node_names),
                     _ => {}
