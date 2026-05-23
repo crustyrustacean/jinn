@@ -10,20 +10,20 @@ pub enum ActiveTab {
     /// The chat conversation view.
     #[default]
     Chat,
-    /// The dashboard view showing actor status.
-    Dashboard,
+    /// The workflow visualization view.
+    Workflow,
 }
 
 impl ActiveTab {
     /// All tabs in display order.
-    const ALL: [ActiveTab; 2] = [ActiveTab::Chat, ActiveTab::Dashboard];
+    const ALL: [ActiveTab; 2] = [ActiveTab::Chat, ActiveTab::Workflow];
 
     /// Returns the label shown in the tab bar.
     #[must_use]
     pub const fn label(&self) -> &'static str {
         match self {
             ActiveTab::Chat => "Chat",
-            ActiveTab::Dashboard => "Dashboard",
+            ActiveTab::Workflow => "Workflow",
         }
     }
 
@@ -60,7 +60,7 @@ impl ActiveTab {
     const fn index(self) -> usize {
         match self {
             ActiveTab::Chat => 0,
-            ActiveTab::Dashboard => 1,
+            ActiveTab::Workflow => 1,
         }
     }
 }
@@ -95,7 +95,7 @@ mod tests {
         // Given the last tab.
         // When advancing.
         // Then it wraps to the first tab.
-        assert_eq!(ActiveTab::Dashboard.next(), ActiveTab::Chat);
+        assert_eq!(ActiveTab::Workflow.next(), ActiveTab::Chat);
     }
 
     #[rstest::rstest]
@@ -103,7 +103,7 @@ mod tests {
         // Given the first tab.
         // When going back.
         // Then it wraps to the last tab.
-        assert_eq!(ActiveTab::Chat.prev(), ActiveTab::Dashboard);
+        assert_eq!(ActiveTab::Chat.prev(), ActiveTab::Workflow);
     }
 
     #[rstest::rstest]

@@ -12,6 +12,7 @@ which-key = ["ratatui-which-key"]
 nullslop-provider = { workspace = true }
 nullslop-selection-widget = { workspace = true }
 nullslop-protocol-derive = { workspace = true }
+nullslop-workflow = { workspace = true }
 ratatui-markdown = { workspace = true }
 
 # External deps
@@ -27,6 +28,7 @@ wherror = { workspace = true }
 error-stack = { workspace = true }
 dirs = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 tracing = { workspace = true }
 unicode-segmentation = { workspace = true }
 unicode-width = { workspace = true }

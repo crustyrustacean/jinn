@@ -447,7 +447,13 @@ impl ShiftedNode<'_> {
                 style,
             );
         }
-        self.set_cell(buf, self.inner.width.saturating_sub(1), last_row, "╯", style);
+        self.set_cell(
+            buf,
+            self.inner.width.saturating_sub(1),
+            last_row,
+            "╯",
+            style,
+        );
     }
 
     fn render_title(&self, buf: &mut Buffer, border_style: Style, _tick: u8) {
@@ -512,14 +518,7 @@ impl ShiftedNode<'_> {
         }
     }
 
-    fn render_text(
-        &self,
-        buf: &mut Buffer,
-        start_col: usize,
-        row: u16,
-        text: &str,
-        style: Style,
-    ) {
+    fn render_text(&self, buf: &mut Buffer, start_col: usize, row: u16, text: &str, style: Style) {
         for (i, ch) in text.chars().enumerate() {
             let col = u16::try_from(start_col + i).unwrap_or(u16::MAX);
             if col < self.inner.width.saturating_sub(1) {

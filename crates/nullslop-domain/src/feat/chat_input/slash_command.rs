@@ -12,6 +12,8 @@ pub enum SlashCommand {
     New,
     /// Summarize conversation history into a structured checkpoint.
     Compact,
+    /// Run a named workflow.
+    Workflow,
 }
 
 /// A single entry for the slash command autocomplete popup.
@@ -35,6 +37,10 @@ impl SlashCommand {
                 name: "new".to_owned(),
                 description: "Create a new session".to_owned(),
             },
+            SlashCommandEntry {
+                name: "workflow".to_owned(),
+                description: "Run a named workflow".to_owned(),
+            },
         ]
     }
 
@@ -43,6 +49,7 @@ impl SlashCommand {
         match name {
             "compact" => Some(Self::Compact),
             "new" => Some(Self::New),
+            "workflow" => Some(Self::Workflow),
             _ => None,
         }
     }

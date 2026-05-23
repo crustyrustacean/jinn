@@ -18,7 +18,7 @@ use std::time::Duration;
 use nullslop_workflow::engine::{self, NodeStatus};
 use nullslop_workflow::graph::WorkflowGraphBuilder;
 use nullslop_workflow::node::NodeContext;
-use nullslop_workflow::nodes::delay_node::DelayNode;
+use nullslop_workflow::node::delay::DelayNode;
 use nullslop_workflow::port::PortDef;
 use nullslop_workflow_tui::viewport::ViewportState;
 use nullslop_workflow_tui::widget::WorkflowWidget;

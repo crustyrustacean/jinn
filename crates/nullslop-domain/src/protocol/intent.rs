@@ -206,6 +206,8 @@ pub enum Intent {
     RenameDeleteGrapheme,
     /// Delete the grapheme after the cursor in rename input.
     RenameDeleteForward,
+    /// Switch to the next tab (Chat → Workflow → Chat).
+    SwitchTab,
 }
 
 impl std::fmt::Display for Intent {
@@ -295,6 +297,7 @@ impl std::fmt::Display for Intent {
             Intent::RenameCursorRight => write!(f, "rename cursor right"),
             Intent::RenameDeleteGrapheme => write!(f, "rename delete"),
             Intent::RenameDeleteForward => write!(f, "rename forward delete"),
+            Intent::SwitchTab => write!(f, "switch tab"),
         }
     }
 }

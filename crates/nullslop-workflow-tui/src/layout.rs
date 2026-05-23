@@ -429,9 +429,6 @@ mod tests {
         let (w, h) = layout.content_size();
         assert!(w > 0, "diamond graph should have non-zero width");
         assert!(h > 0, "diamond graph should have non-zero height");
-        assert!(
-            h > 5,
-            "diamond graph should be taller than a single node"
-        );
+        assert!(h > 5, "diamond graph should be taller than a single node");
     }
 }

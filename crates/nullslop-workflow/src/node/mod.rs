@@ -1,20 +1,58 @@
-//! Node trait and execution context.
+//! Node trait, execution context, and built-in node types.
 //!
 //! A [`WorkflowNode`] is the core unit of computation in a workflow graph.
 //! Each node declares its input and output ports, then executes when all
 //! input ports are satisfied.
+//!
+//! # Built-in nodes
+//!
+//! - [`CodeNode`] — wraps an async closure for quick custom logic.
+//! - [`DelayNode`] — sleeps for a configured duration, then passes inputs through.
+
+use std::future::Future;
+use std::pin::Pin;
 
 use error_stack::Report;
 use wherror::Error;
 
+use crate::engine::NodeStatus;
 use crate::port::PortValues;
+
+pub mod code;
+pub mod delay;
+
+pub use code::CodeNode;
+pub use delay::DelayNode;
 
 /// Execution context passed to nodes during execution.
 ///
 /// Implemented by the host environment. For tests, use a simple unit struct.
-/// For domain integration (Part 2), `DomainNodeContext` will provide access
+/// For domain integration, `DomainNodeContext` provides access
 /// to services, LLM requests, and the actor bus.
-pub trait NodeContext: Send + Sync {}
+///
+/// Default methods are no-ops or return errors. Override them in the
+/// host environment's implementation.
+pub trait NodeContext: Send + Sync {
+    /// Called by the engine when a node's status changes.
+    ///
+    /// Default: no-op. Override to observe status transitions
+    /// (e.g., write to shared UI state).
+    fn update_node_status(&self, _node_name: &str, _status: NodeStatus) {}
+
+    /// Send an LLM request and await the full response.
+    ///
+    /// Default: returns an error (no LLM capability).
+    /// Override in `DomainNodeContext` to route through the actor bus.
+    fn send_llm_request<'a>(
+        &'a self,
+        system_prompt: &str,
+        user_prompt: &str,
+        provider_id: Option<&str>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, Report<NodeError>>> + Send + 'a>> {
+        let _ = (system_prompt, user_prompt, provider_id);
+        Box::pin(async { Err(Report::new(NodeError)) })
+    }
+}
 
 /// Error type for node execution failures.
 ///

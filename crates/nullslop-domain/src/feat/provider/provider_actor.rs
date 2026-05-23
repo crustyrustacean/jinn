@@ -122,7 +122,9 @@ impl ProviderActor {
             | Command::ArchiveSession(..)
             | Command::PersistSession(..)
             | Command::SoftCancelTurn(..)
-            | Command::FinishSessionTeardown(..) => {}
+            | Command::FinishSessionTeardown(..)
+            | Command::StartWorkflow(..)
+            | Command::CancelWorkflow(..) => {}
         }
     }
 
@@ -664,7 +666,9 @@ mod tests {
         );
 
         let mut models_dev = crate::feat::provider_infra::ModelsDevData::new();
-        models_dev.context_lengths.insert("glm-5.1".to_owned(), 200_000);
+        models_dev
+            .context_lengths
+            .insert("glm-5.1".to_owned(), 200_000);
 
         // When merging.
         super::merge_context_lengths_from_models_dev(&mut cache, &models_dev);
@@ -686,7 +690,9 @@ mod tests {
         );
 
         let mut models_dev = crate::feat::provider_infra::ModelsDevData::new();
-        models_dev.context_lengths.insert("gpt-4o".to_owned(), 200_000);
+        models_dev
+            .context_lengths
+            .insert("gpt-4o".to_owned(), 200_000);
 
         // When merging.
         super::merge_context_lengths_from_models_dev(&mut cache, &models_dev);
@@ -757,9 +763,15 @@ mod tests {
         cache.entries.get_mut("provider-b").unwrap()[0].context_length = Some(64_000);
 
         let mut models_dev = crate::feat::provider_infra::ModelsDevData::new();
-        models_dev.context_lengths.insert("model-a".to_owned(), 999_999);
-        models_dev.context_lengths.insert("model-b".to_owned(), 999_999);
-        models_dev.context_lengths.insert("model-c".to_owned(), 300_000);
+        models_dev
+            .context_lengths
+            .insert("model-a".to_owned(), 999_999);
+        models_dev
+            .context_lengths
+            .insert("model-b".to_owned(), 999_999);
+        models_dev
+            .context_lengths
+            .insert("model-c".to_owned(), 300_000);
 
         // When merging from models.dev.
         super::merge_context_lengths_from_models_dev(&mut cache, &models_dev);
@@ -791,8 +803,12 @@ mod tests {
         );
 
         let mut models_dev = crate::feat::provider_infra::ModelsDevData::new();
-        models_dev.context_lengths.insert("glm-5.1".to_owned(), 200_000);
-        models_dev.context_lengths.insert("claude-sonnet-4-20250514".to_owned(), 200_000);
+        models_dev
+            .context_lengths
+            .insert("glm-5.1".to_owned(), 200_000);
+        models_dev
+            .context_lengths
+            .insert("claude-sonnet-4-20250514".to_owned(), 200_000);
 
         // When merging.
         super::merge_context_lengths_from_models_dev(&mut cache, &models_dev);

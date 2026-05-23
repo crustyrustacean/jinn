@@ -41,7 +41,10 @@ pub(crate) fn insert_path_into_grid(
     path: &[PathCell],
     port_type: PortType,
 ) {
-    #[expect(clippy::indexing_slicing, reason = "indices are bounds-checked by enumerate")]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "indices are bounds-checked by enumerate"
+    )]
     for (i, cell) in path.iter().enumerate() {
         let entry = grid.entry(cell.pos).or_insert_with(|| CellInfo {
             dirs: HashSet::new(),
@@ -68,11 +71,7 @@ pub(crate) fn insert_path_into_grid(
 ///
 /// Cells with 3+ directions (junctions) or mixed port types render in gray.
 /// Other cells render in their port type's color.
-pub fn render_merged_grid(
-    buf: &mut Buffer,
-    grid: &HashMap<(i32, i32), CellInfo>,
-    area: Rect,
-) {
+pub fn render_merged_grid(buf: &mut Buffer, grid: &HashMap<(i32, i32), CellInfo>, area: Rect) {
     for (pos, info) in grid {
         let (x, y) = *pos;
         if x < 0 || y < 0 {
@@ -454,12 +453,7 @@ mod tests {
     #[test]
     fn dirs_cross() {
         assert_eq!(
-            box_char_from_dirs(&dirs(&[
-                Dir2D::Up,
-                Dir2D::Down,
-                Dir2D::Left,
-                Dir2D::Right
-            ])),
+            box_char_from_dirs(&dirs(&[Dir2D::Up, Dir2D::Down, Dir2D::Left, Dir2D::Right])),
             '┼'
         );
     }
@@ -500,8 +494,13 @@ mod tests {
             let ch = box_char_from_dirs(&info.dirs);
             matches!(ch, '┬' | '┴' | '├' | '┤' | '┼')
         });
-        assert!(has_tee, "fan-out should produce a tee junction, got {:?}",
-            junctions.iter().map(|(_, info)| box_char_from_dirs(&info.dirs)).collect::<Vec<_>>()
+        assert!(
+            has_tee,
+            "fan-out should produce a tee junction, got {:?}",
+            junctions
+                .iter()
+                .map(|(_, info)| box_char_from_dirs(&info.dirs))
+                .collect::<Vec<_>>()
         );
     }
 
@@ -592,7 +591,11 @@ mod tests {
                 u16::try_from(pos.1).unwrap(),
             ))
             .unwrap();
-        assert_eq!(cell.fg, Color::Green, "non-junction same-type cell should be green");
+        assert_eq!(
+            cell.fg,
+            Color::Green,
+            "non-junction same-type cell should be green"
+        );
     }
 
     #[test]

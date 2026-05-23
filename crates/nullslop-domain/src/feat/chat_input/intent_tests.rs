@@ -895,6 +895,10 @@ fn slash_autocomplete_tab_completes_name() {
     let mut state = AppState::default();
     crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
 
+    // Navigate to the "new" entry (default selection is the last entry).
+    // Entries: compact(0), new(1), workflow(2). Default = 2. Move up once.
+    let _ = crate::feat::chat_input::intent::handle_move_cursor_up(&mut state);
+
     // When confirming autocomplete (Tab).
     let _ = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
 
@@ -1107,10 +1111,13 @@ fn submit_compact_slash_command_clears_buffer() {
 
 #[rstest::rstest]
 fn tab_completes_name_without_executing() {
-    // Given a state with slash autocomplete active ("/" typed, popup showing "new").
+    // Given a state with slash autocomplete active ("/" typed, popup showing entries).
     let mut state = AppState::default();
     crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
     let old_id = state.session.active_session_id().clone();
+
+    // Navigate to the "new" entry (default selection is the last entry).
+    let _ = crate::feat::chat_input::intent::handle_move_cursor_up(&mut state);
 
     // When confirming autocomplete (Tab).
     let _ = crate::feat::chat_input::intent::handle_autocomplete_confirm(&mut state);
@@ -1139,10 +1146,13 @@ fn tab_confirm_slash_emits_no_commands() {
 
 #[rstest::rstest]
 fn enter_completes_and_executes_slash_command() {
-    // Given a state with slash autocomplete active ("/" typed, popup showing "new").
+    // Given a state with slash autocomplete active ("/" typed, popup showing entries).
     let mut state = AppState::default();
     crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
     let old_id = state.session.active_session_id().clone();
+
+    // Navigate to the "new" entry (default selection is the last entry).
+    let _ = crate::feat::chat_input::intent::handle_move_cursor_up(&mut state);
 
     // When pressing Enter (SubmitMessage with autocomplete active).
     let _result = crate::feat::chat_input::intent::handle_submit_message(&mut state);

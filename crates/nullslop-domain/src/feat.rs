@@ -22,3 +22,4 @@ pub mod skills;
 pub mod theme;
 pub mod tools_actor;
 pub mod ui;
+pub mod workflow;

@@ -346,6 +346,10 @@ impl IntentHandler {
             Intent::RenameDeleteForward => {
                 feat::rename_session_input::intent::handle_delete_forward(state)
             }
+            Intent::SwitchTab => {
+                state.frontend.active_tab = state.frontend.active_tab.next();
+                IntentResult::empty()
+            }
         }
     }
 }

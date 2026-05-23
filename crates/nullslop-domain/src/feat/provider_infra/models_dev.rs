@@ -88,8 +88,7 @@ impl ModelsDevData {
 
     /// Parses a models.dev JSON file and builds the lookup table.
     fn parse_file(path: &Path) -> Result<Self, String> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| format!("failed to read: {e}"))?;
+        let content = std::fs::read_to_string(path).map_err(|e| format!("failed to read: {e}"))?;
 
         let providers: serde_json::Map<String, serde_json::Value> =
             serde_json::from_str(&content).map_err(|e| format!("invalid JSON: {e}"))?;

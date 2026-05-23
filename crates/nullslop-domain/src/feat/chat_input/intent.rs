@@ -231,7 +231,7 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
         let cmd = command_name.split_whitespace().next().unwrap_or("");
         if let Some(cmd) = SlashCommand::lookup(cmd) {
             state.active_chat_input_mut().reset();
-            return execute_slash_command(cmd, state);
+            return execute_slash_command(cmd, &display, state);
         }
         // Unknown /command — fall through to normal message.
     }
@@ -283,7 +283,7 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
                 let cmd = command_name.split_whitespace().next().unwrap_or("");
                 if let Some(cmd) = SlashCommand::lookup(cmd) {
                     state.active_chat_input_mut().reset();
-                    return execute_slash_command(cmd, state);
+                    return execute_slash_command(cmd, &display, state);
                 }
             }
             // Fall through to normal submit.
@@ -305,7 +305,11 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
 }
 
 /// Executes a slash command.
-fn execute_slash_command(command: SlashCommand, state: &mut AppState) -> IntentResult {
+fn execute_slash_command(
+    command: SlashCommand,
+    display: &str,
+    state: &mut AppState,
+) -> IntentResult {
     match command {
         SlashCommand::Compact => {
             let session_id = state.session.active_session_id().clone();
@@ -314,6 +318,40 @@ fn execute_slash_command(command: SlashCommand, state: &mut AppState) -> IntentR
             })])
         }
         SlashCommand::New => crate::feat::session::intent::handle_session_new(state),
+        SlashCommand::Workflow => {
+            // Parse the workflow name and topic from the display text: "/workflow <name> [topic]"
+            let args = display
+                .strip_prefix("/workflow")
+                .map(|s| s.trim())
+                .unwrap_or("");
+            if args.is_empty() {
+                state
+                    .frontend
+                    .set_status_notification("Usage: /workflow <name> [topic]");
+                return IntentResult::empty();
+            }
+            let (name, user_prompt) = match args.split_once(char::is_whitespace) {
+                Some((n, rest)) => (n.trim(), rest.trim().to_owned()),
+                None => (args.trim(), String::new()),
+            };
+            // Look up in registry.
+            let Some(_builder) = crate::feat::workflow::workflow_registry::get_workflow(name)
+            else {
+                state
+                    .frontend
+                    .set_status_notification(format!("Unknown workflow: {name}"));
+                return IntentResult::empty();
+            };
+            let workflow_id = crate::feat::workflow::workflow_state::WorkflowId::new();
+            state.frontend.active_tab = crate::protocol::tab::ActiveTab::Workflow;
+            IntentResult::with_commands(vec![Command::StartWorkflow(
+                crate::feat::workflow::protocol::command::StartWorkflow {
+                    name: name.to_owned(),
+                    workflow_id,
+                    user_prompt,
+                },
+            )])
+        }
     }
 }
 
