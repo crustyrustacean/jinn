@@ -278,6 +278,7 @@ impl LlmActor {
             let mut token_index = 0usize;
             let mut parser = reasoning_parser::ParserFactory::new().create(&model_id);
 
+            let mut stream_ended_normally = false;
             let mut stream = std::pin::pin!(stream);
             while let Some(result) = stream.next().await {
                 match result {
@@ -349,6 +350,7 @@ impl LlmActor {
                             }));
                         }
                         StreamEvent::Done { stop_reason, usage } => {
+                            stream_ended_normally = true;
                             tracing::trace!(
                                 session_id = ?sid,
                                 stop_reason = %stop_reason,
@@ -387,6 +389,28 @@ impl LlmActor {
                                 }));
                             }
                         }
+                        StreamEvent::Error { error_type, message } => {
+                            tracing::error!(
+                                error_type = %error_type,
+                                message = %message,
+                                "LLM stream error event from provider"
+                            );
+                            let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                                session_id: sid.clone(),
+                                entry: ChatEntry::error(format!(
+                                    "LLM error ({error_type}): {message}"
+                                )),
+                            }));
+                            let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                                session_id: sid.clone(),
+                                reason: StreamCompletedReason::Error,
+                                assistant_content: None,
+                                tool_calls: None,
+                                cost: None,
+                            }));
+                            stream_ended_normally = true;
+                            break;
+                        }
                     },
                     Err(e) => {
                         tracing::error!(err = ?e, "LLM stream error");
@@ -395,15 +419,37 @@ impl LlmActor {
                             entry: ChatEntry::error(format!("LLM stream error: {e:?}")),
                         }));
                         let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
-                            session_id: sid,
+                            session_id: sid.clone(),
                             reason: StreamCompletedReason::Error,
                             assistant_content: None,
                             tool_calls: None,
                             cost: None,
                         }));
+                        stream_ended_normally = true;
                         break;
                     }
                 }
+            }
+
+            // Guard: if the stream ended without a terminal event, emit fallback error.
+            if !stream_ended_normally {
+                tracing::error!(
+                    session_id = ?sid,
+                    "LLM stream ended without a terminal event (Done/Error)"
+                );
+                let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                    session_id: sid.clone(),
+                    entry: ChatEntry::error(
+                        "LLM stream ended unexpectedly. The connection may have been interrupted.".to_owned(),
+                    ),
+                }));
+                let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                    session_id: sid.clone(),
+                    reason: StreamCompletedReason::Error,
+                    assistant_content: None,
+                    tool_calls: None,
+                    cost: None,
+                }));
             }
         });
 
