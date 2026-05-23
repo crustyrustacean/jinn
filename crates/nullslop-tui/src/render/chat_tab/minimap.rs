@@ -1,9 +1,10 @@
 //! TUI rendering adapter for the vertical minimap column and arrow overlay.
 
-use nullslop_domain::AppState;
+use nullslop_domain::{AppState, FocusScope};
 use nullslop_domain::feat::ui::vertical_minimap;
 use ratatui::Frame;
 use ratatui::layout::Rect;
+use ratatui::style::Color;
 
 /// Renders the vertical minimap blocks and the `>` arrow overlay.
 ///
@@ -14,8 +15,15 @@ pub(super) fn render_minimap(
     minimap_area: Rect,
     chat_log_area: Rect,
     state: &AppState,
+    focus_scope: &FocusScope,
+    focus_accent: Color,
+    border_unfocused: Color,
 ) {
-    let arrow_color = state.frontend.theme.border_unfocused;
+    let arrow_color = if matches!(focus_scope, FocusScope::Normal) {
+        focus_accent
+    } else {
+        border_unfocused
+    };
     let muted_text_color = state.frontend.theme.muted_text;
 
     let arrow =
