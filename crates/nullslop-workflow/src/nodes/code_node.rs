@@ -14,7 +14,10 @@ use crate::port::{PortDef, PortValues};
 
 /// The type of the closure stored in a [`CodeNode`].
 type ExecuteFn = Arc<
-    dyn Fn(PortValues, &dyn NodeContext) -> Pin<Box<dyn Future<Output = Result<PortValues, Report<NodeError>>> + Send>>
+    dyn Fn(
+            PortValues,
+            &dyn NodeContext,
+        ) -> Pin<Box<dyn Future<Output = Result<PortValues, Report<NodeError>>> + Send>>
         + Send
         + Sync,
 >;
@@ -86,7 +89,10 @@ impl CodeNode {
 #[async_trait::async_trait]
 impl WorkflowNode for CodeNode {
     fn name(&self) -> &'static str {
-        #[expect(clippy::unnecessary_safety_comment, reason = "leak is intentional for 'static name")]
+        #[expect(
+            clippy::unnecessary_safety_comment,
+            reason = "leak is intentional for 'static name"
+        )]
         Box::leak(self.name.clone().into_boxed_str())
     }
 
