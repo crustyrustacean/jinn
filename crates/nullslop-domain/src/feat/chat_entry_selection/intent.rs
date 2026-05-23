@@ -182,7 +182,7 @@ pub fn handle_fork_from_entry(state: &mut AppState) -> IntentResult {
     let source_session_id = state.session.active_session_id().clone();
     let at_ordinal = state
         .active_session()
-        .selected_entry_index()
+        .selected_history_index()
         .expect("validator confirmed selection exists");
 
     state.session.begin_load(source_session_id.clone());
