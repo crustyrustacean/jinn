@@ -214,6 +214,17 @@ impl App {
                 let runner = Runner::Headless(Box::new(headless));
                 runner.run().change_context(AppError)?;
             }
+            Commands::Fetch { subcommand } => {
+                use nullslop_cli::cli::FetchCommands;
+
+                match subcommand {
+                    FetchCommands::Models => {
+                        self.runtime.block_on(async {
+                            fetch_models().await
+                        }).change_context(AppError)?;
+                    }
+                }
+            }
             Commands::Bench { subcommand } => {
                 if cli.db_path.is_some() {
                     return Err(Report::new(AppError)
@@ -413,6 +424,80 @@ fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
             tracing::warn!(err = ?e, "failed to load theme, using default");
         }
     }
+}
+
+/// Fetches model metadata from models.dev and saves it to the user's cache directory.
+///
+/// Makes an HTTP GET request to `https://models.dev/api.json`, validates the
+/// response as JSON, and writes it to `~/.cache/nullslop/models.dev.json`.
+///
+/// # Errors
+///
+/// Returns an error if the HTTP request fails, the response is not valid JSON,
+/// or the file cannot be written.
+async fn fetch_models() -> Result<(), Report<AppError>> {
+    use nullslop_domain::common::app_info::APP_NAME;
+
+    let url = "https://models.dev/api.json";
+    tracing::info!(url, "fetching model metadata");
+
+    let response = reqwest::get(url)
+        .await
+        .change_context(AppError)
+        .attach("failed to fetch models.dev API")?;
+
+    let status = response.status();
+    if !status.is_success() {
+        return Err(Report::new(AppError).attach(format!(
+            "models.dev returned HTTP {status}"
+        )));
+    }
+
+    let body = response
+        .text()
+        .await
+        .change_context(AppError)
+        .attach("failed to read models.dev response")?;
+
+    // Validate that the response is valid JSON.
+    let parsed: serde_json::Value = serde_json::from_str(&body)
+        .change_context(AppError)
+        .attach("models.dev response is not valid JSON")?;
+
+    // Count providers and models for the summary.
+    let mut provider_count = 0u32;
+    let mut model_count = 0u32;
+    if let serde_json::Value::Object(map) = &parsed {
+        for (_provider_name, provider_data) in map {
+            provider_count += 1;
+            if let Some(models) = provider_data.get("models").and_then(|m| m.as_object()) {
+                model_count += models.len() as u32;
+            }
+        }
+    }
+
+    // Write to user cache directory.
+    let target_path = dirs::cache_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join(APP_NAME)
+        .join("models.dev.json");
+
+    if let Some(parent) = target_path.parent() {
+        std::fs::create_dir_all(parent)
+            .change_context(AppError)
+            .attach("failed to create cache directory")?;
+    }
+
+    std::fs::write(&target_path, &body)
+        .change_context(AppError)
+        .attach("failed to write models.dev.json")?;
+
+    println!(
+        "Fetched {model_count} models from {provider_count} providers to {}",
+        target_path.display()
+    );
+
+    Ok(())
 }
 
 #[cfg(test)]
