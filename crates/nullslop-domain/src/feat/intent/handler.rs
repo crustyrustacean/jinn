@@ -290,6 +290,9 @@ impl IntentHandler {
             Intent::ExpandToolEntry => {
                 feat::chat_entry_selection::intent::handle_expand_tool_entry(state)
             }
+            Intent::ToggleIgnoredBlockVisibility => {
+                feat::chat_entry_selection::intent::handle_toggle_ignored_block(state)
+            }
             Intent::ForkFromEntry => {
                 feat::chat_entry_selection::intent::handle_fork_from_entry(state)
             }
