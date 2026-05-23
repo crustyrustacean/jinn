@@ -5,6 +5,10 @@
 //! and flushed every 500ms (or when the buffer exceeds 4KB) to reduce
 //! event volume and prevent dropped keystrokes from terminal overload.
 
+// This module requires Unix process group support.
+#[cfg(not(unix))]
+compile_error!("the bash tool requires a Unix-like OS (process group support)");
+
 use std::fmt::Write as _;
 use std::process::Stdio;
 use std::time::Duration;
@@ -17,6 +21,61 @@ use crate::protocol::{Event, SessionId};
 use super::truncation::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, format_size, truncate_tail};
 
 use super::BoxedToolFuture;
+
+/// RAII guard that kills the entire process group when dropped.
+///
+/// When the tokio task running a bash command is aborted (via
+/// `JoinHandle::abort()`), this guard's `Drop` implementation sends
+/// `SIGKILL` to the child's entire process group, ensuring that
+/// descendant processes (e.g., `find /` spawned by bash) are also
+/// terminated. Without this, aborting the future only drops the
+/// handle — the OS processes continue running as orphans.
+#[cfg(unix)]
+struct KillOnDrop {
+    child: tokio::process::Child,
+}
+
+#[cfg(unix)]
+impl KillOnDrop {
+    /// Wraps a spawned child process in the kill-on-drop guard.
+    fn new(child: tokio::process::Child) -> Self {
+        Self { child }
+    }
+}
+
+#[cfg(unix)]
+impl Drop for KillOnDrop {
+    fn drop(&mut self) {
+        // Kill the direct child process (belt-and-suspenders).
+        let _ = self.child.start_kill();
+
+        // Kill the entire process group so descendants are also terminated.
+        if let Some(pid) = self.child.id() {
+            let pgid = pid as libc::pid_t;
+            if pgid > 0 {
+                // SAFETY: `libc::kill` is safe when the PID argument is a valid
+                // process ID. We verified `pgid > 0`. The negative argument
+                // instructs the kernel to signal the entire process group.
+                let _ = unsafe { libc::kill(-pgid, libc::SIGKILL) };
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+impl std::ops::Deref for KillOnDrop {
+    type Target = tokio::process::Child;
+    fn deref(&self) -> &Self::Target {
+        &self.child
+    }
+}
+
+#[cfg(unix)]
+impl std::ops::DerefMut for KillOnDrop {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.child
+    }
+}
 
 /// Returns the tool definition for the `bash` built-in tool.
 pub fn definition() -> ToolDefinition {
@@ -351,7 +410,12 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .spawn();
+            // Place the child in its own process group so that the
+            // kill-on-drop guard can terminate the entire group
+            // (child + all descendants) on cancel.
+            .process_group(0)
+            .spawn()
+            .map(KillOnDrop::new);
 
         let mut child = match spawn_result {
             Ok(child) => child,
@@ -609,5 +673,56 @@ mod tests {
         // Then the result indicates timeout.
         assert!(!result.success);
         assert!(result.content.contains("timed out"));
+    }
+
+    /// Verifies that `KillOnDrop` terminates the child process and its
+    /// entire process group when dropped.
+    ///
+    /// Spawns a bash command that starts a background sleep child, then
+    /// drops the guard. Both processes should be killed.
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn kill_on_drop_terminates_process_group() {
+        use std::process::Stdio;
+
+        // Given a bash command that spawns a background child process.
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned());
+        let guard = {
+            let child = tokio::process::Command::new(&shell)
+                .arg("-c")
+                .arg("sleep 60 & sleep 60")
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .process_group(0)
+                .spawn()
+                .expect("spawn should succeed");
+            let pid = child.id().expect("child should have a PID");
+            assert!(pid > 0, "child PID should be positive");
+            KillOnDrop::new(child)
+        };
+
+        // Give the processes a moment to start.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // When dropping the guard (simulating task abort).
+        drop(guard);
+
+        // Then give the kernel a moment to reap the processes.
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Verify no 'sleep 60' processes survived.
+        let output = tokio::process::Command::new("pgrep")
+            .arg("-f")
+            .arg("sleep 60")
+            .output()
+            .await
+            .expect("pgrep should run");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // No "sleep 60" processes should be running.
+        assert!(
+            stdout.trim().is_empty(),
+            "expected no 'sleep 60' processes, but found: {stdout}"
+        );
     }
 }
