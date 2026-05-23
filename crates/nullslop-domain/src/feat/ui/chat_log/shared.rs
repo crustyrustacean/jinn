@@ -120,6 +120,7 @@ pub fn unescape_newlines(s: &str) -> String {
 }
 
 /// Compute the display width of a string using Unicode grapheme clusters.
+#[expect(dead_code, reason = "public API available for future use")]
 pub fn unicode_segementation_display_width(s: &str) -> usize {
     use unicode_segmentation::UnicodeSegmentation;
     s.graphemes(true)

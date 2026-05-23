@@ -8,7 +8,7 @@ use std::time::Duration;
 use error_stack::Report;
 
 use crate::node::{NodeContext, NodeError, WorkflowNode};
-use crate::port::{PortDef, PortValue, PortValues};
+use crate::port::{PortDef, PortValues};
 
 /// A node that delays for a configured duration before passing
 /// inputs through to matching output ports.
@@ -81,6 +81,7 @@ impl WorkflowNode for DelayNode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::port::PortValue;
     use std::time::Instant;
 
     #[tokio::test]
@@ -130,6 +131,7 @@ mod tests {
     struct TestContext;
     impl NodeContext for TestContext {}
 
+    #[expect(clippy::used_underscore_items, reason = "test helper")]
     fn _ctx() -> TestContext {
         TestContext
     }

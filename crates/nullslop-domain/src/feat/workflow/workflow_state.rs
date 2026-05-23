@@ -4,7 +4,6 @@ use std::collections::HashMap;
 
 use nullslop_workflow::NodeStatus;
 use nullslop_workflow::graph::WorkflowGraph;
-use nullslop_workflow::port::PortValue;
 use tokio_util::sync::CancellationToken;
 
 use crate::protocol::SessionId;
@@ -94,19 +93,12 @@ use serde::{Deserialize, Serialize};
 ///
 /// Mirrors the [`SessionMap`] pattern — a non-empty map of workflow states
 /// with an active (focused) entry.
+#[derive(Default)]
 pub struct WorkflowMap {
     workflows: HashMap<WorkflowId, WorkflowState>,
     active: Option<WorkflowId>,
 }
 
-impl Default for WorkflowMap {
-    fn default() -> Self {
-        Self {
-            workflows: HashMap::new(),
-            active: None,
-        }
-    }
-}
 
 impl std::fmt::Debug for WorkflowMap {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

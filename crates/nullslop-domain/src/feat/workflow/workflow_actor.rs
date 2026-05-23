@@ -14,7 +14,7 @@ use crate::feat::workflow::domain_node_context::DomainNodeContext;
 use crate::feat::workflow::protocol::command::{CancelWorkflow, StartWorkflow};
 use crate::feat::workflow::protocol::event::{WorkflowCompleted, WorkflowStarted};
 use crate::feat::workflow::workflow_registry;
-use crate::feat::workflow::workflow_state::{WorkflowId, WorkflowState};
+use crate::feat::workflow::workflow_state::WorkflowState;
 use crate::protocol::{Command, Event};
 
 /// The workflow actor.
@@ -106,7 +106,7 @@ impl WorkflowActor {
         self.state.write().workflow.insert(workflow_state);
 
         // Emit WorkflowStarted event.
-        ctx.send_event(Event::WorkflowStarted(WorkflowStarted {
+        let _ = ctx.send_event(Event::WorkflowStarted(WorkflowStarted {
             workflow_id: workflow_id.clone(),
             name: name.clone(),
         }));
@@ -139,7 +139,7 @@ impl WorkflowActor {
                     tracing::info!(id = %workflow_id, "workflow completed successfully");
 
                     // Update workflow state with result.
-                    if let Some(mut guard) = state.write().workflow.get_mut(&workflow_id) {
+                    if let Some(guard) = state.write().workflow.get_mut(&workflow_id) {
                         guard.result =
                             Some(crate::feat::workflow::workflow_state::WorkflowResult {
                                 outputs: workflow_result.outputs,
@@ -158,7 +158,7 @@ impl WorkflowActor {
                     tracing::error!(id = %workflow_id, error = %report, "workflow failed");
 
                     // Update workflow state with failure.
-                    if let Some(mut guard) = state.write().workflow.get_mut(&workflow_id) {
+                    if let Some(guard) = state.write().workflow.get_mut(&workflow_id) {
                         guard.result =
                             Some(crate::feat::workflow::workflow_state::WorkflowResult {
                                 outputs: HashMap::new(),

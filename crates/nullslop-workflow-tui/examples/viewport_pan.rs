@@ -24,6 +24,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::widgets::{Paragraph, Widget};
 
+#[expect(clippy::expect_used, reason = "example code")]
 fn main() {
     let mut terminal = common::setup_terminal();
 

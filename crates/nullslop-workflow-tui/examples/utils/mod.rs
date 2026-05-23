@@ -14,9 +14,11 @@ use ratatui::crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 
+/// Terminal type alias for example helpers.
 pub type Term = Terminal<CrosstermBackend<Stdout>>;
 
 /// Sets up the terminal for TUI rendering.
+#[expect(clippy::expect_used, reason = "example code")]
 pub fn setup_terminal() -> Term {
     enable_raw_mode().expect("failed to enable raw mode");
     crossterm::execute!(
@@ -30,6 +32,7 @@ pub fn setup_terminal() -> Term {
 }
 
 /// Restores the terminal to its original state.
+#[expect(clippy::expect_used, reason = "example code")]
 pub fn restore_terminal(terminal: &mut Term) {
     disable_raw_mode().expect("failed to disable raw mode");
     crossterm::execute!(

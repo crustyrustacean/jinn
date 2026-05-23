@@ -4,7 +4,6 @@
 //! and writes a concise executive summary.
 
 use nullslop_workflow::graph::{WorkflowGraph, WorkflowGraphBuilder};
-use nullslop_workflow::port::PortDef;
 
 use crate::feat::workflow::node::llm::LlmNode;
 
@@ -25,6 +24,10 @@ use crate::feat::workflow::node::llm::LlmNode;
     clippy::expect_used,
     reason = "static graph definition should always be valid"
 )]
+///
+/// # Panics
+///
+/// Panics if graph connections are invalid (should never happen with static graph definition).
 pub fn build_research_extract_summarize(user_prompt: String) -> WorkflowGraph {
     let research = LlmNode::source(
         "You are a research assistant. Research the given topic thoroughly and provide detailed findings with sources.",
