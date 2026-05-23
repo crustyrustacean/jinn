@@ -20,14 +20,9 @@ pub fn render_workflow_tab(frame: &mut Frame<'_>, area: Rect, state: &AppState, 
         return;
     };
 
-    let Some(ref graph) = workflow.graph_render_copy else {
-        render_no_workflow_placeholder(frame, area);
-        return;
-    };
-
-    // Render the workflow widget.
+    let snapshot = workflow.execution.snapshot();
     let viewport = nullslop_workflow_tui::viewport::ViewportState::default();
-    let widget = WorkflowWidget::new(graph, &workflow.statuses, &viewport, tick);
+    let widget = WorkflowWidget::new(&snapshot, &viewport, tick);
     frame.render_widget(widget, area);
 }
 

@@ -307,7 +307,7 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
 /// Executes a slash command.
 fn execute_slash_command(
     command: SlashCommand,
-    display: &str,
+    _display: &str,
     state: &mut AppState,
 ) -> IntentResult {
     match command {
@@ -319,35 +319,15 @@ fn execute_slash_command(
         }
         SlashCommand::New => crate::feat::session::intent::handle_session_new(state),
         SlashCommand::Workflow => {
-            // Parse the workflow name and topic from the display text: "/workflow <name> [topic]"
-            let args = display
-                .strip_prefix("/workflow")
-                .map_or("", str::trim);
-            if args.is_empty() {
-                state
-                    .frontend
-                    .set_status_notification("Usage: /workflow <name> [topic]");
-                return IntentResult::empty();
-            }
-            let (name, user_prompt) = match args.split_once(char::is_whitespace) {
-                Some((n, rest)) => (n.trim(), rest.trim().to_owned()),
-                None => (args.trim(), String::new()),
-            };
-            // Look up in registry.
-            let Some(_builder) = crate::feat::workflow::workflow_registry::get_workflow(name)
-            else {
-                state
-                    .frontend
-                    .set_status_notification(format!("Unknown workflow: {name}"));
-                return IntentResult::empty();
-            };
             let workflow_id = crate::feat::workflow::workflow_state::WorkflowId::new();
             state.frontend.active_tab = crate::protocol::tab::ActiveTab::Workflow;
+            state.frontend.scope_stack.swap_base(
+                crate::common::app_state::FocusScope::Workflow,
+            );
             IntentResult::with_commands(vec![Command::StartWorkflow(
                 crate::feat::workflow::protocol::command::StartWorkflow {
-                    name: name.to_owned(),
+                    name: "add-numbers".to_owned(),
                     workflow_id,
-                    user_prompt,
                 },
             )])
         }

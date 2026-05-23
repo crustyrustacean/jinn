@@ -352,11 +352,10 @@ pub fn create_core_with_actor_host(
             },
         );
 
-    // Register example workflows.
-    nullslop_domain::feat::workflow::register_workflow(
-        "research-extract-summarize",
-        nullslop_domain::feat::workflow::example::research_extract_summarize::build_research_extract_summarize,
-    );
+    // Build workflow registry and register built-in workflows.
+    let mut workflow_registry = nullslop_domain::feat::workflow::WorkflowRegistry::new();
+    nullslop_domain::feat::workflow::register_all_workflows(&mut workflow_registry);
+    let workflow_registry = Arc::new(workflow_registry);
 
     // Workflow actor — bridges workflow engine to actor bus.
     let workflow_result = spawn::<WorkflowActor>(
@@ -368,6 +367,7 @@ pub fn create_core_with_actor_host(
         WorkflowActorDeps {
             state: state.clone(),
             services: services.clone(),
+            registry: workflow_registry,
         },
     );
 

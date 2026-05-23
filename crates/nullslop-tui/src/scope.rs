@@ -39,6 +39,8 @@ pub enum Scope {
     RenameSessionInput,
     /// Sidebar resize mode — adjusting sidebar width.
     SidebarResize,
+    /// Workflow tab — browsing workflow node status.
+    Workflow,
 }
 
 impl std::fmt::Display for Scope {
@@ -58,6 +60,7 @@ impl std::fmt::Display for Scope {
             Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
+            Self::Workflow => write!(f, "Workflow"),
         }
     }
 }
@@ -81,6 +84,7 @@ impl std::str::FromStr for Scope {
             "TokenBudgetInput" => Ok(Self::TokenBudgetInput),
             "RenameSessionInput" => Ok(Self::RenameSessionInput),
             "SidebarResize" => Ok(Self::SidebarResize),
+            "Workflow" => Ok(Self::Workflow),
             _ => Err(()),
         }
     }
