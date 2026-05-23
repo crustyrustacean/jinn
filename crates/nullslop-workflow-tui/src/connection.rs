@@ -22,13 +22,13 @@ pub struct PathCell {
 }
 
 /// Merged direction and color information for a cell shared by multiple paths.
-pub(crate) struct CellInfo {
+pub struct CellInfo {
     /// All directions in which wires extend from this cell.
-    pub(crate) dirs: HashSet<Dir2D>,
+    pub dirs: HashSet<Dir2D>,
     /// The port type of the first path to contribute to this cell.
-    pub(crate) port_type: PortType,
+    pub port_type: PortType,
     /// True if multiple different port types contribute to this cell.
-    pub(crate) mixed: bool,
+    pub mixed: bool,
 }
 
 /// Inserts a routed path into a merged grid, accumulating direction information.
@@ -53,16 +53,14 @@ pub(crate) fn insert_path_into_grid(
             entry.mixed = true;
         }
 
-        if i > 0 {
-            if let Some(d) = dir_toward(cell.pos, path[i - 1].pos) {
+        if i > 0
+            && let Some(d) = dir_toward(cell.pos, path[i - 1].pos) {
                 entry.dirs.insert(d);
             }
-        }
-        if i + 1 < path.len() {
-            if let Some(d) = dir_toward(cell.pos, path[i + 1].pos) {
+        if i + 1 < path.len()
+            && let Some(d) = dir_toward(cell.pos, path[i + 1].pos) {
                 entry.dirs.insert(d);
             }
-        }
     }
 }
 
@@ -101,7 +99,7 @@ pub fn render_merged_grid(
         let p = Position::new(x, y);
         if let Some(cell_buf) = buf.cell_mut(p) {
             cell_buf.set_char(ch);
-            cell_buf.fg = color.into();
+            cell_buf.fg = color;
         }
     }
 }
@@ -126,7 +124,7 @@ impl ConnectionRouter for SimpleRouter {
         let mut cells: Vec<(i32, i32)> = Vec::new();
 
         // Midpoint x: halfway between source and target.
-        let mid_x = (x1 + x2) / 2;
+        let mid_x = i32::midpoint(x1, x2);
 
         // Horizontal right from source to midpoint.
         for x in x1..=mid_x {
@@ -161,12 +159,8 @@ impl ConnectionRouter for SimpleRouter {
             .iter()
             .enumerate()
             .map(|(i, &pos)| {
-                let prev = if i > 0 { Some(cells[i - 1]) } else { None };
-                let next = if i + 1 < cells.len() {
-                    Some(cells[i + 1])
-                } else {
-                    None
-                };
+                let prev = (i > 0).then(|| cells[i - 1]);
+                let next = (i + 1 < cells.len()).then(|| cells[i + 1]);
                 PathCell {
                     pos,
                     char: box_char(prev, pos, next),
@@ -189,6 +183,7 @@ fn box_char_from_dirs(dirs: &HashSet<Dir2D>) -> char {
     let has_left = dirs.contains(&Dir2D::Left);
     let has_right = dirs.contains(&Dir2D::Right);
 
+    #[expect(clippy::match_same_arms, reason = "end caps intentionally match their parent line style")]
     match (has_up, has_down, has_left, has_right) {
         // Straight lines
         (false, false, true, true) => '─',
@@ -228,10 +223,14 @@ fn box_char(prev: Option<(i32, i32)>, curr: (i32, i32), next: Option<(i32, i32)>
 
 /// Direction from one cell toward an adjacent cell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum Dir2D {
+pub enum Dir2D {
+    /// Up direction.
     Up,
+    /// Down direction.
     Down,
+    /// Left direction.
     Left,
+    /// Right direction.
     Right,
 }
 
@@ -273,7 +272,7 @@ pub fn render_path(buf: &mut Buffer, path: &[PathCell], port_type: PortType, are
         let pos = Position::new(x, y);
         if let Some(cell_buf) = buf.cell_mut(pos) {
             cell_buf.set_char(cell.char);
-            cell_buf.fg = color.into();
+            cell_buf.fg = color;
         }
     }
 }
@@ -293,7 +292,7 @@ mod tests {
         assert_eq!(path.last().unwrap().pos, (20, 5));
 
         // Should contain the midpoint vertical segment.
-        let mid_x = (10 + 20) / 2; // 15
+        let mid_x = i32::midpoint(10, 20); // 15
         assert!(path.iter().any(|c| c.pos == (mid_x, 3)));
         assert!(path.iter().any(|c| c.pos == (mid_x, 4)));
     }
