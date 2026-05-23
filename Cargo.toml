@@ -1,6 +1,6 @@
 [package]
 name = "nullslop"
-version = "0.27.0"
+version = "0.28.0"
 edition = "2024"
 resolver = "3"
 default-run = "nullslop"
@@ -29,6 +29,8 @@ kanal = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
 serde_json = { workspace = true }
+reqwest = { workspace = true }
+dirs = { workspace = true }
 jiff = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -108,8 +110,10 @@ dialoguer = "0.12"
 arboard = "3"
 sha2 = "0.10"
 glob = "0.3"
+libc = "0.2"
 rand = "0.9"
 mockito = "1.7"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 anstyle-lossy = "1"
 anstyle = "1"
 tracing = "0.1"
