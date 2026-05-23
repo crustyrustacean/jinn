@@ -101,8 +101,6 @@ impl UiElement<AppState> for StatusBarElement {
         frame.render_widget(cwd_widget, cwd_area);
 
         // --- Line 2: Existing info ---
-        let strategy = state.active_session().active_strategy();
-        let pinned_count = state.active_session().pinned_entries().len();
         let active_model = state.active_session().profile().model.clone();
 
         // Compute aggregated token stats for the active session.
@@ -140,20 +138,6 @@ impl UiElement<AppState> for StatusBarElement {
         };
         token_info = format!("{token_info} {context_display}");
 
-        let strategy_display =
-            if state.active_session().active_strategy().as_str() == "token_budget" {
-                let budget = state.active_session().profile().token_budget;
-                format!("Token Budget: {}", format_budget(budget))
-            } else {
-                strategy.to_string()
-            };
-
-        let left = if pinned_count > 0 {
-            format!("({strategy_display})\u{1f4cc}{pinned_count} {token_info}")
-        } else {
-            format!("({strategy_display}) {token_info}")
-        };
-
         let model = if active_model == NO_PROVIDER_ID {
             "no model selected".to_owned()
         } else if let Some((provider, model)) = active_model.split_once('/') {
@@ -162,19 +146,29 @@ impl UiElement<AppState> for StatusBarElement {
             active_model.clone()
         };
 
-        // Build left side: strategy info + cost + turn count.
-        let total_cost = agg.total_cost();
-        let turn_count = turn_counter::compute_turn_count(state.active_session().history());
-        let left_spans: Vec<Span> = vec![
-            Span::styled(left, style),
-            Span::styled(format!(" ${total_cost:.5}"), style),
-            Span::styled(format!(" Turns: {turn_count}"), style),
-        ];
+        let left_side = {
+            let left = {
+                let pinned_count = state.active_session().pinned_entries().len();
+                if pinned_count > 0 {
+                    format!("\u{1f4cc}{pinned_count} {token_info}")
+                } else {
+                    format!("{token_info}")
+                }
+            };
 
-        let strategy_widget = Paragraph::new(Line::from(left_spans))
-            .style(style)
-            .alignment(Alignment::Left);
-        frame.render_widget(strategy_widget, info_area);
+            // Build left side: cost + turn count.
+            let total_cost = agg.total_cost();
+            let turn_count = turn_counter::compute_turn_count(state.active_session().history());
+            let left_spans: Vec<Span> = vec![
+                Span::styled(left, style),
+                Span::styled(format!(" ${total_cost:.5}"), style),
+                Span::styled(format!(" Turns: {turn_count}"), style),
+            ];
+            Paragraph::new(Line::from(left_spans))
+                .style(style)
+                .alignment(Alignment::Left)
+        };
+        frame.render_widget(left_side, info_area);
 
         let notification = state.frontend.active_status_notification();
         let right_spans = if let Some(msg) = notification {
