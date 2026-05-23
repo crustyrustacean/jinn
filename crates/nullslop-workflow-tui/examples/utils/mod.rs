@@ -44,7 +44,10 @@ pub fn restore_terminal(terminal: &mut Term) {
 ///
 /// The node's `execute` method returns empty `PortValues`.
 /// Intended for visual examples where you want to see the node rendering without real logic.
-#[expect(dead_code, reason = "shared across examples, not all use this function")]
+#[expect(
+    dead_code,
+    reason = "shared across examples, not all use this function"
+)]
 pub fn make_node(
     name: &'static str,
     inputs: Vec<PortDef>,

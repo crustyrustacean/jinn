@@ -126,9 +126,7 @@ pub enum Event {
     /// A workflow execution completed.
     WorkflowCompleted(crate::feat::workflow::protocol::event::WorkflowCompleted),
     /// A workflow node status changed.
-    WorkflowNodeStatusChanged(
-        crate::feat::workflow::protocol::event::WorkflowNodeStatusChanged,
-    ),
+    WorkflowNodeStatusChanged(crate::feat::workflow::protocol::event::WorkflowNodeStatusChanged),
 }
 
 impl Event {

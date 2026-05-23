@@ -9,7 +9,9 @@ use nullslop_workflow::engine::NodeStatus;
 use nullslop_workflow::graph::WorkflowGraph;
 use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
 
-use crate::connection::{insert_path_into_grid, render_merged_grid, CellInfo, ConnectionRouter, SimpleRouter};
+use crate::connection::{
+    CellInfo, ConnectionRouter, SimpleRouter, insert_path_into_grid, render_merged_grid,
+};
 use crate::layout::{self, GraphLayout};
 use crate::node::VisualNode;
 use crate::viewport::ViewportState;
@@ -342,6 +344,9 @@ mod tests {
                 matches!(cell.symbol(), "┬" | "┴" | "├" | "┤" | "┼")
             })
         });
-        assert!(has_tee, "diamond graph should have at least one tee junction");
+        assert!(
+            has_tee,
+            "diamond graph should have at least one tee junction"
+        );
     }
 }
