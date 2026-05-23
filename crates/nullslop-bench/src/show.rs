@@ -3,6 +3,7 @@
 #![allow(clippy::print_stdout, reason = "CLI output")]
 #![allow(clippy::cast_precision_loss, reason = "display formatting")]
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use comfy_table::{Cell, Table, presets::UTF8_FULL_CONDENSED};
@@ -70,6 +71,37 @@ impl BenchSummary {
         }
         Some(self.wall_time_ms / self.tasks)
     }
+}
+
+/// Groups results by model and computes per-model and grand-total summaries.
+fn summarize(results: &[BenchResult]) -> (Vec<(String, BenchSummary)>, BenchSummary) {
+    let mut map: HashMap<String, BenchSummary> = HashMap::new();
+
+    for result in results {
+        map.entry(result.model.clone())
+            .or_default()
+            .add(result);
+    }
+
+    let mut per_model: Vec<_> = map.into_iter().collect();
+    per_model.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let grand = per_model
+        .iter()
+        .fold(BenchSummary::default(), |mut acc, (_, summary)| {
+            acc.tasks += summary.tasks;
+            acc.turns += summary.turns;
+            acc.tokens_in += summary.tokens_in;
+            acc.tokens_out += summary.tokens_out;
+            acc.cost += summary.cost;
+            acc.wall_time_ms += summary.wall_time_ms;
+            acc.passed_count += summary.passed_count;
+            acc.failed_count += summary.failed_count;
+            acc.timeout_count += summary.timeout_count;
+            acc
+        });
+
+    (per_model, grand)
 }
 
 /// Reads a bench CSV and renders it as a formatted table.
@@ -246,6 +278,115 @@ mod tests {
         // When computing pass rate.
         // Then it returns None.
         assert!(summary.pass_rate().is_none());
+    }
+
+    fn make_result_with_model(model: &str, passed: bool, status: &str) -> BenchResult {
+        BenchResult {
+            name: "test".to_owned(),
+            category: "one_shot".to_owned(),
+            model: model.to_owned(),
+            turns: 3,
+            tokens_in: 100,
+            tokens_out: 50,
+            cost: 0.001,
+            wall_time_ms: 5000,
+            passed,
+            status: status.to_owned(),
+        }
+    }
+
+    #[test]
+    fn summarize_returns_empty_when_no_results() {
+        // Given no results.
+        let results: Vec<BenchResult> = Vec::new();
+
+        // When summarizing.
+        let (per_model, grand) = summarize(&results);
+
+        // Then per_model is empty and grand total is zeroed.
+        assert!(per_model.is_empty());
+        assert_eq!(grand.tasks, 0);
+    }
+
+    #[test]
+    fn summarize_groups_by_model() {
+        // Given results from two models.
+        let results = vec![
+            make_result_with_model("bravo/model-b", true, "completed"),
+            make_result_with_model("alpha/model-a", true, "completed"),
+            make_result_with_model("alpha/model-a", false, "completed"),
+        ];
+
+        // When summarizing.
+        let (per_model, grand) = summarize(&results);
+
+        // Then we get two sorted groups with correct counts.
+        assert_eq!(per_model.len(), 2);
+        assert_eq!(per_model[0].0, "alpha/model-a");
+        assert_eq!(per_model[0].1.tasks, 2);
+        assert_eq!(per_model[0].1.passed_count, 1);
+        assert_eq!(per_model[0].1.failed_count, 1);
+        assert_eq!(per_model[1].0, "bravo/model-b");
+        assert_eq!(per_model[1].1.tasks, 1);
+        assert_eq!(per_model[1].1.passed_count, 1);
+
+        // And grand total matches.
+        assert_eq!(grand.tasks, 3);
+        assert_eq!(grand.passed_count, 2);
+        assert_eq!(grand.failed_count, 1);
+    }
+
+    #[test]
+    fn summarize_single_model_grand_matches_per_model() {
+        // Given results from one model.
+        let results = vec![
+            make_result_with_model("test-model", true, "completed"),
+            make_result_with_model("test-model", false, "timeout"),
+        ];
+
+        // When summarizing.
+        let (per_model, grand) = summarize(&results);
+
+        // Then grand total equals the single per-model summary.
+        assert_eq!(per_model.len(), 1);
+        assert_eq!(grand.tasks, per_model[0].1.tasks);
+        assert_eq!(grand.passed_count, per_model[0].1.passed_count);
+        assert_eq!(grand.timeout_count, per_model[0].1.timeout_count);
+    }
+
+    #[test]
+    fn summarize_classifies_mixed_pass_fail_timeout() {
+        // Given a mix of passed, failed, and timeout results across models.
+        let results = vec![
+            make_result_with_model("model-a", true, "completed"),
+            make_result_with_model("model-a", false, "completed"),
+            make_result_with_model("model-a", false, "timeout"),
+            make_result_with_model("model-b", true, "completed"),
+            make_result_with_model("model-b", false, "timeout"),
+        ];
+
+        // When summarizing.
+        let (per_model, _grand) = summarize(&results);
+
+        // Then model-a has 1 passed, 1 failed, 1 timeout.
+        let model_a = &per_model
+            .iter()
+            .find(|(name, _)| name == "model-a")
+            .unwrap()
+            .1;
+        assert_eq!(model_a.passed_count, 1);
+        assert_eq!(model_a.failed_count, 1);
+        assert_eq!(model_a.timeout_count, 1);
+
+        // And model-b has 1 passed, 0 failed, 1 timeout.
+        let model_b = &per_model
+            .iter()
+            .find(|(name, _)| name == "model-b")
+            .unwrap()
+            .1;
+        assert_eq!(model_b.passed_count, 1);
+        assert_eq!(model_b.failed_count, 0);
+        assert_eq!(model_b.timeout_count, 1);
     }
 
     #[test]
