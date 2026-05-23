@@ -16,6 +16,7 @@ use std::time::Duration;
 use nullslop_workflow::engine::NodeStatus;
 use nullslop_workflow::graph::WorkflowGraphBuilder;
 use nullslop_workflow::port::PortDef;
+use nullslop_workflow_tui::layout;
 use nullslop_workflow_tui::viewport::ViewportState;
 use nullslop_workflow_tui::widget::WorkflowWidget;
 use ratatui::crossterm::event::{Event, KeyCode, KeyEventKind};
@@ -91,8 +92,12 @@ fn main() {
         ("save".to_owned(), NodeStatus::Pending),
     ]);
 
+    let the_layout = layout::compute(&graph, &statuses);
+    let content_size = the_layout.content_size();
+
     let mut viewport = ViewportState::new();
     let mut tick: u8 = 0;
+    let mut viewport_dims = (80u16, 24u16);
 
     loop {
         terminal
@@ -113,6 +118,8 @@ fn main() {
 
                 let widget = WorkflowWidget::new(&graph, &statuses, &viewport, tick);
                 widget.render(main_area, f.buffer_mut());
+
+                viewport_dims = (main_area.width, main_area.height);
 
                 let help = format!(
                     " ←↑↓→ move │ Tab/Shift+Tab select │ q quit │ selected: {} │ offset: ({}, {})",
@@ -136,10 +143,10 @@ fn main() {
                 }
                 match key.code {
                     KeyCode::Char('q') => break,
-                    KeyCode::Left => viewport.translate(3, 0),
-                    KeyCode::Right => viewport.translate(-3, 0),
-                    KeyCode::Up => viewport.translate(0, 1),
-                    KeyCode::Down => viewport.translate(0, -1),
+                    KeyCode::Left => viewport.translate(3, 0, content_size, viewport_dims),
+                    KeyCode::Right => viewport.translate(-3, 0, content_size, viewport_dims),
+                    KeyCode::Up => viewport.translate(0, 1, content_size, viewport_dims),
+                    KeyCode::Down => viewport.translate(0, -1, content_size, viewport_dims),
                     KeyCode::Tab => viewport.select_next(&node_names),
                     KeyCode::BackTab => viewport.select_prev(&node_names),
                     _ => {}
