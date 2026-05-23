@@ -218,7 +218,6 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::context::env_context::ContextFile;
     use crate::feat::context::strategy::token_estimator::TiktokenCounter;
-    use crate::feat::persona::Persona;
     use crate::feat::skills::Skill;
     use crate::feat::tools_actor::tool_types::ToolDefinition;
     use crate::protocol::{ChatEntry, SessionId};

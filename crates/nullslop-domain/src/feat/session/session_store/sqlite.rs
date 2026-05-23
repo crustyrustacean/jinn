@@ -114,12 +114,13 @@ impl SqliteSessionStore {
     ///
     /// Returns an error if the parent directory cannot be created or the database pool cannot be built.
     pub fn open_or_create(file_path: &Path) -> Result<Self, Report<SessionStoreError>> {
-        if let Some(parent) = file_path.parent() {
-            if !parent.as_os_str().is_empty() && !parent.exists() {
-                std::fs::create_dir_all(parent)
-                    .change_context(SessionStoreError)
-                    .attach("failed to create database directory")?;
-            }
+        if let Some(parent) = file_path.parent()
+            && !parent.as_os_str().is_empty()
+            && !parent.exists()
+        {
+            std::fs::create_dir_all(parent)
+                .change_context(SessionStoreError)
+                .attach("failed to create database directory")?;
         }
         Self::connect_at(file_path, &PoolConfig::default())
     }
