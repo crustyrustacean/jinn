@@ -33,9 +33,11 @@ use nullslop_domain::common::actor::protocol::event::{
     ActorStarted, ActorStarting, AllActorsSpawned,
 };
 use nullslop_domain::feat::context::strategy::token_estimator::TiktokenCounter;
+use nullslop_domain::feat::workflow::workflow_actor::{WorkflowActor, WorkflowActorDeps};
 use nullslop_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use nullslop_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use nullslop_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
+
 use nullslop_domain::{
     ActorCounter, ActorHostService, ActorMessageSink, AppCore, AppMsg, InMemoryActorHost,
     MessageSink, ShutdownTracker, State, spawn, spawn_forwarding_task, system_spawn,
@@ -350,6 +352,25 @@ pub fn create_core_with_actor_host(
             },
         );
 
+    // Register example workflows.
+    nullslop_domain::feat::workflow::register_workflow(
+        "research-extract-summarize",
+        nullslop_domain::feat::workflow::example::research_extract_summarize::build_research_extract_summarize,
+    );
+
+    // Workflow actor — bridges workflow engine to actor bus.
+    let workflow_result = spawn::<WorkflowActor>(
+        "workflow",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        WorkflowActorDeps {
+            state: state.clone(),
+            services: services.clone(),
+        },
+    );
+
     // ── Build actor host ─────────────────────────────────────────────────
 
     let mut actors = vec![
@@ -369,6 +390,7 @@ pub fn create_core_with_actor_host(
         compaction_result,
         queue_result,
         sidebar_state_result,
+        workflow_result,
     ];
 
     // ── Bench actor (conditional) ─────────────────────────────────────────

@@ -6,8 +6,10 @@ pub mod clipboard;
 pub mod picker;
 pub mod selection_highlight;
 pub mod status_bar;
+pub mod tab_bar;
 pub mod too_small;
 pub mod which_key;
+pub mod workflow_tab;
 
 pub use app_layout::{AppLayout, MIN_HEIGHT, MIN_WIDTH};
 
@@ -54,16 +56,26 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         state.frontend.sidebar_width,
     );
 
-    // Tab bar removed — content renders directly.
+    // Tab bar — renders at top of main area.
+    tab_bar::render_tab_bar(frame, layout.tab_bar, state.frontend.active_tab);
+
     let mut rects = vec![];
-    chat_tab::render_chat_tab(
-        &mut app.ui_registry,
-        &mut app.sidebar,
-        frame,
-        &layout,
-        &state,
-        &mut rects,
-    );
+
+    match state.frontend.active_tab {
+        nullslop_domain::ActiveTab::Chat => {
+            chat_tab::render_chat_tab(
+                &mut app.ui_registry,
+                &mut app.sidebar,
+                frame,
+                &layout,
+                &state,
+                &mut rects,
+            );
+        }
+        nullslop_domain::ActiveTab::Workflow => {
+            workflow_tab::render_workflow_tab(frame, layout.content, &state, 0);
+        }
+    }
 
     // Session preview popup — when sidebar sessions section is focused.
     nullslop_domain::feat::ui::sidebar::sessions::render_session_preview_for_state(

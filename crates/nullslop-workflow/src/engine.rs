@@ -198,6 +198,7 @@ pub async fn execute_with_cancel(
                 for down_name in &downstream {
                     if statuses.get(down_name) == Some(&NodeStatus::Pending) {
                         statuses.insert(down_name.clone(), NodeStatus::Skipped);
+                        ctx.update_node_status(down_name, NodeStatus::Skipped);
                         completed_count += 1;
                     }
                 }
@@ -268,6 +269,7 @@ fn handle_completion(
             outputs: node_outputs,
         } => {
             statuses.insert(name.clone(), NodeStatus::Completed);
+            ctx.update_node_status(&name, NodeStatus::Completed);
             outputs.insert(name.clone(), node_outputs.clone());
             handles.remove(&name);
             *completed_count += 1;
@@ -307,6 +309,7 @@ fn handle_completion(
         }
         CompletionMsg::Failed { name } => {
             statuses.insert(name.clone(), NodeStatus::Failed);
+            ctx.update_node_status(&name, NodeStatus::Failed);
             handles.remove(&name);
             *completed_count += 1;
 
@@ -316,6 +319,7 @@ fn handle_completion(
             for down_name in &downstream {
                 if statuses.get(down_name) == Some(&NodeStatus::Pending) {
                     statuses.insert(down_name.clone(), NodeStatus::Skipped);
+                    ctx.update_node_status(down_name, NodeStatus::Skipped);
                     *completed_count += 1;
                 }
             }
@@ -338,6 +342,7 @@ fn spawn_node(
     let ctx = Arc::clone(ctx);
 
     statuses.insert(name.clone(), NodeStatus::Running);
+    ctx.update_node_status(&name, NodeStatus::Running);
 
     let node_name = name.clone();
     let handle = tokio::spawn(async move {

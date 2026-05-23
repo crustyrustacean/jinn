@@ -18,7 +18,12 @@ fn ts(offset_secs: i64) -> jiff::Timestamp {
 }
 
 /// Helper to create a root SessionTreeEntry.
-fn root(id: &str, title: &str, updated_at: jiff::Timestamp, state: SessionState) -> SessionTreeEntry {
+fn root(
+    id: &str,
+    title: &str,
+    updated_at: jiff::Timestamp,
+    state: SessionState,
+) -> SessionTreeEntry {
     SessionTreeEntry::new(
         SessionId::from(id.to_owned()),
         title.to_owned(),

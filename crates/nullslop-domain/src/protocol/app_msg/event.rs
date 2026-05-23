@@ -121,6 +121,12 @@ pub enum Event {
     SessionPhaseChanged(crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged),
     /// A new entry was appended to a session's history.
     HistoryAppended(crate::feat::session::protocol::history_appended::HistoryAppended),
+    /// A workflow execution started.
+    WorkflowStarted(crate::feat::workflow::protocol::event::WorkflowStarted),
+    /// A workflow execution completed.
+    WorkflowCompleted(crate::feat::workflow::protocol::event::WorkflowCompleted),
+    /// A workflow node status changed.
+    WorkflowNodeStatusChanged(crate::feat::workflow::protocol::event::WorkflowNodeStatusChanged),
 }
 
 impl Event {
@@ -176,6 +182,15 @@ impl Event {
             }
             Self::HistoryAppended(..) => {
                 Some(crate::feat::session::protocol::history_appended::HistoryAppended::TYPE_NAME)
+            }
+            Self::WorkflowStarted(..) => {
+                Some(crate::feat::workflow::protocol::event::WorkflowStarted::TYPE_NAME)
+            }
+            Self::WorkflowCompleted(..) => {
+                Some(crate::feat::workflow::protocol::event::WorkflowCompleted::TYPE_NAME)
+            }
+            Self::WorkflowNodeStatusChanged(..) => {
+                Some(crate::feat::workflow::protocol::event::WorkflowNodeStatusChanged::TYPE_NAME)
             }
         }
     }

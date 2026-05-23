@@ -8,9 +8,7 @@ use std::time::Duration;
 use error_stack::Report;
 
 use crate::node::{NodeContext, NodeError, WorkflowNode};
-use crate::port::{PortDef, PortValues};
-#[cfg(test)]
-use crate::port::PortValue;
+use crate::port::{PortDef, PortValue, PortValues};
 
 /// A node that delays for a configured duration before passing
 /// inputs through to matching output ports.

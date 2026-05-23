@@ -1,7 +1,7 @@
 //! TUI rendering adapter for the vertical minimap column and arrow overlay.
 
-use nullslop_domain::{AppState, FocusScope};
 use nullslop_domain::feat::ui::vertical_minimap;
+use nullslop_domain::{AppState, FocusScope};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Color;

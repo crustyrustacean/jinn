@@ -219,9 +219,9 @@ impl App {
 
                 match subcommand {
                     FetchCommands::Models => {
-                        self.runtime.block_on(async {
-                            fetch_models().await
-                        }).change_context(AppError)?;
+                        self.runtime
+                            .block_on(async { fetch_models().await })
+                            .change_context(AppError)?;
                     }
                 }
             }
@@ -448,9 +448,7 @@ async fn fetch_models() -> Result<(), Report<AppError>> {
 
     let status = response.status();
     if !status.is_success() {
-        return Err(Report::new(AppError).attach(format!(
-            "models.dev returned HTTP {status}"
-        )));
+        return Err(Report::new(AppError).attach(format!("models.dev returned HTTP {status}")));
     }
 
     let body = response
