@@ -1877,11 +1877,12 @@ dependencies = [
 
 [[package]]
 name = "nullslop"
-version = "0.27.0"
+version = "0.28.0"
 dependencies = [
  "clap",
  "clap-verbosity-flag",
  "clap_complete",
+ "dirs",
  "dotenvy",
  "error-stack",
  "jiff",
@@ -1892,6 +1893,7 @@ dependencies = [
  "nullslop-tui",
  "ratatui-spatial-splits",
  "ratatui-which-key",
+ "reqwest",
  "rstest",
  "serde_json",
  "tempfile",
@@ -1942,6 +1944,7 @@ dependencies = [
  "humantime",
  "jiff",
  "kanal",
+ "libc",
  "nullslop-protocol-derive",
  "nullslop-provider",
  "nullslop-selection-widget",
