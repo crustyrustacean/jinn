@@ -112,6 +112,25 @@ Multi-turn: first message asks for X, second message says "actually, do Y instea
 | `redirect-refactor-function` | Add volume calculation | Remove volume, add paint estimation instead | Has "paint", no "volume" |
 | `redirect-switch-language` | Add word counting to Python | Rewrite the whole thing in Rust | Rust compiles, reads input.txt |
 
+### Edit tasks
+
+Model must make precise edits to existing files using only `read` + `write` tools (no `bash`). Verification uses byte-level snapshot comparison against expected output files.
+
+| Task | Description | Difficulty |
+|------|-------------|------------|
+| `edit-typo-large-text` | Fix one typo in a 162-line prose file | Easy |
+| `edit-config-value` | Change one port in a 53-line YAML config | Easy |
+| `edit-json-array` | Remove one object from a 20-element JSON array | Medium |
+| `edit-duplicate-sections` | Change one field type in one of 5 nearly-identical Rust structs | Medium |
+| `edit-insert-function` | Insert a new function between two existing ones in a Rust file | Medium |
+| `edit-large-replace-small-file` | Rewrite an 8-line procedural Python script into a class-based version | Medium |
+| `edit-rename-all` | Rename a variable used 12+ times across one Python file | Medium |
+| `edit-html-table` | Swap two specific rows in a 20-row HTML table | Hard |
+| `edit-json-nested` | Update a deeply nested JSON value among multiple same-named keys | Hard |
+| `edit-multi-file-refactor` | Rename a function across two Rust source files | Hard |
+| `edit-surrounded-by-similar` | Change one threshold among 10 nearly-identical if/elif blocks | Hard |
+| `edit-large-file-surgical` | Change exactly one `1024` among 5 occurrences in a 366-line Rust file | Hard |
+
 ## Adding New Tasks
 
 Tasks are organized into category directories under `src/tasks/`. Each task is a single file with its definition and verification function co-located.
@@ -131,6 +150,7 @@ src/tasks/
 ```
 
 1. **Choose a category** (or create a new one under `src/tasks/`):
+   - `edit/` — model makes precise edits to existing files (no `bash`, snapshot verification)
    - `one_shot/` — single message, model produces output from scratch
    - `fix_code/` — model receives broken code and must fix it
    - `redirect/` — multi-turn, model is redirected mid-task
