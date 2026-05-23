@@ -1,53 +1,43 @@
-//! Global workflow registry.
+//! Workflow registry — maps workflow names to builder functions.
 //!
-//! Maps workflow names to builder functions that produce [`WorkflowGraph`] instances.
-//! Workflows register themselves during app startup via [`register_workflow`].
+//! Instance-based registry following the [`BuiltinRegistry`](crate::feat::session_lifecycle::builtin::BuiltinRegistry) pattern.
+//! Created during startup, populated via [`register_all_workflows`], and injected
+//! into [`WorkflowActorDeps`](crate::feat::workflow::workflow_actor::WorkflowActorDeps).
 
 use std::collections::HashMap;
-use std::sync::OnceLock;
-use std::sync::RwLock;
 
 use nullslop_workflow::graph::WorkflowGraph;
 
 /// A function that builds a workflow graph.
-pub type WorkflowBuilder = fn(String) -> WorkflowGraph;
+pub type WorkflowBuilder = fn() -> WorkflowGraph;
 
-struct Registry(HashMap<&'static str, WorkflowBuilder>);
-
-static REGISTRY: OnceLock<RwLock<Registry>> = OnceLock::new();
-
-fn registry() -> &'static RwLock<Registry> {
-    REGISTRY.get_or_init(|| RwLock::new(Registry(HashMap::new())))
+/// Instance-based workflow registry.
+///
+/// Maps workflow names to builder functions. Created once during startup,
+/// populated via [`register()`](Self::register), and injected into the
+/// workflow actor via deps. No globals.
+#[derive(Debug, Default)]
+pub struct WorkflowRegistry {
+    builders: HashMap<&'static str, WorkflowBuilder>,
 }
 
-/// Register a workflow builder under the given name.
-///
-/// Call this during app startup (e.g., in `actor_wiring.rs`).
-///
-/// # Panics
-///
-/// Panics if the workflow registry lock is poisoned.
-pub fn register_workflow(name: &'static str, builder: WorkflowBuilder) {
-    registry()
-        .write()
-        .expect("workflow registry lock poisoned")
-        .0
-        .insert(name, builder);
-}
+impl WorkflowRegistry {
+    /// Creates a new empty registry.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
 
-/// Look up a workflow builder by name.
-///
-/// Returns `None` if no workflow with the given name has been registered.
-///
-/// # Panics
-///
-/// Panics if the workflow registry lock is poisoned.
-#[must_use]
-pub fn get_workflow(name: &str) -> Option<WorkflowBuilder> {
-    registry()
-        .read()
-        .expect("workflow registry lock poisoned")
-        .0
-        .get(name)
-        .copied()
+    /// Register a workflow builder under the given name.
+    pub fn register(&mut self, name: &'static str, builder: WorkflowBuilder) {
+        self.builders.insert(name, builder);
+    }
+
+    /// Look up a workflow builder by name.
+    ///
+    /// Returns `None` if no workflow with the given name has been registered.
+    #[must_use]
+    pub fn get(&self, name: &str) -> Option<WorkflowBuilder> {
+        self.builders.get(name).copied()
+    }
 }
