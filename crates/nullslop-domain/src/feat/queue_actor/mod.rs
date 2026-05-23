@@ -282,7 +282,7 @@ mod tests {
     use crate::common::actor::{ActorContext, RecordingSink};
     use crate::common::app_state::AppState;
     use crate::feat::session::chat_session::SessionPhase;
-    use crate::protocol::{ChatEntry, SessionId};
+    use crate::protocol::ChatEntry;
 
     fn test_actor() -> QueueActor {
         QueueActor {

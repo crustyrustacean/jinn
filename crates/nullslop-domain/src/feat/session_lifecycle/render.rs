@@ -108,7 +108,7 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
             crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(s) => Some(s.as_str()),
             crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(_) => None,
         })
-        .map(|cmd| CommandTemplate::parse(cmd));
+        .map(CommandTemplate::parse);
 
     let theme = &state.frontend.theme;
 
