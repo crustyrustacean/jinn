@@ -64,6 +64,11 @@ pub trait WorkflowNode: Send + Sync {
     /// Declare the output ports this node produces.
     fn output_ports(&self) -> Vec<crate::port::PortDef>;
 
+    /// Clones this node into a boxed trait object.
+    ///
+    /// Used by the execution engine to move nodes into spawned tasks.
+    fn clone_box(&self) -> Box<dyn WorkflowNode>;
+
     /// Execute the node.
     ///
     /// `inputs` is guaranteed to contain exactly the ports declared by
@@ -121,6 +126,10 @@ mod tests {
             let mut output = PortValues::new();
             output.insert("out".to_owned(), PortValue::String(value));
             Ok(output)
+        }
+
+        fn clone_box(&self) -> Box<dyn WorkflowNode> {
+            Box::new(EchoNode)
         }
     }
 
