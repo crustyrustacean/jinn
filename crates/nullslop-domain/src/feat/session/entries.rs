@@ -19,7 +19,7 @@ use super::SessionStoreService;
 /// Each tree's position is determined by the most recent `updated_at`
 /// across all nodes in the tree. Loaded trees appear before Archived trees.
 /// Within each tree, children are sorted by `updated_at` descending.
-fn sort_entries_tree_aware(entries: &mut Vec<SessionTreeEntry>) {
+pub(crate) fn sort_entries_tree_aware(entries: &mut Vec<SessionTreeEntry>) {
     if entries.is_empty() {
         return;
     }
@@ -58,11 +58,11 @@ fn sort_entries_tree_aware(entries: &mut Vec<SessionTreeEntry>) {
         })
         .collect();
 
-    // 5 & 6. Sort roots: session_state descending (Loaded first), then tree-max updated_at descending.
+    // 5 & 6. Sort roots: session_state ascending (Loaded < Archived → Loaded first), then tree-max updated_at descending.
     roots.sort_by(|&a, &b| {
-        entries[b]
+        entries[a]
             .session_state
-            .cmp(&entries[a].session_state)
+            .cmp(&entries[b].session_state)
             .then_with(|| tree_max[&entries[b].session_id].cmp(&tree_max[&entries[a].session_id]))
     });
 
