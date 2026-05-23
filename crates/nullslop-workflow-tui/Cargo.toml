@@ -9,7 +9,9 @@ ratatui = { workspace = true }
 
 [dev-dependencies]
 async-trait = { workspace = true }
+crossterm = { workspace = true }
 error-stack = { workspace = true }
+tokio = { workspace = true }
 
 [lints]
 workspace = true
