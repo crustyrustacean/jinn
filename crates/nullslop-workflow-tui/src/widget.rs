@@ -5,8 +5,7 @@
 
 use std::collections::HashMap;
 
-use nullslop_workflow::engine::NodeStatus;
-use nullslop_workflow::graph::WorkflowGraph;
+use nullslop_workflow::execution::ExecutionSnapshot;
 use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
 
 use crate::connection::{
@@ -21,28 +20,17 @@ use crate::viewport::ViewportState;
 /// Constructed fresh each frame (standard ratatui pattern). Renders the entire
 /// graph — nodes with status indicators, typed ports, and L-shaped connections.
 pub struct WorkflowWidget<'a> {
-    /// Documentation for the `graph` field.
-    graph: &'a WorkflowGraph,
-    /// Documentation for the `statuses` field.
-    statuses: &'a HashMap<String, NodeStatus>,
-    /// Documentation for the `viewport` field.
+    snapshot: &'a ExecutionSnapshot,
     viewport: &'a ViewportState,
-    /// Documentation for the `tick` field.
     tick: u8,
 }
 
 impl<'a> WorkflowWidget<'a> {
     /// Creates a new workflow widget.
     #[must_use]
-    pub fn new(
-        graph: &'a WorkflowGraph,
-        statuses: &'a HashMap<String, NodeStatus>,
-        viewport: &'a ViewportState,
-        tick: u8,
-    ) -> Self {
+    pub fn new(snapshot: &'a ExecutionSnapshot, viewport: &'a ViewportState, tick: u8) -> Self {
         Self {
-            graph,
-            statuses,
+            snapshot,
             viewport,
             tick,
         }
@@ -64,9 +52,9 @@ impl<'a> WorkflowWidget<'a> {
         let node_rects: Vec<Rect> = layout.nodes.iter().map(super::node::VisualNode::rect).collect();
         let mut grid: HashMap<(i32, i32), CellInfo> = HashMap::new();
 
-        for edge in self.graph.edges() {
+        for edge in self.snapshot.structure().edges() {
             // Find the output port position on the source node.
-            let Some(src_node) = node_map.get(edge.source_node) else {
+            let Some(src_node) = node_map.get(edge.source_node.as_str()) else {
                 continue;
             };
             let src_port_idx = src_node
@@ -79,7 +67,7 @@ impl<'a> WorkflowWidget<'a> {
             let (sx, sy) = src_node.output_port_pos(src_idx);
 
             // Find the input port position on the target node.
-            let Some(tgt_node) = node_map.get(edge.target_node) else {
+            let Some(tgt_node) = node_map.get(edge.target_node.as_str()) else {
                 continue;
             };
             let tgt_port_idx = tgt_node
@@ -108,7 +96,7 @@ impl<'a> WorkflowWidget<'a> {
 impl Widget for WorkflowWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         // Compute layout.
-        let layout = layout::compute(self.graph, self.statuses);
+        let layout = layout::compute(self.snapshot);
 
         if layout.nodes.is_empty() {
             return;
@@ -134,6 +122,8 @@ impl Widget for WorkflowWidget<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nullslop_workflow::execution::WorkflowExecution;
+    use nullslop_workflow::graph::WorkflowGraph;
     use nullslop_workflow::graph::WorkflowGraphBuilder;
     use nullslop_workflow::node::{NodeContext, NodeError, WorkflowNode};
     use nullslop_workflow::port::{PortDef, PortValues};
@@ -214,19 +204,13 @@ mod tests {
         b.build().unwrap()
     }
 
-    fn all_pending(graph: &WorkflowGraph) -> HashMap<String, NodeStatus> {
-        graph
-            .node_names()
-            .map(|n| (n.to_owned(), NodeStatus::Pending))
-            .collect()
-    }
-
     #[test]
     fn widget_renders_graph_without_panic() {
         let graph = build_two_node_graph();
-        let statuses = all_pending(&graph);
+        let execution = WorkflowExecution::new(graph);
+        let snapshot = execution.snapshot();
         let viewport = ViewportState::new();
-        let widget = WorkflowWidget::new(&graph, &statuses, &viewport, 0);
+        let widget = WorkflowWidget::new(&snapshot, &viewport, 0);
 
         let area = Rect {
             x: 0,
@@ -248,9 +232,10 @@ mod tests {
             b.add_node("empty".to_owned(), Box::new(TestNode::source("empty")));
             b.build().unwrap()
         });
-        let statuses = HashMap::new();
+        let execution = WorkflowExecution::new(graph);
+        let snapshot = execution.snapshot();
         let viewport = ViewportState::new();
-        let widget = WorkflowWidget::new(&graph, &statuses, &viewport, 0);
+        let widget = WorkflowWidget::new(&snapshot, &viewport, 0);
 
         let area = Rect {
             x: 0,
@@ -265,9 +250,10 @@ mod tests {
     #[test]
     fn widget_with_selected_node_renders() {
         let graph = build_two_node_graph();
-        let statuses = all_pending(&graph);
+        let execution = WorkflowExecution::new(graph);
+        let snapshot = execution.snapshot();
         let viewport = ViewportState::with_selected("src".to_owned());
-        let widget = WorkflowWidget::new(&graph, &statuses, &viewport, 0);
+        let widget = WorkflowWidget::new(&snapshot, &viewport, 0);
 
         let area = Rect {
             x: 0,
@@ -285,8 +271,9 @@ mod tests {
     #[test]
     fn widget_renders_running_spinner() {
         let graph = build_two_node_graph();
-        let mut statuses = all_pending(&graph);
-        statuses.insert("src".to_owned(), NodeStatus::Running);
+        let execution = WorkflowExecution::new(graph);
+        execution.set_status("src", nullslop_workflow::engine::NodeStatus::Running);
+        let snapshot = execution.snapshot();
         let viewport = ViewportState::new();
 
         let area = Rect {
@@ -298,7 +285,7 @@ mod tests {
         let mut buf = Buffer::empty(area);
 
         // Render with tick=0.
-        let w = WorkflowWidget::new(&graph, &statuses, &viewport, 0);
+        let w = WorkflowWidget::new(&snapshot, &viewport, 0);
         w.render(area, &mut buf);
 
         // The spinner frame for tick=0 is ⠋. Check it appears somewhere.
@@ -328,9 +315,10 @@ mod tests {
         b.connect("c", "out", "d", "in_2").unwrap();
         let graph = b.build().unwrap();
 
-        let statuses = all_pending(&graph);
+        let execution = WorkflowExecution::new(graph);
+        let snapshot = execution.snapshot();
         let viewport = ViewportState::new();
-        let widget = WorkflowWidget::new(&graph, &statuses, &viewport, 0);
+        let widget = WorkflowWidget::new(&snapshot, &viewport, 0);
 
         let area = Rect {
             x: 0,

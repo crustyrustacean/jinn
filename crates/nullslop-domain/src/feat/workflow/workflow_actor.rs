@@ -92,15 +92,11 @@ impl WorkflowActor {
             return;
         };
 
-        // Build the graph and wrap in a WorkflowExecution.
-        let graph_for_engine = builder(payload.user_prompt.clone());
-        let execution = Arc::new(nullslop_workflow::execution::WorkflowExecution::new(graph_for_engine));
+        // Build the graph once and wrap in a WorkflowExecution.
+        let execution = Arc::new(nullslop_workflow::execution::WorkflowExecution::new(builder(payload.user_prompt.clone())));
 
-        // Build a second copy for rendering (WorkflowGraph is not Clone).
-        let graph_for_rendering = builder(payload.user_prompt.clone());
-
-        // Create workflow state with the rendering copy.
-        let mut workflow_state = WorkflowState::new(name.clone(), graph_for_rendering);
+        // Create workflow state with the shared execution.
+        let mut workflow_state = WorkflowState::new(name.clone(), execution.clone());
         workflow_state.id = workflow_id.clone();
 
         // Insert into app state.

@@ -222,7 +222,7 @@ impl WorkflowExecution {
     /// Called by the engine on state transitions. Creates a new
     /// [`ExecutionSnapshot`] with the updated status map and swaps it in.
     /// The previous snapshot stays alive as long as any reader holds an `Arc`.
-    pub(crate) fn set_status(&self, node_name: &str, status: NodeStatus) {
+    pub fn set_status(&self, node_name: &str, status: NodeStatus) {
         let current = self.snapshot.load();
         let mut new_statuses = current.statuses.clone();
         new_statuses.insert(node_name.to_owned(), status);

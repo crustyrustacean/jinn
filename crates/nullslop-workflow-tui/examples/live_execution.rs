@@ -11,7 +11,6 @@
 #[path = "utils/mod.rs"]
 mod common;
 
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -59,18 +58,16 @@ fn build_graph() -> nullslop_workflow::graph::WorkflowGraph {
 async fn main() {
     let mut terminal = common::setup_terminal();
 
-    // Build a separate graph for rendering (the engine consumes its graph).
-    let render_graph = build_graph();
-    let node_names: Vec<String> = render_graph.node_names().map(std::borrow::ToOwned::to_owned).collect();
-
     // Spawn the engine in a background task.
     let execution = Arc::new(WorkflowExecution::new(build_graph()));
-    let engine_handle = tokio::spawn(async move { engine::execute(execution, Arc::new(Ctx)).await });
+    let engine_exec = execution.clone();
+    let engine_handle = tokio::spawn(async move { engine::execute(engine_exec, Arc::new(Ctx)).await });
     let viewport = ViewportState::new();
     let mut tick: u8 = 0;
 
-    // Show "running" state while the engine works.
+    // Show live state while the engine works.
     loop {
+        let snapshot = execution.snapshot();
         terminal
             .draw(|f| {
                 let help_height = 2u16;
@@ -87,14 +84,7 @@ async fn main() {
                     height: help_height,
                 };
 
-                // Show a "mid-execution" snapshot.
-                let statuses = HashMap::from([
-                    ("fast".to_owned(), NodeStatus::Completed),
-                    ("medium".to_owned(), NodeStatus::Running),
-                    ("slow".to_owned(), NodeStatus::Pending),
-                ]);
-
-                let widget = WorkflowWidget::new(&render_graph, &statuses, &viewport, tick);
+                let widget = WorkflowWidget::new(&snapshot, &viewport, tick);
                 widget.render(main_area, f.buffer_mut());
 
                 f.render_widget(
@@ -120,14 +110,15 @@ async fn main() {
         }
     }
 
-    // Show final state from engine result.
+    // Show final state from the execution snapshot.
     let result = engine_handle.await.expect("task join");
-    let final_statuses = match result {
-        Ok(res) => res.statuses,
-        Err(_) => node_names
-            .iter()
-            .map(|n| (n.clone(), NodeStatus::Failed))
-            .collect(),
+    let snapshot = execution.snapshot();
+
+    let status_msg = match result {
+        Ok(_) => Paragraph::new(" ✅ Workflow complete! All nodes succeeded. (q to quit)")
+            .style(Style::default().fg(Color::Green)),
+        Err(_) => Paragraph::new(" ❌ Workflow failed. (q to quit)")
+            .style(Style::default().fg(Color::Red)),
     };
 
     terminal
@@ -146,14 +137,10 @@ async fn main() {
                 height: help_height,
             };
 
-            let widget = WorkflowWidget::new(&render_graph, &final_statuses, &viewport, tick);
+            let widget = WorkflowWidget::new(&snapshot, &viewport, tick);
             widget.render(main_area, f.buffer_mut());
 
-            f.render_widget(
-                Paragraph::new(" ✅ Workflow complete! All nodes succeeded. (q to quit)")
-                    .style(Style::default().fg(Color::Green)),
-                help_area,
-            );
+            f.render_widget(status_msg, help_area);
         })
         .expect("draw failed");
 
