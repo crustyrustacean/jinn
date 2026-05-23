@@ -166,6 +166,7 @@ impl ExecutionSnapshot {
 /// Internally uses [`ArcSwap`] for lock-free atomic snapshots.
 pub struct WorkflowExecution {
     graph: WorkflowGraph,
+    /// Lock-free atomic snapshot — swapped on every status update.
     snapshot: ArcSwap<ExecutionSnapshot>,
 }
 
