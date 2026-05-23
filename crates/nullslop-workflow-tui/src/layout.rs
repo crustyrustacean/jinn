@@ -96,6 +96,7 @@ pub fn compute(graph: &WorkflowGraph, statuses: &HashMap<String, NodeStatus>) ->
 
         let mut y_cursor: u16 = 0;
         for name in col_names {
+            #[expect(clippy::expect_used, reason = "node was created in first pass")]
             let node = visual_nodes
                 .get_mut(name)
                 .expect("node was created in first pass");
@@ -228,6 +229,7 @@ mod tests {
         }
     }
 
+    #[expect(dead_code, reason = "test helper implementing trait")]
     struct TestContext;
     impl NodeContext for TestContext {}
 

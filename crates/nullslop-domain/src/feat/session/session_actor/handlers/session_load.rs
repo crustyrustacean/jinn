@@ -5,6 +5,7 @@
 //! point in its history.
 
 use crate::common::actor::ActorContext;
+use crate::feat::context::assemble::assemble_prompt;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::protocol::{ChatEntry, Command, Event};
 
@@ -82,6 +83,19 @@ impl SessionPersistenceActor {
                     session_id: session_id.clone(),
                 },
             ));
+        }
+
+        // Recalculate context size for the status bar.
+        // cached_context_size is ephemeral (not persisted), so it's None after load.
+        // Running assemble_prompt once gives an accurate current context size.
+        let assembled = {
+            let guard = self.state.read();
+            assemble_prompt(&guard, &session_id, &self.counter)
+        };
+        {
+            let mut state = self.state.write();
+            let session = state.session.get_mut(&session_id).expect("just inserted");
+            session.set_context_size(assembled.estimated_tokens());
         }
 
         // Persist the restored session (includes the "Session restored" system entries).

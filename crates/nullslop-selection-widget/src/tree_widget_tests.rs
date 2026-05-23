@@ -117,6 +117,7 @@ fn buffer_to_string(buffer: &Buffer) -> String {
     let mut s = String::new();
     for y in 0..buffer.area.height {
         for x in 0..buffer.area.width {
+            #[expect(clippy::expect_used, reason = "buffer cell always exists within area")]
             let cell = buffer.cell((x, y)).expect("cell");
             s.push_str(cell.symbol());
         }
