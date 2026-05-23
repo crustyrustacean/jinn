@@ -89,6 +89,7 @@ impl DiscoverActor {
     }
 
     /// Iterates all providers, discovers models, saves cache, emits event.
+    #[allow(clippy::too_many_lines)]
     async fn refresh_models(&self, ctx: &ActorContext) {
         let entries = {
             let registry = self.registry.read();
@@ -97,6 +98,12 @@ impl DiscoverActor {
 
         let mut results: HashMap<String, Vec<ModelInfo>> = HashMap::new();
         let mut errors: HashMap<String, String> = HashMap::new();
+
+        // Load models.dev reference data for context length fallback.
+        let models_dev = crate::feat::provider_infra::ModelsDevData::load(
+            &self.app_paths.models_dev_user_path(),
+            &self.app_paths.models_dev_system_path(),
+        );
 
         for entry in &entries {
             // Need a placeholder model for the builder — use the first static model.
@@ -166,6 +173,16 @@ impl DiscoverActor {
 
             match result {
                 Ok(models) => {
+                    // Apply models.dev context length fallback to models
+                    // that didn't get it from the provider API.
+                    let mut models = models;
+                    for model in &mut models {
+                        if model.context_length.is_none()
+                            && let Some(ctx) = models_dev.get(&model.id)
+                        {
+                            model.context_length = Some(ctx);
+                        }
+                    }
                     tracing::info!(
                         provider = %entry.name,
                         count = models.len(),
