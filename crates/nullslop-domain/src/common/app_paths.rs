@@ -145,6 +145,24 @@ impl AppPaths {
         self.system_data_dir.join("prompts")
     }
 
+    /// User's models.dev reference file (`~/.cache/nullslop/models.dev.json`).
+    ///
+    /// Written by `nullslop fetch models`. Contains the full models.dev API
+    /// dump used as a fallback for context window lookup.
+    #[must_use]
+    pub fn models_dev_user_path(&self) -> PathBuf {
+        self.cache_dir.join(APP_NAME).join("models.dev.json")
+    }
+
+    /// System models.dev reference file (`/usr/share/nullslop/models.dev.json`).
+    ///
+    /// Installed by the system package. Used as a fallback when no
+    /// user-level file exists.
+    #[must_use]
+    pub fn models_dev_system_path(&self) -> PathBuf {
+        self.system_data_dir.join("models.dev.json")
+    }
+
     // -- Merged resource paths (system + user) ---------------------------------
 
     /// Returns merged theme file paths from system and user directories.
