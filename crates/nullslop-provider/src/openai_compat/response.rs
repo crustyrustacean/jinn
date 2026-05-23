@@ -650,4 +650,38 @@ mod tests {
         assert_eq!(usage.prompt_tokens, Some(10));
         assert_eq!(usage.completion_tokens, Some(20));
     }
+
+    #[rstest::rstest]
+    fn top_level_error_object_produces_stream_error() {
+        // Given an OpenRouter-style error response.
+        let json = r#"{"error":{"type":"invalid_request_error","message":"context_length_exceeded"}}"#;
+
+        // When parsing.
+        let events = parse_single(json);
+
+        // Then it produces a single StreamEvent::Error.
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            &events[0],
+            StreamEvent::Error { error_type, message }
+            if error_type == "invalid_request_error" && message == "context_length_exceeded"
+        ));
+    }
+
+    #[rstest::rstest]
+    fn error_object_with_missing_fields_produces_error_with_defaults() {
+        // Given an error object with no type or message.
+        let json = r#"{"error":{}}"#;
+
+        // When parsing.
+        let events = parse_single(json);
+
+        // Then it produces a StreamEvent::Error with defaults.
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            &events[0],
+            StreamEvent::Error { error_type, message }
+            if error_type == "unknown_error" && message == "Unknown error"
+        ));
+    }
 }
