@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use nullslop_workflow::engine::NodeStatus;
-use nullslop_workflow::graph::WorkflowGraph;
+use nullslop_workflow::execution::{ExecutionSnapshot, WorkflowStructure};
 
 use crate::node::VisualNode;
 
@@ -58,15 +58,16 @@ impl GraphLayout {
 ///
 /// Does not panic; returns an empty layout for empty graphs.
 #[must_use]
-pub fn compute(graph: &WorkflowGraph, statuses: &HashMap<String, NodeStatus>) -> GraphLayout {
+pub fn compute(snapshot: &ExecutionSnapshot) -> GraphLayout {
+    let structure = snapshot.structure();
     let mut nodes = Vec::new();
 
-    let all_names: Vec<&str> = graph.node_names().collect();
+    let all_names: Vec<&str> = structure.node_names().collect();
     if all_names.is_empty() {
         return GraphLayout { nodes };
     }
 
-    let columns = compute_columns(graph);
+    let columns = compute_columns(structure);
 
     let mut column_nodes: HashMap<usize, Vec<&str>> = HashMap::new();
     for name in &all_names {
@@ -79,9 +80,9 @@ pub fn compute(graph: &WorkflowGraph, statuses: &HashMap<String, NodeStatus>) ->
     // First pass: compute all VisualNodes to get widths/heights.
     let mut visual_nodes: HashMap<&str, VisualNode> = HashMap::new();
     for name in &all_names {
-        let input_defs = graph.node_input_ports(name).unwrap_or_default();
-        let output_defs = graph.node_output_ports(name).unwrap_or_default();
-        let status = statuses.get(*name).copied().unwrap_or(NodeStatus::Pending);
+        let input_defs = structure.node_input_ports(name).unwrap_or_default();
+        let output_defs = structure.node_output_ports(name).unwrap_or_default();
+        let status = snapshot.status_of(name).unwrap_or(NodeStatus::Pending);
         let node = VisualNode::compute(name.to_string(), &input_defs, &output_defs, status);
         visual_nodes.insert(name, node);
     }
@@ -119,18 +120,18 @@ pub fn compute(graph: &WorkflowGraph, statuses: &HashMap<String, NodeStatus>) ->
 /// Computes the topological column for each node.
 ///
 /// Source nodes get column 0. Every other node gets `max(parent_columns) + 1`.
-fn compute_columns(graph: &WorkflowGraph) -> HashMap<&str, usize> {
+fn compute_columns(structure: &WorkflowStructure) -> HashMap<&str, usize> {
     let mut columns: HashMap<&str, usize> = HashMap::new();
 
     // Initialize source nodes at column 0.
-    for name in graph.sources() {
+    for name in structure.sources() {
         columns.insert(name.as_str(), 0);
     }
 
     // Also handle nodes with no incoming edges that aren't in sources()
     // (e.g., nodes with no input ports).
-    for name in graph.node_names() {
-        let has_inputs = graph
+    for name in structure.node_names() {
+        let has_inputs = structure
             .node_input_ports(name)
             .is_some_and(|ports| !ports.is_empty());
         if !has_inputs {
@@ -143,19 +144,19 @@ fn compute_columns(graph: &WorkflowGraph) -> HashMap<&str, usize> {
     let mut changed = true;
     while changed {
         changed = false;
-        for edge in graph.edges() {
-            let src_col = columns.get(edge.source_node).copied().unwrap_or(0);
-            let tgt_col = columns.get(edge.target_node).copied().unwrap_or(0);
+        for edge in structure.edges() {
+            let src_col = columns.get(edge.source_node.as_str()).copied().unwrap_or(0);
+            let tgt_col = columns.get(edge.target_node.as_str()).copied().unwrap_or(0);
             let new_col = src_col + 1;
             if new_col > tgt_col {
-                columns.insert(edge.target_node, new_col);
+                columns.insert(edge.target_node.as_str(), new_col);
                 changed = true;
             }
         }
     }
 
     // Assign column 0 to any remaining nodes (disconnected, no edges).
-    for name in graph.node_names() {
+    for name in structure.node_names() {
         columns.entry(name).or_insert(0);
     }
 
@@ -188,6 +189,8 @@ fn compute_x_offset(
 #[expect(clippy::indexing_slicing, reason = "test indices are known-valid")]
 mod tests {
     use super::*;
+    use nullslop_workflow::execution::WorkflowExecution;
+    use nullslop_workflow::graph::WorkflowGraph;
     use nullslop_workflow::graph::WorkflowGraphBuilder;
     use nullslop_workflow::node::{NodeContext, NodeError, WorkflowNode};
     use nullslop_workflow::port::{PortDef, PortValues};
@@ -303,7 +306,9 @@ mod tests {
     #[test]
     fn linear_graph_assigns_correct_columns() {
         let graph = build_linear();
-        let columns = compute_columns(&graph);
+        let execution = WorkflowExecution::new(graph);
+        let snapshot = execution.snapshot();
+        let columns = compute_columns(snapshot.structure());
         assert_eq!(columns["a"], 0);
         assert_eq!(columns["b"], 1);
         assert_eq!(columns["c"], 2);
@@ -312,7 +317,9 @@ mod tests {
     #[test]
     fn fan_out_nodes_share_column() {
         let graph = build_fan_out();
-        let columns = compute_columns(&graph);
+        let execution = WorkflowExecution::new(graph);
+        let snapshot = execution.snapshot();
+        let columns = compute_columns(snapshot.structure());
         assert_eq!(columns["a"], 0);
         assert_eq!(columns["b"], 1);
         assert_eq!(columns["c"], 1);
@@ -321,7 +328,9 @@ mod tests {
     #[test]
     fn diamond_assigns_correct_columns() {
         let graph = build_diamond();
-        let columns = compute_columns(&graph);
+        let execution = WorkflowExecution::new(graph);
+        let snapshot = execution.snapshot();
+        let columns = compute_columns(snapshot.structure());
         assert_eq!(columns["a"], 0);
         assert_eq!(columns["b"], 1);
         assert_eq!(columns["c"], 1);
@@ -331,8 +340,8 @@ mod tests {
     #[test]
     fn layout_produces_non_overlapping_positions() {
         let graph = build_diamond();
-        let statuses = all_pending(&graph);
-        let layout = compute(&graph, &statuses);
+        let execution = WorkflowExecution::new(graph);
+        let layout = compute(&*execution.snapshot());
 
         for i in 0..layout.nodes.len() {
             for j in (i + 1)..layout.nodes.len() {
@@ -353,8 +362,8 @@ mod tests {
     #[test]
     fn layout_port_positions_are_outside_borders() {
         let graph = build_linear();
-        let statuses = all_pending(&graph);
-        let layout = compute(&graph, &statuses);
+        let execution = WorkflowExecution::new(graph);
+        let layout = compute(&*execution.snapshot());
 
         for node in &layout.nodes {
             for (i, port) in node.input_ports.iter().enumerate() {
@@ -411,8 +420,8 @@ mod tests {
     fn layout_content_size_linear_graph() {
         // Given a 3-node linear graph.
         let graph = build_linear();
-        let statuses = all_pending(&graph);
-        let layout = compute(&graph, &statuses);
+        let execution = WorkflowExecution::new(graph);
+        let layout = compute(&*execution.snapshot());
 
         // Then content_size returns non-zero bounds.
         let (w, h) = layout.content_size();
@@ -424,8 +433,8 @@ mod tests {
     fn layout_content_size_diamond_graph() {
         // Given a diamond graph (fan-out + fan-in).
         let graph = build_diamond();
-        let statuses = all_pending(&graph);
-        let layout = compute(&graph, &statuses);
+        let execution = WorkflowExecution::new(graph);
+        let layout = compute(&*execution.snapshot());
 
         // Then content_size returns bounds larger than a single node.
         let (w, h) = layout.content_size();
