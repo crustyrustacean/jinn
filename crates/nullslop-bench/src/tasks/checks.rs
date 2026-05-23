@@ -251,3 +251,94 @@ pub fn check_fizzbuzz_output(dir: &Path) -> CheckResult {
         ),
     }
 }
+
+/// Compares a file in the working directory against expected content byte-for-byte.
+///
+/// `expected` is typically provided via `include_str!` from an `expected/` directory
+/// co-located with the task definition. The comparison is exact — trailing newlines,
+/// whitespace, and encoding must all match.
+pub fn check_snapshot(dir: &Path, name: &str, expected: &str) -> CheckResult {
+    let check_name = format!("snapshot({name})");
+    let actual = std::fs::read_to_string(dir.join(name)).unwrap_or_default();
+
+    if actual == expected {
+        CheckResult::pass(check_name)
+    } else {
+        let expected_lines: Vec<&str> = expected.lines().collect();
+        let actual_lines: Vec<&str> = actual.lines().collect();
+
+        let mut first_diff = None;
+        for (i, (e, a)) in expected_lines.iter().zip(actual_lines.iter()).enumerate() {
+            if e != a {
+                first_diff = Some((i + 1, *e, *a));
+                break;
+            }
+        }
+
+        let detail = match first_diff {
+            Some((line, exp, act)) => format!(
+                "snapshot mismatch at line {line}\n  expected: {exp}\n  actual:   {act}\n  expected {} lines, got {} lines",
+                expected_lines.len(),
+                actual_lines.len()
+            ),
+            None => format!(
+                "snapshot mismatch: expected {} lines, got {} lines",
+                expected_lines.len(),
+                actual_lines.len()
+            ),
+        };
+
+        CheckResult::fail(check_name, detail)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, reason = "test code")]
+
+    use super::*;
+
+    #[test]
+    fn check_snapshot_passes_when_content_matches() {
+        // Given a temp directory with a file matching expected content.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(root.path().join("hello.txt"), "hello world\n").expect("write");
+
+        // When checking snapshot.
+        let result = check_snapshot(root.path(), "hello.txt", "hello world\n");
+
+        // Then it passes.
+        assert!(result.passed);
+        assert_eq!(result.name, "snapshot(hello.txt)");
+    }
+
+    #[test]
+    fn check_snapshot_fails_with_first_diff_when_content_mismatches() {
+        // Given a temp directory with a file that differs on line 2.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(root.path().join("data.txt"), "line1\nwrong\nline3\n")
+            .expect("write");
+
+        // When checking snapshot against expected content.
+        let result = check_snapshot(root.path(), "data.txt", "line1\nline2\nline3\n");
+
+        // Then it fails with diff info about line 2.
+        assert!(!result.passed);
+        assert_eq!(result.name, "snapshot(data.txt)");
+        assert!(
+            result.detail.contains("line 2"),
+            "detail should mention line 2: {}",
+            result.detail
+        );
+        assert!(
+            result.detail.contains("expected: line2"),
+            "detail should show expected: {}",
+            result.detail
+        );
+        assert!(
+            result.detail.contains("actual:   wrong"),
+            "detail should show actual: {}",
+            result.detail
+        );
+    }
+}
