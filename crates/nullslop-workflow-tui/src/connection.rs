@@ -3,10 +3,11 @@
 //! Provides the [`ConnectionRouter`] trait and [`SimpleRouter`] which produces
 //! L-shaped paths (right → vertical → right) between output and input ports.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
+use ratatui::style::Color;
 
 use crate::port::port_type_color;
 use nullslop_workflow::port::PortType;
@@ -18,6 +19,91 @@ pub struct PathCell {
     pub pos: (i32, i32),
     /// Box-drawing character to render at this position.
     pub char: char,
+}
+
+/// Merged direction and color information for a cell shared by multiple paths.
+pub(crate) struct CellInfo {
+    /// All directions in which wires extend from this cell.
+    pub(crate) dirs: HashSet<Dir2D>,
+    /// The port type of the first path to contribute to this cell.
+    pub(crate) port_type: PortType,
+    /// True if multiple different port types contribute to this cell.
+    pub(crate) mixed: bool,
+}
+
+/// Inserts a routed path into a merged grid, accumulating direction information.
+///
+/// For each cell in the path, computes the directions toward its neighbors
+/// and merges them into the grid entry for that position. Tracks port type
+/// mixing for color decisions.
+pub(crate) fn insert_path_into_grid(
+    grid: &mut HashMap<(i32, i32), CellInfo>,
+    path: &[PathCell],
+    port_type: PortType,
+) {
+    #[expect(clippy::indexing_slicing, reason = "indices are bounds-checked by enumerate")]
+    for (i, cell) in path.iter().enumerate() {
+        let entry = grid.entry(cell.pos).or_insert_with(|| CellInfo {
+            dirs: HashSet::new(),
+            port_type,
+            mixed: false,
+        });
+
+        if entry.port_type != port_type {
+            entry.mixed = true;
+        }
+
+        if i > 0 {
+            if let Some(d) = dir_toward(cell.pos, path[i - 1].pos) {
+                entry.dirs.insert(d);
+            }
+        }
+        if i + 1 < path.len() {
+            if let Some(d) = dir_toward(cell.pos, path[i + 1].pos) {
+                entry.dirs.insert(d);
+            }
+        }
+    }
+}
+
+/// Renders a merged path grid into a ratatui buffer.
+///
+/// Cells with 3+ directions (junctions) or mixed port types render in gray.
+/// Other cells render in their port type's color.
+pub fn render_merged_grid(
+    buf: &mut Buffer,
+    grid: &HashMap<(i32, i32), CellInfo>,
+    area: Rect,
+) {
+    for (pos, info) in grid {
+        let (x, y) = *pos;
+        if x < 0 || y < 0 {
+            continue;
+        }
+        let Ok(x) = u16::try_from(x) else {
+            continue;
+        };
+        let Ok(y) = u16::try_from(y) else {
+            continue;
+        };
+        if x >= area.x + area.width || y >= area.y + area.height {
+            continue;
+        }
+
+        let ch = box_char_from_dirs(&info.dirs);
+        let is_junction = info.dirs.len() >= 3;
+        let color = if is_junction || info.mixed {
+            Color::DarkGray
+        } else {
+            port_type_color(info.port_type)
+        };
+
+        let p = Position::new(x, y);
+        if let Some(cell_buf) = buf.cell_mut(p) {
+            cell_buf.set_char(ch);
+            cell_buf.fg = color.into();
+        }
+    }
 }
 
 /// A connection router produces a path of cells between two port positions.
@@ -387,5 +473,141 @@ mod tests {
     #[test]
     fn dirs_end_cap_down() {
         assert_eq!(box_char_from_dirs(&dirs(&[Dir2D::Down])), '│');
+    }
+
+    // --- Grid merge tests ---
+
+    #[test]
+    fn grid_fan_out_produces_tee() {
+        let mut grid: HashMap<(i32, i32), CellInfo> = HashMap::new();
+        // Two paths from same source to different targets.
+        // Route 1: (0,0)→(10,2), Route 2: (0,0)→(10,5).
+        // Both share horizontal trunk then diverge at midpoint (5,0)→(5,2).
+        // At (5,2): path1 turns right, path2 continues down → dirs={Up,Right,Down} = ├
+        let path1 = SimpleRouter::route((0, 0), (10, 2), &[]);
+        let path2 = SimpleRouter::route((0, 0), (10, 5), &[]);
+        insert_path_into_grid(&mut grid, &path1, PortType::String);
+        insert_path_into_grid(&mut grid, &path2, PortType::String);
+
+        // Find a junction cell (3+ dirs).
+        let junctions: Vec<_> = grid
+            .iter()
+            .filter(|(_, info)| info.dirs.len() >= 3)
+            .collect();
+        assert!(!junctions.is_empty(), "should have at least one junction");
+
+        // The junction should be some kind of tee.
+        let has_tee = junctions.iter().any(|(_, info)| {
+            let ch = box_char_from_dirs(&info.dirs);
+            matches!(ch, '┬' | '┴' | '├' | '┤' | '┼')
+        });
+        assert!(has_tee, "fan-out should produce a tee junction, got {:?}",
+            junctions.iter().map(|(_, info)| box_char_from_dirs(&info.dirs)).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn grid_fan_in_produces_tee() {
+        let mut grid: HashMap<(i32, i32), CellInfo> = HashMap::new();
+        // Two paths converging on the same target.
+        // Route 1: (0,0)→(10,3), Route 2: (0,5)→(10,3).
+        // Both meet at midpoint column 5, then share the final horizontal run.
+        // At (5,3): path1 comes from above, path2 from below → dirs={Up,Down,Right} = ├
+        let path1 = SimpleRouter::route((0, 0), (10, 3), &[]);
+        let path2 = SimpleRouter::route((0, 5), (10, 3), &[]);
+        insert_path_into_grid(&mut grid, &path1, PortType::String);
+        insert_path_into_grid(&mut grid, &path2, PortType::String);
+
+        let junctions: Vec<_> = grid
+            .iter()
+            .filter(|(_, info)| info.dirs.len() >= 3)
+            .collect();
+        assert!(!junctions.is_empty(), "should have at least one junction");
+
+        let has_tee = junctions.iter().any(|(_, info)| {
+            let ch = box_char_from_dirs(&info.dirs);
+            matches!(ch, '┬' | '┴' | '├' | '┤' | '┼')
+        });
+        assert!(has_tee, "fan-in should produce a tee junction");
+    }
+
+    #[test]
+    fn grid_junction_renders_gray() {
+        let mut grid: HashMap<(i32, i32), CellInfo> = HashMap::new();
+        let path1 = SimpleRouter::route((0, 0), (10, 2), &[]);
+        let path2 = SimpleRouter::route((0, 0), (10, 5), &[]);
+        insert_path_into_grid(&mut grid, &path1, PortType::String);
+        insert_path_into_grid(&mut grid, &path2, PortType::String);
+
+        let junction = grid
+            .iter()
+            .find(|(_, info)| info.dirs.len() >= 3)
+            .expect("should have a junction");
+
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 24,
+        };
+        let mut buf = Buffer::empty(area);
+        render_merged_grid(&mut buf, &grid, area);
+
+        let (pos, _) = junction;
+        let cell = buf
+            .cell(Position::new(
+                u16::try_from(pos.0).unwrap(),
+                u16::try_from(pos.1).unwrap(),
+            ))
+            .unwrap();
+        assert_eq!(cell.fg, Color::DarkGray);
+    }
+
+    #[test]
+    fn grid_non_junction_same_type_keeps_color() {
+        let mut grid: HashMap<(i32, i32), CellInfo> = HashMap::new();
+        let path1 = SimpleRouter::route((0, 0), (10, 2), &[]);
+        let path2 = SimpleRouter::route((0, 0), (10, 5), &[]);
+        insert_path_into_grid(&mut grid, &path1, PortType::String);
+        insert_path_into_grid(&mut grid, &path2, PortType::String);
+
+        // Find a non-junction cell on the shared trunk (2 dirs, same type).
+        let non_junction = grid
+            .iter()
+            .find(|(_, info)| info.dirs.len() == 2 && !info.mixed)
+            .expect("should have a non-junction cell");
+
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 24,
+        };
+        let mut buf = Buffer::empty(area);
+        render_merged_grid(&mut buf, &grid, area);
+
+        let (pos, _) = non_junction;
+        let cell = buf
+            .cell(Position::new(
+                u16::try_from(pos.0).unwrap(),
+                u16::try_from(pos.1).unwrap(),
+            ))
+            .unwrap();
+        assert_eq!(cell.fg, Color::Green, "non-junction same-type cell should be green");
+    }
+
+    #[test]
+    fn grid_mixed_type_cell_is_marked_mixed() {
+        let mut grid: HashMap<(i32, i32), CellInfo> = HashMap::new();
+        // Two overlapping horizontal paths, different port types.
+        let path1 = SimpleRouter::route((0, 0), (10, 0), &[]);
+        let path2 = SimpleRouter::route((0, 0), (10, 0), &[]);
+        insert_path_into_grid(&mut grid, &path1, PortType::String);
+        insert_path_into_grid(&mut grid, &path2, PortType::Json);
+
+        let cell = grid
+            .get(&(5, 0))
+            .expect("should have cell at shared position");
+        assert!(cell.mixed, "shared cell should be marked mixed");
     }
 }
