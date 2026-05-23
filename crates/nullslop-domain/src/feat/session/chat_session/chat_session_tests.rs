@@ -2273,3 +2273,88 @@ fn select_prev_entry_stays_put_when_only_empty_assistant_remains() {
     // Then selection stays at 1 (can't skip to empty assistant).
     assert_eq!(session.selected_entry_index(), Some(1));
 }
+
+// --- is_tool_call_streaming tests ---
+
+#[rstest::rstest]
+fn is_tool_call_streaming_returns_false_for_non_streaming_entry() {
+    // Given a session with a finalized tool call entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    session.push_entry(ChatEntry::tool_call("tc-1", "write", r#"{"path":"foo.rs"}"#));
+
+    // When checking if the tool call entry is streaming.
+    let entry_id = session.history()[1].id.clone();
+
+    // Then it returns false (no active streaming).
+    assert!(
+        !session.is_tool_call_streaming(&entry_id),
+        "finalized tool call should not be streaming"
+    );
+}
+
+#[rstest::rstest]
+fn is_tool_call_streaming_returns_true_for_active_streaming_entry() {
+    // Given a streaming session with an active tool call.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session.begin_tool_call(0, "tc-1", "write");
+
+    // When checking if the tool call entry is streaming.
+    let entry_id = session.history()[1].id.clone();
+
+    // Then it returns true (actively streaming).
+    assert!(
+        session.is_tool_call_streaming(&entry_id),
+        "active tool call should be streaming"
+    );
+}
+
+#[rstest::rstest]
+fn is_tool_call_streaming_returns_false_after_finish_streaming() {
+    // Given a streaming session with a tool call that has been finalized.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session.begin_tool_call(0, "tc-1", "write");
+    let entry_id = session.history()[1].id.clone();
+
+    // When finishing streaming.
+    session.finish_streaming(true);
+
+    // Then the tool call entry is no longer streaming.
+    assert!(
+        !session.is_tool_call_streaming(&entry_id),
+        "tool call should not be streaming after finish_streaming"
+    );
+}
+
+#[rstest::rstest]
+fn is_tool_call_streaming_returns_false_for_non_tool_call_entry() {
+    // Given a streaming session with a user entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    let user_id = session.history()[0].id.clone();
+    session.begin_streaming();
+
+    // When checking a user entry.
+    // Then it returns false (not a tool call).
+    assert!(
+        !session.is_tool_call_streaming(&user_id),
+        "user entry should never be a streaming tool call"
+    );
+}
+
+#[rstest::rstest]
+fn is_tool_call_streaming_returns_false_for_unknown_id() {
+    // Given a session.
+    let session = ChatSessionState::new();
+
+    // When checking a random ID.
+    let fake_id = ChatEntryId::new();
+
+    // Then it returns false.
+    assert!(
+        !session.is_tool_call_streaming(&fake_id),
+        "unknown ID should not be streaming"
+    );
+}
