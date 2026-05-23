@@ -15,7 +15,6 @@ use std::pin::Pin;
 use error_stack::Report;
 use wherror::Error;
 
-use crate::engine::NodeStatus;
 use crate::port::PortValues;
 
 pub mod code;
