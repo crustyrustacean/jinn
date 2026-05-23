@@ -23,6 +23,10 @@ fn registry() -> &'static RwLock<Registry> {
 /// Register a workflow builder under the given name.
 ///
 /// Call this during app startup (e.g., in `actor_wiring.rs`).
+///
+/// # Panics
+///
+/// Panics if the workflow registry lock is poisoned.
 pub fn register_workflow(name: &'static str, builder: WorkflowBuilder) {
     registry()
         .write()
@@ -34,6 +38,10 @@ pub fn register_workflow(name: &'static str, builder: WorkflowBuilder) {
 /// Look up a workflow builder by name.
 ///
 /// Returns `None` if no workflow with the given name has been registered.
+///
+/// # Panics
+///
+/// Panics if the workflow registry lock is poisoned.
 #[must_use]
 pub fn get_workflow(name: &str) -> Option<WorkflowBuilder> {
     registry()

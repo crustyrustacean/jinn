@@ -20,7 +20,7 @@ use tokio::sync::oneshot;
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::provider::protocol::command::SendToLlmProvider;
-use crate::feat::session::chat_session::{ChatSessionState, SessionCore};
+use crate::feat::session::chat_session::ChatSessionState;
 use crate::protocol::{Command, SessionId};
 
 /// Domain-specific implementation of [`NodeContext`].
@@ -52,6 +52,11 @@ impl DomainNodeContext {
     ///
     /// Creates a new session with `is_workflow: true`, emits `SendToLlmProvider`,
     /// and awaits the response via a oneshot channel.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the LLM request fails or times out.
+    #[expect(clippy::missing_errors_doc, reason = "error variant is generic NodeError")]
     pub async fn send_llm_request_inner(
         &self,
         system_prompt: String,
@@ -131,7 +136,7 @@ impl NodeContext for DomainNodeContext {
         Box::pin(self.send_llm_request_inner(
             system_prompt.to_owned(),
             user_prompt.to_owned(),
-            provider_id.map(|s| s.to_owned()),
+            provider_id.map(std::borrow::ToOwned::to_owned),
         ))
     }
 }

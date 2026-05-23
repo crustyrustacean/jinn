@@ -348,6 +348,7 @@ impl SessionPersistenceActor {
     /// sends `FinishSessionTeardown` back when complete.
     ///
     /// For builtin teardowns: runs inline (synchronous, no blocking).
+    #[allow(clippy::too_many_lines, clippy::items_after_statements)]
     pub(in crate::feat::session::session_actor) async fn handle_run_session_teardown(
         &self,
         payload: &RunSessionTeardown,

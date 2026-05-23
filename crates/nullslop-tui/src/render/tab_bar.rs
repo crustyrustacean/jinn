@@ -22,11 +22,7 @@ pub fn render_tab_bar(frame: &mut Frame<'_>, area: Rect, active_tab: ActiveTab) 
             } else {
                 Style::default()
             };
-            let label = if is_active {
-                format!(" {} ", tab.label())
-            } else {
-                format!(" {} ", tab.label())
-            };
+            let label = format!(" {} ", tab.label());
             vec![Span::styled(label, style), Span::raw("│")]
         })
         .collect();

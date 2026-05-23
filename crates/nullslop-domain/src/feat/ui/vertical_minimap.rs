@@ -118,6 +118,7 @@ fn find_block_index(history_idx: Option<usize>, visible: &[VisibleEntry]) -> Opt
 /// (`viewport_height / 2`). The offset is simply the block index
 /// minus the midpoint. At the start, this produces empty space above;
 /// at the end, empty space below.
+#[expect(dead_code, reason = "available for future use")]
 fn compute_minimap_scroll(
     selected_block: usize,
     _total_blocks: usize,
