@@ -293,6 +293,9 @@ impl IntentHandler {
             Intent::ForkFromEntry => {
                 feat::chat_entry_selection::intent::handle_fork_from_entry(state)
             }
+            Intent::YankSelectedEntry => {
+                feat::chat_entry_selection::intent::handle_yank_selected(state)
+            }
 
             // --- Session Lifecycle ---
             Intent::SessionLifecycleSetup {
