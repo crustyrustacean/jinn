@@ -52,6 +52,7 @@ fn test_app() -> TuiApp {
             nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
             s
         },
+        preview_cache: crate::app::PreviewCache::new(),
     }
 }
 
@@ -243,6 +244,7 @@ fn mouse_events_not_handled_when_mouse_selection_disabled() {
             nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
             s
         },
+        preview_cache: crate::app::PreviewCache::new(),
     };
     let rect = Rect::new(5, 5, 20, 10);
     app.selectable_rects.rebuild(vec![rect]);
