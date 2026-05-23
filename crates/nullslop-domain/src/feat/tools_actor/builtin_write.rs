@@ -388,4 +388,332 @@ mod tests {
         // Then the result is an error.
         assert!(result.is_err());
     }
+
+    // ── Phase 2: Content fidelity tests ──
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_writes_empty_string() {
+        // Given a temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("empty.txt");
+
+        let call = ToolCall {
+            id: "call_e1".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": ""
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool with empty content.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the result indicates success.
+        assert!(result.success, "expected success, got: {}", result.content);
+
+        // And the file exists and is empty.
+        let content = std::fs::read_to_string(&file_path).expect("read written file");
+        assert_eq!(content, "");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_roundtrips_newlines_and_tabs() {
+        // Given a temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("whitespace.txt");
+        let original = "line1\nline2\ttab";
+
+        let call = ToolCall {
+            id: "call_e2".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": original
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the content round-trips exactly.
+        assert!(result.success);
+        let content = std::fs::read_to_string(&file_path).expect("read written file");
+        assert_eq!(content, original);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_roundtrips_embedded_quotes() {
+        // Given a temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("quotes.txt");
+        let original = r#"he said "hello\""#;
+
+        let call = ToolCall {
+            id: "call_e3".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": original
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the content round-trips exactly.
+        assert!(result.success);
+        let content = std::fs::read_to_string(&file_path).expect("read written file");
+        assert_eq!(content, original);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_roundtrips_angle_brackets() {
+        // Given a temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("angles.txt");
+        let original = "HashMap<String, Vec<usize>>";
+
+        let call = ToolCall {
+            id: "call_e4".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": original
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the content round-trips exactly.
+        assert!(result.success);
+        let content = std::fs::read_to_string(&file_path).expect("read written file");
+        assert_eq!(content, original);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_roundtrips_ampersands() {
+        // Given a temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("ampersands.txt");
+        let original = "foo & bar < baz";
+
+        let call = ToolCall {
+            id: "call_e5".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": original
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the content round-trips exactly.
+        assert!(result.success);
+        let content = std::fs::read_to_string(&file_path).expect("read written file");
+        assert_eq!(content, original);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_roundtrips_backslashes() {
+        // Given a temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("backslashes.txt");
+        let original = r"C:\Users\test\file.txt";
+
+        let call = ToolCall {
+            id: "call_e6".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": original
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the content round-trips exactly.
+        assert!(result.success);
+        let content = std::fs::read_to_string(&file_path).expect("read written file");
+        assert_eq!(content, original);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_roundtrips_mixed_line_endings() {
+        // Given a temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("endings.txt");
+        let original = "line1\r\nline2\nline3";
+
+        let call = ToolCall {
+            id: "call_e7".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": original
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the content round-trips exactly.
+        assert!(result.success);
+        let content = std::fs::read_to_string(&file_path).expect("read written file");
+        assert_eq!(content, original);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_roundtrips_null_bytes() {
+        // Given a temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("nulls.bin");
+        let original = "before\0after";
+
+        let call = ToolCall {
+            id: "call_e8".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": original
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the content round-trips exactly (byte comparison).
+        assert!(result.success);
+        let bytes = std::fs::read(&file_path).expect("read written file");
+        assert_eq!(bytes, original.as_bytes());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_roundtrips_unicode_emoji() {
+        // Given a temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("emoji.txt");
+        let original = "Hello \u{1F30D}\u{1F980}\u{1F389}";
+
+        let call = ToolCall {
+            id: "call_e9".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": original
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the content round-trips exactly.
+        assert!(result.success);
+        let content = std::fs::read_to_string(&file_path).expect("read written file");
+        assert_eq!(content, original);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_roundtrips_cjk() {
+        // Given a temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("cjk.txt");
+        let original = "\u{4F60}\u{597D}\u{4E16}\u{754C}";
+
+        let call = ToolCall {
+            id: "call_e10".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": original
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the content round-trips exactly.
+        assert!(result.success);
+        let content = std::fs::read_to_string(&file_path).expect("read written file");
+        assert_eq!(content, original);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_roundtrips_combining_characters() {
+        // Given a temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("combining.txt");
+        let original = "e\u{0301}";
+
+        let call = ToolCall {
+            id: "call_e11".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": original
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the content round-trips exactly.
+        assert!(result.success);
+        let content = std::fs::read_to_string(&file_path).expect("read written file");
+        assert_eq!(content, original);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_roundtrips_large_payload() {
+        // Given a temp directory and a 1MB payload.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("large.txt");
+        let original = "x".repeat(1_000_000);
+
+        let call = ToolCall {
+            id: "call_e12".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": original
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the content round-trips exactly.
+        assert!(result.success);
+        let content = std::fs::read_to_string(&file_path).expect("read written file");
+        assert_eq!(content.len(), 1_000_000);
+        assert_eq!(content, original);
+    }
 }
