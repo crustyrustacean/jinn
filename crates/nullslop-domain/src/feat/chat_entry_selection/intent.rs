@@ -689,4 +689,32 @@ mod tests {
             Some("bash: output text".to_string())
         );
     }
+
+    // --- Toggle Ignored Block ---
+
+    #[rstest::rstest]
+    fn toggle_ignored_block_noop_with_no_selection() {
+        // Given a state with no selection.
+        let mut state = AppState::default();
+
+        // When handling toggle ignored block.
+        let result = handle_toggle_ignored_block(&mut state);
+
+        // Then no commands are emitted and no state change.
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn toggle_ignored_block_noop_with_non_ignored_entry() {
+        // Given a state with a selected non-ignored entry.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().select_next_entry();
+
+        // When handling toggle ignored block.
+        let result = handle_toggle_ignored_block(&mut state);
+
+        // Then no commands emitted.
+        assert!(result.commands.is_empty());
+    }
 }
