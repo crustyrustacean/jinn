@@ -11,6 +11,7 @@ use crate::tasks::checks;
 pub fn task() -> BenchTask {
     BenchTask {
         name: "fix-logic-fizzbuzz",
+        category: "fix_code",
         messages: vec![
             "The FizzBuzz program in src/main.rs has a logic bug — it never prints \
              \"FizzBuzz\". Find and fix the bug, then run the program. The correct \

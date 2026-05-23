@@ -11,6 +11,7 @@ use crate::tasks::checks;
 pub fn task() -> BenchTask {
     BenchTask {
         name: "fix-syntax-broken-python",
+        category: "fix_code",
         messages: vec![
             "There are syntax errors in main.py. Find and fix them all, then run the \
              program with `python main.py` to confirm it prints the fibonacci sequence \

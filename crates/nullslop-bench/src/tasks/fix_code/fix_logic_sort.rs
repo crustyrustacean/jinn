@@ -11,6 +11,7 @@ use crate::tasks::checks;
 pub fn task() -> BenchTask {
     BenchTask {
         name: "fix-logic-sort",
+        category: "fix_code",
         messages: vec![
             "The bubble sort in src/main.rs has a bug that causes an index out of \
              bounds panic. Find and fix it, then run the program to confirm it sorts \

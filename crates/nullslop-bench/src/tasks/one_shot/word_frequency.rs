@@ -11,6 +11,7 @@ use crate::tasks::checks;
 pub fn task() -> BenchTask {
     BenchTask {
         name: "word-frequency",
+        category: "one_shot",
         messages: vec![
             "Create a text file called input.txt with a few sentences of your choice. \
              Then write a Rust program (src/main.rs) that reads input.txt, counts word \

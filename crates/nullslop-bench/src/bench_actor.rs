@@ -366,7 +366,7 @@ impl BenchActor {
         let wall_time_ms = elapsed.as_millis() as u64;
 
         // Read token stats and model from state.
-        let (token_stats, model, cwd) = {
+        let (token_stats, model, cwd, cost) = {
             let state = self.state.read();
             let Some(session) = state.session.get(&payload.session_id) else {
                 tracing::warn!(
@@ -376,9 +376,10 @@ impl BenchActor {
                 return;
             };
             let token_summary = TokenStats::from_ledger(session.token_ledger());
+            let cost = TokenStats::total_cost(session.token_ledger());
             let model = session.profile().model.clone();
             let cwd = session.cwd().to_owned();
-            (token_summary, model, cwd)
+            (token_summary, model, cwd, cost)
         };
 
         // Run verification.
@@ -411,54 +412,52 @@ impl BenchActor {
             "completed".to_owned()
         };
 
-        // Push evaluation results into the session as system chat entries.
-        let failures: Vec<_> = report.failures().collect();
-        if failures.is_empty() {
+        // Push per-check results as system chat entries.
+        for check in &report.checks {
+            let msg = if check.passed {
+                format!("✅ {}", check.name)
+            } else {
+                format!("❌ {}: {}", check.name, check.detail)
+            };
             let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
                 session_id: payload.session_id.clone(),
-                entry: ChatEntry::system(format!(
-                    "✅ Evaluation passed — {} checks",
-                    report.checks.len()
-                )),
+                entry: ChatEntry::system(msg),
             }));
-        } else {
-            let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
-                session_id: payload.session_id.clone(),
-                entry: ChatEntry::system(format!(
-                    "❌ Evaluation failed — {}/{} checks failed",
-                    failures.len(),
-                    report.checks.len()
-                )),
-            }));
-            for failure in &failures {
-                let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
-                    session_id: payload.session_id.clone(),
-                    entry: ChatEntry::system(format!("  • {}: {}", failure.name, failure.detail)),
-                }));
-            }
         }
 
-        let detail = if report.passed() {
-            String::new()
+        // Push summary line.
+        let summary = if report.passed() {
+            format!("✅ Evaluation passed — {} checks", report.checks.len())
         } else {
-            report
-                .failures()
-                .map(|f| format!("{}: {}", f.name, f.detail))
-                .collect::<Vec<_>>()
-                .join("; ")
+            let fail_count = report.failures().count();
+            format!(
+                "❌ Evaluation failed — {}/{} checks failed",
+                fail_count,
+                report.checks.len()
+            )
         };
+        let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            session_id: payload.session_id.clone(),
+            entry: ChatEntry::system(summary),
+        }));
+
+        let category = self
+            .task_lookup
+            .get(&tracked.task_name)
+            .map_or("unknown", |t| t.category)
+            .to_owned();
 
         let result = BenchResult {
             name: tracked.task_name.clone(),
+            category,
             model,
             turns: u32::try_from(token_stats.request_count).unwrap_or(u32::MAX),
             tokens_in: token_stats.total_sent,
             tokens_out: token_stats.total_received,
-            cost: 0.0,
+            cost,
             wall_time_ms,
             passed,
             status,
-            detail,
         };
 
         tracing::info!(
@@ -466,6 +465,7 @@ impl BenchActor {
             model = %result.model,
             tokens_in = result.tokens_in,
             tokens_out = result.tokens_out,
+            cost = result.cost,
             wall_time_ms = result.wall_time_ms,
             passed = result.passed,
             status = %result.status,

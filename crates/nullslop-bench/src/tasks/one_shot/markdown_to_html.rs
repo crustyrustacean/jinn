@@ -11,6 +11,7 @@ use crate::tasks::checks;
 pub fn task() -> BenchTask {
     BenchTask {
         name: "markdown-to-html",
+        category: "one_shot",
         messages: vec![
             "Write a Rust program (src/main.rs) that converts a markdown file to HTML. \
              Create a file called input.md with some markdown content (headings, bold, \
