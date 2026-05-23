@@ -1942,6 +1942,7 @@ dependencies = [
  "humantime",
  "jiff",
  "kanal",
+ "libc",
  "nullslop-protocol-derive",
  "nullslop-provider",
  "nullslop-selection-widget",

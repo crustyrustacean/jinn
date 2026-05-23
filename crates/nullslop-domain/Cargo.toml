@@ -37,6 +37,7 @@ throbber-widgets-tui = { workspace = true }
 humantime = { workspace = true }
 fuzzy-matcher = { workspace = true }
 parking_lot = { workspace = true }
+libc = { workspace = true }
 kanal = { workspace = true }
 futures = { workspace = true }
 rand = { workspace = true }
