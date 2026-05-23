@@ -230,10 +230,10 @@ fn merge_context_lengths_from_models_dev(
 ) {
     for models in cache.entries.values_mut() {
         for model in models.iter_mut() {
-            if model.context_length.is_none() {
-                if let Some(ctx) = models_dev.get(&model.id) {
-                    model.context_length = Some(ctx);
-                }
+            if model.context_length.is_none()
+                && let Some(ctx) = models_dev.get(&model.id)
+            {
+                model.context_length = Some(ctx);
             }
         }
     }
