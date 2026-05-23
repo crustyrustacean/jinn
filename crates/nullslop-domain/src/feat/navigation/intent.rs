@@ -273,8 +273,12 @@ mod tests {
     fn scroll_to_top_skips_empty_assistant_at_index_0() {
         // Given history [empty_assistant, user].
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::assistant(""));
-        state.active_session_mut().push_entry(ChatEntry::user("hello"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant(""));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
 
         // When scrolling to top.
         let _result = handle_scroll_to_top(&mut state);
@@ -287,8 +291,12 @@ mod tests {
     fn scroll_to_bottom_skips_empty_assistant_at_last_index() {
         // Given history [user, empty_assistant].
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("hello"));
-        state.active_session_mut().push_entry(ChatEntry::assistant(""));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant(""));
 
         // When scrolling to bottom.
         let _result = handle_scroll_to_bottom(&mut state);

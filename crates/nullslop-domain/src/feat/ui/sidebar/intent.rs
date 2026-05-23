@@ -32,8 +32,7 @@ pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
         state.frontend.scope_stack.set_sidebar_section(section);
 
         // Save history position when restoring to Pins with existing cursor.
-        if section == SidebarSectionId::Pins
-            && !state.active_session().has_saved_history_position()
+        if section == SidebarSectionId::Pins && !state.active_session().has_saved_history_position()
         {
             state.active_session_mut().save_history_position();
         }

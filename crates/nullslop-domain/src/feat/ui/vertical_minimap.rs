@@ -567,7 +567,10 @@ mod tests {
         // Selection at history index 1 (Thinking) → block index 1. Midpoint=5.
         assert_eq!(arrow.expect("arrow exists").row, 5);
         let block_count = rows.iter().filter(|r| r.contains('\u{2588}')).count();
-        assert_eq!(block_count, 3, "expected 3 blocks when thinking is selected");
+        assert_eq!(
+            block_count, 3,
+            "expected 3 blocks when thinking is selected"
+        );
     }
 
     #[rstest::rstest]
@@ -685,7 +688,9 @@ mod tests {
     fn empty_assistant_entry_produces_no_minimap_block() {
         // Given a session with only an empty assistant entry.
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::assistant(""));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant(""));
 
         // When rendering.
         let (arrow, rows) = render_to_buffer(&state, 1, 10);
@@ -693,7 +698,10 @@ mod tests {
         // Then no arrow and no blocks.
         assert!(arrow.is_none());
         let block_count = rows.iter().filter(|r| r.contains('\u{2588}')).count();
-        assert_eq!(block_count, 0, "empty assistant should produce no minimap blocks");
+        assert_eq!(
+            block_count, 0,
+            "empty assistant should produce no minimap blocks"
+        );
     }
 
     #[rstest::rstest]
@@ -701,7 +709,9 @@ mod tests {
         // Given a history with user, empty assistant, and tool call entries.
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry::user("a"));
-        state.active_session_mut().push_entry(ChatEntry::assistant(""));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant(""));
         state
             .active_session_mut()
             .push_entry(ChatEntry::tool_call("tc-1", "bash", "{}"));

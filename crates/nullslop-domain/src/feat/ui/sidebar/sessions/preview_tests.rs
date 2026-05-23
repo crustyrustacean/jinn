@@ -5,7 +5,7 @@
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::theme::default_theme;
 use crate::feat::ui::sidebar::sessions::preview::{
-    render_session_preview, session_preview_popup_rect,
+    render_session_preview, session_preview_popup_rect, SessionPreviewCache,
 };
 use crate::protocol::ChatEntry;
 use nullslop_testutil::{buffer_row, setup_term};
@@ -37,9 +37,10 @@ fn render_preview(
     let popup_area = session_preview_popup_rect(frame_area, sessions_top_y, 20);
 
     let (mut terminal, _) = setup_term(term_width, term_height);
+    let mut cache = SessionPreviewCache::new();
     terminal
         .draw(|frame| {
-            render_session_preview(frame, popup_area, session, &theme, None);
+            render_session_preview(frame, popup_area, session, &theme, None, &mut cache);
         })
         .unwrap();
 

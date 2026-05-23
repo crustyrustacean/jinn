@@ -169,6 +169,7 @@ impl App {
                         nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                         s
                     },
+                    preview_cache: nullslop_tui::app::PreviewCache::new(),
                 }));
                 runner.run().change_context(AppError)?;
             }
@@ -291,6 +292,7 @@ impl App {
                                 nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                                 s
                             },
+                            preview_cache: nullslop_tui::app::PreviewCache::new(),
                         }));
                         runner.run().change_context(AppError)?;
                     }
@@ -360,6 +362,7 @@ impl App {
                                 nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                                 s
                             },
+                            preview_cache: nullslop_tui::app::PreviewCache::new(),
                         }));
                         runner.run().change_context(AppError)?;
                     }

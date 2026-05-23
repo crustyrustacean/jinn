@@ -8,6 +8,8 @@
 //! A footer at the bottom shows keybinds across two lines and the session's
 //! active provider/model.
 
+use std::collections::HashMap;
+
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Modifier, Style};
@@ -22,6 +24,53 @@ use crate::feat::ui::chat_log::entry_to_lines;
 use crate::feat::ui::chat_log::shared::RenderContext;
 use crate::feat::ui::sidebar::sessions::MAX_VISIBLE_SESSIONS;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
+use crate::protocol::SessionId;
+
+/// History length component of the preview cache key.
+type HistoryLen = usize;
+/// Content width component of the preview cache key.
+type ContentWidth = u16;
+
+/// Cache for session preview popup rendered lines.
+///
+/// Keyed by `(SessionId, HistoryLen, ContentWidth)` so that:
+/// - Switching sessions produces a cache miss (different `SessionId`).
+/// - New completed messages produce a cache miss (different `HistoryLen`).
+/// - Terminal resize produces a cache miss (different `ContentWidth`).
+#[derive(Debug, Default)]
+pub struct SessionPreviewCache {
+    entries: HashMap<(SessionId, HistoryLen, ContentWidth), Vec<Line<'static>>>,
+}
+
+impl SessionPreviewCache {
+    /// Creates a new empty cache.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Looks up cached preview lines for the given key.
+    pub fn get(
+        &self,
+        session_id: &SessionId,
+        history_len: HistoryLen,
+        width: ContentWidth,
+    ) -> Option<&Vec<Line<'static>>> {
+        self.entries
+            .get(&(session_id.clone(), history_len, width))
+    }
+
+    /// Stores preview lines for the given key.
+    pub fn insert(
+        &mut self,
+        session_id: SessionId,
+        history_len: HistoryLen,
+        width: ContentWidth,
+        lines: Vec<Line<'static>>,
+    ) {
+        self.entries.insert((session_id, history_len, width), lines);
+    }
+}
 
 /// Number of history entries to show in the preview.
 const PREVIEW_ENTRY_COUNT: usize = 5;
@@ -60,6 +109,7 @@ pub fn render_session_preview_for_state(
     sidebar_rect: Rect,
     frame_area: Rect,
     state: &AppState,
+    cache: &mut SessionPreviewCache,
 ) {
     if !matches!(
         state.frontend.scope_stack.current(),
@@ -91,12 +141,13 @@ pub fn render_session_preview_for_state(
         let popup_width = preview_width(frame_area);
         popup_width.saturating_sub(2)
     };
-    let content_lines = build_preview_lines(session, inner_width.max(1), theme, tool_max);
+    let content_lines =
+        build_preview_lines(session, inner_width.max(1), theme, tool_max, cache);
     let line_count = content_lines.len();
 
     let popup_rect = session_preview_popup_rect(frame_area, sessions_top_y, line_count);
 
-    render_session_preview(frame, popup_rect, session, theme, tool_max);
+    render_session_preview(frame, popup_rect, session, theme, tool_max, cache);
 }
 
 /// Computes the popup width: 60% of frame area, min 30, max frame width.
@@ -117,6 +168,7 @@ pub fn render_session_preview(
     session: &ChatSessionState,
     theme: &Theme,
     tool_entry_max_lines: Option<u16>,
+    cache: &mut SessionPreviewCache,
 ) {
     let inner_width = popup_area.width.saturating_sub(2);
     if inner_width == 0 {
@@ -126,7 +178,8 @@ pub fn render_session_preview(
     let title = session.title().unwrap_or("Untitled Session");
 
     // Collect the last 5 entries and render them.
-    let content_lines = build_preview_lines(session, inner_width, theme, tool_entry_max_lines);
+    let content_lines =
+        build_preview_lines(session, inner_width, theme, tool_entry_max_lines, cache);
 
     // Footer: 2 keybinds lines + 1 model line.
     let footer_height = 3u16;
@@ -267,13 +320,22 @@ fn build_preview_lines(
     content_width: u16,
     theme: &Theme,
     tool_entry_max_lines: Option<u16>,
+    cache: &mut SessionPreviewCache,
 ) -> Vec<Line<'static>> {
     let history = session.history();
     if history.is_empty() {
         return Vec::new();
     }
 
-    let start = history.len().saturating_sub(PREVIEW_ENTRY_COUNT);
+    let history_len = history.len();
+
+    // Check cache: hit if session + history length + width all match.
+    if let Some(lines) = cache.get(session.session_id(), history_len, content_width) {
+        return lines.clone();
+    }
+
+    // Cache miss — render.
+    let start = history_len.saturating_sub(PREVIEW_ENTRY_COUNT);
     let entries = &history[start..];
 
     let ctx = RenderContext {
@@ -291,12 +353,22 @@ fn build_preview_lines(
     }
 
     // Take the last PREVIEW_MAX_LINES lines.
-    if all_lines.len() <= PREVIEW_MAX_LINES {
+    let all_lines = if all_lines.len() <= PREVIEW_MAX_LINES {
         all_lines
     } else {
         let skip = all_lines.len() - PREVIEW_MAX_LINES;
         all_lines.into_iter().skip(skip).collect()
-    }
+    };
+
+    // Store in cache.
+    cache.insert(
+        session.session_id().clone(),
+        history_len,
+        content_width,
+        all_lines.clone(),
+    );
+
+    all_lines
 }
 
 /// Computes the popup rectangle for the session preview overlay.
