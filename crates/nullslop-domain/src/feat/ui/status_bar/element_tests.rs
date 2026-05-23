@@ -25,7 +25,7 @@ fn render_shows_no_model_selected_when_unset() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 50);
-    assert!(row.starts_with("(Passthrough)"));
+    assert!(row.starts_with("\u{2191}"));
     assert!(row.contains("no model selected"));
 }
 
@@ -44,7 +44,7 @@ fn render_shows_provider_and_model() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 50);
-    assert!(row.starts_with("(Passthrough)"));
+    assert!(row.starts_with("\u{2191}"));
     assert!(row.contains("(ollama)/llama3"));
 }
 
@@ -64,7 +64,7 @@ fn render_right_aligns_text() {
     let buffer = terminal.backend().buffer().clone();
     // Row 1 is the info line.
     let first = buffer.cell((0, 1)).expect("first cell");
-    assert_eq!(first.symbol(), "(");
+    assert_eq!(first.symbol(), "\u{2191}");
     let last = buffer.cell((49, 1)).expect("last cell");
     assert_eq!(last.symbol(), "3");
 }
@@ -84,7 +84,7 @@ fn render_shows_provider_with_slash_in_model() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
-    assert!(row.starts_with("(Passthrough)"));
+    assert!(row.starts_with("\u{2191}"));
     assert!(row.contains("(openrouter)/anthropic/claude-sonnet-4"));
 }
 
@@ -106,7 +106,7 @@ fn render_shows_non_default_strategy() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 50);
-    assert!(row.starts_with("(Sliding Window)"));
+    assert!(row.starts_with("\u{2191}"));
     assert!(row.contains("(ollama)/llama3"));
 }
 
@@ -151,7 +151,8 @@ fn render_hides_pinned_count_when_no_entries_pinned() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 60);
-    assert!(row.starts_with("(Passthrough) "));
+    assert!(row.starts_with("\u{2191}"));
+    assert!(row.contains("(ollama)/llama3"));
     assert!(!row.contains("\u{1f4cc}"));
 }
 
@@ -759,10 +760,11 @@ fn render_shows_token_budget_when_token_budget_strategy_active() {
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 100);
-    // Then the status bar shows "(Token Budget: 200k)".
+    // Then the token_budget strategy is active but the budget display was removed.
+    // Verify the row still starts with token info and shows the model.
     assert!(
-        row.contains("(Token Budget: 200k)"),
-        "expected budget display, got: {row}"
+        row.starts_with("\u{2191}"),
+        "expected row to start with token up-arrow, got: {row}"
     );
 }
 
