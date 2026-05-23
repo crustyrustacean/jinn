@@ -27,7 +27,6 @@ use crate::protocol::{Command, SessionId};
 ///
 /// Provides:
 /// - `send_llm_request` — sends a prompt to the LLM and returns the full response
-/// - `update_node_status` — updates per-node status in [`AppState`]
 pub struct DomainNodeContext {
     /// Shared services for accessing the actor bus.
     services: Services,
@@ -120,13 +119,6 @@ impl DomainNodeContext {
 }
 
 impl NodeContext for DomainNodeContext {
-    fn update_node_status(&self, node_name: &str, status: NodeStatus) {
-        let mut guard = self.state.write();
-        if let Some(ws) = guard.workflow.active_mut() {
-            ws.statuses.insert(node_name.to_owned(), status);
-        }
-    }
-
     fn send_llm_request<'a>(
         &'a self,
         system_prompt: &str,

@@ -33,12 +33,6 @@ pub use delay::DelayNode;
 /// Default methods are no-ops or return errors. Override them in the
 /// host environment's implementation.
 pub trait NodeContext: Send + Sync {
-    /// Called by the engine when a node's status changes.
-    ///
-    /// Default: no-op. Override to observe status transitions
-    /// (e.g., write to shared UI state).
-    fn update_node_status(&self, _node_name: &str, _status: NodeStatus) {}
-
     /// Send an LLM request and await the full response.
     ///
     /// Default: returns an error (no LLM capability).
