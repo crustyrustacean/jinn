@@ -412,45 +412,44 @@ impl BenchActor {
             "completed".to_owned()
         };
 
-        // Push evaluation results into the session as system chat entries.
-        let failures: Vec<_> = report.failures().collect();
-        if failures.is_empty() {
+        // Push per-check results as system chat entries.
+        for check in &report.checks {
+            let msg = if check.passed {
+                format!("✅ {}", check.name)
+            } else {
+                format!("❌ {}: {}", check.name, check.detail)
+            };
             let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
                 session_id: payload.session_id.clone(),
-                entry: ChatEntry::system(format!(
-                    "✅ Evaluation passed — {} checks",
-                    report.checks.len()
-                )),
+                entry: ChatEntry::system(msg),
             }));
-        } else {
-            let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
-                session_id: payload.session_id.clone(),
-                entry: ChatEntry::system(format!(
-                    "❌ Evaluation failed — {}/{} checks failed",
-                    failures.len(),
-                    report.checks.len()
-                )),
-            }));
-            for failure in &failures {
-                let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
-                    session_id: payload.session_id.clone(),
-                    entry: ChatEntry::system(format!("  • {}: {}", failure.name, failure.detail)),
-                }));
-            }
         }
 
-        let detail = if report.passed() {
-            String::new()
+        // Push summary line.
+        let summary = if report.passed() {
+            format!("✅ Evaluation passed — {} checks", report.checks.len())
         } else {
-            report
-                .failures()
-                .map(|f| format!("{}: {}", f.name, f.detail))
-                .collect::<Vec<_>>()
-                .join("; ")
+            let fail_count = report.failures().count();
+            format!(
+                "❌ Evaluation failed — {}/{} checks failed",
+                fail_count,
+                report.checks.len()
+            )
         };
+        let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            session_id: payload.session_id.clone(),
+            entry: ChatEntry::system(summary),
+        }));
+
+        let category = self
+            .task_lookup
+            .get(&tracked.task_name)
+            .map_or("unknown", |t| t.category)
+            .to_owned();
 
         let result = BenchResult {
             name: tracked.task_name.clone(),
+            category,
             model,
             turns: u32::try_from(token_stats.request_count).unwrap_or(u32::MAX),
             tokens_in: token_stats.total_sent,
@@ -459,7 +458,6 @@ impl BenchActor {
             wall_time_ms,
             passed,
             status,
-            detail,
         };
 
         tracing::info!(

@@ -90,6 +90,8 @@ impl VerificationReport {
 pub struct BenchTask {
     /// Human-readable task name (used in CSV, fixture paths, progress output).
     pub name: &'static str,
+    /// Bench category (e.g., "one_shot", "fix_code", "redirect").
+    pub category: &'static str,
     /// Messages to send sequentially. Each message waits for `SessionPhase::Idle`
     /// before sending the next.
     pub messages: Vec<&'static str>,

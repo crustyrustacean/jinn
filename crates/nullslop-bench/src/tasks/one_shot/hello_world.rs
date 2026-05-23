@@ -11,6 +11,7 @@ use crate::tasks::checks;
 pub fn task() -> BenchTask {
     BenchTask {
         name: "hello-world",
+        category: "one_shot",
         messages: vec!["Write a hello world program in Rust. Save it to src/main.rs and run it."],
         fixture_dir: Some("src/tasks/one_shot/hello_world/fixtures"),
         timeout: Duration::from_secs(300),

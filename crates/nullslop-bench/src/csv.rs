@@ -13,6 +13,8 @@ use csv::Writer;
 pub struct BenchResult {
     /// Task name.
     pub name: String,
+    /// Bench category (e.g., "one_shot", "fix_code", "redirect").
+    pub category: String,
     /// Model ID (e.g., "openai/gpt-4o").
     pub model: String,
     /// Number of turns (user + assistant entries).
@@ -29,13 +31,12 @@ pub struct BenchResult {
     pub passed: bool,
     /// Status: "completed" or "timeout".
     pub status: String,
-    /// Human-readable failure reasons (semicolon-joined). Empty on pass.
-    pub detail: String,
 }
 
 /// CSV column header, in order.
 const HEADER: [&str; 10] = [
     "name",
+    "category",
     "model",
     "turns",
     "tokens_in",
@@ -44,7 +45,6 @@ const HEADER: [&str; 10] = [
     "wall_time_ms",
     "passed",
     "status",
-    "detail",
 ];
 
 /// A progressive CSV writer that flushes after every row.
@@ -75,6 +75,7 @@ impl BenchCsvWriter {
     pub fn write_row(&mut self, result: &BenchResult) -> std::io::Result<()> {
         self.writer.write_record([
             result.name.as_str(),
+            result.category.as_str(),
             result.model.as_str(),
             result.turns.to_string().as_str(),
             result.tokens_in.to_string().as_str(),
@@ -83,7 +84,6 @@ impl BenchCsvWriter {
             result.wall_time_ms.to_string().as_str(),
             if result.passed { "true" } else { "false" },
             result.status.as_str(),
-            result.detail.as_str(),
         ])?;
         self.writer.flush()?;
         Ok(())
