@@ -152,7 +152,7 @@ impl UiElement<AppState> for StatusBarElement {
                 if pinned_count > 0 {
                     format!("\u{1f4cc}{pinned_count} {token_info}")
                 } else {
-                    format!("{token_info}")
+                    token_info.clone()
                 }
             };
 

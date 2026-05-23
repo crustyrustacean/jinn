@@ -83,13 +83,10 @@ impl StreamResponseParser {
             Err(_) => return results,
         };
 
-        let choices = match chunk.get("choices").and_then(|c| c.as_array()) {
-            Some(c) => c,
-            None => {
-                // No choices — but we can still enrich pending_done with usage.
-                self.try_enrich_pending_usage(&chunk);
-                return results;
-            }
+        let choices = if let Some(c) = chunk.get("choices").and_then(|c| c.as_array()) { c } else {
+            // No choices — but we can still enrich pending_done with usage.
+            self.try_enrich_pending_usage(&chunk);
+            return results;
         };
 
         for choice in choices {
@@ -607,7 +604,7 @@ mod tests {
             StreamEvent::Done { usage: Some(u), .. } => u.clone(),
             _ => panic!("expected Done with usage, got: {:?}", events_done[0]),
         };
-        assert_eq!(usage.cost, Some(0.00001308384));
+        assert_eq!(usage.cost, Some(0.000_013_083_84));
         assert_eq!(usage.prompt_tokens, Some(6));
         assert_eq!(usage.completion_tokens, Some(56));
     }

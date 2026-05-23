@@ -295,7 +295,7 @@ mod tests {
     use super::*;
     use crate::common::app_state::AppState;
     use crate::feat::session::chat_entry::ChatEntry;
-    use crate::feat::theme::Theme;
+    
     use crate::feat::theme::default_theme;
 
     // --- find_block_index ---
