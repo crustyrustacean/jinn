@@ -23,6 +23,8 @@ pub struct RenderContext {
     /// Status of the paired tool result, used for status-based background.
     /// `None` if unpaired or the tool is still pending.
     pub paired_status: Option<ToolResultStatus>,
+    /// Whether this entry is still actively streaming (arguments still arriving).
+    pub is_streaming: bool,
 }
 
 /// Split text on `\n` and produce styled lines with the given prefix.

@@ -36,6 +36,7 @@ mod tests {
             tool_entry_max_lines: 20,
             theme: default_theme(),
             paired_status: None,
+            is_streaming: false,
         }
     }
 

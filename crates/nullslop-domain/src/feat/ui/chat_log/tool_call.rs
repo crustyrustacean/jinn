@@ -83,6 +83,7 @@ mod tests {
             tool_entry_max_lines: max_lines,
             theme: crate::feat::theme::default_theme(),
             paired_status: None,
+            is_streaming: false,
         }
     }
 
@@ -94,6 +95,7 @@ mod tests {
             tool_entry_max_lines: 6,
             theme: crate::feat::theme::default_theme(),
             paired_status: status,
+            is_streaming: false,
         }
     }
 
@@ -237,6 +239,7 @@ mod tests {
             tool_entry_max_lines: 6,
             theme: crate::feat::theme::default_theme(),
             paired_status: None,
+            is_streaming: false,
         };
         let long_cmd = "a".repeat(100);
 
