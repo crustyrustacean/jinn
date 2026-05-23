@@ -151,6 +151,22 @@ pub fn handle_fork_from_entry(state: &mut AppState) -> IntentResult {
     })])
 }
 
+/// Yanks (copies) the text of the currently selected chat entry to the clipboard.
+///
+/// Extracts the entry's text via [`ChatEntry::text()`] and stashes it in
+/// [`TuiSignals::yank_text`] for the TUI layer to write to the system clipboard.
+pub fn handle_yank_selected(state: &mut AppState) -> IntentResult {
+    if validator::validate_yank_selected(state).is_err() {
+        return IntentResult::empty();
+    }
+    let Some(entry) = state.active_session().selected_entry() else {
+        return IntentResult::empty();
+    };
+    let text = entry.text();
+    state.frontend.tui_signals.yank_text = Some(text);
+    IntentResult::empty()
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]

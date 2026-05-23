@@ -19,6 +19,29 @@ pub fn validate_chat_entry_select_prev(_state: &AppState) {}
 
 // --- Fallible validators ---
 
+/// Errors from validating a YankSelectedEntry intent.
+#[derive(Debug, Error)]
+#[error(debug)]
+pub enum YankSelectedError {
+    /// No chat entry is currently selected.
+    NoSelection,
+}
+
+/// Validates the YankSelectedEntry intent.
+///
+/// Returns an error if no entry is currently selected.
+///
+/// # Errors
+///
+/// Returns an error if no entry is currently selected.
+pub fn validate_yank_selected(state: &AppState) -> Result<(), YankSelectedError> {
+    state
+        .active_session()
+        .selected_entry()
+        .ok_or(YankSelectedError::NoSelection)?;
+    Ok(())
+}
+
 /// Errors from validating an ExpandToolEntry intent.
 #[derive(Debug, Error)]
 #[error(debug)]

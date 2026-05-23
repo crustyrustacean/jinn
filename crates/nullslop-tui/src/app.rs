@@ -260,6 +260,28 @@ impl TuiApp {
                 on_result: Box::new(|result| result),
             });
         }
+        if let Some(text) = signals.yank_text {
+            self.core
+                .state
+                .write()
+                .frontend
+                .set_status_notification("Copied to clipboard");
+            std::thread::spawn(move || {
+                let mut cb = match arboard::Clipboard::new() {
+                    Ok(cb) => cb,
+                    Err(e) => {
+                        tracing::warn!(err = %e, "failed to create clipboard");
+                        return;
+                    }
+                };
+                if let Err(e) = cb.set_text(&text) {
+                    tracing::warn!(err = %e, "failed to yank entry to clipboard");
+                    return;
+                }
+                tracing::debug!(len = text.len(), "yanked entry to clipboard");
+                std::thread::sleep(std::time::Duration::from_secs(2));
+            });
+        }
 
         // Step 6: Update scope based on new focus.
         let state_read = self.core.state.read();
