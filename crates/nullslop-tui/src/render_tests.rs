@@ -5,9 +5,9 @@
 )]
 
 use super::render::*;
-use nullslop_domain::feat::ui::chat_log::GUTTER_WIDTH;
-use nullslop_domain::feat::session::chat_entry::ChatEntry;
 use nullslop_domain::FocusScope;
+use nullslop_domain::feat::session::chat_entry::ChatEntry;
+use nullslop_domain::feat::ui::chat_log::GUTTER_WIDTH;
 use nullslop_selection_widget::compute_popup_rect;
 use nullslop_testutil::setup_term;
 use ratatui::layout::Rect;
