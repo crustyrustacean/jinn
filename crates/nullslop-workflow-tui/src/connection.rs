@@ -68,7 +68,10 @@ impl ConnectionRouter for SimpleRouter {
         cells.dedup();
 
         // Convert to PathCells with box-drawing characters.
-        #[expect(clippy::indexing_slicing, reason = "indices are bounds-checked by enumerate")]
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "indices are bounds-checked by enumerate"
+        )]
         let path_cells: Vec<PathCell> = cells
             .iter()
             .enumerate()
