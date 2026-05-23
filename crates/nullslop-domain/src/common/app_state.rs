@@ -505,6 +505,8 @@ pub struct AppState {
     pub provider: ProviderState,
     /// Frontend / UI state — owned by IntentHandler.
     pub frontend: FrontendState,
+    /// Workflow execution state — owned by workflow-actor.
+    pub workflow: crate::feat::workflow::workflow_state::WorkflowMap,
 }
 
 impl AppState {
