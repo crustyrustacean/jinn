@@ -114,15 +114,39 @@ Multi-turn: first message asks for X, second message says "actually, do Y instea
 
 ## Adding New Tasks
 
-1. **Add a fixture directory** (if needed) under `fixtures/<task-name>/` with the starting files.
-2. **Add a `BenchTask` entry** in `src/tasks.rs` with:
-   - `name` — unique kebab-case identifier
-   - `messages` — one string per turn
-   - `fixture_dir` — `Some("fixture-dir-name")` or `None`
-   - `timeout` — generous wall-clock timeout
-   - `tools` — which builtins to enable
-   - `verify` — a `fn(&Path) -> bool` that checks the working directory
-3. **Write the verification function** in the same file. Test observable behavior only: files exist, programs compile, programs produce correct output.
+Tasks are organized into category directories under `src/tasks/`. Each task is a single file with its definition and verification function co-located.
+
+```
+src/tasks/
+├── one_shot/          # Single-message tasks
+│   ├── mod.rs         # Category registry
+│   ├── hello_world.rs
+│   └── hello_world/fixtures/   # Co-located fixtures
+├── fix_code/          # Fix-broken-code tasks
+���   ├── mod.rs
+│   └── ...
+└── redirect/          # Multi-turn redirect tasks
+    ├── mod.rs
+    └── ...
+```
+
+1. **Choose a category** (or create a new one under `src/tasks/`):
+   - `one_shot/` — single message, model produces output from scratch
+   - `fix_code/` — model receives broken code and must fix it
+   - `redirect/` — multi-turn, model is redirected mid-task
+
+2. **Create a task file** at `src/tasks/<category>/<task_name>.rs` with:
+   - A `pub fn task() -> BenchTask` returning the task definition
+   - A private `fn verify(dir: &Path) -> VerificationReport` for evaluation
+   - Use helpers from `crate::tasks::checks` (e.g., `check_file_exists`, `check_cargo_check`)
+
+3. **Add fixtures** (if needed) in a `fixtures/` directory next to the task file:
+   - Path: `src/tasks/<category>/<task_name>/fixtures/`
+   - Reference it as `fixture_dir: Some("src/tasks/<category>/<task_name>/fixtures")`
+
+4. **Register the task** by adding one line to the category's `mod.rs`:
+   - Add `mod <task_name>;` to the module declarations
+   - Add `<task_name>::task()` to the `tasks()` function's return vec
 
 ## Output
 
