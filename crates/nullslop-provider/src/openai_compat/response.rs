@@ -83,6 +83,22 @@ impl StreamResponseParser {
             Err(_) => return results,
         };
 
+        // Check for top-level error object (e.g., OpenRouter context_length_exceeded).
+        if let Some(error_obj) = chunk.get("error") {
+            let error_type = error_obj
+                .get("type")
+                .and_then(|t| t.as_str())
+                .unwrap_or("unknown_error")
+                .to_owned();
+            let message = error_obj
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("Unknown error")
+                .to_owned();
+            results.push(StreamEvent::Error { error_type, message });
+            return results;
+        }
+
         let choices = if let Some(c) = chunk.get("choices").and_then(|c| c.as_array()) { c } else {
             // No choices — but we can still enrich pending_done with usage.
             self.try_enrich_pending_usage(&chunk);
