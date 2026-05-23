@@ -1919,6 +1919,7 @@ dependencies = [
  "jiff",
  "nullslop-domain",
  "nullslop-provider",
+ "strip-ansi-escapes",
  "tempfile",
  "tokio",
  "tracing",

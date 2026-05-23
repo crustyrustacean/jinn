@@ -10,6 +10,7 @@ use crate::task::{BenchTask, BenchTools, CheckResult, VerificationReport};
 pub fn task() -> BenchTask {
     BenchTask {
         name: "redirect-refactor-function",
+        category: "redirect",
         messages: vec![
             "Add a function to main.py called calculate_volume that takes length, \
              width, and height, and returns the volume. Update main() to also print \
