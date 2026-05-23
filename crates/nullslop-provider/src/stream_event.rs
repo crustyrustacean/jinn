@@ -94,6 +94,17 @@ pub enum StreamEvent {
         /// Usage and cost data from the provider, if reported.
         usage: Option<StreamUsage>,
     },
+    /// An error event from the provider mid-stream.
+    ///
+    /// Some providers (e.g., Anthropic) send error events within the SSE stream
+    /// for issues like `overloaded_error`. This variant surfaces those errors
+    /// so the LLM actor can display them to the user and terminate gracefully.
+    Error {
+        /// The error type from the provider (e.g., "overloaded_error").
+        error_type: String,
+        /// The human-readable error message from the provider.
+        message: String,
+    },
 }
 
 #[cfg(test)]

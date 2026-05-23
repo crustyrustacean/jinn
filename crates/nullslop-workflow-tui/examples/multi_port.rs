@@ -12,11 +12,11 @@
 #[path = "utils/mod.rs"]
 mod common;
 
-use std::collections::HashMap;
 use std::thread;
 use std::time::Duration;
 
 use nullslop_workflow::engine::NodeStatus;
+use nullslop_workflow::execution::WorkflowExecution;
 use nullslop_workflow::graph::WorkflowGraphBuilder;
 use nullslop_workflow::port::PortDef;
 use nullslop_workflow_tui::viewport::ViewportState;
@@ -45,14 +45,16 @@ fn main() {
         b.build().expect("graph should build")
     };
 
-    let statuses = HashMap::from([("llm-call".to_owned(), NodeStatus::Running)]);
+    let execution = WorkflowExecution::new(graph);
+    execution.set_status("llm-call", NodeStatus::Running);
     let viewport = ViewportState::new();
 
     // Animate the spinner for a few frames then hold.
     for tick in 0..30u8 {
+        let snapshot = execution.snapshot();
         terminal
             .draw(|f| {
-                let widget = WorkflowWidget::new(&graph, &statuses, &viewport, tick);
+                let widget = WorkflowWidget::new(&snapshot, &viewport, tick);
                 widget.render(f.area(), f.buffer_mut());
             })
             .expect("draw failed");
