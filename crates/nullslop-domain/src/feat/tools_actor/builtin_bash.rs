@@ -291,6 +291,62 @@ where
     })
 }
 
+/// Buffers streaming output lines and flushes them as batched events.
+///
+/// Accumulates lines into an internal buffer, emitting a `ToolExecutionOutput`
+/// event when the buffer exceeds [`STREAM_FLUSH_THRESHOLD`] or when explicitly
+/// flushed (timer tick or loop exit). Also guards against unbounded memory
+/// growth by truncating the caller's `accumulated` string in-place when it
+/// exceeds [`STREAM_BUFFER_MAX_BYTES`].
+struct StreamingBatcher {
+    buffer: String,
+}
+
+impl StreamingBatcher {
+    fn new() -> Self {
+        Self {
+            buffer: String::new(),
+        }
+    }
+
+    /// Appends a line to both the flush buffer and the caller's accumulated output.
+    ///
+    /// If `accumulated` exceeds [`STREAM_BUFFER_MAX_BYTES`], it is truncated
+    /// in-place using [`truncate_streaming_output`].
+    fn push_line(&mut self, line: &str, accumulated: &mut String) {
+        accumulated.push_str(line);
+        accumulated.push('\n');
+        self.buffer.push_str(line);
+        self.buffer.push('\n');
+
+        if accumulated.len() > STREAM_BUFFER_MAX_BYTES {
+            let truncated = truncate_streaming_output(accumulated);
+            *accumulated = truncated;
+        }
+    }
+
+    /// Returns `true` when the buffer exceeds [`STREAM_FLUSH_THRESHOLD`].
+    fn should_flush(&self) -> bool {
+        self.buffer.len() > STREAM_FLUSH_THRESHOLD
+    }
+
+    /// Emits the buffered output as a streaming event and clears the buffer.
+    ///
+    /// No-op when the buffer is empty.
+    fn flush(
+        &mut self,
+        sink: Option<&std::sync::Arc<dyn MessageSink>>,
+        session_id: Option<&SessionId>,
+        tool_call_id: &str,
+    ) {
+        if self.buffer.is_empty() {
+            return;
+        }
+        flush_buffer(&self.buffer, sink, session_id, tool_call_id);
+        self.buffer.clear();
+    }
+}
+
 /// Reads stdout/stderr concurrently, emitting streaming events, then waits for the child to exit.
 ///
 /// Lines are appended to `accumulated` and streamed via [`emit_stream_event`].
@@ -310,47 +366,28 @@ async fn read_child_output_and_wait(
     let stderr_handle = spawn_line_reader(tokio::io::BufReader::new(stderr), tx.clone());
     drop(tx);
 
-    // Receive lines and batch-emit events every 500ms.
-    let mut buffer = String::new();
+    let mut batcher = StreamingBatcher::new();
     let mut timer = tokio::time::interval(STREAM_FLUSH_INTERVAL);
     timer.tick().await; // Consume the immediate first tick.
 
     loop {
         tokio::select! {
-            line = rx.recv() => {
-                match line {
-                    Some(line) => {
-                        accumulated.push_str(&line);
-                        accumulated.push('\n');
-                        buffer.push_str(&line);
-                        buffer.push('\n');
-
-                        if accumulated.len() > STREAM_BUFFER_MAX_BYTES {
-                            let truncated = truncate_streaming_output(accumulated);
-                            *accumulated = truncated;
-                        }
-
-                        if buffer.len() > STREAM_FLUSH_THRESHOLD {
-                            flush_buffer(&buffer, sink, session_id, tool_call_id);
-                            buffer.clear();
-                        }
+            line = rx.recv() => match line {
+                Some(line) => {
+                    batcher.push_line(&line, accumulated);
+                    if batcher.should_flush() {
+                        batcher.flush(sink, session_id, tool_call_id);
                     }
-                    None => break,
                 }
-            }
+                None => break,
+            },
             _ = timer.tick() => {
-                if !buffer.is_empty() {
-                    flush_buffer(&buffer, sink, session_id, tool_call_id);
-                    buffer.clear();
-                }
+                batcher.flush(sink, session_id, tool_call_id);
             }
         }
     }
 
-    // Final flush: emit any remaining buffered output.
-    if !buffer.is_empty() {
-        flush_buffer(&buffer, sink, session_id, tool_call_id);
-    }
+    batcher.flush(sink, session_id, tool_call_id);
 
     // Wait for both readers to finish.
     let _ = stdout_handle.await;
