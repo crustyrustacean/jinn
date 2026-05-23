@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
 use crate::feat::chat_input::ChatInputBoxState;
+use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::feat::context::strategy::types::StrategyState;
 use crate::feat::session::chat_history::ChatHistory;
 use crate::feat::session::profile::SessionProfile;
@@ -1428,33 +1429,85 @@ impl ChatSessionState {
 
     /// Move the cursor to the first entry visible in the viewport.
     ///
+    /// Resolves through visual items. Collapsed blocks are selectable.
     /// No-op if no entries are visible.
     pub fn move_cursor_to_first_visible(&mut self) {
         let range = self.visible_entry_range();
-        if !range.is_empty() {
+        if range.is_empty() {
+            return;
+        }
+        let items = self.visual_items().clone();
+        if !items.is_empty() {
             let mut idx = range.start;
-            while idx < range.end && self.core.history[idx].is_empty_assistant() {
+            while idx < range.end {
+                let selectable = match items.get(idx) {
+                    Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
+                    Some(VisualItem::Entry(hist_idx)) => {
+                        !self.core.history[*hist_idx].is_empty_assistant()
+                    }
+                    None => false,
+                };
+                if selectable {
+                    break;
+                }
                 idx += 1;
             }
-            if idx < self.core.history.len() && !self.core.history[idx].is_empty_assistant() {
-                self.ui.selected_entry_index = Some(idx);
+            if idx < items.len() {
+                let selectable = match items.get(idx) {
+                    Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
+                    Some(VisualItem::Entry(hist_idx)) => {
+                        !self.core.history[*hist_idx].is_empty_assistant()
+                    }
+                    None => false,
+                };
+                if selectable {
+                    self.ui.selected_entry_index = Some(idx);
+                }
             }
+        } else {
+            // Fallback: use raw history index when visual items not yet computed.
+            self.ui.selected_entry_index = Some(range.start);
         }
     }
 
     /// Move the cursor to the last entry visible in the viewport.
     ///
+    /// Resolves through visual items. Collapsed blocks are selectable.
     /// No-op if no entries are visible.
     pub fn move_cursor_to_last_visible(&mut self) {
         let range = self.visible_entry_range();
-        if !range.is_empty() {
+        if range.is_empty() {
+            return;
+        }
+        let items = self.visual_items().clone();
+        if !items.is_empty() {
             let mut idx = range.end.saturating_sub(1);
-            while idx > range.start && self.core.history[idx].is_empty_assistant() {
+            while idx > range.start {
+                let selectable = match items.get(idx) {
+                    Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
+                    Some(VisualItem::Entry(hist_idx)) => {
+                        !self.core.history[*hist_idx].is_empty_assistant()
+                    }
+                    None => false,
+                };
+                if selectable {
+                    break;
+                }
                 idx = idx.saturating_sub(1);
             }
-            if !self.core.history[idx].is_empty_assistant() {
+            let selectable = match items.get(idx) {
+                Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
+                Some(VisualItem::Entry(hist_idx)) => {
+                    !self.core.history[*hist_idx].is_empty_assistant()
+                }
+                None => false,
+            };
+            if selectable {
                 self.ui.selected_entry_index = Some(idx);
             }
+        } else {
+            // Fallback: use raw history index when visual items not yet computed.
+            self.ui.selected_entry_index = Some(range.end.saturating_sub(1));
         }
     }
 
@@ -1503,10 +1556,101 @@ impl ChatSessionState {
 
     /// Select the next entry (moving toward newer messages).
     ///
-    /// If nothing is selected, selects the first entry.
-    /// Clamps to the last entry index.
-    /// No-op if history is empty.
+    /// If nothing is selected, selects the first visual item.
+    /// Walks the visual items list, not the raw history.
+    /// Collapsed blocks are selectable (so user can press `h` to expand).
+    /// Skips empty assistant entries.
+    /// Clamps to the last visual-item index.
+    /// No-op if visual items list is empty.
     pub fn select_next_entry(&mut self) {
+        let items = self.visual_items().clone();
+        if items.is_empty() {
+            // Before first render, fall back to direct history walking.
+            self.select_next_entry_fallback();
+            return;
+        }
+
+        let max = items.len() - 1;
+        let start = self
+            .ui
+            .selected_entry_index
+            .map_or(0, |i| i.saturating_add(1).min(max));
+        let mut idx = start;
+        while idx < max {
+            let selectable = match items[idx] {
+                VisualItem::CollapsedIgnoredBlock { .. } => true,
+                VisualItem::Entry(hist_idx) => !self.core.history[hist_idx].is_empty_assistant(),
+            };
+            if selectable {
+                break;
+            }
+            idx = idx.saturating_add(1);
+        }
+        let selectable = match items[idx] {
+            VisualItem::CollapsedIgnoredBlock { .. } => true,
+            VisualItem::Entry(hist_idx) => !self.core.history[hist_idx].is_empty_assistant(),
+        };
+        if selectable {
+            self.ui.selected_entry_index = Some(idx);
+        }
+    }
+
+    /// Select the previous entry (moving toward older messages).
+    ///
+    /// If nothing is selected, selects the last visual item.
+    /// Walks the visual items list, not the raw history.
+    /// Collapsed blocks are selectable (so user can press `h` to expand).
+    /// Skips empty assistant entries.
+    /// Clamps to 0.
+    /// No-op if visual items list is empty.
+    pub fn select_prev_entry(&mut self) {
+        let items = self.visual_items().clone();
+        if items.is_empty() {
+            // Before first render, fall back to direct history walking.
+            self.select_prev_entry_fallback();
+            return;
+        }
+
+        let start = self
+            .ui
+            .selected_entry_index
+            .map_or(items.len().saturating_sub(1), |i| i.saturating_sub(1));
+        let mut idx = start;
+        while idx > 0 {
+            let selectable = match items[idx] {
+                VisualItem::CollapsedIgnoredBlock { .. } => true,
+                VisualItem::Entry(hist_idx) => !self.core.history[hist_idx].is_empty_assistant(),
+            };
+            if selectable {
+                break;
+            }
+            idx = idx.saturating_sub(1);
+        }
+        let selectable = match items[idx] {
+            VisualItem::CollapsedIgnoredBlock { .. } => true,
+            VisualItem::Entry(hist_idx) => !self.core.history[hist_idx].is_empty_assistant(),
+        };
+        if selectable {
+            self.ui.selected_entry_index = Some(idx);
+        }
+    }
+
+    /// Clear the entry selection.
+    pub fn clear_selection(&mut self) {
+        self.ui.selected_entry_index = None;
+    }
+
+    /// Set the selected entry index directly.
+    ///
+    /// Use for programmatic selection (e.g., sidebar pin sync).
+    /// Does not validate bounds — caller must ensure index is valid.
+    pub fn set_selected_entry_index(&mut self, index: usize) {
+        self.ui.selected_entry_index = Some(index);
+    }
+
+    /// Fallback: select next entry by walking raw history.
+    /// Used when visual items haven't been computed yet (before first render).
+    fn select_next_entry_fallback(&mut self) {
         if self.core.history.is_empty() {
             return;
         }
@@ -1524,12 +1668,9 @@ impl ChatSessionState {
         }
     }
 
-    /// Select the previous entry (moving toward older messages).
-    ///
-    /// If nothing is selected, selects the last entry.
-    /// Clamps to 0.
-    /// No-op if history is empty.
-    pub fn select_prev_entry(&mut self) {
+    /// Fallback: select prev entry by walking raw history.
+    /// Used when visual items haven't been computed yet (before first render).
+    fn select_prev_entry_fallback(&mut self) {
         if self.core.history.is_empty() {
             return;
         }
@@ -1546,19 +1687,6 @@ impl ChatSessionState {
         if !self.core.history[idx].is_empty_assistant() {
             self.ui.selected_entry_index = Some(idx);
         }
-    }
-
-    /// Clear the entry selection.
-    pub fn clear_selection(&mut self) {
-        self.ui.selected_entry_index = None;
-    }
-
-    /// Set the selected entry index directly.
-    ///
-    /// Use for programmatic selection (e.g., sidebar pin sync).
-    /// Does not validate bounds — caller must ensure index is valid.
-    pub fn set_selected_entry_index(&mut self, index: usize) {
-        self.ui.selected_entry_index = Some(index);
     }
 
     // --- Saved history position ---
@@ -1607,9 +1735,23 @@ impl ChatSessionState {
     }
 
     /// The currently selected entry, if any.
+    ///
+    /// Resolves through the visual items list: returns `None` if the
+    /// selected item is a collapsed block rather than a real entry.
+    /// Falls back to direct history indexing when visual items are empty
+    /// (before the first render).
     pub fn selected_entry(&self) -> Option<&ChatEntry> {
-        let i = self.ui.selected_entry_index?;
-        self.core.history.get(i)
+        let vi_idx = self.ui.selected_entry_index?;
+        let items = self.visual_items();
+        if items.is_empty() {
+            // Before first render, visual items haven't been computed yet.
+            // Fall back to direct history indexing.
+            return self.core.history.get(vi_idx);
+        }
+        match items.get(vi_idx)? {
+            VisualItem::Entry(hist_idx) => self.core.history.get(*hist_idx),
+            VisualItem::CollapsedIgnoredBlock { .. } => None,
+        }
     }
 
     /// The ID of the currently selected entry, if any.
