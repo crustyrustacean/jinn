@@ -33,29 +33,22 @@ impl NodeContext for Ctx {}
 
 fn build_graph() -> nullslop_workflow::graph::WorkflowGraph {
     let mut b = WorkflowGraphBuilder::new();
+    // First node: source (no inputs, one output) — use make_node since DelayNode mirrors ports.
     b.add_node(
         "fast".to_owned(),
-        Box::new(DelayNode::new(
-            Duration::from_millis(500),
-            vec![PortDef::string("out")],
-        )),
+        common::make_node("fast", vec![], vec![PortDef::string("out")]),
     );
+    // Middle and last: passthrough delay nodes (input "in" -> output "in").
     b.add_node(
         "medium".to_owned(),
-        Box::new(DelayNode::new(
-            Duration::from_millis(1500),
-            vec![PortDef::string("out")],
-        )),
+        Box::new(DelayNode::passthrough(Duration::from_millis(1500))),
     );
     b.add_node(
         "slow".to_owned(),
-        Box::new(DelayNode::new(
-            Duration::from_millis(3000),
-            vec![PortDef::string("out")],
-        )),
+        Box::new(DelayNode::passthrough(Duration::from_millis(3000))),
     );
-    b.connect("fast", "out", "medium", "out").unwrap();
-    b.connect("medium", "out", "slow", "out").unwrap();
+    b.connect("fast", "out", "medium", "in").unwrap();
+    b.connect("medium", "in", "slow", "in").unwrap();
     b.build().unwrap()
 }
 
