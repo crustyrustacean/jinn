@@ -1,22 +1,27 @@
 //! Shared check helpers for bench task verification.
+//!
+//! Each check function runs a verification step and returns a [`CheckResult`].
+//! Subprocess output (stdout/stderr) is stripped of ANSI escape sequences to
+//! ensure clean plain-text detail strings in session chat entries and CSV output.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "helpers")]
 
 use std::path::Path;
 
 use crate::task::CheckResult;
+use strip_ansi_escapes::strip_str as strip_ansi;
 
 /// Checks that a file exists in the given directory.
 pub fn check_file_exists(dir: &Path, name: &str) -> CheckResult {
     let check_name = format!("file_exists({name})");
     let path = dir.join(name);
     if path.is_file() {
-        tracing::info!(check = %check_name, "PASSED");
         CheckResult::pass(check_name)
     } else {
-        let detail = format!("expected file to exist: {}", path.display());
-        tracing::warn!(check = %check_name, %detail, "FAILED");
-        CheckResult::fail(check_name, detail)
+        CheckResult::fail(
+            check_name,
+            format!("expected file to exist: {}", path.display()),
+        )
     }
 }
 
@@ -25,15 +30,15 @@ pub fn check_file_contains(dir: &Path, name: &str, needle: &str) -> CheckResult 
     let check_name = format!("file_contains({name}, {needle:?})");
     let content = std::fs::read_to_string(dir.join(name)).unwrap_or_default();
     if content.contains(needle) {
-        tracing::info!(check = %check_name, "PASSED");
         CheckResult::pass(check_name)
     } else {
-        let detail = format!(
-            "expected {name} to contain {needle:?}, content length: {} bytes",
-            content.len()
-        );
-        tracing::warn!(check = %check_name, %detail, "FAILED");
-        CheckResult::fail(check_name, detail)
+        CheckResult::fail(
+            check_name,
+            format!(
+                "expected {name} to contain {needle:?}, content length: {} bytes",
+                content.len()
+            ),
+        )
     }
 }
 
@@ -45,25 +50,22 @@ pub fn check_cargo_check(dir: &Path) -> CheckResult {
         .output();
 
     match output {
-        Ok(o) if o.status.success() => {
-            tracing::info!(check = "cargo_check", "PASSED");
-            CheckResult::pass("cargo_check")
-        }
+        Ok(o) if o.status.success() => CheckResult::pass("cargo_check"),
         Ok(o) => {
-            let stderr = String::from_utf8_lossy(&o.stderr);
-            let detail = format!(
-                "cargo check failed (exit {:?}): {}",
-                o.status.code(),
-                stderr.trim()
-            );
-            tracing::warn!(check = "cargo_check", %detail, "FAILED");
-            CheckResult::fail("cargo_check", detail)
+            let stderr = strip_ansi(String::from_utf8_lossy(&o.stderr));
+            CheckResult::fail(
+                "cargo_check",
+                format!(
+                    "cargo check failed (exit {:?}): {}",
+                    o.status.code(),
+                    stderr.trim()
+                ),
+            )
         }
-        Err(e) => {
-            let detail = format!("failed to execute cargo check: {e}");
-            tracing::warn!(check = "cargo_check", %detail, "FAILED");
-            CheckResult::fail("cargo_check", detail)
-        }
+        Err(e) => CheckResult::fail(
+            "cargo_check",
+            format!("failed to execute cargo check: {e}"),
+        ),
     }
 }
 
@@ -75,27 +77,24 @@ pub fn check_cargo_run(dir: &Path) -> CheckResult {
         .output();
 
     match output {
-        Ok(o) if o.status.success() => {
-            tracing::info!(check = "cargo_run", "PASSED");
-            CheckResult::pass("cargo_run")
-        }
+        Ok(o) if o.status.success() => CheckResult::pass("cargo_run"),
         Ok(o) => {
-            let stderr = String::from_utf8_lossy(&o.stderr);
-            let stdout = String::from_utf8_lossy(&o.stdout);
-            let detail = format!(
-                "cargo run failed (exit {:?})\nstdout: {}\nstderr: {}",
-                o.status.code(),
-                stdout.trim(),
-                stderr.trim()
-            );
-            tracing::warn!(check = "cargo_run", %detail, "FAILED");
-            CheckResult::fail("cargo_run", detail)
+            let stderr = strip_ansi(String::from_utf8_lossy(&o.stderr));
+            let stdout = strip_ansi(String::from_utf8_lossy(&o.stdout));
+            CheckResult::fail(
+                "cargo_run",
+                format!(
+                    "cargo run failed (exit {:?})\nstdout: {}\nstderr: {}",
+                    o.status.code(),
+                    stdout.trim(),
+                    stderr.trim()
+                ),
+            )
         }
-        Err(e) => {
-            let detail = format!("failed to execute cargo run: {e}");
-            tracing::warn!(check = "cargo_run", %detail, "FAILED");
-            CheckResult::fail("cargo_run", detail)
-        }
+        Err(e) => CheckResult::fail(
+            "cargo_run",
+            format!("failed to execute cargo run: {e}"),
+        ),
     }
 }
 
@@ -108,27 +107,24 @@ pub fn check_python_run(dir: &Path, script: &str) -> CheckResult {
         .output();
 
     match output {
-        Ok(o) if o.status.success() => {
-            tracing::info!(check = %check_name, "PASSED");
-            CheckResult::pass(check_name)
-        }
+        Ok(o) if o.status.success() => CheckResult::pass(check_name),
         Ok(o) => {
-            let stderr = String::from_utf8_lossy(&o.stderr);
-            let stdout = String::from_utf8_lossy(&o.stdout);
-            let detail = format!(
-                "python3 {script} failed (exit {:?})\nstdout: {}\nstderr: {}",
-                o.status.code(),
-                stdout.trim(),
-                stderr.trim()
-            );
-            tracing::warn!(check = %check_name, %detail, "FAILED");
-            CheckResult::fail(check_name, detail)
+            let stderr = strip_ansi(String::from_utf8_lossy(&o.stderr));
+            let stdout = strip_ansi(String::from_utf8_lossy(&o.stdout));
+            CheckResult::fail(
+                check_name,
+                format!(
+                    "python3 {script} failed (exit {:?})\nstdout: {}\nstderr: {}",
+                    o.status.code(),
+                    stdout.trim(),
+                    stderr.trim()
+                ),
+            )
         }
-        Err(e) => {
-            let detail = format!("failed to execute python3 {script}: {e}");
-            tracing::warn!(check = %check_name, %detail, "FAILED");
-            CheckResult::fail(check_name, detail)
-        }
+        Err(e) => CheckResult::fail(
+            check_name,
+            format!("failed to execute python3 {script}: {e}"),
+        ),
     }
 }
 
@@ -142,34 +138,34 @@ pub fn check_cargo_run_contains(dir: &Path, expected: &str) -> CheckResult {
 
     match output {
         Ok(o) if !o.status.success() => {
-            let stderr = String::from_utf8_lossy(&o.stderr);
-            let detail = format!(
-                "cargo run failed (exit {:?}): {}",
-                o.status.code(),
-                stderr.trim()
-            );
-            tracing::warn!(check = %check_name, %detail, "FAILED");
-            CheckResult::fail(check_name, detail)
+            let stderr = strip_ansi(String::from_utf8_lossy(&o.stderr));
+            CheckResult::fail(
+                check_name,
+                format!(
+                    "cargo run failed (exit {:?}): {}",
+                    o.status.code(),
+                    stderr.trim()
+                ),
+            )
         }
         Ok(o) => {
-            let stdout = String::from_utf8_lossy(&o.stdout);
+            let stdout = strip_ansi(String::from_utf8_lossy(&o.stdout));
             if stdout.contains(expected) {
-                tracing::info!(check = %check_name, "PASSED");
                 CheckResult::pass(check_name)
             } else {
-                let detail = format!(
-                    "expected stdout to contain {expected:?}\nactual stdout: {}",
-                    stdout.trim()
-                );
-                tracing::warn!(check = %check_name, %detail, "FAILED");
-                CheckResult::fail(check_name, detail)
+                CheckResult::fail(
+                    check_name,
+                    format!(
+                        "expected stdout to contain {expected:?}\nactual stdout: {}",
+                        stdout.trim()
+                    ),
+                )
             }
         }
-        Err(e) => {
-            let detail = format!("failed to execute cargo run: {e}");
-            tracing::warn!(check = %check_name, %detail, "FAILED");
-            CheckResult::fail(check_name, detail)
-        }
+        Err(e) => CheckResult::fail(
+            check_name,
+            format!("failed to execute cargo run: {e}"),
+        ),
     }
 }
 
@@ -183,34 +179,34 @@ pub fn check_python_run_contains(dir: &Path, script: &str, expected: &str) -> Ch
 
     match output {
         Ok(o) if !o.status.success() => {
-            let stderr = String::from_utf8_lossy(&o.stderr);
-            let detail = format!(
-                "python3 {script} failed (exit {:?}): {}",
-                o.status.code(),
-                stderr.trim()
-            );
-            tracing::warn!(check = %check_name, %detail, "FAILED");
-            CheckResult::fail(check_name, detail)
+            let stderr = strip_ansi(String::from_utf8_lossy(&o.stderr));
+            CheckResult::fail(
+                check_name,
+                format!(
+                    "python3 {script} failed (exit {:?}): {}",
+                    o.status.code(),
+                    stderr.trim()
+                ),
+            )
         }
         Ok(o) => {
-            let stdout = String::from_utf8_lossy(&o.stdout);
+            let stdout = strip_ansi(String::from_utf8_lossy(&o.stdout));
             if stdout.contains(expected) {
-                tracing::info!(check = %check_name, "PASSED");
                 CheckResult::pass(check_name)
             } else {
-                let detail = format!(
-                    "expected stdout to contain {expected:?}\nactual stdout: {}",
-                    stdout.trim()
-                );
-                tracing::warn!(check = %check_name, %detail, "FAILED");
-                CheckResult::fail(check_name, detail)
+                CheckResult::fail(
+                    check_name,
+                    format!(
+                        "expected stdout to contain {expected:?}\nactual stdout: {}",
+                        stdout.trim()
+                    ),
+                )
             }
         }
-        Err(e) => {
-            let detail = format!("failed to execute python3 {script}: {e}");
-            tracing::warn!(check = %check_name, %detail, "FAILED");
-            CheckResult::fail(check_name, detail)
-        }
+        Err(e) => CheckResult::fail(
+            check_name,
+            format!("failed to execute python3 {script}: {e}"),
+        ),
     }
 }
 
@@ -224,34 +220,34 @@ pub fn check_fizzbuzz_output(dir: &Path) -> CheckResult {
 
     match output {
         Ok(o) if !o.status.success() => {
-            let stderr = String::from_utf8_lossy(&o.stderr);
-            let detail = format!(
-                "cargo run failed (exit {:?}): {}",
-                o.status.code(),
-                stderr.trim()
-            );
-            tracing::warn!(check = "fizzbuzz_output", %detail, "FAILED");
-            CheckResult::fail("fizzbuzz_output", detail)
+            let stderr = strip_ansi(String::from_utf8_lossy(&o.stderr));
+            CheckResult::fail(
+                "fizzbuzz_output",
+                format!(
+                    "cargo run failed (exit {:?}): {}",
+                    o.status.code(),
+                    stderr.trim()
+                ),
+            )
         }
         Ok(o) => {
-            let stdout = String::from_utf8_lossy(&o.stdout);
+            let stdout = strip_ansi(String::from_utf8_lossy(&o.stdout));
             for line in stdout.lines() {
                 if line.trim() == "FizzBuzz" {
-                    tracing::info!(check = "fizzbuzz_output", "PASSED");
                     return CheckResult::pass("fizzbuzz_output");
                 }
             }
-            let detail = format!(
-                "expected \"FizzBuzz\" as a standalone line\nactual stdout:\n{}",
-                stdout.trim()
-            );
-            tracing::warn!(check = "fizzbuzz_output", %detail, "FAILED");
-            CheckResult::fail("fizzbuzz_output", detail)
+            CheckResult::fail(
+                "fizzbuzz_output",
+                format!(
+                    "expected \"FizzBuzz\" as a standalone line\nactual stdout:\n{}",
+                    stdout.trim()
+                ),
+            )
         }
-        Err(e) => {
-            let detail = format!("failed to execute cargo run: {e}");
-            tracing::warn!(check = "fizzbuzz_output", %detail, "FAILED");
-            CheckResult::fail("fizzbuzz_output", detail)
-        }
+        Err(e) => CheckResult::fail(
+            "fizzbuzz_output",
+            format!("failed to execute cargo run: {e}"),
+        ),
     }
 }

@@ -18,7 +18,7 @@ fn main() {
             log_file: log_file.clone(),
         },
         Some(nullslop_cli::cli::Commands::Completions { .. }) => TracingMode::Tui { log_dir: None },
-        Some(nullslop_cli::cli::Commands::Bench { .. }) => TracingMode::Headless { log_file: None },
+        Some(nullslop_cli::cli::Commands::Bench { .. }) => TracingMode::Tui { log_dir: None },
         Some(nullslop_cli::cli::Commands::Fetch { .. }) => TracingMode::Headless { log_file: None },
     };
 

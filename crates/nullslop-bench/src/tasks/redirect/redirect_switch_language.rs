@@ -11,6 +11,7 @@ use crate::tasks::checks;
 pub fn task() -> BenchTask {
     BenchTask {
         name: "redirect-switch-language",
+        category: "redirect",
         messages: vec![
             "Add a feature to main.py that counts unique words and prints the count.",
             "Actually, rewrite the entire program in Rust instead. Save it to \

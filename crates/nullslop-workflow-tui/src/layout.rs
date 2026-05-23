@@ -82,15 +82,14 @@ pub fn compute(graph: &WorkflowGraph, statuses: &HashMap<String, NodeStatus>) ->
         let input_defs = graph.node_input_ports(name).unwrap_or_default();
         let output_defs = graph.node_output_ports(name).unwrap_or_default();
         let status = statuses.get(*name).copied().unwrap_or(NodeStatus::Pending);
-        let node = VisualNode::compute(name.to_string(), input_defs, output_defs, status);
+        let node = VisualNode::compute(name.to_string(), &input_defs, &output_defs, status);
         visual_nodes.insert(name, node);
     }
 
     // Second pass: assign positions by column.
     for col in 0..=max_col {
-        let col_names = match column_nodes.get(&col) {
-            Some(names) => names,
-            None => continue,
+        let Some(col_names) = column_nodes.get(&col) else {
+            continue;
         };
 
         let x_offset = compute_x_offset(&visual_nodes, &column_nodes, col);
@@ -99,7 +98,7 @@ pub fn compute(graph: &WorkflowGraph, statuses: &HashMap<String, NodeStatus>) ->
         for name in col_names {
             let node = visual_nodes
                 .get_mut(name)
-                .unwrap_or_else(|| unreachable!("node was created in first pass"));
+                .expect("node was created in first pass");
             node.x = x_offset;
             node.y = y_cursor;
             y_cursor = y_cursor + node.height + V_SPACING;
@@ -172,14 +171,13 @@ fn compute_x_offset(
     for col in 0..target_col {
         let max_width = column_nodes
             .get(&col)
-            .map(|names| {
+            .map_or(0, |names| {
                 names
                     .iter()
                     .filter_map(|n| visual_nodes.get(n).map(|node| node.width))
                     .max()
                     .unwrap_or(0)
-            })
-            .unwrap_or(0);
+            });
         x = x + max_width + H_SPACING;
     }
     x
@@ -392,9 +390,9 @@ mod tests {
     fn layout_content_size_single_node() {
         // Given a single-node layout at position (5, 10).
         let mut node = VisualNode::compute(
-            "a".to_string(),
-            vec![],
-            vec![PortDef::string("out")],
+            "a".to_owned(),
+            &[],
+            &[PortDef::string("out")],
             NodeStatus::Pending,
         );
         node.x = 5;

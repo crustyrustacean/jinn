@@ -92,6 +92,10 @@ pub async fn execute(
 /// # Errors
 ///
 /// Returns an error if the engine encounters an internal failure.
+///
+/// # Panics
+///
+/// Panics if internal invariant is violated (e.g., channel closed unexpectedly).
 pub async fn execute_with_cancel(
     graph: WorkflowGraph,
     ctx: Arc<dyn NodeContext>,
@@ -189,7 +193,6 @@ pub async fn execute_with_cancel(
                 completed_count += 1;
 
                 // Propagate skip to downstream.
-                #[expect(clippy::indexing_slicing, reason = "node name is validated during graph construction")]
                 let failed_idx = name_to_index[&panic_name];
                 let downstream = find_downstream(failed_idx, inner, &node_names);
                 for down_name in &downstream {
@@ -200,7 +203,7 @@ pub async fn execute_with_cancel(
                     }
                 }
             }
-            _ = cancel.cancelled() => {
+            () = cancel.cancelled() => {
                 // Abort all running tasks.
                 for (_, handle) in handles.drain() {
                     handle.abort();
@@ -240,6 +243,7 @@ async fn check_panics_async(
 }
 
 /// Handles a node completion message.
+#[expect(clippy::expect_used, reason = "internal invariant: node names are validated during graph construction")]
 #[expect(
     clippy::too_many_arguments,
     reason = "internal helper with many mutable state references"
@@ -374,11 +378,10 @@ fn find_downstream(
     while let Some(idx) = queue.pop_front() {
         for edge in graph.edges_directed(idx, petgraph::Direction::Outgoing) {
             let tgt = edge.target();
-            if let Some(name) = node_names.get(&tgt) {
-                if downstream.insert(name.clone()) {
+            if let Some(name) = node_names.get(&tgt)
+                && downstream.insert(name.clone()) {
                     queue.push_back(tgt);
                 }
-            }
         }
     }
 
@@ -387,6 +390,8 @@ fn find_downstream(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+
     use super::*;
     use crate::graph::WorkflowGraphBuilder;
     use crate::node::NodeError;
