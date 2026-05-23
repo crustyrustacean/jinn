@@ -86,10 +86,10 @@ impl<'a> WorkflowWidget<'a> {
             let (tx, ty) = tgt_node.input_port_pos(tgt_idx);
 
             // Apply viewport offset using i32 arithmetic.
-            let sx = i32::from(sx) - self.viewport.offset_x;
-            let sy = i32::from(sy) - self.viewport.offset_y;
-            let tx = i32::from(tx) - self.viewport.offset_x;
-            let ty = i32::from(ty) - self.viewport.offset_y;
+            let sx = i32::from(sx).saturating_sub(self.viewport.offset_x);
+            let sy = i32::from(sy).saturating_sub(self.viewport.offset_y);
+            let tx = i32::from(tx).saturating_sub(self.viewport.offset_x);
+            let ty = i32::from(ty).saturating_sub(self.viewport.offset_y);
 
             let path = SimpleRouter::route((sx, sy), (tx, ty), &node_rects);
             insert_path_into_grid(&mut grid, &path, edge.port_type);
