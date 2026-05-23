@@ -347,7 +347,17 @@ impl IntentHandler {
                 feat::rename_session_input::intent::handle_delete_forward(state)
             }
             Intent::SwitchTab => {
-                state.frontend.active_tab = state.frontend.active_tab.next();
+                let next_tab = state.frontend.active_tab.next();
+                let new_scope = match next_tab {
+                    crate::protocol::tab::ActiveTab::Chat => {
+                        crate::common::app_state::FocusScope::Normal
+                    }
+                    crate::protocol::tab::ActiveTab::Workflow => {
+                        crate::common::app_state::FocusScope::Workflow
+                    }
+                };
+                state.frontend.active_tab = next_tab;
+                state.frontend.scope_stack.swap_base(new_scope);
                 IntentResult::empty()
             }
         }

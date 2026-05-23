@@ -321,6 +321,9 @@ fn execute_slash_command(
         SlashCommand::Workflow => {
             let workflow_id = crate::feat::workflow::workflow_state::WorkflowId::new();
             state.frontend.active_tab = crate::protocol::tab::ActiveTab::Workflow;
+            state.frontend.scope_stack.swap_base(
+                crate::common::app_state::FocusScope::Workflow,
+            );
             IntentResult::with_commands(vec![Command::StartWorkflow(
                 crate::feat::workflow::protocol::command::StartWorkflow {
                     name: "add-numbers".to_owned(),

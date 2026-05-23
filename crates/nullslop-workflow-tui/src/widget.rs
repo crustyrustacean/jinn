@@ -52,6 +52,10 @@ impl<'a> WorkflowWidget<'a> {
         let node_rects: Vec<Rect> = layout.nodes.iter().map(super::node::VisualNode::rect).collect();
         let mut grid: HashMap<(i32, i32), CellInfo> = HashMap::new();
 
+        // Area origin offset for connection paths (same as node rendering).
+        let ox = i32::from(area.x);
+        let oy = i32::from(area.y);
+
         for edge in self.snapshot.structure().edges() {
             // Find the output port position on the source node.
             let Some(src_node) = node_map.get(edge.source_node.as_str()) else {
@@ -79,11 +83,11 @@ impl<'a> WorkflowWidget<'a> {
             };
             let (tx, ty) = tgt_node.input_port_pos(tgt_idx);
 
-            // Apply viewport offset using i32 arithmetic.
-            let sx = i32::from(sx).saturating_sub(self.viewport.offset_x);
-            let sy = i32::from(sy).saturating_sub(self.viewport.offset_y);
-            let tx = i32::from(tx).saturating_sub(self.viewport.offset_x);
-            let ty = i32::from(ty).saturating_sub(self.viewport.offset_y);
+            // Apply viewport offset and area origin using i32 arithmetic.
+            let sx = i32::from(sx).saturating_sub(self.viewport.offset_x).saturating_add(ox);
+            let sy = i32::from(sy).saturating_sub(self.viewport.offset_y).saturating_add(oy);
+            let tx = i32::from(tx).saturating_sub(self.viewport.offset_x).saturating_add(ox);
+            let ty = i32::from(ty).saturating_sub(self.viewport.offset_y).saturating_add(oy);
 
             let path = SimpleRouter::route((sx, sy), (tx, ty), &node_rects);
             insert_path_into_grid(&mut grid, &path, edge.port_type);
@@ -107,10 +111,17 @@ impl Widget for WorkflowWidget<'_> {
         // Render connections first (so nodes draw on top).
         self.render_connections(buf, &layout, &node_map, area);
 
+        // Area origin offset — layout positions are relative to the content area,
+        // but the buffer has absolute coordinates. Add area.x/area.y to translate.
+        let ox = i32::from(area.x);
+        let oy = i32::from(area.y);
+
         // Render each node.
         for node in &layout.nodes {
             let selected = self.viewport.is_selected(&node.name);
-            let shifted = node.shifted_i32(self.viewport.offset_x, self.viewport.offset_y);
+            let mut shifted = node.shifted_i32(self.viewport.offset_x, self.viewport.offset_y);
+            shifted.x = shifted.x.saturating_add(ox);
+            shifted.y = shifted.y.saturating_add(oy);
             if !shifted.is_visible() {
                 continue;
             }
