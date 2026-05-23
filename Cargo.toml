@@ -55,6 +55,8 @@ nullslop-cli = { path = "crates/nullslop-cli" }
 nullslop-protocol-derive = { path = "crates/nullslop-protocol-derive" }
 nullslop-selection-widget = { path = "crates/nullslop-selection-widget" }
 nullslop-testutil = { path = "crates/nullslop-testutil" }
+nullslop-workflow = { path = "crates/nullslop-workflow" }
+nullslop-workflow-tui = { path = "crates/nullslop-workflow-tui" }
 nullslop-bench = { path = "crates/nullslop-bench" }
 
 # Error handling
@@ -127,8 +129,9 @@ uuid = { version = "1.23.1", features = ["v7", "serde"] }
 
 # Tokenization
 tiktoken = "3"
-
 regex = "1"
+petgraph = "0.7"
+tokio-util = "0.7"
 csv = "1"
 ctrlc = "3"
 comfy-table = "7"

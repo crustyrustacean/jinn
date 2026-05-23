@@ -268,6 +268,85 @@ fn format_exit_result(
     }
 }
 
+/// Reads lines from an async buffered reader and sends them through an mpsc channel.
+///
+/// Designed for merging stdout and stderr from a child process into a single
+/// stream. The spawned task exits when the reader reaches EOF or the channel
+/// is closed.
+fn spawn_line_reader<R>(
+    reader: R,
+    tx: tokio::sync::mpsc::UnboundedSender<String>,
+) -> tokio::task::JoinHandle<()>
+where
+    R: tokio::io::AsyncBufRead + Unpin + Send + 'static,
+{
+    tokio::spawn(async move {
+        use tokio::io::AsyncBufReadExt;
+        let mut lines = reader.lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    })
+}
+
+/// Buffers streaming output lines and flushes them as batched events.
+///
+/// Accumulates lines into an internal buffer, emitting a `ToolExecutionOutput`
+/// event when the buffer exceeds [`STREAM_FLUSH_THRESHOLD`] or when explicitly
+/// flushed (timer tick or loop exit). Also guards against unbounded memory
+/// growth by truncating the caller's `accumulated` string in-place when it
+/// exceeds [`STREAM_BUFFER_MAX_BYTES`].
+struct StreamingBatcher {
+    buffer: String,
+}
+
+impl StreamingBatcher {
+    fn new() -> Self {
+        Self {
+            buffer: String::new(),
+        }
+    }
+
+    /// Appends a line to both the flush buffer and the caller's accumulated output.
+    ///
+    /// If `accumulated` exceeds [`STREAM_BUFFER_MAX_BYTES`], it is truncated
+    /// in-place using [`truncate_streaming_output`].
+    fn push_line(&mut self, line: &str, accumulated: &mut String) {
+        accumulated.push_str(line);
+        accumulated.push('\n');
+        self.buffer.push_str(line);
+        self.buffer.push('\n');
+
+        if accumulated.len() > STREAM_BUFFER_MAX_BYTES {
+            let truncated = truncate_streaming_output(accumulated);
+            *accumulated = truncated;
+        }
+    }
+
+    /// Returns `true` when the buffer exceeds [`STREAM_FLUSH_THRESHOLD`].
+    fn should_flush(&self) -> bool {
+        self.buffer.len() > STREAM_FLUSH_THRESHOLD
+    }
+
+    /// Emits the buffered output as a streaming event and clears the buffer.
+    ///
+    /// No-op when the buffer is empty.
+    fn flush(
+        &mut self,
+        sink: Option<&std::sync::Arc<dyn MessageSink>>,
+        session_id: Option<&SessionId>,
+        tool_call_id: &str,
+    ) {
+        if self.buffer.is_empty() {
+            return;
+        }
+        flush_buffer(&self.buffer, sink, session_id, tool_call_id);
+        self.buffer.clear();
+    }
+}
+
 /// Reads stdout/stderr concurrently, emitting streaming events, then waits for the child to exit.
 ///
 /// Lines are appended to `accumulated` and streamed via [`emit_stream_event`].
@@ -283,79 +362,32 @@ async fn read_child_output_and_wait(
 ) -> Result<std::process::ExitStatus, std::io::Error> {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
 
-    let stdout_reader = tokio::io::BufReader::new(stdout);
-    let stderr_reader = tokio::io::BufReader::new(stderr);
-
-    let stdout_handle = {
-        let tx = tx.clone();
-        tokio::spawn(async move {
-            use tokio::io::AsyncBufReadExt;
-            let mut lines = stdout_reader.lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                if tx.send(line).is_err() {
-                    break;
-                }
-            }
-        })
-    };
-
-    let stderr_handle = {
-        let tx_clone = tx.clone();
-        tokio::spawn(async move {
-            use tokio::io::AsyncBufReadExt;
-            let mut lines = stderr_reader.lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                if tx_clone.send(line).is_err() {
-                    break;
-                }
-            }
-        })
-    };
-
-    // Drop the sender so the receiver knows when both are done.
+    let stdout_handle = spawn_line_reader(tokio::io::BufReader::new(stdout), tx.clone());
+    let stderr_handle = spawn_line_reader(tokio::io::BufReader::new(stderr), tx.clone());
     drop(tx);
 
-    // Receive lines and batch-emit events every 500ms.
-    let mut buffer = String::new();
+    let mut batcher = StreamingBatcher::new();
     let mut timer = tokio::time::interval(STREAM_FLUSH_INTERVAL);
     timer.tick().await; // Consume the immediate first tick.
 
     loop {
         tokio::select! {
-            line = rx.recv() => {
-                match line {
-                    Some(line) => {
-                        accumulated.push_str(&line);
-                        accumulated.push('\n');
-                        buffer.push_str(&line);
-                        buffer.push('\n');
-
-                        if accumulated.len() > STREAM_BUFFER_MAX_BYTES {
-                            let truncated = truncate_streaming_output(accumulated);
-                            *accumulated = truncated;
-                        }
-
-                        if buffer.len() > STREAM_FLUSH_THRESHOLD {
-                            flush_buffer(&buffer, sink, session_id, tool_call_id);
-                            buffer.clear();
-                        }
+            line = rx.recv() => match line {
+                Some(line) => {
+                    batcher.push_line(&line, accumulated);
+                    if batcher.should_flush() {
+                        batcher.flush(sink, session_id, tool_call_id);
                     }
-                    None => break,
                 }
-            }
+                None => break,
+            },
             _ = timer.tick() => {
-                if !buffer.is_empty() {
-                    flush_buffer(&buffer, sink, session_id, tool_call_id);
-                    buffer.clear();
-                }
+                batcher.flush(sink, session_id, tool_call_id);
             }
         }
     }
 
-    // Final flush: emit any remaining buffered output.
-    if !buffer.is_empty() {
-        flush_buffer(&buffer, sink, session_id, tool_call_id);
-    }
+    batcher.flush(sink, session_id, tool_call_id);
 
     // Wait for both readers to finish.
     let _ = stdout_handle.await;
@@ -502,6 +534,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
+    use crate::common::actor::RecordingSink;
     use std::path::PathBuf;
 
     fn test_ctx() -> ToolContext {
@@ -723,6 +756,117 @@ mod tests {
         assert!(
             stdout.trim().is_empty(),
             "expected no 'sleep 60' processes, but found: {stdout}"
+        );
+    }
+
+    // --- StreamingBatcher unit tests ---
+
+    #[rstest::rstest]
+    fn push_line_appends_to_accumulated() {
+        // Given a fresh batcher.
+        let mut batcher = StreamingBatcher::new();
+        let mut accumulated = String::new();
+
+        // When pushing a line.
+        batcher.push_line("hello world", &mut accumulated);
+
+        // Then the accumulated string contains the line.
+        assert_eq!(accumulated, "hello world\n");
+    }
+
+    #[rstest::rstest]
+    fn should_flush_returns_false_below_threshold() {
+        // Given a batcher with a short line.
+        let mut batcher = StreamingBatcher::new();
+        let mut accumulated = String::new();
+        batcher.push_line("short", &mut accumulated);
+
+        // When checking if the buffer should flush.
+        // Then it returns false (buffer is well under 4096 bytes).
+        assert!(!batcher.should_flush());
+    }
+
+    #[rstest::rstest]
+    fn should_flush_returns_true_at_threshold() {
+        // Given a batcher with enough data to exceed the flush threshold.
+        let mut batcher = StreamingBatcher::new();
+        let mut accumulated = String::new();
+
+        // Push lines until buffer exceeds STREAM_FLUSH_THRESHOLD (4096 bytes).
+        let line = "a".repeat(1000);
+        for _ in 0..5 {
+            batcher.push_line(&line, &mut accumulated);
+        }
+
+        // When checking if the buffer should flush.
+        // Then it returns true.
+        assert!(batcher.should_flush());
+    }
+
+    #[rstest::rstest]
+    fn flush_is_noop_on_empty_buffer() {
+        // Given a fresh batcher and a recording sink.
+        let mut batcher = StreamingBatcher::new();
+        let recording = std::sync::Arc::new(RecordingSink::new());
+        let sink: std::sync::Arc<dyn MessageSink> = recording.clone();
+        let session_id = SessionId::default();
+
+        // When flushing an empty buffer.
+        batcher.flush(Some(&sink), Some(&session_id), "test_call");
+
+        // Then no events were sent.
+        assert!(recording.events().is_empty());
+    }
+
+    #[rstest::rstest]
+    fn flush_emits_and_clears_buffer() {
+        // Given a batcher with pushed lines and a recording sink.
+        let mut batcher = StreamingBatcher::new();
+        let mut accumulated = String::new();
+        let recording = std::sync::Arc::new(RecordingSink::new());
+        let sink: std::sync::Arc<dyn MessageSink> = recording.clone();
+        let session_id = SessionId::default();
+
+        batcher.push_line("line one", &mut accumulated);
+        batcher.push_line("line two", &mut accumulated);
+
+        // When flushing.
+        batcher.flush(Some(&sink), Some(&session_id), "test_call");
+
+        // Then a ToolExecutionOutput event was emitted.
+        let events = recording.events();
+        assert_eq!(events.len(), 1);
+
+        // And the event contains both lines.
+        let Event::ToolExecutionOutput(output) = &events[0] else {
+            panic!("expected ToolExecutionOutput event");
+        };
+        assert!(output.output.contains("line one"));
+        assert!(output.output.contains("line two"));
+
+        // And the buffer is now empty (should_flush returns false).
+        assert!(!batcher.should_flush());
+    }
+
+    #[rstest::rstest]
+    fn push_line_truncates_accumulated_at_max_bytes() {
+        // Given a fresh batcher.
+        let mut batcher = StreamingBatcher::new();
+        let mut accumulated = String::new();
+
+        // When pushing enough data to exceed STREAM_BUFFER_MAX_BYTES.
+        // STREAM_BUFFER_MAX_BYTES = DEFAULT_MAX_BYTES * 2 = 50KB * 2 = 100KB.
+        let line = "x".repeat(2048); // 2KB per line
+        for _ in 0..55 {
+            // 55 * 2KB = 110KB > 100KB
+            batcher.push_line(&line, &mut accumulated);
+        }
+
+        // Then accumulated was truncated (less than the untruncated 110KB).
+        assert!(
+            accumulated.len() < 110 * 1024,
+            "accumulated should be truncated, but is {} bytes",
+            accumulated.len()
         );
     }
 }

@@ -31,8 +31,7 @@ pub type WhichKeyInstance =
     WhichKeyState<nullslop_domain::KeyEvent, Scope, Intent, crate::keymap::KeyCategory>;
 
 /// Type alias for the session preview cache.
-pub type PreviewCache =
-    nullslop_domain::feat::ui::sidebar::sessions::SessionPreviewCache;
+pub type PreviewCache = nullslop_domain::feat::ui::sidebar::sessions::SessionPreviewCache;
 
 /// Top-level application state and event loop.
 #[derive(Debug)]

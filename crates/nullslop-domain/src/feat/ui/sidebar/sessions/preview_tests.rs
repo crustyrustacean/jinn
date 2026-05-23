@@ -5,7 +5,7 @@
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::theme::default_theme;
 use crate::feat::ui::sidebar::sessions::preview::{
-    render_session_preview, session_preview_popup_rect, SessionPreviewCache,
+    SessionPreviewCache, render_session_preview, session_preview_popup_rect,
 };
 use crate::protocol::ChatEntry;
 use nullslop_testutil::{buffer_row, setup_term};
