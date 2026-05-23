@@ -11,6 +11,7 @@ use crate::tasks::checks;
 pub fn task() -> BenchTask {
     BenchTask {
         name: "json-parser",
+        category: "one_shot",
         messages: vec![
             "Write a Rust program that parses a JSON file containing an array of \
              objects with \"name\" (string) and \"age\" (number) fields, then prints \
