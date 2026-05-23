@@ -115,7 +115,7 @@ fn main() {
                 widget.render(main_area, f.buffer_mut());
 
                 let help = format!(
-                    " ←↑↓→ pan │ Tab/Shift+Tab select │ q quit │ selected: {} │ offset: ({}, {})",
+                    " ←↑↓→ move │ Tab/Shift+Tab select │ q quit │ selected: {} │ offset: ({}, {})",
                     viewport.selected_node().unwrap_or("none"),
                     viewport.offset_x,
                     viewport.offset_y,
@@ -136,10 +136,10 @@ fn main() {
                 }
                 match key.code {
                     KeyCode::Char('q') => break,
-                    KeyCode::Left => viewport.pan_left(3),
-                    KeyCode::Right => viewport.pan_right(3),
-                    KeyCode::Up => viewport.pan_up(1),
-                    KeyCode::Down => viewport.pan_down(1),
+                    KeyCode::Left => viewport.translate(3, 0),
+                    KeyCode::Right => viewport.translate(-3, 0),
+                    KeyCode::Up => viewport.translate(0, 1),
+                    KeyCode::Down => viewport.translate(0, -1),
                     KeyCode::Tab => viewport.select_next(&node_names),
                     KeyCode::BackTab => viewport.select_prev(&node_names),
                     _ => {}
