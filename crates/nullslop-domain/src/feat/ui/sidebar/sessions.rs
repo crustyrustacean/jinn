@@ -33,8 +33,8 @@ pub use close::{
 pub use r#continue::handle_session_continue;
 pub use navigate::{navigate, receive_cursor, scroll_to_cursor};
 pub use preview::{
-    render_session_preview, render_session_preview_for_state, session_preview_popup_rect,
-    sessions_section_content_height, SessionPreviewCache,
+    SessionPreviewCache, render_session_preview, render_session_preview_for_state,
+    session_preview_popup_rect, sessions_section_content_height,
 };
 pub use reconcile::reconcile_after_session_removal;
 pub use render::SessionsSection;
