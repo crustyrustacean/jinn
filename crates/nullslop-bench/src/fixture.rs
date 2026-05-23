@@ -16,9 +16,7 @@ use std::path::Path;
 pub fn prepare_fixture(fixture_dir: Option<&str>, target: &Path) -> io::Result<()> {
     fs::create_dir_all(target)?;
     if let Some(fixture) = fixture_dir {
-        let source = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("fixtures")
-            .join(fixture);
+        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join(fixture);
         copy_dir_recursive(&source, target)?;
     }
     Ok(())

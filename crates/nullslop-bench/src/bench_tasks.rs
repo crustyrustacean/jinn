@@ -154,14 +154,14 @@ mod tests {
     #[test]
     fn setup_creates_work_dir_with_fixtures() {
         // Given a handler for the fix-syntax-broken-rust task.
+        let task = tasks::bench_tasks()
+            .into_iter()
+            .find(|t| t.name == "fix-syntax-broken-rust")
+            .expect("task exists");
         let handler = BenchTaskHandler {
             name: "fix-syntax-broken-rust".to_owned(),
-            fixture_dir: Some("fix-syntax-broken-rust".to_owned()),
-            verify: tasks::bench_tasks()
-                .into_iter()
-                .find(|t| t.name == "fix-syntax-broken-rust")
-                .expect("task exists")
-                .verify,
+            fixture_dir: task.fixture_dir.map(str::to_owned),
+            verify: task.verify,
             artifact_dir: None,
         };
 
