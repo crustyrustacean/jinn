@@ -1,0 +1,92 @@
+//! Fan-out and fan-in: source fans out to two transforms, which both feed into a merge sink.
+//!
+//! Shows fan-out (one output → two inputs), fan-in (two outputs → one node),
+//! multiple connections, and a node with multiple input ports of different types.
+//!
+//! ```sh
+//! cargo run -p nullslop-workflow-tui --example fan-out-fan-in
+//! ```
+
+#[path = "utils/mod.rs"]
+mod common;
+
+use std::collections::HashMap;
+use std::thread;
+use std::time::Duration;
+
+use nullslop_workflow::engine::NodeStatus;
+use nullslop_workflow::graph::WorkflowGraphBuilder;
+use nullslop_workflow::port::PortDef;
+use nullslop_workflow_tui::viewport::ViewportState;
+use nullslop_workflow_tui::widget::WorkflowWidget;
+use ratatui::widgets::Widget;
+
+fn main() {
+    let mut terminal = common::setup_terminal();
+
+    let graph = {
+        let mut b = WorkflowGraphBuilder::new();
+        b.add_node(
+            "source".to_owned(),
+            common::make_node("source", vec![], vec![PortDef::string("text")]),
+        );
+        b.add_node(
+            "uppercase".to_owned(),
+            common::make_node(
+                "uppercase",
+                vec![PortDef::string("input")],
+                vec![PortDef::string("result")],
+            ),
+        );
+        b.add_node(
+            "reverse".to_owned(),
+            common::make_node(
+                "reverse",
+                vec![PortDef::string("input")],
+                vec![PortDef::string("result")],
+            ),
+        );
+        // Merge sink with two String input ports.
+        b.add_node(
+            "merge".to_owned(),
+            common::make_node(
+                "merge",
+                vec![
+                    PortDef::string("upper_result"),
+                    PortDef::string("reverse_result"),
+                ],
+                vec![],
+            ),
+        );
+
+        // Fan-out: source → both transforms
+        b.connect("source", "text", "uppercase", "input")
+            .expect("connect");
+        b.connect("source", "text", "reverse", "input")
+            .expect("connect");
+        // Fan-in: both transforms → merge (different port types!)
+        b.connect("uppercase", "result", "merge", "upper_result")
+            .expect("connect");
+        b.connect("reverse", "result", "merge", "reverse_result")
+            .expect("connect");
+        b.build().expect("graph should build")
+    };
+
+    let statuses = HashMap::from([
+        ("source".to_owned(), NodeStatus::Completed),
+        ("uppercase".to_owned(), NodeStatus::Completed),
+        ("reverse".to_owned(), NodeStatus::Running),
+        ("merge".to_owned(), NodeStatus::Pending),
+    ]);
+    let viewport = ViewportState::new();
+
+    terminal
+        .draw(|f| {
+            let widget = WorkflowWidget::new(&graph, &statuses, &viewport, 0);
+            widget.render(f.area(), f.buffer_mut());
+        })
+        .expect("draw failed");
+
+    thread::sleep(Duration::from_secs(5));
+    common::restore_terminal(&mut terminal);
+}
