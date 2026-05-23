@@ -161,8 +161,19 @@ fn format_duration(ms: u64) -> String {
 
 /// Formats milliseconds as a human-readable duration string (handles large totals).
 fn format_duration_ms(ms: u64) -> String {
-    let secs = ms as f64 / 1000.0;
-    format!("{secs:.1}s")
+    let duration = std::time::Duration::from_millis(ms);
+    humantime::format_duration(duration).to_string()
+}
+
+/// Formats a token count as a human-readable string (e.g. "15.1k", "1.2M").
+fn format_tokens_human(count: u64) -> String {
+    if count >= 1_000_000 {
+        format!("{:.1}M", count as f64 / 1_000_000.0)
+    } else if count >= 1_000 {
+        format!("{:.1}k", count as f64 / 1_000.0)
+    } else {
+        count.to_string()
+    }
 }
 
 /// Renders the per-model summary table and grand-total row.
@@ -181,12 +192,12 @@ fn print_summary_table(per_model: &[(String, BenchSummary)], grand: &BenchSummar
         "Tokens \u{2191}",
         "Tokens \u{2193}",
         "Cost",
-        "Time",
+        "Wall Time",
         "Avg Time",
         "Passed",
         "Failed",
         "Timeout",
-        "Rate",
+        "Pass Rate",
     ]);
 
     for (model, s) in per_model {
@@ -213,8 +224,8 @@ fn summary_row(label: &str, s: &BenchSummary) -> Vec<Cell> {
         Cell::new(label),
         Cell::new(s.tasks),
         Cell::new(s.turns),
-        Cell::new(s.tokens_in),
-        Cell::new(s.tokens_out),
+        Cell::new(format_tokens_human(s.tokens_in)),
+        Cell::new(format_tokens_human(s.tokens_out)),
         Cell::new(format!("${:.4}", s.cost)),
         Cell::new(format_duration_ms(s.wall_time_ms)),
         Cell::new(avg),
