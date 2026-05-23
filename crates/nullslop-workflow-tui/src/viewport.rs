@@ -10,10 +10,10 @@
 /// struct each frame.
 #[derive(Debug, Clone)]
 pub struct ViewportState {
-    /// Horizontal scroll offset (cells).
-    pub offset_x: u16,
-    /// Vertical scroll offset (cells).
-    pub offset_y: u16,
+    /// Horizontal camera offset (cells). Positive = camera right, content shifts left.
+    pub offset_x: i32,
+    /// Vertical camera offset (cells). Positive = camera down, content shifts up.
+    pub offset_y: i32,
     /// Currently selected node name, if any.
     pub selected: Option<String>,
 }
@@ -45,24 +45,13 @@ impl ViewportState {
         self.selected.as_deref()
     }
 
-    /// Pans the viewport up by the given number of cells.
-    pub fn pan_up(&mut self, amount: u16) {
-        self.offset_y = self.offset_y.saturating_sub(amount);
-    }
-
-    /// Pans the viewport down by the given number of cells.
-    pub fn pan_down(&mut self, amount: u16) {
-        self.offset_y = self.offset_y.saturating_add(amount);
-    }
-
-    /// Pans the viewport left by the given number of cells.
-    pub fn pan_left(&mut self, amount: u16) {
-        self.offset_x = self.offset_x.saturating_sub(amount);
-    }
-
-    /// Pans the viewport right by the given number of cells.
-    pub fn pan_right(&mut self, amount: u16) {
-        self.offset_x = self.offset_x.saturating_add(amount);
+    /// Translates the camera by (`dx`, `dy`) cells.
+    ///
+    /// Positive `dx` moves the camera right (content shifts left).
+    /// Positive `dy` moves the camera down (content shifts up).
+    pub fn translate(&mut self, dx: i32, dy: i32) {
+        self.offset_x = self.offset_x.saturating_add(dx);
+        self.offset_y = self.offset_y.saturating_add(dy);
     }
 
     /// Selects the next node in the list, cycling back to the first.
@@ -131,41 +120,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pan_up_decreases_y() {
+    fn translate_positive_moves_camera_right() {
         let mut vp = ViewportState::new();
-        vp.offset_y = 10;
-        vp.pan_up(3);
-        assert_eq!(vp.offset_y, 7);
+        vp.translate(5, 0);
+        assert_eq!(vp.offset_x, 5);
     }
 
     #[test]
-    fn pan_up_clamps_to_zero() {
-        let mut vp = ViewportState::new();
-        vp.offset_y = 2;
-        vp.pan_up(5);
-        assert_eq!(vp.offset_y, 0);
-    }
-
-    #[test]
-    fn pan_down_increases_y() {
-        let mut vp = ViewportState::new();
-        vp.pan_down(5);
-        assert_eq!(vp.offset_y, 5);
-    }
-
-    #[test]
-    fn pan_left_decreases_x() {
+    fn translate_negative_moves_camera_left() {
         let mut vp = ViewportState::new();
         vp.offset_x = 10;
-        vp.pan_left(3);
+        vp.translate(-3, 0);
         assert_eq!(vp.offset_x, 7);
     }
 
     #[test]
-    fn pan_right_increases_x() {
+    fn translate_positive_dy_moves_camera_down() {
         let mut vp = ViewportState::new();
-        vp.pan_right(5);
-        assert_eq!(vp.offset_x, 5);
+        vp.translate(0, 5);
+        assert_eq!(vp.offset_y, 5);
+    }
+
+    #[test]
+    fn translate_can_go_negative() {
+        let mut vp = ViewportState::new();
+        vp.translate(-3, -7);
+        assert_eq!(vp.offset_x, -3);
+        assert_eq!(vp.offset_y, -7);
     }
 
     #[test]

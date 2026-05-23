@@ -336,11 +336,11 @@ impl VisualNode {
     /// Unlike the old `shifted()` method, this uses `i32` arithmetic so nodes
     /// at `x=0` can scroll off-screen to the left/top.
     #[must_use]
-    pub fn shifted_i32(&self, dx: u16, dy: u16) -> ShiftedNode<'_> {
+    pub fn shifted_i32(&self, dx: i32, dy: i32) -> ShiftedNode<'_> {
         ShiftedNode {
             inner: self,
-            x: i32::from(self.x) - i32::from(dx),
-            y: i32::from(self.y) - i32::from(dy),
+            x: i32::from(self.x) - dx,
+            y: i32::from(self.y) - dy,
         }
     }
 }
