@@ -224,6 +224,7 @@ impl SessionMap {
     }
 
     /// Mutable access to all sessions. `pub(crate)` to prevent external bypass of invariants.
+    #[cfg(test)]
     pub(crate) fn sessions_mut(&mut self) -> &mut HashMap<SessionId, ChatSessionState> {
         &mut self.sessions
     }

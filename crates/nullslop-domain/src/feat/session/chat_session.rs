@@ -1262,9 +1262,8 @@ impl ChatSessionState {
     ///
     /// No-op if no entry is selected or if line range data is unavailable.
     pub fn scroll_to_selected(&mut self) {
-        let selected_idx = match self.ui.selected_entry_index {
-            Some(idx) => idx,
-            None => return,
+        let Some(selected_idx) = self.ui.selected_entry_index else {
+            return;
         };
 
         let ranges = match self.ui.entry_line_ranges.read() {
@@ -1272,9 +1271,8 @@ impl ChatSessionState {
             Err(_) => return,
         };
 
-        let &(start, end) = match ranges.get(selected_idx) {
-            Some(r) => r,
-            None => return,
+        let Some(&(start, end)) = ranges.get(selected_idx) else {
+            return;
         };
 
         let viewport_height = self.ui.viewport_height.load(Ordering::Relaxed);

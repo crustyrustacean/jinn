@@ -129,6 +129,7 @@ pub struct CustomTool {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, reason = "test code")]
+    #![allow(clippy::get_first, reason = "test code")]
 
     use super::*;
 

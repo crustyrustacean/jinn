@@ -683,7 +683,7 @@ impl SessionPersistenceActor {
         payload: &crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown,
         ctx: &ActorContext,
     ) {
-        use crate::feat::session::chat_session::{LifecycleScriptState, SessionState};
+        use crate::feat::session::chat_session::SessionState;
 
         // Clear busy flag.
         {
