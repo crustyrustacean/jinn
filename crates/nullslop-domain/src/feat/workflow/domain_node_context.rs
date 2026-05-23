@@ -12,7 +12,6 @@ use std::sync::Arc;
 
 use error_stack::Report;
 use nullslop_provider::LlmMessage;
-use nullslop_workflow::NodeStatus;
 use nullslop_workflow::node::{NodeContext, NodeError};
 use parking_lot::Mutex;
 use tokio::sync::oneshot;
