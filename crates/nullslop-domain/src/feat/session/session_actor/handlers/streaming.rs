@@ -178,7 +178,7 @@ mod tests {
     use super::super::super::helpers::{test_actor, test_context};
     use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
     use crate::feat::session::chat_session::SessionPhase;
-    use crate::protocol::{ChatEntry, Command};
+    use crate::protocol::{ChatEntry, Command, Event};
 
     #[tokio::test]
     async fn on_stream_completed_error_reason_finishes_streaming() {
@@ -352,5 +352,98 @@ mod tests {
             .iter()
             .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(!has_send, "expected no SendToLlmProvider after soft cancel");
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_finished_emits_history_appended() {
+        // Given a session actor with a session in streaming state with history.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with Finished reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: Some("response".to_owned()),
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then a HistoryAppended event was emitted.
+        let events = sink.events();
+        let has_history = events
+            .iter()
+            .any(|e| matches!(e, Event::HistoryAppended(payload) if payload.session_id == session_id));
+        assert!(has_history, "expected HistoryAppended event after stream completed");
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_error_emits_history_appended() {
+        // Given a session actor with a session in streaming state with history.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with Error reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Error,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then a HistoryAppended event was emitted.
+        let events = sink.events();
+        let has_history = events
+            .iter()
+            .any(|e| matches!(e, Event::HistoryAppended(payload) if payload.session_id == session_id));
+        assert!(has_history, "expected HistoryAppended event after stream error");
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_canceled_emits_history_appended() {
+        // Given a session actor with a session in streaming state with history.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with Canceled reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Canceled,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then a HistoryAppended event was emitted.
+        let events = sink.events();
+        let has_history = events
+            .iter()
+            .any(|e| matches!(e, Event::HistoryAppended(payload) if payload.session_id == session_id));
+        assert!(has_history, "expected HistoryAppended event after stream canceled");
     }
 }

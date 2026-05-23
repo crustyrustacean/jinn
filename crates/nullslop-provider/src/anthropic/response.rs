@@ -337,4 +337,36 @@ mod tests {
     fn invalid_json_produces_none() {
         assert!(parse_single("not json").is_none());
     }
+
+    #[rstest::rstest]
+    fn error_event_produces_stream_error() {
+        // Given an Anthropic error event.
+        let json = r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#;
+
+        // When parsing.
+        let event = parse_single(json);
+
+        // Then it produces a StreamEvent::Error with the error details.
+        assert!(matches!(
+            event,
+            Some(StreamEvent::Error { ref error_type, ref message })
+            if error_type == "overloaded_error" && message == "Overloaded"
+        ));
+    }
+
+    #[rstest::rstest]
+    fn error_event_with_missing_fields_produces_error_with_defaults() {
+        // Given an error event with missing fields.
+        let json = r#"{"type":"error","error":{}}"#;
+
+        // When parsing.
+        let event = parse_single(json);
+
+        // Then it produces a StreamEvent::Error with default values.
+        assert!(matches!(
+            event,
+            Some(StreamEvent::Error { ref error_type, ref message })
+            if error_type == "unknown_error" && message == "Unknown streaming error"
+        ));
+    }
 }

@@ -201,7 +201,7 @@ mod tests {
     use crate::feat::session::token_stats::TokenRecord;
     use crate::feat::tools_actor::protocol::event::ToolBatchCompleted;
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
-    use crate::protocol::{ChatEntry, Command};
+    use crate::protocol::{ChatEntry, Command, Event};
 
     #[tokio::test]
     async fn on_tool_batch_completed_emits_send_to_llm_provider() {
@@ -360,5 +360,41 @@ mod tests {
             .iter()
             .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(!has_send, "expected no SendToLlmProvider after soft cancel");
+    }
+
+    #[tokio::test]
+    async fn on_tool_execution_completed_emits_history_appended() {
+        // Given a session actor with a pending tool result.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("run it"));
+            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{\"command\":\"ls\"}"#));
+            session.begin_tool_result("tc-1", "bash");
+            state.session.active_session_id().clone()
+        };
+
+        // When handling ToolExecutionCompleted.
+        let event = crate::feat::tools_actor::protocol::event::ToolExecutionCompleted {
+            session_id: session_id.clone(),
+            result: crate::feat::tools_actor::tool_types::ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+            },
+        };
+        actor.on_tool_execution_completed(&event, &ctx).await;
+
+        // Then a HistoryAppended event was emitted.
+        let events = sink.events();
+        let has_history = events
+            .iter()
+            .any(|e| matches!(e, Event::HistoryAppended(payload) if payload.session_id == session_id));
+        assert!(has_history, "expected HistoryAppended event after tool execution completed");
     }
 }
