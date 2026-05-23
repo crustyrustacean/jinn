@@ -1916,6 +1916,7 @@ dependencies = [
  "comfy-table",
  "csv",
  "error-stack",
+ "humantime",
  "jiff",
  "nullslop-domain",
  "nullslop-provider",
