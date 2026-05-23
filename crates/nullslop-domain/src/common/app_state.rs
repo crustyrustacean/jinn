@@ -266,6 +266,15 @@ impl ScopeStack {
         self.stack.truncate(1);
     }
 
+    /// Replaces the base scope with `new_base` and clears all overlays.
+    ///
+    /// Use when transitioning between top-level contexts (e.g., Chat → Workflow)
+    /// where the entire scope stack should be replaced, not just pushed onto.
+    pub fn swap_base(&mut self, new_base: FocusScope) {
+        self.stack.clear();
+        self.stack.push(new_base);
+    }
+
     /// Returns `true` if the current scope is a Picker.
     #[must_use]
     pub fn is_picker(&self) -> bool {

@@ -10,11 +10,11 @@
 #[path = "utils/mod.rs"]
 mod common;
 
-use std::collections::HashMap;
 use std::thread;
 use std::time::Duration;
 
 use nullslop_workflow::engine::NodeStatus;
+use nullslop_workflow::execution::WorkflowExecution;
 use nullslop_workflow::graph::WorkflowGraphBuilder;
 use nullslop_workflow::port::PortDef;
 use nullslop_workflow_tui::viewport::ViewportState;
@@ -73,17 +73,17 @@ fn main() {
         b.build().expect("graph should build")
     };
 
-    let statuses = HashMap::from([
-        ("source".to_owned(), NodeStatus::Completed),
-        ("uppercase".to_owned(), NodeStatus::Completed),
-        ("reverse".to_owned(), NodeStatus::Running),
-        ("merge".to_owned(), NodeStatus::Pending),
-    ]);
+    let execution = WorkflowExecution::new(graph);
+    execution.set_status("source", NodeStatus::Completed);
+    execution.set_status("uppercase", NodeStatus::Completed);
+    execution.set_status("reverse", NodeStatus::Running);
+    // merge stays Pending
+    let snapshot = execution.snapshot();
     let viewport = ViewportState::new();
 
     terminal
         .draw(|f| {
-            let widget = WorkflowWidget::new(&graph, &statuses, &viewport, 0);
+            let widget = WorkflowWidget::new(&snapshot, &viewport, 0);
             widget.render(f.area(), f.buffer_mut());
         })
         .expect("draw failed");

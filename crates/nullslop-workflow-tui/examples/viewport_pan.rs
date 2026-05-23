@@ -10,10 +10,10 @@
 #[path = "utils/mod.rs"]
 mod common;
 
-use std::collections::HashMap;
 use std::time::Duration;
 
 use nullslop_workflow::engine::NodeStatus;
+use nullslop_workflow::execution::WorkflowExecution;
 use nullslop_workflow::graph::WorkflowGraphBuilder;
 use nullslop_workflow::port::PortDef;
 use nullslop_workflow_tui::layout;
@@ -82,18 +82,16 @@ fn main() {
         b.build().unwrap()
     };
 
-    let node_names: Vec<String> = graph.node_names().map(std::borrow::ToOwned::to_owned).collect();
+    let execution = WorkflowExecution::new(graph);
+    execution.set_status("load_data", NodeStatus::Completed);
+    execution.set_status("parse", NodeStatus::Completed);
+    execution.set_status("validate", NodeStatus::Completed);
+    execution.set_status("enrich", NodeStatus::Running);
+    // transform and save stay Pending
 
-    let statuses = HashMap::from([
-        ("load_data".to_owned(), NodeStatus::Completed),
-        ("parse".to_owned(), NodeStatus::Completed),
-        ("validate".to_owned(), NodeStatus::Completed),
-        ("enrich".to_owned(), NodeStatus::Running),
-        ("transform".to_owned(), NodeStatus::Pending),
-        ("save".to_owned(), NodeStatus::Pending),
-    ]);
+    let node_names: Vec<String> = execution.snapshot().structure().node_names().map(std::borrow::ToOwned::to_owned).collect();
 
-    let the_layout = layout::compute(&graph, &statuses);
+    let the_layout = layout::compute(&*execution.snapshot());
     let content_size = the_layout.content_size();
 
     let mut viewport = ViewportState::new();
@@ -101,6 +99,7 @@ fn main() {
     let mut viewport_dims = (80u16, 24u16);
 
     loop {
+        let snapshot = execution.snapshot();
         terminal
             .draw(|f| {
                 let help_height = 1u16;
@@ -117,7 +116,7 @@ fn main() {
                     height: help_height,
                 };
 
-                let widget = WorkflowWidget::new(&graph, &statuses, &viewport, tick);
+                let widget = WorkflowWidget::new(&snapshot, &viewport, tick);
                 widget.render(main_area, f.buffer_mut());
 
                 viewport_dims = (main_area.width, main_area.height);
