@@ -140,12 +140,18 @@ impl WorkflowStructure {
 #[derive(Debug)]
 pub struct ExecutionSnapshot {
     /// The workflow topology.
-    pub structure: Arc<WorkflowStructure>,
+    structure: Arc<WorkflowStructure>,
     /// Current status of each node.
-    pub statuses: HashMap<String, NodeStatus>,
+    statuses: HashMap<String, NodeStatus>,
 }
 
 impl ExecutionSnapshot {
+    /// Returns the workflow topology.
+    #[must_use]
+    pub fn structure(&self) -> &WorkflowStructure {
+        &self.structure
+    }
+
     /// Returns the status of a node by name.
     #[must_use]
     pub fn status_of(&self, node_name: &str) -> Option<NodeStatus> {
@@ -366,7 +372,7 @@ mod tests {
         let snapshot = execution.snapshot();
 
         // Then all nodes are Pending.
-        for name in snapshot.structure.node_names() {
+        for name in snapshot.structure().node_names() {
             assert_eq!(snapshot.status_of(name), Some(NodeStatus::Pending));
         }
     }
