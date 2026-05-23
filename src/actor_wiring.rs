@@ -355,7 +355,7 @@ pub fn create_core_with_actor_host(
     // Register example workflows.
     nullslop_domain::feat::workflow::register_workflow(
         "research-extract-summarize",
-        nullslop_domain::feat::workflow::example_workflows::build_research_extract_summarize,
+        nullslop_domain::feat::workflow::example::research_extract_summarize::build_research_extract_summarize,
     );
 
     // Workflow actor — bridges workflow engine to actor bus.

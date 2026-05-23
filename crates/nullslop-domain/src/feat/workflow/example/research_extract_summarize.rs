@@ -1,12 +1,12 @@
-//! Example workflow definitions.
+//! Research-Extract-Summarize example workflow.
 //!
-//! Contains built-in workflow graph builders that can be registered at startup
-//! and triggered via `/workflow <name>`.
+//! A 3-node pipeline that researches a topic, extracts key facts,
+//! and writes a concise executive summary.
 
 use nullslop_workflow::graph::{WorkflowGraph, WorkflowGraphBuilder};
 use nullslop_workflow::port::PortDef;
 
-use super::llm_node::LlmNode;
+use crate::feat::workflow::node::llm::LlmNode;
 
 /// Builds the "research-extract-summarize" workflow graph.
 ///
