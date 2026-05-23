@@ -113,7 +113,7 @@ pub trait LlmServiceFactory: Send + Sync + std::fmt::Debug {
 ///
 /// For 429 responses, attempts to extract a `Retry-After` duration from the
 /// error body using [`parse_retry_after_hint`].
-#[must_use]
+#[must_use = "classification result should be used"]
 pub fn classify_http_error(
     status: reqwest::StatusCode,
     error_body: &str,
@@ -145,7 +145,7 @@ pub fn classify_http_error(
 pub fn parse_retry_after_hint(body: &str) -> Option<Duration> {
     // Match patterns like "reset at 2026-05-21 14:45:38" or similar datetime patterns.
     let re = regex::Regex::new(
-        r#"(?i)(?:reset(?:s)?|retry|available)\s+(?:at|after|in)\s+(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})"#,
+        r"(?i)(?:reset(?:s)?|retry|available)\s+(?:at|after|in)\s+(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})",
     )
     .ok()?;
 
