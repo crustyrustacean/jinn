@@ -30,6 +30,10 @@ pub use builder::TuiAppBuilder;
 pub type WhichKeyInstance =
     WhichKeyState<nullslop_domain::KeyEvent, Scope, Intent, crate::keymap::KeyCategory>;
 
+/// Type alias for the session preview cache.
+pub type PreviewCache =
+    nullslop_domain::feat::ui::sidebar::sessions::SessionPreviewCache;
+
 /// Top-level application state and event loop.
 #[derive(Debug)]
 pub struct TuiApp {
@@ -64,6 +68,8 @@ pub struct TuiApp {
     pub config: TuiConfig,
     /// Sidebar container with registered sections.
     pub sidebar: Sidebar,
+    /// Cache for session preview popup rendered lines.
+    pub preview_cache: PreviewCache,
 }
 
 impl TuiApp {

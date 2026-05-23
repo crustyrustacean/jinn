@@ -249,7 +249,8 @@ mod tests {
         // Then the active session's model was updated from the saved preference.
         let state = actor.state.read();
         assert_eq!(
-            state.active_session().profile().model, "my-model",
+            state.active_session().profile().model,
+            "my-model",
             "default session model should be updated from saved preference"
         );
     }
@@ -263,7 +264,9 @@ mod tests {
         // Set an explicit model on the active session (simulating bench actor behavior).
         {
             let mut state = actor.state.write();
-            state.active_session_mut().set_model("bench-model".to_owned());
+            state
+                .active_session_mut()
+                .set_model("bench-model".to_owned());
         }
 
         // Save preferences with a different last_model.
@@ -296,7 +299,8 @@ mod tests {
         // Then the active session's model was NOT overwritten.
         let state = actor.state.read();
         assert_eq!(
-            state.active_session().profile().model, "bench-model",
+            state.active_session().profile().model,
+            "bench-model",
             "explicitly set model should not be overwritten by saved preference"
         );
     }

@@ -47,7 +47,10 @@ pub struct BenchTaskHandler {
     name: String,
     /// Fixture directory name relative to `crates/nullslop-bench/fixtures/`.
     fixture_dir: Option<String>,
-    #[expect(dead_code, reason = "verify is called by the bench actor, not this handler")]
+    #[expect(
+        dead_code,
+        reason = "verify is called by the bench actor, not this handler"
+    )]
     verify: fn(&Path) -> VerificationReport,
     /// When set, create work directories here instead of /tmp.
     artifact_dir: Option<PathBuf>,

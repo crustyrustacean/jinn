@@ -27,6 +27,7 @@ mod scroll_indicator;
 mod viewport;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
@@ -38,6 +39,8 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui_markdown::RichTextTheme;
+use ratatui_markdown::theme::Generation;
 
 use super::line_count_cache::EntryLineCache;
 use super::shared::{GUTTER_WIDTH, RenderContext};
@@ -91,7 +94,7 @@ impl UiElement<AppState> for ChatLogElement {
 
         let mut render = HistoryRender::new(state, area);
         render.build_tool_result_map();
-        render.compute_line_ranges(&mut self.line_cache);
+        render.compute_line_ranges(&mut self.line_cache, state.frontend.theme.generation());
         render.compute_scroll();
 
         {
@@ -151,6 +154,7 @@ struct HistoryRender<'a> {
     tool_result_statuses: HashMap<String, ToolResultStatus>,
     entry_line_ranges: Vec<(u16, u16)>,
     miss_lines: HashMap<usize, Vec<Line<'static>>>,
+    cached_lines: HashMap<usize, Arc<Vec<Line<'static>>>>,
     total_wrapped: u16,
     scroll: ScrollState,
     visible_indices: Vec<usize>,
@@ -185,6 +189,7 @@ impl<'a> HistoryRender<'a> {
             tool_result_statuses: HashMap::new(),
             entry_line_ranges: Vec::new(),
             miss_lines: HashMap::new(),
+            cached_lines: HashMap::new(),
             total_wrapped: 0,
             scroll: ScrollState {
                 blank_count: 0,
@@ -220,17 +225,24 @@ impl<'a> HistoryRender<'a> {
 
     /// Walk all entries, compute wrapped line counts (using cache where possible),
     /// and record the (start, end) wrapped-line range for each entry.
-    fn compute_line_ranges(&mut self, cache: &mut EntryLineCache) {
+    ///
+    /// On a cache hit with rendered lines, the lines are stored in `cached_lines`
+    /// for reuse in Pass 2. On a miss, lines are rendered, stored in both the cache
+    /// (via `insert_with_lines`) and `miss_lines`.
+    fn compute_line_ranges(&mut self, cache: &mut EntryLineCache, theme_generation: Generation) {
         let mut wrapped_cursor: u16 = 0;
 
         for (i, entry) in self.history.iter().enumerate() {
             let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
 
-            if let Some(cached_count) = cache.get(entry, is_expanded, self.content_width) {
+            if let Some(hit) = cache.get(entry, is_expanded, self.content_width, theme_generation) {
                 let start = wrapped_cursor;
-                let end = wrapped_cursor + cached_count;
+                let end = wrapped_cursor + hit.wrapped_count;
                 self.entry_line_ranges.push((start, end));
                 wrapped_cursor = end;
+                if let Some(lines) = hit.lines {
+                    self.cached_lines.insert(i, lines);
+                }
             } else {
                 let is_selected = self.selected_idx == Some(i);
                 let max_lines = self
@@ -256,7 +268,14 @@ impl<'a> HistoryRender<'a> {
                         .wrap(Wrap { trim: false })
                         .line_count(self.content_width) as u16
                 };
-                cache.insert(entry, is_expanded, self.content_width, wrapped_count);
+                cache.insert_with_lines(
+                    entry,
+                    is_expanded,
+                    self.content_width,
+                    theme_generation,
+                    wrapped_count,
+                    Arc::new(lines.clone()),
+                );
 
                 let start = wrapped_cursor;
                 let end = wrapped_cursor + wrapped_count;
@@ -355,8 +374,10 @@ impl<'a> HistoryRender<'a> {
             let (entry_start, _entry_end) = self.entry_line_ranges[i];
             let abs_entry_start = entry_start + self.scroll.blank_count as u16;
 
-            // Get content lines — reuse from cache miss or render fresh.
-            let entry_content_lines = if let Some(lines) = self.miss_lines.remove(&i) {
+            // Get content lines — cached lines → miss lines → render fresh.
+            let entry_content_lines = if let Some(lines) = self.cached_lines.remove(&i) {
+                Arc::unwrap_or_clone(lines)
+            } else if let Some(lines) = self.miss_lines.remove(&i) {
                 lines
             } else {
                 let paired_status = self.paired_status_for_entry(entry);

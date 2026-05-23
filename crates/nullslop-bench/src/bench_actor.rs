@@ -433,10 +433,7 @@ impl BenchActor {
             for failure in &failures {
                 let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
                     session_id: payload.session_id.clone(),
-                    entry: ChatEntry::system(format!(
-                        "  • {}: {}",
-                        failure.name, failure.detail
-                    )),
+                    entry: ChatEntry::system(format!("  • {}: {}", failure.name, failure.detail)),
                 }));
             }
         }
@@ -929,11 +926,8 @@ mod tests {
             "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
         )
         .expect("write Cargo.toml");
-        std::fs::write(
-            work_dir.path().join("src/main.rs"),
-            "fn main() {}",
-        )
-        .expect("write src/main.rs");
+        std::fs::write(work_dir.path().join("src/main.rs"), "fn main() {}")
+            .expect("write src/main.rs");
 
         let state = State::new(nullslop_domain::AppState::default());
         let session_id = {
@@ -984,7 +978,10 @@ mod tests {
                     && matches!(&entry.kind, nullslop_domain::ChatEntryKind::System(t) if t.contains("Evaluation passed"))
             )
         });
-        assert!(found, "expected PushChatEntry with 'Evaluation passed' for passing session");
+        assert!(
+            found,
+            "expected PushChatEntry with 'Evaluation passed' for passing session"
+        );
     }
 
     #[tokio::test]
@@ -1043,7 +1040,10 @@ mod tests {
                     && matches!(&entry.kind, nullslop_domain::ChatEntryKind::System(t) if t.contains("Evaluation failed"))
             )
         });
-        assert!(failure_summary, "expected PushChatEntry with ❌ for failing session");
+        assert!(
+            failure_summary,
+            "expected PushChatEntry with ❌ for failing session"
+        );
 
         // And at least one detail entry with "•" was sent.
         let detail_entry = commands.iter().any(|cmd| {
@@ -1054,6 +1054,9 @@ mod tests {
                     && matches!(&entry.kind, nullslop_domain::ChatEntryKind::System(t) if t.contains("file_exists"))
             )
         });
-        assert!(detail_entry, "expected PushChatEntry with • detail for failing session");
+        assert!(
+            detail_entry,
+            "expected PushChatEntry with • detail for failing session"
+        );
     }
 }
