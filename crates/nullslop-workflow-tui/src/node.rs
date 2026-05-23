@@ -339,8 +339,8 @@ impl VisualNode {
     pub fn shifted_i32(&self, dx: i32, dy: i32) -> ShiftedNode<'_> {
         ShiftedNode {
             inner: self,
-            x: i32::from(self.x) - dx,
-            y: i32::from(self.y) - dy,
+            x: i32::from(self.x).saturating_sub(dx),
+            y: i32::from(self.y).saturating_sub(dy),
         }
     }
 }
@@ -379,8 +379,8 @@ impl<'a> ShiftedNode<'a> {
     /// Returns true if any part of the node is visible (not fully scrolled off-screen).
     #[must_use]
     pub fn is_visible(&self) -> bool {
-        self.x + i32::from(self.inner.width) > 0
-            && self.y + i32::from(self.inner.height) > 0
+        self.x.saturating_add(i32::from(self.inner.width)) > 0
+            && self.y.saturating_add(i32::from(self.inner.height)) > 0
     }
 
     /// Renders the node into the buffer at the shifted position.
