@@ -1923,6 +1923,8 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "tree-sitter",
+ "tree-sitter-python",
  "wherror",
 ]
 
