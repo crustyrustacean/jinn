@@ -38,10 +38,7 @@ pub(crate) fn sort_entries_tree_aware(entries: &mut Vec<SessionTreeEntry>) {
     for (idx, entry) in entries.iter().enumerate() {
         match &entry.parent_id {
             Some(pid) if id_to_idx.contains_key(pid) => {
-                children_map
-                    .entry(pid.clone())
-                    .or_default()
-                    .push(idx);
+                children_map.entry(pid.clone()).or_default().push(idx);
             }
             _ => {
                 roots.push(idx);

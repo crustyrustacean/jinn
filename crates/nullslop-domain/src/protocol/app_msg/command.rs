@@ -292,7 +292,11 @@ impl std::fmt::Display for Command {
                 write!(f, "finish session teardown for {}", payload.session_id)
             }
             Command::StartWorkflow(payload) => {
-                write!(f, "start workflow '{}' ({})", payload.name, payload.workflow_id)
+                write!(
+                    f,
+                    "start workflow '{}' ({})",
+                    payload.name, payload.workflow_id
+                )
             }
             Command::CancelWorkflow(payload) => {
                 write!(f, "cancel workflow {}", payload.workflow_id)
