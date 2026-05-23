@@ -155,3 +155,53 @@ impl SessionPersistenceActor {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+
+    use super::*;
+    use crate::feat::session::chat_session::ChatSessionState;
+    use crate::protocol::ChatEntry;
+
+    fn test_actor() -> SessionPersistenceActor {
+        super::super::super::helpers::test_actor()
+    }
+
+    fn test_context() -> (
+        std::sync::Arc<crate::common::actor::RecordingSink>,
+        crate::common::actor::ActorContext,
+    ) {
+        super::super::super::helpers::test_context()
+    }
+
+    #[tokio::test]
+    async fn session_load_populates_context_size() {
+        // Given a session with chat history.
+        let mut session = ChatSessionState::new();
+        session.push_entry(ChatEntry::user("hello world"));
+        session.push_entry(ChatEntry::assistant("hi there"));
+
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+
+        let payload = SessionLoadCompleted { session };
+
+        // When handling SessionLoadCompleted.
+        actor
+            .handle_session_load_completed(&payload, &ctx)
+            .await;
+
+        // Then context_size is populated (not None).
+        let state = actor.state.read();
+        let active = state.active_session();
+        assert!(
+            active.context_size().is_some(),
+            "context_size should be populated after session load"
+        );
+        assert!(
+            active.context_size().unwrap() > 0,
+            "context_size should be positive"
+        );
+    }
+}
