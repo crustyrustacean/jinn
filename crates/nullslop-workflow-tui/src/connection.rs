@@ -38,7 +38,7 @@ impl ConnectionRouter for SimpleRouter {
         let mut cells: Vec<(u16, u16)> = Vec::new();
 
         // Midpoint x: halfway between source and target.
-        let mid_x = (x1 + x2) / 2;
+        let mid_x = u16::midpoint(x1, x2);
 
         // Horizontal right from source to midpoint.
         for x in x1..=mid_x {
@@ -174,6 +174,7 @@ pub fn render_path(buf: &mut Buffer, path: &[PathCell], port_type: PortType, are
 }
 
 #[cfg(test)]
+#[expect(clippy::indexing_slicing, reason = "test indices are known-valid")]
 mod tests {
     use super::*;
 
