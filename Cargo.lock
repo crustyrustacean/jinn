@@ -2084,6 +2084,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nullslop-workflow-tui"
+version = "0.1.0"
+dependencies = [
+ "nullslop-workflow",
+ "ratatui",
+]
+
+[[package]]
 name = "num-conv"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,11 @@
+[package]
+name = "nullslop-workflow-tui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nullslop-workflow = { path = "../nullslop-workflow" }
+ratatui = { workspace = true }
+
+[lints]
+workspace = true
