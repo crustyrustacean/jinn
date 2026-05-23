@@ -39,7 +39,6 @@ pub mod tool_prompt;
 
 pub use crate::protocol::PromptStrategyId;
 pub use strategy::compaction_data::CompactionSessionData;
-pub use strategy::compaction_prompt::DEFAULT_COMPACTION_PROMPT;
 pub use strategy::token_estimator::{
     CharRatioEstimator, TokenEstimator, estimate_entry_tokens, estimate_tool_schema_tokens,
 };

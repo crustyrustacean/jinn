@@ -11,6 +11,7 @@ mod config;
 mod config_storage;
 mod generic_factory;
 mod model_cache;
+mod models_dev;
 mod no_providers;
 mod provider_id;
 mod registry;
@@ -37,6 +38,7 @@ pub use config_storage::{
 };
 pub use generic_factory::GenericLlmServiceFactory;
 pub use model_cache::{ModelCache, ModelCacheError, cache_path};
+pub use models_dev::ModelsDevData;
 pub use no_providers::{NO_PROVIDER_ID, NoProvidersAvailableFactory};
 pub use nullslop_provider::{FakeLlmServiceFactory, ModelInfo, TOOL_LOOP_TRIGGER};
 pub use provider_id::ProviderId;
