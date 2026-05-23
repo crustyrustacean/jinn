@@ -155,6 +155,7 @@ cast_possible_wrap = "allow"
 float_cmp = "allow"
 implicit_hasher = "allow"
 single_match = "allow"
+single_match_else = "allow"
 min_ident_chars = "allow"
 rest_pat_in_fully_bound_structs = "allow"
 
