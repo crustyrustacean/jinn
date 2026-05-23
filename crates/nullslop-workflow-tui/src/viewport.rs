@@ -46,29 +46,31 @@ impl ViewportState {
     }
 
     /// Translates the camera by (`dx`, `dy`) cells, clamped so content can
-    /// scroll at most half its own size off any edge.
+    /// scroll at most half its own size off any screen edge.
     ///
     /// Positive `dx` moves the camera right (content shifts left).
     /// Positive `dy` moves the camera down (content shifts up).
     ///
-    /// The offset is clamped to `[-(content / 2), content / 2]`
-    /// on each axis. For a 100-wide graph, the offset range is `[-50, 50]`.
+    /// The offset is clamped to `[content/2 - viewport, content/2]`
+    /// on each axis. The scrollable range equals the viewport size.
     pub fn translate(
         &mut self,
         dx: i32,
         dy: i32,
         content_size: (u16, u16),
+        viewport_size: (u16, u16),
     ) {
         let (cw, ch) = content_size;
+        let (vw, vh) = viewport_size;
         let half_cw = i32::from(cw / 2);
         let half_ch = i32::from(ch / 2);
 
         self.offset_x = self.offset_x.saturating_add(dx);
         self.offset_y = self.offset_y.saturating_add(dy);
 
-        let min_x = -half_cw;
+        let min_x = half_cw - i32::from(vw);
         let max_x = half_cw;
-        let min_y = -half_ch;
+        let min_y = half_ch - i32::from(vh);
         let max_y = half_ch;
 
         self.offset_x = self.offset_x.clamp(min_x, max_x);
@@ -143,73 +145,86 @@ mod tests {
     #[test]
     fn translate_positive_dx_moves_camera_right() {
         let mut vp = ViewportState::new();
-        vp.translate(5, 0, (200, 200));
+        // Content 200, viewport 200 → range [0, 100]. offset 0 stays 0.
+        vp.translate(5, 0, (200, 200), (200, 200));
         assert_eq!(vp.offset_x, 5);
     }
 
     #[test]
     fn translate_negative_dx_moves_camera_left() {
         let mut vp = ViewportState::new();
-        vp.offset_x = 10;
-        vp.translate(-3, 0, (200, 200));
-        assert_eq!(vp.offset_x, 7);
+        vp.offset_x = 30;
+        // Content 200, viewport 200 → range [0, 100]. 30 is in range.
+        vp.translate(-3, 0, (200, 200), (200, 200));
+        assert_eq!(vp.offset_x, 27);
     }
 
     #[test]
     fn translate_positive_dy_moves_camera_down() {
         let mut vp = ViewportState::new();
-        vp.translate(0, 5, (200, 200));
+        vp.translate(0, 5, (200, 200), (200, 200));
         assert_eq!(vp.offset_y, 5);
     }
 
     #[test]
     fn translate_can_go_negative() {
         let mut vp = ViewportState::new();
-        vp.translate(-3, -7, (200, 200));
+        // Content 200, viewport 400 → range [-100, 100]. Can go negative.
+        vp.translate(-3, -7, (200, 200), (400, 400));
         assert_eq!(vp.offset_x, -3);
         assert_eq!(vp.offset_y, -7);
     }
 
     #[test]
-    fn translate_clamps_at_negative_half_content() {
+    fn translate_clamps_at_min_half_content_minus_viewport() {
         let mut vp = ViewportState::new();
-        // Content 200 wide → clamp to -(200/2) = -100.
-        vp.translate(-200, 0, (200, 200));
-        assert_eq!(vp.offset_x, -100);
+        // Content 200, viewport 80 → min = 100 - 80 = 20.
+        vp.translate(-200, 0, (200, 200), (80, 24));
+        assert_eq!(vp.offset_x, 20);
     }
 
     #[test]
-    fn translate_clamps_at_half_content() {
+    fn translate_clamps_at_max_half_content() {
         let mut vp = ViewportState::new();
-        // Content 200 wide → clamp to 200/2 = 100.
-        vp.translate(1000, 0, (200, 200));
+        // Content 200, viewport 80 → max = 100.
+        vp.translate(1000, 0, (200, 200), (80, 24));
         assert_eq!(vp.offset_x, 100);
     }
 
     #[test]
-    fn translate_small_content_has_tight_range() {
+    fn translate_range_equals_viewport_size() {
         let mut vp = ViewportState::new();
-        // Content 40 → clamp range [-20, 20].
-        vp.translate(100, 0, (40, 40));
-        assert_eq!(vp.offset_x, 20, "should clamp to max (20)");
-        vp.translate(-200, 0, (40, 40));
-        assert_eq!(vp.offset_x, -20, "should clamp to min (-20)");
+        // Content 200, viewport 80 → range [20, 100] = 80 cells.
+        vp.translate(1000, 0, (200, 200), (80, 24));
+        assert_eq!(vp.offset_x, 100, "max = content/2");
+        vp.translate(-200, 0, (200, 200), (80, 24));
+        assert_eq!(vp.offset_x, 20, "min = content/2 - viewport");
     }
 
     #[test]
-    fn translate_zero_content_stays_at_zero() {
+    fn translate_small_content_large_viewport() {
         let mut vp = ViewportState::new();
-        // Content (0, 0) → clamp range [0, 0].
-        vp.translate(10, 10, (0, 0));
+        // Content 10, viewport 80 → range [5-80, 5] = [-75, 5].
+        vp.translate(100, 0, (10, 10), (80, 24));
+        assert_eq!(vp.offset_x, 5, "max = content/2");
+        vp.translate(-200, 0, (10, 10), (80, 24));
+        assert_eq!(vp.offset_x, -75, "min = content/2 - viewport");
+    }
+
+    #[test]
+    fn translate_zero_content_stays_at_viewport_min() {
+        let mut vp = ViewportState::new();
+        // Content (0, 0) → half=0, min = 0-80=-80, max = 0.
+        vp.translate(10, 10, (0, 0), (80, 24));
         assert_eq!(vp.offset_x, 0);
         assert_eq!(vp.offset_y, 0);
     }
 
     #[test]
     fn translate_initial_offset_stays_valid() {
-        // Given offset (0, 0) is always within [-content/2, content/2].
+        // Offset (0, 0) is within [content/2 - viewport, content/2].
         let mut vp = ViewportState::new();
-        vp.translate(0, 0, (100, 10));
+        vp.translate(0, 0, (100, 10), (80, 24));
         assert_eq!(vp.offset_x, 0);
         assert_eq!(vp.offset_y, 0);
     }
