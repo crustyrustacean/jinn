@@ -164,6 +164,11 @@ impl ProviderActor {
             let registry = self.services.provider_registry.read();
             merge_context_lengths_from_registry(&mut cache, &registry);
         }
+        let models_dev = crate::feat::provider_infra::ModelsDevData::load(
+            &self.services.paths.models_dev_user_path(),
+            &self.services.paths.models_dev_system_path(),
+        );
+        merge_context_lengths_from_models_dev(&mut cache, &models_dev);
         let mut state = self.state.write();
         state.provider.model_cache = Some(cache);
         // Also reload provider picker entries from updated model cache.
@@ -177,6 +182,11 @@ impl ProviderActor {
             let registry = self.services.provider_registry.read();
             merge_context_lengths_from_registry(&mut cache, &registry);
         }
+        let models_dev = crate::feat::provider_infra::ModelsDevData::load(
+            &self.services.paths.models_dev_user_path(),
+            &self.services.paths.models_dev_system_path(),
+        );
+        merge_context_lengths_from_models_dev(&mut cache, &models_dev);
         let mut state = self.state.write();
         state.provider.model_cache = Some(cache);
         load_provider_picker_items(&self.services, &mut state);
@@ -203,6 +213,27 @@ fn merge_context_lengths_from_registry(
         for model in models.iter_mut() {
             if model.id == provider.model && model.context_length.is_none() {
                 model.context_length = Some(registry_ctx);
+            }
+        }
+    }
+}
+
+/// Merge `context_length` from the models.dev reference data into the
+/// model cache, filling in `None` slots where neither the API nor
+/// `providers.toml` provided a value.
+///
+/// This is the lowest-priority merge: only `None` entries are filled,
+/// and existing values from the API or `providers.toml` are never overwritten.
+fn merge_context_lengths_from_models_dev(
+    cache: &mut crate::feat::provider_infra::ModelCache,
+    models_dev: &crate::feat::provider_infra::ModelsDevData,
+) {
+    for models in cache.entries.values_mut() {
+        for model in models.iter_mut() {
+            if model.context_length.is_none() {
+                if let Some(ctx) = models_dev.get(&model.id) {
+                    model.context_length = Some(ctx);
+                }
             }
         }
     }
@@ -616,5 +647,158 @@ mod tests {
             .as_ref()
             .expect("cache should be set");
         assert_eq!(loaded.entries["ollama"][0].context_length, Some(8192));
+    }
+
+    // --- models.dev merge tests ---
+
+    #[rstest::rstest]
+    fn merge_from_models_dev_fills_none() {
+        // Given a cache with context_length: None and models.dev data.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "zai".to_owned(),
+            vec![ModelInfo {
+                id: "glm-5.1".to_owned(),
+                context_length: None,
+            }],
+        );
+
+        let mut models_dev = crate::feat::provider_infra::ModelsDevData::new();
+        models_dev.context_lengths.insert("glm-5.1".to_owned(), 200_000);
+
+        // When merging.
+        super::merge_context_lengths_from_models_dev(&mut cache, &models_dev);
+
+        // Then the model now has context_length from models.dev.
+        assert_eq!(cache.entries["zai"][0].context_length, Some(200_000));
+    }
+
+    #[rstest::rstest]
+    fn merge_from_models_dev_does_not_overwrite_existing() {
+        // Given a cache with context_length: Some(100000) and models.dev has 200000.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "openai".to_owned(),
+            vec![ModelInfo {
+                id: "gpt-4o".to_owned(),
+                context_length: Some(100_000),
+            }],
+        );
+
+        let mut models_dev = crate::feat::provider_infra::ModelsDevData::new();
+        models_dev.context_lengths.insert("gpt-4o".to_owned(), 200_000);
+
+        // When merging.
+        super::merge_context_lengths_from_models_dev(&mut cache, &models_dev);
+
+        // Then the existing value is preserved.
+        assert_eq!(cache.entries["openai"][0].context_length, Some(100_000));
+    }
+
+    #[rstest::rstest]
+    fn merge_from_models_dev_leaves_none_when_not_in_data() {
+        // Given a cache with an unknown model.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "local".to_owned(),
+            vec![ModelInfo {
+                id: "my-custom-llama".to_owned(),
+                context_length: None,
+            }],
+        );
+
+        let models_dev = crate::feat::provider_infra::ModelsDevData::new();
+
+        // When merging with empty models.dev data.
+        super::merge_context_lengths_from_models_dev(&mut cache, &models_dev);
+
+        // Then it stays None.
+        assert_eq!(cache.entries["local"][0].context_length, None);
+    }
+
+    #[rstest::rstest]
+    fn merge_priority_is_api_then_config_then_models_dev() {
+        // Given three models with different source scenarios.
+        let mut cache = ModelCache::new();
+        // Model A: API returned a value.
+        cache.entries.insert(
+            "provider-a".to_owned(),
+            vec![ModelInfo {
+                id: "model-a".to_owned(),
+                context_length: Some(100_000),
+            }],
+        );
+        // Model B: API returned None, config will fill it.
+        cache.entries.insert(
+            "provider-b".to_owned(),
+            vec![ModelInfo {
+                id: "model-b".to_owned(),
+                context_length: None,
+            }],
+        );
+        // Model C: API returned None, no config, models.dev should fill it.
+        cache.entries.insert(
+            "provider-c".to_owned(),
+            vec![ModelInfo {
+                id: "model-c".to_owned(),
+                context_length: None,
+            }],
+        );
+        // Model D: API returned None, no config, not in models.dev.
+        cache.entries.insert(
+            "provider-d".to_owned(),
+            vec![ModelInfo {
+                id: "model-d".to_owned(),
+                context_length: None,
+            }],
+        );
+
+        // Simulate config merge: set model-b to 64000.
+        cache.entries.get_mut("provider-b").unwrap()[0].context_length = Some(64_000);
+
+        let mut models_dev = crate::feat::provider_infra::ModelsDevData::new();
+        models_dev.context_lengths.insert("model-a".to_owned(), 999_999);
+        models_dev.context_lengths.insert("model-b".to_owned(), 999_999);
+        models_dev.context_lengths.insert("model-c".to_owned(), 300_000);
+
+        // When merging from models.dev.
+        super::merge_context_lengths_from_models_dev(&mut cache, &models_dev);
+
+        // Then: A keeps API value, B keeps config value, C gets models.dev, D stays None.
+        assert_eq!(cache.entries["provider-a"][0].context_length, Some(100_000));
+        assert_eq!(cache.entries["provider-b"][0].context_length, Some(64_000));
+        assert_eq!(cache.entries["provider-c"][0].context_length, Some(300_000));
+        assert_eq!(cache.entries["provider-d"][0].context_length, None);
+    }
+
+    #[rstest::rstest]
+    fn merge_from_models_dev_handles_multiple_providers() {
+        // Given two providers with models that have None.
+        let mut cache = ModelCache::new();
+        cache.entries.insert(
+            "zai".to_owned(),
+            vec![ModelInfo {
+                id: "glm-5.1".to_owned(),
+                context_length: None,
+            }],
+        );
+        cache.entries.insert(
+            "anthropic".to_owned(),
+            vec![ModelInfo {
+                id: "claude-sonnet-4-20250514".to_owned(),
+                context_length: None,
+            }],
+        );
+
+        let mut models_dev = crate::feat::provider_infra::ModelsDevData::new();
+        models_dev.context_lengths.insert("glm-5.1".to_owned(), 200_000);
+        models_dev.context_lengths.insert("claude-sonnet-4-20250514".to_owned(), 200_000);
+
+        // When merging.
+        super::merge_context_lengths_from_models_dev(&mut cache, &models_dev);
+
+        // Then both providers get filled.
+        assert_eq!(cache.entries["zai"][0].context_length, Some(200_000));
+        assert_eq!(cache.entries["anthropic"][0].context_length, Some(200_000));
     }
 }
