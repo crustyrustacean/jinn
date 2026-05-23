@@ -255,4 +255,37 @@ mod tests {
         // Just verify no panic occurred and render completed.
         let _ = buf.area;
     }
+
+    #[test]
+    fn widget_renders_running_spinner() {
+        let graph = build_two_node_graph();
+        let mut statuses = all_pending(&graph);
+        statuses.insert("src".to_owned(), NodeStatus::Running);
+        let viewport = ViewportState::new();
+
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 24,
+        };
+        let mut buf = Buffer::empty(area);
+
+        // Render with tick=0.
+        let w = WorkflowWidget::new(&graph, &statuses, &viewport, 0);
+        w.render(area, &mut buf);
+
+        // The spinner frame for tick=0 is ⠋. Check it appears somewhere.
+        let mut has_spinner = false;
+        for row in 0..area.height {
+            for col in 0..area.width {
+                if let Some(cell) = buf.cell(ratatui::layout::Position::new(col, row)) {
+                    if cell.symbol() == "\u{280b}" {
+                        has_spinner = true;
+                    }
+                }
+            }
+        }
+        assert!(has_spinner, "should find spinner frame ⠋ for Running node");
+    }
 }
