@@ -1836,6 +1836,11 @@ impl ChatSessionState {
     pub fn selected_history_index(&self) -> Option<usize> {
         let vi_idx = self.ui.selected_entry_index?;
         let items = self.ui.visual_items.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if items.is_empty() {
+            // Before first render, visual items haven't been computed yet.
+            // Fall back: selected_entry_index IS a history index in this case.
+            return Some(vi_idx);
+        }
         match items.get(vi_idx)? {
             crate::feat::ui::chat_log::visual_item::VisualItem::Entry(hist_idx) => Some(*hist_idx),
             crate::feat::ui::chat_log::visual_item::VisualItem::CollapsedIgnoredBlock { .. } => None,
