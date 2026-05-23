@@ -876,4 +876,99 @@ mod tests {
         let content = std::fs::read_to_string(&file_path).expect("read written file");
         assert_eq!(content, "absolute path");
     }
+
+    // ── Phase 4: Byte count accuracy ──
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_reports_correct_byte_count_for_ascii() {
+        // Given a temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("ascii.txt");
+        let content = "hello";
+
+        let call = ToolCall {
+            id: "call_b1".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": content
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the success message reports the correct ASCII byte count.
+        assert!(result.success);
+        assert_eq!(content.len(), 5);
+        assert!(
+            result.content.contains("wrote 5 bytes"),
+            "expected 'wrote 5 bytes' in '{}'",
+            result.content
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_reports_correct_byte_count_for_multibyte() {
+        // Given a temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("multibyte.txt");
+        let content = "\u{1F389}"; // 🎉 — 4 bytes in UTF-8
+
+        let call = ToolCall {
+            id: "call_b2".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": content
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the success message reports byte count (4), not character count (1).
+        assert!(result.success);
+        assert_eq!(content.len(), 4);
+        assert!(
+            result.content.contains("wrote 4 bytes"),
+            "expected 'wrote 4 bytes' in '{}'",
+            result.content
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_reports_correct_byte_count_for_mixed() {
+        // Given a temp directory.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("mixed.txt");
+        let content = "Hello \u{1F30D}"; // Hello + space + 🌍 = 5 + 1 + 4 = 10 bytes
+
+        let call = ToolCall {
+            id: "call_b3".to_owned(),
+            name: "write".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "content": content
+            })
+            .to_string(),
+        };
+
+        // When executing the write tool.
+        let result = execute(call, test_ctx()).await;
+
+        // Then the success message reports the correct mixed byte count.
+        assert!(result.success);
+        assert_eq!(content.len(), 10);
+        assert!(
+            result.content.contains("wrote 10 bytes"),
+            "expected 'wrote 10 bytes' in '{}'",
+            result.content
+        );
+    }
 }
