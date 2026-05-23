@@ -34,6 +34,9 @@ pub struct TuiSignals {
 
     /// An external editor should be launched for the chat input.
     pub edit_requested: bool,
+
+    /// Text to copy to the system clipboard (set by yank-selected-entry intent).
+    pub yank_text: Option<String>,
 }
 
 impl Default for TuiSignals {
@@ -49,6 +52,7 @@ impl TuiSignals {
         Self {
             toggle_whichkey: false,
             edit_requested: false,
+            yank_text: None,
         }
     }
 
@@ -56,6 +60,7 @@ impl TuiSignals {
     pub fn clear(&mut self) {
         self.toggle_whichkey = false;
         self.edit_requested = false;
+        self.yank_text = None;
     }
 }
 
