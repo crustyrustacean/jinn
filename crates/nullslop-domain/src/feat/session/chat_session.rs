@@ -383,7 +383,7 @@ pub struct SessionUi {
     /// Maps visual-item positions to either real entries or collapsed
     /// ignored blocks. Set by the renderer each frame, read by intent
     /// handlers for navigation and toggle.
-    pub(crate) visual_items: Vec<crate::feat::ui::chat_log::visual_item::VisualItem>,
+    pub(crate) visual_items: RwLock<Vec<crate::feat::ui::chat_log::visual_item::VisualItem>>,
 }
 
 impl Clone for SessionUi {
@@ -404,7 +404,12 @@ impl Clone for SessionUi {
             expanded_entries: self.expanded_entries.clone(),
             saved_history_position: self.saved_history_position.clone(),
             shown_ignored_blocks: self.shown_ignored_blocks.clone(),
-            visual_items: self.visual_items.clone(),
+            visual_items: RwLock::new(
+                self.visual_items
+                    .read()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone(),
+            ),
         }
     }
 }
@@ -422,7 +427,7 @@ impl Default for SessionUi {
             expanded_entries: HashSet::new(),
             saved_history_position: None,
             shown_ignored_blocks: HashSet::new(),
-            visual_items: Vec::new(),
+            visual_items: RwLock::new(Vec::new()),
         }
     }
 }
@@ -1659,25 +1664,27 @@ impl ChatSessionState {
 
     /// Store the visual items list computed during render.
     pub fn set_visual_items(
-        &mut self,
+        &self,
         items: Vec<crate::feat::ui::chat_log::visual_item::VisualItem>,
     ) {
-        self.ui.visual_items = items;
+        if let Ok(mut guard) = self.ui.visual_items.write() {
+            *guard = items;
+        }
     }
 
     /// Read-only access to the visual items list.
     pub fn visual_items(
         &self,
-    ) -> &[crate::feat::ui::chat_log::visual_item::VisualItem] {
-        &self.ui.visual_items
+    ) -> std::sync::RwLockReadGuard<'_, Vec<crate::feat::ui::chat_log::visual_item::VisualItem>> {
+        self.ui.visual_items.read().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// The visual item at the currently selected position, if any.
     pub fn selected_visual_item(
         &self,
-    ) -> Option<&crate::feat::ui::chat_log::visual_item::VisualItem> {
+    ) -> Option<crate::feat::ui::chat_log::visual_item::VisualItem> {
         let idx = self.ui.selected_entry_index?;
-        self.ui.visual_items.get(idx)
+        self.ui.visual_items.read().unwrap_or_else(std::sync::PoisonError::into_inner).get(idx).cloned()
     }
 
     /// Resolve the selected visual-item index to a history index.
@@ -1686,7 +1693,8 @@ impl ChatSessionState {
     /// collapsed block (not a real entry).
     pub fn selected_history_index(&self) -> Option<usize> {
         let vi_idx = self.ui.selected_entry_index?;
-        match self.ui.visual_items.get(vi_idx)? {
+        let items = self.ui.visual_items.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+        match items.get(vi_idx)? {
             crate::feat::ui::chat_log::visual_item::VisualItem::Entry(hist_idx) => Some(*hist_idx),
             crate::feat::ui::chat_log::visual_item::VisualItem::CollapsedIgnoredBlock { .. } => None,
         }
