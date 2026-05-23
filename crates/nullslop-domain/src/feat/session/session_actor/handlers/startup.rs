@@ -44,10 +44,10 @@ impl SessionPersistenceActor {
             // Bench sessions are created with an explicit model before this handler
             // fires, so we must not overwrite them with the user's saved preference.
             let session = state.active_session_mut();
-            if let Some(ref model) = prefs.last_model {
-                if session.profile().model == crate::feat::provider_infra::NO_PROVIDER_ID {
-                    session.set_model(model.clone());
-                }
+            if let Some(ref model) = prefs.last_model
+                && session.profile().model == crate::feat::provider_infra::NO_PROVIDER_ID
+            {
+                session.set_model(model.clone());
             }
             if let Some(ref strategy_str) = prefs.last_strategy {
                 let strategy_id = PromptStrategyId::new(strategy_str.clone());
