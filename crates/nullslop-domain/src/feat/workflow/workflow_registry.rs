@@ -10,7 +10,7 @@ use std::sync::RwLock;
 use nullslop_workflow::graph::WorkflowGraph;
 
 /// A function that builds a workflow graph.
-pub type WorkflowBuilder = fn() -> WorkflowGraph;
+pub type WorkflowBuilder = fn(String) -> WorkflowGraph;
 
 struct Registry(HashMap<&'static str, WorkflowBuilder>);
 

@@ -93,10 +93,10 @@ impl WorkflowActor {
         };
 
         // Build the graph.
-        let graph_for_engine = builder();
+        let graph_for_engine = builder(payload.user_prompt.clone());
 
         // Build a second copy for rendering (WorkflowGraph is not Clone).
-        let graph_for_rendering = builder();
+        let graph_for_rendering = builder(payload.user_prompt.clone());
 
         // Create workflow state with the rendering copy.
         let mut workflow_state = WorkflowState::new(name.clone(), graph_for_rendering);

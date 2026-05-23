@@ -11,9 +11,12 @@ use crate::feat::workflow::node::llm::LlmNode;
 /// Builds the "research-extract-summarize" workflow graph.
 ///
 /// A 3-node pipeline:
-/// 1. **research** — researches the given topic thoroughly
+/// 1. **research** (source) — researches the given topic thoroughly
 /// 2. **extract** — extracts key facts from the research
 /// 3. **summarize** — writes a concise executive summary
+///
+/// The `user_prompt` is embedded in the source node ("research") and becomes
+/// the initial input to the pipeline.
 ///
 /// # Errors
 ///
@@ -22,9 +25,10 @@ use crate::feat::workflow::node::llm::LlmNode;
     clippy::expect_used,
     reason = "static graph definition should always be valid"
 )]
-pub fn build_research_extract_summarize() -> WorkflowGraph {
-    let research = LlmNode::new(
+pub fn build_research_extract_summarize(user_prompt: String) -> WorkflowGraph {
+    let research = LlmNode::source(
         "You are a research assistant. Research the given topic thoroughly and provide detailed findings with sources.",
+        user_prompt,
     );
     let extract = LlmNode::new(
         "You are a data extraction specialist. Given research findings, extract the key facts, figures, and insights as a structured bullet-point list.",

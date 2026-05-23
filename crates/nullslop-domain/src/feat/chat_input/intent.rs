@@ -319,17 +319,21 @@ fn execute_slash_command(
         }
         SlashCommand::New => crate::feat::session::intent::handle_session_new(state),
         SlashCommand::Workflow => {
-            // Parse the workflow name from the display text: "/workflow <name>"
-            let name = display
+            // Parse the workflow name and topic from the display text: "/workflow <name> [topic]"
+            let args = display
                 .strip_prefix("/workflow")
                 .map(|s| s.trim())
                 .unwrap_or("");
-            if name.is_empty() {
+            if args.is_empty() {
                 state
                     .frontend
-                    .set_status_notification("Usage: /workflow <name>");
+                    .set_status_notification("Usage: /workflow <name> [topic]");
                 return IntentResult::empty();
             }
+            let (name, user_prompt) = match args.split_once(char::is_whitespace) {
+                Some((n, rest)) => (n.trim(), rest.trim().to_owned()),
+                None => (args.trim(), String::new()),
+            };
             // Look up in registry.
             let Some(_builder) = crate::feat::workflow::workflow_registry::get_workflow(name)
             else {
@@ -344,6 +348,7 @@ fn execute_slash_command(
                 crate::feat::workflow::protocol::command::StartWorkflow {
                     name: name.to_owned(),
                     workflow_id,
+                    user_prompt,
                 },
             )])
         }
