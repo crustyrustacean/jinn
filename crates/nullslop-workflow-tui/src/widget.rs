@@ -69,7 +69,7 @@ impl<'a> WorkflowWidget<'a> {
             let Some(src_idx) = src_port_idx else {
                 continue;
             };
-            let (mut sx, mut sy) = src_node.output_port_pos(src_idx);
+            let (sx, sy) = src_node.output_port_pos(src_idx);
 
             // Find the input port position on the target node.
             let Some(tgt_node) = node_map.get(edge.target_node) else {
@@ -82,13 +82,13 @@ impl<'a> WorkflowWidget<'a> {
             let Some(tgt_idx) = tgt_port_idx else {
                 continue;
             };
-            let (mut tx, mut ty) = tgt_node.input_port_pos(tgt_idx);
+            let (tx, ty) = tgt_node.input_port_pos(tgt_idx);
 
-            // Apply viewport offset.
-            sx = sx.saturating_sub(self.viewport.offset_x);
-            sy = sy.saturating_sub(self.viewport.offset_y);
-            tx = tx.saturating_sub(self.viewport.offset_x);
-            ty = ty.saturating_sub(self.viewport.offset_y);
+            // Apply viewport offset using i32 arithmetic.
+            let sx = i32::from(sx) - i32::from(self.viewport.offset_x);
+            let sy = i32::from(sy) - i32::from(self.viewport.offset_y);
+            let tx = i32::from(tx) - i32::from(self.viewport.offset_x);
+            let ty = i32::from(ty) - i32::from(self.viewport.offset_y);
 
             let path = SimpleRouter::route((sx, sy), (tx, ty), &node_rects);
             crate::connection::render_path(buf, &path, edge.port_type, area);
@@ -113,8 +113,10 @@ impl Widget for WorkflowWidget<'_> {
         // Render each node.
         for node in &layout.nodes {
             let selected = self.viewport.is_selected(&node.name);
-            // Apply viewport offset by creating a shifted node for rendering.
-            let shifted = node.shifted(self.viewport.offset_x, self.viewport.offset_y);
+            let shifted = node.shifted_i32(self.viewport.offset_x, self.viewport.offset_y);
+            if !shifted.is_visible() {
+                continue;
+            }
             shifted.render(buf, selected, self.tick);
         }
     }

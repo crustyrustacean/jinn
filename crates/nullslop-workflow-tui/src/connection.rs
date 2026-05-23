@@ -12,8 +12,8 @@ use nullslop_workflow::port::PortType;
 /// A cell on a connection path, with its direction information for character selection.
 #[derive(Debug, Clone, Copy)]
 pub struct PathCell {
-    /// Absolute position.
-    pub pos: (u16, u16),
+    /// Absolute position (i32 allows negative coords for off-screen cells).
+    pub pos: (i32, i32),
     /// Box-drawing character to render at this position.
     pub char: char,
 }
@@ -23,7 +23,7 @@ pub trait ConnectionRouter {
     /// Route a connection from an output port to an input port.
     ///
     /// Returns a list of [`PathCell`]s forming the visual path.
-    fn route(from: (u16, u16), to: (u16, u16), node_rects: &[Rect]) -> Vec<PathCell>;
+    fn route(from: (i32, i32), to: (i32, i32), node_rects: &[Rect]) -> Vec<PathCell>;
 }
 
 /// Simple L-shaped router: moves horizontally right to the midpoint, then vertically,
@@ -31,14 +31,14 @@ pub trait ConnectionRouter {
 pub struct SimpleRouter;
 
 impl ConnectionRouter for SimpleRouter {
-    fn route(from: (u16, u16), to: (u16, u16), _node_rects: &[Rect]) -> Vec<PathCell> {
+    fn route(from: (i32, i32), to: (i32, i32), _node_rects: &[Rect]) -> Vec<PathCell> {
         let (x1, y1) = from;
         let (x2, y2) = to;
 
-        let mut cells: Vec<(u16, u16)> = Vec::new();
+        let mut cells: Vec<(i32, i32)> = Vec::new();
 
         // Midpoint x: halfway between source and target.
-        let mid_x = u16::midpoint(x1, x2);
+        let mid_x = (x1 + x2) / 2;
 
         // Horizontal right from source to midpoint.
         for x in x1..=mid_x {
@@ -92,7 +92,7 @@ impl ConnectionRouter for SimpleRouter {
 
 /// Given the previous, current, and next cell positions, pick the correct
 /// box-drawing character.
-fn box_char(prev: Option<(u16, u16)>, curr: (u16, u16), next: Option<(u16, u16)>) -> char {
+fn box_char(prev: Option<(i32, i32)>, curr: (i32, i32), next: Option<(i32, i32)>) -> char {
     // Compute the direction from the corner toward each neighbor.
     let d_prev = prev.and_then(|p| dir_toward(curr, p));
     let d_next = next.and_then(|n| dir_toward(curr, n));
@@ -142,11 +142,9 @@ enum Dir2D {
 /// Computes the direction from `curr` toward `other`.
 ///
 /// Returns `None` if the cells are not orthogonally adjacent.
-fn dir_toward(curr: (u16, u16), other: (u16, u16)) -> Option<Dir2D> {
-    let (cx, cy) = (i32::from(curr.0), i32::from(curr.1));
-    let (ox, oy) = (i32::from(other.0), i32::from(other.1));
-    let dx = ox - cx;
-    let dy = oy - cy;
+fn dir_toward(curr: (i32, i32), other: (i32, i32)) -> Option<Dir2D> {
+    let dx = other.0 - curr.0;
+    let dy = other.1 - curr.1;
     match (dx.signum(), dy.signum()) {
         (1, 0) => Some(Dir2D::Right),
         (-1, 0) => Some(Dir2D::Left),
@@ -157,11 +155,22 @@ fn dir_toward(curr: (u16, u16), other: (u16, u16)) -> Option<Dir2D> {
 }
 
 /// Renders a connection path into a ratatui buffer with the given port type's color.
+///
+/// Skips cells with negative coordinates or outside the buffer area.
 pub fn render_path(buf: &mut Buffer, path: &[PathCell], port_type: PortType, area: Rect) {
     let color = port_type_color(port_type);
     for cell in path {
         let (x, y) = cell.pos;
-        // Skip cells outside the buffer area.
+        // Skip cells outside the buffer area or with negative coordinates.
+        if x < 0 || y < 0 {
+            continue;
+        }
+        let Ok(x) = u16::try_from(x) else {
+            continue;
+        };
+        let Ok(y) = u16::try_from(y) else {
+            continue;
+        };
         if x >= area.x + area.width || y >= area.y + area.height {
             continue;
         }
