@@ -140,5 +140,13 @@ pub(super) fn render_chat_tab(
     autocomplete::render_autocomplete(frame, layout.input, state);
 
     // Vertical minimap column and `>` arrow overlay.
-    minimap::render_minimap(frame, layout.minimap, chat_log_area, state);
+    minimap::render_minimap(
+        frame,
+        layout.minimap,
+        chat_log_area,
+        state,
+        focus_scope,
+        theme.focus_accent,
+        theme.border_unfocused,
+    );
 }
