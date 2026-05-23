@@ -1,0 +1,77 @@
+{
+  "app_name": "my-service",
+  "version": "2.1.0",
+  "environments": {
+    "development": {
+      "debug": true,
+      "log_level": "debug",
+      "services": {
+        "api": {
+          "base_url": "http://localhost:3000",
+          "timeout": 10
+        },
+        "cache": {
+          "host": "localhost",
+          "port": 6379,
+          "timeout": 5
+        }
+      }
+    },
+    "staging": {
+      "debug": false,
+      "log_level": "info",
+      "services": {
+        "api": {
+          "base_url": "https://staging-api.example.com",
+          "timeout": 30
+        },
+        "cache": {
+          "host": "staging-redis.example.com",
+          "port": 6379,
+          "timeout": 15
+        }
+      }
+    },
+    "production": {
+      "debug": false,
+      "log_level": "warn",
+      "services": {
+        "api": {
+          "base_url": "https://api.example.com",
+          "timeout": 60,
+          "retry_count": 3,
+          "retry_delay": 1000
+        },
+        "cache": {
+          "host": "prod-redis.example.com",
+          "port": 6379,
+          "timeout": 30
+        },
+        "database": {
+          "host": "prod-db.example.com",
+          "port": 5432,
+          "name": "production_db",
+          "connection": {
+            "pool_size": 20,
+            "timeout": 30,
+            "ssl": true,
+            "ssl_cert": "/etc/ssl/certs/db-ca.pem"
+          },
+          "replication": {
+            "enabled": true,
+            "lag_threshold": 100
+          }
+        }
+      }
+    }
+  },
+  "monitoring": {
+    "enabled": true,
+    "interval": 60,
+    "timeout": 30,
+    "endpoints": {
+      "health": "/health",
+      "metrics": "/metrics"
+    }
+  }
+}
