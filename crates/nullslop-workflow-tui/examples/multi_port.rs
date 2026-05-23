@@ -32,8 +32,13 @@ fn main() {
             "llm-call".to_owned(),
             common::make_node(
                 "llm-call",
-                vec![PortDef::string("prompt"), PortDef::json("config")],
-                vec![PortDef::string("response"), PortDef::json("usage")],
+                vec![],
+                vec![
+                    PortDef::string("prompt"),
+                    PortDef::json("config"),
+                    PortDef::string("response"),
+                    PortDef::json("usage"),
+                ],
             ),
         );
         b.build().expect("graph should build")

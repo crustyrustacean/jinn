@@ -46,14 +46,14 @@ fn main() {
                 vec![PortDef::string("result")],
             ),
         );
-        // Merge sink with two input ports — one String, one Json — to show mixed types.
+        // Merge sink with two String input ports.
         b.add_node(
             "merge".to_owned(),
             common::make_node(
                 "merge",
                 vec![
                     PortDef::string("upper_result"),
-                    PortDef::json("reverse_result"),
+                    PortDef::string("reverse_result"),
                 ],
                 vec![],
             ),
