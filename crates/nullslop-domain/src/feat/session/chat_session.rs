@@ -372,6 +372,18 @@ pub struct SessionUi {
     /// Pins, restored when the cursor leaves to another section, discarded
     /// when leaving the sidebar to Normal.
     pub(crate) saved_history_position: Option<SavedHistoryPosition>,
+    /// Entry IDs whose ignored blocks are currently *shown* (expanded).
+    ///
+    /// Default: empty (all ignored blocks are collapsed).
+    /// Key: the ID of the first entry in the contiguous ignored block.
+    /// Ephemeral — not persisted across restarts.
+    pub(crate) shown_ignored_blocks: HashSet<ChatEntryId>,
+    /// The visual items list computed from flat history during render.
+    ///
+    /// Maps visual-item positions to either real entries or collapsed
+    /// ignored blocks. Set by the renderer each frame, read by intent
+    /// handlers for navigation and toggle.
+    pub(crate) visual_items: Vec<crate::feat::ui::chat_log::visual_item::VisualItem>,
 }
 
 impl Clone for SessionUi {
@@ -391,6 +403,8 @@ impl Clone for SessionUi {
             blank_count: AtomicU16::new(self.blank_count.load(Ordering::Relaxed)),
             expanded_entries: self.expanded_entries.clone(),
             saved_history_position: self.saved_history_position.clone(),
+            shown_ignored_blocks: self.shown_ignored_blocks.clone(),
+            visual_items: self.visual_items.clone(),
         }
     }
 }
@@ -407,6 +421,8 @@ impl Default for SessionUi {
             blank_count: AtomicU16::new(0),
             expanded_entries: HashSet::new(),
             saved_history_position: None,
+            shown_ignored_blocks: HashSet::new(),
+            visual_items: Vec::new(),
         }
     }
 }
@@ -1610,6 +1626,70 @@ impl ChatSessionState {
     /// Whether a tool result entry is currently expanded to show full content.
     pub fn is_entry_expanded(&self, id: &ChatEntryId) -> bool {
         self.ui.expanded_entries.contains(id)
+    }
+
+    // --- Ignored block visibility ---
+
+    /// Toggle visibility of the ignored block containing the given entry.
+    ///
+    /// Finds the contiguous run of ignored entries containing the entry
+    /// identified by `entry_id`, takes the first entry's ID as the block
+    /// representative, and toggles it in `shown_ignored_blocks`.
+    ///
+    /// No-op if the entry is not found or is not ignored.
+    pub fn toggle_ignored_block_visibility(&mut self, entry_id: &ChatEntryId) {
+        let Some(idx) = self.core.history.iter().position(|e| e.id == *entry_id) else {
+            return;
+        };
+        if !self.core.history[idx].ignored {
+            return;
+        }
+        // Scan backward to find the start of the contiguous ignored block.
+        let mut block_start = idx;
+        while block_start > 0 && self.core.history[block_start - 1].ignored {
+            block_start -= 1;
+        }
+        let block_representative = self.core.history[block_start].id.clone();
+        if self.ui.shown_ignored_blocks.contains(&block_representative) {
+            self.ui.shown_ignored_blocks.remove(&block_representative);
+        } else {
+            self.ui.shown_ignored_blocks.insert(block_representative);
+        }
+    }
+
+    /// Store the visual items list computed during render.
+    pub fn set_visual_items(
+        &mut self,
+        items: Vec<crate::feat::ui::chat_log::visual_item::VisualItem>,
+    ) {
+        self.ui.visual_items = items;
+    }
+
+    /// Read-only access to the visual items list.
+    pub fn visual_items(
+        &self,
+    ) -> &[crate::feat::ui::chat_log::visual_item::VisualItem] {
+        &self.ui.visual_items
+    }
+
+    /// The visual item at the currently selected position, if any.
+    pub fn selected_visual_item(
+        &self,
+    ) -> Option<&crate::feat::ui::chat_log::visual_item::VisualItem> {
+        let idx = self.ui.selected_entry_index?;
+        self.ui.visual_items.get(idx)
+    }
+
+    /// Resolve the selected visual-item index to a history index.
+    ///
+    /// Returns `None` if nothing is selected or the selected item is a
+    /// collapsed block (not a real entry).
+    pub fn selected_history_index(&self) -> Option<usize> {
+        let vi_idx = self.ui.selected_entry_index?;
+        match self.ui.visual_items.get(vi_idx)? {
+            crate::feat::ui::chat_log::visual_item::VisualItem::Entry(hist_idx) => Some(*hist_idx),
+            crate::feat::ui::chat_log::visual_item::VisualItem::CollapsedIgnoredBlock { .. } => None,
+        }
     }
 
     /// Returns this session's working directory for tool execution.
