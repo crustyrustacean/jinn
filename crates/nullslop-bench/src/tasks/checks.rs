@@ -52,7 +52,7 @@ pub fn check_cargo_check(dir: &Path) -> CheckResult {
     match output {
         Ok(o) if o.status.success() => CheckResult::pass("cargo_check"),
         Ok(o) => {
-            let stderr = strip_ansi(&String::from_utf8_lossy(&o.stderr));
+            let stderr = strip_ansi(String::from_utf8_lossy(&o.stderr));
             CheckResult::fail(
                 "cargo_check",
                 format!(
@@ -79,8 +79,8 @@ pub fn check_cargo_run(dir: &Path) -> CheckResult {
     match output {
         Ok(o) if o.status.success() => CheckResult::pass("cargo_run"),
         Ok(o) => {
-            let stderr = strip_ansi(&String::from_utf8_lossy(&o.stderr));
-            let stdout = strip_ansi(&String::from_utf8_lossy(&o.stdout));
+            let stderr = strip_ansi(String::from_utf8_lossy(&o.stderr));
+            let stdout = strip_ansi(String::from_utf8_lossy(&o.stdout));
             CheckResult::fail(
                 "cargo_run",
                 format!(
@@ -109,8 +109,8 @@ pub fn check_python_run(dir: &Path, script: &str) -> CheckResult {
     match output {
         Ok(o) if o.status.success() => CheckResult::pass(check_name),
         Ok(o) => {
-            let stderr = strip_ansi(&String::from_utf8_lossy(&o.stderr));
-            let stdout = strip_ansi(&String::from_utf8_lossy(&o.stdout));
+            let stderr = strip_ansi(String::from_utf8_lossy(&o.stderr));
+            let stdout = strip_ansi(String::from_utf8_lossy(&o.stdout));
             CheckResult::fail(
                 check_name,
                 format!(
@@ -138,7 +138,7 @@ pub fn check_cargo_run_contains(dir: &Path, expected: &str) -> CheckResult {
 
     match output {
         Ok(o) if !o.status.success() => {
-            let stderr = strip_ansi(&String::from_utf8_lossy(&o.stderr));
+            let stderr = strip_ansi(String::from_utf8_lossy(&o.stderr));
             CheckResult::fail(
                 check_name,
                 format!(
@@ -149,7 +149,7 @@ pub fn check_cargo_run_contains(dir: &Path, expected: &str) -> CheckResult {
             )
         }
         Ok(o) => {
-            let stdout = strip_ansi(&String::from_utf8_lossy(&o.stdout));
+            let stdout = strip_ansi(String::from_utf8_lossy(&o.stdout));
             if stdout.contains(expected) {
                 CheckResult::pass(check_name)
             } else {
@@ -179,7 +179,7 @@ pub fn check_python_run_contains(dir: &Path, script: &str, expected: &str) -> Ch
 
     match output {
         Ok(o) if !o.status.success() => {
-            let stderr = strip_ansi(&String::from_utf8_lossy(&o.stderr));
+            let stderr = strip_ansi(String::from_utf8_lossy(&o.stderr));
             CheckResult::fail(
                 check_name,
                 format!(
@@ -190,7 +190,7 @@ pub fn check_python_run_contains(dir: &Path, script: &str, expected: &str) -> Ch
             )
         }
         Ok(o) => {
-            let stdout = strip_ansi(&String::from_utf8_lossy(&o.stdout));
+            let stdout = strip_ansi(String::from_utf8_lossy(&o.stdout));
             if stdout.contains(expected) {
                 CheckResult::pass(check_name)
             } else {
@@ -220,7 +220,7 @@ pub fn check_fizzbuzz_output(dir: &Path) -> CheckResult {
 
     match output {
         Ok(o) if !o.status.success() => {
-            let stderr = strip_ansi(&String::from_utf8_lossy(&o.stderr));
+            let stderr = strip_ansi(String::from_utf8_lossy(&o.stderr));
             CheckResult::fail(
                 "fizzbuzz_output",
                 format!(
@@ -231,7 +231,7 @@ pub fn check_fizzbuzz_output(dir: &Path) -> CheckResult {
             )
         }
         Ok(o) => {
-            let stdout = strip_ansi(&String::from_utf8_lossy(&o.stdout));
+            let stdout = strip_ansi(String::from_utf8_lossy(&o.stdout));
             for line in stdout.lines() {
                 if line.trim() == "FizzBuzz" {
                     return CheckResult::pass("fizzbuzz_output");
