@@ -350,7 +350,7 @@ bump LEVEL:
     fi
 
     # --- Compute new version ---
-    CURRENT=$(grep -m1 '^version' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+    CURRENT=$(sed -n '/^\[workspace\.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p}' Cargo.toml)
     NEW=$(rust-script scripts/bump-version.rs "$CURRENT" "{{LEVEL}}")
 
     # --- Resolve tag conflicts ---
