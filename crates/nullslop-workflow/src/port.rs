@@ -44,6 +44,19 @@ impl ScalarType {
             ScalarValue::Json(_) => Self::Json,
         }
     }
+
+    /// Returns a short display label for this scalar type.
+    ///
+    /// Used for layout computation and rendering.
+    #[must_use]
+    pub fn label(&self) -> &'static str {
+        match self {
+            ScalarType::Text => "Text",
+            ScalarType::Number => "Num",
+            ScalarType::Boolean => "Bool",
+            ScalarType::Json => "Json",
+        }
+    }
 }
 
 /// Container types wrapping scalar types.
@@ -81,6 +94,18 @@ impl PortType {
                     .map_or(ScalarType::Json, ScalarType::from_value);
                 Self::Map(inner)
             }
+        }
+    }
+
+    /// Returns a short display label for this port type.
+    ///
+    /// Used for layout computation and rendering.
+    #[must_use]
+    pub fn label(&self) -> String {
+        match self {
+            PortType::Single(scalar) => scalar.label().to_owned(),
+            PortType::Vector(scalar) => format!("Vec<{}>", scalar.label()),
+            PortType::Map(scalar) => format!("Map<{}>", scalar.label()),
         }
     }
 }

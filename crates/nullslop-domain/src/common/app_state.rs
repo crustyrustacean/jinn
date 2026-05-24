@@ -352,6 +352,8 @@ pub struct StatusNotification {
 
 /// Workflow tab UI state — persisted across frames in `FrontendState`.
 ///
+use nullslop_workflow::spatial_layout::SpatialRect;
+
 /// OWNER: IntentHandler (selection, inspector toggle, cancel prompt).
 #[derive(Debug, Clone, Default)]
 pub struct WorkflowUiState {
@@ -367,6 +369,11 @@ pub struct WorkflowUiState {
     pub inspector_scroll: u16,
     /// Whether the "Press ESC again to cancel" prompt is showing.
     pub cancel_prompt: bool,
+    /// Cached spatial index: node name → bounding rect in content coordinates.
+    ///
+    /// Recomputed lazily when empty and a spatial navigation intent fires.
+    /// Cleared when the active workflow changes.
+    pub node_rects: HashMap<String, SpatialRect>,
 }
 
 /// Frontend / UI state — owned by the IntentHandler (main thread).

@@ -18,6 +18,7 @@ pub mod execution;
 pub mod graph;
 pub mod node;
 pub mod port;
+pub mod spatial_layout;
 
 pub use engine::NodeStatus;
 pub use execution::{ExecutionSnapshot, NodePorts, NodeState, OwnedEdgeInfo, WorkflowExecution, WorkflowStructure};
