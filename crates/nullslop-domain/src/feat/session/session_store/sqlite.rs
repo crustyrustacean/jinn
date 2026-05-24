@@ -36,7 +36,7 @@ use crate::feat::session::chat_session::{
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::session_summary::SessionSummary;
 use crate::feat::session::token_stats::TokenRecord;
-use crate::protocol::{ChatEntryId, SessionId};
+use crate::protocol::{ChatEntryId, ContextOverride, SessionId};
 
 use super::migrator;
 use super::{SessionStore, SessionStoreError};
@@ -793,7 +793,7 @@ fn save_blocking(
                     entry_id: entry_id_str,
                     ordinal: ordinal as i32,
                     pin_position: pin_str,
-                    ignored: entry.ignored,
+                    ignored: entry.ignored(),
                 })
                 .execute(txn)?;
         }
@@ -909,7 +909,11 @@ fn load_session_blocking(
                     .unwrap_or_else(|_| jiff::Timestamp::now()),
                 kind,
                 pin_position,
-                ignored: junction.ignored,
+                context_override: if junction.ignored {
+                        ContextOverride::ForcedExclude
+                    } else {
+                        ContextOverride::Default
+                    },
             }
         })
         .collect();

@@ -434,7 +434,7 @@ impl<'a> HistoryRender<'a> {
                     // Build gutter lines for this entry.
                     let is_pinned = entry.pin_position.is_some();
                     let is_included_in_context =
-                        !entry.ignored || entry.pin_position.is_some();
+                        entry.is_in_context();
                     let gutter_ctx = gutter::GutterStyle {
                         is_pinned,
                         is_selected,

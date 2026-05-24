@@ -578,7 +578,7 @@ mod ignore_selected_tests {
                 model_used: "test/model".to_owned(),
             },
             pin_position: None,
-            ignored: false,
+            context_override: crate::protocol::ContextOverride::Default,
         });
         state.active_session_mut().select_next_entry();
 

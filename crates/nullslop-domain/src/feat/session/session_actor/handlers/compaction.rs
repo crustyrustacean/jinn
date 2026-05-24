@@ -5,7 +5,7 @@
 //! and draining queued messages that arrived during compaction.
 
 use crate::common::actor::ActorContext;
-use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind};
+use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
 
 use super::super::SessionPersistenceActor;
 use crate::feat::compaction_actor::protocol::command::{BeginCompaction, EndCompaction};
@@ -74,7 +74,7 @@ impl SessionPersistenceActor {
                         model_used: result.model_used.clone(),
                     },
                     pin_position: None,
-                    ignored: false,
+                    context_override: ContextOverride::Default,
                 };
                 session.insert_entry_at(result.boundary_index, compaction_entry);
                 session.push_entry(ChatEntry::system(format!(

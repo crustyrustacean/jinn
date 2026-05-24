@@ -149,7 +149,7 @@ pub fn handle_toggle_ignored_block(state: &mut AppState) -> IntentResult {
         Some(VisualItem::Entry(hist_idx)) => {
             // Entry might be in an expanded ignored block → collapse it.
             let entry = &history[*hist_idx];
-            if !entry.ignored {
+            if entry.is_in_context() {
                 return IntentResult::empty();
             }
             entry.id.clone()
@@ -743,7 +743,7 @@ mod tests {
         state.active_session_mut().push_entry(ChatEntry::user("a"));
         for _ in 0..15 {
             let mut entry = ChatEntry::user("ignored");
-            entry.ignored = true;
+            entry.context_override = crate::protocol::ContextOverride::ForcedExclude;
             state.active_session_mut().push_entry(entry);
         }
         state.active_session_mut().push_entry(ChatEntry::user("b"));
@@ -787,7 +787,7 @@ mod tests {
         state.active_session_mut().push_entry(ChatEntry::user("a"));
         for _ in 0..15 {
             let mut entry = ChatEntry::user("ignored");
-            entry.ignored = true;
+            entry.context_override = crate::protocol::ContextOverride::ForcedExclude;
             state.active_session_mut().push_entry(entry);
         }
         state.active_session_mut().push_entry(ChatEntry::user("b"));
@@ -847,7 +847,7 @@ mod tests {
 
         // Then the entry is now ignored.
         let selected = state.active_session().selected_entry().expect("entry");
-        assert!(selected.ignored, "entry should be ignored after toggle");
+        assert!(selected.ignored(), "entry should be ignored after toggle");
         // And a PersistSession command is returned.
         assert!(result.commands.iter().any(|c| {
             matches!(c, Command::PersistSession(_))
@@ -868,7 +868,7 @@ mod tests {
 
         // Then the entry is now un-ignored.
         let selected = state.active_session().selected_entry().expect("entry");
-        assert!(!selected.ignored, "entry should be un-ignored after toggle");
+        assert!(!selected.ignored(), "entry should be un-ignored after toggle");
     }
 
     #[rstest::rstest]
@@ -914,7 +914,7 @@ mod tests {
         // Then no commands are emitted and ignored is unchanged.
         assert!(result.commands.is_empty(), "pinned entry should produce no commands");
         let selected = state.active_session().selected_entry().expect("entry");
-        assert!(!selected.ignored, "pinned entry ignored should stay false");
+        assert!(!selected.ignored(), "pinned entry ignored should stay false");
     }
 
     #[rstest::rstest]
@@ -979,7 +979,7 @@ mod tests {
                 model_used: "test/model".to_owned(),
             },
             pin_position: None,
-            ignored: false,
+            context_override: crate::protocol::ContextOverride::Default,
         });
         state.active_session_mut().select_next_entry();
 

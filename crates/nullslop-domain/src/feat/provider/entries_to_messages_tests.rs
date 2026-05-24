@@ -436,7 +436,7 @@ fn compaction_entry_produces_user_message_with_summary() {
             model_used: "test/model".to_owned(),
         },
         pin_position: None,
-        ignored: false,
+        context_override: crate::protocol::ContextOverride::Default,
     }];
 
     // When converting to messages.
@@ -546,7 +546,7 @@ fn message_order_after_compaction() {
                 model_used: "test/model".to_owned(),
             },
             pin_position: None,
-            ignored: false,
+            context_override: crate::protocol::ContextOverride::Default,
         },
         ChatEntry::user("new question"),
         ChatEntry::assistant("new answer"),
