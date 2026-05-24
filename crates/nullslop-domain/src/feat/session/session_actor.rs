@@ -285,7 +285,8 @@ impl SessionPersistenceActor {
             | Command::CompactContext(..)
             | Command::EnqueueCompaction(..)
             | Command::StartWorkflow(..)
-            | Command::CancelWorkflow(..) => {}
+            | Command::CancelWorkflow(..)
+            | Command::RerunFromNode(..) => {}
         }
     }
 }
