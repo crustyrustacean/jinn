@@ -26,7 +26,7 @@ pub fn register_bench_tasks(registry: &mut BuiltinRegistry, artifact_dir: Option
     for task in tasks::bench_tasks() {
         let handler = BenchTaskHandler {
             name: task.name.to_owned(),
-            fixture_dir: task.fixture_dir.map(str::to_owned),
+            fixture_dir: task.fixture_dir,
             verify: task.verify,
             artifact_dir: artifact_dir.map(std::borrow::ToOwned::to_owned),
         };
@@ -45,8 +45,8 @@ pub fn register_bench_tasks(registry: &mut BuiltinRegistry, artifact_dir: Option
 pub struct BenchTaskHandler {
     /// Task name (for logging and error messages).
     name: String,
-    /// Fixture directory name relative to `crates/nullslop-bench/fixtures/`.
-    fixture_dir: Option<String>,
+    /// Embedded fixture directory.
+    fixture_dir: Option<&'static include_dir::Dir<'static>>,
     #[expect(
         dead_code,
         reason = "verify is called by the bench actor, not this handler"
@@ -101,7 +101,7 @@ impl BuiltinHandler for BenchTaskHandler {
             }
         };
 
-        fixture::prepare_fixture(self.fixture_dir.as_deref(), &work_dir)
+        fixture::prepare_fixture(self.fixture_dir, &work_dir)
             .change_context(BuiltinHandlerError)
             .attach(format!(
                 "failed to prepare fixture for bench task '{}'",
@@ -161,7 +161,7 @@ mod tests {
             .expect("task exists");
         let handler = BenchTaskHandler {
             name: "fix-syntax-broken-rust".to_owned(),
-            fixture_dir: task.fixture_dir.map(str::to_owned),
+            fixture_dir: task.fixture_dir,
             verify: task.verify,
             artifact_dir: None,
         };

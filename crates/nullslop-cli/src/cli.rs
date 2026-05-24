@@ -101,7 +101,8 @@ pub enum BenchCommands {
         #[arg(long, required = true)]
         model: Vec<String>,
 
-        /// Task(s) to run (e.g., `hello-world`). If omitted, runs all tasks.
+        /// Task(s) to run. Supports glob patterns (e.g., `edit-*`, `fix-*`).
+        /// If omitted, runs all tasks.
         #[arg(long)]
         task: Vec<String>,
 
