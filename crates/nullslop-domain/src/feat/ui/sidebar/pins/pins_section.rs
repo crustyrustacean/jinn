@@ -230,13 +230,13 @@ fn sync_chat_log_cursor(state: &mut AppState) {
     let Some(pinned_id) = state.frontend.pins.selected_id().cloned() else {
         return;
     };
-    let history_index = state
+    if state
         .active_session()
         .history()
         .iter()
-        .position(|e| e.id == pinned_id);
-    if let Some(index) = history_index {
-        state.active_session_mut().set_selected_entry_index(index);
+        .any(|e| e.id == pinned_id)
+    {
+        state.active_session_mut().set_selected_cursor_id(pinned_id);
     }
 }
 fn resolve_selected_entry_id(state: &AppState) -> Option<(SessionId, ChatEntryId)> {
