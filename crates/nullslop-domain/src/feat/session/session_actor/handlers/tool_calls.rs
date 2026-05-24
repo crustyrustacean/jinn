@@ -146,7 +146,7 @@ impl SessionPersistenceActor {
         // Note: the session is already in sending state, set by on_stream_completed(ToolUse).
         let assembled = {
             let guard = self.state.read();
-            assemble_prompt(&guard, &event.session_id, &self.counter)
+            assemble_prompt(&guard, &event.session_id, &self.counter, None)
         };
 
         let (old_phase, new_phase) = {

@@ -77,7 +77,7 @@ impl SessionPersistenceActor {
                 // Assemble the prompt directly and emit SendToLlmProvider.
                 let assembled = {
                     let guard = self.state.read();
-                    assemble_prompt(&guard, &payload.session_id, &self.counter)
+                    assemble_prompt(&guard, &payload.session_id, &self.counter, None)
                 };
 
                 let (old_phase, new_phase) = {
