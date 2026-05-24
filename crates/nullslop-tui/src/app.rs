@@ -114,6 +114,16 @@ impl TuiApp {
                     .clear_expired_notification();
             }
             Msg::Input(event) => {
+                // Sync scope from state before processing key.
+                // This ensures the which-key scope matches the actual scope stack,
+                // which is important when the initial scope differs from Normal
+                // (e.g., app starts in Input mode).
+                {
+                    let state = self.core.state.read();
+                    let scope = scope_for_focus(state.frontend.scope_stack.current());
+                    drop(state);
+                    self.which_key.set_scope(scope);
+                }
                 match event {
                     crossterm::event::Event::Key(key) => {
                         if key.kind != crossterm::event::KeyEventKind::Press {

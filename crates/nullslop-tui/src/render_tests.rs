@@ -151,6 +151,7 @@ fn arrow_cell_position(layout: &AppLayout) -> (u16, u16) {
 fn minimap_arrow_is_yellow_when_normal_scope() {
     // Given a TuiApp rendered with Normal scope and one chat entry.
     let mut app = render_test_app();
+    app.core.state.write().frontend.scope_stack.clear_overlays();
     app.core
         .state
         .write()

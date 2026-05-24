@@ -1,19 +1,21 @@
 Feature: TUI Application
   End-to-end scenarios exercising keystroke → keymap → intent → state changes.
 
-  Scenario: App starts in Normal mode
+  Scenario: App starts in Input mode
     Given a new app
-    Then the which-key scope should be Normal
+    Then the which-key scope should be Input
     And which-key should be inactive
 
   Scenario: Pressing 'i' in Normal mode enters Input mode
     Given a new app
-    When the user presses i
+    When the user presses esc
+    And the user presses i
     Then the mode should be Input
 
-  Scenario: Pressing 'q' in Normal mode quits
+  Scenario: Pressing 'q' after Esc quits
     Given a new app
-    When the user presses q
+    When the user presses esc
+    And the user presses q
     Then the app should quit
 
   Scenario: Pressing Esc in Input mode returns to Normal

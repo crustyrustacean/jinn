@@ -364,6 +364,16 @@ fn then_which_key_scope_normal(world: &mut TuiWorld) {
     );
 }
 
+/// Asserts the which-key scope is Input.
+#[cucumber::then(expr = "the which-key scope should be Input")]
+fn then_which_key_scope_input(world: &mut TuiWorld) {
+    assert_eq!(
+        *world.app.which_key.scope(),
+        Scope::Input,
+        "expected Input scope"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Step definitions — Headless Script Execution (Phase 3)
 // ---------------------------------------------------------------------------

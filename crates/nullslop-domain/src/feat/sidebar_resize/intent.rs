@@ -77,8 +77,9 @@ mod tests {
 
     #[rstest::rstest]
     fn enter_pushes_sidebar_resize_scope() {
-        // Given default app state.
+        // Given app state in Normal scope.
         let mut state = AppState::default();
+        state.frontend.scope_stack.clear_overlays();
         assert!(matches!(
             state.frontend.scope_stack.current(),
             FocusScope::Normal
