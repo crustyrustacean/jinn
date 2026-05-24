@@ -327,7 +327,10 @@ impl WorkflowGraphBuilder {
     }
 
     /// Sets a human-readable description for the workflow.
-    pub fn with_description(mut self, desc: impl Into<String>) -> Self {
+    pub fn with_description<S>(mut self, desc: S) -> Self
+    where
+        S: Into<String>,
+    {
         self.description = Some(desc.into());
         self
     }
