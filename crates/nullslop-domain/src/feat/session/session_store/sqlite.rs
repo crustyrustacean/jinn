@@ -534,6 +534,7 @@ impl From<PersistableCore> for SessionCore {
             lifecycle_script_state: core.lifecycle_script_state,
             ephemeral: SessionCoreEphemeral::default(),
             is_workflow: false, // set from DB column after deserialization
+            workflow_overrides: None, // runtime-only, never persisted
         }
     }
 }
@@ -565,6 +566,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     session_state,
                     lifecycle_script_state,
                     is_workflow,
+                    workflow_overrides: _workflow_overrides, // runtime-only, not persisted
                 },
             ui: _ui, // runtime-only UI state, not persisted
         } = session;
@@ -686,6 +688,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 lifecycle_script_state: serde_json::from_str(&lifecycle_script_state)
                     .unwrap_or_default(),
                 is_workflow: false,
+                workflow_overrides: None, // runtime-only, set later if needed
             }
         };
 

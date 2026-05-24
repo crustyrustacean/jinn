@@ -1,6 +1,6 @@
 //! Workflow actor — bridges actor bus events to workflow execution.
 //!
-//! Subscribes to `StartWorkflow`, `CancelWorkflow`, and `StreamCompleted`.
+//! Subscribes to `StartWorkflow`, `CancelWorkflow`, and `SessionPhaseChanged`.
 //! Manages the lifecycle of workflow executions by coordinating between
 //! the workflow engine and the actor bus.
 
@@ -10,7 +10,8 @@ use std::sync::Arc;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
-use crate::feat::provider::protocol::event::StreamCompleted;
+use crate::feat::session::chat_entry::ChatEntryKind;
+use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::workflow::domain_node_context::DomainNodeContext;
 use crate::feat::workflow::protocol::command::{CancelWorkflow, RerunFromNode, StartWorkflow};
 use crate::feat::workflow::protocol::event::{WorkflowCompleted, WorkflowStarted};
@@ -20,8 +21,8 @@ use crate::protocol::{Command, Event};
 
 /// The workflow actor.
 ///
-/// Bridges `StreamCompleted` events back to pending workflow node executions,
-/// and handles `StartWorkflow`/`CancelWorkflow` commands.
+/// Bridges `SessionPhaseChanged(Idle)` events back to pending workflow node
+/// executions, and handles `StartWorkflow`/`CancelWorkflow` commands.
 pub struct WorkflowActor {
     /// Shared domain node context (holds pending oneshot channels).
     ctx: Arc<DomainNodeContext>,
@@ -49,7 +50,7 @@ impl Actor for WorkflowActor {
         ctx.subscribe_command::<StartWorkflow>();
         ctx.subscribe_command::<CancelWorkflow>();
         ctx.subscribe_command::<RerunFromNode>();
-        ctx.subscribe_event::<StreamCompleted>();
+        ctx.subscribe_event::<SessionPhaseChanged>();
 
         ctx.set_description("Manages workflow execution lifecycle");
 
@@ -65,8 +66,8 @@ impl Actor for WorkflowActor {
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Command(cmd) => self.handle_command(&cmd, ctx),
-            ActorEnvelope::Event(Event::StreamCompleted(ref payload)) => {
-                self.handle_stream_completed(payload);
+            ActorEnvelope::Event(Event::SessionPhaseChanged(ref payload)) => {
+                self.handle_session_phase_changed(payload);
             }
             _ => {}
         }
@@ -193,12 +194,41 @@ impl WorkflowActor {
         }
     }
 
-    /// Handle a `StreamCompleted` event.
+    /// Handle a `SessionPhaseChanged` event.
     ///
-    /// Correlates the session ID to a pending oneshot channel in
-    /// `DomainNodeContext` and resolves it with the response content.
-    fn handle_stream_completed(&mut self, payload: &StreamCompleted) {
-        let response = payload.assistant_content.clone().unwrap_or_default();
+    /// When a workflow session transitions to `Idle`, extracts the last assistant
+    /// message from the session history and resolves the pending oneshot channel.
+    fn handle_session_phase_changed(&mut self, payload: &SessionPhaseChanged) {
+        use crate::feat::session::chat_session::SessionPhase;
+
+        // Only care about Idle transitions (session finished all work).
+        if payload.new_phase != SessionPhase::Idle {
+            return;
+        }
+
+        // Check if this is a workflow session with a pending oneshot.
+        if !self.ctx.has_pending(&payload.session_id) {
+            return;
+        }
+
+        // Read the last assistant message from session history.
+        let response = {
+            let guard = self.state.read();
+            let Some(session) = guard.session.get(&payload.session_id) else {
+                return;
+            };
+
+            session
+                .history()
+                .iter()
+                .rev()
+                .find_map(|entry| match &entry.kind {
+                    ChatEntryKind::Assistant(text) => Some(text.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default()
+        };
+
         self.ctx.resolve_completed(&payload.session_id, response);
     }
 
