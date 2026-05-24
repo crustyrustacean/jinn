@@ -122,7 +122,7 @@ impl PortType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortDef {
     /// The port name (e.g., `"prompt"`, `"response"`, `"data"`).
-    pub name: &'static str,
+    pub name: String,
     /// The type this port accepts or produces.
     pub value_type: PortType,
     /// Whether this port must be connected for the graph to be valid.
@@ -134,9 +134,9 @@ pub struct PortDef {
 impl PortDef {
     /// Creates a new port definition.
     #[must_use]
-    pub fn new(name: &'static str, value_type: PortType) -> Self {
+    pub fn new<N: Into<String>>(name: N, value_type: PortType) -> Self {
         Self {
-            name,
+            name: name.into(),
             value_type,
             required: true,
         }
@@ -151,37 +151,37 @@ impl PortDef {
 
     /// Convenience: creates a `Single(Text)` port definition.
     #[must_use]
-    pub fn text(name: &'static str) -> Self {
+    pub fn text<N: Into<String>>(name: N) -> Self {
         Self::new(name, PortType::Single(ScalarType::Text))
     }
 
     /// Convenience: creates a `Single(Number)` port definition.
     #[must_use]
-    pub fn number(name: &'static str) -> Self {
+    pub fn number<N: Into<String>>(name: N) -> Self {
         Self::new(name, PortType::Single(ScalarType::Number))
     }
 
     /// Convenience: creates a `Single(Boolean)` port definition.
     #[must_use]
-    pub fn boolean(name: &'static str) -> Self {
+    pub fn boolean<N: Into<String>>(name: N) -> Self {
         Self::new(name, PortType::Single(ScalarType::Boolean))
     }
 
     /// Convenience: creates a `Single(Json)` port definition.
     #[must_use]
-    pub fn json(name: &'static str) -> Self {
+    pub fn json<N: Into<String>>(name: N) -> Self {
         Self::new(name, PortType::Single(ScalarType::Json))
     }
 
     /// Convenience: creates a `Vector(element_type)` port definition.
     #[must_use]
-    pub fn vec_of(name: &'static str, element_type: ScalarType) -> Self {
+    pub fn vec_of<N: Into<String>>(name: N, element_type: ScalarType) -> Self {
         Self::new(name, PortType::Vector(element_type))
     }
 
     /// Convenience: creates a `Map(value_type)` port definition.
     #[must_use]
-    pub fn map_of(name: &'static str, value_type: ScalarType) -> Self {
+    pub fn map_of<N: Into<String>>(name: N, value_type: ScalarType) -> Self {
         Self::new(name, PortType::Map(value_type))
     }
 }

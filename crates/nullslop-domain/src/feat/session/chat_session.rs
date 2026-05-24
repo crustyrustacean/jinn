@@ -24,7 +24,8 @@ use crate::feat::session::chat_history::ChatHistory;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::protocol::{
-    ChatEntry, ChatEntryId, ChatEntryKind, PinPosition, PromptStrategyId, SessionId,
+    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId,
+    SessionId,
 };
 
 /// Ephemeral session state — lost on application restart.
@@ -540,14 +541,15 @@ impl ChatSessionState {
     pub fn mark_entries_ignored(&mut self, indices: &[usize]) {
         for &i in indices {
             if i < self.core.history.len() {
-                self.core.history[i].ignored = true;
+                self.core.history[i].context_override = ContextOverride::ForcedExclude;
             }
         }
     }
 
-    /// Toggle the `ignored` flag on the currently selected entry.
+    /// Toggle the context override on the currently selected entry.
     ///
-    /// If the entry is ignored, it becomes un-ignored, and vice versa.
+    /// If the entry uses the default, override to the opposite of the kind default.
+    /// If the entry is already overridden, revert to the default.
     /// Does nothing if no entry is selected.
     pub fn toggle_entry_ignored(&mut self) {
         if let Some(idx) = self.selected_entry_index() {
@@ -561,7 +563,18 @@ impl ChatSessionState {
                 }
             };
             if let Some(entry) = self.core.history.get_mut(hist_idx) {
-                entry.ignored = !entry.ignored;
+                entry.context_override = match entry.context_override {
+                    ContextOverride::Default => {
+                        if entry.kind.is_included_by_default() {
+                            ContextOverride::ForcedExclude
+                        } else {
+                            ContextOverride::ForcedInclude
+                        }
+                    }
+                    ContextOverride::ForcedExclude | ContextOverride::ForcedInclude => {
+                        ContextOverride::Default
+                    }
+                };
             }
         }
     }
@@ -1293,7 +1306,7 @@ impl ChatSessionState {
         let indices = std::mem::take(&mut self.core.ephemeral.compaction_gathered_indices);
         for i in indices {
             if i < self.core.history.len() {
-                self.core.history[i].ignored = false;
+                self.core.history[i].context_override = ContextOverride::Default;
             }
         }
         self.core.ephemeral.phase = SessionPhase::Idle;
@@ -1625,10 +1638,10 @@ impl ChatSessionState {
         let Some(entry) = self.core.history.iter_mut().find(|e| e.id == *id) else {
             return;
         };
-        let is_ignored = entry.ignored;
+        let is_ignored = !entry.is_in_context();
         entry.pin_position = Some(position);
 
-        // Propagation: only for ignored entries inside shown blocks.
+        // Propagation: only for non-context entries inside shown blocks.
         if !is_ignored {
             return;
         }
@@ -1641,7 +1654,7 @@ impl ChatSessionState {
         // Same boundary rules as `build_visual_items` and `toggle_ignored_block_visibility`.
         let mut block_start = idx;
         while block_start > 0
-            && self.core.history[block_start - 1].ignored
+            && !self.core.history[block_start - 1].is_in_context()
             && self.core.history[block_start - 1].pin_position.is_none()
         {
             block_start -= 1;
@@ -1659,7 +1672,7 @@ impl ChatSessionState {
         }
 
         let forward_entry = &self.core.history[forward_start];
-        if !forward_entry.ignored || forward_entry.pin_position.is_some() {
+        if forward_entry.is_in_context() || forward_entry.pin_position.is_some() {
             return; // Forward entry is not part of an ignored block.
         }
 
@@ -1951,7 +1964,7 @@ impl ChatSessionState {
         let Some(idx) = self.core.history.iter().position(|e| e.id == *entry_id) else {
             return;
         };
-        if !self.core.history[idx].ignored {
+        if self.core.history[idx].is_in_context() {
             return;
         }
         // Scan backward to find the start of the contiguous ignored block.
@@ -1959,7 +1972,7 @@ impl ChatSessionState {
         // act as block splitters even when ignored.
         let mut block_start = idx;
         while block_start > 0
-            && self.core.history[block_start - 1].ignored
+            && !self.core.history[block_start - 1].is_in_context()
             && self.core.history[block_start - 1].pin_position.is_none()
         {
             block_start -= 1;

@@ -42,7 +42,8 @@ impl DelayNode {
 
 #[async_trait::async_trait]
 impl WorkflowNode for DelayNode {
-    fn name(&self) -> &'static str {
+    #[allow(clippy::unnecessary_literal_bound, reason = "trait contract requires &str")]
+    fn name(&self) -> &str {
         "delay"
     }
 
@@ -63,7 +64,7 @@ impl WorkflowNode for DelayNode {
         // Copy all input values to output ports with matching names.
         let mut outputs = PortValues::new();
         for port_def in &self.ports {
-            if let Some(value) = inputs.get(port_def.name).cloned() {
+            if let Some(value) = inputs.get(&port_def.name).cloned() {
                 outputs.insert(port_def.name.to_owned(), value);
             }
         }

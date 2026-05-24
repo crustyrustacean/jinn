@@ -2,7 +2,7 @@
 
 use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
-use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition, PromptStrategyId};
+use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId};
 use std::path::PathBuf;
 
 use super::*;
@@ -2146,16 +2146,16 @@ fn cancel_compacting_unignores_entries() {
 
     session.begin_compacting(vec![0, 1]);
     session.mark_entries_ignored(&[0, 1]);
-    assert!(session.history()[0].ignored);
-    assert!(session.history()[1].ignored);
+    assert!(session.history()[0].ignored());
+    assert!(session.history()[1].ignored());
 
     // When cancelling compaction.
     session.cancel_compacting();
 
     // Then the entries are un-ignored.
-    assert!(!session.history()[0].ignored);
-    assert!(!session.history()[1].ignored);
-    assert!(!session.history()[2].ignored);
+    assert!(!session.history()[0].ignored());
+    assert!(!session.history()[1].ignored());
+    assert!(!session.history()[2].ignored());
 }
 
 #[rstest::rstest]
@@ -2621,7 +2621,7 @@ fn toggle_ignored_block_visibility_expands_block() {
     }
     for _ in 0..5 {
         let mut entry = ChatEntry::user("ignored");
-        entry.ignored = true;
+        entry.context_override = ContextOverride::ForcedExclude;
         session.push_entry(entry);
     }
     for _ in 0..2 {
@@ -2650,7 +2650,7 @@ fn toggle_ignored_block_visibility_collapses_expanded_block() {
     }
     for _ in 0..5 {
         let mut entry = ChatEntry::user("ignored");
-        entry.ignored = true;
+        entry.context_override = ContextOverride::ForcedExclude;
         session.push_entry(entry);
     }
     for _ in 0..2 {
@@ -2716,18 +2716,18 @@ fn toggle_ignored_block_visibility_stops_at_pinned_entry() {
     }
     for _ in 0..3 {
         let mut entry = ChatEntry::user("ignored");
-        entry.ignored = true;
+        entry.context_override = ContextOverride::ForcedExclude;
         session.push_entry(entry);
     }
     {
         let mut entry = ChatEntry::user("ignored-pinned");
-        entry.ignored = true;
+        entry.context_override = ContextOverride::ForcedExclude;
         entry.pin_position = Some(PinPosition::Top);
         session.push_entry(entry);
     }
     for _ in 0..3 {
         let mut entry = ChatEntry::user("ignored");
-        entry.ignored = true;
+        entry.context_override = ContextOverride::ForcedExclude;
         session.push_entry(entry);
     }
     for _ in 0..2 {
@@ -2762,18 +2762,18 @@ fn toggle_ignored_block_visibility_stops_at_pinned_entry_in_first_sub_block() {
     }
     for _ in 0..3 {
         let mut entry = ChatEntry::user("ignored");
-        entry.ignored = true;
+        entry.context_override = ContextOverride::ForcedExclude;
         session.push_entry(entry);
     }
     {
         let mut entry = ChatEntry::user("ignored-pinned");
-        entry.ignored = true;
+        entry.context_override = ContextOverride::ForcedExclude;
         entry.pin_position = Some(PinPosition::Top);
         session.push_entry(entry);
     }
     for _ in 0..3 {
         let mut entry = ChatEntry::user("ignored");
-        entry.ignored = true;
+        entry.context_override = ContextOverride::ForcedExclude;
         session.push_entry(entry);
     }
     for _ in 0..2 {
@@ -2810,7 +2810,7 @@ fn select_next_walks_visual_items_with_collapsed_block() {
     session.push_entry(ChatEntry::user("a")); // index 0
     for _ in 0..15 {
         let mut entry = ChatEntry::user("ignored");
-        entry.ignored = true;
+        entry.context_override = ContextOverride::ForcedExclude;
         session.push_entry(entry);
     } // indices 1..15, collapsed into one block
     session.push_entry(ChatEntry::user("b")); // index 16
@@ -2843,7 +2843,7 @@ fn select_prev_walks_visual_items_with_collapsed_block() {
     session.push_entry(ChatEntry::user("a")); // index 0
     for _ in 0..15 {
         let mut entry = ChatEntry::user("ignored");
-        entry.ignored = true;
+        entry.context_override = ContextOverride::ForcedExclude;
         session.push_entry(entry);
     } // indices 1..15, collapsed
     session.push_entry(ChatEntry::user("b")); // index 16
@@ -2875,7 +2875,7 @@ fn selected_entry_returns_none_for_collapsed_block() {
     session.push_entry(ChatEntry::user("a"));
     for _ in 0..15 {
         let mut entry = ChatEntry::user("ignored");
-        entry.ignored = true;
+        entry.context_override = ContextOverride::ForcedExclude;
         session.push_entry(entry);
     }
     session.push_entry(ChatEntry::user("b"));
@@ -2922,13 +2922,13 @@ fn toggle_entry_ignored_flips_false_to_true() {
     session.set_visual_items(items);
     // Select the entry.
     session.set_selected_entry_index(0);
-    assert!(!session.history()[idx].ignored, "entry should start un-ignored");
+    assert!(!session.history()[idx].ignored(), "entry should start un-ignored");
 
     // When toggling ignored.
     session.toggle_entry_ignored();
 
     // Then the entry is ignored.
-    assert!(session.history()[idx].ignored, "entry should be ignored after toggle");
+    assert!(session.history()[idx].ignored(), "entry should be ignored after toggle");
 }
 
 #[rstest::rstest]
@@ -2944,11 +2944,11 @@ fn toggle_entry_ignored_flips_true_to_false() {
     session.set_visual_items(items);
     // Select the entry.
     session.set_selected_entry_index(0);
-    assert!(session.history()[idx].ignored, "entry should start ignored");
+    assert!(session.history()[idx].ignored(), "entry should start ignored");
 
     // When toggling ignored.
     session.toggle_entry_ignored();
 
     // Then the entry is un-ignored.
-    assert!(!session.history()[idx].ignored, "entry should be un-ignored after toggle");
+    assert!(!session.history()[idx].ignored(), "entry should be un-ignored after toggle");
 }
