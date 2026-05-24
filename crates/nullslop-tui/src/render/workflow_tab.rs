@@ -1,6 +1,7 @@
 //! Workflow tab rendering — displays the workflow visualization.
 
 use nullslop_domain::AppState;
+use nullslop_domain::common::app_state::WorkflowUiState;
 use nullslop_workflow_tui::widget::WorkflowWidget;
 use ratatui::{
     Frame,
@@ -21,9 +22,18 @@ pub fn render_workflow_tab(frame: &mut Frame<'_>, area: Rect, state: &AppState, 
     };
 
     let snapshot = workflow.execution.snapshot();
-    let viewport = nullslop_workflow_tui::viewport::ViewportState::default();
+    let viewport = viewport_from_ui(&state.frontend.workflow_ui);
     let widget = WorkflowWidget::new(&snapshot, &viewport, tick);
     frame.render_widget(widget, area);
+}
+
+/// Constructs a `ViewportState` from the persisted `WorkflowUiState`.
+fn viewport_from_ui(ui: &WorkflowUiState) -> nullslop_workflow_tui::viewport::ViewportState {
+    nullslop_workflow_tui::viewport::ViewportState {
+        offset_x: ui.viewport_offset_x,
+        offset_y: ui.viewport_offset_y,
+        selected: ui.selected_node.clone(),
+    }
 }
 
 /// Renders a placeholder when no workflow graph is available.
