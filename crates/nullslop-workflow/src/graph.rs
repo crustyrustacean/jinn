@@ -54,6 +54,8 @@ pub struct WorkflowGraph {
     sources: Vec<String>,
     /// Names of nodes that are graph exit points (no outgoing edges).
     sinks: Vec<String>,
+    /// Optional human-readable description of the workflow.
+    description: Option<String>,
 }
 
 impl WorkflowGraph {
@@ -209,6 +211,12 @@ impl WorkflowGraph {
 
         diagnostics
     }
+
+    /// Returns the human-readable description of this workflow, if set.
+    #[must_use]
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
 }
 
 /// Public information about an edge in the graph.
@@ -303,6 +311,8 @@ pub struct WorkflowGraphBuilder {
     nodes: Vec<(String, Box<dyn WorkflowNode>)>,
     /// Pending edges: (src_name, src_port, tgt_name, tgt_port).
     edges: Vec<(String, String, String, String)>,
+    /// Optional human-readable description.
+    description: Option<String>,
 }
 
 impl WorkflowGraphBuilder {
@@ -312,7 +322,14 @@ impl WorkflowGraphBuilder {
         Self {
             nodes: Vec::new(),
             edges: Vec::new(),
+            description: None,
         }
+    }
+
+    /// Sets a human-readable description for the workflow.
+    pub fn with_description(mut self, desc: impl Into<String>) -> Self {
+        self.description = Some(desc.into());
+        self
     }
 
     /// Adds a node to the graph.
@@ -514,6 +531,7 @@ impl WorkflowGraphBuilder {
             index_to_name,
             sources,
             sinks,
+            description: self.description,
         })
     }
 
@@ -1100,5 +1118,40 @@ mod tests {
 
         // Then we get multiple diagnostics (one isolated warning per node, plus one dead output per node).
         assert!(diagnostics.len() >= 2, "expected multiple diagnostics, got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn graph_with_description_returns_description() {
+        // Given a builder with a description.
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node("a".to_owned(), Box::new(TestNode::source("a")))
+            .add_node("b".to_owned(), Box::new(TestNode::sink("b")));
+        builder.connect("a", "out", "b", "in").expect("a\u{2192}b");
+
+        // When building with description.
+        let graph = builder
+            .with_description("A test workflow")
+            .build()
+            .expect("build");
+
+        // Then the description is set.
+        assert_eq!(graph.description(), Some("A test workflow"));
+    }
+
+    #[test]
+    fn graph_without_description_returns_none() {
+        // Given a builder without a description.
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node("a".to_owned(), Box::new(TestNode::source("a")))
+            .add_node("b".to_owned(), Box::new(TestNode::sink("b")));
+        builder.connect("a", "out", "b", "in").expect("a\u{2192}b");
+
+        // When building without description.
+        let graph = builder.build().expect("build");
+
+        // Then the description is None.
+        assert_eq!(graph.description(), None);
     }
 }
