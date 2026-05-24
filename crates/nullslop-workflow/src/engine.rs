@@ -282,6 +282,7 @@ fn handle_completion(
         } => {
             statuses.insert(name.clone(), NodeStatus::Completed);
             execution.set_status(&name, NodeStatus::Completed);
+            execution.set_node_outputs(&name, node_outputs.clone());
             outputs.insert(name.clone(), node_outputs.clone());
             handles.remove(&name);
             *completed_count += 1;
@@ -355,6 +356,9 @@ fn spawn_node(
     let node = node_map[&name].clone_box();
     let tx = tx.clone();
     let ctx = Arc::clone(ctx);
+
+    // Capture inputs in snapshot before spawning (clone for snapshot, original consumed by node).
+    execution.set_node_inputs(&name, inputs.clone());
 
     statuses.insert(name.clone(), NodeStatus::Running);
     execution.set_status(&name, NodeStatus::Running);
