@@ -4,7 +4,7 @@
 
 use nullslop_domain::AppState;
 use nullslop_domain::common::app_state::WorkflowUiState;
-use nullslop_domain::feat::session::chat_entry::ChatEntryKind;
+use nullslop_domain::feat::ui::chat_log::{entry_to_lines, RenderContext};
 use nullslop_workflow_tui::widget::WorkflowWidget;
 use ratatui::{
     Frame,
@@ -156,6 +156,7 @@ fn build_inspector_lines(
     node_name: &str,
     node_state: Option<&nullslop_workflow::execution::NodeState>,
     status: &str,
+    content_width: u16,
     state: &AppState,
 ) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'_>> = vec![];
@@ -223,19 +224,27 @@ fn build_inspector_lines(
         }
     }
 
-    // Session section — look up node→session mapping and render history.
+    // Session section — render using the chat log's per-entry renderer.
     if let Some(session) = lookup_node_session(state, node_name) {
-        append_session_lines(&mut lines, session);
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Session",
+            Style::default().add_modifier(Modifier::BOLD),
+        )));
+        let ctx = RenderContext {
+            content_width,
+            _is_selected: false,
+            is_expanded: false,
+            tool_entry_max_lines: 6,
+            theme: state.frontend.theme.clone(),
+            paired_status: None,
+            is_streaming: false,
+        };
+        for entry in session.history() {
+            lines.extend(entry_to_lines(entry, &ctx));
+        }
     }
 
-    // Footer with keybinds.
-    lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        "i close · ↑↓ scroll · r re-run",
-        Style::default()
-            .add_modifier(Modifier::DIM)
-            .fg(ratatui::style::Color::DarkGray),
-    )));
     lines
 }
 
@@ -249,75 +258,7 @@ fn lookup_node_session<'a>(
     state.session.get(session_id)
 }
 
-/// Appends session history lines to the inspector output.
-fn append_session_lines(lines: &mut Vec<Line<'static>>, session: &nullslop_domain::feat::session::chat_session::ChatSessionState) {
-    lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        "Session",
-        Style::default().add_modifier(Modifier::BOLD),
-    )));
-    for entry in session.history() {
-        match &entry.kind {
-            ChatEntryKind::User { display, .. } => {
-                render_truncated_lines(lines, &format!("> {display}"), 80);
-            }
-            ChatEntryKind::Assistant(text) => {
-                render_truncated_lines(lines, &format!("  {text}"), 80);
-            }
-            ChatEntryKind::System(text) => {
-                render_truncated_lines(lines, &format!("  [system] {text}"), 80);
-            }
-            ChatEntryKind::Error(text) => {
-                render_truncated_lines(lines, &format!("  [error] {text}"), 80);
-            }
-            ChatEntryKind::Thinking(text) => {
-                render_truncated_lines(lines, &format!("  [thinking] {text}"), 80);
-            }
-            ChatEntryKind::ToolCall { name, .. } => {
-                lines.push(Line::from(Span::styled(
-                    format!("  [tool:{name}]"),
-                    Style::default().add_modifier(Modifier::DIM),
-                )));
-            }
-            ChatEntryKind::ToolResult { name, .. } => {
-                lines.push(Line::from(Span::styled(
-                    format!("  [result:{name}]"),
-                    Style::default().add_modifier(Modifier::DIM),
-                )));
-            }
-            ChatEntryKind::Skill { name, .. } => {
-                lines.push(Line::from(Span::styled(
-                    format!("  [skill:{name}]"),
-                    Style::default().add_modifier(Modifier::DIM),
-                )));
-            }
-            ChatEntryKind::Actor { source, text } => {
-                render_truncated_lines(lines, &format!("  [{source}] {text}"), 80);
-            }
-            ChatEntryKind::Compaction { .. } => {
-                lines.push(Line::from(Span::styled(
-                    "  [compaction summary]",
-                    Style::default().add_modifier(Modifier::DIM),
-                )));
-            }
-            ChatEntryKind::Transient(_) => {
-                // Skip ephemeral entries
-            }
-        }
-    }
-}
 
-/// Renders text that may contain newlines as multiple inspector lines.
-/// Each resulting line is truncated to `max_chars` characters.
-fn render_truncated_lines(lines: &mut Vec<Line<'static>>, text: &str, max_chars: usize) {
-    for raw_line in text.lines() {
-        let truncated: String = raw_line.chars().take(max_chars).collect();
-        lines.push(Line::from(Span::styled(
-            truncated,
-            Style::default().add_modifier(Modifier::DIM),
-        )));
-    }
-}
 
 /// Renders the sticky inspector popup overlay.
 fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
@@ -342,16 +283,19 @@ fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         .and_then(|id| state.session.get(id))
         .is_some();
 
-    let lines = build_inspector_lines(node_name, node_state, &status, state);
-
     // Compute popup dimensions — expand for session history.
-    let content_height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
     let popup_width = if has_session {
         (area.width * 70 / 100).clamp(40, 80)
     } else {
         (area.width * 50 / 100).clamp(30, 60)
     };
-    let desired_height = content_height.saturating_add(2); // +2 for borders
+
+    // Build lines — pass inner content width.
+    let inner_width = popup_width.saturating_sub(2); // inside borders
+    let lines = build_inspector_lines(node_name, node_state, &status, inner_width, state);
+
+    let content_height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
+    let desired_height = content_height.saturating_add(3); // +2 for borders, +1 for footer
     let max_height = if has_session {
         area.height * 80 / 100
     } else {
@@ -392,10 +336,37 @@ fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         return;
     }
 
-    // Render content with scroll offset.
-    let scroll_offset = ui.inspector_scroll;
-    let content = Paragraph::new(lines).wrap(Wrap { trim: false }).scroll((scroll_offset, 0));
-    frame.render_widget(content, inner_area);
+    // Split inner area into scrollable content + static footer.
+    let footer_height: u16 = 1;
+    let content_area = Rect {
+        height: inner_area.height.saturating_sub(footer_height),
+        ..inner_area
+    };
+    let footer_area = Rect {
+        y: inner_area.y + content_area.height,
+        height: footer_height,
+        ..inner_area
+    };
+
+    // Clamp scroll to content bounds.
+    let visible_height = content_area.height as usize;
+    let max_scroll = lines.len().saturating_sub(visible_height);
+    let scroll_offset = ui.inspector_scroll.min(max_scroll as u16);
+
+    // Render scrollable content.
+    let content = Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
+        .scroll((scroll_offset, 0));
+    frame.render_widget(content, content_area);
+
+    // Render static footer.
+    let footer = Paragraph::new(Line::from(Span::styled(
+        "i close · ↑↓ scroll · r re-run",
+        Style::default()
+            .add_modifier(Modifier::DIM)
+            .fg(ratatui::style::Color::DarkGray),
+    )));
+    frame.render_widget(footer, footer_area);
 }
 
 /// Produces a short summary of a `PortValue` for display.
