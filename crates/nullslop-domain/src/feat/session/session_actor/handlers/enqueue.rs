@@ -32,9 +32,14 @@ impl SessionPersistenceActor {
         payload: &EnqueueUserMessage,
         ctx: &ActorContext,
     ) {
-        let action = {
+        let (action, total_tokens, workflow_overrides) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
+            let workflow_overrides: Option<crate::feat::context::assemble::AssemblyOverrides> = if session.is_workflow() {
+                session.core.workflow_overrides.clone()
+            } else {
+                None
+            };
             match session.phase() {
                 SessionPhase::Idle => {
                     // Set title on first user message.
@@ -50,7 +55,7 @@ impl SessionPersistenceActor {
                     session.push_entry(payload.entry.clone());
                     session.begin_sending();
                     let total_tokens = super::super::helpers::estimate_total_tokens(session);
-                    (EnqueueAction::DispatchDirectly, total_tokens)
+                    (EnqueueAction::DispatchDirectly, total_tokens, workflow_overrides)
                 }
                 SessionPhase::Sending
                 | SessionPhase::Streaming
@@ -60,12 +65,10 @@ impl SessionPersistenceActor {
                     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
                         payload.entry.clone(),
                     ));
-                    (EnqueueAction::Queued, 0)
+                    (EnqueueAction::Queued, 0usize, None)
                 }
             }
         };
-
-        let (action, total_tokens) = action;
 
         match action {
             EnqueueAction::DispatchDirectly => {
@@ -77,7 +80,7 @@ impl SessionPersistenceActor {
                 // Assemble the prompt directly and emit SendToLlmProvider.
                 let assembled = {
                     let guard = self.state.read();
-                    assemble_prompt(&guard, &payload.session_id, &self.counter)
+                    assemble_prompt(&guard, &payload.session_id, &self.counter, workflow_overrides.as_ref())
                 };
 
                 let (old_phase, new_phase) = {

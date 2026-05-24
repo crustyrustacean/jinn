@@ -144,9 +144,18 @@ impl SessionPersistenceActor {
 
         // Assemble the prompt directly and emit SendToLlmProvider.
         // Note: the session is already in sending state, set by on_stream_completed(ToolUse).
+        let workflow_overrides: Option<crate::feat::context::assemble::AssemblyOverrides> = {
+            let state = self.state.read();
+            let session = state.session(&event.session_id);
+            if session.is_workflow() {
+                session.core.workflow_overrides.clone()
+            } else {
+                None
+            }
+        };
         let assembled = {
             let guard = self.state.read();
-            assemble_prompt(&guard, &event.session_id, &self.counter)
+            assemble_prompt(&guard, &event.session_id, &self.counter, workflow_overrides.as_ref())
         };
 
         let (old_phase, new_phase) = {

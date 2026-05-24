@@ -96,7 +96,7 @@ impl SessionPersistenceActor {
         // Running assemble_prompt once gives an accurate current context size.
         let assembled = {
             let guard = self.state.read();
-            assemble_prompt(&guard, &session_id, &self.counter)
+            assemble_prompt(&guard, &session_id, &self.counter, None)
         };
         {
             let mut state = self.state.write();

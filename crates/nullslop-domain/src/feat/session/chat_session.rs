@@ -286,6 +286,11 @@ pub struct SessionCore {
     /// OWNER: workflow-actor (set on creation).
     #[serde(default)]
     pub(crate) is_workflow: bool,
+    /// Prompt overrides for workflow sessions. When set, these replace global
+    /// defaults in `assemble_prompt`. Runtime-only — not persisted.
+    /// OWNER: workflow-actor (set before first message).
+    #[serde(skip)]
+    pub(crate) workflow_overrides: Option<crate::feat::context::assemble::AssemblyOverrides>,
     /// Runtime-only state — not persisted across restarts.
     #[serde(skip)]
     pub(crate) ephemeral: SessionCoreEphemeral,
@@ -310,6 +315,7 @@ impl Default for SessionCore {
             session_state: SessionState::Loaded,
             lifecycle_script_state: LifecycleScriptState::NothingRan,
             is_workflow: false,
+            workflow_overrides: None,
             ephemeral: SessionCoreEphemeral::default(),
         }
     }
@@ -569,6 +575,12 @@ impl ChatSessionState {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.core.history.is_empty()
+    }
+
+    /// Whether this session was created by a workflow node.
+    #[must_use]
+    pub fn is_workflow(&self) -> bool {
+        self.core.is_workflow
     }
 
     /// Append an entry to the history and return its index.
