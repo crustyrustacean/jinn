@@ -7,7 +7,7 @@
 //! - [`ExecutionSnapshot`] — immutable point-in-time snapshot of execution state
 //! - [`WorkflowExecution`] — manages execution state with atomic snapshots
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
@@ -129,6 +129,59 @@ impl WorkflowStructure {
     #[must_use]
     pub fn edge_count(&self) -> usize {
         self.edges.len()
+    }
+
+    /// Returns child node names (direct downstream), deduplicated and sorted.
+    ///
+    /// Derived from edges where this node is the source.
+    /// Used for graph-aware navigation and cascade invalidation.
+    pub fn children_of(&self, node_name: &str) -> Vec<&str> {
+        let mut children: Vec<&str> = self
+            .edges
+            .iter()
+            .filter(|e| e.source_node == node_name)
+            .map(|e| e.target_node.as_str())
+            .collect();
+        children.sort();
+        children.dedup();
+        children
+    }
+
+    /// Returns parent node names (direct upstream), deduplicated and sorted.
+    ///
+    /// Derived from edges where this node is the target.
+    /// Used for graph-aware navigation and input seeding.
+    pub fn parents_of(&self, node_name: &str) -> Vec<&str> {
+        let mut parents: Vec<&str> = self
+            .edges
+            .iter()
+            .filter(|e| e.target_node == node_name)
+            .map(|e| e.source_node.as_str())
+            .collect();
+        parents.sort();
+        parents.dedup();
+        parents
+    }
+
+    /// Returns the set of all transitive downstream node names from the given node.
+    ///
+    /// Uses BFS over the edge list. Does not include the starting node itself.
+    /// Used for cascade invalidation.
+    pub fn downstream_of(&self, node_name: &str) -> HashSet<&str> {
+        let mut downstream = HashSet::new();
+        let mut queue = VecDeque::new();
+        queue.push_back(node_name);
+        while let Some(name) = queue.pop_front() {
+            for edge in &self.edges {
+                if edge.source_node == name {
+                    if downstream.insert(edge.target_node.as_str()) {
+                        queue.push_back(&edge.target_node);
+                    }
+                }
+            }
+        }
+        downstream.remove(node_name);
+        downstream
     }
 }
 
