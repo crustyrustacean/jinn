@@ -350,6 +350,25 @@ pub struct StatusNotification {
     pub created_at: std::time::Instant,
 }
 
+/// Workflow tab UI state — persisted across frames in `FrontendState`.
+///
+/// OWNER: IntentHandler (selection, inspector toggle, cancel prompt).
+#[derive(Debug, Clone, Default)]
+pub struct WorkflowUiState {
+    /// Currently selected node name, if any.
+    pub selected_node: Option<String>,
+    /// Viewport horizontal offset (cells).
+    pub viewport_offset_x: i32,
+    /// Viewport vertical offset (cells).
+    pub viewport_offset_y: i32,
+    /// Whether the sticky inspector popup is showing.
+    pub inspector_open: bool,
+    /// Scroll position within the inspector popup (lines from top).
+    pub inspector_scroll: u16,
+    /// Whether the "Press ESC again to cancel" prompt is showing.
+    pub cancel_prompt: bool,
+}
+
 /// Frontend / UI state — owned by the IntentHandler (main thread).
 ///
 /// Written to by `IntentHandler` and various UI elements (read-only).
@@ -454,6 +473,10 @@ pub struct FrontendState {
     /// Currently active tab in the main area.
     /// OWNER: IntentHandler (SwitchTab intent).
     pub active_tab: crate::protocol::tab::ActiveTab,
+
+    /// Workflow tab UI state — selection, viewport, inspector, cancel prompt.
+    /// OWNER: IntentHandler (all workflow UI interactions).
+    pub workflow_ui: WorkflowUiState,
 }
 
 impl Default for FrontendState {
@@ -481,6 +504,7 @@ impl Default for FrontendState {
             rename_session_input: RenameSessionInputState::default(),
             sidebar_width: 30,
             active_tab: crate::protocol::tab::ActiveTab::default(),
+            workflow_ui: WorkflowUiState::default(),
         }
     }
 }
