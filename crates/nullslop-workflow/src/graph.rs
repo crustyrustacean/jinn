@@ -393,6 +393,11 @@ impl WorkflowGraphBuilder {
                     .edges_directed(idx, petgraph::Direction::Incoming)
                     .any(|e| e.weight().target_port == port_def.name);
 
+                if !port_def.required && !has_edge {
+                    // Optional port — allowed to be disconnected.
+                    continue;
+                }
+
                 if !has_edge {
                     return Err(Report::new(GraphError::DisconnectedInput {
                         node: name.clone(),
@@ -843,5 +848,84 @@ mod tests {
         assert_eq!(graph.edge_count(), 0);
         assert_eq!(graph.sources().len(), 2);
         assert_eq!(graph.sinks().len(), 2);
+    }
+
+    #[test]
+    fn optional_input_port_builds_without_connection() {
+        // Given a node with one required and one optional input port.
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node(
+                "a".to_owned(),
+                Box::new(TestNode::new(
+                    "a",
+                    vec![PortDef::text("required"), PortDef::text("optional").optional()],
+                    vec![PortDef::text("out")],
+                )),
+            )
+            .add_node("b".to_owned(), Box::new(TestNode::source("b")));
+
+        // Only connect the required port — optional port left disconnected.
+        builder.connect("b", "out", "a", "required").expect("b→a");
+
+        // When building.
+        let graph = builder.build().expect("build should succeed with optional port disconnected");
+
+        // Then the graph builds with 2 nodes, 1 edge.
+        assert_eq!(graph.node_count(), 2);
+        assert_eq!(graph.edge_count(), 1);
+    }
+
+    #[test]
+    fn optional_input_port_rejects_disconnected_required_port() {
+        // Given a node with one required and one optional input port.
+        let mut builder = WorkflowGraphBuilder::new();
+        builder.add_node(
+            "a".to_owned(),
+            Box::new(TestNode::new(
+                "a",
+                vec![PortDef::text("required"), PortDef::text("optional").optional()],
+                vec![PortDef::text("out")],
+            )),
+        );
+
+        // Connect nothing — required port is disconnected.
+        // When building.
+        let result = builder.build();
+
+        // Then it returns DisconnectedInput for the required port.
+        assert!(matches!(
+            result,
+            Err(e) if matches!(
+                e.current_context(),
+                GraphError::DisconnectedInput { node, port } if node == "a" && port == "required"
+            )
+        ));
+    }
+
+    #[test]
+    fn optional_port_with_connection_builds_successfully() {
+        // Given a node with one optional input port connected.
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node(
+                "a".to_owned(),
+                Box::new(TestNode::new(
+                    "a",
+                    vec![PortDef::text("opt").optional()],
+                    vec![PortDef::text("out")],
+                )),
+            )
+            .add_node("b".to_owned(), Box::new(TestNode::source("b")));
+
+        // Connect the optional port.
+        builder.connect("b", "out", "a", "opt").expect("b→a");
+
+        // When building.
+        let graph = builder.build().expect("build");
+
+        // Then it succeeds.
+        assert_eq!(graph.node_count(), 2);
+        assert_eq!(graph.edge_count(), 1);
     }
 }
