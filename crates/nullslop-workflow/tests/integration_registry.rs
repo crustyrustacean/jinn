@@ -3,13 +3,15 @@
 //! These tests verify end-to-end scenarios using the node registry and
 //! `DynamicNode` to build and execute graphs from data, not closures.
 
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::unwrap_used, reason = "test code")]
+
 use std::sync::Arc;
-use std::time::Duration;
 
 use error_stack::Report;
-use nullslop_workflow::engine::{self, EngineError, NodeStatus};
+use nullslop_workflow::engine::{self, NodeStatus};
 use nullslop_workflow::execution::WorkflowExecution;
-use nullslop_workflow::graph::{GraphError, WorkflowGraphBuilder};
+use nullslop_workflow::graph::GraphError;
+use nullslop_workflow::graph::WorkflowGraphBuilder;
 use nullslop_workflow::node::{
     DynamicNode, NodeContext, NodeError, WorkflowNode,
 };
@@ -36,7 +38,7 @@ impl NodeFactory for SourceFactory {
         &self,
         config: serde_json::Value,
     ) -> Result<Box<dyn WorkflowNode>, Report<RegistryError>> {
-        let output = config["output"].as_str().ok_or_else(|| {
+        let output = config.get("output").and_then(|v| v.as_str()).ok_or_else(|| {
             Report::new(RegistryError::CreationFailed {
                 type_name: "source".to_owned(),
                 reason: "missing 'output' field".to_owned(),
@@ -346,7 +348,7 @@ async fn registry_round_trip() {
     assert_eq!(status(&result, "a"), NodeStatus::Completed);
     assert_eq!(status(&result, "b"), NodeStatus::Completed);
     assert_eq!(
-        result.outputs.get("b").unwrap().get_text("out").unwrap(),
+        result.outputs.get("b").expect("b outputs").get_text("out").unwrap(),
         "WORLD"
     );
 }
