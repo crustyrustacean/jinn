@@ -34,8 +34,8 @@ type DynamicExecuteFn = Arc<
 /// The execute function is provided as an `Arc<dyn Fn>` closure, the same pattern
 /// used by `CodeNode`.
 pub struct DynamicNode {
-    /// The node's name, leaked to &'static str.
-    static_name: &'static str,
+    /// The node's name.
+    name: String,
     /// Input port definitions.
     input_ports: Vec<PortDef>,
     /// Output port definitions.
@@ -49,8 +49,8 @@ pub struct DynamicNode {
 impl DynamicNode {
     /// Creates a new dynamic node.
     ///
-    /// The `name` is leaked once at construction to satisfy the `&'static str`
-    /// return type of [`WorkflowNode::name`]. This is the same pattern as `CodeNode`.
+    /// The `name` is stored as a `String` and borrowed for the [`WorkflowNode::name`]
+    /// return value.
     pub fn new<S: Into<String>>(
         name: S,
         input_ports: Vec<PortDef>,
@@ -58,9 +58,9 @@ impl DynamicNode {
         config: Option<serde_json::Value>,
         execute_fn: DynamicExecuteFn,
     ) -> Self {
-        let static_name = Box::leak(name.into().into_boxed_str());
+        let name = name.into();
         Self {
-            static_name,
+            name,
             input_ports,
             output_ports,
             config,
@@ -91,8 +91,8 @@ impl DynamicNode {
 
 #[async_trait]
 impl WorkflowNode for DynamicNode {
-    fn name(&self) -> &'static str {
-        self.static_name
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn input_ports(&self) -> Vec<PortDef> {
@@ -113,7 +113,7 @@ impl WorkflowNode for DynamicNode {
 
     fn clone_box(&self) -> Box<dyn WorkflowNode> {
         Box::new(Self {
-            static_name: self.static_name,
+            name: self.name.clone(),
             input_ports: self.input_ports.clone(),
             output_ports: self.output_ports.clone(),
             config: self.config.clone(),
@@ -209,7 +209,7 @@ mod tests {
     }
 
     #[test]
-    fn name_returns_static_str() {
+    fn name_returns_name() {
         let node = DynamicNode::passthrough("my_dynamic_node");
         assert_eq!(node.name(), "my_dynamic_node");
     }

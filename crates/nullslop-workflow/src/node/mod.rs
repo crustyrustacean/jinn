@@ -100,7 +100,7 @@ pub struct NodeError;
 #[async_trait::async_trait]
 pub trait WorkflowNode: Send + Sync {
     /// Human-readable name for this node type (for debugging and UI).
-    fn name(&self) -> &'static str;
+    fn name(&self) -> &str;
 
     /// Declare the input ports this node accepts.
     fn input_ports(&self) -> Vec<crate::port::PortDef>;
@@ -143,6 +143,7 @@ pub trait WorkflowNode: Send + Sync {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unnecessary_literal_bound, reason = "test code")]
     use super::*;
     use crate::port::{PortDef, PortValue, ScalarValue};
 
@@ -156,7 +157,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl WorkflowNode for EchoNode {
-        fn name(&self) -> &'static str {
+        fn name(&self) -> &str {
             "echo"
         }
 

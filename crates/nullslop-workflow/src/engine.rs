@@ -653,7 +653,7 @@ fn find_downstream(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing, clippy::unnecessary_literal_bound, reason = "test code")]
 
     use super::*;
     use crate::graph::WorkflowGraphBuilder;
@@ -689,7 +689,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for SourceNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "source"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -725,7 +725,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for UpperNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "uppercase"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -762,7 +762,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for SuffixNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "suffix"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -804,7 +804,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for ConcatNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "concat"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -845,7 +845,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for FailNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "fail"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -877,7 +877,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for DelayNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "delay"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -915,7 +915,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for PanicNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "panic"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -1050,7 +1050,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for MultiNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "multi"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -1304,7 +1304,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for OptionalNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "optional"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -1370,7 +1370,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for OptionalNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "optional"
             }
             fn input_ports(&self) -> Vec<PortDef> {

@@ -42,7 +42,8 @@ impl DelayNode {
 
 #[async_trait::async_trait]
 impl WorkflowNode for DelayNode {
-    fn name(&self) -> &'static str {
+    #[allow(clippy::unnecessary_literal_bound, reason = "trait contract requires &str")]
+    fn name(&self) -> &str {
         "delay"
     }
 
