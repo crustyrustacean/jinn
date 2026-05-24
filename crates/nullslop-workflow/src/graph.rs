@@ -321,6 +321,27 @@ impl WorkflowGraphBuilder {
         self
     }
 
+    /// Adds a node from the registry to the graph.
+    ///
+    /// Looks up the factory for `type_name` in the registry, creates a node
+    /// with the given `config`, and adds it to the graph with the given `name`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RegistryError::NotFound`] if the type name is not registered.
+    /// Returns [`RegistryError::CreationFailed`] if the factory fails.
+    pub fn add_node_from_registry(
+        &mut self,
+        name: String,
+        registry: &crate::registry::NodeRegistry,
+        type_name: &str,
+        config: serde_json::Value,
+    ) -> Result<&mut Self, error_stack::Report<crate::registry::RegistryError>> {
+        let node = registry.create(type_name, config)?;
+        self.add_node(name, node);
+        Ok(self)
+    }
+
     /// Connects a source node's output port to a target node's input port.
     ///
     /// Validates that both nodes exist, both ports exist on their respective nodes,
