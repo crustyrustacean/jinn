@@ -1516,7 +1516,7 @@ fn archiving_root_does_not_create_visual_parents_for_orphaned_children() {
         .iter()
         .position(|s| s.title.contains("root a"))
         .expect("root a");
-    let root_a_id = sessions[root_a_index].id.clone();
+    let _root_a_id = sessions[root_a_index].id.clone();
     state.frontend.sessions_section.selected_index = Some(root_a_index);
 
     // When closing root_a (no loaded ancestor to reparent to).

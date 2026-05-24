@@ -57,7 +57,7 @@ impl AnthropicStreamParser {
             "content_block_delta" => self.handle_content_block_delta(index, &response),
             "content_block_stop" => self.handle_content_block_stop(index),
             "message_delta" => self.handle_message_delta(&response),
-            "error" => self.handle_error_event(&response),
+            "error" => Self::handle_error_event(&response),
             _ => None,
         }
     }
@@ -194,7 +194,7 @@ impl AnthropicStreamParser {
             usage,
         })
     }
-    fn handle_error_event(&self, response: &serde_json::Value) -> Option<StreamEvent> {
+    fn handle_error_event(response: &serde_json::Value) -> Option<StreamEvent> {
         let error_obj = response.get("error")?;
         let error_type = error_obj
             .get("type")
