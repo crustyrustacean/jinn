@@ -92,6 +92,14 @@ impl WorkflowGraph {
         &self.name_to_index
     }
 
+    /// Returns the config value for a named node.
+    ///
+    /// Returns `None` if the node doesn't exist or doesn't override `config()`.
+    pub(crate) fn node_config(&self, name: &str) -> Option<serde_json::Value> {
+        let idx = self.name_to_index.get(name)?;
+        self.inner[*idx].node.config()
+    }
+
     /// Returns an iterator over all node names in the graph.
     ///
     /// Names are returned in the order they were added to the builder.

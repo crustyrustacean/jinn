@@ -210,6 +210,30 @@ pub enum Intent {
     RenameDeleteForward,
     /// Switch to the next tab (Chat → Workflow → Chat).
     SwitchTab,
+
+    // --- Workflow Navigation ---
+    /// Select the next downstream node (graph-aware).
+    WorkflowNodeDown,
+    /// Select the previous upstream node (graph-aware).
+    WorkflowNodeUp,
+    /// Toggle the sticky node inspector popup.
+    WorkflowInspectToggle,
+    /// Scroll the inspector popup up one line.
+    WorkflowInspectScrollUp,
+    /// Scroll the inspector popup down one line.
+    WorkflowInspectScrollDown,
+    /// ESC in workflow scope: first press shows cancel prompt, second confirms cancel.
+    WorkflowEscape,
+    /// Re-run the workflow from the currently selected node.
+    WorkflowRerunNode,
+    /// Pan the workflow viewport left.
+    WorkflowPanLeft,
+    /// Pan the workflow viewport down.
+    WorkflowPanDown,
+    /// Pan the workflow viewport up.
+    WorkflowPanUp,
+    /// Pan the workflow viewport right.
+    WorkflowPanRight,
 }
 
 impl std::fmt::Display for Intent {
@@ -301,6 +325,19 @@ impl std::fmt::Display for Intent {
             Intent::RenameDeleteGrapheme => write!(f, "rename delete"),
             Intent::RenameDeleteForward => write!(f, "rename forward delete"),
             Intent::SwitchTab => write!(f, "switch tab"),
+
+            // --- Workflow Navigation ---
+            Intent::WorkflowNodeDown => write!(f, "workflow node down"),
+            Intent::WorkflowNodeUp => write!(f, "workflow node up"),
+            Intent::WorkflowInspectToggle => write!(f, "workflow inspect toggle"),
+            Intent::WorkflowInspectScrollUp => write!(f, "workflow inspect scroll up"),
+            Intent::WorkflowInspectScrollDown => write!(f, "workflow inspect scroll down"),
+            Intent::WorkflowEscape => write!(f, "workflow escape"),
+            Intent::WorkflowRerunNode => write!(f, "workflow rerun node"),
+            Intent::WorkflowPanLeft => write!(f, "workflow pan left"),
+            Intent::WorkflowPanDown => write!(f, "workflow pan down"),
+            Intent::WorkflowPanUp => write!(f, "workflow pan up"),
+            Intent::WorkflowPanRight => write!(f, "workflow pan right"),
         }
     }
 }

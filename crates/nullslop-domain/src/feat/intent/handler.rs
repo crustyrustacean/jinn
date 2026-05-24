@@ -363,6 +363,19 @@ impl IntentHandler {
                 state.frontend.scope_stack.swap_base(new_scope);
                 IntentResult::empty()
             }
+
+            // --- Workflow Navigation ---
+            Intent::WorkflowNodeDown => handle_workflow_node_down(state),
+            Intent::WorkflowNodeUp => handle_workflow_node_up(state),
+            Intent::WorkflowInspectToggle => handle_workflow_inspect_toggle(state),
+            Intent::WorkflowInspectScrollUp => handle_workflow_inspect_scroll_up(state),
+            Intent::WorkflowInspectScrollDown => handle_workflow_inspect_scroll_down(state),
+            Intent::WorkflowEscape => handle_workflow_escape(state),
+            Intent::WorkflowRerunNode => handle_workflow_rerun_node(state),
+            Intent::WorkflowPanLeft => handle_workflow_pan(state, -5, 0),
+            Intent::WorkflowPanDown => handle_workflow_pan(state, 0, 5),
+            Intent::WorkflowPanUp => handle_workflow_pan(state, 0, -5),
+            Intent::WorkflowPanRight => handle_workflow_pan(state, 5, 0),
         }
     }
 }
@@ -424,6 +437,203 @@ fn handle_compaction_cancel(state: &mut AppState, session_id: SessionId) -> Inte
             crate::feat::compaction_actor::protocol::command::CancelCompaction { session_id },
         ),
     ])
+}
+
+// --- Workflow Intent Handlers ---
+
+/// Navigate to the next downstream node (graph-aware).
+fn handle_workflow_node_down(state: &mut AppState) -> IntentResult {
+    // Dismiss cancel prompt if showing.
+    state.frontend.workflow_ui.cancel_prompt = false;
+
+    let Some(workflow) = state.workflow.active() else {
+        return IntentResult::empty();
+    };
+    let snapshot = workflow.execution.snapshot();
+    let structure = snapshot.structure();
+
+    // If no node selected, select the first source node.
+    let Some(current) = &state.frontend.workflow_ui.selected_node else {
+        let sources = structure.sources();
+        if let Some(first) = sources.first() {
+            state.frontend.workflow_ui.selected_node = Some(first.clone());
+        }
+        return IntentResult::empty();
+    };
+
+    let children = structure.children_of(current);
+    if children.is_empty() {
+        // At a leaf node — wrap to first source.
+        let sources = structure.sources();
+        if let Some(first) = sources.first() {
+            state.frontend.workflow_ui.selected_node = Some(first.clone());
+        }
+        return IntentResult::empty();
+    }
+
+    // If only one child, navigate to it.
+    if children.len() == 1 {
+        state.frontend.workflow_ui.selected_node = Some(children[0].to_owned());
+        return IntentResult::empty();
+    }
+
+    // Multiple children: check if current node is a sibling — cycle siblings.
+    let parents = structure.parents_of(current);
+    if let Some(parent) = parents.first() {
+        let siblings = structure.children_of(parent);
+        if siblings.len() > 1 {
+            // Find current position among siblings and advance.
+            let current_idx = siblings
+                .iter()
+                .position(|s| *s == *current)
+                .unwrap_or(0);
+            let next_idx = (current_idx + 1) % siblings.len();
+            state.frontend.workflow_ui.selected_node =
+                Some(siblings[next_idx].to_owned());
+            return IntentResult::empty();
+        }
+    }
+
+    // Default: pick the first child (sorted by children_of()).
+    state.frontend.workflow_ui.selected_node = Some(children[0].to_owned());
+    IntentResult::empty()
+}
+
+/// Navigate to the previous upstream node (graph-aware).
+fn handle_workflow_node_up(state: &mut AppState) -> IntentResult {
+    // Dismiss cancel prompt if showing.
+    state.frontend.workflow_ui.cancel_prompt = false;
+
+    let Some(workflow) = state.workflow.active() else {
+        return IntentResult::empty();
+    };
+    let snapshot = workflow.execution.snapshot();
+    let structure = snapshot.structure();
+
+    let Some(current) = &state.frontend.workflow_ui.selected_node else {
+        // Nothing selected — select the first source.
+        let sources = structure.sources();
+        if let Some(first) = sources.first() {
+            state.frontend.workflow_ui.selected_node = Some(first.clone());
+        }
+        return IntentResult::empty();
+    };
+
+    let parents = structure.parents_of(current);
+    if parents.is_empty() {
+        // At a source node — stay here.
+        return IntentResult::empty();
+    }
+
+    // Pick the first parent (sorted by parents_of()).
+    state.frontend.workflow_ui.selected_node = Some(parents[0].to_owned());
+    IntentResult::empty()
+}
+
+/// Toggle the sticky inspector popup.
+fn handle_workflow_inspect_toggle(state: &mut AppState) -> IntentResult {
+    state.frontend.workflow_ui.cancel_prompt = false;
+    state.frontend.workflow_ui.inspector_open = !state.frontend.workflow_ui.inspector_open;
+    if state.frontend.workflow_ui.inspector_open {
+        state.frontend.workflow_ui.inspector_scroll = 0;
+    }
+    IntentResult::empty()
+}
+
+/// Scroll the inspector popup up.
+fn handle_workflow_inspect_scroll_up(state: &mut AppState) -> IntentResult {
+    state.frontend.workflow_ui.cancel_prompt = false;
+    state.frontend.workflow_ui.inspector_scroll =
+        state.frontend.workflow_ui.inspector_scroll.saturating_sub(1);
+    IntentResult::empty()
+}
+
+/// Scroll the inspector popup down.
+fn handle_workflow_inspect_scroll_down(state: &mut AppState) -> IntentResult {
+    state.frontend.workflow_ui.cancel_prompt = false;
+    state.frontend.workflow_ui.inspector_scroll =
+        state.frontend.workflow_ui.inspector_scroll.saturating_add(1);
+    // Clamping happens at render time based on content height.
+    IntentResult::empty()
+}
+
+/// ESC in workflow scope: two-press cancel with confirmation.
+fn handle_workflow_escape(state: &mut AppState) -> IntentResult {
+    if state.frontend.workflow_ui.cancel_prompt {
+        // Second ESC — confirm cancel.
+        state.frontend.workflow_ui.cancel_prompt = false;
+        let Some(workflow) = state.workflow.active() else {
+            return IntentResult::empty();
+        };
+        let workflow_id = workflow.id.clone();
+        IntentResult::with_commands(vec![Command::CancelWorkflow(
+            crate::feat::workflow::protocol::command::CancelWorkflow { workflow_id },
+        )])
+    } else {
+        // First ESC — show prompt.
+        state.frontend.workflow_ui.cancel_prompt = true;
+        IntentResult::empty()
+    }
+}
+
+/// Re-run the workflow from the currently selected node.
+fn handle_workflow_rerun_node(state: &mut AppState) -> IntentResult {
+    state.frontend.workflow_ui.cancel_prompt = false;
+
+    let Some(node_name) = state.frontend.workflow_ui.selected_node.clone() else {
+        return IntentResult::empty();
+    };
+
+    let Some(workflow) = state.workflow.active() else {
+        return IntentResult::empty();
+    };
+
+    // Validate: node must be Completed or Failed.
+    let snapshot = workflow.execution.snapshot();
+    let status = snapshot.status_of(&node_name);
+    match status {
+        Some(
+            nullslop_workflow::engine::NodeStatus::Completed
+            | nullslop_workflow::engine::NodeStatus::Failed,
+        ) => {}
+        _ => return IntentResult::empty(),
+    }
+
+    let workflow_id = workflow.id.clone();
+    let execution = workflow.execution.clone();
+
+    // Invalidate from the selected node downstream.
+    execution.invalidate_from(&node_name);
+    // Seed inputs from upstream cached outputs.
+    execution.seed_inputs(&node_name);
+
+    // Replace the cancellation token with a fresh one.
+    if let Some(w) = state.workflow.active_mut() {
+        w.cancel = tokio_util::sync::CancellationToken::new();
+    }
+
+    IntentResult::with_commands(vec![Command::RerunFromNode(
+        crate::feat::workflow::protocol::command::RerunFromNode {
+            workflow_id,
+            node_name,
+        },
+    )])
+}
+
+/// Pan the workflow viewport.
+fn handle_workflow_pan(state: &mut AppState, dx: i32, dy: i32) -> IntentResult {
+    state.frontend.workflow_ui.cancel_prompt = false;
+    state.frontend.workflow_ui.viewport_offset_x = state
+        .frontend
+        .workflow_ui
+        .viewport_offset_x
+        .saturating_add(dx);
+    state.frontend.workflow_ui.viewport_offset_y = state
+        .frontend
+        .workflow_ui
+        .viewport_offset_y
+        .saturating_add(dy);
+    IntentResult::empty()
 }
 
 #[cfg(test)]

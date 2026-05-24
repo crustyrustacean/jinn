@@ -44,8 +44,6 @@ pub struct WorkflowState {
     pub execution: Arc<WorkflowExecution>,
     /// Maps node name → session ID (for correlating StreamCompleted events).
     pub node_sessions: HashMap<String, SessionId>,
-    /// Currently selected node in the UI.
-    pub selected_node: Option<String>,
     /// Cancellation token for aborting execution.
     pub cancel: CancellationToken,
     /// Result after completion.
@@ -60,7 +58,6 @@ impl WorkflowState {
             name,
             execution,
             node_sessions: HashMap::new(),
-            selected_node: None,
             cancel: CancellationToken::new(),
             result: None,
         }

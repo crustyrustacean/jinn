@@ -131,6 +131,8 @@ pub enum Command {
     StartWorkflow(crate::feat::workflow::protocol::command::StartWorkflow),
     /// Request to cancel a running workflow.
     CancelWorkflow(crate::feat::workflow::protocol::command::CancelWorkflow),
+    /// Request to re-run a workflow from a specific node.
+    RerunFromNode(crate::feat::workflow::protocol::command::RerunFromNode),
 }
 
 impl Command {
@@ -183,6 +185,9 @@ impl Command {
             }
             Self::CancelWorkflow(..) => {
                 Some(crate::feat::workflow::protocol::command::CancelWorkflow::NAME)
+            }
+            Self::RerunFromNode(..) => {
+                Some(crate::feat::workflow::protocol::command::RerunFromNode::NAME)
             }
         }
     }
@@ -300,6 +305,13 @@ impl std::fmt::Display for Command {
             }
             Command::CancelWorkflow(payload) => {
                 write!(f, "cancel workflow {}", payload.workflow_id)
+            }
+            Command::RerunFromNode(payload) => {
+                write!(
+                    f,
+                    "rerun workflow {} from node '{}'",
+                    payload.workflow_id, payload.node_name
+                )
             }
         }
     }

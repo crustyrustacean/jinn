@@ -22,3 +22,13 @@ pub struct CancelWorkflow {
     /// The workflow execution to cancel.
     pub workflow_id: WorkflowId,
 }
+
+/// Request to re-run a workflow from a specific node.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("workflow")]
+pub struct RerunFromNode {
+    /// The workflow execution to re-run.
+    pub workflow_id: WorkflowId,
+    /// The node name to start re-execution from.
+    pub node_name: String,
+}
