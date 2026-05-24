@@ -430,7 +430,7 @@ fn session_new_works_when_not_in_sidebar() {
 fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
     // Given a session with ignored entries (causing visual-item index != history index)
     // and a pinned entry deep in history.
-    use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
 
     let mut state = AppState::default();
     state.active_session_mut().push_entry(ChatEntry::user("a")); // hist 0
@@ -455,6 +455,7 @@ fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
         state.active_session().history(),
         &state.active_session().ui.shown_ignored_blocks,
         PROXIMITY_COUNT,
+        DEFAULT_MIN_COLLAPSE_COUNT,
     );
     state.active_session_mut().set_visual_items(items);
 

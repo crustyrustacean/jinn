@@ -43,7 +43,7 @@ use ratatui_markdown::theme::Generation;
 
 use super::line_count_cache::EntryLineCache;
 use super::shared::{GUTTER_WIDTH, RenderContext};
-use super::visual_item::{VisualItem, build_visual_items, PROXIMITY_COUNT};
+use super::visual_item::{VisualItem, build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
 use super::{
     actor, assistant, compaction, error_entry, skill, system, thinking, tool_call, tool_result,
     transient, user,
@@ -214,7 +214,18 @@ impl<'a> HistoryRender<'a> {
     fn compute_visual_items(&mut self) {
         let session = self.state.active_session();
         let shown_ignored_blocks = &session.ui.shown_ignored_blocks;
-        let visual_items = build_visual_items(self.history, shown_ignored_blocks, PROXIMITY_COUNT);
+        let min_collapse = self
+            .state
+            .frontend
+            .preferences
+            .min_collapse_count
+            .unwrap_or(DEFAULT_MIN_COLLAPSE_COUNT);
+        let visual_items = build_visual_items(
+            self.history,
+            shown_ignored_blocks,
+            PROXIMITY_COUNT,
+            min_collapse,
+        );
         self.state.active_session().set_visual_items(visual_items.clone());
         self.visual_items = visual_items;
     }
