@@ -208,6 +208,23 @@ pub fn handle_yank_selected(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
+/// Toggle the `ignored` flag on the currently selected chat entry.
+///
+/// Validates that the history is non-empty, an entry is selected,
+/// the entry is not pinned, and the entry kind is ignorable.
+/// On success, toggles the flag and returns a `PersistSession` command
+/// so the change is saved to disk.
+pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
+    if validator::validate_chat_entry_ignore_selected(state).is_err() {
+        return IntentResult::empty();
+    }
+    state.active_session_mut().toggle_entry_ignored();
+    let session_id = state.active_session().session_id().clone();
+    IntentResult::with_commands(vec![Command::PersistSession(
+        crate::feat::session_lifecycle::protocol::command::PersistSession { session_id },
+    )])
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
@@ -812,5 +829,164 @@ mod tests {
             !state.active_session().ui.shown_ignored_blocks.contains(&block_start_id),
             "block should be collapsed after toggle on ignored entry"
         );
+    }
+
+    // --- Ignore selected tests ---
+
+    #[rstest::rstest]
+    fn handle_ignore_selected_toggles_false_to_true() {
+        // Given a state with a selected user entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().select_next_entry();
+
+        // When handling ignore selected.
+        let result = handle_ignore_selected(&mut state);
+
+        // Then the entry is now ignored.
+        let selected = state.active_session().selected_entry().expect("entry");
+        assert!(selected.ignored, "entry should be ignored after toggle");
+        // And a PersistSession command is returned.
+        assert!(result.commands.iter().any(|c| {
+            matches!(c, Command::PersistSession(_))
+        }), "should contain PersistSession command");
+    }
+
+    #[rstest::rstest]
+    fn handle_ignore_selected_toggles_true_to_false() {
+        // Given a state with a selected ignored user entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello").with_ignored(true));
+        state.active_session_mut().select_next_entry();
+
+        // When handling ignore selected.
+        let _result = handle_ignore_selected(&mut state);
+
+        // Then the entry is now un-ignored.
+        let selected = state.active_session().selected_entry().expect("entry");
+        assert!(!selected.ignored, "entry should be un-ignored after toggle");
+    }
+
+    #[rstest::rstest]
+    fn handle_ignore_selected_noop_empty_history() {
+        // Given an empty session.
+        let mut state = AppState::default();
+
+        // When handling ignore selected.
+        let result = handle_ignore_selected(&mut state);
+
+        // Then no commands are emitted.
+        assert!(result.commands.is_empty(), "empty history should produce no commands");
+    }
+
+    #[rstest::rstest]
+    fn handle_ignore_selected_noop_no_selection() {
+        // Given a session with entries but no selection.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().clear_selection();
+
+        // When handling ignore selected.
+        let result = handle_ignore_selected(&mut state);
+
+        // Then no commands are emitted.
+        assert!(result.commands.is_empty(), "no selection should produce no commands");
+    }
+
+    #[rstest::rstest]
+    fn handle_ignore_selected_noop_pinned_entry() {
+        // Given a state with a selected pinned entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello").with_pin(PinPosition::Top));
+        state.active_session_mut().select_next_entry();
+
+        // When handling ignore selected.
+        let result = handle_ignore_selected(&mut state);
+
+        // Then no commands are emitted and ignored is unchanged.
+        assert!(result.commands.is_empty(), "pinned entry should produce no commands");
+        let selected = state.active_session().selected_entry().expect("entry");
+        assert!(!selected.ignored, "pinned entry ignored should stay false");
+    }
+
+    #[rstest::rstest]
+    fn handle_ignore_selected_noop_system_entry() {
+        // Given a state with a selected system entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::system("system prompt"));
+        state.active_session_mut().select_next_entry();
+
+        // When handling ignore selected.
+        let result = handle_ignore_selected(&mut state);
+
+        // Then no commands are emitted.
+        assert!(result.commands.is_empty(), "system entry should produce no commands");
+    }
+
+    #[rstest::rstest]
+    fn handle_ignore_selected_noop_thinking_entry() {
+        // Given a state with a selected thinking entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::thinking("thinking..."));
+        state.active_session_mut().select_next_entry();
+
+        // When handling ignore selected.
+        let result = handle_ignore_selected(&mut state);
+
+        // Then no commands are emitted.
+        assert!(result.commands.is_empty(), "thinking entry should produce no commands");
+    }
+
+    #[rstest::rstest]
+    fn handle_ignore_selected_noop_transient_entry() {
+        // Given a state with a selected transient entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::transient("ephemeral"));
+        state.active_session_mut().select_next_entry();
+
+        // When handling ignore selected.
+        let result = handle_ignore_selected(&mut state);
+
+        // Then no commands are emitted.
+        assert!(result.commands.is_empty(), "transient entry should produce no commands");
+    }
+
+    #[rstest::rstest]
+    fn handle_ignore_selected_noop_compaction_entry() {
+        // Given a state with a selected compaction entry.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry {
+            id: crate::protocol::ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: crate::protocol::ChatEntryKind::Compaction {
+                summary: "summary".to_owned(),
+                tokens_before: 100,
+                entries_compacted: 5,
+                model_used: "test/model".to_owned(),
+            },
+            pin_position: None,
+            ignored: false,
+        });
+        state.active_session_mut().select_next_entry();
+
+        // When handling ignore selected.
+        let result = handle_ignore_selected(&mut state);
+
+        // Then no commands are emitted.
+        assert!(result.commands.is_empty(), "compaction entry should produce no commands");
     }
 }
