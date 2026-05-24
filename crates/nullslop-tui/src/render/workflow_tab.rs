@@ -11,7 +11,7 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, Paragraph},
 };
 
 /// Renders the workflow tab content.
@@ -177,8 +177,16 @@ fn build_inspector_lines(
             Style::default().add_modifier(Modifier::BOLD),
         )));
         let config_str = format!("{config}");
+        let config_indent = 2;
+        let config_max = (content_width as usize).saturating_sub(config_indent).max(3);
         for line in config_str.lines().take(5) {
-            let truncated: String = line.chars().take(60).collect();
+            let truncated: String = if line.chars().count() > config_max {
+                let mut s: String = line.chars().take(config_max.saturating_sub(3)).collect();
+                s.push_str("...");
+                s
+            } else {
+                line.to_owned()
+            };
             lines.push(Line::from(Span::styled(
                 format!("  {truncated}"),
                 Style::default().add_modifier(Modifier::DIM),
@@ -197,11 +205,7 @@ fn build_inspector_lines(
             Style::default().add_modifier(Modifier::BOLD),
         )));
         for (name, value) in inputs.iter() {
-            let summary = port_value_summary(value);
-            lines.push(Line::from(vec![
-                Span::styled(format!("  {name}: "), Style::default()),
-                Span::styled(summary, Style::default().add_modifier(Modifier::DIM)),
-            ]));
+            lines.extend(port_value_lines(name, value, content_width));
         }
     }
 
@@ -216,11 +220,7 @@ fn build_inspector_lines(
             Style::default().add_modifier(Modifier::BOLD),
         )));
         for (name, value) in outputs.iter() {
-            let summary = port_value_summary(value);
-            lines.push(Line::from(vec![
-                Span::styled(format!("  {name}: "), Style::default()),
-                Span::styled(summary, Style::default().add_modifier(Modifier::DIM)),
-            ]));
+            lines.extend(port_value_lines(name, value, content_width));
         }
     }
 
@@ -257,8 +257,6 @@ fn lookup_node_session<'a>(
     let session_id = workflow.node_sessions.get(node_name)?;
     state.session.get(session_id)
 }
-
-
 
 /// Renders the sticky inspector popup overlay.
 fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
@@ -297,9 +295,9 @@ fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let content_height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
     let desired_height = content_height.saturating_add(3); // +2 for borders, +1 for footer
     let max_height = if has_session {
-        (area.height * 80 / 100).saturating_add(1) // +1 for pinned footer row
+        area.height * 80 / 100
     } else {
-        (area.height / 2).saturating_add(1) // +1 for pinned footer row
+        area.height / 2
     };
     let popup_height = desired_height.min(max_height).max(5);
 
@@ -358,10 +356,8 @@ fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         std::sync::atomic::Ordering::Relaxed,
     );
 
-    // Render scrollable content.
-    let content = Paragraph::new(lines)
-        .wrap(Wrap { trim: false })
-        .scroll((scroll_offset, 0));
+    // Render scrollable content (no Wrap — lines are pre-wrapped to content_width).
+    let content = Paragraph::new(lines).scroll((scroll_offset, 0));
     frame.render_widget(content, content_area);
 
     // Render static footer.
@@ -374,44 +370,84 @@ fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     frame.render_widget(footer, footer_area);
 }
 
-/// Produces a short summary of a `PortValue` for display.
-fn port_value_summary(value: &nullslop_workflow::port::PortValue) -> String {
+/// Maximum number of lines a single port value may occupy.
+const MAX_PORT_LINES: usize = 4;
+
+/// Renders a port value as pre-wrapped lines, capped at `MAX_PORT_LINES`.
+/// First line has `"  {name}: "` prefix; continuation lines indent with 4 spaces.
+/// If the value exceeds `MAX_PORT_LINES` lines, the last line is truncated with `"..."`.
+fn port_value_lines(
+    name: &str,
+    value: &nullslop_workflow::port::PortValue,
+    content_width: u16,
+) -> Vec<Line<'static>> {
     use nullslop_workflow::port::{PortValue, ScalarValue};
-    match value {
-        PortValue::Single(ScalarValue::Text(s)) => {
-            if s.len() > 80 {
-                let truncated: String = s.chars().take(77).collect();
-                format!("{truncated}...")
-            } else {
-                s.clone()
-            }
-        }
-        PortValue::Single(ScalarValue::Number(n)) => {
-            let s = format!("{n}");
-            if s.len() > 80 {
-                let truncated: String = s.chars().take(77).collect();
-                format!("{truncated}...")
-            } else {
-                s
-            }
-        }
+
+    let raw = match value {
+        PortValue::Single(ScalarValue::Text(s)) => s.clone(),
+        PortValue::Single(ScalarValue::Number(n)) => format!("{n}"),
         PortValue::Single(ScalarValue::Boolean(b)) => b.to_string(),
         PortValue::Single(ScalarValue::Json(v)) => {
-            let s = serde_json::to_string(v).unwrap_or_else(|_| format!("{v}"));
-            if s.len() > 200 {
-                let truncated: String = s.chars().take(197).collect();
-                format!("{truncated}...")
-            } else {
-                s
-            }
+            serde_json::to_string(v).unwrap_or_else(|_| format!("{v}"))
         }
-        PortValue::Vector(items) => {
-            let s = format!("[{} items]", items.len());
-            s
-        }
-        PortValue::Map(entries) => {
-            let s = format!("{{{} entries}}", entries.len());
-            s
-        }
+        PortValue::Vector(items) => format!("[{} items]", items.len()),
+        PortValue::Map(entries) => format!("{{{} entries}}", entries.len()),
+    };
+
+    let label = format!("  {name}: ");
+    let label_len = label.chars().count();
+    let cont_indent = "    ";
+    let width = content_width as usize;
+
+    let first_budget = width.saturating_sub(label_len);
+    let cont_budget = width.saturating_sub(cont_indent.len());
+
+    let dim = Style::default().add_modifier(Modifier::DIM);
+
+    let mut result = Vec::new();
+    let mut chars = raw.chars().peekable();
+
+    // First line: label + as many value chars as fit.
+    let first_val: String = chars.by_ref().take(first_budget).collect();
+    if chars.peek().is_none() {
+        // Entire value fits on one line.
+        result.push(Line::from(vec![
+            Span::styled(label, Style::default()),
+            Span::styled(first_val, dim),
+        ]));
+        return result;
     }
+
+    result.push(Line::from(vec![
+        Span::styled(label, Style::default()),
+        Span::styled(first_val, dim),
+    ]));
+
+    // Continuation lines.
+    while result.len() < MAX_PORT_LINES {
+        let chunk: String = chars.by_ref().take(cont_budget).collect();
+        if chunk.is_empty() {
+            break;
+        }
+
+        let is_last_slot = result.len() == MAX_PORT_LINES - 1;
+        let has_more = chars.peek().is_some();
+
+        let text = if is_last_slot && has_more {
+            // Truncate and append "..."
+            let budget = cont_budget.saturating_sub(3);
+            let mut s: String = chunk.chars().take(budget).collect();
+            s.push_str("...");
+            s
+        } else {
+            chunk
+        };
+
+        result.push(Line::from(Span::styled(
+            format!("{cont_indent}{text}"),
+            dim,
+        )));
+    }
+
+    result
 }
