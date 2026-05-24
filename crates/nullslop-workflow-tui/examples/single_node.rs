@@ -28,7 +28,7 @@ fn main() {
         let mut b = WorkflowGraphBuilder::new();
         b.add_node(
             "source".to_owned(),
-            common::make_node("source", vec![], vec![PortDef::string("output")]),
+            common::make_node("source", vec![], vec![PortDef::text("output")]),
         );
         b.build().expect("graph should build")
     };

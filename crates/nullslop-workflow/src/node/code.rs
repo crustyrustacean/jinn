@@ -34,17 +34,17 @@ type ExecuteFn = Arc<
 ///
 /// ```rust,ignore
 /// use nullslop_workflow::node::CodeNode;
-/// use nullslop_workflow::port::{PortDef, PortValues, PortValue};
+/// use nullslop_workflow::port::{PortDef, PortValues, PortValue, ScalarValue};
 ///
 /// let node = CodeNode::new(
 ///     "uppercase",
-///     vec![PortDef::string("in")],
-///     vec![PortDef::string("out")],
+///     vec![PortDef::text("in")],
+///     vec![PortDef::text("out")],
 ///     |mut inputs, _ctx| {
 ///         Box::pin(async move {
-///             let val = inputs.take_string("in").map_err(|_| Report::new(NodeError))?;
+///             let val = inputs.take_text("in").map_err(|_| Report::new(NodeError))?;
 ///             let mut out = PortValues::new();
-///             out.insert("out".to_owned(), PortValue::String(val.to_uppercase()));
+///             out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text(val.to_uppercase())));
 ///             Ok(out)
 ///         })
 ///     },
@@ -122,7 +122,7 @@ impl WorkflowNode for CodeNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::port::PortValue;
+    use crate::port::{PortValue, ScalarValue};
     use std::sync::Arc;
 
     /// A minimal NodeContext for tests.
@@ -135,15 +135,18 @@ mod tests {
         let ctx = Arc::new(TestContext);
         let node = CodeNode::new(
             "uppercase".to_owned(),
-            vec![PortDef::string("in")],
-            vec![PortDef::string("out")],
+            vec![PortDef::text("in")],
+            vec![PortDef::text("out")],
             |mut inputs, _ctx| {
                 Box::pin(async move {
                     let val = inputs
-                        .take_string("in")
+                        .take_text("in")
                         .map_err(|_e| Report::new(NodeError))?;
                     let mut out = PortValues::new();
-                    out.insert("out".to_owned(), PortValue::String(val.to_uppercase()));
+                    out.insert(
+                        "out".to_owned(),
+                        PortValue::Single(ScalarValue::Text(val.to_uppercase())),
+                    );
                     Ok(out)
                 })
             },
@@ -151,13 +154,16 @@ mod tests {
 
         // When executing the node.
         let mut inputs = PortValues::new();
-        inputs.insert("in".to_owned(), PortValue::String("hello".to_owned()));
+        inputs.insert(
+            "in".to_owned(),
+            PortValue::Single(ScalarValue::Text("hello".to_owned())),
+        );
         let result = node.execute(inputs, &*ctx).await;
 
         // Then it returns the uppercased value.
         #[expect(clippy::expect_used, reason = "test assertion")]
         let outputs = result.expect("code node should succeed");
-        assert_eq!(outputs.get_string("out").unwrap(), "HELLO");
+        assert_eq!(outputs.get_text("out").unwrap(), "HELLO");
     }
 
     #[tokio::test]
@@ -166,14 +172,17 @@ mod tests {
         let ctx = Arc::new(TestContext);
         let node = CodeNode::new(
             "fail".to_owned(),
-            vec![PortDef::string("in")],
-            vec![PortDef::string("out")],
+            vec![PortDef::text("in")],
+            vec![PortDef::text("out")],
             |_inputs, _ctx| Box::pin(async move { Err(Report::new(NodeError)) }),
         );
 
         // When executing the node.
         let mut inputs = PortValues::new();
-        inputs.insert("in".to_owned(), PortValue::String("data".to_owned()));
+        inputs.insert(
+            "in".to_owned(),
+            PortValue::Single(ScalarValue::Text("data".to_owned())),
+        );
         let result = node.execute(inputs, &*ctx).await;
 
         // Then it returns an error.
@@ -185,15 +194,15 @@ mod tests {
         // Given a CodeNode.
         let node = CodeNode::new(
             "echo".to_owned(),
-            vec![PortDef::string("in")],
-            vec![PortDef::string("out")],
+            vec![PortDef::text("in")],
+            vec![PortDef::text("out")],
             |mut inputs, _ctx| {
                 Box::pin(async move {
                     let val = inputs
-                        .take_string("in")
+                        .take_text("in")
                         .map_err(|_e| Report::new(NodeError))?;
                     let mut out = PortValues::new();
-                    out.insert("out".to_owned(), PortValue::String(val));
+                    out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text(val)));
                     Ok(out)
                 })
             },
@@ -204,11 +213,14 @@ mod tests {
 
         // Then the cloned node works independently.
         let mut inputs = PortValues::new();
-        inputs.insert("in".to_owned(), PortValue::String("test".to_owned()));
+        inputs.insert(
+            "in".to_owned(),
+            PortValue::Single(ScalarValue::Text("test".to_owned())),
+        );
         let ctx = Arc::new(TestContext);
         let result = cloned.execute(inputs, &*ctx).await;
         #[expect(clippy::expect_used, reason = "test assertion")]
         let outputs = result.expect("cloned code node should succeed");
-        assert_eq!(outputs.get_string("out").unwrap(), "test");
+        assert_eq!(outputs.get_text("out").unwrap(), "test");
     }
 }

@@ -10,7 +10,7 @@ use ratatui::layout::{Position, Rect};
 use ratatui::style::Color;
 
 use crate::port::port_type_color;
-use nullslop_workflow::port::PortType;
+use nullslop_workflow::port::{PortType};
 
 /// A cell on a connection path, with its direction information for character selection.
 #[derive(Debug, Clone, Copy)]
@@ -286,6 +286,7 @@ pub fn render_path(buf: &mut Buffer, path: &[PathCell], port_type: PortType, are
 #[expect(clippy::indexing_slicing, reason = "test indices are known-valid")]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    use nullslop_workflow::port::ScalarType;
     use super::*;
 
     #[test]
@@ -381,8 +382,8 @@ mod tests {
 
     #[test]
     fn connection_color_matches_port_type() {
-        let string_color = port_type_color(PortType::String);
-        let json_color = port_type_color(PortType::Json);
+        let string_color = port_type_color(PortType::Single(ScalarType::Text));
+        let json_color = port_type_color(PortType::Single(ScalarType::Json));
         assert_ne!(
             string_color, json_color,
             "String and Json should have different colors"
@@ -486,8 +487,8 @@ mod tests {
         // At (5,2): path1 turns right, path2 continues down → dirs={Up,Right,Down} = ├
         let path1 = SimpleRouter::route((0, 0), (10, 2), &[]);
         let path2 = SimpleRouter::route((0, 0), (10, 5), &[]);
-        insert_path_into_grid(&mut grid, &path1, PortType::String);
-        insert_path_into_grid(&mut grid, &path2, PortType::String);
+        insert_path_into_grid(&mut grid, &path1, PortType::Single(ScalarType::Text));
+        insert_path_into_grid(&mut grid, &path2, PortType::Single(ScalarType::Text));
 
         // Find a junction cell (3+ dirs).
         let junctions: Vec<_> = grid
@@ -520,8 +521,8 @@ mod tests {
         // At (5,3): path1 comes from above, path2 from below → dirs={Up,Down,Right} = ├
         let path1 = SimpleRouter::route((0, 0), (10, 3), &[]);
         let path2 = SimpleRouter::route((0, 5), (10, 3), &[]);
-        insert_path_into_grid(&mut grid, &path1, PortType::String);
-        insert_path_into_grid(&mut grid, &path2, PortType::String);
+        insert_path_into_grid(&mut grid, &path1, PortType::Single(ScalarType::Text));
+        insert_path_into_grid(&mut grid, &path2, PortType::Single(ScalarType::Text));
 
         let junctions: Vec<_> = grid
             .iter()
@@ -541,8 +542,8 @@ mod tests {
         let mut grid: HashMap<(i32, i32), CellInfo> = HashMap::new();
         let path1 = SimpleRouter::route((0, 0), (10, 2), &[]);
         let path2 = SimpleRouter::route((0, 0), (10, 5), &[]);
-        insert_path_into_grid(&mut grid, &path1, PortType::String);
-        insert_path_into_grid(&mut grid, &path2, PortType::String);
+        insert_path_into_grid(&mut grid, &path1, PortType::Single(ScalarType::Text));
+        insert_path_into_grid(&mut grid, &path2, PortType::Single(ScalarType::Text));
 
         let junction = grid
             .iter()
@@ -573,8 +574,8 @@ mod tests {
         let mut grid: HashMap<(i32, i32), CellInfo> = HashMap::new();
         let path1 = SimpleRouter::route((0, 0), (10, 2), &[]);
         let path2 = SimpleRouter::route((0, 0), (10, 5), &[]);
-        insert_path_into_grid(&mut grid, &path1, PortType::String);
-        insert_path_into_grid(&mut grid, &path2, PortType::String);
+        insert_path_into_grid(&mut grid, &path1, PortType::Single(ScalarType::Text));
+        insert_path_into_grid(&mut grid, &path2, PortType::Single(ScalarType::Text));
 
         // Find a non-junction cell on the shared trunk (2 dirs, same type).
         let non_junction = grid
@@ -611,8 +612,8 @@ mod tests {
         // Two overlapping horizontal paths, different port types.
         let path1 = SimpleRouter::route((0, 0), (10, 0), &[]);
         let path2 = SimpleRouter::route((0, 0), (10, 0), &[]);
-        insert_path_into_grid(&mut grid, &path1, PortType::String);
-        insert_path_into_grid(&mut grid, &path2, PortType::Json);
+        insert_path_into_grid(&mut grid, &path1, PortType::Single(ScalarType::Text));
+        insert_path_into_grid(&mut grid, &path2, PortType::Single(ScalarType::Json));
 
         let cell = grid
             .get(&(5, 0))

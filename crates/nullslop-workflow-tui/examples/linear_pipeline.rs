@@ -29,19 +29,19 @@ fn main() {
         let mut b = WorkflowGraphBuilder::new();
         b.add_node(
             "source".to_owned(),
-            common::make_node("source", vec![], vec![PortDef::string("text")]),
+            common::make_node("source", vec![], vec![PortDef::text("text")]),
         );
         b.add_node(
             "transform".to_owned(),
             common::make_node(
                 "transform",
-                vec![PortDef::string("input")],
-                vec![PortDef::string("output")],
+                vec![PortDef::text("input")],
+                vec![PortDef::text("output")],
             ),
         );
         b.add_node(
             "sink".to_owned(),
-            common::make_node("sink", vec![PortDef::string("text")], vec![]),
+            common::make_node("sink", vec![PortDef::text("text")], vec![]),
         );
         b.connect("source", "text", "transform", "input")
             .expect("connect");

@@ -571,7 +571,7 @@ mod tests {
     use super::*;
     use crate::graph::WorkflowGraphBuilder;
     use crate::node::NodeError;
-    use crate::port::{PortDef, PortValue};
+    use crate::port::{PortDef, PortValue, ScalarValue};
     use error_stack::Report;
     use std::time::Duration;
 
@@ -609,7 +609,7 @@ mod tests {
                 vec![]
             }
             fn output_ports(&self) -> Vec<PortDef> {
-                vec![PortDef::string("out")]
+                vec![PortDef::text("out")]
             }
             async fn execute(
                 &self,
@@ -617,7 +617,7 @@ mod tests {
                 _ctx: &dyn NodeContext,
             ) -> Result<PortValues, Report<NodeError>> {
                 let mut out = PortValues::new();
-                out.insert("out".to_owned(), PortValue::String(self.output.clone()));
+                out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text(self.output.clone())));
                 Ok(out)
             }
             fn clone_box(&self) -> Box<dyn WorkflowNode> {
@@ -642,10 +642,10 @@ mod tests {
                 "uppercase"
             }
             fn input_ports(&self) -> Vec<PortDef> {
-                vec![PortDef::string("in")]
+                vec![PortDef::text("in")]
             }
             fn output_ports(&self) -> Vec<PortDef> {
-                vec![PortDef::string("out")]
+                vec![PortDef::text("out")]
             }
             async fn execute(
                 &self,
@@ -653,10 +653,10 @@ mod tests {
                 _ctx: &dyn NodeContext,
             ) -> Result<PortValues, Report<NodeError>> {
                 let val = inputs
-                    .take_string("in")
+                    .take_text("in")
                     .map_err(|_e| Report::new(NodeError))?;
                 let mut out = PortValues::new();
-                out.insert("out".to_owned(), PortValue::String(val.to_uppercase()));
+                out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text(val.to_uppercase())));
                 Ok(out)
             }
             fn clone_box(&self) -> Box<dyn WorkflowNode> {
@@ -679,10 +679,10 @@ mod tests {
                 "suffix"
             }
             fn input_ports(&self) -> Vec<PortDef> {
-                vec![PortDef::string("in")]
+                vec![PortDef::text("in")]
             }
             fn output_ports(&self) -> Vec<PortDef> {
-                vec![PortDef::string("out")]
+                vec![PortDef::text("out")]
             }
             async fn execute(
                 &self,
@@ -690,12 +690,12 @@ mod tests {
                 _ctx: &dyn NodeContext,
             ) -> Result<PortValues, Report<NodeError>> {
                 let val = inputs
-                    .take_string("in")
+                    .take_text("in")
                     .map_err(|_e| Report::new(NodeError))?;
                 let mut out = PortValues::new();
                 out.insert(
                     "out".to_owned(),
-                    PortValue::String(format!("{val}{suffix}", val = val, suffix = self.suffix)),
+                    PortValue::Single(ScalarValue::Text(format!("{val}{suffix}", val = val, suffix = self.suffix))),
                 );
                 Ok(out)
             }
@@ -721,10 +721,10 @@ mod tests {
                 "concat"
             }
             fn input_ports(&self) -> Vec<PortDef> {
-                vec![PortDef::string("left"), PortDef::string("right")]
+                vec![PortDef::text("left"), PortDef::text("right")]
             }
             fn output_ports(&self) -> Vec<PortDef> {
-                vec![PortDef::string("out")]
+                vec![PortDef::text("out")]
             }
             async fn execute(
                 &self,
@@ -732,15 +732,15 @@ mod tests {
                 _ctx: &dyn NodeContext,
             ) -> Result<PortValues, Report<NodeError>> {
                 let left = inputs
-                    .take_string("left")
+                    .take_text("left")
                     .map_err(|_e| Report::new(NodeError))?;
                 let right = inputs
-                    .take_string("right")
+                    .take_text("right")
                     .map_err(|_e| Report::new(NodeError))?;
                 let mut out = PortValues::new();
                 out.insert(
                     "out".to_owned(),
-                    PortValue::String(format!("{left}+{right}")),
+                    PortValue::Single(ScalarValue::Text(format!("{left}+{right}"))),
                 );
                 Ok(out)
             }
@@ -762,10 +762,10 @@ mod tests {
                 "fail"
             }
             fn input_ports(&self) -> Vec<PortDef> {
-                vec![PortDef::string("in")]
+                vec![PortDef::text("in")]
             }
             fn output_ports(&self) -> Vec<PortDef> {
-                vec![PortDef::string("out")]
+                vec![PortDef::text("out")]
             }
             async fn execute(
                 &self,
@@ -794,10 +794,10 @@ mod tests {
                 "delay"
             }
             fn input_ports(&self) -> Vec<PortDef> {
-                vec![PortDef::string("in")]
+                vec![PortDef::text("in")]
             }
             fn output_ports(&self) -> Vec<PortDef> {
-                vec![PortDef::string("out")]
+                vec![PortDef::text("out")]
             }
             async fn execute(
                 &self,
@@ -806,10 +806,10 @@ mod tests {
             ) -> Result<PortValues, Report<NodeError>> {
                 tokio::time::sleep(self.duration).await;
                 let val = inputs
-                    .take_string("in")
+                    .take_text("in")
                     .map_err(|_e| Report::new(NodeError))?;
                 let mut out = PortValues::new();
-                out.insert("out".to_owned(), PortValue::String(val));
+                out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text(val)));
                 Ok(out)
             }
             fn clone_box(&self) -> Box<dyn WorkflowNode> {
@@ -832,10 +832,10 @@ mod tests {
                 "panic"
             }
             fn input_ports(&self) -> Vec<PortDef> {
-                vec![PortDef::string("in")]
+                vec![PortDef::text("in")]
             }
             fn output_ports(&self) -> Vec<PortDef> {
-                vec![PortDef::string("out")]
+                vec![PortDef::text("out")]
             }
             async fn execute(
                 &self,
@@ -874,7 +874,7 @@ mod tests {
         assert_eq!(status(&result, "b"), NodeStatus::Completed);
         assert_eq!(status(&result, "c"), NodeStatus::Completed);
         assert_eq!(
-            outputs(&result, "c").get_string("out").unwrap(),
+            outputs(&result, "c").get_text("out").unwrap(),
             "HELLO-world"
         );
     }
@@ -899,8 +899,8 @@ mod tests {
         // Then both branches completed with correct results.
         assert_eq!(status(&result, "b"), NodeStatus::Completed);
         assert_eq!(status(&result, "c"), NodeStatus::Completed);
-        assert_eq!(outputs(&result, "b").get_string("out").unwrap(), "DATA");
-        assert_eq!(outputs(&result, "c").get_string("out").unwrap(), "data!");
+        assert_eq!(outputs(&result, "b").get_text("out").unwrap(), "DATA");
+        assert_eq!(outputs(&result, "c").get_text("out").unwrap(), "data!");
     }
 
     #[tokio::test]
@@ -923,7 +923,7 @@ mod tests {
         // Then C received both inputs and concatenated them.
         assert_eq!(status(&result, "c"), NodeStatus::Completed);
         assert_eq!(
-            outputs(&result, "c").get_string("out").unwrap(),
+            outputs(&result, "c").get_text("out").unwrap(),
             "left+right"
         );
     }
@@ -951,7 +951,7 @@ mod tests {
         // Then D received both paths.
         assert_eq!(status(&result, "d"), NodeStatus::Completed);
         assert_eq!(
-            outputs(&result, "d").get_string("out").unwrap(),
+            outputs(&result, "d").get_text("out").unwrap(),
             "TEST+test?"
         );
     }
@@ -967,10 +967,10 @@ mod tests {
                 "multi"
             }
             fn input_ports(&self) -> Vec<PortDef> {
-                vec![PortDef::string("in1"), PortDef::string("in2")]
+                vec![PortDef::text("in1"), PortDef::text("in2")]
             }
             fn output_ports(&self) -> Vec<PortDef> {
-                vec![PortDef::string("out1"), PortDef::string("out2")]
+                vec![PortDef::text("out1"), PortDef::text("out2")]
             }
             async fn execute(
                 &self,
@@ -978,14 +978,14 @@ mod tests {
                 _ctx: &dyn NodeContext,
             ) -> Result<PortValues, Report<NodeError>> {
                 let v1 = inputs
-                    .take_string("in1")
+                    .take_text("in1")
                     .map_err(|_e| Report::new(NodeError))?;
                 let v2 = inputs
-                    .take_string("in2")
+                    .take_text("in2")
                     .map_err(|_e| Report::new(NodeError))?;
                 let mut out = PortValues::new();
-                out.insert("out1".to_owned(), PortValue::String(v1.to_uppercase()));
-                out.insert("out2".to_owned(), PortValue::String(format!("{v2}!")));
+                out.insert("out1".to_owned(), PortValue::Single(ScalarValue::Text(v1.to_uppercase())));
+                out.insert("out2".to_owned(), PortValue::Single(ScalarValue::Text(format!("{v2}!"))));
                 Ok(out)
             }
             fn clone_box(&self) -> Box<dyn WorkflowNode> {
@@ -1015,9 +1015,9 @@ mod tests {
         assert_eq!(status(&result, "d"), NodeStatus::Completed);
         assert_eq!(status(&result, "c"), NodeStatus::Completed);
         assert_eq!(status(&result, "e"), NodeStatus::Completed);
-        assert_eq!(outputs(&result, "c").get_string("out").unwrap(), "HELLO");
+        assert_eq!(outputs(&result, "c").get_text("out").unwrap(), "HELLO");
         assert_eq!(
-            outputs(&result, "e").get_string("out").unwrap(),
+            outputs(&result, "e").get_text("out").unwrap(),
             "world!!!!"
         );
     }
@@ -1046,7 +1046,7 @@ mod tests {
         assert_eq!(status(&result, "b"), NodeStatus::Failed);
         assert_eq!(status(&result, "c"), NodeStatus::Skipped);
         assert_eq!(status(&result, "d"), NodeStatus::Completed);
-        assert_eq!(outputs(&result, "d").get_string("out").unwrap(), "data!");
+        assert_eq!(outputs(&result, "d").get_text("out").unwrap(), "data!");
     }
 
     #[tokio::test]
@@ -1166,7 +1166,7 @@ mod tests {
         assert_eq!(status(&result2, "b"), NodeStatus::Completed);
         assert_eq!(status(&result2, "c"), NodeStatus::Completed);
         assert_eq!(
-            result2.outputs["c"].get_string("out").unwrap(),
+            result2.outputs["c"].get_text("out").unwrap(),
             "DATA"
         );
     }
@@ -1189,7 +1189,7 @@ mod tests {
         let result1 = execute(execution.clone(), ctx.clone()).await.expect("execute");
         assert_eq!(status(&result1, "c"), NodeStatus::Completed);
         assert_eq!(
-            result1.outputs["c"].get_string("out").unwrap(),
+            result1.outputs["c"].get_text("out").unwrap(),
             "HELLO-world"
         );
 
@@ -1204,7 +1204,7 @@ mod tests {
         assert_eq!(status(&result2, "b"), NodeStatus::Completed);
         assert_eq!(status(&result2, "c"), NodeStatus::Completed);
         assert_eq!(
-            result2.outputs["c"].get_string("out").unwrap(),
+            result2.outputs["c"].get_text("out").unwrap(),
             "HELLO-world"
         );
     }

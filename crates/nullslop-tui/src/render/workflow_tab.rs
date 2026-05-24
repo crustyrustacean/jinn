@@ -301,8 +301,9 @@ fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
 
 /// Produces a short summary of a `PortValue` for display.
 fn port_value_summary(value: &nullslop_workflow::port::PortValue) -> String {
+    use nullslop_workflow::port::{PortValue, ScalarValue};
     match value {
-        nullslop_workflow::port::PortValue::String(s) => {
+        PortValue::Single(ScalarValue::Text(s)) => {
             if s.len() > 80 {
                 let truncated: String = s.chars().take(77).collect();
                 format!("{truncated}...")
@@ -310,7 +311,17 @@ fn port_value_summary(value: &nullslop_workflow::port::PortValue) -> String {
                 s.clone()
             }
         }
-        nullslop_workflow::port::PortValue::Json(v) => {
+        PortValue::Single(ScalarValue::Number(n)) => {
+            let s = format!("{n}");
+            if s.len() > 80 {
+                let truncated: String = s.chars().take(77).collect();
+                format!("{truncated}...")
+            } else {
+                s
+            }
+        }
+        PortValue::Single(ScalarValue::Boolean(b)) => b.to_string(),
+        PortValue::Single(ScalarValue::Json(v)) => {
             let s = serde_json::to_string(v).unwrap_or_else(|_| format!("{v}"));
             if s.len() > 200 {
                 let truncated: String = s.chars().take(197).collect();
@@ -318,6 +329,14 @@ fn port_value_summary(value: &nullslop_workflow::port::PortValue) -> String {
             } else {
                 s
             }
+        }
+        PortValue::Vector(items) => {
+            let s = format!("[{} items]", items.len());
+            s
+        }
+        PortValue::Map(entries) => {
+            let s = format!("{{{} entries}}", entries.len());
+            s
         }
     }
 }

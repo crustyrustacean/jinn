@@ -37,7 +37,7 @@ fn build_graph() -> nullslop_workflow::graph::WorkflowGraph {
     // First node: source (no inputs, one output) — use make_node since DelayNode mirrors ports.
     b.add_node(
         "fast".to_owned(),
-        common::make_node("fast", vec![], vec![PortDef::string("out")]),
+        common::make_node("fast", vec![], vec![PortDef::text("out")]),
     );
     // Middle and last: passthrough delay nodes (input "in" -> output "in").
     b.add_node(
