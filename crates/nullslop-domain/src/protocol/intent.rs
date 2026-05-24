@@ -164,6 +164,8 @@ pub enum Intent {
     ForkFromEntry,
     /// Yank (copy) the currently selected chat entry to the system clipboard.
     YankSelectedEntry,
+    /// Toggle the `ignored` flag on the currently selected chat entry.
+    ChatEntryIgnoreSelected,
 
     // --- Session Lifecycle ---
     /// Run a lifecycle setup command to create a new session.
@@ -306,6 +308,7 @@ impl std::fmt::Display for Intent {
             Intent::ToggleIgnoredBlockVisibility => write!(f, "toggle ignored block visibility"),
             Intent::ForkFromEntry => write!(f, "fork from entry"),
             Intent::YankSelectedEntry => write!(f, "yank selected entry"),
+            Intent::ChatEntryIgnoreSelected => write!(f, "ignore selected entry"),
 
             Intent::SessionLifecycleSetup { lifecycle_name, .. } => {
                 write!(f, "session lifecycle setup: {lifecycle_name}")
