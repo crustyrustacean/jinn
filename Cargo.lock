@@ -2139,6 +2139,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-util",
+ "tracing",
  "wherror",
 ]
 
@@ -2151,6 +2152,7 @@ dependencies = [
  "error-stack",
  "nullslop-workflow",
  "ratatui",
+ "serde_json",
  "tokio",
 ]
 

@@ -88,9 +88,8 @@ impl CodeNode {
 
 #[async_trait::async_trait]
 impl WorkflowNode for CodeNode {
-    fn name(&self) -> &'static str {
-        // Intentional leak for 'static name.
-        Box::leak(self.name.clone().into_boxed_str())
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn input_ports(&self) -> Vec<PortDef> {
