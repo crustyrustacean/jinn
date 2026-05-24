@@ -533,6 +533,11 @@ fn handle_workflow_node_spatial(
 
     if let Some(next_name) = next {
         state.frontend.workflow_ui.selected_node = Some(next_name);
+        state.frontend.workflow_ui.inspector_scroll = 0;
+        state.frontend.workflow_ui.inspector_scroll_rendered.store(
+            0,
+            std::sync::atomic::Ordering::Relaxed,
+        );
     }
 
     IntentResult::empty()
