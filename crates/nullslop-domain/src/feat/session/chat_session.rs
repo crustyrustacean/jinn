@@ -353,6 +353,13 @@ pub struct SessionUi {
     /// a concrete offset so `scroll_up` / `scroll_down` work correctly.
     /// Uses `AtomicU16` for interior mutability since the element receives `&self`.
     pub(crate) last_max_offset: AtomicU16,
+    /// The actual viewport scroll offset after clamping and scroll-to-selected
+    /// adjustment, as computed by the render pipeline.
+    ///
+    /// Unlike `scroll_offset` (the user's intent), this reflects what's
+    /// actually displayed. Written by the renderer each frame, read by
+    /// intent handlers to determine visible entries.
+    pub(crate) rendered_scroll_offset: AtomicU16,
     /// Per-entry wrapped line ranges computed by the renderer each frame.
     ///
     /// `entry_line_ranges[i] = (start_wrapped_line, end_wrapped_line)` in wrapped
@@ -395,6 +402,7 @@ impl Clone for SessionUi {
             scroll_offset: self.scroll_offset,
             selected_cursor_id: self.selected_cursor_id.clone(),
             last_max_offset: AtomicU16::new(self.last_max_offset.load(Ordering::Relaxed)),
+            rendered_scroll_offset: AtomicU16::new(self.rendered_scroll_offset.load(Ordering::Relaxed)),
             entry_line_ranges: RwLock::new(
                 self.entry_line_ranges
                     .read()
@@ -423,6 +431,7 @@ impl Default for SessionUi {
             scroll_offset: None,
             selected_cursor_id: None,
             last_max_offset: AtomicU16::new(0),
+            rendered_scroll_offset: AtomicU16::new(0),
             entry_line_ranges: RwLock::new(Vec::new()),
             viewport_height: AtomicU16::new(0),
             blank_count: AtomicU16::new(0),
@@ -1317,7 +1326,7 @@ impl ChatSessionState {
         let abs_end = end.saturating_add(blank_count);
         let entry_height = abs_end.saturating_sub(abs_start);
 
-        let current_offset = self.ui.scroll_offset.unwrap_or(max_offset);
+        let current_offset = self.ui.rendered_scroll_offset.load(Ordering::Relaxed);
 
         let new_offset = if entry_height <= viewport_height {
             // Entry fits in viewport — adjust only if it's outside.
@@ -1356,6 +1365,12 @@ impl ChatSessionState {
     /// scroll handlers can resolve the "at bottom" state into a concrete offset.
     pub fn set_last_max_offset(&self, max_offset: u16) {
         self.ui.last_max_offset.store(max_offset, Ordering::Relaxed);
+    }
+
+    /// Store the rendered scroll offset (actual viewport position after clamping
+    /// and scroll-to-selected adjustment). Called by the render pipeline each frame.
+    pub fn set_rendered_scroll_offset(&self, offset: u16) {
+        self.ui.rendered_scroll_offset.store(offset, Ordering::Relaxed);
     }
 
     // --- Renderer viewport state ---
@@ -1402,10 +1417,7 @@ impl ChatSessionState {
 
         let viewport_height = self.ui.viewport_height.load(Ordering::Relaxed);
         let blank_count = self.ui.blank_count.load(Ordering::Relaxed);
-        let scroll_offset = self
-            .ui
-            .scroll_offset
-            .unwrap_or(self.ui.last_max_offset.load(Ordering::Relaxed));
+        let scroll_offset = self.ui.rendered_scroll_offset.load(Ordering::Relaxed);
 
         let viewport_top = scroll_offset;
         let viewport_bottom = scroll_offset.saturating_add(viewport_height);
