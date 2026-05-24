@@ -13,6 +13,7 @@ nullslop-provider = { workspace = true }
 nullslop-selection-widget = { workspace = true }
 nullslop-protocol-derive = { workspace = true }
 nullslop-workflow = { workspace = true }
+nullslop-theme = { workspace = true }
 ratatui-markdown = { workspace = true }
 
 # External deps
