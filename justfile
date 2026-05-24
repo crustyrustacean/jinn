@@ -350,7 +350,7 @@ bump LEVEL:
     fi
 
     # --- Compute new version ---
-    CURRENT=$(grep -m1 '^version' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+    CURRENT=$(sed -n '/^\[workspace\.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p}' Cargo.toml)
     NEW=$(rust-script scripts/bump-version.rs "$CURRENT" "{{LEVEL}}")
 
     # --- Resolve tag conflicts ---
@@ -367,7 +367,7 @@ bump LEVEL:
     done
 
     # --- Update files ---
-    sed -i "s/^version = \".*\"/version = \"$CANDIDATE\"/" Cargo.toml
+    sed -i "/^\[workspace\.package\]/,/^\[/{s/^version = \".*\"/version = \"$CANDIDATE\"/}" Cargo.toml
     sed -i "s/^pkgver=.*/pkgver=$CANDIDATE/" PKGBUILD
     sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
 
