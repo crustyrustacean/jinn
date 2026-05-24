@@ -31,7 +31,7 @@ fn compaction_entry_is_compaction_returns_true() {
             model_used: "test/model".to_owned(),
         },
         pin_position: None,
-        ignored: false,
+        context_override: crate::protocol::ContextOverride::Default,
     };
     assert!(entry.is_compaction());
 }
@@ -93,10 +93,10 @@ fn mark_entries_ignored_sets_flag() {
     session.mark_entries_ignored(&[0, 1]);
 
     // Then those entries are ignored but others are not.
-    assert!(session.history()[0].ignored);
-    assert!(session.history()[1].ignored);
-    assert!(!session.history()[2].ignored);
-    assert!(!session.history()[3].ignored);
+    assert!(session.history()[0].ignored());
+    assert!(session.history()[1].ignored());
+    assert!(!session.history()[2].ignored());
+    assert!(!session.history()[3].ignored());
 }
 
 #[test]
@@ -110,10 +110,10 @@ fn mark_entries_ignored_with_pinned_entry() {
     session.mark_entries_ignored(&[0]);
 
     // Then the entry is marked ignored but still pinned.
-    assert!(session.history()[0].ignored);
+    assert!(session.history()[0].ignored());
     assert!(session.history()[0].is_pinned());
     // Pin override works: pinned && ignored still counts as "included".
-    assert!(session.history()[0].is_pinned() || !session.history()[0].ignored);
+    assert!(session.history()[0].is_pinned() || !session.history()[0].ignored());
 }
 
 #[test]
@@ -151,18 +151,18 @@ fn vec_order_after_compaction_insertion() {
             model_used: "test".to_owned(),
         },
         pin_position: None,
-        ignored: false,
+        context_override: crate::protocol::ContextOverride::Default,
     };
     session.insert_entry_at(3, compaction);
 
     // Then the vec is in correct logical order.
     assert_eq!(session.history().len(), 6);
     assert_eq!(session.history()[0].text(), "system"); // system (exempt)
-    assert!(session.history()[1].ignored); // old1 (compacted)
-    assert!(session.history()[2].ignored); // old2 (compacted)
+    assert!(session.history()[1].ignored()); // old1 (compacted)
+    assert!(session.history()[2].ignored()); // old2 (compacted)
     assert!(session.history()[3].is_compaction()); // compaction entry
-    assert!(!session.history()[4].ignored); // recent1 (kept)
-    assert!(!session.history()[5].ignored); // recent2 (kept)
+    assert!(!session.history()[4].ignored()); // recent1 (kept)
+    assert!(!session.history()[5].ignored()); // recent2 (kept)
 }
 
 #[test]
@@ -182,7 +182,7 @@ fn boundary_detection_finds_last_compaction() {
             model_used: "test".to_owned(),
         },
         pin_position: None,
-        ignored: false,
+        context_override: crate::protocol::ContextOverride::Default,
     });
     // Entries after first compaction.
     session.push_entry(ChatEntry::user("new1"));
@@ -213,7 +213,7 @@ fn serializer_includes_tool_calls_and_results() {
                 arguments: "echo hello".to_owned(),
             },
             pin_position: None,
-            ignored: false,
+            context_override: crate::protocol::ContextOverride::Default,
         },
         ChatEntry {
             id: crate::protocol::ChatEntryId::new(),
@@ -227,7 +227,7 @@ fn serializer_includes_tool_calls_and_results() {
                 truncation: None,
             },
             pin_position: None,
-            ignored: false,
+            context_override: crate::protocol::ContextOverride::Default,
         },
     ];
     let result = serialize_entries_for_compaction(&entries);

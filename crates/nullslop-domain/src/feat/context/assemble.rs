@@ -244,7 +244,7 @@ fn split_history(history: &[ChatEntry]) -> (Vec<ChatEntry>, Vec<ChatEntry>, Vec<
         .filter(|e| {
             (e.pin_position().is_none() || e.pin_position() == Some(PinPosition::Relative))
                 && !matches!(e.kind, ChatEntryKind::Thinking(_))
-                && (!e.ignored || e.is_pinned())
+                && e.is_in_context()
         })
         .cloned()
         .collect();

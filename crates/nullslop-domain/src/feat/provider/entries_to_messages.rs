@@ -23,10 +23,10 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
     let mut messages = Vec::new();
 
     for entry in entries {
-        // Defensive: skip ignored entries that are not pinned.
+        // Defensive: skip entries not in context.
         // The assembly handler pre-filters, but this prevents bugs
         // if entries_to_messages is called from other contexts.
-        if entry.ignored && !entry.is_pinned() {
+        if !entry.is_in_context() {
             continue;
         }
         match &entry.kind {
