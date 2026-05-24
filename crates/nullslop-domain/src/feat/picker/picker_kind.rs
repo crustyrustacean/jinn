@@ -20,6 +20,8 @@ pub enum PickerKind {
     Theme,
     /// Session lifecycle picker — select a lifecycle recipe for new session creation.
     SessionLifecycle,
+    /// Workflow picker — select a workflow to launch.
+    Workflow,
 }
 
 impl std::fmt::Display for PickerKind {
@@ -31,6 +33,7 @@ impl std::fmt::Display for PickerKind {
             Self::Theme => write!(f, "themes"),
 
             Self::SessionLifecycle => write!(f, "session-lifecycle"),
+            Self::Workflow => write!(f, "workflows"),
         }
     }
 }
