@@ -80,24 +80,51 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
         .collect();
 
     // Index entries by ID for O(1) lookup.
-    let entry_map: HashMap<SessionId, SessionEntry> =
+    let mut entry_map: HashMap<SessionId, SessionEntry> =
         entries.into_iter().map(|e| (e.id.clone(), e)).collect();
 
     // Build parent → children map and identify roots.
+    // Uses visual_parents index to resolve effective parent when
+    // the direct parent has been archived/removed from memory.
+    let visual_parents = &state.frontend.sessions_section.visual_parents;
     let mut children_map: HashMap<SessionId, Vec<SessionId>> = HashMap::new();
     let mut roots: Vec<SessionId> = Vec::new();
 
+    // Track effective parent for each entry so we can patch entry.parent_id later.
+    let mut effective_parents: HashMap<SessionId, SessionId> = HashMap::new();
+
     for entry in entry_map.values() {
-        match &entry.parent_id {
-            Some(pid) if entry_map.contains_key(pid) => {
+        let effective_parent = match &entry.parent_id {
+            // Direct parent is loaded — use it directly.
+            Some(pid) if entry_map.contains_key(pid) => Some(pid.clone()),
+            // Direct parent not loaded — try visual_parents for reparenting.
+            Some(pid) => visual_parents
+                .get(pid)
+                .or_else(|| visual_parents.get(&entry.id))
+                .filter(|vp| entry_map.contains_key(*vp))
+                .cloned(),
+            // No parent at all.
+            None => None,
+        };
+
+        match effective_parent {
+            Some(ref pid) => {
                 children_map
                     .entry(pid.clone())
                     .or_default()
                     .push(entry.id.clone());
+                effective_parents.insert(entry.id.clone(), pid.clone());
             }
-            _ => {
+            None => {
                 roots.push(entry.id.clone());
             }
+        }
+    }
+
+    // Patch entry.parent_id to reflect effective visual parent.
+    for (id, ep) in effective_parents {
+        if let Some(entry) = entry_map.get_mut(&id) {
+            entry.parent_id = Some(ep);
         }
     }
 
