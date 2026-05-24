@@ -95,9 +95,9 @@ pub struct BenchTask {
     /// Messages to send sequentially. Each message waits for `SessionPhase::Idle`
     /// before sending the next.
     pub messages: Vec<&'static str>,
-    /// Fixture directory relative to `crates/nullslop-bench/fixtures/`.
+    /// Fixture directory embedded in the binary.
     /// `None` means an empty working directory.
-    pub fixture_dir: Option<&'static str>,
+    pub fixture_dir: Option<&'static include_dir::Dir<'static>>,
     /// Per-task timeout (total wall time for all messages).
     pub timeout: Duration,
     /// Persona name to activate before running. `None` = default persona.

@@ -7,6 +7,10 @@ use std::time::Duration;
 
 use crate::task::{BenchTask, BenchTools, VerificationReport};
 use crate::tasks::checks;
+use include_dir::Dir;
+
+
+static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/fix_code/fix_logic_sort/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -17,7 +21,7 @@ pub fn task() -> BenchTask {
              bounds panic. Find and fix it, then run the program to confirm it sorts \
              correctly.",
         ],
-        fixture_dir: Some("src/tasks/fix_code/fix_logic_sort/fixtures"),
+        fixture_dir: Some(&FIXTURES),
         timeout: Duration::from_secs(300),
         persona: None,
         tools: BenchTools {

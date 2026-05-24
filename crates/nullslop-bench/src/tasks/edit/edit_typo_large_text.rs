@@ -7,8 +7,12 @@ use std::time::Duration;
 
 use crate::task::{BenchTask, BenchTools, VerificationReport};
 use crate::tasks::checks;
+use include_dir::Dir;
 
 const EXPECTED_PROSE: &str = include_str!("edit_typo_large_text/expected/prose.txt");
+
+
+static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_typo_large_text/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -17,7 +21,7 @@ pub fn task() -> BenchTask {
         messages: vec![
             "Fix the typo in prose.txt. The word 'accomodate' should be spelled 'accommodate'.",
         ],
-        fixture_dir: Some("src/tasks/edit/edit_typo_large_text/fixtures"),
+        fixture_dir: Some(&FIXTURES),
         timeout: Duration::from_secs(300),
         persona: None,
         tools: BenchTools {

@@ -7,8 +7,12 @@ use std::time::Duration;
 
 use crate::task::{BenchTask, BenchTools, VerificationReport};
 use crate::tasks::checks;
+use include_dir::Dir;
 
 const EXPECTED_INDEX_HTML: &str = include_str!("edit_html_table/expected/index.html");
+
+
+static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_html_table/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -18,7 +22,7 @@ pub fn task() -> BenchTask {
             "In index.html, swap the table row with id 5 with the table row with id 15. \
              Keep everything else exactly the same, including all formatting and indentation.",
         ],
-        fixture_dir: Some("src/tasks/edit/edit_html_table/fixtures"),
+        fixture_dir: Some(&FIXTURES),
         timeout: Duration::from_secs(300),
         persona: None,
         tools: BenchTools {
