@@ -291,18 +291,20 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("q", Intent::Quit, KeyCategory::General)
         .bind("<c-c>", Intent::Quit, KeyCategory::General)
         .bind("?", Intent::ToggleWhichkey, KeyCategory::General)
-        // Navigation
+        // Spatial node navigation
+        .bind("h", Intent::WorkflowNodeLeft, KeyCategory::Navigation)
         .bind("j", Intent::WorkflowNodeDown, KeyCategory::Navigation)
         .bind("k", Intent::WorkflowNodeUp, KeyCategory::Navigation)
-        // Viewport panning
-        .bind("H", Intent::WorkflowPanLeft, KeyCategory::Navigation)
-        .bind("J", Intent::WorkflowPanDown, KeyCategory::Navigation)
-        .bind("K", Intent::WorkflowPanUp, KeyCategory::Navigation)
-        .bind("L", Intent::WorkflowPanRight, KeyCategory::Navigation)
+        .bind("l", Intent::WorkflowNodeRight, KeyCategory::Navigation)
+        // Viewport panning (arrow keys)
+        .bind("<left>", Intent::WorkflowPanLeft, KeyCategory::Navigation)
+        .bind("<down>", Intent::WorkflowPanDown, KeyCategory::Navigation)
+        .bind("<up>", Intent::WorkflowPanUp, KeyCategory::Navigation)
+        .bind("<right>", Intent::WorkflowPanRight, KeyCategory::Navigation)
         // Inspector
         .bind("i", Intent::WorkflowInspectToggle, KeyCategory::Navigation)
-        .bind("<up>", Intent::WorkflowInspectScrollUp, KeyCategory::Navigation)
-        .bind("<down>", Intent::WorkflowInspectScrollDown, KeyCategory::Navigation)
+        .bind("J", Intent::WorkflowInspectScrollDown, KeyCategory::Navigation)
+        .bind("K", Intent::WorkflowInspectScrollUp, KeyCategory::Navigation)
         // Cancel
         .bind("<esc>", Intent::WorkflowEscape, KeyCategory::General)
         // Re-run
