@@ -489,6 +489,10 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (lifecycle picker navigation).
     pub session_lifecycle_picker: nullslop_selection_widget::SelectionState<SessionLifecycleEntry>,
 
+    /// Workflow picker state (items, filter text, selection index).
+    /// OWNER: IntentHandler (workflow picker navigation) + WorkflowActor (entry population).
+    pub workflow_picker: nullslop_selection_widget::SelectionState<crate::feat::workflow::picker_entry::WorkflowPickerEntry>,
+
     /// Arg input popup state — active when `FocusScope::ArgInput` is on the scope stack.
     /// OWNER: IntentHandler (arg input editing, confirmation).
     pub arg_input: ArgInputState,
@@ -538,6 +542,7 @@ impl Default for FrontendState {
             themes_dir: std::path::PathBuf::new(),
             system_themes_dir: std::path::PathBuf::new(),
             session_lifecycle_picker: nullslop_selection_widget::SelectionState::new(),
+            workflow_picker: nullslop_selection_widget::SelectionState::new(),
             arg_input: ArgInputState::default(),
             rename_session_input: RenameSessionInputState::default(),
             sidebar_width: 30,
@@ -604,6 +609,7 @@ impl AppState {
             PickerKind::Theme => Some(&mut self.frontend.theme_picker),
 
             PickerKind::SessionLifecycle => Some(&mut self.frontend.session_lifecycle_picker),
+            PickerKind::Workflow => Some(&mut self.frontend.workflow_picker),
         }
     }
 
