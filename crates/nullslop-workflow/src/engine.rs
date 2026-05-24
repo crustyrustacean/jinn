@@ -609,7 +609,9 @@ fn spawn_node(
 
     let node_name = name.clone();
     let handle = tokio::spawn(async move {
+        ctx.set_node_name(&node_name);
         let result = node.execute(inputs, &*ctx).await;
+        ctx.clear_node_name();
         match result {
             Ok(node_outputs) => {
                 let _ = tx

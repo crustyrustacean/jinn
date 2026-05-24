@@ -352,10 +352,11 @@ pub struct StatusNotification {
 
 /// Workflow tab UI state — persisted across frames in `FrontendState`.
 ///
+use std::sync::atomic::{AtomicU16, Ordering};
 use nullslop_workflow::spatial_layout::SpatialRect;
 
 /// OWNER: IntentHandler (selection, inspector toggle, cancel prompt).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub struct WorkflowUiState {
     /// Currently selected node name, if any.
     pub selected_node: Option<String>,
@@ -367,6 +368,11 @@ pub struct WorkflowUiState {
     pub inspector_open: bool,
     /// Scroll position within the inspector popup (lines from top).
     pub inspector_scroll: u16,
+    /// The actual clamped scroll position after rendering.
+    ///
+    /// Written by the renderer each frame, read by intent handlers
+    /// so repeated "scroll down" inputs don't accumulate past the limit.
+    pub inspector_scroll_rendered: AtomicU16,
     /// Whether the "Press ESC again to cancel" prompt is showing.
     pub cancel_prompt: bool,
     /// Cached spatial index: node name → bounding rect in content coordinates.
@@ -374,6 +380,23 @@ pub struct WorkflowUiState {
     /// Recomputed lazily when empty and a spatial navigation intent fires.
     /// Cleared when the active workflow changes.
     pub node_rects: HashMap<String, SpatialRect>,
+}
+
+impl Clone for WorkflowUiState {
+    fn clone(&self) -> Self {
+        Self {
+            selected_node: self.selected_node.clone(),
+            viewport_offset_x: self.viewport_offset_x,
+            viewport_offset_y: self.viewport_offset_y,
+            inspector_open: self.inspector_open,
+            inspector_scroll: self.inspector_scroll,
+            inspector_scroll_rendered: AtomicU16::new(
+                self.inspector_scroll_rendered.load(Ordering::Relaxed),
+            ),
+            cancel_prompt: self.cancel_prompt,
+            node_rects: self.node_rects.clone(),
+        }
+    }
 }
 
 /// Frontend / UI state — owned by the IntentHandler (main thread).
