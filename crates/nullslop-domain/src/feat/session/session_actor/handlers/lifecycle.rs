@@ -862,6 +862,14 @@ impl SessionPersistenceActor {
         session_id: &crate::protocol::SessionId,
     ) {
         let mut state = self.state.write();
+
+        // Update visual-parent index before removing the session
+        // (need it in memory to resolve its parent chain).
+        crate::feat::ui::sidebar::sessions::update_visual_parents_on_removal(
+            &mut state,
+            session_id,
+        );
+
         let fresh_session = {
             let model = state
                 .frontend
