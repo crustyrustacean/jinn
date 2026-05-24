@@ -14,7 +14,7 @@ use arc_swap::ArcSwap;
 
 use crate::engine::NodeStatus;
 use crate::graph::WorkflowGraph;
-use crate::port::PortDef;
+use crate::port::{PortDef, PortValues};
 use crate::port::PortType;
 
 /// Owned version of [`EdgeInfo`](crate::graph::EdgeInfo).
@@ -132,17 +132,36 @@ impl WorkflowStructure {
     }
 }
 
+/// Per-node execution state captured in an [`ExecutionSnapshot`].
+///
+/// Combines status, static configuration, and runtime I/O data.
+/// Values are stored behind `Arc` so snapshot cloning is cheap (refcount bumps).
+#[derive(Debug, Clone)]
+pub struct NodeState {
+    /// Current execution status of this node.
+    pub status: NodeStatus,
+    /// Static node configuration, captured once at construction.
+    /// `None` for nodes that don't override [`WorkflowNode::config()`](crate::node::WorkflowNode::config).
+    pub config: Option<Arc<serde_json::Value>>,
+    /// Input values fed to this node, captured before execution.
+    /// `None` until the engine spawns the node.
+    pub inputs: Option<Arc<PortValues>>,
+    /// Output values produced by this node, captured after successful execution.
+    /// `None` until the node completes.
+    pub outputs: Option<Arc<PortValues>>,
+}
+
 /// An immutable snapshot of workflow execution state at a point in time.
 ///
-/// Contains the topology (never changes) and the current node statuses.
+/// Contains the topology (never changes) and per-node state (status, config, I/O).
 /// Obtained via [`WorkflowExecution::snapshot()`]. Cheap to hold —
 /// just an `Arc` reference count increment.
 #[derive(Debug)]
 pub struct ExecutionSnapshot {
     /// The workflow topology.
     structure: Arc<WorkflowStructure>,
-    /// Current status of each node.
-    statuses: HashMap<String, NodeStatus>,
+    /// Per-node execution state.
+    node_states: HashMap<String, NodeState>,
 }
 
 impl ExecutionSnapshot {
@@ -155,12 +174,23 @@ impl ExecutionSnapshot {
     /// Returns the status of a node by name.
     #[must_use]
     pub fn status_of(&self, node_name: &str) -> Option<NodeStatus> {
-        self.statuses.get(node_name).copied()
+        self.node_states.get(node_name).map(|s| s.status)
     }
 
     /// Returns an iterator over all node statuses.
     pub fn statuses(&self) -> impl Iterator<Item = (&str, NodeStatus)> {
-        self.statuses.iter().map(|(k, &v)| (k.as_str(), v))
+        self.node_states.iter().map(|(k, v)| (k.as_str(), v.status))
+    }
+
+    /// Returns the full state for a node by name.
+    #[must_use]
+    pub fn node_state(&self, node_name: &str) -> Option<&NodeState> {
+        self.node_states.get(node_name)
+    }
+
+    /// Returns an iterator over all node states.
+    pub fn node_states(&self) -> impl Iterator<Item = (&str, &NodeState)> {
+        self.node_states.iter().map(|(k, v)| (k.as_str(), v))
     }
 }
 
@@ -192,11 +222,21 @@ impl WorkflowExecution {
     /// The structure is derived from the graph immediately.
     pub fn new(graph: WorkflowGraph) -> Self {
         let structure = Arc::new(extract_structure(&graph));
-        let statuses = structure
+        let node_states = structure
             .node_names()
-            .map(|name| (name.to_owned(), NodeStatus::Pending))
+            .map(|name| {
+                (
+                    name.to_owned(),
+                    NodeState {
+                        status: NodeStatus::Pending,
+                        config: None,
+                        inputs: None,
+                        outputs: None,
+                    },
+                )
+            })
             .collect();
-        let snapshot = ExecutionSnapshot { structure, statuses };
+        let snapshot = ExecutionSnapshot { structure, node_states };
         Self {
             graph,
             snapshot: ArcSwap::from_pointee(snapshot),
@@ -224,11 +264,13 @@ impl WorkflowExecution {
     /// The previous snapshot stays alive as long as any reader holds an `Arc`.
     pub fn set_status(&self, node_name: &str, status: NodeStatus) {
         let current = self.snapshot.load();
-        let mut new_statuses = current.statuses.clone();
-        new_statuses.insert(node_name.to_owned(), status);
+        let mut new_states = current.node_states.clone();
+        if let Some(state) = new_states.get_mut(node_name) {
+            state.status = status;
+        }
         let new_snapshot = ExecutionSnapshot {
             structure: Arc::clone(&current.structure),
-            statuses: new_statuses,
+            node_states: new_states,
         };
         self.snapshot.store(Arc::new(new_snapshot));
     }
