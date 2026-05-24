@@ -716,4 +716,99 @@ mod tests {
         // Then no commands emitted.
         assert!(result.commands.is_empty());
     }
+
+    #[rstest::rstest]
+    fn toggle_ignored_block_expands_collapsed_block() {
+        // Given a session with a collapsed ignored block selected.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        for _ in 0..15 {
+            let mut entry = ChatEntry::user("ignored");
+            entry.ignored = true;
+            state.active_session_mut().push_entry(entry);
+        }
+        state.active_session_mut().push_entry(ChatEntry::user("b"));
+
+        use crate::feat::ui::chat_log::visual_item::{build_visual_items, VisualItem, PROXIMITY_COUNT};
+        let items = build_visual_items(
+            state.active_session().history(),
+            &state.active_session().ui.shown_ignored_blocks,
+            PROXIMITY_COUNT,
+        );
+        state.active_session_mut().set_visual_items(items.clone());
+
+        // Find the collapsed block's visual-item index.
+        let collapsed_vi_idx = items
+            .iter()
+            .position(|i| matches!(i, VisualItem::CollapsedIgnoredBlock { .. }))
+            .expect("should have a collapsed block");
+        state.active_session_mut().set_selected_entry_index(collapsed_vi_idx);
+
+        let block_start_id = state.active_session().history()[1].id.clone();
+        assert!(
+            !state.active_session().ui.shown_ignored_blocks.contains(&block_start_id),
+            "block should start collapsed"
+        );
+
+        // When handling toggle ignored block.
+        let _result = handle_toggle_ignored_block(&mut state);
+
+        // Then the block is expanded.
+        assert!(
+            state.active_session().ui.shown_ignored_blocks.contains(&block_start_id),
+            "block should be shown after toggle on collapsed block"
+        );
+    }
+
+    #[rstest::rstest]
+    fn toggle_ignored_block_collapses_expanded_block() {
+        // Given a session with an expanded ignored block, an ignored entry selected.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        for _ in 0..15 {
+            let mut entry = ChatEntry::user("ignored");
+            entry.ignored = true;
+            state.active_session_mut().push_entry(entry);
+        }
+        state.active_session_mut().push_entry(ChatEntry::user("b"));
+
+        let block_start_id = state.active_session().history()[1].id.clone();
+
+        // Expand the block first.
+        use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+        let entry_5_id = state.active_session().history()[5].id.clone();
+        state
+            .active_session_mut()
+            .toggle_ignored_block_visibility(&entry_5_id);
+        assert!(
+            state.active_session().ui.shown_ignored_blocks.contains(&block_start_id),
+            "block should be expanded"
+        );
+
+        // Rebuild visual items (now expanded — individual Entry items).
+        let items = build_visual_items(
+            state.active_session().history(),
+            &state.active_session().ui.shown_ignored_blocks,
+            PROXIMITY_COUNT,
+        );
+        state.active_session_mut().set_visual_items(items.clone());
+
+        // Select an ignored entry within the expanded block (history index 5).
+        let target_vi_idx = items
+            .iter()
+            .position(|i| {
+                matches!(i, crate::feat::ui::chat_log::visual_item::VisualItem::Entry(hist_idx) if *hist_idx == 5)
+            })
+            .expect("should find ignored entry at history index 5");
+        state.active_session_mut().set_selected_entry_index(target_vi_idx);
+
+        // When handling toggle ignored block.
+        let _result = handle_toggle_ignored_block(&mut state);
+
+        // Then the block is collapsed.
+        assert!(
+            !state.active_session().ui.shown_ignored_blocks.contains(&block_start_id),
+            "block should be collapsed after toggle on ignored entry"
+        );
+    }
 }

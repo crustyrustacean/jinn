@@ -2360,3 +2360,207 @@ fn is_tool_call_streaming_returns_false_for_unknown_id() {
         "unknown ID should not be streaming"
     );
 }
+
+// --- Toggle ignored block visibility tests ---
+
+#[rstest::rstest]
+fn toggle_ignored_block_visibility_expands_block() {
+    // Given a session with 3 non-ignored + 5 ignored + 2 non-ignored entries.
+    let mut session = ChatSessionState::new();
+    for _ in 0..3 {
+        session.push_entry(ChatEntry::user("visible"));
+    }
+    for _ in 0..5 {
+        let mut entry = ChatEntry::user("ignored");
+        entry.ignored = true;
+        session.push_entry(entry);
+    }
+    for _ in 0..2 {
+        session.push_entry(ChatEntry::user("visible"));
+    }
+
+    let block_start_id = session.history()[3].id.clone();
+
+    // When toggling visibility of an entry in the ignored block.
+    let mid_id = session.history()[5].id.clone();
+    session.toggle_ignored_block_visibility(&mid_id);
+
+    // Then the block is shown (first entry's ID is in shown_ignored_blocks).
+    assert!(
+        session.ui.shown_ignored_blocks.contains(&block_start_id),
+        "block should be shown after toggle"
+    );
+}
+
+#[rstest::rstest]
+fn toggle_ignored_block_visibility_collapses_expanded_block() {
+    // Given a session with an expanded ignored block.
+    let mut session = ChatSessionState::new();
+    for _ in 0..3 {
+        session.push_entry(ChatEntry::user("visible"));
+    }
+    for _ in 0..5 {
+        let mut entry = ChatEntry::user("ignored");
+        entry.ignored = true;
+        session.push_entry(entry);
+    }
+    for _ in 0..2 {
+        session.push_entry(ChatEntry::user("visible"));
+    }
+
+    let block_start_id = session.history()[3].id.clone();
+    let mid_id = session.history()[5].id.clone();
+
+    // Expand first.
+    session.toggle_ignored_block_visibility(&mid_id);
+    assert!(session.ui.shown_ignored_blocks.contains(&block_start_id));
+
+    // When toggling again (same entry).
+    session.toggle_ignored_block_visibility(&mid_id);
+
+    // Then the block is collapsed (removed from shown_ignored_blocks).
+    assert!(
+        !session.ui.shown_ignored_blocks.contains(&block_start_id),
+        "block should be collapsed after second toggle"
+    );
+}
+
+#[rstest::rstest]
+fn toggle_ignored_block_visibility_noop_for_non_ignored() {
+    // Given a session with only non-ignored entries.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    session.push_entry(ChatEntry::user("world"));
+
+    let entry_id = session.history()[0].id.clone();
+
+    // When toggling a non-ignored entry.
+    session.toggle_ignored_block_visibility(&entry_id);
+
+    // Then nothing is in shown_ignored_blocks.
+    assert!(
+        session.ui.shown_ignored_blocks.is_empty(),
+        "no blocks should be shown for non-ignored entry"
+    );
+}
+
+#[rstest::rstest]
+fn toggle_ignored_block_visibility_noop_for_unknown_id() {
+    // Given a session.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+
+    // When toggling an unknown ID.
+    let fake_id = ChatEntryId::new();
+    session.toggle_ignored_block_visibility(&fake_id);
+
+    // Then nothing changes.
+    assert!(session.ui.shown_ignored_blocks.is_empty());
+}
+
+// --- Navigation with visual items tests ---
+
+#[rstest::rstest]
+fn select_next_walks_visual_items_with_collapsed_block() {
+    // Given a session with visual items: [Entry, CollapsedBlock, Entry].
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // index 0
+    for _ in 0..15 {
+        let mut entry = ChatEntry::user("ignored");
+        entry.ignored = true;
+        session.push_entry(entry);
+    } // indices 1..15, collapsed into one block
+    session.push_entry(ChatEntry::user("b")); // index 16
+
+    // Force visual items computation.
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+    let items = build_visual_items(
+        session.history(),
+        &session.ui.shown_ignored_blocks,
+        PROXIMITY_COUNT,
+    );
+    session.set_visual_items(items.clone());
+
+    // Select first entry (visual-item index 0).
+    session.set_selected_entry_index(0);
+    assert_eq!(session.selected_entry_index(), Some(0));
+
+    // When selecting next.
+    session.select_next_entry();
+
+    // Then selection moves to the collapsed block (visual-item index 1).
+    assert_eq!(session.selected_entry_index(), Some(1));
+}
+
+#[rstest::rstest]
+fn select_prev_walks_visual_items_with_collapsed_block() {
+    // Given a session with visual items: [Entry, CollapsedBlock, Entry, ...].
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // index 0
+    for _ in 0..15 {
+        let mut entry = ChatEntry::user("ignored");
+        entry.ignored = true;
+        session.push_entry(entry);
+    } // indices 1..15, collapsed
+    session.push_entry(ChatEntry::user("b")); // index 16
+
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+    let items = build_visual_items(
+        session.history(),
+        &session.ui.shown_ignored_blocks,
+        PROXIMITY_COUNT,
+    );
+    session.set_visual_items(items.clone());
+
+    // Select last entry.
+    let last_vi_idx = items.len() - 1;
+    session.set_selected_entry_index(last_vi_idx);
+
+    // When selecting prev.
+    session.select_prev_entry();
+
+    // Then selection moves to the collapsed block.
+    assert_eq!(session.selected_entry_index(), Some(last_vi_idx - 1));
+}
+
+#[rstest::rstest]
+fn selected_entry_returns_none_for_collapsed_block() {
+    // Given a session with visual items where a collapsed block is selected.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    for _ in 0..15 {
+        let mut entry = ChatEntry::user("ignored");
+        entry.ignored = true;
+        session.push_entry(entry);
+    }
+    session.push_entry(ChatEntry::user("b"));
+
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+    let items = build_visual_items(
+        session.history(),
+        &session.ui.shown_ignored_blocks,
+        PROXIMITY_COUNT,
+    );
+    session.set_visual_items(items);
+
+    // Select the collapsed block (visual-item index 1).
+    session.set_selected_entry_index(1);
+
+    // Then selected_entry() returns None.
+    assert!(
+        session.selected_entry().is_none(),
+        "collapsed block should not resolve to an entry"
+    );
+    // And selected_entry_id() returns None.
+    assert!(
+        session.selected_entry_id().is_none(),
+        "collapsed block should not have an entry ID"
+    );
+    // But selected_entry_index() returns the visual-item index.
+    assert_eq!(session.selected_entry_index(), Some(1));
+    // And selected_history_index() returns None (no history index for collapsed block).
+    assert!(
+        session.selected_history_index().is_none(),
+        "collapsed block has no history index"
+    );
+}
