@@ -1189,10 +1189,13 @@ impl ChatSessionState {
     ///
     /// Soft guard: if not idle, logs a warning and returns without changing phase.
     pub fn begin_compacting(&mut self, gathered_indices: Vec<usize>) {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Idle) {
+        if !matches!(
+            self.core.ephemeral.phase,
+            SessionPhase::Idle | SessionPhase::Compacting
+        ) {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.phase,
-                "begin_compacting called while not idle — ignoring"
+                "begin_compacting called while not idle or compacting — ignoring"
             );
             return;
         }
