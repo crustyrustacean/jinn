@@ -429,4 +429,79 @@ mod tests {
             assert_eq!(items[3 + i], VisualItem::Entry(11 + i));
         }
     }
+
+    #[rstest::rstest]
+    fn below_threshold_shows_individually() {
+        // Given 2 non-ignored, 2 ignored, 20 non-ignored (total 24).
+        let mut history = make_entries(2, false);
+        history.extend(make_entries(2, true));
+        history.extend(make_entries(20, false));
+
+        // When building visual items with min_collapse_count=3.
+        let items = build_visual_items(&history, &HashSet::new(), 10, 3);
+
+        // Then the 2 excluded entries at indices 2,3 are shown as Entry.
+        assert_eq!(items[2], VisualItem::Entry(2));
+        assert_eq!(items[3], VisualItem::Entry(3));
+    }
+
+    #[rstest::rstest]
+    fn at_threshold_collapses() {
+        // Given 2 non-ignored, 3 ignored, 20 non-ignored (total 25).
+        let mut history = make_entries(2, false);
+        history.extend(make_entries(3, true));
+        history.extend(make_entries(20, false));
+
+        // When building visual items with min_collapse_count=3.
+        let items = build_visual_items(&history, &HashSet::new(), 10, 3);
+
+        // Then the 3 excluded entries collapse into one block.
+        assert_eq!(items[2], VisualItem::CollapsedIgnoredBlock { start: 2, count: 3 });
+    }
+
+    #[rstest::rstest]
+    fn above_count_below_threshold_shows_individually() {
+        // Given 2 non-ignored, 4 ignored, 20 non-ignored (total 26).
+        let mut history = make_entries(2, false);
+        history.extend(make_entries(4, true));
+        history.extend(make_entries(20, false));
+
+        // When building visual items with min_collapse_count=5.
+        let items = build_visual_items(&history, &HashSet::new(), 10, 5);
+
+        // Then all 4 excluded entries are shown as Entry (below threshold).
+        for i in 2..6 {
+            assert_eq!(items[i], VisualItem::Entry(i));
+        }
+    }
+
+    #[rstest::rstest]
+    fn multiple_sub_threshold_runs_stay_separate() {
+        // Given: 2 non-ignored, 2 ignored, 1 non-ignored, 2 ignored, 20 non-ignored.
+        let mut history = make_entries(2, false);
+        history.extend(make_entries(2, true));
+        history.extend(make_entries(1, false));
+        history.extend(make_entries(2, true));
+        history.extend(make_entries(20, false));
+
+        // When building visual items with min_collapse_count=3.
+        let items = build_visual_items(&history, &HashSet::new(), 10, 3);
+
+        // Then no CollapsedIgnoredBlock exists — all sub-threshold.
+        assert!(items.iter().all(|item| matches!(item, VisualItem::Entry(_))));
+    }
+
+    #[rstest::rstest]
+    fn threshold_one_collapses_everything() {
+        // Given 2 non-ignored, 5 ignored, 20 non-ignored (total 27).
+        let mut history = make_entries(2, false);
+        history.extend(make_entries(5, true));
+        history.extend(make_entries(20, false));
+
+        // When building visual items with min_collapse_count=1.
+        let items = build_visual_items(&history, &HashSet::new(), 10, 1);
+
+        // Then the 5 excluded entries collapse (threshold 1 restores old behavior).
+        assert_eq!(items[2], VisualItem::CollapsedIgnoredBlock { start: 2, count: 5 });
+    }
 }
