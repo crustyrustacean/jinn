@@ -63,7 +63,7 @@ impl WorkflowNode for DelayNode {
         // Copy all input values to output ports with matching names.
         let mut outputs = PortValues::new();
         for port_def in &self.ports {
-            if let Some(value) = inputs.get(port_def.name).cloned() {
+            if let Some(value) = inputs.get(&port_def.name).cloned() {
                 outputs.insert(port_def.name.to_owned(), value);
             }
         }
