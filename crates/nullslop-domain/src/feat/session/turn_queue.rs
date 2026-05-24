@@ -70,4 +70,16 @@ impl TurnQueue {
     pub(in crate::feat::session) fn drain(&mut self) -> VecDeque<QueueItem> {
         std::mem::take(&mut self.inner)
     }
+
+    /// Remove the first item matching a predicate, if any.
+    ///
+    /// Restricted to the session feature module during migration.
+    /// Will be tightened to `queue_actor` once the queue actor is introduced.
+    pub(in crate::feat::session) fn remove_first_matching(
+        &mut self,
+        predicate: impl Fn(&QueueItem) -> bool,
+    ) -> Option<QueueItem> {
+        let idx = self.inner.iter().position(|item| predicate(item))?;
+        Some(self.inner.remove(idx).expect("index was just found"))
+    }
 }
