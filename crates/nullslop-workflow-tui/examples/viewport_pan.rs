@@ -30,13 +30,13 @@ fn build_pipeline() -> WorkflowExecution {
         let mut b = WorkflowGraphBuilder::new();
         b.add_node(
             "load_data".to_owned(),
-            common::make_node("load_data", vec![], vec![PortDef::string("raw")]),
+            common::make_node("load_data", vec![], vec![PortDef::text("raw")]),
         );
         b.add_node(
             "parse".to_owned(),
             common::make_node(
                 "parse",
-                vec![PortDef::string("raw")],
+                vec![PortDef::text("raw")],
                 vec![PortDef::json("records")],
             ),
         );
@@ -61,12 +61,12 @@ fn build_pipeline() -> WorkflowExecution {
             common::make_node(
                 "transform",
                 vec![PortDef::json("enriched")],
-                vec![PortDef::string("output")],
+                vec![PortDef::text("output")],
             ),
         );
         b.add_node(
             "save".to_owned(),
-            common::make_node("save", vec![PortDef::string("output")], vec![]),
+            common::make_node("save", vec![PortDef::text("output")], vec![]),
         );
 
         b.connect("load_data", "raw", "parse", "raw").unwrap();

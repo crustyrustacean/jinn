@@ -9,7 +9,7 @@
 
 use nullslop_workflow::graph::{WorkflowGraph, WorkflowGraphBuilder};
 use nullslop_workflow::node::code::CodeNode;
-use nullslop_workflow::port::{PortDef, PortValue, PortValues};
+use nullslop_workflow::port::{PortDef, PortValues};
 
 use crate::feat::workflow::workflow_registry::WorkflowRegistry;
 
@@ -40,12 +40,12 @@ pub fn build_add_numbers() -> WorkflowGraph {
     let source = CodeNode::new(
         "source".to_owned(),
         vec![], // no inputs
-        vec![PortDef::string("a"), PortDef::string("b")],
+        vec![PortDef::number("a"), PortDef::number("b")],
         |_inputs, _ctx| {
             Box::pin(async move {
                 let mut out = PortValues::new();
-                out.insert("a".to_owned(), PortValue::String("3".to_owned()));
-                out.insert("b".to_owned(), PortValue::String("7".to_owned()));
+                out.insert("a".to_owned(), 3.0.into());
+                out.insert("b".to_owned(), 7.0.into());
                 Ok(out)
             })
         },
@@ -53,22 +53,18 @@ pub fn build_add_numbers() -> WorkflowGraph {
 
     let add = CodeNode::new(
         "add".to_owned(),
-        vec![PortDef::string("a"), PortDef::string("b")],
-        vec![PortDef::string("sum")],
+        vec![PortDef::number("a"), PortDef::number("b")],
+        vec![PortDef::number("sum")],
         |mut inputs, _ctx| {
             Box::pin(async move {
-                let a: i32 = inputs
-                    .take_string("a")
-                    .map_err(|_e| error_stack::Report::new(nullslop_workflow::node::NodeError))?
-                    .parse()
+                let a: f64 = inputs
+                    .take_number("a")
                     .map_err(|_e| error_stack::Report::new(nullslop_workflow::node::NodeError))?;
-                let b: i32 = inputs
-                    .take_string("b")
-                    .map_err(|_e| error_stack::Report::new(nullslop_workflow::node::NodeError))?
-                    .parse()
+                let b: f64 = inputs
+                    .take_number("b")
                     .map_err(|_e| error_stack::Report::new(nullslop_workflow::node::NodeError))?;
                 let mut out = PortValues::new();
-                out.insert("sum".to_owned(), PortValue::String((a + b).to_string()));
+                out.insert("sum".to_owned(), (a + b).into());
                 Ok(out)
             })
         },
@@ -76,15 +72,15 @@ pub fn build_add_numbers() -> WorkflowGraph {
 
     let sink = CodeNode::new(
         "sink".to_owned(),
-        vec![PortDef::string("sum")],
-        vec![PortDef::string("result")],
+        vec![PortDef::number("sum")],
+        vec![PortDef::number("result")],
         |mut inputs, _ctx| {
             Box::pin(async move {
                 let sum = inputs
-                    .take_string("sum")
+                    .take_number("sum")
                     .map_err(|_e| error_stack::Report::new(nullslop_workflow::node::NodeError))?;
                 let mut out = PortValues::new();
-                out.insert("result".to_owned(), PortValue::String(sum));
+                out.insert("result".to_owned(), sum.into());
                 Ok(out)
             })
         },

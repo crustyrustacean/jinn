@@ -495,7 +495,7 @@ mod tests {
     use super::*;
     use crate::graph::WorkflowGraphBuilder;
     use crate::node::code::CodeNode;
-    use crate::port::{PortDef, PortValue};
+    use crate::port::{PortDef, PortValue, ScalarValue};
 
     /// Helper: builds a linear A → B → C graph.
     fn linear_graph() -> crate::graph::WorkflowGraph {
@@ -505,7 +505,7 @@ mod tests {
             Box::new(CodeNode::new(
                 "a".to_owned(),
                 vec![],
-                vec![PortDef::string("out")],
+                vec![PortDef::text("out")],
                 |_inputs, _ctx| Box::pin(async { Ok(crate::port::PortValues::new()) }),
             )),
         );
@@ -513,15 +513,15 @@ mod tests {
             "b".to_owned(),
             Box::new(CodeNode::new(
                 "b".to_owned(),
-                vec![PortDef::string("in")],
-                vec![PortDef::string("out")],
+                vec![PortDef::text("in")],
+                vec![PortDef::text("out")],
                 |mut inputs, _ctx| {
                     Box::pin(async move {
                         let val = inputs
-                            .take_string("in")
+                            .take_text("in")
                             .map_err(|_e| error_stack::Report::new(crate::node::NodeError))?;
                         let mut out = crate::port::PortValues::new();
-                        out.insert("out".to_owned(), PortValue::String(val));
+                        out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text(val)));
                         Ok(out)
                     })
                 },
@@ -531,7 +531,7 @@ mod tests {
             "c".to_owned(),
             Box::new(CodeNode::new(
                 "c".to_owned(),
-                vec![PortDef::string("in")],
+                vec![PortDef::text("in")],
                 vec![],
                 |_inputs, _ctx| Box::pin(async { Ok(crate::port::PortValues::new()) }),
             )),
@@ -562,9 +562,9 @@ mod tests {
 
         // And node ports are correct.
         assert_eq!(structure.node_input_ports("a"), Some(&[][..]));
-        assert_eq!(structure.node_output_ports("a"), Some(&[PortDef::string("out")][..]));
-        assert_eq!(structure.node_input_ports("b"), Some(&[PortDef::string("in")][..]));
-        assert_eq!(structure.node_output_ports("b"), Some(&[PortDef::string("out")][..]));
+        assert_eq!(structure.node_output_ports("a"), Some(&[PortDef::text("out")][..]));
+        assert_eq!(structure.node_input_ports("b"), Some(&[PortDef::text("in")][..]));
+        assert_eq!(structure.node_output_ports("b"), Some(&[PortDef::text("out")][..]));
     }
 
     #[rstest::rstest]
@@ -740,25 +740,25 @@ mod tests {
         execution.set_status("a", NodeStatus::Completed);
         execution.set_status("b", NodeStatus::Completed);
         let mut a_out = PortValues::new();
-        a_out.insert("out".to_owned(), PortValue::String("hello".to_owned()));
+        a_out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text("hello".to_owned())));
         execution.set_node_outputs("a", a_out.clone());
         let mut b_out = PortValues::new();
-        b_out.insert("out".to_owned(), PortValue::String("world".to_owned()));
+        b_out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text("world".to_owned())));
         execution.set_node_outputs("b", b_out.clone());
         execution.set_node_inputs("b", {
             let mut pv = PortValues::new();
-            pv.insert("in".to_owned(), PortValue::String("hello".to_owned()));
+            pv.insert("in".to_owned(), PortValue::Single(ScalarValue::Text("hello".to_owned())));
             pv
         });
         execution.set_node_inputs("c", {
             let mut pv = PortValues::new();
-            pv.insert("in".to_owned(), PortValue::String("world".to_owned()));
+            pv.insert("in".to_owned(), PortValue::Single(ScalarValue::Text("world".to_owned())));
             pv
         });
 
         // Mutate a's output.
         let mut new_a_out = PortValues::new();
-        new_a_out.insert("out".to_owned(), PortValue::String("changed".to_owned()));
+        new_a_out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text("changed".to_owned())));
         execution.update_output("a", new_a_out.clone());
 
         let snap = execution.snapshot();
@@ -766,7 +766,7 @@ mod tests {
         // a's output changed but status stays Completed.
         assert_eq!(snap.status_of("a"), Some(NodeStatus::Completed));
         let a_state = snap.node_state("a").expect("a exists");
-        assert_eq!(a_state.outputs.as_ref().expect("has outputs").get("out").unwrap(), &PortValue::String("changed".to_owned()));
+        assert_eq!(a_state.outputs.as_ref().expect("has outputs").get("out").unwrap(), &PortValue::Single(ScalarValue::Text("changed".to_owned())));
 
         // b is invalidated (cleared inputs/outputs, Pending).
         assert_eq!(snap.status_of("b"), Some(NodeStatus::Pending));
@@ -788,7 +788,7 @@ mod tests {
         // Simulate: a completed with output.
         execution.set_status("a", NodeStatus::Completed);
         let mut a_out = PortValues::new();
-        a_out.insert("out".to_owned(), PortValue::String("data".to_owned()));
+        a_out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text("data".to_owned())));
         execution.set_node_outputs("a", a_out);
 
         // Invalidate from a (includes a itself).
@@ -809,7 +809,7 @@ mod tests {
         // Simulate: a completed with output.
         execution.set_status("a", NodeStatus::Completed);
         let mut a_out = PortValues::new();
-        a_out.insert("out".to_owned(), PortValue::String("hello".to_owned()));
+        a_out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text("hello".to_owned())));
         execution.set_node_outputs("a", a_out);
 
         // Seed b's inputs from a's outputs.
@@ -820,7 +820,7 @@ mod tests {
         let b_inputs = b_state.inputs.as_ref().expect("inputs seeded");
         assert_eq!(
             b_inputs.get("in"),
-            Some(&PortValue::String("hello".to_owned()))
+            Some(&PortValue::Single(ScalarValue::Text("hello".to_owned())))
         );
     }
 }

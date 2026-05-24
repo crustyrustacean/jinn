@@ -36,7 +36,7 @@ impl DelayNode {
     /// Convenience: creates a passthrough delay node with a single string port.
     #[must_use]
     pub fn passthrough(duration: Duration) -> Self {
-        Self::new(duration, vec![PortDef::string("in")])
+        Self::new(duration, vec![PortDef::text("in")])
     }
 }
 
@@ -81,7 +81,7 @@ impl WorkflowNode for DelayNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::port::PortValue;
+    use crate::port::{PortValue, ScalarValue};
     use std::time::Instant;
 
     #[tokio::test]
@@ -91,7 +91,7 @@ mod tests {
 
         // When executing the node.
         let mut inputs = PortValues::new();
-        inputs.insert("in".to_owned(), PortValue::String("data".to_owned()));
+        inputs.insert("in".to_owned(), PortValue::Single(ScalarValue::Text("data".to_owned())));
         let start = Instant::now();
         let result = node.execute(inputs, &test_ctx()).await;
 
@@ -99,7 +99,7 @@ mod tests {
         let elapsed = start.elapsed();
         #[expect(clippy::expect_used, reason = "test assertion")]
         let outputs = result.expect("delay node should succeed");
-        assert_eq!(outputs.get_string("in").unwrap(), "data");
+        assert_eq!(outputs.get_text("in").unwrap(), "data");
         assert!(
             elapsed >= Duration::from_millis(80),
             "delay was too short: {elapsed:?}"
@@ -111,20 +111,20 @@ mod tests {
         // Given a DelayNode with two ports.
         let node = DelayNode::new(
             Duration::from_millis(10),
-            vec![PortDef::string("text"), PortDef::string("label")],
+            vec![PortDef::text("text"), PortDef::text("label")],
         );
 
         // When executing with values for both ports.
         let mut inputs = PortValues::new();
-        inputs.insert("text".to_owned(), PortValue::String("hello".to_owned()));
-        inputs.insert("label".to_owned(), PortValue::String("greeting".to_owned()));
+        inputs.insert("text".to_owned(), PortValue::Single(ScalarValue::Text("hello".to_owned())));
+        inputs.insert("label".to_owned(), PortValue::Single(ScalarValue::Text("greeting".to_owned())));
         let result = node.execute(inputs, &test_ctx()).await;
 
         // Then both values are passed through.
         #[expect(clippy::expect_used, reason = "test assertion")]
         let outputs = result.expect("delay node should succeed");
-        assert_eq!(outputs.get_string("text").unwrap(), "hello");
-        assert_eq!(outputs.get_string("label").unwrap(), "greeting");
+        assert_eq!(outputs.get_text("text").unwrap(), "hello");
+        assert_eq!(outputs.get_text("label").unwrap(), "greeting");
     }
 
     /// A minimal NodeContext for tests.

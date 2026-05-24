@@ -153,27 +153,27 @@ mod tests {
             Self {
                 name,
                 inputs: vec![],
-                outputs: vec![PortDef::string("out")],
+                outputs: vec![PortDef::text("out")],
             }
         }
         fn sink(name: &'static str) -> Self {
             Self {
                 name,
-                inputs: vec![PortDef::string("in")],
+                inputs: vec![PortDef::text("in")],
                 outputs: vec![],
             }
         }
         fn passthrough(name: &'static str) -> Self {
             Self {
                 name,
-                inputs: vec![PortDef::string("in")],
-                outputs: vec![PortDef::string("out")],
+                inputs: vec![PortDef::text("in")],
+                outputs: vec![PortDef::text("out")],
             }
         }
         fn merge_sink(name: &'static str) -> Self {
             Self {
                 name,
-                inputs: vec![PortDef::string("in_1"), PortDef::string("in_2")],
+                inputs: vec![PortDef::text("in_1"), PortDef::text("in_2")],
                 outputs: vec![],
             }
         }

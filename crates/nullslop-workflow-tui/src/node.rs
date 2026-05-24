@@ -553,7 +553,7 @@ mod tests {
     use super::*;
 
     fn string_port(name: &'static str) -> PortDef {
-        PortDef::string(name)
+        PortDef::text(name)
     }
 
     fn json_port(name: &'static str) -> PortDef {

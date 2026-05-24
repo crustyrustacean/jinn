@@ -519,18 +519,18 @@ mod tests {
         }
 
         fn source(name: &'static str) -> Self {
-            Self::new(name, vec![], vec![PortDef::string("out")])
+            Self::new(name, vec![], vec![PortDef::text("out")])
         }
 
         fn sink(name: &'static str) -> Self {
-            Self::new(name, vec![PortDef::string("in")], vec![])
+            Self::new(name, vec![PortDef::text("in")], vec![])
         }
 
         fn passthrough(name: &'static str) -> Self {
             Self::new(
                 name,
-                vec![PortDef::string("in")],
-                vec![PortDef::string("out")],
+                vec![PortDef::text("in")],
+                vec![PortDef::text("out")],
             )
         }
     }
@@ -621,8 +621,8 @@ mod tests {
                 "c".to_owned(),
                 Box::new(TestNode::new(
                     "c",
-                    vec![PortDef::string("left"), PortDef::string("right")],
-                    vec![PortDef::string("out")],
+                    vec![PortDef::text("left"), PortDef::text("right")],
+                    vec![PortDef::text("out")],
                 )),
             );
 
@@ -707,7 +707,7 @@ mod tests {
 
     #[test]
     fn connect_rejects_type_mismatch() {
-        // Given a node with String output and a node with Json input.
+        // Given a node with Text output and a node with Json input.
         let mut builder = WorkflowGraphBuilder::new();
         builder
             .add_node("a".to_owned(), Box::new(TestNode::source("a")))
@@ -716,7 +716,7 @@ mod tests {
                 Box::new(TestNode::new("b", vec![PortDef::json("in")], vec![])),
             );
 
-        // When connecting String output to Json input.
+        // When connecting Text output to Json input.
         let result = builder.connect("a", "out", "b", "in");
 
         // Then it returns TypeMismatch.

@@ -70,8 +70,8 @@ pub struct NodeError;
 /// #[async_trait::async_trait]
 /// impl WorkflowNode for MyNode {
 ///     fn name(&self) -> &str { "my-node" }
-///     fn input_ports(&self) -> Vec<PortDef> { vec![PortDef::string("input")] }
-///     fn output_ports(&self) -> Vec<PortDef> { vec![PortDef::string("output")] }
+///     fn input_ports(&self) -> Vec<PortDef> { vec![PortDef::text("input")] }
+///     fn output_ports(&self) -> Vec<PortDef> { vec![PortDef::text("output")] }
 ///
 ///     async fn execute(
 ///         &self,
@@ -131,7 +131,7 @@ pub trait WorkflowNode: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::port::{PortDef, PortValue};
+    use crate::port::{PortDef, PortValue, ScalarValue};
 
     /// A minimal NodeContext for tests.
     struct TestContext;
@@ -148,11 +148,11 @@ mod tests {
         }
 
         fn input_ports(&self) -> Vec<PortDef> {
-            vec![PortDef::string("in")]
+            vec![PortDef::text("in")]
         }
 
         fn output_ports(&self) -> Vec<PortDef> {
-            vec![PortDef::string("out")]
+            vec![PortDef::text("out")]
         }
 
         async fn execute(
@@ -161,10 +161,10 @@ mod tests {
             _ctx: &dyn NodeContext,
         ) -> Result<PortValues, Report<NodeError>> {
             let value = inputs
-                .take_string("in")
+                .take_text("in")
                 .map_err(|_port_err| Report::new(NodeError))?;
             let mut output = PortValues::new();
-            output.insert("out".to_owned(), PortValue::String(value));
+            output.insert("out".to_owned(), PortValue::Single(ScalarValue::Text(value)));
             Ok(output)
         }
 
@@ -179,7 +179,7 @@ mod tests {
         let node = EchoNode;
         let ctx = TestContext;
         let mut inputs = PortValues::new();
-        inputs.insert("in".to_owned(), PortValue::String("hello".to_owned()));
+        inputs.insert("in".to_owned(), PortValue::Single(ScalarValue::Text("hello".to_owned())));
 
         // When executing the node.
         let result = node.execute(inputs, &ctx).await;
@@ -187,7 +187,7 @@ mod tests {
         // Then it returns the input as output.
         #[expect(clippy::expect_used, reason = "test assertion")]
         let outputs = result.expect("echo should succeed");
-        assert_eq!(outputs.get_string("out").unwrap(), "hello");
+        assert_eq!(outputs.get_text("out").unwrap(), "hello");
     }
 
     #[test]

@@ -35,9 +35,9 @@ fn main() {
                 "llm-call",
                 vec![],
                 vec![
-                    PortDef::string("prompt"),
+                    PortDef::text("prompt"),
                     PortDef::json("config"),
-                    PortDef::string("response"),
+                    PortDef::text("response"),
                     PortDef::json("usage"),
                 ],
             ),

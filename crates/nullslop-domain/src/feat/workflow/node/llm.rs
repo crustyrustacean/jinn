@@ -11,7 +11,7 @@
 
 use error_stack::Report;
 use nullslop_workflow::node::{NodeContext, NodeError, WorkflowNode};
-use nullslop_workflow::port::{PortDef, PortValue, PortValues};
+use nullslop_workflow::port::{PortDef, PortValue, PortValues, ScalarValue};
 
 /// A workflow node that calls the LLM.
 ///
@@ -83,12 +83,12 @@ impl WorkflowNode for LlmNode {
         if self.initial_prompt.is_some() {
             vec![] // source node — no input ports
         } else {
-            vec![PortDef::string("prompt")] // internal node
+            vec![PortDef::text("prompt")] // internal node
         }
     }
 
     fn output_ports(&self) -> Vec<PortDef> {
-        vec![PortDef::string("response")]
+        vec![PortDef::text("response")]
     }
 
     async fn execute(
@@ -100,8 +100,8 @@ impl WorkflowNode for LlmNode {
             initial.clone()
         } else {
             inputs
-                .take_string("prompt")
-                .map_err(|e| Report::new(NodeError).attach(e.to_string()))?
+                .take_text("prompt")
+                .map_err(|e: nullslop_workflow::port::PortError| Report::new(NodeError).attach(e.to_string()))?
         };
 
         let response = ctx
@@ -109,7 +109,7 @@ impl WorkflowNode for LlmNode {
             .await?;
 
         let mut output = PortValues::new();
-        output.insert("response".to_owned(), PortValue::String(response));
+        output.insert("response".to_owned(), PortValue::single(ScalarValue::Text(response)));
         Ok(output)
     }
 

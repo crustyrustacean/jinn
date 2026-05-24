@@ -29,22 +29,22 @@ fn main() {
         let mut b = WorkflowGraphBuilder::new();
         b.add_node(
             "source".to_owned(),
-            common::make_node("source", vec![], vec![PortDef::string("text")]),
+            common::make_node("source", vec![], vec![PortDef::text("text")]),
         );
         b.add_node(
             "uppercase".to_owned(),
             common::make_node(
                 "uppercase",
-                vec![PortDef::string("input")],
-                vec![PortDef::string("result")],
+                vec![PortDef::text("input")],
+                vec![PortDef::text("result")],
             ),
         );
         b.add_node(
             "reverse".to_owned(),
             common::make_node(
                 "reverse",
-                vec![PortDef::string("input")],
-                vec![PortDef::string("result")],
+                vec![PortDef::text("input")],
+                vec![PortDef::text("result")],
             ),
         );
         // Merge sink with two String input ports.
@@ -53,8 +53,8 @@ fn main() {
             common::make_node(
                 "merge",
                 vec![
-                    PortDef::string("upper_result"),
-                    PortDef::string("reverse_result"),
+                    PortDef::text("upper_result"),
+                    PortDef::text("reverse_result"),
                 ],
                 vec![],
             ),
