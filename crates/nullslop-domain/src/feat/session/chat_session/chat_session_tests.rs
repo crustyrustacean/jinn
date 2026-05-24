@@ -2487,6 +2487,98 @@ fn toggle_ignored_block_visibility_noop_for_unknown_id() {
     assert!(session.ui.shown_ignored_blocks.is_empty());
 }
 
+#[rstest::rstest]
+fn toggle_ignored_block_visibility_stops_at_pinned_entry() {
+    // Given: 3 non-ignored, 3 ignored-unpinned, 1 ignored-pinned, 3 ignored-unpinned, 2 non-ignored.
+    let mut session = ChatSessionState::new();
+    for _ in 0..3 {
+        session.push_entry(ChatEntry::user("visible"));
+    }
+    for _ in 0..3 {
+        let mut entry = ChatEntry::user("ignored");
+        entry.ignored = true;
+        session.push_entry(entry);
+    }
+    {
+        let mut entry = ChatEntry::user("ignored-pinned");
+        entry.ignored = true;
+        entry.pin_position = Some(PinPosition::Top);
+        session.push_entry(entry);
+    }
+    for _ in 0..3 {
+        let mut entry = ChatEntry::user("ignored");
+        entry.ignored = true;
+        session.push_entry(entry);
+    }
+    for _ in 0..2 {
+        session.push_entry(ChatEntry::user("visible"));
+    }
+
+    // history indices: 0-2 visible, 3-5 ignored, 6 ignored+pinned, 7-9 ignored, 10-11 visible
+    let second_sub_block_id = session.history()[7].id.clone();
+    let first_sub_block_start_id = session.history()[3].id.clone();
+
+    // When toggling an entry in the second sub-block (after the pinned entry).
+    session.toggle_ignored_block_visibility(&second_sub_block_id);
+
+    // Then the representative is the first entry of the second sub-block,
+    // not the first entry of the whole ignored region.
+    assert!(
+        session.ui.shown_ignored_blocks.contains(&second_sub_block_id),
+        "representative should be the second sub-block start (index 7)"
+    );
+    assert!(
+        !session.ui.shown_ignored_blocks.contains(&first_sub_block_start_id),
+        "representative should NOT be the first sub-block start (index 3)"
+    );
+}
+
+#[rstest::rstest]
+fn toggle_ignored_block_visibility_stops_at_pinned_entry_in_first_sub_block() {
+    // Given: 3 non-ignored, 3 ignored-unpinned, 1 ignored-pinned, 3 ignored-unpinned, 2 non-ignored.
+    let mut session = ChatSessionState::new();
+    for _ in 0..3 {
+        session.push_entry(ChatEntry::user("visible"));
+    }
+    for _ in 0..3 {
+        let mut entry = ChatEntry::user("ignored");
+        entry.ignored = true;
+        session.push_entry(entry);
+    }
+    {
+        let mut entry = ChatEntry::user("ignored-pinned");
+        entry.ignored = true;
+        entry.pin_position = Some(PinPosition::Top);
+        session.push_entry(entry);
+    }
+    for _ in 0..3 {
+        let mut entry = ChatEntry::user("ignored");
+        entry.ignored = true;
+        session.push_entry(entry);
+    }
+    for _ in 0..2 {
+        session.push_entry(ChatEntry::user("visible"));
+    }
+
+    // history indices: 0-2 visible, 3-5 ignored, 6 ignored+pinned, 7-9 ignored, 10-11 visible
+    let first_sub_block_mid_id = session.history()[4].id.clone();
+    let first_sub_block_start_id = session.history()[3].id.clone();
+    let second_sub_block_start_id = session.history()[7].id.clone();
+
+    // When toggling an entry in the first sub-block (before the pinned entry).
+    session.toggle_ignored_block_visibility(&first_sub_block_mid_id);
+
+    // Then the representative is the first entry of the first sub-block only.
+    assert!(
+        session.ui.shown_ignored_blocks.contains(&first_sub_block_start_id),
+        "representative should be the first sub-block start (index 3)"
+    );
+    assert!(
+        !session.ui.shown_ignored_blocks.contains(&second_sub_block_start_id),
+        "representative should NOT be the second sub-block start (index 7)"
+    );
+}
+
 // --- Navigation with visual items tests ---
 
 #[rstest::rstest]
