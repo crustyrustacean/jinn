@@ -175,6 +175,7 @@ mod tests {
                         },
                     ),
                     error: None,
+                    auto: false,
                 },
                 &ctx,
             )
@@ -209,6 +210,7 @@ mod tests {
                     session_id: session_id.clone(),
                     result: None,
                     error: Some("LLM call failed".to_owned()),
+                    auto: false,
                 },
                 &ctx,
             )
@@ -255,6 +257,7 @@ mod tests {
                         },
                     ),
                     error: None,
+                    auto: false,
                 },
                 &ctx,
             )
@@ -293,6 +296,7 @@ mod tests {
                     session_id: session_id.clone(),
                     result: None,
                     error: Some("LLM call failed".to_owned()),
+                    auto: false,
                 },
                 &ctx,
             )
@@ -334,6 +338,7 @@ mod tests {
                         },
                     ),
                     error: None,
+                    auto: false,
                 },
                 &ctx,
             )
@@ -381,6 +386,7 @@ mod tests {
                         },
                     ),
                     error: None,
+                    auto: false,
                 },
                 &ctx,
             )
@@ -418,6 +424,7 @@ mod tests {
                         },
                     ),
                     error: None,
+                    auto: false,
                 },
                 &ctx,
             )
