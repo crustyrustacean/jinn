@@ -1,9 +1,9 @@
 //! Default theme — parsed from the embedded `themes/default.toml` at compile time.
 
-use super::theme::{Theme, ThemeFile};
+use crate::theme::{Theme, ThemeFile};
 
 /// Embedded default theme TOML — the single source of truth.
-const DEFAULT_TOML: &str = include_str!("../../../../../themes/default.toml");
+const DEFAULT_TOML: &str = include_str!("../../../themes/default.toml");
 
 /// Returns the default theme, parsed from the embedded TOML file.
 ///

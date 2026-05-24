@@ -1968,6 +1968,7 @@ dependencies = [
  "nullslop-provider",
  "nullslop-selection-widget",
  "nullslop-testutil",
+ "nullslop-theme",
  "nullslop-workflow",
  "parking_lot",
  "rand 0.9.4",
