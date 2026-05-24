@@ -39,6 +39,8 @@ pub struct DomainNodeContext {
     /// When `WorkflowActor` receives `SessionPhaseChanged(Idle)` for a workflow
     /// session, it resolves the matching sender with the last assistant message.
     pending: Arc<Mutex<HashMap<SessionId, oneshot::Sender<String>>>>,
+    /// Current node being executed (set by engine via `set_node_name`).
+    current_node_name: Arc<Mutex<Option<String>>>,
 }
 
 impl DomainNodeContext {
@@ -48,6 +50,7 @@ impl DomainNodeContext {
             services,
             state,
             pending: Arc::new(Mutex::new(HashMap::new())),
+            current_node_name: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -104,6 +107,15 @@ impl DomainNodeContext {
             state.session.set_active(session_id.clone());
         }
 
+        // Record node→session mapping in active workflow state.
+        let node_name = self.current_node_name.lock().clone();
+        if let Some(name) = node_name {
+            let mut state = self.state.write();
+            if let Some(workflow) = state.workflow.active_mut() {
+                workflow.node_sessions.insert(name, session_id.clone());
+            }
+        }
+
         // Create oneshot channel for the response.
         let (tx, rx) = oneshot::channel();
         {
@@ -143,6 +155,14 @@ impl DomainNodeContext {
 }
 
 impl NodeContext for DomainNodeContext {
+    fn set_node_name(&self, name: &str) {
+        *self.current_node_name.lock() = Some(name.to_owned());
+    }
+
+    fn clear_node_name(&self) {
+        *self.current_node_name.lock() = None;
+    }
+
     fn send_llm_request<'a>(
         &'a self,
         user_prompt: &str,
