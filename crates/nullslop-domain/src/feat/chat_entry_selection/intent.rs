@@ -737,7 +737,7 @@ mod tests {
     #[rstest::rstest]
     fn toggle_ignored_block_expands_collapsed_block() {
         // Given a session with a collapsed ignored block selected.
-        use crate::feat::ui::chat_log::visual_item::{build_visual_items, VisualItem, PROXIMITY_COUNT};
+        use crate::feat::ui::chat_log::visual_item::{build_visual_items, VisualItem, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
 
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry::user("a"));
@@ -752,6 +752,7 @@ mod tests {
             state.active_session().history(),
             &state.active_session().ui.shown_ignored_blocks,
             PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
         );
         state.active_session_mut().set_visual_items(items.clone());
 
@@ -781,7 +782,7 @@ mod tests {
     #[rstest::rstest]
     fn toggle_ignored_block_collapses_expanded_block() {
         // Given a session with an expanded ignored block, an ignored entry selected.
-        use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+        use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
 
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry::user("a"));
@@ -809,6 +810,7 @@ mod tests {
             state.active_session().history(),
             &state.active_session().ui.shown_ignored_blocks,
             PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
         );
         state.active_session_mut().set_visual_items(items.clone());
 
