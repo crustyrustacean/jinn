@@ -7,8 +7,12 @@ use std::time::Duration;
 
 use crate::task::{BenchTask, BenchTools, VerificationReport};
 use crate::tasks::checks;
+use include_dir::Dir;
 
 const EXPECTED_MAIN_RS: &str = include_str!("edit_insert_function/expected/src/main.rs");
+
+
+static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_insert_function/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -20,7 +24,7 @@ pub fn task() -> BenchTask {
              `subtract` and `multiply` functions. Also add a call to it in main(). \
              Keep the existing formatting style.",
         ],
-        fixture_dir: Some("src/tasks/edit/edit_insert_function/fixtures"),
+        fixture_dir: Some(&FIXTURES),
         timeout: Duration::from_secs(300),
         persona: None,
         tools: BenchTools {

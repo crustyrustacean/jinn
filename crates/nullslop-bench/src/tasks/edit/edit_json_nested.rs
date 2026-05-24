@@ -7,8 +7,12 @@ use std::time::Duration;
 
 use crate::task::{BenchTask, BenchTools, VerificationReport};
 use crate::tasks::checks;
+use include_dir::Dir;
 
 const EXPECTED_CONFIG: &str = include_str!("edit_json_nested/expected/config.json");
+
+
+static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_json_nested/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -19,7 +23,7 @@ pub fn task() -> BenchTask {
              (under environments > production > services > database > connection > timeout) \
              from 30 to 60. Do not modify any other timeout values.",
         ],
-        fixture_dir: Some("src/tasks/edit/edit_json_nested/fixtures"),
+        fixture_dir: Some(&FIXTURES),
         timeout: Duration::from_secs(300),
         persona: None,
         tools: BenchTools {

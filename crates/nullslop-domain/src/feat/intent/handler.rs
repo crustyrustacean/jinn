@@ -299,6 +299,9 @@ impl IntentHandler {
             Intent::YankSelectedEntry => {
                 feat::chat_entry_selection::intent::handle_yank_selected(state)
             }
+            Intent::ChatEntryIgnoreSelected => {
+                feat::chat_entry_selection::intent::handle_ignore_selected(state)
+            }
 
             // --- Session Lifecycle ---
             Intent::SessionLifecycleSetup {
