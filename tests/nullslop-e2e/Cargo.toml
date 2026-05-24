@@ -12,7 +12,7 @@ nullslop = { path = "../.." }
 cucumber = { workspace = true }
 tokio = { workspace = true }
 nullslop-tui = { workspace = true }
-nullslop-domain = { workspace = true, features = ["which-key"] }
+nullslop-domain = { workspace = true }
 crossterm = { workspace = true }
 ratatui-which-key = { workspace = true }
 ratatui-spatial-splits = { workspace = true }
