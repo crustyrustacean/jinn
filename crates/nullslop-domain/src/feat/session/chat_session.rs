@@ -1547,10 +1547,58 @@ impl ChatSessionState {
     /// Pin an entry by ID, setting its pin position.
     ///
     /// If no entry with the given ID exists, this is a no-op.
+    /// Pin an entry by ID, setting its pin position.
+    ///
+    /// If no entry with the given ID exists, this is a no-op.
+    ///
+    /// When pinning an ignored entry inside a shown (expanded) ignored block,
+    /// the pinned entry becomes a block splitter in `build_visual_items`.
+    /// This propagates `shown_ignored_blocks` to any new forward sub-block
+    /// created by the split, keeping all entries visible.
     pub fn pin_entry(&mut self, id: &ChatEntryId, position: PinPosition) {
-        if let Some(entry) = self.core.history.iter_mut().find(|e| e.id == *id) {
-            entry.pin_position = Some(position);
+        let Some(entry) = self.core.history.iter_mut().find(|e| e.id == *id) else {
+            return;
+        };
+        let is_ignored = entry.ignored;
+        entry.pin_position = Some(position);
+
+        // Propagation: only for ignored entries inside shown blocks.
+        if !is_ignored {
+            return;
         }
+
+        let Some(idx) = self.core.history.iter().position(|e| e.id == *id) else {
+            return;
+        };
+
+        // Scan backward to find the containing block's start.
+        // Same boundary rules as `build_visual_items` and `toggle_ignored_block_visibility`.
+        let mut block_start = idx;
+        while block_start > 0
+            && self.core.history[block_start - 1].ignored
+            && self.core.history[block_start - 1].pin_position.is_none()
+        {
+            block_start -= 1;
+        }
+
+        let block_representative = self.core.history[block_start].id.clone();
+        if !self.ui.shown_ignored_blocks.contains(&block_representative) {
+            return; // Block was collapsed — nothing to propagate.
+        }
+
+        // Scan forward from the pinned entry to find the new forward sub-block.
+        let forward_start = idx + 1;
+        if forward_start >= self.core.history.len() {
+            return; // No entries after the pin.
+        }
+
+        let forward_entry = &self.core.history[forward_start];
+        if !forward_entry.ignored || forward_entry.pin_position.is_some() {
+            return; // Forward entry is not part of an ignored block.
+        }
+
+        // The forward sub-block's representative is its first entry.
+        self.ui.shown_ignored_blocks.insert(forward_entry.id.clone());
     }
 
     /// Unpin an entry by ID, clearing its pin position.
@@ -1841,8 +1889,13 @@ impl ChatSessionState {
             return;
         }
         // Scan backward to find the start of the contiguous ignored block.
+        // Must match `build_visual_items` block definition: pinned entries
+        // act as block splitters even when ignored.
         let mut block_start = idx;
-        while block_start > 0 && self.core.history[block_start - 1].ignored {
+        while block_start > 0
+            && self.core.history[block_start - 1].ignored
+            && self.core.history[block_start - 1].pin_position.is_none()
+        {
             block_start -= 1;
         }
         let block_representative = self.core.history[block_start].id.clone();
