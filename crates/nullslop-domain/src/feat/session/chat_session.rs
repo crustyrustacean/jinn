@@ -1082,6 +1082,19 @@ impl ChatSessionState {
         self.core.ephemeral.message_queue.drain()
     }
 
+    /// Pop the first `CompactionNeeded` from the queue, if present.
+    ///
+    /// Returns `true` if one was found and removed.
+    pub(in crate::feat::session) fn dequeue_compaction_needed(&mut self) -> bool {
+        self.core
+            .ephemeral
+            .message_queue
+            .remove_first_matching(|item| {
+                matches!(item, crate::feat::session::queue_item::QueueItem::CompactionNeeded)
+            })
+            .is_some()
+    }
+
     // --- Assembling ---
 
     /// Mark the session as having a prompt assembly in progress.
@@ -1176,10 +1189,13 @@ impl ChatSessionState {
     ///
     /// Soft guard: if not idle, logs a warning and returns without changing phase.
     pub fn begin_compacting(&mut self, gathered_indices: Vec<usize>) {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Idle) {
+        if !matches!(
+            self.core.ephemeral.phase,
+            SessionPhase::Idle | SessionPhase::Compacting
+        ) {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.phase,
-                "begin_compacting called while not idle — ignoring"
+                "begin_compacting called while not idle or compacting — ignoring"
             );
             return;
         }
@@ -1200,7 +1216,24 @@ impl ChatSessionState {
             );
             return;
         }
+        self.core.ephemeral.compaction_gathered_indices.clear();
         self.core.ephemeral.phase = SessionPhase::Idle;
+    }
+
+    /// Mark compaction as finished and transition to Sending phase.
+    ///
+    /// Used after successful auto-compaction to resume the turn.
+    /// The session goes `Compacting → Sending` instead of `Compacting → Idle`.
+    pub fn finish_compacting_into_sending(&mut self) {
+        if !matches!(self.core.ephemeral.phase, SessionPhase::Compacting) {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.phase,
+                "finish_compacting_into_sending called while not compacting — ignoring"
+            );
+            return;
+        }
+        self.core.ephemeral.compaction_gathered_indices.clear();
+        self.core.ephemeral.phase = SessionPhase::Sending;
     }
 
     /// Mark the session as running a lifecycle teardown script.
