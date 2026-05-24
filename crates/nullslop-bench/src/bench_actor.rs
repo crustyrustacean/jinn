@@ -316,10 +316,8 @@ impl BenchActor {
     }
 
     /// Handle `SessionPhaseChanged` — finalize result when tracked session returns to Idle.
-    #[expect(
-        clippy::unused_async,
-        reason = "called via .await from the async handle method"
-    )]
+    #[expect(clippy::unused_async, reason = "called via .await from the async handle method")]
+    #[expect(clippy::too_many_lines, reason = "linear lifecycle handler orchestrating teardown, archive, cleanup phases")]
     async fn handle_session_phase_changed(
         &mut self,
         payload: &SessionPhaseChanged,

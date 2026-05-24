@@ -54,7 +54,6 @@ impl DomainNodeContext {
     /// # Errors
     ///
     /// Returns an error if the LLM request fails or times out.
-    #[expect(clippy::missing_errors_doc, reason = "error variant is generic NodeError")]
     pub async fn send_llm_request_inner(
         &self,
         system_prompt: String,

@@ -194,6 +194,7 @@ impl Command {
 }
 
 impl std::fmt::Display for Command {
+    #[expect(clippy::too_many_lines, reason = "large match on enum variants, each arm is 1-4 lines")]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Command::SendMessage(..) => write!(f, "send message"),

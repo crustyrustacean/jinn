@@ -397,6 +397,36 @@ async fn read_child_output_and_wait(
     child.wait().await
 }
 
+/// Spawns a shell command with stdout/stderr piped and isolated process group.
+///
+/// Disconnects stdin from the controlling TTY so child processes
+/// (and their entire process tree) are removed from the kernel's
+/// TTY input fd list. Without this, child processes inherit the
+/// parent's stdin fd, and under heavy spawn pressure (e.g. cargo
+/// nextest spawning hundreds of test binaries) the kernel's TTY
+/// input buffer overflows before the event thread can drain it,
+/// causing dropped keystrokes.
+///
+/// Places the child in its own process group so that the
+/// kill-on-drop guard can terminate the entire group
+/// (child + all descendants) on cancel.
+fn spawn_shell_command(
+    shell: &str,
+    command: &str,
+    cwd: &std::path::Path,
+) -> std::io::Result<KillOnDrop> {
+    tokio::process::Command::new(shell)
+        .arg("-c")
+        .arg(command)
+        .current_dir(cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .process_group(0)
+        .spawn()
+        .map(KillOnDrop::new)
+}
+
 /// Executes the `bash` built-in tool with streaming output.
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
@@ -428,26 +458,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             }),
         );
 
-        let spawn_result = tokio::process::Command::new(&shell)
-            .arg("-c")
-            .arg(&command)
-            .current_dir(&cwd)
-            // Disconnect stdin from the controlling TTY so child processes
-            // (and their entire process tree) are removed from the kernel's
-            // TTY input fd list. Without this, child processes inherit the
-            // parent's stdin fd, and under heavy spawn pressure (e.g. cargo
-            // nextest spawning hundreds of test binaries) the kernel's TTY
-            // input buffer overflows before the event thread can drain it,
-            // causing dropped keystrokes.
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            // Place the child in its own process group so that the
-            // kill-on-drop guard can terminate the entire group
-            // (child + all descendants) on cancel.
-            .process_group(0)
-            .spawn()
-            .map(KillOnDrop::new);
+        let spawn_result = spawn_shell_command(&shell, &command, &cwd);
 
         let mut child = match spawn_result {
             Ok(child) => child,
