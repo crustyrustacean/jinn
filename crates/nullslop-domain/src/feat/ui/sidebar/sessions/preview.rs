@@ -135,6 +135,11 @@ pub fn render_session_preview_for_state(
     let sessions_height = sessions_section_content_height(state);
     let sessions_top_y = sidebar_rect.y + sidebar_rect.height.saturating_sub(sessions_height);
 
+    // Cursor position: visual row within the sessions section.
+    let scroll_offset = state.frontend.sessions_section.scroll_offset;
+    let visual_row = idx.saturating_sub(scroll_offset) as u16;
+    let cursor_y = sessions_top_y + visual_row;
+
     // Compute content line count for height estimation.
     let inner_width = {
         let popup_width = preview_width(frame_area);
@@ -143,7 +148,7 @@ pub fn render_session_preview_for_state(
     let content_lines = build_preview_lines(session, inner_width.max(1), theme, tool_max, cache);
     let line_count = content_lines.len();
 
-    let popup_rect = session_preview_popup_rect(frame_area, sessions_top_y, line_count);
+    let popup_rect = session_preview_popup_rect(frame_area, cursor_y, line_count);
 
     render_session_preview(frame, popup_rect, session, theme, tool_max, cache);
 }
@@ -373,27 +378,28 @@ fn build_preview_lines(
 /// Computes the popup rectangle for the session preview overlay.
 ///
 /// The popup is anchored to the right edge of the frame and sits just above
-/// the sessions section. Width is 60% of the frame. Height is computed from
-/// the content line count plus borders and keybinds bar, capped to fit.
+/// the cursor row in the sessions section, with a 2-row gap. Width is 60% of
+/// the frame. Height is computed from the content line count plus borders and
+/// keybinds bar, capped to fit within the available space above the cursor.
 pub fn session_preview_popup_rect(
     frame_area: Rect,
-    sessions_top_y: u16,
+    cursor_y: u16,
     content_line_count: usize,
 ) -> Rect {
     let popup_width = preview_width(frame_area);
 
     // Total height: content + footer (3) + top border (1) + bottom border (1).
     let desired_height = (content_line_count + 3 + 2) as u16;
-    // Cap to available space above the sessions section (with 1-row gap).
-    let max_height = sessions_top_y
+    // Cap to available space above the cursor (with 2-row gap).
+    let max_height = cursor_y
         .saturating_sub(frame_area.y)
-        .saturating_sub(1);
+        .saturating_sub(2);
     let popup_height = desired_height.min(max_height).max(5);
 
     // Right-align: right edge = frame right edge.
     let popup_x = frame_area.x + frame_area.width.saturating_sub(popup_width);
-    // Bottom edge = sessions_top_y + 1 (1-row gap above sessions section).
-    let popup_y = sessions_top_y.saturating_sub(popup_height + 1);
+    // Bottom edge sits 2 rows above the cursor.
+    let popup_y = cursor_y.saturating_sub(popup_height).saturating_sub(2);
 
     Rect::new(popup_x, popup_y, popup_width, popup_height)
 }
