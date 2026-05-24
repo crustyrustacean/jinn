@@ -275,6 +275,38 @@ impl WorkflowExecution {
         };
         self.snapshot.store(Arc::new(new_snapshot));
     }
+
+    /// Stores the inputs that will be fed to a node.
+    ///
+    /// Called by the engine before spawning the node task.
+    /// Atomically swaps in a new snapshot with the updated inputs.
+    pub fn set_node_inputs(&self, node_name: &str, inputs: PortValues) {
+        let current = self.snapshot.load();
+        let mut new_states = current.node_states.clone();
+        if let Some(state) = new_states.get_mut(node_name) {
+            state.inputs = Some(Arc::new(inputs));
+        }
+        self.snapshot.store(Arc::new(ExecutionSnapshot {
+            structure: Arc::clone(&current.structure),
+            node_states: new_states,
+        }));
+    }
+
+    /// Stores the outputs produced by a completed node.
+    ///
+    /// Called by the engine on successful node completion.
+    /// Atomically swaps in a new snapshot with the updated outputs.
+    pub fn set_node_outputs(&self, node_name: &str, outputs: PortValues) {
+        let current = self.snapshot.load();
+        let mut new_states = current.node_states.clone();
+        if let Some(state) = new_states.get_mut(node_name) {
+            state.outputs = Some(Arc::new(outputs));
+        }
+        self.snapshot.store(Arc::new(ExecutionSnapshot {
+            structure: Arc::clone(&current.structure),
+            node_states: new_states,
+        }));
+    }
 }
 
 /// Extracts a lightweight [`WorkflowStructure`] from a [`WorkflowGraph`].
