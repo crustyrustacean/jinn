@@ -102,11 +102,7 @@ impl Default for NodeRegistry {
 mod tests {
     use super::*;
     use crate::node::NodeContext;
-    use crate::port::{PortDef, PortValues};
-    use crate::port::PortValue;
-    use crate::port::ScalarValue;
     use error_stack::Report;
-    use std::sync::Arc;
     use std::time::Duration;
 
     /// A test context for node execution.
@@ -166,7 +162,7 @@ mod tests {
         struct StrictFactory;
         impl NodeFactory for StrictFactory {
             fn create(&self, config: serde_json::Value) -> Result<Box<dyn WorkflowNode>, Report<RegistryError>> {
-                let _name = config["name"].as_str().ok_or_else(|| {
+                let _name = config.get("name").and_then(|v| v.as_str()).ok_or_else(|| {
                     Report::new(RegistryError::CreationFailed {
                         type_name: "strict".to_owned(),
                         reason: "missing 'name' field".to_owned(),

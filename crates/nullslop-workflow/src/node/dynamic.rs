@@ -148,10 +148,10 @@ mod tests {
 
         // Then input_ports and output_ports return the declared ports.
         assert_eq!(node.input_ports().len(), 2);
-        assert_eq!(node.input_ports()[0].name, "input_a");
-        assert_eq!(node.input_ports()[1].name, "input_b");
+        assert_eq!(node.input_ports().first().map(|p| p.name.as_str()), Some("input_a"));
+        assert_eq!(node.input_ports().get(1).map(|p| p.name.as_str()), Some("input_b"));
         assert_eq!(node.output_ports().len(), 1);
-        assert_eq!(node.output_ports()[0].name, "output");
+        assert_eq!(node.output_ports().first().map(|p| p.name.as_str()), Some("output"));
     }
 
     #[test]

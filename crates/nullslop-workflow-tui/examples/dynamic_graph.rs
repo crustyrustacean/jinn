@@ -34,8 +34,9 @@ impl NodeFactory for SourceFactory {
         config: serde_json::Value,
     ) -> Result<Box<dyn WorkflowNode>, error_stack::Report<nullslop_workflow::registry::RegistryError>>
     {
-        let output = config["output"]
-            .as_str()
+        let output = config
+            .get("output")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| {
                 error_stack::Report::new(
                     nullslop_workflow::registry::RegistryError::CreationFailed {
