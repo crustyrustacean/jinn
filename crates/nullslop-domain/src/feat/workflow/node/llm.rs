@@ -87,7 +87,8 @@ impl LlmNode {
 
 #[async_trait::async_trait]
 impl WorkflowNode for LlmNode {
-    fn name(&self) -> &'static str {
+    #[allow(clippy::unnecessary_literal_bound, reason = "trait contract requires &str")]
+    fn name(&self) -> &str {
         "llm"
     }
 

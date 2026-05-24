@@ -20,8 +20,13 @@ pub mod execution;
 pub mod graph;
 pub mod node;
 pub mod port;
+pub mod registry;
 pub mod spatial_layout;
+pub mod validation;
 
 pub use engine::NodeStatus;
 pub use execution::{ExecutionSnapshot, NodePorts, NodeState, OwnedEdgeInfo, WorkflowExecution, WorkflowStructure};
 pub use graph::EdgeInfo;
+pub use node::DynamicNode;
+pub use registry::{NodeFactory, NodeRegistry, RegistryError};
+pub use validation::{ValidationDiagnostic, ValidationSeverity};

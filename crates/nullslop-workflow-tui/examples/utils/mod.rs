@@ -60,7 +60,7 @@ pub fn make_node(
 
     #[async_trait::async_trait]
     impl WorkflowNode for N {
-        fn name(&self) -> &'static str {
+        fn name(&self) -> &str {
             self.name
         }
         fn input_ports(&self) -> Vec<PortDef> {
