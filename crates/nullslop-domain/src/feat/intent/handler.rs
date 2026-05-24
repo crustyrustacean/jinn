@@ -551,17 +551,24 @@ fn handle_workflow_inspect_toggle(state: &mut AppState) -> IntentResult {
 /// Scroll the inspector popup up.
 fn handle_workflow_inspect_scroll_up(state: &mut AppState) -> IntentResult {
     state.frontend.workflow_ui.cancel_prompt = false;
-    state.frontend.workflow_ui.inspector_scroll =
-        state.frontend.workflow_ui.inspector_scroll.saturating_sub(1);
+    let base = state
+        .frontend
+        .workflow_ui
+        .inspector_scroll_rendered
+        .load(std::sync::atomic::Ordering::Relaxed);
+    state.frontend.workflow_ui.inspector_scroll = base.saturating_sub(1);
     IntentResult::empty()
 }
 
 /// Scroll the inspector popup down.
 fn handle_workflow_inspect_scroll_down(state: &mut AppState) -> IntentResult {
     state.frontend.workflow_ui.cancel_prompt = false;
-    state.frontend.workflow_ui.inspector_scroll =
-        state.frontend.workflow_ui.inspector_scroll.saturating_add(1);
-    // Clamping happens at render time based on content height.
+    let base = state
+        .frontend
+        .workflow_ui
+        .inspector_scroll_rendered
+        .load(std::sync::atomic::Ordering::Relaxed);
+    state.frontend.workflow_ui.inspector_scroll = base.saturating_add(1);
     IntentResult::empty()
 }
 
