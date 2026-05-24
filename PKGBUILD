@@ -26,7 +26,7 @@ prepare() {
 build() {
     cd "$srcdir/$pkgname-$pkgver"
     export RUSTUP_TOOLCHAIN=stable
-    CFLAGS+=" -ffat-lto-objects" cargo build --frozen --release --all-features
+    CFLAGS+=" -ffat-lto-objects" cargo build --frozen --release
     upx -9 target/release/nullslop
 }
 
