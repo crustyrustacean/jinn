@@ -7,6 +7,18 @@ use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
 use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::protocol::PinPosition;
 
+use crate::common::actor::Actor;
+use crate::common::actor::ActorContext;
+use crate::common::actor::RecordingSink;
+use crate::common::services::Services;
+use crate::common::state::State;
+use crate::common::app_state::AppState;
+use crate::feat::compaction_actor::CompactionActor;
+use crate::feat::compaction_actor::CompactionActorDeps;
+use crate::feat::compaction_actor::protocol::command::{CancelCompaction, CompactContext};
+use crate::feat::session::protocol::history_appended::HistoryAppended;
+use crate::protocol::{Command, SessionId};
+
 #[test]
 fn compaction_entry_is_compaction_returns_true() {
     let entry = ChatEntry {
@@ -298,5 +310,144 @@ fn auto_compaction_no_trigger_below_threshold() {
     assert!(
         total_tokens <= threshold_tokens,
         "total tokens ({total_tokens}) should be below threshold ({threshold_tokens})"
+    );
+}
+
+// --- Auto-compaction deduplication tests ---
+
+/// Helper: create a test actor with recording sink and a session configured
+/// with a very low token budget so compaction threshold is easy to exceed.
+///
+/// Returns `(recording_sink, actor_context, actor, session_id)`.
+fn test_actor_with_low_budget() -> (
+    std::sync::Arc<RecordingSink>,
+    ActorContext,
+    super::CompactionActor,
+    SessionId,
+) {
+    let sink = std::sync::Arc::new(RecordingSink::new());
+    let ctx = ActorContext::new("test-compaction", sink.clone());
+
+    // Build state with a tiny token budget so threshold = 0.7 * 100 = 70 tokens.
+    let mut app_state = AppState::default();
+    app_state.frontend.preferences.context_token_budget.budget = 100;
+    let state = State::new(app_state);
+    let session_id = state.read().session.active_session_id().clone();
+
+    let services = Services::new();
+    let handle = services.handle.clone();
+    let deps = CompactionActorDeps {
+        state,
+        services,
+        handle,
+    };
+    let mut ctx = ctx;
+    let actor = CompactionActor::activate(deps, &mut ctx);
+
+    (sink, ctx, actor, session_id)
+}
+
+/// Helper: count `EnqueueCompaction` commands in the recording sink.
+fn count_enqueue_compaction(commands: &[Command]) -> usize {
+    commands
+        .iter()
+        .filter(|c| matches!(c, Command::EnqueueCompaction(_)))
+        .count()
+}
+
+/// Helper: build a `HistoryAppended` payload with high token count.
+fn high_token_event(session_id: &SessionId) -> HistoryAppended {
+    HistoryAppended {
+        session_id: session_id.clone(),
+        total_estimated_tokens: 500, // well above threshold (70)
+    }
+}
+
+#[rstest::rstest]
+#[test]
+fn double_history_appended_emits_single_enqueue_compaction() {
+    // Given an actor with a low token budget.
+    let (sink, ctx, mut actor, session_id) = test_actor_with_low_budget();
+
+    let event = high_token_event(&session_id);
+
+    // When sending HistoryAppended twice (simulating tool-result + stream-completion).
+    actor.handle_history_appended(&event, &ctx);
+    actor.handle_history_appended(&event, &ctx);
+
+    // Then exactly one EnqueueCompaction was emitted.
+    let commands = sink.commands();
+    let count = count_enqueue_compaction(&commands);
+    assert_eq!(
+        count, 1,
+        "expected exactly 1 EnqueueCompaction, got {count}"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn flag_resets_after_compact_context_allows_retrigger() {
+    // Given an actor with a low token budget.
+    let (sink, ctx, mut actor, session_id) = test_actor_with_low_budget();
+
+    let event = high_token_event(&session_id);
+
+    // When triggering auto-compaction.
+    actor.handle_history_appended(&event, &ctx);
+    assert_eq!(
+        count_enqueue_compaction(&sink.commands()),
+        1,
+        "first trigger should emit one EnqueueCompaction"
+    );
+
+    // And then receiving CompactContext (simulates queue dispatching it).
+    let compact_cmd = CompactContext {
+        session_id: session_id.clone(),
+    };
+    actor.handle_compact_context(&compact_cmd, &ctx);
+
+    // And sending another HistoryAppended with tokens still above threshold.
+    sink.clear();
+    actor.handle_history_appended(&event, &ctx);
+
+    // Then a new EnqueueCompaction is emitted (flag was reset).
+    let count = count_enqueue_compaction(&sink.commands());
+    assert_eq!(
+        count, 1,
+        "expected 1 EnqueueCompaction after reset, got {count}"
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn flag_resets_after_cancel_compaction_allows_retrigger() {
+    // Given an actor with a low token budget.
+    let (sink, ctx, mut actor, session_id) = test_actor_with_low_budget();
+
+    let event = high_token_event(&session_id);
+
+    // When triggering auto-compaction.
+    actor.handle_history_appended(&event, &ctx);
+    assert_eq!(
+        count_enqueue_compaction(&sink.commands()),
+        1,
+        "first trigger should emit one EnqueueCompaction"
+    );
+
+    // And then cancelling compaction.
+    let cancel_cmd = CancelCompaction {
+        session_id: session_id.clone(),
+    };
+    actor.handle_cancel_compaction(&cancel_cmd);
+
+    // And sending another HistoryAppended with tokens still above threshold.
+    sink.clear();
+    actor.handle_history_appended(&event, &ctx);
+
+    // Then a new EnqueueCompaction is emitted (flag was reset).
+    let count = count_enqueue_compaction(&sink.commands());
+    assert_eq!(
+        count, 1,
+        "expected 1 EnqueueCompaction after cancel reset, got {count}"
     );
 }
