@@ -78,6 +78,8 @@ fn initialize_tracking(
     snapshot: &crate::execution::ExecutionSnapshot,
     execution: &Arc<WorkflowExecution>,
     node_map: &HashMap<String, Box<dyn WorkflowNode>>,
+    inner: &petgraph::graph::DiGraph<crate::graph::NodeData, crate::graph::EdgeData>,
+    name_to_index: &HashMap<String, petgraph::graph::NodeIndex>,
 ) -> (
     HashMap<String, NodeStatus>,
     HashMap<String, PortValues>,
@@ -89,7 +91,7 @@ fn initialize_tracking(
     let mut pending_count: HashMap<String, usize> = HashMap::new();
     let mut outputs: HashMap<String, PortValues> = HashMap::new();
 
-    for (name, node) in node_map {
+    for name in node_map.keys() {
         let current_status = snapshot
             .status_of(name)
             .unwrap_or(NodeStatus::Pending);
@@ -105,7 +107,14 @@ fn initialize_tracking(
         statuses.insert(name.clone(), status);
 
         // Seed pending inputs from cached snapshot data.
-        let input_port_count = node.input_ports().len();
+        // Count actual incoming edges — each edge delivers one value.
+        // This is the true "waiting for" count: optional ports that are
+        // connected still need to receive their data before the node runs.
+        let idx = name_to_index[name];
+        let incoming_edge_count = inner
+            .edges_directed(idx, petgraph::Direction::Incoming)
+            .count();
+        let input_port_count = incoming_edge_count;
         let cached_inputs = snapshot
             .node_state(name)
             .and_then(|s| s.inputs.as_ref())
@@ -310,7 +319,7 @@ pub async fn run_pending(
 
     // Initialize tracking.
     let (mut statuses, mut pending_inputs, mut pending_count, mut outputs) =
-        initialize_tracking(&snapshot, &execution, &node_map);
+        initialize_tracking(&snapshot, &execution, &node_map, inner, name_to_index);
 
     // Channel for completion messages.
     let (tx, mut rx) = tokio::sync::mpsc::channel::<CompletionMsg>(64);
@@ -1206,6 +1215,140 @@ mod tests {
         assert_eq!(
             result2.outputs["c"].get_text("out").unwrap(),
             "HELLO-world"
+        );
+    }
+
+    #[tokio::test]
+    async fn optional_port_executes_when_only_required_inputs_satisfied() {
+        // Given a node with one required and one optional input port.
+        // The node concatenates both inputs (or uses empty string for missing optional).
+        struct OptionalNode;
+
+        #[async_trait::async_trait]
+        impl WorkflowNode for OptionalNode {
+            fn name(&self) -> &'static str {
+                "optional"
+            }
+            fn input_ports(&self) -> Vec<PortDef> {
+                vec![
+                    PortDef::text("required"),
+                    PortDef::text("extra").optional(),
+                ]
+            }
+            fn output_ports(&self) -> Vec<PortDef> {
+                vec![PortDef::text("out")]
+            }
+            async fn execute(
+                &self,
+                mut inputs: PortValues,
+                _ctx: &dyn NodeContext,
+            ) -> Result<PortValues, Report<NodeError>> {
+                let required = inputs
+                    .take_text("required")
+                    .map_err(|_e| Report::new(NodeError))?;
+                let extra = inputs
+                    .get_text("extra")
+                    .map(str::to_owned)
+                    .unwrap_or_default();
+                let mut out = PortValues::new();
+                out.insert(
+                    "out".to_owned(),
+                    PortValue::Single(ScalarValue::Text(format!("{required}+{extra}"))),
+                );
+                Ok(out)
+            }
+            fn clone_box(&self) -> Box<dyn WorkflowNode> {
+                Box::new(OptionalNode)
+            }
+        }
+
+        let ctx = Arc::new(TestContext);
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node("src".to_owned(), source_node("hello"))
+            .add_node("opt".to_owned(), Box::new(OptionalNode));
+
+        // Only connect the required port — optional port is disconnected.
+        builder.connect("src", "out", "opt", "required").expect("src→opt");
+
+        let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
+
+        // When executing.
+        let result = execute(execution, ctx).await.expect("execute");
+
+        // Then the node executed successfully with only the required input.
+        assert_eq!(status(&result, "opt"), NodeStatus::Completed);
+        assert_eq!(
+            outputs(&result, "opt").get_text("out").unwrap(),
+            "hello+"
+        );
+    }
+
+    #[tokio::test]
+    async fn optional_port_receives_data_when_connected() {
+        // Given a node with one required and one optional input port.
+        struct OptionalNode;
+
+        #[async_trait::async_trait]
+        impl WorkflowNode for OptionalNode {
+            fn name(&self) -> &'static str {
+                "optional"
+            }
+            fn input_ports(&self) -> Vec<PortDef> {
+                vec![
+                    PortDef::text("required"),
+                    PortDef::text("extra").optional(),
+                ]
+            }
+            fn output_ports(&self) -> Vec<PortDef> {
+                vec![PortDef::text("out")]
+            }
+            async fn execute(
+                &self,
+                mut inputs: PortValues,
+                _ctx: &dyn NodeContext,
+            ) -> Result<PortValues, Report<NodeError>> {
+                let required = inputs
+                    .take_text("required")
+                    .map_err(|_e| Report::new(NodeError))?;
+                let extra = inputs
+                    .take_text("extra")
+                    .map_err(|_e| Report::new(NodeError))?;
+                let mut out = PortValues::new();
+                out.insert(
+                    "out".to_owned(),
+                    PortValue::Single(ScalarValue::Text(format!("{required}+{extra}"))),
+                );
+                Ok(out)
+            }
+            fn clone_box(&self) -> Box<dyn WorkflowNode> {
+                Box::new(OptionalNode)
+            }
+        }
+
+        let ctx = Arc::new(TestContext);
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node("src1".to_owned(), source_node("hello"))
+            .add_node("src2".to_owned(), source_node("world"))
+            .add_node("opt".to_owned(), Box::new(OptionalNode));
+
+        // Connect both required and optional ports.
+        builder.connect("src1", "out", "opt", "required").expect("src1→opt");
+        builder.connect("src2", "out", "opt", "extra").expect("src2→opt");
+
+        let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
+
+        // When executing.
+        let result = execute(execution, ctx).await.expect("execute");
+
+        // Then the node received both inputs.
+        assert_eq!(status(&result, "opt"), NodeStatus::Completed);
+        assert_eq!(
+            outputs(&result, "opt").get_text("out").unwrap(),
+            "hello+world"
         );
     }
 }
