@@ -6,6 +6,9 @@
 
 use std::collections::HashMap;
 
+use globset::GlobBuilder;
+use error_stack::ResultExt;
+
 use crate::task::BenchTask;
 use crate::tasks;
 
@@ -21,18 +24,37 @@ pub struct BenchPlan {
     pub task_lookup: HashMap<String, BenchTask>,
 }
 
+/// Returns the sorted list of all available task names.
+///
+/// Useful for help text: `Available tasks: edit-*, fix-*, redirect-*, hello-world, …`.
+pub fn list_task_names() -> Vec<&'static str> {
+    let mut names: Vec<&'static str> = tasks::bench_tasks().iter().map(|t| t.name).collect();
+    names.sort_unstable();
+    names
+}
+
 /// Builds a [`BenchPlan`] from CLI arguments.
 ///
-/// Filters tasks if `task_names` is non-empty; otherwise includes all tasks.
-/// Computes the cartesian product of models × tasks (one pair per task per model).
-pub fn build_plan(models: &[String], task_names: &[String]) -> BenchPlan {
+/// Each element of `task_patterns` is treated as a glob pattern (e.g. `"edit-*"`,
+/// `"*-broken-*"`, `"hello-world"`). A bare name with no glob characters matches
+/// exactly one task. If `task_patterns` is empty, all tasks are included.
+/// Computes the cartesian product of tasks × models (one pair per task per model).
+///
+/// # Errors
+///
+/// Returns an error if any glob pattern is invalid.
+pub fn build_plan(
+    models: &[String],
+    task_patterns: &[String],
+) -> Result<BenchPlan, error_stack::Report<globset::Error>> {
     let all_tasks = tasks::bench_tasks();
-    let filtered: Vec<&BenchTask> = if task_names.is_empty() {
+    let filtered: Vec<&BenchTask> = if task_patterns.is_empty() {
         all_tasks.iter().collect()
     } else {
+        let matchers = compile_patterns(task_patterns)?;
         all_tasks
             .iter()
-            .filter(|t| task_names.contains(&t.name.to_owned()))
+            .filter(|t| matchers.iter().any(|m| m.is_match(t.name)))
             .collect()
     };
 
@@ -49,7 +71,23 @@ pub fn build_plan(models: &[String], task_names: &[String]) -> BenchPlan {
         }
     }
 
-    BenchPlan { pairs, task_lookup }
+    Ok(BenchPlan { pairs, task_lookup })
+}
+
+/// Compiles glob patterns into matchers.
+fn compile_patterns(
+    patterns: &[String],
+) -> Result<Vec<globset::GlobMatcher>, error_stack::Report<globset::Error>> {
+    patterns
+        .iter()
+        .map(|p| {
+            GlobBuilder::new(p)
+                .literal_separator(true)
+                .build()
+                .attach(p.clone())
+                .map(|g| g.compile_matcher())
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -65,7 +103,7 @@ mod tests {
         let task_names = vec!["hello-world".to_owned()];
 
         // When building the plan.
-        let plan = build_plan(&models, &task_names);
+        let plan = build_plan(&models, &task_names).expect("plan");
 
         // Then the plan has 2 pairs.
         assert_eq!(plan.pairs.len(), 2);
@@ -86,7 +124,7 @@ mod tests {
         let task_names: Vec<String> = vec![];
 
         // When building the plan.
-        let plan = build_plan(&models, &task_names);
+        let plan = build_plan(&models, &task_names).expect("plan");
 
         // Then all tasks are included (one pair per task).
         assert!(plan.pairs.len() > 1);
@@ -99,7 +137,7 @@ mod tests {
         let task_names = vec!["hello-world".to_owned()];
 
         // When building the plan.
-        let plan = build_plan(&models, &task_names);
+        let plan = build_plan(&models, &task_names).expect("plan");
 
         // Then only that task appears.
         assert_eq!(plan.pairs.len(), 1);
@@ -113,7 +151,7 @@ mod tests {
         let task_names = vec!["hello-world".to_owned()];
 
         // When building the plan.
-        let plan = build_plan(&models, &task_names);
+        let plan = build_plan(&models, &task_names).expect("plan");
 
         // Then the task lookup has the definition.
         assert!(plan.task_lookup.contains_key("hello-world"));
@@ -128,7 +166,7 @@ mod tests {
         let task_names = vec!["nonexistent-task".to_owned()];
 
         // When building the plan.
-        let plan = build_plan(&models, &task_names);
+        let plan = build_plan(&models, &task_names).expect("plan");
 
         // Then no pairs are produced.
         assert!(plan.pairs.is_empty());
@@ -141,7 +179,7 @@ mod tests {
         let task_names = vec!["hello-world".to_owned(), "json-parser".to_owned()];
 
         // When building the plan.
-        let plan = build_plan(&models, &task_names);
+        let plan = build_plan(&models, &task_names).expect("plan");
 
         // Then the plan has 4 pairs (2 models × 2 tasks).
         assert_eq!(plan.pairs.len(), 4);
@@ -152,5 +190,62 @@ mod tests {
         assert_eq!(plan.pairs[2].0, "json-parser");
         assert_eq!(plan.pairs[2].1, "model-a");
         assert_eq!(plan.pairs[3].1, "model-b");
+    }
+
+    #[test]
+    fn build_plan_glob_matches_prefix() {
+        // Given a glob filter for all edit tasks.
+        let models = vec!["model-a".to_owned()];
+        let task_names = vec!["edit-*".to_owned()];
+
+        // When building the plan.
+        let plan = build_plan(&models, &task_names).expect("plan");
+
+        // Then only edit tasks appear.
+        assert!(plan.pairs.len() > 5);
+        assert!(plan.pairs.iter().all(|(name, _)| name.starts_with("edit-")));
+    }
+
+    #[test]
+    fn build_plan_glob_matches_infix() {
+        // Given a glob filter for broken tasks.
+        let models = vec!["model-a".to_owned()];
+        let task_names = vec!["*-broken-*".to_owned()];
+
+        // When building the plan.
+        let plan = build_plan(&models, &task_names).expect("plan");
+
+        // Then broken tasks appear (fix-syntax-broken-rust, fix-syntax-broken-python).
+        assert_eq!(plan.pairs.len(), 2);
+        assert!(plan
+            .pairs
+            .iter()
+            .all(|(name, _)| name.contains("-broken-")));
+    }
+
+    #[test]
+    fn build_plan_multiple_globs_union() {
+        // Given two glob patterns.
+        let models = vec!["model-a".to_owned()];
+        let task_names = vec!["hello-world".to_owned(), "edit-*".to_owned()];
+
+        // When building the plan.
+        let plan = build_plan(&models, &task_names).expect("plan");
+
+        // Then all edit tasks + hello-world appear.
+        let names: Vec<&str> = plan.pairs.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(names.contains(&"hello-world"));
+        assert!(names.iter().all(|n| n.starts_with("edit-") || *n == "hello-world"));
+    }
+
+    #[test]
+    fn list_task_names_returns_sorted_names() {
+        let names = list_task_names();
+        assert!(!names.is_empty());
+        assert_eq!(names, {
+            let mut sorted = names.clone();
+            sorted.sort_unstable();
+            sorted
+        });
     }
 }

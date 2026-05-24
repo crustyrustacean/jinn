@@ -7,8 +7,12 @@ use std::time::Duration;
 
 use crate::task::{BenchTask, BenchTools, VerificationReport};
 use crate::tasks::checks;
+use include_dir::Dir;
 
 const EXPECTED_MAIN_RS: &str = include_str!("edit_large_file_surgical/expected/main.rs");
+
+
+static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_large_file_surgical/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -20,7 +24,7 @@ pub fn task() -> BenchTask {
              near the middle of the file. Only change that specific occurrence — there \
              are other uses of 1024 in the file that should not be modified.",
         ],
-        fixture_dir: Some("src/tasks/edit/edit_large_file_surgical/fixtures"),
+        fixture_dir: Some(&FIXTURES),
         timeout: Duration::from_secs(300),
         persona: None,
         tools: BenchTools {
