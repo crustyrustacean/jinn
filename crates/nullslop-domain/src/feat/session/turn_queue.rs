@@ -79,7 +79,7 @@ impl TurnQueue {
         &mut self,
         predicate: impl Fn(&QueueItem) -> bool,
     ) -> Option<QueueItem> {
-        let idx = self.inner.iter().position(|item| predicate(item))?;
+        let idx = self.inner.iter().position(predicate)?;
         Some(self.inner.remove(idx).expect("index was just found"))
     }
 }

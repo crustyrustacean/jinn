@@ -177,12 +177,12 @@ impl SessionPersistenceActor {
 
         // If we transitioned directly to Compacting, emit CompactContext to kick off
         // the compaction actor.
-        if should_emit_compact_context {
-            if let Err(e) = ctx.send_command(Command::CompactContext(CompactContext {
+        if should_emit_compact_context
+            && let Err(e) = ctx.send_command(Command::CompactContext(CompactContext {
                 session_id: event.session_id.clone(),
-            })) {
-                tracing::warn!(err = ?e, "failed to emit CompactContext after soft cancel");
-            }
+            }))
+        {
+            tracing::warn!(err = ?e, "failed to emit CompactContext after soft cancel");
         }
 
         // Persist session after stream finishes (not on cancel).
