@@ -65,7 +65,7 @@ impl DomainNodeContext {
         user_prompt: String,
         system_prompt: Option<String>,
         tool_schemas: Vec<ToolSchema>,
-        _provider_id: Option<String>,
+        provider_id: Option<String>,
     ) -> Result<String, Report<NodeError>> {
         // Build assembly overrides from the node's configuration.
         let tool_definitions = if tool_schemas.is_empty() {
@@ -89,7 +89,7 @@ impl DomainNodeContext {
         // Resolve provider: explicit node config takes priority, otherwise
         // inherit the active session's model so the LLM actor can create
         // a per-request factory via the provider registry.
-        let model = _provider_id.unwrap_or_else(|| {
+        let model = provider_id.unwrap_or_else(|| {
             let state = self.state.read();
             state.active_session().profile().model.clone()
         });
