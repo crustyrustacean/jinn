@@ -248,6 +248,29 @@ impl CompactionActor {
     }
 }
 
+/// Adjust the token-based cut index forward to the next valid tool-chain boundary.
+///
+/// The compaction cut point must not split a tool call chain
+/// (ToolCall/ToolResult entries, or an Assistant that responds to tool use).
+/// Walking forward to the next `User` entry (turn boundary) or the end of
+/// history ensures the kept entries form a structurally valid LLM message sequence.
+///
+/// Returns the adjusted cut index (>= `cut_index`, <= `history.len()`).
+fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize {
+    if cut_index >= history.len() {
+        return cut_index;
+    }
+
+    if matches!(history[cut_index].kind, ChatEntryKind::User { .. }) {
+        return cut_index;
+    }
+
+    history[cut_index..]
+        .iter()
+        .position(|entry| matches!(entry.kind, ChatEntryKind::User { .. }))
+        .map_or(history.len(), |offset| cut_index + offset)
+}
+
 /// Perform the compaction algorithm as a free async function.
 ///
 /// This runs inside a spawned task so the actor is free to process
@@ -306,6 +329,8 @@ async fn perform_compaction(
                 break;
             }
         }
+
+        let cut_index = adjust_cut_to_boundary(history, cut_index);
 
         // Gather entries from start to cut point, excluding System and Compaction.
         let mut gathered_indices: Vec<usize> = Vec::new();
