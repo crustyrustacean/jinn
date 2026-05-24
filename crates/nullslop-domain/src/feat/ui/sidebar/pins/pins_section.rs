@@ -226,7 +226,7 @@ pub fn handle_pins_pin_cycle(state: &mut AppState) -> IntentResult {
 /// When a pinned entry is selected in the sidebar, this sets the chat log's
 /// `selected_entry_index` to the history index of that pinned entry so the
 /// renderer scrolls to show it.
-fn sync_chat_log_cursor(state: &mut AppState) {
+pub(crate) fn sync_chat_log_cursor(state: &mut AppState) {
     let Some(pinned_id) = state.frontend.pins.selected_id().cloned() else {
         return;
     };
