@@ -545,6 +545,27 @@ impl ChatSessionState {
         }
     }
 
+    /// Toggle the `ignored` flag on the currently selected entry.
+    ///
+    /// If the entry is ignored, it becomes un-ignored, and vice versa.
+    /// Does nothing if no entry is selected.
+    pub fn toggle_entry_ignored(&mut self) {
+        if let Some(idx) = self.selected_entry_index() {
+            let items = self.visual_items().clone();
+            let hist_idx = if items.is_empty() {
+                idx
+            } else {
+                match items.get(idx) {
+                    Some(VisualItem::Entry(h)) => *h,
+                    _ => return, // collapsed block or invalid
+                }
+            };
+            if let Some(entry) = self.core.history.get_mut(hist_idx) {
+                entry.ignored = !entry.ignored;
+            }
+        }
+    }
+
     /// Whether this session has no history entries.
     ///
     /// A session is "empty" when it has never had any entries pushed —
