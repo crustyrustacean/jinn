@@ -225,11 +225,12 @@ impl WorkflowExecution {
         let node_states = structure
             .node_names()
             .map(|name| {
+                let config = graph.node_config(name).map(Arc::new);
                 (
                     name.to_owned(),
                     NodeState {
                         status: NodeStatus::Pending,
-                        config: None,
+                        config,
                         inputs: None,
                         outputs: None,
                     },

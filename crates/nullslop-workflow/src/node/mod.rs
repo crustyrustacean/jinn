@@ -117,6 +117,15 @@ pub trait WorkflowNode: Send + Sync {
         inputs: PortValues,
         ctx: &dyn NodeContext,
     ) -> Result<PortValues, Report<NodeError>>;
+
+    /// Returns the node's static configuration for display and inspection.
+    ///
+    /// Override to expose node parameters (URLs, file paths, prompts, etc.).
+    /// Captured once at construction time; never changes during execution.
+    /// Returns `None` by default.
+    fn config(&self) -> Option<serde_json::Value> {
+        None
+    }
 }
 
 #[cfg(test)]
