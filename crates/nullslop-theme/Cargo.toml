@@ -1,0 +1,33 @@
+[package]
+name = "nullslop-theme"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ratatui = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+anstyle = { workspace = true }
+anstyle-lossy = { workspace = true }
+wherror = { workspace = true }
+error-stack = { workspace = true }
+nullslop-selection-widget = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+tempfile = { workspace = true }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+result_large_err = "allow"
+field_scoped_visibility_modifiers = "allow"
+module_inception = "allow"
+must_use_candidate = "allow"
+missing_docs_in_private_items = "allow"
+doc_markdown = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+return_self_not_must_use = "allow"
+single_match = "allow"
+struct_excessive_bools = "allow"

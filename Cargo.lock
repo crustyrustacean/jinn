@@ -1968,6 +1968,7 @@ dependencies = [
  "nullslop-provider",
  "nullslop-selection-widget",
  "nullslop-testutil",
+ "nullslop-theme",
  "nullslop-workflow",
  "parking_lot",
  "rand 0.9.4",
@@ -2057,6 +2058,22 @@ name = "nullslop-testutil"
 version = "0.1.0"
 dependencies = [
  "ratatui",
+]
+
+[[package]]
+name = "nullslop-theme"
+version = "0.1.0"
+dependencies = [
+ "anstyle",
+ "anstyle-lossy",
+ "error-stack",
+ "nullslop-selection-widget",
+ "ratatui",
+ "rstest",
+ "serde",
+ "tempfile",
+ "toml",
+ "wherror",
 ]
 
 [[package]]

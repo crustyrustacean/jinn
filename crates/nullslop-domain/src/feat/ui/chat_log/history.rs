@@ -39,7 +39,6 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
-use ratatui_markdown::RichTextTheme;
 use ratatui_markdown::theme::Generation;
 
 use super::line_count_cache::EntryLineCache;
@@ -96,7 +95,7 @@ impl UiElement<AppState> for ChatLogElement {
         let mut render = HistoryRender::new(state, area);
         render.compute_visual_items();
         render.build_tool_result_map();
-        render.compute_line_ranges(&mut self.line_cache, state.frontend.theme.generation());
+        render.compute_line_ranges(&mut self.line_cache, Generation(1));
         render.compute_scroll();
 
         {
