@@ -7,9 +7,13 @@ use std::time::Duration;
 
 use crate::task::{BenchTask, BenchTools, VerificationReport};
 use crate::tasks::checks;
+use include_dir::Dir;
 
 const EXPECTED_LIB_RS: &str = include_str!("edit_multi_file_refactor/expected/src/lib.rs");
 const EXPECTED_MAIN_RS: &str = include_str!("edit_multi_file_refactor/expected/src/main.rs");
+
+
+static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_multi_file_refactor/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -20,7 +24,7 @@ pub fn task() -> BenchTask {
              src/lib.rs (where it's defined) and src/main.rs (where it's called). \
              Do not change anything else.",
         ],
-        fixture_dir: Some("src/tasks/edit/edit_multi_file_refactor/fixtures"),
+        fixture_dir: Some(&FIXTURES),
         timeout: Duration::from_secs(300),
         persona: None,
         tools: BenchTools {
