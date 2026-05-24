@@ -71,6 +71,24 @@ impl std::fmt::Display for PinPosition {
     }
 }
 
+/// User-controlled override for whether an entry is included in LLM context.
+///
+/// Tri-state that replaces the old `ignored: bool` field, supporting both
+/// inclusion and exclusion overrides. The `x` key toggles between `Default`
+/// and the opposite of the kind's default behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextOverride {
+    /// Follow the entry kind's default inclusion rule.
+    #[default]
+    Default,
+    /// User has explicitly forced this entry into the LLM context.
+    ForcedInclude,
+    /// User has explicitly forced this entry out of the LLM context
+    /// (replaces old `ignored: true`).
+    ForcedExclude,
+}
+
 /// A single entry in the chat history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatEntry {
@@ -461,6 +479,26 @@ impl ChatEntry {
     /// Whether this entry is pinned to the context.
     pub fn is_pinned(&self) -> bool {
         self.pin_position.is_some()
+    }
+
+    /// Whether this entry will be included in the assembled LLM prompt.
+    ///
+    /// Single source of truth. All consumers (assembly, gutter, minimap,
+    /// token estimator, visual items) must use this method.
+    ///
+    /// Priority: pin > ignored (compaction) > kind default.
+    ///
+    /// During the transition from `ignored: bool` to `context_override: ContextOverride`,
+    /// this method reads the `ignored` field. Phase 2 will replace the field.
+    #[must_use]
+    pub fn is_in_context(&self) -> bool {
+        if self.is_pinned() {
+            return true;
+        }
+        if self.ignored {
+            return false;
+        }
+        self.kind.is_included_by_default()
     }
 
     /// Whether this entry kind can be pinned to the context.
@@ -968,3 +1006,26 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
 }
 
 impl Eq for ChatEntryKind {}
+
+impl ChatEntryKind {
+    /// Whether this entry kind is included in LLM context by default
+    /// (before considering pin or user override).
+    ///
+    /// Kinds included by default: User, Assistant, Error, ToolCall, ToolResult,
+    /// Skill, Compaction.
+    ///
+    /// Kinds excluded by default: Thinking, Transient, System, Actor.
+    #[must_use]
+    pub fn is_included_by_default(&self) -> bool {
+        matches!(
+            self,
+            ChatEntryKind::User { .. }
+                | ChatEntryKind::Assistant(..)
+                | ChatEntryKind::Error(..)
+                | ChatEntryKind::ToolCall { .. }
+                | ChatEntryKind::ToolResult { .. }
+                | ChatEntryKind::Skill { .. }
+                | ChatEntryKind::Compaction { .. }
+        )
+    }
+}
