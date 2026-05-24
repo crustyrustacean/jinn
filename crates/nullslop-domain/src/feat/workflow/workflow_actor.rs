@@ -12,7 +12,7 @@ use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::provider::protocol::event::StreamCompleted;
 use crate::feat::workflow::domain_node_context::DomainNodeContext;
-use crate::feat::workflow::protocol::command::{CancelWorkflow, StartWorkflow};
+use crate::feat::workflow::protocol::command::{CancelWorkflow, RerunFromNode, StartWorkflow};
 use crate::feat::workflow::protocol::event::{WorkflowCompleted, WorkflowStarted};
 use crate::feat::workflow::workflow_registry::WorkflowRegistry;
 use crate::feat::workflow::workflow_state::WorkflowState;
@@ -48,6 +48,7 @@ impl Actor for WorkflowActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<StartWorkflow>();
         ctx.subscribe_command::<CancelWorkflow>();
+        ctx.subscribe_command::<RerunFromNode>();
         ctx.subscribe_event::<StreamCompleted>();
 
         ctx.set_description("Manages workflow execution lifecycle");
@@ -81,6 +82,9 @@ impl WorkflowActor {
             }
             Command::CancelWorkflow(payload) => {
                 self.handle_cancel_workflow(payload);
+            }
+            Command::RerunFromNode(payload) => {
+                self.handle_rerun_from_node(payload, ctx);
             }
             // Commands NOT subscribed to — these should not arrive.
             _ => {}
@@ -196,5 +200,95 @@ impl WorkflowActor {
     fn handle_stream_completed(&mut self, payload: &StreamCompleted) {
         let response = payload.assistant_content.clone().unwrap_or_default();
         self.ctx.resolve_completed(&payload.session_id, response);
+    }
+
+    /// Handle a `RerunFromNode` command.
+    ///
+    /// Spawns `run_pending()` on the existing execution with a fresh
+    /// cancellation token. The intent handler has already called
+    /// `invalidate_from()` and `seed_inputs()` before sending this command.
+    fn handle_rerun_from_node(&mut self, payload: &RerunFromNode, ctx: &ActorContext) {
+        let workflow_id = payload.workflow_id.clone();
+        let node_name = payload.node_name.clone();
+
+        let execution = {
+            let guard = self.state.read();
+            guard
+                .workflow
+                .get(&workflow_id)
+                .map(|w| w.execution.clone())
+        };
+        let Some(execution) = execution else {
+            tracing::warn!(id = %workflow_id, "workflow not found for rerun");
+            return;
+        };
+
+        let cancel = {
+            let guard = self.state.read();
+            guard
+                .workflow
+                .get(&workflow_id)
+                .map(|w| w.cancel.clone())
+        };
+        let Some(cancel) = cancel else {
+            tracing::warn!(id = %workflow_id, "workflow cancel token not found for rerun");
+            return;
+        };
+
+        let domain_ctx = self.ctx.clone();
+        let state = self.state.clone();
+        let ctx_sink = ctx.sink().clone();
+
+        tracing::info!(
+            id = %workflow_id,
+            node = %node_name,
+            "re-running workflow from node"
+        );
+
+        tokio::spawn(async move {
+            let result = nullslop_workflow::engine::run_pending(
+                execution,
+                domain_ctx.clone(),
+                cancel,
+            )
+            .await;
+
+            match result {
+                Ok(workflow_result) => {
+                    tracing::info!(id = %workflow_id, "workflow rerun completed successfully");
+
+                    if let Some(guard) = state.write().workflow.get_mut(&workflow_id) {
+                        guard.result =
+                            Some(crate::feat::workflow::workflow_state::WorkflowResult {
+                                outputs: workflow_result.outputs,
+                                success: true,
+                            });
+                    }
+
+                    let event = Event::WorkflowCompleted(WorkflowCompleted {
+                        workflow_id: workflow_id.clone(),
+                        success: true,
+                    });
+                    let _ = ctx_sink.send_event(event);
+                }
+                Err(report) => {
+                    tracing::error!(id = %workflow_id, error = %report, "workflow rerun failed");
+
+                    if let Some(guard) = state.write().workflow.get_mut(&workflow_id) {
+                        guard.result =
+                            Some(crate::feat::workflow::workflow_state::WorkflowResult {
+                                outputs: HashMap::new(),
+                                success: false,
+                            });
+                    }
+
+                    let event = Event::WorkflowCompleted(WorkflowCompleted {
+                        workflow_id: workflow_id.clone(),
+                        success: false,
+                    });
+                    let _ = ctx_sink.send_event(event);
+                }
+            }
+        });
     }
 }

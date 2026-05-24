@@ -124,7 +124,8 @@ impl ProviderActor {
             | Command::SoftCancelTurn(..)
             | Command::FinishSessionTeardown(..)
             | Command::StartWorkflow(..)
-            | Command::CancelWorkflow(..) => {}
+            | Command::CancelWorkflow(..)
+            | Command::RerunFromNode(..) => {}
         }
     }
 
