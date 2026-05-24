@@ -297,9 +297,9 @@ fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let content_height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
     let desired_height = content_height.saturating_add(3); // +2 for borders, +1 for footer
     let max_height = if has_session {
-        area.height * 80 / 100
+        (area.height * 80 / 100).saturating_add(1) // +1 for pinned footer row
     } else {
-        area.height / 2
+        (area.height / 2).saturating_add(1) // +1 for pinned footer row
     };
     let popup_height = desired_height.min(max_height).max(5);
 
