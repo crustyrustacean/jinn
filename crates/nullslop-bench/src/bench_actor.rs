@@ -230,14 +230,101 @@ impl BenchActor {
         }));
     }
 
+    /// Handle setup errors for bench sessions: record a failure row and advance.
+    fn handle_setup_error(
+        &mut self,
+        session_id: &SessionId,
+        error: &str,
+        ctx: &ActorContext,
+    ) {
+        // Check if this session has a bench lifecycle name.
+        let task_name = {
+            let state = self.state.read();
+            let Some(session) = state.session.get(session_id) else {
+                return;
+            };
+            session.lifecycle_name().map(str::to_owned)
+        };
+
+        let Some(task_name) = task_name else {
+            return;
+        };
+
+        // Only handle if it's a known bench task.
+        let Some(task) = self.task_lookup.get(&task_name) else {
+            return;
+        };
+
+        let model = {
+            let state = self.state.read();
+            state
+                .session
+                .get(session_id)
+                .map(|session| session.profile().model.clone())
+                .unwrap_or_default()
+        };
+
+        tracing::warn!(
+            session_id = %session_id,
+            task = %task_name,
+            error = %error,
+            "bench setup failed, recording failure"
+        );
+
+        let result = BenchResult {
+            name: task_name.clone(),
+            category: task.category.to_owned(),
+            model,
+            turns: 0,
+            tokens_in: 0,
+            tokens_out: 0,
+            cost: 0.0,
+            wall_time_ms: 0,
+            passed: false,
+            status: "setup-failed".to_owned(),
+        };
+
+        // Write CSV row if writer is available.
+        if let Some(ref mut writer) = self.csv_writer
+            && let Err(e) = writer.write_row(&result)
+        {
+            tracing::error!(error = %e, "failed to write CSV row");
+        }
+
+        // Push a failure chat entry.
+        let msg = format!("❌ Setup failed: {error}");
+        let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            session_id: session_id.clone(),
+            entry: ChatEntry::system(msg),
+        }));
+
+        // Advance to the next pair.
+        self.start_next_pair(ctx);
+
+        // If no more pending sessions and no more pairs, signal completion.
+        if self.pending.is_empty() {
+            let has_more = self
+                .plan
+                .as_ref()
+                .is_some_and(|p| self.current_pair_index < p.pairs.len());
+
+            if !has_more {
+                tracing::info!("all bench sessions completed, signaling quit");
+                let mut state = self.state.write();
+                state.frontend.should_quit = true;
+            }
+        }
+    }
+
     /// Handle `SessionSetupCompleted` — start tracking if this is a bench session.
     fn handle_session_setup_completed(
         &mut self,
         payload: &SessionSetupCompleted,
         ctx: &ActorContext,
     ) {
-        // Skip sessions with setup errors.
-        if payload.error.is_some() {
+        // Handle setup errors: record failure and advance to next pair.
+        if let Some(ref error) = payload.error {
+            self.handle_setup_error(&payload.session_id, error, ctx);
             return;
         }
 
@@ -616,6 +703,97 @@ mod tests {
         assert!(!actor.pending.contains_key(&session_id));
     }
 
+    #[test]
+    fn setup_failure_records_failure_csv_row() {
+        // Given a bench actor with a CSV writer and a plan with 2 tasks.
+        let plan = build_plan(
+            &["test-model".to_owned()],
+            &["hello-world".to_owned(), "json-parser".to_owned()],
+        )
+        .expect("plan");
+        let (state, session_id) = test_state_with_session();
+        let csv_dir = tempfile::TempDir::new().expect("temp dir");
+        let csv_path = csv_dir.path().join("results.csv");
+        let (sink, ctx) = test_context();
+        let mut actor = BenchActor::activate(
+            BenchActorDeps {
+                state,
+                csv_path: Some(csv_path.clone()),
+                plan: Some(plan),
+            },
+            &mut ActorContext::new("test", sink.clone()),
+        );
+        // Activate already started the first pair — index is at 1.
+        assert_eq!(actor.current_pair_index, 1);
+
+        // When SessionSetupCompleted fires with an error for a bench session.
+        actor.handle_session_setup_completed(
+            &SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: PathBuf::from("/tmp"),
+                error: Some("fixture not found".to_owned()),
+            },
+            &ctx,
+        );
+
+        // Then the session is NOT tracked (still no pending entry).
+        assert!(!actor.pending.contains_key(&session_id));
+
+        // And a CSV row with "setup-failed" was written.
+        let content = std::fs::read_to_string(&csv_path).expect("read csv");
+        let lines: Vec<&str> = content.lines().collect();
+        assert!(
+            lines.len() >= 2,
+            "expected header + at least 1 row, got: {content}"
+        );
+        assert!(
+            lines[1].contains("hello-world"),
+            "row should contain task name"
+        );
+        assert!(
+            lines[1].contains("setup-failed"),
+            "row should contain setup-failed status"
+        );
+        assert!(
+            lines[1].contains("false"),
+            "row should contain passed=false"
+        );
+
+        // And the next pair was started (index advanced).
+        assert_eq!(
+            actor.current_pair_index, 2,
+            "start_next_pair should have been called"
+        );
+    }
+
+    #[test]
+    fn setup_failure_with_no_plan_does_not_advance() {
+        // Given a bench actor with no plan.
+        let (state, session_id) = test_state_with_session();
+        let (sink, ctx) = test_context();
+        let mut actor = BenchActor::activate(
+            BenchActorDeps {
+                state,
+                csv_path: None,
+                plan: None,
+            },
+            &mut ActorContext::new("test", sink),
+        );
+
+        // When SessionSetupCompleted fires with an error for a bench session.
+        actor.handle_session_setup_completed(
+            &SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: PathBuf::from("/tmp"),
+                error: Some("fixture not found".to_owned()),
+            },
+            &ctx,
+        );
+
+        // Then no crash and the session is not tracked.
+        assert!(!actor.pending.contains_key(&session_id));
+    }
+
     #[tokio::test]
     async fn result_is_recorded_on_idle_phase_change() {
         // Given a tracked bench session.
@@ -883,7 +1061,7 @@ mod tests {
     #[test]
     fn plan_driven_actor_starts_first_pair_on_activate() {
         // Given a plan with 1 model and 1 task.
-        let plan = build_plan(&["test-model".to_owned()], &["hello-world".to_owned()]);
+        let plan = build_plan(&["test-model".to_owned()], &["hello-world".to_owned()]).expect("plan");
 
         let state = State::new(nullslop_domain::AppState::default());
         let (sink, _ctx) = test_context();
