@@ -69,26 +69,14 @@ enum CompletionMsg {
     },
 }
 
-/// Executes a validated workflow graph.
+/// Executes pending nodes in a workflow.
 ///
-/// Takes a [`WorkflowExecution`] shared reference. The execution tracks
-/// node statuses atomically — consumers can read snapshots at any time.
-/// Returns when all reachable nodes have completed or failed.
+/// A unified entry point that handles fresh execution, resume after cancellation,
+/// and re-run after invalidation. The function:
 ///
-/// # Errors
-///
-/// Returns an error if the engine encounters an internal failure.
-pub async fn execute(
-    execution: Arc<WorkflowExecution>,
-    ctx: Arc<dyn NodeContext>,
-) -> Result<WorkflowResult, Report<EngineError>> {
-    execute_with_cancel(execution, ctx, CancellationToken::new()).await
-}
-
-/// Executes a workflow with cancellation support.
-///
-/// When the token is cancelled, all running node tasks are aborted.
-/// Running nodes are marked `Failed` and pending nodes are marked `Skipped`.
+/// 1. Resets `Failed`/`Skipped` nodes to `Pending`.
+/// 2. Scans for `Pending` nodes with fully satisfied inputs.
+/// 3. Spawns them, propagates outputs via topological push.
 ///
 /// # Errors
 ///
@@ -97,7 +85,8 @@ pub async fn execute(
 /// # Panics
 ///
 /// Panics if internal invariant is violated (e.g., channel closed unexpectedly).
-pub async fn execute_with_cancel(
+#[allow(clippy::too_many_lines, reason = "main execution loop, split would harm readability")]
+pub async fn run_pending(
     execution: Arc<WorkflowExecution>,
     ctx: Arc<dyn NodeContext>,
     cancel: CancellationToken,
@@ -114,6 +103,9 @@ pub async fn execute_with_cancel(
         node_names.insert(idx, name.clone());
     }
 
+    // Read current snapshot for cached state.
+    let snapshot = execution.snapshot();
+
     // Initialize tracking.
     let mut statuses: HashMap<String, NodeStatus> = HashMap::new();
     let mut pending_inputs: HashMap<String, PortValues> = HashMap::new();
@@ -122,22 +114,73 @@ pub async fn execute_with_cancel(
     let mut handles: HashMap<String, tokio::task::JoinHandle<()>> = HashMap::new();
 
     for (name, node) in &node_map {
-        statuses.insert(name.clone(), NodeStatus::Pending);
-        pending_inputs.insert(name.clone(), PortValues::new());
+        let current_status = snapshot
+            .status_of(name)
+            .unwrap_or(NodeStatus::Pending);
+
+        // Reset Failed/Skipped to Pending for resume/re-run.
+        let status = match current_status {
+            NodeStatus::Failed | NodeStatus::Skipped => {
+                execution.set_status(name, NodeStatus::Pending);
+                NodeStatus::Pending
+            }
+            other => other,
+        };
+        statuses.insert(name.clone(), status);
+
+        // Seed pending inputs from cached snapshot data.
         let input_port_count = node.input_ports().len();
-        pending_count.insert(name.clone(), input_port_count);
+        let cached_inputs = snapshot
+            .node_state(name)
+            .and_then(|s| s.inputs.as_ref())
+            .map(|arc| (**arc).clone());
+        let cached_outputs = snapshot
+            .node_state(name)
+            .and_then(|s| s.outputs.as_ref())
+            .map(|arc| (**arc).clone());
+
+        if let Some(cached) = cached_outputs {
+            outputs.insert(name.clone(), cached);
+        }
+
+        if status == NodeStatus::Pending {
+            if let Some(cached) = cached_inputs {
+                let satisfied = cached.len();
+                pending_inputs.insert(name.clone(), cached);
+                pending_count.insert(
+                    name.clone(),
+                    input_port_count.saturating_sub(satisfied),
+                );
+            } else {
+                pending_inputs.insert(name.clone(), PortValues::new());
+                pending_count.insert(name.clone(), input_port_count);
+            }
+        } else {
+            // Not pending — still need entries for downstream propagation.
+            pending_inputs.insert(name.clone(), PortValues::new());
+            pending_count.insert(name.clone(), 0);
+        }
     }
 
     // Channel for completion messages.
     let (tx, mut rx) = tokio::sync::mpsc::channel::<CompletionMsg>(64);
 
-    // Spawn source nodes immediately (they have zero input ports).
-    for source_name in graph.sources() {
+    // Spawn any Pending node with fully satisfied inputs.
+    let spawnable: Vec<String> = pending_count
+        .iter()
+        .filter_map(|(name, &remaining)| {
+            (remaining == 0 && statuses.get(name.as_str()) == Some(&NodeStatus::Pending))
+                .then(|| name.clone())
+        })
+        .collect();
+
+    for name in spawnable {
+        let inputs = pending_inputs.remove(&name).unwrap_or_default();
         spawn_node(
-            source_name.clone(),
+            name,
             &node_map,
             &mut statuses,
-            PortValues::new(),
+            inputs,
             &ctx,
             &tx,
             &mut handles,
@@ -145,9 +188,12 @@ pub async fn execute_with_cancel(
         );
     }
 
-    // Main execution loop.
+    // Main execution loop — identical to execute_with_cancel.
     let total_nodes = node_map.len();
-    let mut completed_count = 0;
+    let mut completed_count = statuses
+        .values()
+        .filter(|s| s.is_terminal())
+        .count();
 
     loop {
         // Check if all nodes are terminal.
@@ -156,9 +202,7 @@ pub async fn execute_with_cancel(
         }
 
         // Build a future that monitors all running handles for panics.
-        // If any handle finishes without sending a message, the node panicked.
         let panic_check = async {
-            // Poll handles periodically to detect panics.
             loop {
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             }
@@ -185,11 +229,7 @@ pub async fn execute_with_cancel(
                     &execution,
                 );
             }
-            // Check for panicked tasks: any Running handle that is_finished()
-            // means it panicked (normal completions send a message first and
-            // remove the handle from the map).
             Some(panic_name) = check_panics_async(&handles, &statuses) => {
-                // Remove the handle and mark as failed.
                 if let Some(handle) = handles.remove(&panic_name) {
                     handle.abort();
                 }
@@ -197,7 +237,6 @@ pub async fn execute_with_cancel(
                 execution.set_status(&panic_name, NodeStatus::Failed);
                 completed_count += 1;
 
-                // Propagate skip to downstream.
                 let failed_idx = name_to_index[&panic_name];
                 let downstream = find_downstream(failed_idx, inner, &node_names);
                 for down_name in &downstream {
@@ -209,11 +248,9 @@ pub async fn execute_with_cancel(
                 }
             }
             () = cancel.cancelled() => {
-                // Abort all running tasks.
                 for (_, handle) in handles.drain() {
                     handle.abort();
                 }
-                // Mark running as Failed, pending as Skipped.
                 for (name, status) in &mut statuses {
                     match status {
                         NodeStatus::Running => {
@@ -234,6 +271,42 @@ pub async fn execute_with_cancel(
     }
 
     Ok(WorkflowResult { outputs, statuses })
+}
+
+/// Executes a validated workflow graph.
+///
+/// Takes a [`WorkflowExecution`] shared reference. The execution tracks
+/// node statuses atomically — consumers can read snapshots at any time.
+/// Returns when all reachable nodes have completed or failed.
+///
+/// # Errors
+///
+/// Returns an error if the engine encounters an internal failure.
+pub async fn execute(
+    execution: Arc<WorkflowExecution>,
+    ctx: Arc<dyn NodeContext>,
+) -> Result<WorkflowResult, Report<EngineError>> {
+    run_pending(execution, ctx, CancellationToken::new()).await
+}
+
+/// Executes a workflow with cancellation support.
+///
+/// When the token is cancelled, all running node tasks are aborted.
+/// Running nodes are marked `Failed` and pending nodes are marked `Skipped`.
+///
+/// # Errors
+///
+/// Returns an error if the engine encounters an internal failure.
+///
+/// # Panics
+///
+/// Panics if internal invariant is violated (e.g., channel closed unexpectedly).
+pub async fn execute_with_cancel(
+    execution: Arc<WorkflowExecution>,
+    ctx: Arc<dyn NodeContext>,
+    cancel: CancellationToken,
+) -> Result<WorkflowResult, Report<EngineError>> {
+    run_pending(execution, ctx, cancel).await
 }
 
 /// Async check: finds a Running node whose handle has finished (panicked).
@@ -409,7 +482,7 @@ fn find_downstream(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
     use crate::graph::WorkflowGraphBuilder;
@@ -971,5 +1044,84 @@ mod tests {
         assert_eq!(status(&result, "a"), NodeStatus::Completed);
         assert_eq!(status(&result, "b"), NodeStatus::Failed);
         assert_eq!(status(&result, "c"), NodeStatus::Skipped);
+    }
+
+    #[tokio::test]
+    async fn run_pending_resumes_after_cancel() {
+        // Given A → B (delay 100ms) → C.
+        let ctx = Arc::new(TestContext);
+        let cancel = CancellationToken::new();
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node("a".to_owned(), source_node("data"))
+            .add_node("b".to_owned(), delay_node(Duration::from_millis(100)))
+            .add_node("c".to_owned(), uppercase_node());
+        builder.connect("a", "out", "b", "in").expect("a→b");
+        builder.connect("b", "out", "c", "in").expect("b→c");
+        let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
+
+        // First run: cancel after A completes but before C starts.
+        let cancel_clone = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            cancel_clone.cancel();
+        });
+        let result1 = execute_with_cancel(execution.clone(), ctx.clone(), cancel)
+            .await
+            .expect("execute");
+        assert_eq!(status(&result1, "a"), NodeStatus::Completed);
+        // B or C could be Failed/Skipped depending on timing.
+        assert_ne!(status(&result1, "a"), NodeStatus::Pending);
+
+        // Resume: call run_pending again.
+        let result2 = execute(execution.clone(), ctx).await.expect("resume");
+
+        // Then all nodes completed.
+        assert_eq!(status(&result2, "a"), NodeStatus::Completed);
+        assert_eq!(status(&result2, "b"), NodeStatus::Completed);
+        assert_eq!(status(&result2, "c"), NodeStatus::Completed);
+        assert_eq!(
+            result2.outputs["c"].get_string("out").unwrap(),
+            "DATA"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_pending_reruns_after_invalidation() {
+        // Given A → B → C.
+        let ctx = Arc::new(TestContext);
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node("a".to_owned(), source_node("hello"))
+            .add_node("b".to_owned(), uppercase_node())
+            .add_node("c".to_owned(), suffix_node("-world"));
+        builder.connect("a", "out", "b", "in").expect("a→b");
+        builder.connect("b", "out", "c", "in").expect("b→c");
+        let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
+
+        // First run: complete all.
+        let result1 = execute(execution.clone(), ctx.clone()).await.expect("execute");
+        assert_eq!(status(&result1, "c"), NodeStatus::Completed);
+        assert_eq!(
+            result1.outputs["c"].get_string("out").unwrap(),
+            "HELLO-world"
+        );
+
+        // Invalidate from b, seed inputs, re-run.
+        execution.invalidate_from("b");
+        execution.seed_inputs("b");
+
+        let result2 = execute(execution.clone(), ctx).await.expect("rerun");
+
+        // Then b and c re-ran (a stayed Completed).
+        assert_eq!(status(&result2, "a"), NodeStatus::Completed);
+        assert_eq!(status(&result2, "b"), NodeStatus::Completed);
+        assert_eq!(status(&result2, "c"), NodeStatus::Completed);
+        assert_eq!(
+            result2.outputs["c"].get_string("out").unwrap(),
+            "HELLO-world"
+        );
     }
 }
