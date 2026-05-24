@@ -140,6 +140,65 @@ pub fn validate_chat_entry_pin_selected(state: &AppState) -> Result<(), ChatEntr
     Ok(())
 }
 
+/// Errors from validating a ChatEntryIgnoreSelected intent.
+#[derive(Debug, Error)]
+#[error(debug)]
+pub enum ChatEntryIgnoreSelectedError {
+    /// No chat entry is currently selected.
+    NoSelection,
+    /// The chat history is empty.
+    EmptyHistory,
+    /// The selected entry is pinned (unpin first).
+    IsPinned,
+    /// The selected entry kind cannot be ignored.
+    NotIgnorable,
+}
+
+/// Validates the ChatEntryIgnoreSelected intent.
+///
+/// Returns an error if the history is empty, no entry is selected,
+/// the selected entry is pinned, or the selected entry kind is not ignorable
+/// (System, Thinking, Transient, Compaction).
+///
+/// # Errors
+///
+/// Returns an error if validation fails.
+pub fn validate_chat_entry_ignore_selected(
+    state: &AppState,
+) -> Result<(), ChatEntryIgnoreSelectedError> {
+    if state.active_session().history().is_empty() {
+        return Err(ChatEntryIgnoreSelectedError::EmptyHistory);
+    }
+    let selected = state
+        .active_session()
+        .selected_entry()
+        .ok_or(ChatEntryIgnoreSelectedError::NoSelection)?;
+    if selected.is_pinned() {
+        return Err(ChatEntryIgnoreSelectedError::IsPinned);
+    }
+    if !is_ignorable(&selected.kind) {
+        return Err(ChatEntryIgnoreSelectedError::NotIgnorable);
+    }
+    Ok(())
+}
+
+/// Whether an entry kind can be toggled ignored.
+///
+/// User, Assistant, Actor, Error, ToolCall, ToolResult, and Skill entries
+/// are ignorable. System, Thinking, Transient, and Compaction entries are not.
+fn is_ignorable(kind: &crate::protocol::ChatEntryKind) -> bool {
+    matches!(
+        kind,
+        crate::protocol::ChatEntryKind::User { .. }
+            | crate::protocol::ChatEntryKind::Assistant(..)
+            | crate::protocol::ChatEntryKind::Actor { .. }
+            | crate::protocol::ChatEntryKind::Error(..)
+            | crate::protocol::ChatEntryKind::ToolCall { .. }
+            | crate::protocol::ChatEntryKind::ToolResult { .. }
+            | crate::protocol::ChatEntryKind::Skill { .. }
+    )
+}
+
 #[cfg(test)]
 mod fork_from_entry_tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
@@ -399,6 +458,249 @@ mod yank_selected_tests {
 
         // When validating yank selected.
         let result = validate_yank_selected(&state);
+
+        // Then validation succeeds.
+        assert!(result.is_ok());
+    }
+}
+
+#[cfg(test)]
+mod ignore_selected_tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use crate::common::app_state::AppState;
+    use crate::protocol::{ChatEntry, PinPosition};
+
+    use super::*;
+
+    #[rstest::rstest]
+    fn ignore_selected_rejects_empty_history() {
+        // Given an empty session.
+        let state = AppState::default();
+
+        // When validating ignore selected.
+        let result = validate_chat_entry_ignore_selected(&state);
+
+        // Then validation fails with EmptyHistory.
+        assert!(matches!(result, Err(ChatEntryIgnoreSelectedError::EmptyHistory)));
+    }
+
+    #[rstest::rstest]
+    fn ignore_selected_rejects_no_selection() {
+        // Given a state with entries but no selection.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().clear_selection();
+
+        // When validating ignore selected.
+        let result = validate_chat_entry_ignore_selected(&state);
+
+        // Then validation fails with NoSelection.
+        assert!(matches!(result, Err(ChatEntryIgnoreSelectedError::NoSelection)));
+    }
+
+    #[rstest::rstest]
+    fn ignore_selected_rejects_pinned_entry() {
+        // Given a state with a selected pinned entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello").with_pin(PinPosition::Top));
+        state.active_session_mut().select_next_entry();
+
+        // When validating ignore selected.
+        let result = validate_chat_entry_ignore_selected(&state);
+
+        // Then validation fails with IsPinned.
+        assert!(matches!(result, Err(ChatEntryIgnoreSelectedError::IsPinned)));
+    }
+
+    #[rstest::rstest]
+    fn ignore_selected_rejects_system_entry() {
+        // Given a state with a selected system entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::system("system prompt"));
+        state.active_session_mut().select_next_entry();
+
+        // When validating ignore selected.
+        let result = validate_chat_entry_ignore_selected(&state);
+
+        // Then validation fails with NotIgnorable.
+        assert!(matches!(result, Err(ChatEntryIgnoreSelectedError::NotIgnorable)));
+    }
+
+    #[rstest::rstest]
+    fn ignore_selected_rejects_thinking_entry() {
+        // Given a state with a selected thinking entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::thinking("thinking..."));
+        state.active_session_mut().select_next_entry();
+
+        // When validating ignore selected.
+        let result = validate_chat_entry_ignore_selected(&state);
+
+        // Then validation fails with NotIgnorable.
+        assert!(matches!(result, Err(ChatEntryIgnoreSelectedError::NotIgnorable)));
+    }
+
+    #[rstest::rstest]
+    fn ignore_selected_rejects_transient_entry() {
+        // Given a state with a selected transient entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::transient("ephemeral"));
+        state.active_session_mut().select_next_entry();
+
+        // When validating ignore selected.
+        let result = validate_chat_entry_ignore_selected(&state);
+
+        // Then validation fails with NotIgnorable.
+        assert!(matches!(result, Err(ChatEntryIgnoreSelectedError::NotIgnorable)));
+    }
+
+    #[rstest::rstest]
+    fn ignore_selected_rejects_compaction_entry() {
+        // Given a state with a selected compaction entry.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry {
+            id: crate::protocol::ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: crate::protocol::ChatEntryKind::Compaction {
+                summary: "summary".to_owned(),
+                tokens_before: 100,
+                entries_compacted: 5,
+                model_used: "test/model".to_owned(),
+            },
+            pin_position: None,
+            ignored: false,
+        });
+        state.active_session_mut().select_next_entry();
+
+        // When validating ignore selected.
+        let result = validate_chat_entry_ignore_selected(&state);
+
+        // Then validation fails with NotIgnorable.
+        assert!(matches!(result, Err(ChatEntryIgnoreSelectedError::NotIgnorable)));
+    }
+
+    // --- Acceptance cases ---
+
+    #[rstest::rstest]
+    fn ignore_selected_accepts_user_entry() {
+        // Given a state with a selected user entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().select_next_entry();
+
+        // When validating ignore selected.
+        let result = validate_chat_entry_ignore_selected(&state);
+
+        // Then validation succeeds.
+        assert!(result.is_ok());
+    }
+
+    #[rstest::rstest]
+    fn ignore_selected_accepts_assistant_entry() {
+        // Given a state with a selected assistant entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("hi"));
+        state.active_session_mut().select_next_entry();
+
+        // When validating ignore selected.
+        let result = validate_chat_entry_ignore_selected(&state);
+
+        // Then validation succeeds.
+        assert!(result.is_ok());
+    }
+
+    #[rstest::rstest]
+    fn ignore_selected_accepts_tool_call() {
+        // Given a state with a selected tool call entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_call("id", "bash", "ls"));
+        state.active_session_mut().select_next_entry();
+
+        // When validating ignore selected.
+        let result = validate_chat_entry_ignore_selected(&state);
+
+        // Then validation succeeds.
+        assert!(result.is_ok());
+    }
+
+    #[rstest::rstest]
+    fn ignore_selected_accepts_tool_result() {
+        // Given a state with a selected tool result entry.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::tool_result(
+            "id",
+            "bash",
+            "output",
+            crate::feat::session::tool_result_status::ToolResultStatus::Success,
+        ));
+        state.active_session_mut().select_next_entry();
+
+        // When validating ignore selected.
+        let result = validate_chat_entry_ignore_selected(&state);
+
+        // Then validation succeeds.
+        assert!(result.is_ok());
+    }
+
+    #[rstest::rstest]
+    fn ignore_selected_accepts_error_entry() {
+        // Given a state with a selected error entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::error("something went wrong"));
+        state.active_session_mut().select_next_entry();
+
+        // When validating ignore selected.
+        let result = validate_chat_entry_ignore_selected(&state);
+
+        // Then validation succeeds.
+        assert!(result.is_ok());
+    }
+
+    #[rstest::rstest]
+    fn ignore_selected_accepts_actor_entry() {
+        // Given a state with a selected actor entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::actor("source", "text"));
+        state.active_session_mut().select_next_entry();
+
+        // When validating ignore selected.
+        let result = validate_chat_entry_ignore_selected(&state);
+
+        // Then validation succeeds.
+        assert!(result.is_ok());
+    }
+
+    #[rstest::rstest]
+    fn ignore_selected_accepts_skill_entry() {
+        // Given a state with a selected skill entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::skill("name", "loc", "content"));
+        state.active_session_mut().select_next_entry();
+
+        // When validating ignore selected.
+        let result = validate_chat_entry_ignore_selected(&state);
 
         // Then validation succeeds.
         assert!(result.is_ok());
