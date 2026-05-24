@@ -1,6 +1,6 @@
 //! Theme picker entry type and rendering.
 
-use crate::feat::theme::Theme;
+use crate::Theme;
 use nullslop_selection_widget::PickerItem;
 use ratatui::text::Line;
 

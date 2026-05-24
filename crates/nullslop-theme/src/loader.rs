@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 use error_stack::{Report, ResultExt as _};
 use wherror::Error;
 
-use super::default_theme;
-use super::theme::{Theme, ThemeFile};
+use crate::default_theme;
+use crate::theme::{Theme, ThemeFile};
 
 /// Errors that can occur during theme loading and parsing.
 #[derive(Debug, Error, PartialEq, Eq)]
