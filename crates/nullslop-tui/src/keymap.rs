@@ -286,7 +286,23 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("<Tab>", Intent::SwitchTab, KeyCategory::Navigation)
         .bind("q", Intent::Quit, KeyCategory::General)
         .bind("<c-c>", Intent::Quit, KeyCategory::General)
-        .bind("?", Intent::ToggleWhichkey, KeyCategory::General);
+        .bind("?", Intent::ToggleWhichkey, KeyCategory::General)
+        // Navigation
+        .bind("j", Intent::WorkflowNodeDown, KeyCategory::Navigation)
+        .bind("k", Intent::WorkflowNodeUp, KeyCategory::Navigation)
+        // Viewport panning
+        .bind("H", Intent::WorkflowPanLeft, KeyCategory::Navigation)
+        .bind("J", Intent::WorkflowPanDown, KeyCategory::Navigation)
+        .bind("K", Intent::WorkflowPanUp, KeyCategory::Navigation)
+        .bind("L", Intent::WorkflowPanRight, KeyCategory::Navigation)
+        // Inspector
+        .bind("i", Intent::WorkflowInspectToggle, KeyCategory::Navigation)
+        .bind("<up>", Intent::WorkflowInspectScrollUp, KeyCategory::Navigation)
+        .bind("<down>", Intent::WorkflowInspectScrollDown, KeyCategory::Navigation)
+        // Cancel
+        .bind("<esc>", Intent::WorkflowEscape, KeyCategory::General)
+        // Re-run
+        .bind("r", Intent::WorkflowRerunNode, KeyCategory::General);
     });
 
     keymap.on_mouse(|mouse: event::MouseEvent, _scope: &Scope| {
