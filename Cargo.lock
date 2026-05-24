@@ -2060,6 +2060,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "nullslop-theme"
+version = "0.1.0"
+dependencies = [
+ "anstyle",
+ "anstyle-lossy",
+ "error-stack",
+ "nullslop-selection-widget",
+ "ratatui",
+ "rstest",
+ "serde",
+ "tempfile",
+ "toml",
+ "wherror",
+]
+
+[[package]]
 name = "nullslop-tui"
 version = "0.1.0"
 dependencies = [
