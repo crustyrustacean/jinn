@@ -235,7 +235,6 @@ impl App {
                         db_path,
                         model,
                         task,
-                        headless: _headless,
                         csv,
                         artifact_dir,
                     } => {

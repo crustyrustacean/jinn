@@ -105,10 +105,6 @@ pub enum BenchCommands {
         #[arg(long)]
         task: Vec<String>,
 
-        /// Run without TUI.
-        #[arg(long)]
-        headless: bool,
-
         /// CSV output path.
         #[arg(long, default_value = "bench-results.csv")]
         csv: PathBuf,
