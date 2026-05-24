@@ -1074,6 +1074,132 @@ fn pin_entry_at_block_end_no_forward_propagation() {
     assert!(session.ui.shown_ignored_blocks.contains(&rep_id));
 }
 
+// --- Regression: pin-hidden-bug integration tests ---
+
+/// Regression test for: pinning an ignored entry inside an expanded block
+/// should keep all entries visible. Before the fix, the forward sub-block
+/// would collapse because `shown_ignored_blocks` didn't cover it.
+#[rstest::rstest]
+fn regression_pin_in_expanded_block_keeps_all_visible() {
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, VisualItem, PROXIMITY_COUNT};
+
+    // Layout: [user] [ignored-A] [ignored-B] [ignored-C] [ignored-D] [user]
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("before"));
+    session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 1
+    session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 2 — pin target
+    session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3
+    session.push_entry(ChatEntry::assistant("d").with_ignored(true)); // idx 4
+    session.push_entry(ChatEntry::user("after"));                     // idx 5
+
+    // Expand the ignored block.
+    let rep_id = session.history()[1].id.clone();
+    session.toggle_ignored_block_visibility(&rep_id);
+
+    // Pin ignored-B (idx 2).
+    let pin_id = session.history()[2].id.clone();
+    session.pin_entry(&pin_id, PinPosition::Top);
+
+    // Build visual items — all 4 ignored entries should be individually visible
+    // (backward sub-block + pinned entry + forward sub-block).
+    let items = build_visual_items(
+        session.history(),
+        &session.ui.shown_ignored_blocks,
+        PROXIMITY_COUNT,
+    );
+
+    // There should be no CollapsedIgnoredBlock — all entries are shown.
+    let collapsed = items.iter().any(|item| matches!(item, VisualItem::CollapsedIgnoredBlock { .. }));
+    assert!(!collapsed, "no entries should be collapsed after pinning in expanded block");
+
+    // All history entries should appear as VisualItem::Entry.
+    let entry_count = items
+        .iter()
+        .filter(|item| matches!(item, VisualItem::Entry(_)))
+        .count();
+    assert_eq!(entry_count, 6, "all 6 entries should be visible");
+}
+
+/// Regression test for: after pinning inside an expanded block, pressing `h`
+/// on a forward sub-block entry should toggle only that sub-block.
+#[rstest::rstest]
+fn regression_toggle_h_after_pin_split_toggles_correct_sub_block() {
+    // Layout: [user] [ignored-A] [ignored-B(pinned)] [ignored-C] [ignored-D] [user]
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("before"));
+    session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 1
+    session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 2
+    session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3
+    session.push_entry(ChatEntry::assistant("d").with_ignored(true)); // idx 4
+    session.push_entry(ChatEntry::user("after"));                     // idx 5
+
+    // Expand, then pin ignored-B.
+    let rep_id = session.history()[1].id.clone();
+    session.toggle_ignored_block_visibility(&rep_id);
+    let pin_id = session.history()[2].id.clone();
+    session.pin_entry(&pin_id, PinPosition::Top);
+
+    // Both sub-blocks should be shown.
+    let forward_rep = session.history()[3].id.clone();
+    assert!(session.ui.shown_ignored_blocks.contains(&rep_id));
+    assert!(session.ui.shown_ignored_blocks.contains(&forward_rep));
+
+    // Toggle `h` on the forward sub-block.
+    session.toggle_ignored_block_visibility(&forward_rep);
+
+    // Forward sub-block should now be collapsed.
+    assert!(!session.ui.shown_ignored_blocks.contains(&forward_rep));
+    // Backward sub-block should still be shown.
+    assert!(session.ui.shown_ignored_blocks.contains(&rep_id));
+}
+
+/// Regression test for: unpinning an entry re-merges the sub-blocks into
+/// one block controlled by the original representative.
+#[rstest::rstest]
+fn regression_unpin_remerges_block_correctly() {
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, VisualItem, PROXIMITY_COUNT};
+
+    // Layout: [user] [ignored-A] [ignored-B] [ignored-C] [user]
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("before"));
+    session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 1
+    session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 2
+    session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3
+    session.push_entry(ChatEntry::user("after"));                     // idx 4
+
+    // Expand the block.
+    let rep_id = session.history()[1].id.clone();
+    session.toggle_ignored_block_visibility(&rep_id);
+
+    // Pin ignored-B.
+    let pin_id = session.history()[2].id.clone();
+    session.pin_entry(&pin_id, PinPosition::Top);
+
+    // Unpin ignored-B.
+    session.unpin_entry(&pin_id);
+
+    // Build visual items — should re-merge into a single expanded block.
+    let items = build_visual_items(
+        session.history(),
+        &session.ui.shown_ignored_blocks,
+        PROXIMITY_COUNT,
+    );
+
+    // No collapsed block — all 5 entries visible.
+    let collapsed = items.iter().any(|item| matches!(item, VisualItem::CollapsedIgnoredBlock { .. }));
+    assert!(!collapsed, "no collapsed block after unpin re-merge");
+
+    let entry_count = items
+        .iter()
+        .filter(|item| matches!(item, VisualItem::Entry(_)))
+        .count();
+    assert_eq!(entry_count, 5, "all 5 entries should be visible after unpin");
+
+    // Toggle on the original rep should now collapse the re-merged block.
+    session.toggle_ignored_block_visibility(&rep_id);
+    assert!(!session.ui.shown_ignored_blocks.contains(&rep_id));
+}
+
 // --- Selection tests ---
 
 #[rstest::rstest]
