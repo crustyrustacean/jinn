@@ -1944,6 +1944,7 @@ dependencies = [
  "comfy-table",
  "csv",
  "error-stack",
+ "globset",
  "humantime",
  "include_dir",
  "jiff",
