@@ -67,8 +67,6 @@ impl DomainNodeContext {
         tool_schemas: Vec<ToolSchema>,
         _provider_id: Option<String>,
     ) -> Result<String, Report<NodeError>> {
-        let session_id = SessionId::new();
-
         // Build assembly overrides from the node's configuration.
         let tool_definitions = if tool_schemas.is_empty() {
             None
@@ -87,6 +85,8 @@ impl DomainNodeContext {
         let mut session = ChatSessionState::new();
         session.core.is_workflow = true;
         session.core.workflow_overrides = Some(overrides);
+
+        let session_id = session.session_id().clone();
 
         // Insert into app state.
         {
