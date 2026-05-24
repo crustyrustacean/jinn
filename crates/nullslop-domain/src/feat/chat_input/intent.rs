@@ -326,7 +326,7 @@ fn execute_slash_command(
             );
             IntentResult::with_commands(vec![Command::StartWorkflow(
                 crate::feat::workflow::protocol::command::StartWorkflow {
-                    name: "add-numbers".to_owned(),
+                    name: "pipeline".to_owned(),
                     workflow_id,
                 },
             )])
