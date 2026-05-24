@@ -446,98 +446,6 @@ fn transient_entry_serializes_correct_json_shape() {
     assert_eq!(v["Transient"], "some info");
 }
 
-// --- is_pinnable tests ---
-
-#[rstest::rstest]
-fn user_entry_is_pinnable() {
-    // Given a user entry.
-    let entry = ChatEntry::user("hello");
-
-    // Then it is pinnable.
-    assert!(entry.is_pinnable());
-}
-
-#[rstest::rstest]
-fn assistant_entry_is_pinnable() {
-    // Given an assistant entry.
-    let entry = ChatEntry::assistant("response");
-
-    // Then it is pinnable.
-    assert!(entry.is_pinnable());
-}
-
-#[rstest::rstest]
-fn tool_result_entry_is_pinnable() {
-    // Given a tool result entry.
-    let entry = ChatEntry::tool_result("id", "bash", "output", ToolResultStatus::Success);
-
-    // Then it is pinnable.
-    assert!(entry.is_pinnable());
-}
-
-#[rstest::rstest]
-fn skill_entry_is_pinnable() {
-    // Given a skill entry.
-    let entry = ChatEntry::skill("test", "/path", "content");
-
-    // Then it is pinnable.
-    assert!(entry.is_pinnable());
-}
-
-#[rstest::rstest]
-fn transient_entry_is_not_pinnable() {
-    // Given a transient entry.
-    let entry = ChatEntry::transient("welcome");
-
-    // Then it is not pinnable.
-    assert!(!entry.is_pinnable());
-}
-
-#[rstest::rstest]
-fn system_entry_is_not_pinnable() {
-    // Given a system entry.
-    let entry = ChatEntry::system("status");
-
-    // Then it is not pinnable.
-    assert!(!entry.is_pinnable());
-}
-
-#[rstest::rstest]
-fn error_entry_is_not_pinnable() {
-    // Given an error entry.
-    let entry = ChatEntry::error("error");
-
-    // Then it is not pinnable.
-    assert!(!entry.is_pinnable());
-}
-
-#[rstest::rstest]
-fn actor_entry_is_not_pinnable() {
-    // Given an actor entry.
-    let entry = ChatEntry::actor("echo", "HELLO");
-
-    // Then it is not pinnable.
-    assert!(!entry.is_pinnable());
-}
-
-#[rstest::rstest]
-fn thinking_entry_is_not_pinnable() {
-    // Given a thinking entry.
-    let entry = ChatEntry::thinking("reasoning");
-
-    // Then it is not pinnable.
-    assert!(!entry.is_pinnable());
-}
-
-#[rstest::rstest]
-fn tool_call_entry_is_not_pinnable() {
-    // Given a tool call entry.
-    let entry = ChatEntry::tool_call("id", "bash", "{}");
-
-    // Then it is not pinnable.
-    assert!(!entry.is_pinnable());
-}
-
 // --- ToolResultStatus serialization tests ---
 
 #[rstest::rstest]
@@ -702,4 +610,290 @@ fn is_empty_assistant_false_for_system_entry() {
 
     // Then is_empty_assistant returns false.
     assert!(!entry.is_empty_assistant());
+}
+
+// --- is_included_by_default tests ---
+
+#[rstest::rstest]
+fn user_kind_is_included_by_default() {
+    // Given a User entry.
+    let entry = ChatEntry::user("hello");
+
+    // Then the kind is included by default.
+    assert!(entry.kind.is_included_by_default());
+}
+
+#[rstest::rstest]
+fn assistant_kind_is_included_by_default() {
+    // Given an Assistant entry.
+    let entry = ChatEntry::assistant("response");
+
+    // Then the kind is included by default.
+    assert!(entry.kind.is_included_by_default());
+}
+
+#[rstest::rstest]
+fn error_kind_is_included_by_default() {
+    // Given an Error entry.
+    let entry = ChatEntry::error("something went wrong");
+
+    // Then the kind is included by default.
+    assert!(entry.kind.is_included_by_default());
+}
+
+#[rstest::rstest]
+fn tool_call_kind_is_included_by_default() {
+    // Given a ToolCall entry.
+    let entry = ChatEntry::tool_call("id", "name", "{}");
+
+    // Then the kind is included by default.
+    assert!(entry.kind.is_included_by_default());
+}
+
+#[rstest::rstest]
+fn tool_result_kind_is_included_by_default() {
+    // Given a ToolResult entry.
+    let entry = ChatEntry::tool_result("id", "name", "content", ToolResultStatus::Success);
+
+    // Then the kind is included by default.
+    assert!(entry.kind.is_included_by_default());
+}
+
+#[rstest::rstest]
+fn skill_kind_is_included_by_default() {
+    // Given a Skill entry.
+    let entry = ChatEntry::skill("name", "/path", "content");
+
+    // Then the kind is included by default.
+    assert!(entry.kind.is_included_by_default());
+}
+
+#[rstest::rstest]
+fn compaction_kind_is_included_by_default() {
+    // Given a Compaction entry.
+    let kind = ChatEntryKind::Compaction {
+        summary: "summary".to_owned(),
+        tokens_before: 100,
+        entries_compacted: 5,
+        model_used: "gpt-4".to_owned(),
+    };
+
+    // Then the kind is included by default.
+    assert!(kind.is_included_by_default());
+}
+
+#[rstest::rstest]
+fn thinking_kind_is_not_included_by_default() {
+    // Given a Thinking entry.
+    let entry = ChatEntry::thinking("reasoning");
+
+    // Then the kind is NOT included by default.
+    assert!(!entry.kind.is_included_by_default());
+}
+
+#[rstest::rstest]
+fn transient_kind_is_not_included_by_default() {
+    // Given a Transient entry.
+    let entry = ChatEntry::transient("hint");
+
+    // Then the kind is NOT included by default.
+    assert!(!entry.kind.is_included_by_default());
+}
+
+#[rstest::rstest]
+fn system_kind_is_not_included_by_default() {
+    // Given a System entry.
+    let entry = ChatEntry::system("status");
+
+    // Then the kind is NOT included by default.
+    assert!(!entry.kind.is_included_by_default());
+}
+
+#[rstest::rstest]
+fn actor_kind_is_not_included_by_default() {
+    // Given an Actor entry.
+    let entry = ChatEntry::actor("echo", "HELLO");
+
+    // Then the kind is NOT included by default.
+    assert!(!entry.kind.is_included_by_default());
+}
+
+// --- is_in_context tests ---
+
+#[rstest::rstest]
+fn user_entry_is_in_context_by_default() {
+    // Given a default User entry.
+    let entry = ChatEntry::user("hello");
+
+    // Then it is in context.
+    assert!(entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn thinking_entry_is_not_in_context_by_default() {
+    // Given a default Thinking entry.
+    let entry = ChatEntry::thinking("reasoning");
+
+    // Then it is NOT in context.
+    assert!(!entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn system_entry_is_not_in_context_by_default() {
+    // Given a default System entry.
+    let entry = ChatEntry::system("status");
+
+    // Then it is NOT in context.
+    assert!(!entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn transient_entry_is_not_in_context_by_default() {
+    // Given a default Transient entry.
+    let entry = ChatEntry::transient("hint");
+
+    // Then it is NOT in context.
+    assert!(!entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn actor_entry_is_not_in_context_by_default() {
+    // Given a default Actor entry.
+    let entry = ChatEntry::actor("echo", "HELLO");
+
+    // Then it is NOT in context.
+    assert!(!entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn pinned_thinking_entry_is_in_context() {
+    // Given a Thinking entry pinned to Top.
+    let entry = ChatEntry::thinking("reasoning").with_pin(PinPosition::Top);
+
+    // Then pin overrides kind default — it IS in context.
+    assert!(entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn pinned_system_entry_is_in_context() {
+    // Given a System entry pinned to Top.
+    let entry = ChatEntry::system("instruction").with_pin(PinPosition::Top);
+
+    // Then pin overrides kind default — it IS in context.
+    assert!(entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn ignored_user_entry_is_not_in_context() {
+    // Given a User entry marked as ignored.
+    let entry = ChatEntry::user("hello").with_ignored(true);
+
+    // Then it is NOT in context.
+    assert!(!entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn ignored_but_pinned_entry_is_in_context() {
+    // Given a User entry that is both ignored and pinned.
+    let entry = ChatEntry::user("hello").with_ignored(true).with_pin(PinPosition::Top);
+
+    // Then pin overrides ignore — it IS in context.
+    assert!(entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn pinned_ignored_thinking_entry_is_in_context() {
+    // Given a Thinking entry that is both ignored and pinned.
+    let entry = ChatEntry::thinking("reason").with_ignored(true).with_pin(PinPosition::Bottom);
+
+    // Then pin overrides both kind default and ignore — it IS in context.
+    assert!(entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn all_include_default_kinds_are_in_context() {
+    // Given entries of all include-by-default kinds.
+    let entries = vec![
+        ChatEntry::user("hello"),
+        ChatEntry::assistant("response"),
+        ChatEntry::error("error"),
+        ChatEntry::tool_call("id", "name", "{}"),
+        ChatEntry::tool_result("id", "name", "content", ToolResultStatus::Success),
+        ChatEntry::skill("name", "/path", "content"),
+    ];
+
+    // Then all are in context by default.
+    for entry in &entries {
+        assert!(entry.is_in_context(), "{} should be in context", entry.kind_str());
+    }
+}
+
+#[rstest::rstest]
+fn all_exclude_default_kinds_are_not_in_context() {
+    // Given entries of all exclude-by-default kinds.
+    let entries = vec![
+        ChatEntry::thinking("reasoning"),
+        ChatEntry::transient("hint"),
+        ChatEntry::system("status"),
+        ChatEntry::actor("echo", "HELLO"),
+    ];
+
+    // Then none are in context by default.
+    for entry in &entries {
+        assert!(!entry.is_in_context(), "{} should NOT be in context", entry.kind_str());
+    }
+}
+
+// --- ContextOverride serialization tests ---
+
+#[rstest::rstest]
+fn context_override_default_serializes_roundtrip() {
+    // Given a default ContextOverride.
+    let value = ContextOverride::Default;
+
+    // When serializing and deserializing.
+    let json = serde_json::to_string(&value).expect("serialize");
+    let back: ContextOverride = serde_json::from_str(&json).expect("deserialize");
+
+    // Then it roundtrips.
+    assert_eq!(back, ContextOverride::Default);
+}
+
+#[rstest::rstest]
+fn context_override_forced_include_serializes_roundtrip() {
+    // Given a ForcedInclude ContextOverride.
+    let value = ContextOverride::ForcedInclude;
+
+    // When serializing and deserializing.
+    let json = serde_json::to_string(&value).expect("serialize");
+    let back: ContextOverride = serde_json::from_str(&json).expect("deserialize");
+
+    // Then it roundtrips.
+    assert_eq!(back, ContextOverride::ForcedInclude);
+    // And the JSON uses snake_case.
+    assert_eq!(json, "\"forced_include\"");
+}
+
+#[rstest::rstest]
+fn context_override_forced_exclude_serializes_roundtrip() {
+    // Given a ForcedExclude ContextOverride.
+    let value = ContextOverride::ForcedExclude;
+
+    // When serializing and deserializing.
+    let json = serde_json::to_string(&value).expect("serialize");
+    let back: ContextOverride = serde_json::from_str(&json).expect("deserialize");
+
+    // Then it roundtrips.
+    assert_eq!(back, ContextOverride::ForcedExclude);
+    // And the JSON uses snake_case.
+    assert_eq!(json, "\"forced_exclude\"");
+}
+
+#[rstest::rstest]
+fn context_override_default_is_default_trait() {
+    // Given a default ContextOverride.
+    let value = ContextOverride::default();
+
+    // Then it is Default.
+    assert_eq!(value, ContextOverride::Default);
 }

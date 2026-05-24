@@ -77,6 +77,10 @@ pub fn run_migrations(conn: &mut SqliteConnection) -> Result<(), Report<SessionS
         migrate_v11(conn)?;
         record_version(conn, 11, "add_is_workflow_column")?;
     }
+    if current < 12 {
+        migrate_v12(conn)?;
+        record_version(conn, 12, "replace_ignored_with_context_override")?;
+    }
     Ok(())
 }
 
@@ -398,6 +402,26 @@ fn migrate_v11(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErr
     Ok(())
 }
 
+/// v12: Add `context_override` column to session_history.
+///
+/// Replaces the boolean `ignored` column with a tri-state text column:
+/// `'default'`, `'forced_include'`, `'forced_exclude'`. The old `ignored`
+/// column is kept for backward compatibility — the new column takes precedence.
+/// Rows with `ignored = 1` are migrated to `'forced_exclude'`.
+fn migrate_v12(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    sql_query(
+        "ALTER TABLE session_history ADD COLUMN context_override TEXT NOT NULL DEFAULT 'default'",
+    )
+    .execute(conn)
+    .change_context(SessionStoreError)
+    .attach("v12: add context_override column to session_history")?;
+    sql_query("UPDATE session_history SET context_override = 'forced_exclude' WHERE ignored = 1")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("v12: migrate ignored values to context_override")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
@@ -438,7 +462,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 12);
+        assert_eq!(rows.len(), 13);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -463,6 +487,8 @@ mod tests {
         assert_eq!(rows[10].name, "consolidate_to_compaction_strategy");
         assert_eq!(rows[11].version, 11);
         assert_eq!(rows[11].name, "add_is_workflow_column");
+        assert_eq!(rows[12].version, 12);
+        assert_eq!(rows[12].name, "replace_ignored_with_context_override");
     }
 
     #[test]
@@ -486,7 +512,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 12);
+        assert_eq!(rows[0].count, 13);
     }
 
     #[test]

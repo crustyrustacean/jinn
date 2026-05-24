@@ -50,8 +50,28 @@ pub struct WorkflowResult {
 
 /// Error type for engine operations.
 #[derive(Debug, Error)]
-#[error(debug)]
-pub struct EngineError;
+pub enum EngineError {
+    /// An internal invariant was violated (should never happen with a valid graph).
+    #[error("internal invariant violated: {detail}")]
+    InvariantViolated {
+        /// Description of the violated invariant.
+        detail: String,
+    },
+
+    /// A referenced node was not found in the graph.
+    #[error("node not found: {name}")]
+    NodeNotFound {
+        /// Name of the missing node.
+        name: String,
+    },
+
+    /// A required input port was missing when spawning a node.
+    #[error("missing inputs for node: {node}")]
+    MissingInputs {
+        /// Node that was missing inputs.
+        node: String,
+    },
+}
 
 /// Internal message sent when a node completes execution.
 enum CompletionMsg {
@@ -110,7 +130,13 @@ fn initialize_tracking(
         // Count actual incoming edges — each edge delivers one value.
         // This is the true "waiting for" count: optional ports that are
         // connected still need to receive their data before the node runs.
-        let idx = name_to_index[name];
+        let idx = match name_to_index.get(name) {
+            Some(&idx) => idx,
+            None => {
+                tracing::error!(node = name, "node not found in name_to_index during tracking initialization");
+                continue;
+            }
+        };
         let incoming_edge_count = inner
             .edges_directed(idx, petgraph::Direction::Incoming)
             .count();
@@ -204,7 +230,7 @@ async fn run_main_loop(
     cancel: CancellationToken,
     total_nodes: usize,
     mut completed_count: usize,
-) {
+) -> Result<(), Report<EngineError>> {
     loop {
         // Check if all nodes are terminal.
         if completed_count >= total_nodes {
@@ -220,8 +246,14 @@ async fn run_main_loop(
 
         tokio::select! {
             msg = rx.recv() => {
-                #[expect(clippy::expect_used, reason = "channel cannot close while tasks are pending")]
-                let msg = msg.expect("channel should not close while nodes are pending");
+                let msg = match msg {
+                    Some(m) => m,
+                    None => {
+                        // Channel closed — all senders dropped.
+                        // This should only happen when all nodes are done or errored.
+                        break;
+                    }
+                };
                 handle_completion(
                     msg,
                     inner,
@@ -237,7 +269,7 @@ async fn run_main_loop(
                     ctx,
                     tx,
                     &execution,
-                );
+                )?;
             }
             Some(panic_name) = check_panics_async(handles, statuses) => {
                 if let Some(handle) = handles.remove(&panic_name) {
@@ -247,7 +279,16 @@ async fn run_main_loop(
                 execution.set_status(&panic_name, NodeStatus::Failed);
                 completed_count += 1;
 
-                let failed_idx = name_to_index[&panic_name];
+                let failed_idx = *name_to_index
+                    .get(&panic_name)
+                    .ok_or_else(|| {
+                        Report::new(EngineError::NodeNotFound {
+                            name: panic_name.clone(),
+                        })
+                        .attach(
+                            "panicked node not found in name_to_index",
+                        )
+                    })?;
                 let downstream = find_downstream(failed_idx, inner, node_names);
                 for down_name in &downstream {
                     if statuses.get(down_name) == Some(&NodeStatus::Pending) {
@@ -279,6 +320,8 @@ async fn run_main_loop(
             () = panic_check => {}
         }
     }
+
+    Ok(())
 }
 
 /// Executes pending nodes in a workflow.
@@ -293,10 +336,6 @@ async fn run_main_loop(
 /// # Errors
 ///
 /// Returns an error if the engine encounters an internal failure.
-///
-/// # Panics
-///
-/// Panics if internal invariant is violated (e.g., channel closed unexpectedly).
 pub async fn run_pending(
     execution: Arc<WorkflowExecution>,
     ctx: Arc<dyn NodeContext>,
@@ -361,7 +400,7 @@ pub async fn run_pending(
         total_nodes,
         completed_count,
     )
-    .await;
+    .await?;
 
     Ok(WorkflowResult { outputs, statuses })
 }
@@ -374,10 +413,6 @@ pub async fn run_pending(
 /// # Errors
 ///
 /// Returns an error if the engine encounters an internal failure.
-///
-/// # Panics
-///
-/// Panics if internal invariant is violated (e.g., channel closed unexpectedly).
 pub async fn execute_with_cancel(
     execution: Arc<WorkflowExecution>,
     ctx: Arc<dyn NodeContext>,
@@ -420,7 +455,9 @@ async fn check_panics_async(
 }
 
 /// Handles a node completion message.
-#[expect(clippy::expect_used, reason = "internal invariant: node names are validated during graph construction")]
+///
+/// Returns `Err` if an internal invariant is violated (e.g., a referenced node
+/// or port is missing from tracking state).
 #[expect(
     clippy::too_many_arguments,
     reason = "internal helper with many mutable state references"
@@ -440,7 +477,7 @@ fn handle_completion(
     ctx: &Arc<dyn NodeContext>,
     tx: &tokio::sync::mpsc::Sender<CompletionMsg>,
     execution: &Arc<WorkflowExecution>,
-) {
+) -> Result<(), Report<EngineError>> {
     match msg {
         CompletionMsg::Success {
             name,
@@ -454,26 +491,60 @@ fn handle_completion(
             *completed_count += 1;
 
             // Propagate outputs to downstream nodes.
-            let src_idx = name_to_index[&name];
+            let src_idx = *name_to_index.get(&name).ok_or_else(|| {
+                Report::new(EngineError::NodeNotFound {
+                    name: name.clone(),
+                })
+                .attach("completed node not found in name_to_index")
+            })?;
             for edge in inner.edges_directed(src_idx, petgraph::Direction::Outgoing) {
                 let tgt_idx = edge.target();
-                let tgt_name = &node_names[&tgt_idx];
+                let tgt_name = node_names.get(&tgt_idx).ok_or_else(|| {
+                    Report::new(EngineError::InvariantViolated {
+                        detail: format!(
+                            "downstream node index {tgt_idx:?} not found in node_names"
+                        ),
+                    })
+                })?;
                 let source_port = &edge.weight().source_port;
                 let target_port = &edge.weight().target_port;
 
                 // Get the output value for this port.
                 if let Some(value) = node_outputs.get(source_port).cloned() {
-                    let inputs = pending_inputs.get_mut(tgt_name).expect("node exists");
+                    let inputs = pending_inputs
+                        .get_mut(tgt_name)
+                        .ok_or_else(|| {
+                            Report::new(EngineError::NodeNotFound {
+                                name: tgt_name.clone(),
+                            })
+                            .attach(
+                                "downstream node not found in pending_inputs",
+                            )
+                        })?;
                     inputs.insert(target_port.clone(), value);
                 }
 
                 // Decrement pending count.
-                let count = pending_count.get_mut(tgt_name).expect("node exists");
+                let count = pending_count.get_mut(tgt_name).ok_or_else(|| {
+                    Report::new(EngineError::NodeNotFound {
+                        name: tgt_name.clone(),
+                    })
+                    .attach(
+                        "downstream node not found in pending_count",
+                    )
+                })?;
                 *count = count.saturating_sub(1);
 
                 // If all inputs satisfied, spawn the downstream node.
                 if *count == 0 && statuses.get(tgt_name) == Some(&NodeStatus::Pending) {
-                    let inputs = pending_inputs.remove(tgt_name).expect("inputs exist");
+                    let inputs = pending_inputs.remove(tgt_name).ok_or_else(|| {
+                        Report::new(EngineError::MissingInputs {
+                            node: tgt_name.clone(),
+                        })
+                        .attach(
+                            "pending inputs disappeared before spawn",
+                        )
+                    })?;
                     spawn_node(
                         tgt_name.clone(),
                         node_map,
@@ -494,7 +565,12 @@ fn handle_completion(
             *completed_count += 1;
 
             // Propagate skip to all transitive downstream nodes.
-            let failed_idx = name_to_index[&name];
+            let failed_idx = *name_to_index.get(&name).ok_or_else(|| {
+                Report::new(EngineError::NodeNotFound {
+                    name: name.clone(),
+                })
+                .attach("failed node not found in name_to_index")
+            })?;
             let downstream = find_downstream(failed_idx, inner, node_names);
             for down_name in &downstream {
                 if statuses.get(down_name) == Some(&NodeStatus::Pending) {
@@ -505,6 +581,8 @@ fn handle_completion(
             }
         }
     }
+
+    Ok(())
 }
 
 /// Spawns a node execution as a tokio task.
@@ -577,7 +655,7 @@ fn find_downstream(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing, reason = "test code")]
+    #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing, clippy::unnecessary_literal_bound, reason = "test code")]
 
     use super::*;
     use crate::graph::WorkflowGraphBuilder;
@@ -613,7 +691,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for SourceNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "source"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -649,7 +727,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for UpperNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "uppercase"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -686,7 +764,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for SuffixNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "suffix"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -728,7 +806,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for ConcatNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "concat"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -769,7 +847,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for FailNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "fail"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -801,7 +879,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for DelayNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "delay"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -839,7 +917,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for PanicNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "panic"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -974,7 +1052,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for MultiNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "multi"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -1228,7 +1306,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for OptionalNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "optional"
             }
             fn input_ports(&self) -> Vec<PortDef> {
@@ -1294,7 +1372,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl WorkflowNode for OptionalNode {
-            fn name(&self) -> &'static str {
+            fn name(&self) -> &str {
                 "optional"
             }
             fn input_ports(&self) -> Vec<PortDef> {
