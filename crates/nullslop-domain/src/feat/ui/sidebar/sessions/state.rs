@@ -214,6 +214,22 @@ pub fn update_visual_parents_on_removal(state: &mut AppState, removed_id: &Sessi
     }
 }
 
+/// Removes stale `visual_parents` entries when a session is loaded back.
+///
+/// When a session is unarchived/loaded, its children no longer need to bypass
+/// it in the tree. This function removes any `visual_parents` entries whose
+/// **value** equals the loaded session's ID.
+///
+/// Entries where the loaded session is the **key** are preserved — the loaded
+/// session may itself have a hidden parent that it needs to be reparented under.
+pub fn clear_visual_parents_on_load(state: &mut AppState, loaded_id: &SessionId) {
+    state
+        .frontend
+        .sessions_section
+        .visual_parents
+        .retain(|_k, v| v != loaded_id);
+}
+
 /// Recursively emits children in DFS order, recording tree metadata.
 ///
 /// `ancestor_continuations` tracks whether each ancestor level has younger

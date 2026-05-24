@@ -43,6 +43,12 @@ impl SessionPersistenceActor {
             // Insert loaded session into HashMap.
             state.session.insert(loaded);
 
+            // Clear stale visual-parent entries that bypass this session.
+            crate::feat::ui::sidebar::sessions::clear_visual_parents_on_load(
+                &mut state,
+                &session_id,
+            );
+
             // Add a system message about the restore.
             #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
             let session = state.session.get_mut(&session_id).expect("just inserted");
