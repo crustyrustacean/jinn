@@ -432,6 +432,11 @@ pub struct FrontendState {
     ///         consumed on second ESC or dismissed on any other key).
     pub cancel_stream_prompt: bool,
 
+    /// Whether the "Press x again to confirm closure" prompt is showing.
+    /// OWNER: IntentHandler (set on first SidebarSessionClose, consumed on second
+    ///         SidebarSessionClose or dismissed on any other key).
+    pub close_session_prompt: bool,
+
     /// Theme picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (theme picker navigation).
     pub theme_picker: nullslop_selection_widget::SelectionState<crate::feat::theme::ThemeEntry>,
@@ -495,6 +500,7 @@ impl Default for FrontendState {
             scope_stack: ScopeStack::default(),
             theme: crate::feat::theme::default_theme(),
             cancel_stream_prompt: false,
+            close_session_prompt: false,
             theme_picker: nullslop_selection_widget::SelectionState::new(),
             theme_preview_original: None,
             themes_dir: std::path::PathBuf::new(),
