@@ -1078,7 +1078,7 @@ fn select_prev_entry_clamps_at_zero() {
     session.push_entry(ChatEntry::user("b"));
     session.push_entry(ChatEntry::user("c"));
     // push_entry auto-selects last (2). Move to index 0.
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
 
     // When selecting prev.
     session.select_prev_entry();
@@ -1134,7 +1134,7 @@ fn selected_entry_returns_entry_at_index() {
     session.push_entry(ChatEntry::user("b"));
     session.push_entry(ChatEntry::user("c"));
     // push_entry auto-selects last (2). Move to index 1.
-    session.ui.selected_entry_index = Some(1);
+    session.set_selected_entry_index(1);
 
     // When getting the selected entry.
     let entry = session.selected_entry();
@@ -1354,7 +1354,7 @@ fn push_entry_preserves_selection_when_not_at_last() {
     session.push_entry(ChatEntry::user("b"));
     session.push_entry(ChatEntry::user("c"));
     // Move cursor to first entry (not last).
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
 
     // When pushing a new entry.
     session.push_entry(ChatEntry::user("d"));
@@ -1372,7 +1372,7 @@ fn push_entry_resets_scroll_only_when_at_last() {
     session.push_entry(ChatEntry::user("c"));
     // Scroll up and move cursor away from last.
     session.ui.scroll_offset = Some(0);
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
 
     // When pushing a new entry.
     session.push_entry(ChatEntry::user("d"));
@@ -1461,7 +1461,7 @@ fn begin_thinking_preserves_selection_when_not_at_last() {
         .begin_streaming()
         .build();
     // Move cursor to user entry (not the assistant).
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
 
     // When beginning thinking.
     session.begin_thinking();
@@ -1486,7 +1486,7 @@ fn visible_entry_range_returns_visible_entries() {
     session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6), (6, 8), (8, 10)]);
     session.set_viewport_height(5);
     session.set_blank_count(0);
-    session.ui.scroll_offset = Some(2);
+    session.set_rendered_scroll_offset(2);
 
     // When computing visible range.
     // viewport_top=2, viewport_bottom=7
@@ -1520,7 +1520,7 @@ fn move_cursor_to_first_visible_sets_index() {
     session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6)]);
     session.set_viewport_height(4);
     session.set_blank_count(0);
-    session.ui.scroll_offset = Some(2);
+    session.set_rendered_scroll_offset(2);
 
     // When moving cursor to first visible.
     session.move_cursor_to_first_visible();
@@ -1540,13 +1540,42 @@ fn move_cursor_to_last_visible_sets_index() {
     session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6)]);
     session.set_viewport_height(4);
     session.set_blank_count(0);
-    session.ui.scroll_offset = Some(2);
+    session.set_rendered_scroll_offset(2);
 
     // When moving cursor to last visible.
     session.move_cursor_to_last_visible();
 
     // Then cursor is on the last visible entry.
     assert_eq!(session.selected_entry_index(), Some(2));
+}
+
+#[rstest::rstest]
+fn visible_entry_range_uses_rendered_scroll_offset_not_scroll_offset() {
+    // Given a session where scroll_offset (user intent) disagrees with
+    // rendered_scroll_offset (actual viewport position).
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+    session.push_entry(ChatEntry::user("d"));
+    session.push_entry(ChatEntry::user("e"));
+
+    // Entry ranges: [0..2), [2..4), [4..6), [6..8), [8..10)
+    session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6), (6, 8), (8, 10)]);
+    session.set_viewport_height(5);
+    session.set_blank_count(0);
+
+    // Stale scroll_offset: None (auto-scroll → bottom = offset 5).
+    // Actual rendered position: offset 2 (viewport showing entries 1-3).
+    session.set_rendered_scroll_offset(2);
+
+    // When computing visible range.
+    let range = session.visible_entry_range();
+
+    // Then it uses the rendered offset (2), not the stale scroll_offset.
+    // viewport_top=2, viewport_bottom=7
+    // Entry 1 (lines 2..4), Entry 2 (lines 4..6), Entry 3 (lines 6..8) are visible.
+    assert_eq!(range, 1..4);
 }
 
 // --- CWD persistence tests ---
@@ -2115,7 +2144,8 @@ fn save_history_position_captures_current_state() {
         .with_user_entry("third")
         .build();
     session.ui.scroll_offset = Some(10);
-    session.ui.selected_entry_index = Some(1);
+    let second_id = session.history()[1].id.clone();
+    session.set_selected_entry_index(1);
 
     // When saving history position.
     session.save_history_position();
@@ -2124,7 +2154,7 @@ fn save_history_position_captures_current_state() {
     assert!(session.has_saved_history_position());
     let saved = session.ui.saved_history_position.as_ref().expect("saved");
     assert_eq!(saved.scroll_offset, Some(10));
-    assert_eq!(saved.selected_entry_index, Some(1));
+    assert_eq!(saved.selected_cursor_id, Some(second_id));
 }
 
 #[rstest::rstest]
@@ -2135,17 +2165,17 @@ fn restore_history_position_restores_and_clears() {
         .with_user_entry("second")
         .build();
     session.ui.scroll_offset = Some(5);
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
     session.save_history_position();
 
     // When modifying the state and then restoring.
     session.ui.scroll_offset = Some(99);
-    session.ui.selected_entry_index = Some(1);
+    session.set_selected_entry_index(1);
     session.restore_history_position();
 
     // Then the state is restored to the saved values.
     assert_eq!(session.ui.scroll_offset, Some(5));
-    assert_eq!(session.ui.selected_entry_index, Some(0));
+    assert_eq!(session.selected_entry_index(), Some(0));
     // And the saved position is cleared.
     assert!(!session.has_saved_history_position());
 }
@@ -2158,17 +2188,17 @@ fn discard_saved_history_position_clears_without_restoring() {
         .with_user_entry("second")
         .build();
     session.ui.scroll_offset = Some(5);
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
     session.save_history_position();
 
     // When modifying state and then discarding.
     session.ui.scroll_offset = Some(99);
-    session.ui.selected_entry_index = Some(1);
+    session.set_selected_entry_index(1);
     session.discard_saved_history_position();
 
     // Then the state is NOT restored.
     assert_eq!(session.ui.scroll_offset, Some(99));
-    assert_eq!(session.ui.selected_entry_index, Some(1));
+    assert_eq!(session.selected_entry_index(), Some(1));
     // And the saved position is cleared.
     assert!(!session.has_saved_history_position());
 }
@@ -2181,18 +2211,19 @@ fn save_history_position_does_not_overwrite_existing() {
         .with_user_entry("second")
         .build();
     session.ui.scroll_offset = Some(5);
-    session.ui.selected_entry_index = Some(0);
+    let first_id = session.history()[0].id.clone();
+    session.set_selected_entry_index(0);
     session.save_history_position();
 
     // When modifying state and saving again.
     session.ui.scroll_offset = Some(99);
-    session.ui.selected_entry_index = Some(1);
+    session.set_selected_entry_index(1);
     session.save_history_position();
 
     // Then the original saved position is kept.
     let saved = session.ui.saved_history_position.as_ref().expect("saved");
     assert_eq!(saved.scroll_offset, Some(5));
-    assert_eq!(saved.selected_entry_index, Some(0));
+    assert_eq!(saved.selected_cursor_id, Some(first_id));
 }
 
 #[rstest::rstest]
@@ -2200,14 +2231,14 @@ fn restore_is_noop_when_nothing_saved() {
     // Given a session with no saved position.
     let mut session = ChatSessionState::builder().with_user_entry("first").build();
     session.ui.scroll_offset = Some(10);
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
 
     // When restoring with nothing saved.
     session.restore_history_position();
 
     // Then the state is unchanged.
     assert_eq!(session.ui.scroll_offset, Some(10));
-    assert_eq!(session.ui.selected_entry_index, Some(0));
+    assert_eq!(session.selected_entry_index(), Some(0));
 }
 
 // --- Empty assistant navigation skip tests ---
@@ -2219,7 +2250,7 @@ fn select_next_entry_skips_empty_assistant() {
     session.push_entry(ChatEntry::user("a"));
     session.push_entry(ChatEntry::assistant(""));
     session.push_entry(ChatEntry::user("c"));
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
 
     // When selecting next.
     session.select_next_entry();
@@ -2235,7 +2266,7 @@ fn select_prev_entry_skips_empty_assistant() {
     session.push_entry(ChatEntry::user("a"));
     session.push_entry(ChatEntry::assistant(""));
     session.push_entry(ChatEntry::user("c"));
-    session.ui.selected_entry_index = Some(2);
+    session.set_selected_entry_index(2);
 
     // When selecting previous.
     session.select_prev_entry();
@@ -2250,7 +2281,7 @@ fn select_next_entry_stays_put_when_only_empty_assistant_remains() {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
     session.push_entry(ChatEntry::assistant(""));
-    session.ui.selected_entry_index = Some(0);
+    session.set_selected_entry_index(0);
 
     // When selecting next.
     session.select_next_entry();
@@ -2265,7 +2296,7 @@ fn select_prev_entry_stays_put_when_only_empty_assistant_remains() {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::assistant(""));
     session.push_entry(ChatEntry::user("b"));
-    session.ui.selected_entry_index = Some(1);
+    session.set_selected_entry_index(1);
 
     // When selecting previous.
     session.select_prev_entry();
@@ -2356,5 +2387,209 @@ fn is_tool_call_streaming_returns_false_for_unknown_id() {
     assert!(
         !session.is_tool_call_streaming(&fake_id),
         "unknown ID should not be streaming"
+    );
+}
+
+// --- Toggle ignored block visibility tests ---
+
+#[rstest::rstest]
+fn toggle_ignored_block_visibility_expands_block() {
+    // Given a session with 3 non-ignored + 5 ignored + 2 non-ignored entries.
+    let mut session = ChatSessionState::new();
+    for _ in 0..3 {
+        session.push_entry(ChatEntry::user("visible"));
+    }
+    for _ in 0..5 {
+        let mut entry = ChatEntry::user("ignored");
+        entry.ignored = true;
+        session.push_entry(entry);
+    }
+    for _ in 0..2 {
+        session.push_entry(ChatEntry::user("visible"));
+    }
+
+    let block_start_id = session.history()[3].id.clone();
+
+    // When toggling visibility of an entry in the ignored block.
+    let mid_id = session.history()[5].id.clone();
+    session.toggle_ignored_block_visibility(&mid_id);
+
+    // Then the block is shown (first entry's ID is in shown_ignored_blocks).
+    assert!(
+        session.ui.shown_ignored_blocks.contains(&block_start_id),
+        "block should be shown after toggle"
+    );
+}
+
+#[rstest::rstest]
+fn toggle_ignored_block_visibility_collapses_expanded_block() {
+    // Given a session with an expanded ignored block.
+    let mut session = ChatSessionState::new();
+    for _ in 0..3 {
+        session.push_entry(ChatEntry::user("visible"));
+    }
+    for _ in 0..5 {
+        let mut entry = ChatEntry::user("ignored");
+        entry.ignored = true;
+        session.push_entry(entry);
+    }
+    for _ in 0..2 {
+        session.push_entry(ChatEntry::user("visible"));
+    }
+
+    let block_start_id = session.history()[3].id.clone();
+    let mid_id = session.history()[5].id.clone();
+
+    // Expand first.
+    session.toggle_ignored_block_visibility(&mid_id);
+    assert!(session.ui.shown_ignored_blocks.contains(&block_start_id));
+
+    // When toggling again (same entry).
+    session.toggle_ignored_block_visibility(&mid_id);
+
+    // Then the block is collapsed (removed from shown_ignored_blocks).
+    assert!(
+        !session.ui.shown_ignored_blocks.contains(&block_start_id),
+        "block should be collapsed after second toggle"
+    );
+}
+
+#[rstest::rstest]
+fn toggle_ignored_block_visibility_noop_for_non_ignored() {
+    // Given a session with only non-ignored entries.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    session.push_entry(ChatEntry::user("world"));
+
+    let entry_id = session.history()[0].id.clone();
+
+    // When toggling a non-ignored entry.
+    session.toggle_ignored_block_visibility(&entry_id);
+
+    // Then nothing is in shown_ignored_blocks.
+    assert!(
+        session.ui.shown_ignored_blocks.is_empty(),
+        "no blocks should be shown for non-ignored entry"
+    );
+}
+
+#[rstest::rstest]
+fn toggle_ignored_block_visibility_noop_for_unknown_id() {
+    // Given a session.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+
+    // When toggling an unknown ID.
+    let fake_id = ChatEntryId::new();
+    session.toggle_ignored_block_visibility(&fake_id);
+
+    // Then nothing changes.
+    assert!(session.ui.shown_ignored_blocks.is_empty());
+}
+
+// --- Navigation with visual items tests ---
+
+#[rstest::rstest]
+fn select_next_walks_visual_items_with_collapsed_block() {
+    // Given a session with visual items: [Entry, CollapsedBlock, Entry].
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // index 0
+    for _ in 0..15 {
+        let mut entry = ChatEntry::user("ignored");
+        entry.ignored = true;
+        session.push_entry(entry);
+    } // indices 1..15, collapsed into one block
+    session.push_entry(ChatEntry::user("b")); // index 16
+
+    // Force visual items computation.
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+    let items = build_visual_items(
+        session.history(),
+        &session.ui.shown_ignored_blocks,
+        PROXIMITY_COUNT,
+    );
+    session.set_visual_items(items.clone());
+
+    // Select first entry (visual-item index 0).
+    session.set_selected_entry_index(0);
+    assert_eq!(session.selected_entry_index(), Some(0));
+
+    // When selecting next.
+    session.select_next_entry();
+
+    // Then selection moves to the collapsed block (visual-item index 1).
+    assert_eq!(session.selected_entry_index(), Some(1));
+}
+
+#[rstest::rstest]
+fn select_prev_walks_visual_items_with_collapsed_block() {
+    // Given a session with visual items: [Entry, CollapsedBlock, Entry, ...].
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // index 0
+    for _ in 0..15 {
+        let mut entry = ChatEntry::user("ignored");
+        entry.ignored = true;
+        session.push_entry(entry);
+    } // indices 1..15, collapsed
+    session.push_entry(ChatEntry::user("b")); // index 16
+
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+    let items = build_visual_items(
+        session.history(),
+        &session.ui.shown_ignored_blocks,
+        PROXIMITY_COUNT,
+    );
+    session.set_visual_items(items.clone());
+
+    // Select last entry.
+    let last_vi_idx = items.len() - 1;
+    session.set_selected_entry_index(last_vi_idx);
+
+    // When selecting prev.
+    session.select_prev_entry();
+
+    // Then selection moves to the collapsed block.
+    assert_eq!(session.selected_entry_index(), Some(last_vi_idx - 1));
+}
+
+#[rstest::rstest]
+fn selected_entry_returns_none_for_collapsed_block() {
+    // Given a session with visual items where a collapsed block is selected.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    for _ in 0..15 {
+        let mut entry = ChatEntry::user("ignored");
+        entry.ignored = true;
+        session.push_entry(entry);
+    }
+    session.push_entry(ChatEntry::user("b"));
+
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+    let items = build_visual_items(
+        session.history(),
+        &session.ui.shown_ignored_blocks,
+        PROXIMITY_COUNT,
+    );
+    session.set_visual_items(items);
+
+    // Select the collapsed block (visual-item index 1).
+    session.set_selected_entry_index(1);
+
+    // Then selected_entry() returns None.
+    assert!(
+        session.selected_entry().is_none(),
+        "collapsed block should not resolve to an entry"
+    );
+    // And selected_entry_id() returns None.
+    assert!(
+        session.selected_entry_id().is_none(),
+        "collapsed block should not have an entry ID"
+    );
+    // But selected_entry_index() returns the visual-item index.
+    assert_eq!(session.selected_entry_index(), Some(1));
+    // And selected_history_index() returns None (no history index for collapsed block).
+    assert!(
+        session.selected_history_index().is_none(),
+        "collapsed block has no history index"
     );
 }

@@ -1,6 +1,7 @@
 //! Navigation intent handlers — scroll, tab, and editor.
 
 use crate::common::app_state::AppState;
+use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::IntentResult;
 
 /// Number of lines to scroll per mouse wheel tick.
@@ -41,11 +42,28 @@ pub fn handle_mouse_scroll_down(state: &mut AppState) -> IntentResult {
 /// Scrolls the chat log to the very top and moves cursor to the first entry.
 pub fn handle_scroll_to_top(state: &mut AppState) -> IntentResult {
     state.active_session_mut().scroll_to_top();
-    // Set cursor to first non-empty-assistant entry.
-    if !state.active_session().history().is_empty() {
+    // Set cursor to first selectable visual item.
+    let items = state.active_session().visual_items().clone();
+    let history = state.active_session().history();
+    if items.is_empty() {
+        // Fallback: walk history directly when visual items not yet computed.
+        for (i, entry) in history.iter().enumerate() {
+            if !entry.is_empty_assistant() {
+                state.active_session_mut().set_selected_entry_index(i);
+                break;
+            }
+        }
+    } else {
         let mut idx = 0;
-        let max = state.active_session().history().len();
-        while idx < max && state.active_session().history()[idx].is_empty_assistant() {
+        let max = items.len();
+        while idx < max {
+            let selectable = match items[idx] {
+                VisualItem::CollapsedIgnoredBlock { .. } => true,
+                VisualItem::Entry(hist_idx) => !history[hist_idx].is_empty_assistant(),
+            };
+            if selectable {
+                break;
+            }
             idx += 1;
         }
         if idx < max {
@@ -58,14 +76,34 @@ pub fn handle_scroll_to_top(state: &mut AppState) -> IntentResult {
 /// Scrolls the chat log to the very bottom and moves cursor to the last entry.
 pub fn handle_scroll_to_bottom(state: &mut AppState) -> IntentResult {
     state.active_session_mut().scroll_to_bottom();
-    // Set cursor to last non-empty-assistant entry.
-    let max = state.active_session().history().len().saturating_sub(1);
-    if !state.active_session().history().is_empty() {
-        let mut idx = max;
-        while idx > 0 && state.active_session().history()[idx].is_empty_assistant() {
+    // Set cursor to last selectable visual item.
+    let items = state.active_session().visual_items().clone();
+    let history = state.active_session().history();
+    if items.is_empty() {
+        // Fallback: walk history backwards when visual items not yet computed.
+        for i in (0..history.len()).rev() {
+            if !history[i].is_empty_assistant() {
+                state.active_session_mut().set_selected_entry_index(i);
+                break;
+            }
+        }
+    } else {
+        let mut idx = items.len().saturating_sub(1);
+        while idx > 0 {
+            let selectable = match items[idx] {
+                VisualItem::CollapsedIgnoredBlock { .. } => true,
+                VisualItem::Entry(hist_idx) => !history[hist_idx].is_empty_assistant(),
+            };
+            if selectable {
+                break;
+            }
             idx = idx.saturating_sub(1);
         }
-        if !state.active_session().history()[idx].is_empty_assistant() {
+        let selectable = match items[idx] {
+            VisualItem::CollapsedIgnoredBlock { .. } => true,
+            VisualItem::Entry(hist_idx) => !history[hist_idx].is_empty_assistant(),
+        };
+        if selectable {
             state.active_session_mut().set_selected_entry_index(idx);
         }
     }

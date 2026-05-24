@@ -37,13 +37,14 @@ use crate::protocol::{ChatEntry, ChatEntryKind};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui_markdown::RichTextTheme;
 use ratatui_markdown::theme::Generation;
 
 use super::line_count_cache::EntryLineCache;
 use super::shared::{GUTTER_WIDTH, RenderContext};
+use super::visual_item::{VisualItem, build_visual_items, PROXIMITY_COUNT};
 use super::{
     actor, assistant, compaction, error_entry, skill, system, thinking, tool_call, tool_result,
     transient, user,
@@ -93,6 +94,7 @@ impl UiElement<AppState> for ChatLogElement {
         }
 
         let mut render = HistoryRender::new(state, area);
+        render.compute_visual_items();
         render.build_tool_result_map();
         render.compute_line_ranges(&mut self.line_cache, state.frontend.theme.generation());
         render.compute_scroll();
@@ -103,6 +105,7 @@ impl UiElement<AppState> for ChatLogElement {
             session.set_entry_line_ranges(render.entry_line_ranges.clone());
             session.set_viewport_height(area.height);
             session.set_blank_count(render.scroll.blank_count as u16);
+            session.set_rendered_scroll_offset(render.scroll.clamped);
         }
 
         render.find_visible_indices();
@@ -142,6 +145,7 @@ fn render_loading(frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
 struct HistoryRender<'a> {
     // Inputs (set once at construction)
     history: &'a [ChatEntry],
+    visual_items: Vec<VisualItem>,
     selected_idx: Option<usize>,
     state: &'a AppState,
     content_width: u16,
@@ -152,6 +156,7 @@ struct HistoryRender<'a> {
 
     // Built by pipeline steps
     tool_result_statuses: HashMap<String, ToolResultStatus>,
+    /// Per-visual-item wrapped line ranges: `entry_line_ranges[vi_idx] = (start, end)`.
     entry_line_ranges: Vec<(u16, u16)>,
     miss_lines: HashMap<usize, Vec<Line<'static>>>,
     cached_lines: HashMap<usize, Arc<Vec<Line<'static>>>>,
@@ -200,7 +205,19 @@ impl<'a> HistoryRender<'a> {
             content_lines: Vec::new(),
             gutter_lines: Vec::new(),
             lines_before_viewport: 0,
+            visual_items: Vec::new(),
         }
+    }
+
+    /// Compute visual items from flat history and store on session state.
+    ///
+    /// Must be called before `compute_line_ranges`.
+    fn compute_visual_items(&mut self) {
+        let session = self.state.active_session();
+        let shown_ignored_blocks = &session.ui.shown_ignored_blocks;
+        let visual_items = build_visual_items(self.history, shown_ignored_blocks, PROXIMITY_COUNT);
+        self.state.active_session().set_visual_items(visual_items.clone());
+        self.visual_items = visual_items;
     }
 
     // -----------------------------------------------------------------------
@@ -232,60 +249,74 @@ impl<'a> HistoryRender<'a> {
     fn compute_line_ranges(&mut self, cache: &mut EntryLineCache, theme_generation: Generation) {
         let mut wrapped_cursor: u16 = 0;
 
-        for (i, entry) in self.history.iter().enumerate() {
-            let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
+        for (vi_idx, item) in self.visual_items.iter().enumerate() {
+            match item {
+                VisualItem::Entry(hist_idx) => {
+                    let entry = &self.history[*hist_idx];
+                    let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
 
-            if let Some(hit) = cache.get(entry, is_expanded, self.content_width, theme_generation) {
-                let start = wrapped_cursor;
-                let end = wrapped_cursor + hit.wrapped_count;
-                self.entry_line_ranges.push((start, end));
-                wrapped_cursor = end;
-                if let Some(lines) = hit.lines {
-                    self.cached_lines.insert(i, lines);
+                    if let Some(hit) =
+                        cache.get(entry, is_expanded, self.content_width, theme_generation)
+                    {
+                        let start = wrapped_cursor;
+                        let end = wrapped_cursor + hit.wrapped_count;
+                        self.entry_line_ranges.push((start, end));
+                        wrapped_cursor = end;
+                        if let Some(lines) = hit.lines {
+                            self.cached_lines.insert(vi_idx, lines);
+                        }
+                    } else {
+                        let is_selected = self.selected_idx == Some(vi_idx);
+                        let max_lines = self
+                            .state
+                            .frontend
+                            .preferences
+                            .tool_entry_max_lines
+                            .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
+                        let paired_status = self.paired_status_for_entry(entry);
+                        let is_streaming = matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
+                            && self.state.active_session().is_tool_call_streaming(&entry.id);
+                        let ctx = RenderContext {
+                            content_width: self.content_width,
+                            _is_selected: is_selected,
+                            is_expanded,
+                            tool_entry_max_lines: max_lines,
+                            theme: self.theme.clone(),
+                            paired_status,
+                            is_streaming,
+                        };
+                        let lines = entry_to_lines(entry, &ctx);
+                        let wrapped_count: u16 = if self.content_width == 0 {
+                            lines.len() as u16
+                        } else {
+                            Paragraph::new(lines.clone())
+                                .wrap(Wrap { trim: false })
+                                .line_count(self.content_width) as u16
+                        };
+                        cache.insert_with_lines(
+                            entry,
+                            is_expanded,
+                            self.content_width,
+                            theme_generation,
+                            wrapped_count,
+                            Arc::new(lines.clone()),
+                        );
+
+                        let start = wrapped_cursor;
+                        let end = wrapped_cursor + wrapped_count;
+                        self.entry_line_ranges.push((start, end));
+                        wrapped_cursor = end;
+
+                        self.miss_lines.insert(vi_idx, lines);
+                    }
                 }
-            } else {
-                let is_selected = self.selected_idx == Some(i);
-                let max_lines = self
-                    .state
-                    .frontend
-                    .preferences
-                    .tool_entry_max_lines
-                    .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
-                let paired_status = self.paired_status_for_entry(entry);
-                let is_streaming = matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
-                    && self.state.active_session().is_tool_call_streaming(&entry.id);
-                let ctx = RenderContext {
-                    content_width: self.content_width,
-                    _is_selected: is_selected,
-                    is_expanded,
-                    tool_entry_max_lines: max_lines,
-                    theme: self.theme.clone(),
-                    paired_status,
-                    is_streaming,
-                };
-                let lines = entry_to_lines(entry, &ctx);
-                let wrapped_count: u16 = if self.content_width == 0 {
-                    lines.len() as u16
-                } else {
-                    Paragraph::new(lines.clone())
-                        .wrap(Wrap { trim: false })
-                        .line_count(self.content_width) as u16
-                };
-                cache.insert_with_lines(
-                    entry,
-                    is_expanded,
-                    self.content_width,
-                    theme_generation,
-                    wrapped_count,
-                    Arc::new(lines.clone()),
-                );
-
-                let start = wrapped_cursor;
-                let end = wrapped_cursor + wrapped_count;
-                self.entry_line_ranges.push((start, end));
-                wrapped_cursor = end;
-
-                self.miss_lines.insert(i, lines);
+                VisualItem::CollapsedIgnoredBlock { .. } => {
+                    // Collapsed block is exactly 1 line.
+                    let start = wrapped_cursor;
+                    let end = wrapped_cursor + 1;
+                    self.entry_line_ranges.push((start, end));
+                    wrapped_cursor = end;
+                }
             }
         }
 
@@ -363,64 +394,96 @@ impl<'a> HistoryRender<'a> {
         );
         let cursor_color = self.theme.focus_accent;
 
-        for &i in &self.visible_indices {
-            let entry = &self.history[i];
-            let is_selected = self.selected_idx == Some(i);
-            let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
-            let max_lines = self
-                .state
-                .frontend
-                .preferences
-                .tool_entry_max_lines
-                .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
-
-            let (entry_start, _entry_end) = self.entry_line_ranges[i];
+        for &vi_idx in &self.visible_indices {
+            let (entry_start, _entry_end) = self.entry_line_ranges[vi_idx];
             let abs_entry_start = entry_start + self.scroll.blank_count as u16;
 
-            // Get content lines — cached lines → miss lines → render fresh.
-            let entry_content_lines = if let Some(lines) = self.cached_lines.remove(&i) {
-                Arc::unwrap_or_clone(lines)
-            } else if let Some(lines) = self.miss_lines.remove(&i) {
-                lines
-            } else {
-                let paired_status = self.paired_status_for_entry(entry);
-                let is_streaming = matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
-                    && self.state.active_session().is_tool_call_streaming(&entry.id);
-                let ctx = RenderContext {
-                    content_width: self.content_width,
-                    _is_selected: is_selected,
-                    is_expanded,
-                    tool_entry_max_lines: max_lines,
-                    theme: self.theme.clone(),
-                    paired_status,
-                    is_streaming,
-                };
-                entry_to_lines(entry, &ctx)
-            };
+            match &self.visual_items[vi_idx] {
+                VisualItem::Entry(hist_idx) => {
+                    let entry = &self.history[*hist_idx];
+                    let is_selected = self.selected_idx == Some(vi_idx);
+                    let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
+                    let max_lines = self
+                        .state
+                        .frontend
+                        .preferences
+                        .tool_entry_max_lines
+                        .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
 
-            // Build gutter lines for this entry (delegates to gutter submodule).
-            let is_pinned = entry.pin_position.is_some();
-            let is_included_in_context = !entry.ignored || entry.pin_position.is_some();
-            let gutter_ctx = gutter::GutterStyle {
-                is_pinned,
-                is_selected,
-                chat_log_active,
-                content_width: self.content_width,
-                theme: &self.theme,
-                cursor_color,
-                is_included_in_context,
-                gutter_context_color: self.theme.gutter_context_included,
-            };
-            let entry_gutter_lines =
-                gutter::build_entry_gutter_lines(&entry_content_lines, &gutter_ctx);
+                    // Get content lines — cached lines → miss lines → render fresh.
+                    let entry_content_lines =
+                        if let Some(lines) = self.cached_lines.remove(&vi_idx) {
+                            Arc::unwrap_or_clone(lines)
+                        } else if let Some(lines) = self.miss_lines.remove(&vi_idx) {
+                            lines
+                        } else {
+                            let paired_status = self.paired_status_for_entry(entry);
+                            let is_streaming = matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
+                                && self.state.active_session().is_tool_call_streaming(&entry.id);
+                            let ctx = RenderContext {
+                                content_width: self.content_width,
+                                _is_selected: is_selected,
+                                is_expanded,
+                                tool_entry_max_lines: max_lines,
+                                theme: self.theme.clone(),
+                                paired_status,
+                                is_streaming,
+                            };
+                            entry_to_lines(entry, &ctx)
+                        };
 
-            // Track lines above viewport for scroll calculation.
-            if abs_entry_start < viewport_top {
-                self.lines_before_viewport += viewport_top.saturating_sub(abs_entry_start);
+                    // Build gutter lines for this entry.
+                    let is_pinned = entry.pin_position.is_some();
+                    let is_included_in_context =
+                        !entry.ignored || entry.pin_position.is_some();
+                    let gutter_ctx = gutter::GutterStyle {
+                        is_pinned,
+                        is_selected,
+                        chat_log_active,
+                        content_width: self.content_width,
+                        theme: &self.theme,
+                        cursor_color,
+                        is_included_in_context,
+                        gutter_context_color: self.theme.gutter_context_included,
+                    };
+                    let entry_gutter_lines =
+                        gutter::build_entry_gutter_lines(&entry_content_lines, &gutter_ctx);
+
+                    // Track lines above viewport for scroll calculation.
+                    if abs_entry_start < viewport_top {
+                        self.lines_before_viewport +=
+                            viewport_top.saturating_sub(abs_entry_start);
+                    }
+
+                    self.content_lines.extend(entry_content_lines);
+                    self.gutter_lines.extend(entry_gutter_lines);
+                }
+                VisualItem::CollapsedIgnoredBlock { count, .. } => {
+                    let is_selected = self.selected_idx == Some(vi_idx);
+
+                    // Content: gray summary line.
+                    let text =
+                        format!("{count} hidden entries (press h to show)");
+                    let style = Style::default().fg(self.theme.border_unfocused);
+                    let line = Line::from(Span::styled(text, style));
+                    self.content_lines.push(line);
+
+                    // Gutter: gray indicator with optional cursor.
+                    let gutter_line = gutter::build_collapsed_block_gutter_line(
+                        is_selected,
+                        chat_log_active,
+                        &self.theme,
+                        cursor_color,
+                    );
+                    self.gutter_lines.push(gutter_line);
+
+                    // Track lines above viewport.
+                    if abs_entry_start < viewport_top {
+                        self.lines_before_viewport +=
+                            viewport_top.saturating_sub(abs_entry_start);
+                    }
+                }
             }
-
-            self.content_lines.extend(entry_content_lines);
-            self.gutter_lines.extend(entry_gutter_lines);
         }
     }
 
