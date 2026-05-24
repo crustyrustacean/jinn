@@ -58,6 +58,7 @@ nullslop-testutil = { path = "crates/nullslop-testutil" }
 nullslop-workflow = { path = "crates/nullslop-workflow" }
 nullslop-workflow-tui = { path = "crates/nullslop-workflow-tui" }
 nullslop-bench = { path = "crates/nullslop-bench" }
+nullslop-theme = { path = "crates/nullslop-theme" }
 
 # Error handling
 wherror = "2.3.1"
