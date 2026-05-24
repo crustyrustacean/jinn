@@ -51,6 +51,10 @@ pub struct CompactionActor {
     /// `JoinHandle` for the in-flight compaction LLM task.
     /// `Some` while a compaction is in progress, `None` otherwise.
     compaction_task: Option<tokio::task::JoinHandle<()>>,
+    /// Whether an auto-compaction request has already been dispatched
+    /// and is awaiting processing. Prevents duplicate `EnqueueCompaction`
+    /// commands from multiple `HistoryAppended` events within the same cycle.
+    auto_compaction_pending: bool,
 }
 
 /// Dependencies for [`CompactionActor`].
@@ -78,6 +82,7 @@ impl Actor for CompactionActor {
             services: deps.services,
             handle: deps.handle,
             compaction_task: None,
+            auto_compaction_pending: false,
         }
     }
 
@@ -112,6 +117,8 @@ impl CompactionActor {
     /// 3. Emits `EndCompaction` — inserts result entry, sets phase to Idle
     /// 4. Emits `CompactionCompleted` event — signals persistence
     fn handle_compact_context(&mut self, cmd: &CompactContext, ctx: &ActorContext) {
+        self.auto_compaction_pending = false;
+
         tracing::info!(session_id = %cmd.session_id, "starting context compaction");
 
         let sink = ctx.sink();
@@ -163,7 +170,15 @@ impl CompactionActor {
     /// Compares the reported `total_estimated_tokens` against the configured
     /// threshold. If exceeded, sends `EnqueueCompaction` (to queue compaction)
     /// and `SoftCancelTurn` (to gracefully end the current turn if any).
-    fn handle_history_appended(&self, payload: &HistoryAppended, ctx: &ActorContext) {
+    fn handle_history_appended(&mut self, payload: &HistoryAppended, ctx: &ActorContext) {
+        if self.auto_compaction_pending {
+            tracing::debug!(
+                session_id = ?payload.session_id,
+                "skipping auto-compaction: already pending"
+            );
+            return;
+        }
+
         let (should_compact, session_id) = {
             let state = self.state.read();
             let session_id = payload.session_id.clone();
@@ -208,6 +223,7 @@ impl CompactionActor {
         };
 
         if should_compact {
+            self.auto_compaction_pending = true;
             let _ = ctx.send_command(Command::EnqueueCompaction(EnqueueCompaction {
                 session_id: session_id.clone(),
             }));
@@ -219,6 +235,8 @@ impl CompactionActor {
 
     /// Abort the in-flight compaction LLM task.
     fn handle_cancel_compaction(&mut self, payload: &CancelCompaction) {
+        self.auto_compaction_pending = false;
+
         if let Some(task) = self.compaction_task.take() {
             task.abort();
             tracing::info!(session_id = %payload.session_id, "aborted compaction LLM task");
