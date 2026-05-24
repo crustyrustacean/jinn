@@ -190,7 +190,17 @@ pub fn update_visual_parents_on_removal(state: &mut AppState, removed_id: &Sessi
                 .sessions_section
                 .visual_parents
                 .get(pid)
-                .cloned(),
+                .cloned()
+                .or_else(|| {
+                    // The parent's parent may not be in visual_parents,
+                    // but the removed session itself might have been reparented.
+                    state
+                        .frontend
+                        .sessions_section
+                        .visual_parents
+                        .get(removed_id)
+                        .cloned()
+                }),
             // No parent at all — check if the removed session itself has a visual parent.
             None => state
                 .frontend
