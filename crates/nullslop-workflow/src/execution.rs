@@ -142,7 +142,7 @@ impl WorkflowStructure {
             .filter(|e| e.source_node == node_name)
             .map(|e| e.target_node.as_str())
             .collect();
-        children.sort();
+        children.sort_unstable();
         children.dedup();
         children
     }
@@ -158,7 +158,7 @@ impl WorkflowStructure {
             .filter(|e| e.target_node == node_name)
             .map(|e| e.source_node.as_str())
             .collect();
-        parents.sort();
+        parents.sort_unstable();
         parents.dedup();
         parents
     }
@@ -173,10 +173,10 @@ impl WorkflowStructure {
         queue.push_back(node_name);
         while let Some(name) = queue.pop_front() {
             for edge in &self.edges {
-                if edge.source_node == name {
-                    if downstream.insert(edge.target_node.as_str()) {
-                        queue.push_back(&edge.target_node);
-                    }
+                if edge.source_node == name
+                    && downstream.insert(edge.target_node.as_str())
+                {
+                    queue.push_back(&edge.target_node);
                 }
             }
         }
@@ -254,6 +254,7 @@ impl ExecutionSnapshot {
 ///
 /// Internally uses [`ArcSwap`] for lock-free atomic snapshots.
 pub struct WorkflowExecution {
+    /// The graph topology (immutable after construction).
     graph: WorkflowGraph,
     /// Lock-free atomic snapshot — swapped on every status update.
     snapshot: ArcSwap<ExecutionSnapshot>,
@@ -399,12 +400,12 @@ impl WorkflowExecution {
 
         let mut new_states = current.node_states.clone();
 
-        if include_self {
-            if let Some(state) = new_states.get_mut(node_name) {
-                state.inputs = None;
-                state.outputs = None;
-                state.status = NodeStatus::Pending;
-            }
+        if include_self
+            && let Some(state) = new_states.get_mut(node_name)
+        {
+            state.inputs = None;
+            state.outputs = None;
+            state.status = NodeStatus::Pending;
         }
 
         for name in &downstream {
@@ -432,14 +433,12 @@ impl WorkflowExecution {
 
         let mut inputs = PortValues::new();
         for edge in structure.edges() {
-            if edge.target_node == node_name {
-                if let Some(parent_state) = current.node_states.get(&edge.source_node) {
-                    if let Some(parent_outputs) = &parent_state.outputs {
-                        if let Some(value) = parent_outputs.get(&edge.source_port) {
-                            inputs.insert(edge.target_port.clone(), value.clone());
-                        }
-                    }
-                }
+            if edge.target_node == node_name
+                && let Some(parent_state) = current.node_states.get(&edge.source_node)
+                && let Some(parent_outputs) = &parent_state.outputs
+                && let Some(value) = parent_outputs.get(&edge.source_port)
+            {
+                inputs.insert(edge.target_port.clone(), value.clone());
             }
         }
 

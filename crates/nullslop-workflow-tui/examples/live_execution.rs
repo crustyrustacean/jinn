@@ -14,7 +14,7 @@ mod common;
 use std::sync::Arc;
 use std::time::Duration;
 
-use nullslop_workflow::engine::{self, NodeStatus};
+use nullslop_workflow::engine;
 use nullslop_workflow::execution::WorkflowExecution;
 use nullslop_workflow::graph::WorkflowGraphBuilder;
 use nullslop_workflow::node::NodeContext;
