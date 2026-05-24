@@ -1774,6 +1774,15 @@ impl ChatSessionState {
         self.ui.selected_cursor_id.as_ref()
     }
 
+    /// Set the selected cursor to a specific entry by ID.
+    ///
+    /// Sets [`SessionUi::selected_cursor_id`] directly, bypassing
+    /// visual-item index resolution. Use when the entry ID is already
+    /// known (e.g., sidebar pin sync).
+    pub fn set_selected_cursor_id(&mut self, id: ChatEntryId) {
+        self.ui.selected_cursor_id = Some(id);
+    }
+
     /// The currently selected entry, if any.
     ///
     /// Resolves through the visual items list: returns `None` if the
