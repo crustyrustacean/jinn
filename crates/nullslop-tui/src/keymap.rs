@@ -133,6 +133,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Minimap navigation
             // Pin selected entry
             .bind("p", Intent::ChatEntryPinSelected, KeyCategory::Context)
+            // Ignore/un-ignore selected entry
+            .bind("x", Intent::ChatEntryIgnoreSelected, KeyCategory::Context)
             // Expand/collapse tool entry
             .bind("e", Intent::ExpandToolEntry, KeyCategory::Navigation)
             // Toggle ignored block visibility
