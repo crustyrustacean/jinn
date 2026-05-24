@@ -3,6 +3,7 @@
 use crate::common::app_state::AppState;
 use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
+use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{Command, IntentResult, PinPosition};
 
 use super::validator;
@@ -16,7 +17,11 @@ pub fn handle_select_next(state: &mut AppState) -> IntentResult {
     let session = state.active_session_mut();
     let visible = session.visible_entry_range();
     let current = session.selected_entry_index();
-    let max = session.history().len().saturating_sub(1);
+    let max = if session.visual_items().is_empty() {
+        session.history().len().saturating_sub(1)
+    } else {
+        session.visual_items().len().saturating_sub(1)
+    };
 
     if let Some(cur) = current {
         if cur >= max {
@@ -121,6 +126,42 @@ pub fn handle_expand_tool_entry(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
+/// Toggles visibility of ignored entries in the selected visual item's block.
+///
+/// - If the selected item is a `CollapsedIgnoredBlock` → expand it.
+/// - If the selected item is an ignored entry in an expanded block → collapse the block.
+/// - If the selected item is a non-ignored entry → no-op.
+/// - If nothing is selected → no-op.
+pub fn handle_toggle_ignored_block(state: &mut AppState) -> IntentResult {
+    let session = state.active_session();
+    let Some(vi_idx) = session.selected_entry_index() else {
+        return IntentResult::empty();
+    };
+
+    let history = session.history();
+    let items = session.visual_items();
+
+    let entry_id = match items.get(vi_idx) {
+        Some(VisualItem::CollapsedIgnoredBlock { start, .. }) => {
+            // Block is collapsed → expand it.
+            history[*start].id.clone()
+        }
+        Some(VisualItem::Entry(hist_idx)) => {
+            // Entry might be in an expanded ignored block → collapse it.
+            let entry = &history[*hist_idx];
+            if !entry.ignored {
+                return IntentResult::empty();
+            }
+            entry.id.clone()
+        }
+        None => return IntentResult::empty(),
+    };
+
+    drop(items);
+    state.active_session_mut().toggle_ignored_block_visibility(&entry_id);
+    IntentResult::empty()
+}
+
 /// Forks the session at the currently selected chat entry.
 ///
 /// Emits a `SessionForkRequested` command with `at_ordinal` set to the
@@ -140,7 +181,7 @@ pub fn handle_fork_from_entry(state: &mut AppState) -> IntentResult {
     let source_session_id = state.session.active_session_id().clone();
     let at_ordinal = state
         .active_session()
-        .selected_entry_index()
+        .selected_history_index()
         .expect("validator confirmed selection exists");
 
     state.session.begin_load(source_session_id.clone());
@@ -645,6 +686,129 @@ mod tests {
         assert_eq!(
             state.frontend.tui_signals.yank_text,
             Some("bash: output text".to_string())
+        );
+    }
+
+    // --- Toggle Ignored Block ---
+
+    #[rstest::rstest]
+    fn toggle_ignored_block_noop_with_no_selection() {
+        // Given a state with no selection.
+        let mut state = AppState::default();
+
+        // When handling toggle ignored block.
+        let result = handle_toggle_ignored_block(&mut state);
+
+        // Then no commands are emitted and no state change.
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn toggle_ignored_block_noop_with_non_ignored_entry() {
+        // Given a state with a selected non-ignored entry.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().select_next_entry();
+
+        // When handling toggle ignored block.
+        let result = handle_toggle_ignored_block(&mut state);
+
+        // Then no commands emitted.
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn toggle_ignored_block_expands_collapsed_block() {
+        // Given a session with a collapsed ignored block selected.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        for _ in 0..15 {
+            let mut entry = ChatEntry::user("ignored");
+            entry.ignored = true;
+            state.active_session_mut().push_entry(entry);
+        }
+        state.active_session_mut().push_entry(ChatEntry::user("b"));
+
+        use crate::feat::ui::chat_log::visual_item::{build_visual_items, VisualItem, PROXIMITY_COUNT};
+        let items = build_visual_items(
+            state.active_session().history(),
+            &state.active_session().ui.shown_ignored_blocks,
+            PROXIMITY_COUNT,
+        );
+        state.active_session_mut().set_visual_items(items.clone());
+
+        // Find the collapsed block's visual-item index.
+        let collapsed_vi_idx = items
+            .iter()
+            .position(|i| matches!(i, VisualItem::CollapsedIgnoredBlock { .. }))
+            .expect("should have a collapsed block");
+        state.active_session_mut().set_selected_entry_index(collapsed_vi_idx);
+
+        let block_start_id = state.active_session().history()[1].id.clone();
+        assert!(
+            !state.active_session().ui.shown_ignored_blocks.contains(&block_start_id),
+            "block should start collapsed"
+        );
+
+        // When handling toggle ignored block.
+        let _result = handle_toggle_ignored_block(&mut state);
+
+        // Then the block is expanded.
+        assert!(
+            state.active_session().ui.shown_ignored_blocks.contains(&block_start_id),
+            "block should be shown after toggle on collapsed block"
+        );
+    }
+
+    #[rstest::rstest]
+    fn toggle_ignored_block_collapses_expanded_block() {
+        // Given a session with an expanded ignored block, an ignored entry selected.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        for _ in 0..15 {
+            let mut entry = ChatEntry::user("ignored");
+            entry.ignored = true;
+            state.active_session_mut().push_entry(entry);
+        }
+        state.active_session_mut().push_entry(ChatEntry::user("b"));
+
+        let block_start_id = state.active_session().history()[1].id.clone();
+
+        // Expand the block first.
+        use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+        let entry_5_id = state.active_session().history()[5].id.clone();
+        state
+            .active_session_mut()
+            .toggle_ignored_block_visibility(&entry_5_id);
+        assert!(
+            state.active_session().ui.shown_ignored_blocks.contains(&block_start_id),
+            "block should be expanded"
+        );
+
+        // Rebuild visual items (now expanded — individual Entry items).
+        let items = build_visual_items(
+            state.active_session().history(),
+            &state.active_session().ui.shown_ignored_blocks,
+            PROXIMITY_COUNT,
+        );
+        state.active_session_mut().set_visual_items(items.clone());
+
+        // Select an ignored entry within the expanded block (history index 5).
+        let target_vi_idx = items
+            .iter()
+            .position(|i| {
+                matches!(i, crate::feat::ui::chat_log::visual_item::VisualItem::Entry(hist_idx) if *hist_idx == 5)
+            })
+            .expect("should find ignored entry at history index 5");
+        state.active_session_mut().set_selected_entry_index(target_vi_idx);
+
+        // When handling toggle ignored block.
+        let _result = handle_toggle_ignored_block(&mut state);
+
+        // Then the block is collapsed.
+        assert!(
+            !state.active_session().ui.shown_ignored_blocks.contains(&block_start_id),
+            "block should be collapsed after toggle on ignored entry"
         );
     }
 }

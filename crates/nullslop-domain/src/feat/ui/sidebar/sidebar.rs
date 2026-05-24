@@ -267,6 +267,9 @@ pub fn jump_to_section(direction: &SidebarIntent, state: &mut AppState) {
                     SidebarIntent::Action(_) => return,
                 };
                 receive_cursor(target, enter_from, state);
+            } else if target == SidebarSectionId::Pins {
+                // Pins has a retained cursor — sync chat log to show it.
+                pins::pins_section::sync_chat_log_cursor(state);
             } else if target == SidebarSectionId::Sessions {
                 // Ensure scroll offset is valid for sessions.
                 sessions::scroll_to_cursor(state);

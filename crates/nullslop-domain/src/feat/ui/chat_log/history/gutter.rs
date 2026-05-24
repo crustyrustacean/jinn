@@ -110,3 +110,29 @@ pub(crate) fn build_blank_gutter_lines(
         })
         .collect()
 }
+
+/// Build a single gutter line for a collapsed ignored block summary.
+///
+/// Uses gray indicator when not selected, yellow cursor bar when selected.
+pub(crate) fn build_collapsed_block_gutter_line(
+    is_selected: bool,
+    chat_log_active: bool,
+    theme: &Theme,
+    cursor_color: Color,
+) -> Line<'static> {
+    let indicator_style = Style::default().fg(theme.border_unfocused);
+    let has_cursor = is_selected && chat_log_active;
+
+    if has_cursor {
+        let cursor_style = Style::default().fg(cursor_color);
+        Line::from(vec![
+            Span::styled("…".to_owned(), indicator_style),
+            Span::styled("┃".to_owned(), cursor_style),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled("…".to_owned(), indicator_style),
+            Span::styled(" ".to_owned(), Style::default()),
+        ])
+    }
+}
