@@ -7,18 +7,25 @@ use crate::protocol::ChatEntryKind;
 
 /// Convert chat history entries to LLM messages.
 ///
-/// Includes `User`, `Assistant`, `ToolCall`, and `ToolResult` entries.
+/// Produces messages for entries that are in context (as determined by
+/// [`ChatEntry::is_in_context()`]). The `is_in_context()` guard at the
+/// top of the loop ensures only eligible entries produce messages.
 ///
-/// System and Actor entries are **skipped unless pinned**. When pinned:
-/// - Pinned `System` entries produce [`LlmMessage::System`] messages.
-/// - Pinned `Actor` entries produce [`LlmMessage::User`] messages with a
-///   `[Actor: source]` prefix to identify the origin.
+/// ## Message mapping
 ///
-/// Unpinned System and Actor entries are excluded from the LLM conversation
-/// context since they represent internal application state.
-///
-/// Assistant entries that follow a `ToolCall` + `ToolResult` sequence are
-/// produced with their `tool_calls` field populated.
+/// | Entry kind | LLM message | Notes |
+/// |---|---|---|
+/// | User | `LlmMessage::User` | Uses `expanded` content |
+/// | Assistant | `LlmMessage::Assistant` | Tool calls attached from subsequent `ToolCall` entries |
+/// | ToolCall | Attached to previous `Assistant` message | Or creates empty assistant |
+/// | ToolResult | `LlmMessage::Tool` | |
+/// | System | `LlmMessage::System` | Only when in context (pinned or forced-include) |
+/// | Actor | `LlmMessage::User` with `[Actor: source]` prefix | Only when in context |
+/// | Error | `LlmMessage::User` with `[Error]` prefix | Always in context by default |
+/// | Thinking | `LlmMessage::User` with `[Thinking]` prefix | Only when in context |
+/// | Transient | `LlmMessage::User` with `[Transient]` prefix | Only when in context |
+/// | Skill | `LlmMessage::System` with skill XML | Always in context by default |
+/// | Compaction | `LlmMessage::User` with summary | Always in context by default |
 pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
     let mut messages = Vec::new();
 
@@ -75,26 +82,41 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                     content: content.clone(),
                 });
             }
-            // System entries are only sent to the LLM when pinned.
+            // System entries produce a System message when in context
+            // (pinned or forced-include).
             ChatEntryKind::System(content) => {
-                if entry.is_pinned() {
-                    messages.push(LlmMessage::System {
-                        content: content.clone(),
-                    });
-                }
+                messages.push(LlmMessage::System {
+                    content: content.clone(),
+                });
             }
-            // Actor entries are only sent to the LLM when pinned.
+            // Actor entries produce a User message when in context
+            // (pinned or forced-include).
             ChatEntryKind::Actor { source, text } => {
-                if entry.is_pinned() {
-                    messages.push(LlmMessage::User {
-                        content: format!("[Actor: {source}] {text}"),
-                    });
-                }
+                messages.push(LlmMessage::User {
+                    content: format!("[Actor: {source}] {text}"),
+                });
             }
-            // Error entries are ephemeral display / local status — not sent to the LLM.
-            // Thinking entries are display-only — excluded from context assembly.
-            // Transient entries are UI-only — excluded from prompt assembly.
-            ChatEntryKind::Error(_) | ChatEntryKind::Thinking(_) | ChatEntryKind::Transient(_) => {}
+            // Error entries produce a User message with [Error] prefix.
+            // Error is included in context by default.
+            ChatEntryKind::Error(text) => {
+                messages.push(LlmMessage::User {
+                    content: format!("[Error] {text}"),
+                });
+            }
+            // Thinking entries produce a User message with [Thinking] prefix
+            // when in context (pinned or forced-include).
+            ChatEntryKind::Thinking(text) => {
+                messages.push(LlmMessage::User {
+                    content: format!("[Thinking] {text}"),
+                });
+            }
+            // Transient entries produce a User message with [Transient] prefix
+            // when in context (pinned or forced-include).
+            ChatEntryKind::Transient(text) => {
+                messages.push(LlmMessage::User {
+                    content: format!("[Transient] {text}"),
+                });
+            }
             // Compaction entries produce a User message wrapping the summary.
             // The summary replaces all ignored entries before this point.
             ChatEntryKind::Compaction { summary, .. } => {

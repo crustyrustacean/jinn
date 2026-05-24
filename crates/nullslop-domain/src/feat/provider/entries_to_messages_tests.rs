@@ -43,7 +43,7 @@ fn entries_to_messages_converts_assistant_entries() {
 
 #[rstest::rstest]
 fn entries_to_messages_skips_system_and_actor() {
-    // Given entries of all kinds.
+    // Given entries of all kinds (unpinned System and Actor are not in context).
     let entries = vec![
         ChatEntry::system("ready"),
         ChatEntry::user("hello"),
@@ -55,6 +55,7 @@ fn entries_to_messages_skips_system_and_actor() {
     let messages = entries_to_messages(&entries);
 
     // Then only user and assistant messages are included.
+    // Unpinned System and Actor are excluded from context by default.
     assert_eq!(messages.len(), 2);
     assert_eq!(
         messages[0],
@@ -345,7 +346,7 @@ fn pinned_user_and_assistant_entries_unaffected() {
 
 #[rstest::rstest]
 fn entries_to_messages_skips_thinking_entries() {
-    // Given a history with thinking, user, and assistant entries.
+    // Given a history with thinking (unpinned, not in context), user, and assistant entries.
     let entries = vec![
         ChatEntry::thinking("reasoning here"),
         ChatEntry::user("hello"),
@@ -355,7 +356,7 @@ fn entries_to_messages_skips_thinking_entries() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then thinking is excluded, producing only user and assistant.
+    // Then thinking is excluded (not in context by default), producing only user and assistant.
     assert_eq!(messages.len(), 2);
     assert_eq!(
         messages[0],
@@ -396,7 +397,7 @@ fn skill_entry_produces_system_message_with_xml() {
 
 #[rstest::rstest]
 fn transient_entries_are_skipped() {
-    // Given a Transient entry alongside user and assistant entries.
+    // Given Transient (unpinned, not in context), user, and assistant entries.
     let entries = vec![
         ChatEntry::transient("welcome"),
         ChatEntry::user("hello"),
@@ -406,7 +407,7 @@ fn transient_entries_are_skipped() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then Transient is excluded, producing only user and assistant.
+    // Then Transient is excluded (not in context by default), producing only user and assistant.
     assert_eq!(messages.len(), 2);
     assert_eq!(
         messages[0],
@@ -573,6 +574,154 @@ fn message_order_after_compaction() {
         LlmMessage::Assistant {
             content: "new answer".into(),
             tool_calls: None,
+        }
+    );
+}
+
+// --- Error entry tests ---
+
+#[rstest::rstest]
+fn error_entry_produces_user_message() {
+    // Given an Error entry.
+    let entries = vec![ChatEntry::error("something went wrong")];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then a User message with [Error] prefix is produced.
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        LlmMessage::User {
+            content: "[Error] something went wrong".into()
+        }
+    );
+}
+
+#[rstest::rstest]
+fn error_entry_between_user_and_assistant() {
+    // Given Error, User, and Assistant entries.
+    let entries = vec![
+        ChatEntry::user("hello"),
+        ChatEntry::error("connection lost"),
+        ChatEntry::assistant("hi"),
+    ];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then all three produce messages (Error is included by default).
+    assert_eq!(messages.len(), 3);
+    assert_eq!(
+        messages[0],
+        LlmMessage::User {
+            content: "hello".into()
+        }
+    );
+    assert_eq!(
+        messages[1],
+        LlmMessage::User {
+            content: "[Error] connection lost".into()
+        }
+    );
+    assert_eq!(
+        messages[2],
+        LlmMessage::Assistant {
+            content: "hi".into(),
+            tool_calls: None,
+        }
+    );
+}
+
+#[rstest::rstest]
+fn error_entry_forced_exclude_is_skipped() {
+    // Given an Error entry with ForcedExclude.
+    use crate::protocol::ContextOverride;
+    let entries = vec![
+        ChatEntry::error("ignored error").with_context_override(ContextOverride::ForcedExclude),
+    ];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then no messages are produced.
+    assert!(messages.is_empty());
+}
+
+#[rstest::rstest]
+fn pinned_thinking_entry_produces_user_message() {
+    // Given a pinned Thinking entry.
+    let entries = vec![ChatEntry::thinking("reasoning").with_pin(PinPosition::Top)];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then a User message with [Thinking] prefix is produced.
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        LlmMessage::User {
+            content: "[Thinking] reasoning".into()
+        }
+    );
+}
+
+#[rstest::rstest]
+fn pinned_transient_entry_produces_user_message() {
+    // Given a pinned Transient entry.
+    let entries = vec![ChatEntry::transient("welcome").with_pin(PinPosition::Top)];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then a User message with [Transient] prefix is produced.
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        LlmMessage::User {
+            content: "[Transient] welcome".into()
+        }
+    );
+}
+
+#[rstest::rstest]
+fn forced_include_system_entry_produces_system_message() {
+    // Given a System entry with ForcedInclude (not pinned).
+    use crate::protocol::ContextOverride;
+    let entries = vec![
+        ChatEntry::system("important").with_context_override(ContextOverride::ForcedInclude),
+    ];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then a System message is produced (forced-include overrides kind default).
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        LlmMessage::System {
+            content: "important".into(),
+        }
+    );
+}
+
+#[rstest::rstest]
+fn forced_include_actor_entry_produces_user_message() {
+    // Given an Actor entry with ForcedInclude (not pinned).
+    use crate::protocol::ContextOverride;
+    let entries = vec![
+        ChatEntry::actor("src", "text").with_context_override(ContextOverride::ForcedInclude),
+    ];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then a User message is produced (forced-include overrides kind default).
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        LlmMessage::User {
+            content: "[Actor: src] text".into(),
         }
     );
 }
