@@ -7,6 +7,10 @@ use std::time::Duration;
 
 use crate::task::{BenchTask, BenchTools, VerificationReport};
 use crate::tasks::checks;
+use include_dir::Dir;
+
+
+static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/fix_code/fix_syntax_broken_rust/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -16,7 +20,7 @@ pub fn task() -> BenchTask {
             "There is a syntax error in src/main.rs. Find and fix it, then run the \
              program with `cargo run` to confirm it prints the correct sum (15).",
         ],
-        fixture_dir: Some("src/tasks/fix_code/fix_syntax_broken_rust/fixtures"),
+        fixture_dir: Some(&FIXTURES),
         timeout: Duration::from_secs(300),
         persona: None,
         tools: BenchTools {

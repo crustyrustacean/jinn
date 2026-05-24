@@ -6,6 +6,10 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::task::{BenchTask, BenchTools, CheckResult, VerificationReport};
+use include_dir::Dir;
+
+
+static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/redirect/redirect_change_color/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -16,7 +20,7 @@ pub fn task() -> BenchTask {
             "Actually, I changed my mind — make the background dark gray (#333333) \
              instead and change the heading color to orange.",
         ],
-        fixture_dir: Some("src/tasks/redirect/redirect_change_color/fixtures"),
+        fixture_dir: Some(&FIXTURES),
         timeout: Duration::from_secs(300),
         persona: None,
         tools: BenchTools {

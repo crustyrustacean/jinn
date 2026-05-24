@@ -7,6 +7,10 @@ use std::time::Duration;
 
 use crate::task::{BenchTask, BenchTools, CheckResult, VerificationReport};
 use crate::tasks::checks;
+use include_dir::Dir;
+
+
+static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_large_replace_small_file/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -19,7 +23,7 @@ pub fn task() -> BenchTask {
              for display. Keep the existing `main()` function but have it create a \
              `NumberProcessor` instance. Use the same data: [1, 5, 3, 9, 2, 7, 4, 8, 6].",
         ],
-        fixture_dir: Some("src/tasks/edit/edit_large_replace_small_file/fixtures"),
+        fixture_dir: Some(&FIXTURES),
         timeout: Duration::from_secs(300),
         persona: None,
         tools: BenchTools {

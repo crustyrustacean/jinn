@@ -317,6 +317,7 @@ impl SessionPersistenceActor {
                     let default = state.session.default_cwd().clone();
                     if let Some(session) = state.session.get_mut(session_id) {
                         session.set_cwd(default.clone());
+                        session.mark_busy_complete();
                     }
                     default
                 };
