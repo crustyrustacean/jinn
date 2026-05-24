@@ -71,6 +71,24 @@ impl std::fmt::Display for PinPosition {
     }
 }
 
+/// User-controlled override for whether an entry is included in LLM context.
+///
+/// Tri-state that replaces the old `ignored: bool` field, supporting both
+/// inclusion and exclusion overrides. The `x` key toggles between `Default`
+/// and the opposite of the kind's default behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextOverride {
+    /// Follow the entry kind's default inclusion rule.
+    #[default]
+    Default,
+    /// User has explicitly forced this entry into the LLM context.
+    ForcedInclude,
+    /// User has explicitly forced this entry out of the LLM context
+    /// (replaces old `ignored: true`).
+    ForcedExclude,
+}
+
 /// A single entry in the chat history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatEntry {
@@ -89,17 +107,18 @@ pub struct ChatEntry {
     ///        session-actor (atomic bulk restore during SessionLoadCompleted via restore_history).
     #[serde(default)]
     pub pin_position: Option<PinPosition>,
-    /// Whether this entry has been compacted and should be skipped during
-    /// prompt assembly.
+    /// User-controlled override for whether this entry is included in LLM context.
     ///
-    /// When `true`, the entry is excluded from all prompt assembly strategies
-    /// (sliding window, token budget, compaction) and from token estimation.
-    /// Pinned entries override this: if an entry is both pinned and ignored,
+    /// Tri-state: `Default` follows the kind-level rule, `ForcedInclude` forces the
+    /// entry into context regardless of kind default, `ForcedExclude` forces it out.
+    ///
+    /// Pin overrides this field: if an entry is both pinned and `ForcedExclude`,
     /// it is still included in prompt assembly.
     ///
-    /// OWNER: compaction-actor (sets to `true` during compaction).
+    /// OWNER: compaction-actor (sets `ForcedExclude` during compaction),
+    ///        user (via `x` key toggle in `toggle_entry_ignored`).
     #[serde(default)]
-    pub ignored: bool,
+    pub context_override: ContextOverride,
 }
 
 /// The kind of chat entry.
@@ -218,7 +237,7 @@ impl ChatEntry {
                 expanded: t,
             },
             pin_position: None,
-            ignored: false,
+            context_override: ContextOverride::Default,
         }
     }
 
@@ -240,7 +259,7 @@ impl ChatEntry {
                 expanded: expanded.into(),
             },
             pin_position: None,
-            ignored: false,
+            context_override: ContextOverride::Default,
         }
     }
 
@@ -255,7 +274,7 @@ impl ChatEntry {
             timestamp: jiff::Timestamp::now(),
             kind: ChatEntryKind::System(text.into()),
             pin_position: None,
-            ignored: false,
+            context_override: ContextOverride::Default,
         }
     }
 
@@ -270,7 +289,7 @@ impl ChatEntry {
             timestamp: jiff::Timestamp::now(),
             kind: ChatEntryKind::Error(text.into()),
             pin_position: None,
-            ignored: false,
+            context_override: ContextOverride::Default,
         }
     }
 
@@ -285,7 +304,7 @@ impl ChatEntry {
             timestamp: jiff::Timestamp::now(),
             kind: ChatEntryKind::Assistant(text.into()),
             pin_position: None,
-            ignored: false,
+            context_override: ContextOverride::Default,
         }
     }
 
@@ -304,7 +323,7 @@ impl ChatEntry {
                 text: text.into(),
             },
             pin_position: None,
-            ignored: false,
+            context_override: ContextOverride::Default,
         }
     }
 
@@ -319,7 +338,7 @@ impl ChatEntry {
             timestamp: jiff::Timestamp::now(),
             kind: ChatEntryKind::Thinking(text.into()),
             pin_position: None,
-            ignored: false,
+            context_override: ContextOverride::Default,
         }
     }
 
@@ -340,7 +359,7 @@ impl ChatEntry {
                 arguments: arguments.into(),
             },
             pin_position: None,
-            ignored: false,
+            context_override: ContextOverride::Default,
         }
     }
 
@@ -364,7 +383,7 @@ impl ChatEntry {
                 truncation: None,
             },
             pin_position: None,
-            ignored: false,
+            context_override: ContextOverride::Default,
         }
     }
 
@@ -394,7 +413,7 @@ impl ChatEntry {
                 truncation: Some(truncation),
             },
             pin_position: None,
-            ignored: false,
+            context_override: ContextOverride::Default,
         }
     }
 
@@ -415,7 +434,7 @@ impl ChatEntry {
                 content: content.into(),
             },
             pin_position: None,
-            ignored: false,
+            context_override: ContextOverride::Default,
         }
     }
 
@@ -436,7 +455,7 @@ impl ChatEntry {
             timestamp: jiff::Timestamp::now(),
             kind: ChatEntryKind::Transient(text.into()),
             pin_position: None,
-            ignored: false,
+            context_override: ContextOverride::Default,
         }
     }
 
@@ -449,12 +468,27 @@ impl ChatEntry {
         self
     }
 
+    /// Set the context override on this entry, returning the modified entry.
+    ///
+    /// Used as a builder: `ChatEntry::user("hello").with_context_override(ContextOverride::ForcedExclude)`
+    #[must_use]
+    pub fn with_context_override(mut self, override_: ContextOverride) -> Self {
+        self.context_override = override_;
+        self
+    }
+
     /// Set the ignored flag on this entry, returning the modified entry.
+    ///
+    /// Compatibility shim for `with_context_override`. Use that method instead.
     ///
     /// Used as a builder: `ChatEntry::user("hello").with_ignored(true)`
     #[must_use]
     pub fn with_ignored(mut self, ignored: bool) -> Self {
-        self.ignored = ignored;
+        self.context_override = if ignored {
+            ContextOverride::ForcedExclude
+        } else {
+            ContextOverride::Default
+        };
         self
     }
 
@@ -463,22 +497,36 @@ impl ChatEntry {
         self.pin_position.is_some()
     }
 
-    /// Whether this entry kind can be pinned to the context.
+    /// Whether this entry will be included in the assembled LLM prompt.
     ///
-    /// Only user messages, assistant responses, tool results, and skill loads
-    /// can be pinned. Transient entries, system messages, errors, actors, thinking,
-    /// tool calls, and compaction entries are not pinnable.
+    /// Single source of truth. All consumers (assembly, gutter, minimap,
+    /// token estimator, visual items) must use this method.
+    ///
+    /// Priority: pin > context_override > kind default.
     #[must_use]
-    pub fn is_pinnable(&self) -> bool {
-        matches!(
-            self.kind,
-            ChatEntryKind::User { .. }
-                | ChatEntryKind::Assistant(..)
-                | ChatEntryKind::ToolResult { .. }
-                | ChatEntryKind::Skill { .. }
-        )
+    pub fn is_in_context(&self) -> bool {
+        if self.is_pinned() {
+            return true;
+        }
+        match self.context_override {
+            ContextOverride::ForcedInclude => true,
+            ContextOverride::ForcedExclude => false,
+            ContextOverride::Default => self.kind.is_included_by_default(),
+        }
     }
 
+    /// Compatibility accessor: whether this entry has been forced out of context.
+    ///
+    /// Equivalent to `context_override == ForcedExclude`. Used during migration
+    /// from `ignored: bool` to `context_override: ContextOverride`.
+    ///
+ /// Prefer `is_in_context()` or `context_override` directly.
+    #[must_use]
+    pub fn ignored(&self) -> bool {
+        self.context_override == ContextOverride::ForcedExclude
+    }
+
+    /// Whether this entry kind can be pinned to the context.
     /// Whether this entry is a compaction summary.
     ///
     /// Compaction entries act as delimiters in the chat history. They are
@@ -968,3 +1016,26 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
 }
 
 impl Eq for ChatEntryKind {}
+
+impl ChatEntryKind {
+    /// Whether this entry kind is included in LLM context by default
+    /// (before considering pin or user override).
+    ///
+    /// Kinds included by default: User, Assistant, Error, ToolCall, ToolResult,
+    /// Skill, Compaction.
+    ///
+    /// Kinds excluded by default: Thinking, Transient, System, Actor.
+    #[must_use]
+    pub fn is_included_by_default(&self) -> bool {
+        matches!(
+            self,
+            ChatEntryKind::User { .. }
+                | ChatEntryKind::Assistant(..)
+                | ChatEntryKind::Error(..)
+                | ChatEntryKind::ToolCall { .. }
+                | ChatEntryKind::ToolResult { .. }
+                | ChatEntryKind::Skill { .. }
+                | ChatEntryKind::Compaction { .. }
+        )
+    }
+}

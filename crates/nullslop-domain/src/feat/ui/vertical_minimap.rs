@@ -95,7 +95,7 @@ fn compute_visible_entries(state: &AppState) -> Vec<VisibleEntry> {
             MinimapCategory::from_kind(&entry.kind).map(|cat| VisibleEntry {
                 history_index: i,
                 category: cat,
-                ignored: entry.ignored,
+                ignored: !entry.is_in_context(),
             })
         })
         .collect()

@@ -15,6 +15,7 @@ diesel::table! {
         ordinal -> Integer,
         pin_position -> Nullable<Text>,
         ignored -> Bool,
+        context_override -> Text,
     }
 }
 
