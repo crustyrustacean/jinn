@@ -3,7 +3,7 @@ Feature: Headless Script Execution
 
   Scenario: Running a quit script sets should_quit
     Given a new app
-    When I run the headless script "q"
+    When I run the headless script "<esc>q"
     Then the app should quit
 
   Scenario: Running an empty script makes no state changes

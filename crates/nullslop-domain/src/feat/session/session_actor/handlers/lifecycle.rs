@@ -1115,6 +1115,7 @@ mod tests {
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
+            state.frontend.scope_stack.clear_overlays();
             state
                 .active_session_mut()
                 .set_lifecycle_name(Some("test".to_owned()));

@@ -12,6 +12,16 @@ use ratatui::style::Color;
 // --- Gutter width constant for test offsets ---
 const G: u16 = GUTTER_WIDTH; // = 2
 
+/// Creates an AppState with Normal scope (clears the default Input overlay).
+///
+/// Chat log rendering tests need Normal scope so that the gutter cursor
+/// bar and selection highlighting are active.
+fn normal_state() -> AppState {
+    let mut s = AppState::default();
+    s.frontend.scope_stack.clear_overlays();
+    s
+}
+
 #[rstest::rstest]
 fn name_returns_chat_log() {
     // Given a ChatLogElement.
@@ -66,7 +76,7 @@ fn selected_entry_gutter_col0_has_context_fg_and_col1_has_cursor_bg() {
     // Given a ChatLogElement with 2 entries, first selected.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = normal_state();
         s.active_session_mut().push_entry(ChatEntry::user("hello"));
         s.active_session_mut().push_entry(ChatEntry::user("world"));
         // push_entry auto-selects last (index 1). Move to index 0.
@@ -416,7 +426,7 @@ fn render_scroll_to_selected_keeps_entry_visible() {
     // and the viewport is small enough that it would normally be scrolled off.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = normal_state();
         // Add 20 entries (each 1 line).
         for i in 0..20 {
             s.active_session_mut()
@@ -488,7 +498,7 @@ fn render_pinned_selected_entry_gutter_has_focus_accent_bg() {
     // Given a ChatLogElement with one pinned user entry (auto-selected).
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = normal_state();
         s.active_session_mut()
             .push_entry(ChatEntry::user("hello").with_pin(PinPosition::Top));
         s
@@ -555,7 +565,7 @@ fn render_unpinned_selected_entry_gutter_col0_no_bg_col1_has_cursor_bg() {
     // Given a ChatLogElement with one unpinned user entry (auto-selected).
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = normal_state();
         s.active_session_mut().push_entry(ChatEntry::user("hello"));
         s
     };
@@ -710,7 +720,7 @@ fn render_scroll_to_selected_middle_entry_adjusts_viewport() {
     // Given a ChatLogElement with many entries where a middle entry is selected.
     let mut element = ChatLogElement::new();
     let state = {
-        let mut s = AppState::default();
+        let mut s = normal_state();
         // 30 entries, each with word-wrapping text.
         for i in 0..30 {
             s.active_session_mut()

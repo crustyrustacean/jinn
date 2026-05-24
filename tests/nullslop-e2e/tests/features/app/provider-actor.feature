@@ -4,4 +4,4 @@ Feature: Provider Actor
   Scenario: Session model can be set
     Given a fresh app
     And the active provider is set
-    Then the mode should be normal
+    Then the mode should be input

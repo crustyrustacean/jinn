@@ -7,7 +7,6 @@ use nullslop_domain::feat::ui::sidebar::sidebar::Sidebar;
 
 use super::{TuiApp, WhichKeyInstance};
 use crate::config::TuiConfig;
-use crate::scope::Scope;
 use crate::selection::{SelectableRects, SelectionState};
 use crate::suspend::Suspend;
 use crate::{AppStatus, MsgHandler};
@@ -63,13 +62,16 @@ impl TuiAppBuilder {
         nullslop_domain::feat::provider::register(&mut ui_registry);
         nullslop_domain::feat::chat_input::register(&mut ui_registry);
 
+        let initial_scope =
+            crate::app::scope_for_focus(core.state.read().frontend.scope_stack.current());
+
         TuiApp {
             core,
             services,
             actor_host: fake_host,
             ui_registry,
             events: MsgHandler::new(),
-            which_key: WhichKeyInstance::new(crate::keymap::init(), Scope::Normal),
+            which_key: WhichKeyInstance::new(crate::keymap::init(), initial_scope),
             suspend: Suspend::new(),
             event_thread: None,
             status: AppStatus::Starting,

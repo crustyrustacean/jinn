@@ -493,6 +493,8 @@ pub struct FrontendState {
 
 impl Default for FrontendState {
     fn default() -> Self {
+        let mut scope_stack = ScopeStack::default();
+        scope_stack.push(FocusScope::Input);
         Self {
             should_quit: false,
             pins: PinsState::default(),
@@ -504,7 +506,7 @@ impl Default for FrontendState {
             session_picker: nullslop_selection_widget::TreePickerState::new(),
             persona_picker: nullslop_selection_widget::SelectionState::new(),
             status_notification: None,
-            scope_stack: ScopeStack::default(),
+            scope_stack,
             theme: crate::feat::theme::default_theme(),
             cancel_stream_prompt: false,
             close_session_prompt: false,

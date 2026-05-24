@@ -1,9 +1,9 @@
 Feature: Scope Transitions
   Scope stack management through intents.
 
-  Scenario: Normal mode is the default
+  Scenario: Input mode is the default
     Given a fresh app
-    Then the mode should be normal
+    Then the mode should be input
 
   Scenario: Input mode can be entered
     Given a fresh app

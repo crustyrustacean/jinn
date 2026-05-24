@@ -653,8 +653,9 @@ mod tests {
 
     #[rstest::rstest]
     fn paste_text_ignored_in_normal_scope() {
-        // Given an AppState in Normal scope (default).
+        // Given an AppState in Normal scope.
         let mut state = AppState::default();
+        state.frontend.scope_stack.clear_overlays();
 
         // When handling PasteText.
         let result = IntentHandler::handle(

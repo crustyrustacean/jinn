@@ -3,4 +3,4 @@ Feature: App World Smoke Test
 
   Scenario: Fresh app world initializes correctly
     Given a fresh app
-    Then the mode should be normal
+    Then the mode should be input
