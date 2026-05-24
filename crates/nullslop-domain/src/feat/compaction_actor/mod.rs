@@ -117,6 +117,7 @@ impl CompactionActor {
     /// 3. Emits `EndCompaction` — inserts result entry, sets phase to Idle
     /// 4. Emits `CompactionCompleted` event — signals persistence
     fn handle_compact_context(&mut self, cmd: &CompactContext, ctx: &ActorContext) {
+        let was_auto = self.auto_compaction_pending;
         self.auto_compaction_pending = false;
 
         tracing::info!(session_id = %cmd.session_id, "starting context compaction");
@@ -129,7 +130,7 @@ impl CompactionActor {
 
         let task = rt_handle.clone().spawn(async move {
             let result =
-                perform_compaction(&state, &services, &rt_handle, &session_id, &sink).await;
+                perform_compaction(&state, &services, &rt_handle, &session_id, &sink, was_auto).await;
 
             match result {
                 Ok(entries_compacted) => {
@@ -141,6 +142,7 @@ impl CompactionActor {
                     let _ = sink.send_event(Event::CompactionCompleted(CompactionCompleted {
                         session_id: session_id.clone(),
                         entries_compacted,
+                        auto: was_auto,
                     }));
                 }
                 Err(e) => {
@@ -153,10 +155,12 @@ impl CompactionActor {
                         session_id: session_id.clone(),
                         result: None,
                         error: Some(format!("{e:#}")),
+                        auto: was_auto,
                     }));
                     let _ = sink.send_event(Event::CompactionCompleted(CompactionCompleted {
                         session_id,
                         entries_compacted: 0,
+                        auto: was_auto,
                     }));
                 }
             }
@@ -258,6 +262,7 @@ async fn perform_compaction(
     handle: &Handle,
     session_id: &crate::protocol::SessionId,
     sink: &std::sync::Arc<dyn crate::common::actor::message_sink::MessageSink>,
+    auto: bool,
 ) -> Result<usize, error_stack::Report<CompactionError>> {
     // Read config and session state.
     let (config, model_name, history_len, retry_config) = {
@@ -404,6 +409,7 @@ async fn perform_compaction(
             boundary_index,
         }),
         error: None,
+        auto,
     }));
 
     Ok(entries_compacted)
