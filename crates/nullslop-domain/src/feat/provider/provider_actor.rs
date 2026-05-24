@@ -125,7 +125,8 @@ impl ProviderActor {
             | Command::FinishSessionTeardown(..)
             | Command::StartWorkflow(..)
             | Command::CancelWorkflow(..)
-            | Command::RerunFromNode(..) => {}
+            | Command::RerunFromNode(..)
+            | Command::LoadWorkflowPickerEntries(..) => {}
         }
     }
 

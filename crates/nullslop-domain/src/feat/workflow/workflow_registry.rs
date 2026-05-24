@@ -18,7 +18,7 @@ pub type WorkflowBuilder = fn() -> WorkflowGraph;
 /// workflow actor via deps. No globals.
 #[derive(Debug, Default)]
 pub struct WorkflowRegistry {
-    builders: HashMap<&'static str, WorkflowBuilder>,
+    builders: HashMap<String, WorkflowBuilder>,
 }
 
 impl WorkflowRegistry {
@@ -29,8 +29,8 @@ impl WorkflowRegistry {
     }
 
     /// Register a workflow builder under the given name.
-    pub fn register(&mut self, name: &'static str, builder: WorkflowBuilder) {
-        self.builders.insert(name, builder);
+    pub fn register(&mut self, name: impl Into<String>, builder: WorkflowBuilder) {
+        self.builders.insert(name.into(), builder);
     }
 
     /// Look up a workflow builder by name.
@@ -39,5 +39,13 @@ impl WorkflowRegistry {
     #[must_use]
     pub fn get(&self, name: &str) -> Option<WorkflowBuilder> {
         self.builders.get(name).copied()
+    }
+
+    /// Returns all registered workflow names in sorted order.
+    #[must_use]
+    pub fn names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.builders.keys().cloned().collect();
+        names.sort();
+        names
     }
 }
