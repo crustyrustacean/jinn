@@ -324,9 +324,15 @@ fn execute_slash_command(
             state.frontend.scope_stack.swap_base(
                 crate::common::app_state::FocusScope::Workflow,
             );
+            // Parse workflow name from "/workflow <name>"; default to "dynamic".
+            let name = _display
+                .strip_prefix('/')
+                .and_then(|s| s.split_whitespace().nth(1))
+                .unwrap_or("dynamic")
+                .to_owned();
             IntentResult::with_commands(vec![Command::StartWorkflow(
                 crate::feat::workflow::protocol::command::StartWorkflow {
-                    name: "pipeline".to_owned(),
+                    name,
                     workflow_id,
                 },
             )])
