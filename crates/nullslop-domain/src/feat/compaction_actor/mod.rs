@@ -265,13 +265,10 @@ fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize {
         return cut_index;
     }
 
-    for i in cut_index..history.len() {
-        if matches!(history[i].kind, ChatEntryKind::User { .. }) {
-            return i;
-        }
-    }
-
-    history.len()
+    history[cut_index..]
+        .iter()
+        .position(|entry| matches!(entry.kind, ChatEntryKind::User { .. }))
+        .map_or(history.len(), |offset| cut_index + offset)
 }
 
 /// Perform the compaction algorithm as a free async function.
