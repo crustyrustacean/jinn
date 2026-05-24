@@ -492,13 +492,7 @@ fn handle_workflow_node_spatial(
     );
 
     if let Some(next_name) = next {
-        // Get the rect for auto-pan before mutating.
-        let next_rect = rects.get(&next_name).copied();
         state.frontend.workflow_ui.selected_node = Some(next_name);
-        if let Some(rect) = next_rect {
-            state.frontend.workflow_ui.viewport_offset_x = i32::from(rect.x);
-            state.frontend.workflow_ui.viewport_offset_y = i32::from(rect.y);
-        }
     }
 
     IntentResult::empty()
