@@ -25,7 +25,7 @@ path = "src/lib.rs"
 [dependencies]
 nullslop-cli = { workspace = true }
 nullslop-tui = { workspace = true }
-nullslop-domain = { workspace = true, features = ["which-key"] }
+nullslop-domain = { workspace = true }
 nullslop-bench = { workspace = true }
 clap_complete = { workspace = true }
 tokio = { workspace = true }
@@ -52,7 +52,7 @@ rstest = { workspace = true }
 [workspace.dependencies]
 # Internal
 nullslop-domain = { path = "crates/nullslop-domain" }
-ratatui-markdown = { path = "vendor/ratatui-markdown", features = ["markdown", "highlight", "highlight-lang-all", "highlight-pest"] }
+ratatui-markdown = { path = "vendor/ratatui-markdown", features = ["markdown", "highlight", "highlight-lang-all", "highlight-pest", "mermaid"] }
 nullslop-provider = { path = "crates/nullslop-provider" }
 nullslop-tui = { path = "crates/nullslop-tui" }
 nullslop-cli = { path = "crates/nullslop-cli" }

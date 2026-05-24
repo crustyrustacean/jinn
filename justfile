@@ -7,7 +7,7 @@ fossil-branch NAME:
     fossil commit -m "Open {{NAME}}" --branch {{NAME}} --allow-empty
 
 test:
-    cargo nextest run --workspace --all-features --exclude nullslop-e2e
+    cargo nextest run --workspace --exclude nullslop-e2e
     cargo test --test e2e -p nullslop-e2e
 
 check:
