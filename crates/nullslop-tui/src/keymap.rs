@@ -303,8 +303,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("L", Intent::WorkflowPanRight, KeyCategory::Navigation)
         // Inspector
         .bind("i", Intent::WorkflowInspectToggle, KeyCategory::Navigation)
-        .bind("J", Intent::WorkflowInspectScrollDown, KeyCategory::Navigation)
-        .bind("K", Intent::WorkflowInspectScrollUp, KeyCategory::Navigation)
+        .bind("<down>", Intent::WorkflowInspectScrollDown, KeyCategory::Navigation)
+        .bind("<up>", Intent::WorkflowInspectScrollUp, KeyCategory::Navigation)
         // Cancel
         .bind("<esc>", Intent::WorkflowEscape, KeyCategory::General)
         // Re-run
