@@ -360,6 +360,98 @@ impl WorkflowExecution {
             node_states: new_states,
         }));
     }
+
+    /// Updates a node's cached output and invalidates all transitive downstream.
+    ///
+    /// Downstream nodes have their inputs, outputs cleared and status set to Pending.
+    /// Does NOT trigger execution. The named node keeps its status unchanged.
+    pub fn update_output(&self, node_name: &str, outputs: PortValues) {
+        // 1. Update the node's own output.
+        {
+            let current = self.snapshot.load();
+            let mut new_states = current.node_states.clone();
+            if let Some(state) = new_states.get_mut(node_name) {
+                state.outputs = Some(Arc::new(outputs));
+            }
+            self.snapshot.store(Arc::new(ExecutionSnapshot {
+                structure: Arc::clone(&current.structure),
+                node_states: new_states,
+            }));
+        }
+
+        // 2. Invalidate downstream (exclude self).
+        self.invalidate_from_inner(node_name, false);
+    }
+
+    /// Clears inputs, outputs, and sets status to Pending for the named node
+    /// and all transitive downstream nodes.
+    pub fn invalidate_from(&self, node_name: &str) {
+        self.invalidate_from_inner(node_name, true);
+    }
+
+    /// Shared invalidation logic.
+    ///
+    /// `include_self`: when true, clears the named node too (for `invalidate_from`).
+    /// When false, only downstream (for `update_output`).
+    fn invalidate_from_inner(&self, node_name: &str, include_self: bool) {
+        let current = self.snapshot.load();
+        let downstream = current.structure.downstream_of(node_name);
+
+        let mut new_states = current.node_states.clone();
+
+        if include_self {
+            if let Some(state) = new_states.get_mut(node_name) {
+                state.inputs = None;
+                state.outputs = None;
+                state.status = NodeStatus::Pending;
+            }
+        }
+
+        for name in &downstream {
+            if let Some(state) = new_states.get_mut(*name) {
+                state.inputs = None;
+                state.outputs = None;
+                state.status = NodeStatus::Pending;
+            }
+        }
+
+        self.snapshot.store(Arc::new(ExecutionSnapshot {
+            structure: Arc::clone(&current.structure),
+            node_states: new_states,
+        }));
+    }
+
+    /// Populates a node's inputs by reading upstream cached outputs
+    /// and routing through the static edge definitions.
+    ///
+    /// Requires that parent nodes have cached outputs.
+    /// Silently produces empty/partial inputs if parent outputs are missing.
+    pub fn seed_inputs(&self, node_name: &str) {
+        let current = self.snapshot.load();
+        let structure = &current.structure;
+
+        let mut inputs = PortValues::new();
+        for edge in structure.edges() {
+            if edge.target_node == node_name {
+                if let Some(parent_state) = current.node_states.get(&edge.source_node) {
+                    if let Some(parent_outputs) = &parent_state.outputs {
+                        if let Some(value) = parent_outputs.get(&edge.source_port) {
+                            inputs.insert(edge.target_port.clone(), value.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut new_states = current.node_states.clone();
+        if let Some(state) = new_states.get_mut(node_name) {
+            state.inputs = Some(Arc::new(inputs));
+        }
+        self.snapshot.store(Arc::new(ExecutionSnapshot {
+            structure: Arc::clone(&current.structure),
+            node_states: new_states,
+        }));
+    }
 }
 
 /// Extracts a lightweight [`WorkflowStructure`] from a [`WorkflowGraph`].
@@ -599,5 +691,137 @@ mod tests {
         assert_eq!(current.status_of("a"), Some(NodeStatus::Completed));
         assert_eq!(current.status_of("b"), Some(NodeStatus::Completed));
         assert_eq!(current.status_of("c"), Some(NodeStatus::Completed));
+    }
+
+    #[rstest::rstest]
+    fn children_of_returns_direct_downstream() {
+        let graph = linear_graph();
+        let structure = extract_structure(&graph);
+
+        assert_eq!(structure.children_of("a"), vec!["b"]);
+        assert_eq!(structure.children_of("b"), vec!["c"]);
+        assert_eq!(structure.children_of("c"), Vec::<&str>::new());
+    }
+
+    #[rstest::rstest]
+    fn parents_of_returns_direct_upstream() {
+        let graph = linear_graph();
+        let structure = extract_structure(&graph);
+
+        assert_eq!(structure.parents_of("a"), Vec::<&str>::new());
+        assert_eq!(structure.parents_of("b"), vec!["a"]);
+        assert_eq!(structure.parents_of("c"), vec!["b"]);
+    }
+
+    #[rstest::rstest]
+    fn downstream_of_returns_transitive_closure() {
+        let graph = linear_graph();
+        let structure = extract_structure(&graph);
+
+        let downstream = structure.downstream_of("a");
+        assert!(downstream.contains("b"));
+        assert!(downstream.contains("c"));
+        assert!(!downstream.contains("a"));
+        assert_eq!(downstream.len(), 2);
+
+        let downstream_b = structure.downstream_of("b");
+        assert!(downstream_b.contains("c"));
+        assert_eq!(downstream_b.len(), 1);
+
+        let downstream_c = structure.downstream_of("c");
+        assert!(downstream_c.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn update_output_sets_output_and_invalidates_downstream() {
+        let graph = linear_graph();
+        let execution = WorkflowExecution::new(graph);
+
+        // Simulate: a and b completed, b has inputs.
+        execution.set_status("a", NodeStatus::Completed);
+        execution.set_status("b", NodeStatus::Completed);
+        let mut a_out = PortValues::new();
+        a_out.insert("out".to_owned(), PortValue::String("hello".to_owned()));
+        execution.set_node_outputs("a", a_out.clone());
+        let mut b_out = PortValues::new();
+        b_out.insert("out".to_owned(), PortValue::String("world".to_owned()));
+        execution.set_node_outputs("b", b_out.clone());
+        execution.set_node_inputs("b", {
+            let mut pv = PortValues::new();
+            pv.insert("in".to_owned(), PortValue::String("hello".to_owned()));
+            pv
+        });
+        execution.set_node_inputs("c", {
+            let mut pv = PortValues::new();
+            pv.insert("in".to_owned(), PortValue::String("world".to_owned()));
+            pv
+        });
+
+        // Mutate a's output.
+        let mut new_a_out = PortValues::new();
+        new_a_out.insert("out".to_owned(), PortValue::String("changed".to_owned()));
+        execution.update_output("a", new_a_out.clone());
+
+        let snap = execution.snapshot();
+
+        // a's output changed but status stays Completed.
+        assert_eq!(snap.status_of("a"), Some(NodeStatus::Completed));
+        let a_state = snap.node_state("a").expect("a exists");
+        assert_eq!(a_state.outputs.as_ref().expect("has outputs").get("out").unwrap(), &PortValue::String("changed".to_owned()));
+
+        // b is invalidated (cleared inputs/outputs, Pending).
+        assert_eq!(snap.status_of("b"), Some(NodeStatus::Pending));
+        let b_state = snap.node_state("b").expect("b exists");
+        assert!(b_state.inputs.is_none());
+        assert!(b_state.outputs.is_none());
+
+        // c is also invalidated.
+        assert_eq!(snap.status_of("c"), Some(NodeStatus::Pending));
+        let c_state = snap.node_state("c").expect("c exists");
+        assert!(c_state.inputs.is_none());
+    }
+
+    #[rstest::rstest]
+    fn invalidate_from_clears_self_and_downstream() {
+        let graph = linear_graph();
+        let execution = WorkflowExecution::new(graph);
+
+        // Simulate: a completed with output.
+        execution.set_status("a", NodeStatus::Completed);
+        let mut a_out = PortValues::new();
+        a_out.insert("out".to_owned(), PortValue::String("data".to_owned()));
+        execution.set_node_outputs("a", a_out);
+
+        // Invalidate from a (includes a itself).
+        execution.invalidate_from("a");
+
+        let snap = execution.snapshot();
+        assert_eq!(snap.status_of("a"), Some(NodeStatus::Pending));
+        assert_eq!(snap.status_of("b"), Some(NodeStatus::Pending));
+        assert_eq!(snap.status_of("c"), Some(NodeStatus::Pending));
+        assert!(snap.node_state("a").unwrap().outputs.is_none());
+    }
+
+    #[rstest::rstest]
+    fn seed_inputs_reads_upstream_outputs() {
+        let graph = linear_graph();
+        let execution = WorkflowExecution::new(graph);
+
+        // Simulate: a completed with output.
+        execution.set_status("a", NodeStatus::Completed);
+        let mut a_out = PortValues::new();
+        a_out.insert("out".to_owned(), PortValue::String("hello".to_owned()));
+        execution.set_node_outputs("a", a_out);
+
+        // Seed b's inputs from a's outputs.
+        execution.seed_inputs("b");
+
+        let snap = execution.snapshot();
+        let b_state = snap.node_state("b").expect("b exists");
+        let b_inputs = b_state.inputs.as_ref().expect("inputs seeded");
+        assert_eq!(
+            b_inputs.get("in"),
+            Some(&PortValue::String("hello".to_owned()))
+        );
     }
 }
