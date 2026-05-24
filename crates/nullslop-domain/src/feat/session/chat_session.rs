@@ -1841,8 +1841,13 @@ impl ChatSessionState {
             return;
         }
         // Scan backward to find the start of the contiguous ignored block.
+        // Must match `build_visual_items` block definition: pinned entries
+        // act as block splitters even when ignored.
         let mut block_start = idx;
-        while block_start > 0 && self.core.history[block_start - 1].ignored {
+        while block_start > 0
+            && self.core.history[block_start - 1].ignored
+            && self.core.history[block_start - 1].pin_position.is_none()
+        {
             block_start -= 1;
         }
         let block_representative = self.core.history[block_start].id.clone();
