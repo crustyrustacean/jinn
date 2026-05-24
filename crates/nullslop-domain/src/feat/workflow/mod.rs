@@ -11,6 +11,7 @@ pub mod domain_node_context;
 pub mod example;
 pub mod node;
 pub mod protocol;
+pub mod tool_mapping;
 pub mod workflow_actor;
 pub mod workflow_registry;
 pub mod workflow_state;
