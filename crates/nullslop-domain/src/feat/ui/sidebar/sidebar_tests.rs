@@ -705,3 +705,46 @@ fn jump_roundtrip_saves_and_restores() {
     assert_eq!(state.active_session().scroll_offset(), Some(42));
     assert_eq!(state.active_session().selected_entry_index(), Some(0));
 }
+
+#[rstest::rstest]
+fn jump_to_pins_with_retained_cursor_syncs_chat_log_cursor() {
+    // Given pins focused with a retained cursor, then jumped away and back.
+    // Use entries where the pinned entry is NOT the first, so the restore
+    // puts the cursor on a different entry than the pin.
+    let mut state = AppState::default();
+    state.active_session_mut().push_entry(ChatEntry::user("a")); // hist 0
+    state.active_session_mut().push_entry(ChatEntry::user("b")); // hist 1 — will be pinned
+    state.active_session_mut().push_entry(ChatEntry::user("c")); // hist 2
+    let pinned_id = state.active_session().history()[1].id.clone();
+    state.active_session_mut().pin_entry(&pinned_id, PinPosition::Top);
+
+    state.frontend.scope_stack.push(FocusScope::SidebarPins);
+    state.frontend.pins.select_by_id(pinned_id.clone());
+    state.active_session_mut().set_selected_entry_index(2); // cursor on "c" before save
+    state.active_session_mut().save_history_position();
+    // Now sync cursor to pin.
+    crate::feat::ui::sidebar::pins::pins_section::sync_chat_log_cursor(&mut state);
+    assert_eq!(
+        state.active_session().selected_cursor_id(),
+        Some(&pinned_id),
+        "precondition: cursor should be on pinned entry"
+    );
+
+    // Jump to Persona (away from pins) — restores cursor to "c".
+    jump_to_section(&SidebarIntent::MoveUp, &mut state);
+    assert_ne!(
+        state.active_session().selected_cursor_id(),
+        Some(&pinned_id),
+        "cursor should be restored away from pin"
+    );
+
+    // Jump back to Pins (retained cursor on pinned entry).
+    jump_to_section(&SidebarIntent::MoveDown, &mut state);
+
+    // Then chat log cursor is synced to the pinned entry.
+    assert_eq!(
+        state.active_session().selected_cursor_id(),
+        Some(&pinned_id),
+        "chat log cursor should match the retained pin after jump back"
+    );
+}
