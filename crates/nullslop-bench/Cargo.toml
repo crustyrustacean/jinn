@@ -17,6 +17,8 @@ comfy-table = { workspace = true }
 error-stack = { workspace = true }
 wherror = { workspace = true }
 tracing = { workspace = true }
+include_dir = "0.7"
+globset = "0.4"
 
 humantime = { workspace = true }
 strip-ansi-escapes = { workspace = true }

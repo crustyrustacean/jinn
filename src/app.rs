@@ -245,7 +245,9 @@ impl App {
                         }
 
                         // Build the bench plan from models × tasks.
-                        let plan = nullslop_bench::orchestrator::build_plan(&model, &task);
+                        let plan = nullslop_bench::orchestrator::build_plan(&model, &task)
+                            .change_context(AppError)
+                            .attach("invalid task glob pattern")?;
                         tracing::info!(pairs = plan.pairs.len(), "built bench plan");
 
                         let (core, services, actor_host) =

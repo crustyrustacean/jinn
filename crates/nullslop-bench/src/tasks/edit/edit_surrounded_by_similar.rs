@@ -7,8 +7,12 @@ use std::time::Duration;
 
 use crate::task::{BenchTask, BenchTools, VerificationReport};
 use crate::tasks::checks;
+use include_dir::Dir;
 
 const EXPECTED_MAIN_PY: &str = include_str!("edit_surrounded_by_similar/expected/main.py");
+
+
+static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_surrounded_by_similar/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -18,7 +22,7 @@ pub fn task() -> BenchTask {
             "In main.py, change the temperature threshold for Tokyo from 28 to 32. \
              The Tokyo block is the 7th city check. Do not modify any other city's threshold.",
         ],
-        fixture_dir: Some("src/tasks/edit/edit_surrounded_by_similar/fixtures"),
+        fixture_dir: Some(&FIXTURES),
         timeout: Duration::from_secs(300),
         persona: None,
         tools: BenchTools {
