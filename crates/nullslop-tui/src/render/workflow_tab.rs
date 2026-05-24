@@ -348,10 +348,15 @@ fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         ..inner_area
     };
 
-    // Clamp scroll to content bounds.
+    // Clamp scroll to content bounds and write back the clamped value
+    // so repeated "scroll down" inputs don't accumulate past the limit.
     let visible_height = content_area.height as usize;
     let max_scroll = lines.len().saturating_sub(visible_height);
     let scroll_offset = ui.inspector_scroll.min(max_scroll as u16);
+    state.frontend.workflow_ui.inspector_scroll_rendered.store(
+        scroll_offset,
+        std::sync::atomic::Ordering::Relaxed,
+    );
 
     // Render scrollable content.
     let content = Paragraph::new(lines)
