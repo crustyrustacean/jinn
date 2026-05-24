@@ -379,8 +379,8 @@ impl IntentHandler {
             Intent::WorkflowEscape => handle_workflow_escape(state),
             Intent::WorkflowRerunNode => handle_workflow_rerun_node(state),
             Intent::WorkflowPanLeft => handle_workflow_pan(state, 5, 0),
-            Intent::WorkflowPanDown => handle_workflow_pan(state, 0, 5),
-            Intent::WorkflowPanUp => handle_workflow_pan(state, 0, -5),
+            Intent::WorkflowPanDown => handle_workflow_pan(state, 0, -5),
+            Intent::WorkflowPanUp => handle_workflow_pan(state, 0, 5),
             Intent::WorkflowPanRight => handle_workflow_pan(state, -5, 0),
         }
     }
