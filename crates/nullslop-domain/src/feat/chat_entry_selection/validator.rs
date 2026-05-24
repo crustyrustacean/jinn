@@ -112,31 +112,25 @@ pub enum ChatEntryPinSelectedError {
     NoSelection,
     /// The chat history is empty.
     EmptyHistory,
-    /// The selected entry kind cannot be pinned.
-    NotPinnable,
 }
 
 /// Validates the ChatEntryPinSelected intent.
 ///
-/// Returns an error if the history is empty, no entry is selected, or the
-/// selected entry is not a pinnable kind (only User, Assistant, ToolResult,
-/// and Skill entries can be pinned).
+/// Returns an error if the history is empty or no entry is selected.
+/// All entry types can be pinned — pin overrides context state and forces
+/// the entry into the assembled LLM prompt.
 ///
 /// # Errors
 ///
-/// Returns an error if the history is empty, no entry is selected, or the
-/// selected entry is not pinnable.
+/// Returns an error if the history is empty or no entry is selected.
 pub fn validate_chat_entry_pin_selected(state: &AppState) -> Result<(), ChatEntryPinSelectedError> {
     if state.active_session().history().is_empty() {
         return Err(ChatEntryPinSelectedError::EmptyHistory);
     }
-    let selected = state
+    let _selected = state
         .active_session()
         .selected_entry()
         .ok_or(ChatEntryPinSelectedError::NoSelection)?;
-    if !selected.is_pinnable() {
-        return Err(ChatEntryPinSelectedError::NotPinnable);
-    }
     Ok(())
 }
 
@@ -150,19 +144,18 @@ pub enum ChatEntryIgnoreSelectedError {
     EmptyHistory,
     /// The selected entry is pinned (unpin first).
     IsPinned,
-    /// The selected entry kind cannot be ignored.
-    NotIgnorable,
 }
 
 /// Validates the ChatEntryIgnoreSelected intent.
 ///
 /// Returns an error if the history is empty, no entry is selected,
-/// the selected entry is pinned, or the selected entry kind is not ignorable
-/// (System, Thinking, Transient, Compaction).
+/// or the selected entry is pinned. All entry types can be toggled —
+/// the `x` key always produces a visible gutter color change.
 ///
 /// # Errors
 ///
-/// Returns an error if validation fails.
+/// Returns an error if the history is empty, no entry is selected,
+/// or the entry is pinned.
 pub fn validate_chat_entry_ignore_selected(
     state: &AppState,
 ) -> Result<(), ChatEntryIgnoreSelectedError> {
@@ -176,28 +169,10 @@ pub fn validate_chat_entry_ignore_selected(
     if selected.is_pinned() {
         return Err(ChatEntryIgnoreSelectedError::IsPinned);
     }
-    if !is_ignorable(&selected.kind) {
-        return Err(ChatEntryIgnoreSelectedError::NotIgnorable);
-    }
     Ok(())
 }
 
-/// Whether an entry kind can be toggled ignored.
-///
-/// User, Assistant, Actor, Error, ToolCall, ToolResult, and Skill entries
-/// are ignorable. System, Thinking, Transient, and Compaction entries are not.
-fn is_ignorable(kind: &crate::protocol::ChatEntryKind) -> bool {
-    matches!(
-        kind,
-        crate::protocol::ChatEntryKind::User { .. }
-            | crate::protocol::ChatEntryKind::Assistant(..)
-            | crate::protocol::ChatEntryKind::Actor { .. }
-            | crate::protocol::ChatEntryKind::Error(..)
-            | crate::protocol::ChatEntryKind::ToolCall { .. }
-            | crate::protocol::ChatEntryKind::ToolResult { .. }
-            | crate::protocol::ChatEntryKind::Skill { .. }
-    )
-}
+
 
 #[cfg(test)]
 mod fork_from_entry_tests {
@@ -260,7 +235,7 @@ mod tests {
     use super::*;
 
     #[rstest::rstest]
-    fn pin_selected_rejects_transient_entry() {
+    fn pin_selected_succeeds_with_transient_entry() {
         // Given a state with a selected transient entry.
         let mut state = AppState::default();
         state
@@ -271,15 +246,12 @@ mod tests {
         // When validating pin selected.
         let result = validate_chat_entry_pin_selected(&state);
 
-        // Then it returns NotPinnable error.
-        assert!(matches!(
-            result,
-            Err(ChatEntryPinSelectedError::NotPinnable)
-        ));
+        // Then it succeeds (all entry types can be pinned).
+        assert!(result.is_ok());
     }
 
     #[rstest::rstest]
-    fn pin_selected_rejects_system_entry() {
+    fn pin_selected_succeeds_with_system_entry() {
         // Given a state with a selected system entry.
         let mut state = AppState::default();
         state
@@ -290,11 +262,8 @@ mod tests {
         // When validating pin selected.
         let result = validate_chat_entry_pin_selected(&state);
 
-        // Then it returns NotPinnable error.
-        assert!(matches!(
-            result,
-            Err(ChatEntryPinSelectedError::NotPinnable)
-        ));
+        // Then it succeeds (all entry types can be pinned).
+        assert!(result.is_ok());
     }
 
     #[rstest::rstest]
@@ -517,7 +486,7 @@ mod ignore_selected_tests {
     }
 
     #[rstest::rstest]
-    fn ignore_selected_rejects_system_entry() {
+    fn ignore_selected_accepts_system_entry() {
         // Given a state with a selected system entry.
         let mut state = AppState::default();
         state
@@ -528,12 +497,12 @@ mod ignore_selected_tests {
         // When validating ignore selected.
         let result = validate_chat_entry_ignore_selected(&state);
 
-        // Then validation fails with NotIgnorable.
-        assert!(matches!(result, Err(ChatEntryIgnoreSelectedError::NotIgnorable)));
+        // Then validation succeeds (all entry types can be toggled).
+        assert!(result.is_ok());
     }
 
     #[rstest::rstest]
-    fn ignore_selected_rejects_thinking_entry() {
+    fn ignore_selected_accepts_thinking_entry() {
         // Given a state with a selected thinking entry.
         let mut state = AppState::default();
         state
@@ -544,12 +513,12 @@ mod ignore_selected_tests {
         // When validating ignore selected.
         let result = validate_chat_entry_ignore_selected(&state);
 
-        // Then validation fails with NotIgnorable.
-        assert!(matches!(result, Err(ChatEntryIgnoreSelectedError::NotIgnorable)));
+        // Then validation succeeds (all entry types can be toggled).
+        assert!(result.is_ok());
     }
 
     #[rstest::rstest]
-    fn ignore_selected_rejects_transient_entry() {
+    fn ignore_selected_accepts_transient_entry() {
         // Given a state with a selected transient entry.
         let mut state = AppState::default();
         state
@@ -560,12 +529,12 @@ mod ignore_selected_tests {
         // When validating ignore selected.
         let result = validate_chat_entry_ignore_selected(&state);
 
-        // Then validation fails with NotIgnorable.
-        assert!(matches!(result, Err(ChatEntryIgnoreSelectedError::NotIgnorable)));
+        // Then validation succeeds (all entry types can be toggled).
+        assert!(result.is_ok());
     }
 
     #[rstest::rstest]
-    fn ignore_selected_rejects_compaction_entry() {
+    fn ignore_selected_accepts_compaction_entry() {
         // Given a state with a selected compaction entry.
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry {
@@ -578,15 +547,15 @@ mod ignore_selected_tests {
                 model_used: "test/model".to_owned(),
             },
             pin_position: None,
-            ignored: false,
+            context_override: crate::protocol::ContextOverride::Default,
         });
         state.active_session_mut().select_next_entry();
 
         // When validating ignore selected.
         let result = validate_chat_entry_ignore_selected(&state);
 
-        // Then validation fails with NotIgnorable.
-        assert!(matches!(result, Err(ChatEntryIgnoreSelectedError::NotIgnorable)));
+        // Then validation succeeds (all entry types can be toggled).
+        assert!(result.is_ok());
     }
 
     // --- Acceptance cases ---

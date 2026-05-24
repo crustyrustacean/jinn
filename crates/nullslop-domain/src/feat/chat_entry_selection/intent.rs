@@ -149,7 +149,7 @@ pub fn handle_toggle_ignored_block(state: &mut AppState) -> IntentResult {
         Some(VisualItem::Entry(hist_idx)) => {
             // Entry might be in an expanded ignored block → collapse it.
             let entry = &history[*hist_idx];
-            if !entry.ignored {
+            if entry.is_in_context() {
                 return IntentResult::empty();
             }
             entry.id.clone()
@@ -231,7 +231,7 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::feat::context::protocol::command::PinChatEntry;
     use crate::feat::session::tool_result_status::ToolResultStatus;
-    use crate::protocol::{ChatEntry, Command, PinPosition};
+    use crate::protocol::{ChatEntry, Command, ContextOverride, PinPosition};
 
     use super::*;
 
@@ -743,7 +743,7 @@ mod tests {
         state.active_session_mut().push_entry(ChatEntry::user("a"));
         for _ in 0..15 {
             let mut entry = ChatEntry::user("ignored");
-            entry.ignored = true;
+            entry.context_override = crate::protocol::ContextOverride::ForcedExclude;
             state.active_session_mut().push_entry(entry);
         }
         state.active_session_mut().push_entry(ChatEntry::user("b"));
@@ -787,7 +787,7 @@ mod tests {
         state.active_session_mut().push_entry(ChatEntry::user("a"));
         for _ in 0..15 {
             let mut entry = ChatEntry::user("ignored");
-            entry.ignored = true;
+            entry.context_override = crate::protocol::ContextOverride::ForcedExclude;
             state.active_session_mut().push_entry(entry);
         }
         state.active_session_mut().push_entry(ChatEntry::user("b"));
@@ -847,7 +847,7 @@ mod tests {
 
         // Then the entry is now ignored.
         let selected = state.active_session().selected_entry().expect("entry");
-        assert!(selected.ignored, "entry should be ignored after toggle");
+        assert!(selected.ignored(), "entry should be ignored after toggle");
         // And a PersistSession command is returned.
         assert!(result.commands.iter().any(|c| {
             matches!(c, Command::PersistSession(_))
@@ -868,7 +868,7 @@ mod tests {
 
         // Then the entry is now un-ignored.
         let selected = state.active_session().selected_entry().expect("entry");
-        assert!(!selected.ignored, "entry should be un-ignored after toggle");
+        assert!(!selected.ignored(), "entry should be un-ignored after toggle");
     }
 
     #[rstest::rstest]
@@ -914,11 +914,11 @@ mod tests {
         // Then no commands are emitted and ignored is unchanged.
         assert!(result.commands.is_empty(), "pinned entry should produce no commands");
         let selected = state.active_session().selected_entry().expect("entry");
-        assert!(!selected.ignored, "pinned entry ignored should stay false");
+        assert!(!selected.ignored(), "pinned entry ignored should stay false");
     }
 
     #[rstest::rstest]
-    fn handle_ignore_selected_noop_system_entry() {
+    fn handle_ignore_selected_toggles_system_entry() {
         // Given a state with a selected system entry.
         let mut state = AppState::default();
         state
@@ -929,12 +929,14 @@ mod tests {
         // When handling ignore selected.
         let result = handle_ignore_selected(&mut state);
 
-        // Then no commands are emitted.
-        assert!(result.commands.is_empty(), "system entry should produce no commands");
+        // Then the entry is toggled (System is excluded by default, so toggle → ForcedInclude).
+        assert!(!result.commands.is_empty(), "system entry toggle should produce commands");
+        let selected = state.active_session().selected_entry().expect("entry");
+        assert_eq!(selected.context_override, ContextOverride::ForcedInclude);
     }
 
     #[rstest::rstest]
-    fn handle_ignore_selected_noop_thinking_entry() {
+    fn handle_ignore_selected_toggles_thinking_entry() {
         // Given a state with a selected thinking entry.
         let mut state = AppState::default();
         state
@@ -945,12 +947,14 @@ mod tests {
         // When handling ignore selected.
         let result = handle_ignore_selected(&mut state);
 
-        // Then no commands are emitted.
-        assert!(result.commands.is_empty(), "thinking entry should produce no commands");
+        // Then the entry is toggled (Thinking is excluded by default, so toggle → ForcedInclude).
+        assert!(!result.commands.is_empty(), "thinking entry toggle should produce commands");
+        let selected = state.active_session().selected_entry().expect("entry");
+        assert_eq!(selected.context_override, ContextOverride::ForcedInclude);
     }
 
     #[rstest::rstest]
-    fn handle_ignore_selected_noop_transient_entry() {
+    fn handle_ignore_selected_toggles_transient_entry() {
         // Given a state with a selected transient entry.
         let mut state = AppState::default();
         state
@@ -961,12 +965,14 @@ mod tests {
         // When handling ignore selected.
         let result = handle_ignore_selected(&mut state);
 
-        // Then no commands are emitted.
-        assert!(result.commands.is_empty(), "transient entry should produce no commands");
+        // Then the entry is toggled (Transient is excluded by default, so toggle → ForcedInclude).
+        assert!(!result.commands.is_empty(), "transient entry toggle should produce commands");
+        let selected = state.active_session().selected_entry().expect("entry");
+        assert_eq!(selected.context_override, ContextOverride::ForcedInclude);
     }
 
     #[rstest::rstest]
-    fn handle_ignore_selected_noop_compaction_entry() {
+    fn handle_ignore_selected_toggles_compaction_entry() {
         // Given a state with a selected compaction entry.
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry {
@@ -979,14 +985,16 @@ mod tests {
                 model_used: "test/model".to_owned(),
             },
             pin_position: None,
-            ignored: false,
+            context_override: crate::protocol::ContextOverride::Default,
         });
         state.active_session_mut().select_next_entry();
 
         // When handling ignore selected.
         let result = handle_ignore_selected(&mut state);
 
-        // Then no commands are emitted.
-        assert!(result.commands.is_empty(), "compaction entry should produce no commands");
+        // Then the entry is toggled (Compaction is included by default, so toggle → ForcedExclude).
+        assert!(!result.commands.is_empty(), "compaction entry toggle should produce commands");
+        let selected = state.active_session().selected_entry().expect("entry");
+        assert_eq!(selected.context_override, ContextOverride::ForcedExclude);
     }
 }

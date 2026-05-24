@@ -436,7 +436,7 @@ fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
     state.active_session_mut().push_entry(ChatEntry::user("a")); // hist 0
     for _ in 0..15 {
         let mut entry = ChatEntry::user("ignored");
-        entry.ignored = true;
+        entry.context_override = crate::protocol::ContextOverride::ForcedExclude;
         state.active_session_mut().push_entry(entry);
     } // hist 1..15 (collapsed into 1 visual item)
     state.active_session_mut().push_entry(ChatEntry::user("b")); // hist 16

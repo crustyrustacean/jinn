@@ -62,7 +62,7 @@ pub fn build_visual_items(
         let entry = &history[i];
 
         // Is this entry eligible for collapsing?
-        if entry.ignored && entry.pin_position.is_none() && i < protected_start {
+        if !entry.is_in_context() && entry.pin_position.is_none() && i < protected_start {
             // Start of a potential collapsed block. Accumulate contiguous
             // ignored entries that are also eligible.
             let block_start = i;
@@ -70,7 +70,7 @@ pub fn build_visual_items(
 
             while i < len {
                 let e = &history[i];
-                if !e.ignored || e.pin_position.is_some() || i >= protected_start {
+                if e.is_in_context() || e.pin_position.is_some() || i >= protected_start {
                     break;
                 }
                 block_count += 1;

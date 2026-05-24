@@ -588,15 +588,15 @@ async fn ignored_field_round_trips() {
 
     // Then ignored flags are preserved after round-trip.
     assert!(
-        !loaded.history()[0].ignored,
+        !loaded.history()[0].ignored(),
         "entry 0 should not be ignored"
     );
     assert!(
-        !loaded.history()[1].ignored,
+        !loaded.history()[1].ignored(),
         "entry 1 should not be ignored"
     );
-    assert!(loaded.history()[2].ignored, "entry 2 should be ignored");
-    assert!(loaded.history()[3].ignored, "entry 3 should be ignored");
+    assert!(loaded.history()[2].ignored(), "entry 2 should be ignored");
+    assert!(loaded.history()[3].ignored(), "entry 3 should be ignored");
 }
 
 // --- Lifecycle metadata persistence ---
