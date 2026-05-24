@@ -15,6 +15,7 @@ use wherror::Error;
 
 use crate::node::WorkflowNode;
 use crate::port::{PortDef, PortType};
+use crate::validation::{ValidationDiagnostic, ValidationSeverity};
 
 /// Internal storage for a node in the graph.
 #[expect(clippy::field_scoped_visibility_modifiers, reason = "pub(crate) on pub(crate) struct keeps fields crate-local")]
@@ -149,6 +150,64 @@ impl WorkflowGraph {
                 port_type: edge.weight().port_type,
             }
         })
+    }
+
+    /// Validates the graph and returns diagnostics for potential issues.
+    ///
+    /// Unlike [`build`](WorkflowGraphBuilder::build), which checks hard requirements
+    /// and returns errors, `validate` returns warnings for situations that are
+    /// technically valid but may indicate a mistake.
+    ///
+    /// Current checks:
+    ///
+    /// - **Isolated nodes** — nodes with no incoming or outgoing edges.
+    /// - **Dead output ports** — output ports with no outgoing edge.
+    #[must_use]
+    pub fn validate(&self) -> Vec<ValidationDiagnostic> {
+        let mut diagnostics = Vec::new();
+
+        for (name, &idx) in &self.name_to_index {
+            let node = &self.inner[idx].node;
+
+            let has_incoming = self
+                .inner
+                .edges_directed(idx, petgraph::Direction::Incoming)
+                .count()
+                > 0;
+            let has_outgoing = self
+                .inner
+                .edges_directed(idx, petgraph::Direction::Outgoing)
+                .count()
+                > 0;
+
+            if !has_incoming && !has_outgoing {
+                diagnostics.push(ValidationDiagnostic {
+                    severity: ValidationSeverity::Warning,
+                    message: format!(
+                        "node '{name}' is isolated (no incoming or outgoing edges)"
+                    ),
+                });
+            }
+
+            for port in node.output_ports() {
+                let has_edge = self
+                    .inner
+                    .edges_directed(idx, petgraph::Direction::Outgoing)
+                    .any(|e| e.weight().source_port == port.name);
+
+                if !has_edge {
+                    diagnostics.push(ValidationDiagnostic {
+                        severity: ValidationSeverity::Warning,
+                        message: format!(
+                            "output port '{}' on node '{}' has no outgoing edge",
+                            port.name, name
+                        ),
+                    });
+                }
+            }
+        }
+
+        diagnostics
     }
 }
 
@@ -927,5 +986,97 @@ mod tests {
         // Then it succeeds.
         assert_eq!(graph.node_count(), 2);
         assert_eq!(graph.edge_count(), 1);
+    }
+
+    #[test]
+    fn validate_warns_on_isolated_node() {
+        // Given two source nodes with no edges (isolated).
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node("a".to_owned(), Box::new(TestNode::source("a")))
+            .add_node("b".to_owned(), Box::new(TestNode::source("b")));
+
+        let graph = builder.build().expect("build");
+
+        // When validating.
+        let diagnostics = graph.validate();
+
+        // Then each isolated node gets a warning.
+        let isolated: Vec<_> = diagnostics
+            .iter()
+            .filter(|d| d.message.contains("isolated"))
+            .collect();
+        assert_eq!(isolated.len(), 2, "expected 2 isolated warnings, got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn validate_warns_on_dead_output_port() {
+        // Given A → B where A has an output port "out" but B is a sink.
+        // A's output is connected, but B has no outputs — that's fine.
+        // But if we have a node with an unconnected output...
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node(
+                "a".to_owned(),
+                Box::new(TestNode::new(
+                    "a",
+                    vec![],
+                    vec![PortDef::text("out"), PortDef::text("extra")],
+                )),
+            )
+            .add_node("b".to_owned(), Box::new(TestNode::sink("b")));
+
+        // Only connect "out", leave "extra" unconnected.
+        builder.connect("a", "out", "b", "in").expect("a→b");
+
+        let graph = builder.build().expect("build");
+
+        // When validating.
+        let diagnostics = graph.validate();
+
+        // Then "extra" port on node "a" gets a dead output warning.
+        let dead: Vec<_> = diagnostics
+            .iter()
+            .filter(|d| d.message.contains("'extra'") && d.message.contains("no outgoing edge"))
+            .collect();
+        assert_eq!(dead.len(), 1, "expected 1 dead output warning, got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn validate_passes_fully_connected_graph() {
+        // Given A → B → C (fully connected linear graph).
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node("a".to_owned(), Box::new(TestNode::source("a")))
+            .add_node("b".to_owned(), Box::new(TestNode::passthrough("b")))
+            .add_node("c".to_owned(), Box::new(TestNode::sink("c")));
+
+        builder.connect("a", "out", "b", "in").expect("a→b");
+        builder.connect("b", "out", "c", "in").expect("b→c");
+
+        let graph = builder.build().expect("build");
+
+        // When validating.
+        let diagnostics = graph.validate();
+
+        // Then no warnings.
+        assert!(diagnostics.is_empty(), "expected no warnings, got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn validate_returns_multiple_diagnostics() {
+        // Given two isolated source nodes.
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node("a".to_owned(), Box::new(TestNode::source("a")))
+            .add_node("b".to_owned(), Box::new(TestNode::source("b")));
+
+        let graph = builder.build().expect("build");
+
+        // When validating.
+        let diagnostics = graph.validate();
+
+        // Then we get multiple diagnostics (one isolated warning per node, plus one dead output per node).
+        assert!(diagnostics.len() >= 2, "expected multiple diagnostics, got: {diagnostics:?}");
     }
 }
