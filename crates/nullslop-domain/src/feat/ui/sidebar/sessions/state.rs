@@ -16,6 +16,11 @@ pub struct SessionsSectionState {
     pub selected_index: Option<usize>,
     /// Scroll offset: the first session entry index that is visible.
     pub scroll_offset: usize,
+    /// Visual-parent index: maps a loaded session to its nearest loaded ancestor
+    /// when the direct parent has been archived/removed from memory.
+    /// Updated reactively in `remove_and_replace()`, invalidated on session load.
+    /// Empty when no intermediate parents have been hidden.
+    pub visual_parents: HashMap<SessionId, SessionId>,
 }
 
 #[derive(Clone)]
