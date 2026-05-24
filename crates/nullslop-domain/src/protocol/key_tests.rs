@@ -1,7 +1,6 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
 use crate::protocol::key::Modifiers;
-#[cfg(feature = "which-key")]
 use crate::{Key, KeyEvent};
 
 #[rstest::rstest]
@@ -25,7 +24,6 @@ fn modifiers_none_flag_is_false(
     assert_eq!(actual, expected);
 }
 
-#[cfg(feature = "which-key")]
 #[rstest::rstest]
 fn parse_notation_s_enter_returns_shift_enter() {
     // Given the notation "s-enter".
@@ -40,7 +38,6 @@ fn parse_notation_s_enter_returns_shift_enter() {
     assert!(!key_event.modifiers.ctrl);
 }
 
-#[cfg(feature = "which-key")]
 #[rstest::rstest]
 fn parse_notation_c_enter_returns_ctrl_enter() {
     // Given the notation "c-enter".
@@ -55,7 +52,6 @@ fn parse_notation_c_enter_returns_ctrl_enter() {
     assert!(!key_event.modifiers.shift);
 }
 
-#[cfg(feature = "which-key")]
 #[rstest::rstest]
 fn parse_notation_enter_returns_unmodified() {
     // Given the notation "enter".
@@ -71,7 +67,6 @@ fn parse_notation_enter_returns_unmodified() {
 
 // --- parse_key_name coverage (via parse_notation) ---
 
-#[cfg(feature = "which-key")]
 #[rstest::rstest]
 #[case::tab("tab", Key::Tab)]
 #[case::enter("enter", Key::Enter)]
@@ -106,7 +101,6 @@ fn parse_notation_named_keys(#[case] input: &str, #[case] expected: Key) {
     assert!(key_event.modifiers.is_none());
 }
 
-#[cfg(feature = "which-key")]
 #[rstest::rstest]
 #[case::f1("f1", 1)]
 #[case::f6("f6", 6)]
@@ -123,7 +117,6 @@ fn parse_notation_function_keys(#[case] input: &str, #[case] num: u8) {
     assert!(key_event.modifiers.is_none());
 }
 
-#[cfg(feature = "which-key")]
 #[rstest::rstest]
 #[case::f0("f0")]
 #[case::f13("f13")]
@@ -137,7 +130,6 @@ fn parse_notation_rejects_out_of_range_function_keys(#[case] input: &str) {
     assert!(result.is_none());
 }
 
-#[cfg(feature = "which-key")]
 #[rstest::rstest]
 fn parse_notation_single_char_returns_key_event() {
     // Given a single-character notation.
@@ -151,7 +143,6 @@ fn parse_notation_single_char_returns_key_event() {
     assert!(key_event.modifiers.is_none());
 }
 
-#[cfg(feature = "which-key")]
 #[rstest::rstest]
 fn parse_notation_ctrl_single_char() {
     // Given a ctrl-modified single-char notation.
@@ -166,7 +157,6 @@ fn parse_notation_ctrl_single_char() {
     assert!(!key_event.modifiers.shift);
 }
 
-#[cfg(feature = "which-key")]
 #[rstest::rstest]
 fn parse_notation_shift_single_char() {
     // Given a shift-modified single-char notation.
@@ -181,7 +171,6 @@ fn parse_notation_shift_single_char() {
     assert!(key_event.modifiers.shift);
 }
 
-#[cfg(feature = "which-key")]
 #[rstest::rstest]
 fn parse_notation_case_insensitive() {
     // Given a notation with mixed case.
@@ -194,7 +183,6 @@ fn parse_notation_case_insensitive() {
     assert_eq!(key_event.key, Key::Enter);
 }
 
-#[cfg(feature = "which-key")]
 #[rstest::rstest]
 #[case::empty("")]
 #[case::unknown("foobar")]
@@ -211,7 +199,6 @@ fn parse_notation_rejects_invalid_inputs(#[case] input: &str) {
     assert!(result.is_none());
 }
 
-#[cfg(feature = "which-key")]
 #[rstest::rstest]
 fn parse_notation_m_s_returns_alt_s() {
     // Given the notation "m-s".
@@ -227,7 +214,6 @@ fn parse_notation_m_s_returns_alt_s() {
     assert!(!key_event.modifiers.shift);
 }
 
-#[cfg(feature = "which-key")]
 #[rstest::rstest]
 fn parse_notation_m_enter_returns_alt_enter() {
     // Given the notation "m-enter".
@@ -243,7 +229,6 @@ fn parse_notation_m_enter_returns_alt_enter() {
     assert!(!key_event.modifiers.shift);
 }
 
-#[cfg(feature = "which-key")]
 #[rstest::rstest]
 fn display_alt_char_shows_m_notation() {
     // Given a KeyEvent with Alt+Char('s').
@@ -260,7 +245,6 @@ fn display_alt_char_shows_m_notation() {
     assert_eq!(display, "<M-s>");
 }
 
-#[cfg(feature = "which-key")]
 #[rstest::rstest]
 fn display_alt_named_key_shows_m_prefix() {
     // Given a KeyEvent with Alt+Enter.
