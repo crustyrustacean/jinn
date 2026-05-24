@@ -224,65 +224,8 @@ fn build_inspector_lines(
     }
 
     // Session section — look up node→session mapping and render history.
-    if let Some(workflow) = state.workflow.active() {
-        if let Some(session_id) = workflow.node_sessions.get(node_name) {
-            if let Some(session) = state.session.get(session_id) {
-                lines.push(Line::from(""));
-                lines.push(Line::from(Span::styled(
-                    "Session",
-                    Style::default().add_modifier(Modifier::BOLD),
-                )));
-                for entry in session.history() {
-                    match &entry.kind {
-                        ChatEntryKind::User { display, .. } => {
-                            render_truncated_lines(&mut lines, &format!("> {display}"), 80);
-                        }
-                        ChatEntryKind::Assistant(text) => {
-                            render_truncated_lines(&mut lines, &format!("  {text}"), 80);
-                        }
-                        ChatEntryKind::System(text) => {
-                            render_truncated_lines(&mut lines, &format!("  [system] {text}"), 80);
-                        }
-                        ChatEntryKind::Error(text) => {
-                            render_truncated_lines(&mut lines, &format!("  [error] {text}"), 80);
-                        }
-                        ChatEntryKind::Thinking(text) => {
-                            render_truncated_lines(&mut lines, &format!("  [thinking] {text}"), 80);
-                        }
-                        ChatEntryKind::ToolCall { name, .. } => {
-                            lines.push(Line::from(Span::styled(
-                                format!("  [tool:{name}]"),
-                                Style::default().add_modifier(Modifier::DIM),
-                            )));
-                        }
-                        ChatEntryKind::ToolResult { name, .. } => {
-                            lines.push(Line::from(Span::styled(
-                                format!("  [result:{name}]"),
-                                Style::default().add_modifier(Modifier::DIM),
-                            )));
-                        }
-                        ChatEntryKind::Skill { name, .. } => {
-                            lines.push(Line::from(Span::styled(
-                                format!("  [skill:{name}]"),
-                                Style::default().add_modifier(Modifier::DIM),
-                            )));
-                        }
-                        ChatEntryKind::Actor { source, text } => {
-                            render_truncated_lines(&mut lines, &format!("  [{source}] {text}"), 80);
-                        }
-                        ChatEntryKind::Compaction { .. } => {
-                            lines.push(Line::from(Span::styled(
-                                "  [compaction summary]",
-                                Style::default().add_modifier(Modifier::DIM),
-                            )));
-                        }
-                        ChatEntryKind::Transient(_) => {
-                            // Skip ephemeral entries
-                        }
-                    }
-                }
-            }
-        }
+    if let Some(session) = lookup_node_session(state, node_name) {
+        append_session_lines(&mut lines, session);
     }
 
     // Footer with keybinds.
@@ -294,6 +237,74 @@ fn build_inspector_lines(
             .fg(ratatui::style::Color::DarkGray),
     )));
     lines
+}
+
+/// Looks up the session associated with a workflow node.
+fn lookup_node_session<'a>(
+    state: &'a AppState,
+    node_name: &str,
+) -> Option<&'a nullslop_domain::feat::session::chat_session::ChatSessionState> {
+    let workflow = state.workflow.active()?;
+    let session_id = workflow.node_sessions.get(node_name)?;
+    state.session.get(session_id)
+}
+
+/// Appends session history lines to the inspector output.
+fn append_session_lines(lines: &mut Vec<Line<'static>>, session: &nullslop_domain::feat::session::chat_session::ChatSessionState) {
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "Session",
+        Style::default().add_modifier(Modifier::BOLD),
+    )));
+    for entry in session.history() {
+        match &entry.kind {
+            ChatEntryKind::User { display, .. } => {
+                render_truncated_lines(lines, &format!("> {display}"), 80);
+            }
+            ChatEntryKind::Assistant(text) => {
+                render_truncated_lines(lines, &format!("  {text}"), 80);
+            }
+            ChatEntryKind::System(text) => {
+                render_truncated_lines(lines, &format!("  [system] {text}"), 80);
+            }
+            ChatEntryKind::Error(text) => {
+                render_truncated_lines(lines, &format!("  [error] {text}"), 80);
+            }
+            ChatEntryKind::Thinking(text) => {
+                render_truncated_lines(lines, &format!("  [thinking] {text}"), 80);
+            }
+            ChatEntryKind::ToolCall { name, .. } => {
+                lines.push(Line::from(Span::styled(
+                    format!("  [tool:{name}]"),
+                    Style::default().add_modifier(Modifier::DIM),
+                )));
+            }
+            ChatEntryKind::ToolResult { name, .. } => {
+                lines.push(Line::from(Span::styled(
+                    format!("  [result:{name}]"),
+                    Style::default().add_modifier(Modifier::DIM),
+                )));
+            }
+            ChatEntryKind::Skill { name, .. } => {
+                lines.push(Line::from(Span::styled(
+                    format!("  [skill:{name}]"),
+                    Style::default().add_modifier(Modifier::DIM),
+                )));
+            }
+            ChatEntryKind::Actor { source, text } => {
+                render_truncated_lines(lines, &format!("  [{source}] {text}"), 80);
+            }
+            ChatEntryKind::Compaction { .. } => {
+                lines.push(Line::from(Span::styled(
+                    "  [compaction summary]",
+                    Style::default().add_modifier(Modifier::DIM),
+                )));
+            }
+            ChatEntryKind::Transient(_) => {
+                // Skip ephemeral entries
+            }
+        }
+    }
 }
 
 /// Renders text that may contain newlines as multiple inspector lines.
