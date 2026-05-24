@@ -367,7 +367,7 @@ bump LEVEL:
     done
 
     # --- Update files ---
-    sed -i "s/^version = \".*\"/version = \"$CANDIDATE\"/" Cargo.toml
+    sed -i "/^\[workspace\.package\]/,/^\[/{s/^version = \".*\"/version = \"$CANDIDATE\"/}" Cargo.toml
     sed -i "s/^pkgver=.*/pkgver=$CANDIDATE/" PKGBUILD
     sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
 
