@@ -29,7 +29,7 @@ pub enum PortSide {
 #[derive(Debug, Clone)]
 pub struct VisualPort {
     /// Port name.
-    pub name: &'static str,
+    pub name: String,
     /// Port type (determines indicator color).
     pub port_type: PortType,
     /// Which side of the node this port sits on.
@@ -90,7 +90,7 @@ impl VisualNode {
             .iter()
             .enumerate()
             .map(|(i, def)| VisualPort {
-                name: def.name,
+                name: def.name.clone(),
                 port_type: def.value_type,
                 side: PortSide::Left,
                 row_offset: u16::try_from(1 + i).unwrap_or(u16::MAX),
@@ -102,7 +102,7 @@ impl VisualNode {
             .iter()
             .enumerate()
             .map(|(i, def)| VisualPort {
-                name: def.name,
+                name: def.name.clone(),
                 port_type: def.value_type,
                 side: PortSide::Right,
                 // Bottom border is at row (height-1), so last output row is (height-2).
