@@ -137,6 +137,10 @@ pub fn compute_node_size(name: &str, inputs: &[PortDef], outputs: &[PortDef]) ->
 /// 2. Compute node sizes from port definitions.
 /// 3. Stack nodes vertically within each column.
 /// 4. Offset each column horizontally based on preceding column widths.
+///
+/// # Panics
+///
+/// Does not panic; all internal lookups are guaranteed by construction.
 #[must_use]
 pub fn compute_spatial_layout(structure: &WorkflowStructure) -> HashMap<String, SpatialRect> {
     let all_names: Vec<&str> = structure.node_names().collect();
@@ -174,6 +178,7 @@ pub fn compute_spatial_layout(structure: &WorkflowStructure) -> HashMap<String, 
 
         let mut y_cursor: u16 = 0;
         for name in col_names {
+            #[expect(clippy::expect_used, reason = "size was computed in first pass")]
             let &(width, height) = node_sizes
                 .get(name)
                 .expect("size computed in first pass");
@@ -283,7 +288,8 @@ pub fn spatial_nearest(
     candidates: &HashMap<String, SpatialRect>,
     current_name: &str,
 ) -> Option<String> {
-    let (primary, cross, sign_positive): (fn(&SpatialRect) -> u16, fn(&SpatialRect) -> u16, bool) =
+    type RectGetter = fn(&SpatialRect) -> u16;
+    let (primary, cross, sign_positive): (RectGetter, RectGetter, bool) =
         match direction {
             SpatialDirection::Down => (SpatialRect::center_y, SpatialRect::center_x, true),
             SpatialDirection::Up => (SpatialRect::center_y, SpatialRect::center_x, false),
