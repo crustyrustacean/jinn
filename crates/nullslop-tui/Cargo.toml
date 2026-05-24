@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-nullslop-domain = { workspace = true, features = ["which-key"] }
+nullslop-domain = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
 ratatui = { workspace = true }
