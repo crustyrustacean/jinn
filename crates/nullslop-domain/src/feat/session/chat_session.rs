@@ -1061,6 +1061,19 @@ impl ChatSessionState {
         self.core.ephemeral.message_queue.drain()
     }
 
+    /// Pop the first `CompactionNeeded` from the queue, if present.
+    ///
+    /// Returns `true` if one was found and removed.
+    pub(in crate::feat::session) fn dequeue_compaction_needed(&mut self) -> bool {
+        self.core
+            .ephemeral
+            .message_queue
+            .remove_first_matching(|item| {
+                matches!(item, crate::feat::session::queue_item::QueueItem::CompactionNeeded)
+            })
+            .is_some()
+    }
+
     // --- Assembling ---
 
     /// Mark the session as having a prompt assembly in progress.

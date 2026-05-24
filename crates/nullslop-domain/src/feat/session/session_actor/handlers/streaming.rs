@@ -5,10 +5,11 @@
 //! and queue draining on `StreamCompleted`.
 
 use crate::common::actor::ActorContext;
+use crate::feat::compaction_actor::protocol::command::CompactContext;
 use crate::feat::context::strategy::token_estimator::TokenCounter;
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 
-use crate::protocol::ChatEntry;
+use crate::protocol::{ChatEntry, Command};
 
 use super::super::SessionPersistenceActor;
 use crate::feat::session::chat_session::SessionPhase;
@@ -96,7 +97,7 @@ impl SessionPersistenceActor {
             None => None,
         };
 
-        let (old_phase, new_phase, total_tokens);
+        let (old_phase, new_phase, total_tokens, should_emit_compact_context);
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
@@ -119,16 +120,24 @@ impl SessionPersistenceActor {
                 || event.reason == StreamCompletedReason::ToolUse;
             session.finish_streaming(preserve_assistant);
 
+            // Always consume the soft-cancel flag regardless of completion reason.
+            // For ToolUse: prevents begin_sending when auto-compaction is pending.
+            // For Finished/Error/Canceled: cleans up the flag if it was set.
+            let was_soft_cancelled = session.take_soft_cancel();
+
             // Tool use means the conversation continues — transition to sending
             // so the indicator shows activity while awaiting the followup.
-            // Unless soft-cancel was requested, in which case end the turn.
-            if event.reason == StreamCompletedReason::ToolUse {
-                if session.take_soft_cancel() {
-                    // Soft cancel: end turn, go to Idle.
-                    // QueueActor will see SessionPhaseChanged(Idle) and pop CompactionNeeded.
-                } else {
-                    session.begin_sending();
-                }
+            // Skip if soft-cancel was requested (auto-compaction or user cancel).
+            if event.reason == StreamCompletedReason::ToolUse && !was_soft_cancelled {
+                session.begin_sending();
+            }
+
+            // If soft-cancelled and auto-compaction is pending, skip Idle entirely.
+            // Transition directly to Compacting and flag to emit CompactContext.
+            let mut should_emit_compact_context_local = false;
+            if was_soft_cancelled && session.dequeue_compaction_needed() {
+                session.core.ephemeral.phase = SessionPhase::Compacting;
+                should_emit_compact_context_local = true;
             }
 
             // When returning to Idle with no retry, drain queued messages
@@ -160,10 +169,21 @@ impl SessionPersistenceActor {
 
             new_phase = session.phase();
             total_tokens = super::super::helpers::estimate_total_tokens(session);
+            should_emit_compact_context = should_emit_compact_context_local;
         }
 
         super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
         super::super::helpers::emit_history_appended(ctx, &event.session_id, total_tokens);
+
+        // If we transitioned directly to Compacting, emit CompactContext to kick off
+        // the compaction actor.
+        if should_emit_compact_context {
+            if let Err(e) = ctx.send_command(Command::CompactContext(CompactContext {
+                session_id: event.session_id.clone(),
+            })) {
+                tracing::warn!(err = ?e, "failed to emit CompactContext after soft cancel");
+            }
+        }
 
         // Persist session after stream finishes (not on cancel).
         if should_save {
@@ -445,5 +465,59 @@ mod tests {
             .iter()
             .any(|e| matches!(e, Event::HistoryAppended(payload) if payload.session_id == session_id));
         assert!(has_history, "expected HistoryAppended event after stream canceled");
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_soft_cancel_with_compaction_needed_transitions_to_compacting() {
+        // Given a session in streaming state with soft cancel and CompactionNeeded queued.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.request_soft_cancel();
+            session.enqueue(crate::feat::session::queue_item::QueueItem::CompactionNeeded);
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with ToolUse reason and soft cancel.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::ToolUse,
+            assistant_content: Some("response".to_owned()),
+            tool_calls: Some(vec![crate::feat::tools_actor::tool_types::ToolCall {
+                id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                arguments: "{}".to_owned(),
+            }]),
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the session is in Compacting phase (not Idle, not Sending).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Compacting),
+            "expected Compacting after soft cancel with CompactionNeeded, got {:?}",
+            session.phase()
+        );
+
+        // And CompactContext was emitted.
+        let commands = sink.commands();
+        let has_compact = commands
+            .iter()
+            .any(|c| matches!(c, Command::CompactContext(_)));
+        assert!(
+            has_compact,
+            "expected CompactContext command after soft cancel with CompactionNeeded"
+        );
+
+        // And no SendToLlmProvider was emitted.
+        let has_send = commands
+            .iter()
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
+        assert!(!has_send, "expected no SendToLlmProvider after soft cancel");
     }
 }
