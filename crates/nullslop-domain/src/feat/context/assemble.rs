@@ -5,6 +5,8 @@
 //! tools, history) from [`AppState`] in one pass, splits pinned entries,
 //! builds the system prompt, converts history to messages, and counts tokens.
 
+use std::collections::HashMap;
+
 use crate::common::app_state::AppState;
 use crate::feat::context::env_context::build_env_context;
 use crate::feat::context::strategy::token_estimator::TokenCounter;
@@ -14,6 +16,24 @@ use crate::protocol::{
     ChatEntry, ChatEntryKind, LlmMessage, PinPosition, SessionId, ToolDefinition,
     entries_to_messages,
 };
+
+/// Overrides for [`assemble_prompt`]. When provided, these replace the default
+/// sources for system prompt, tools, skills, and context files.
+///
+/// Used by workflow sessions to control the LLM prompt independently of global state.
+#[derive(Debug, Clone, Default)]
+pub struct AssemblyOverrides {
+    /// If set, replaces the entire system prompt (persona, skills, env context, context files).
+    /// Pinned system entries from history are still included.
+    pub system_prompt: Option<String>,
+    /// If set, replaces global tool definitions in both the assembled prompt's
+    /// `tool_definitions` field and the tool context block.
+    pub tool_definitions: Option<Vec<ToolDefinition>>,
+    /// If true, skip the skills block in the system prompt.
+    pub skip_skills: bool,
+    /// If true, skip context files in the env context.
+    pub skip_context_files: bool,
+}
 
 /// Fully assembled LLM prompt — everything a provider needs to make a request.
 ///
@@ -63,13 +83,9 @@ pub fn assemble_prompt(
     state: &AppState,
     session_id: &SessionId,
     counter: &dyn TokenCounter,
+    overrides: Option<&AssemblyOverrides>,
 ) -> AssembledPrompt {
     let session = state.session(session_id);
-
-    // Gather all inputs in one scope.
-    let skills_block = format_skills_for_prompt(&state.context.skills);
-    let tool_defs: Vec<ToolDefinition> = state.context.tool_definitions.values().cloned().collect();
-    let tool_block = build_tool_context_block(&state.context.tool_definitions);
     let cwd = session.cwd().to_path_buf();
     let context_files = &state.context.context_files;
 
@@ -87,6 +103,43 @@ pub fn assemble_prompt(
         });
 
     let history = session.history();
+
+    // Apply overrides: tool definitions.
+    let tool_defs: Vec<ToolDefinition> = overrides
+        .and_then(|o| o.tool_definitions.clone())
+        .unwrap_or_else(|| state.context.tool_definitions.values().cloned().collect());
+
+    // Apply overrides: tool context block.
+    let tool_block = if overrides.is_some_and(|o| o.tool_definitions.is_some()) {
+        let defs = overrides.expect("checked").tool_definitions.as_ref().expect("checked");
+        let map: HashMap<String, ToolDefinition> = defs
+            .iter()
+            .map(|d| (d.name.clone(), d.clone()))
+            .collect();
+        build_tool_context_block(&map)
+    } else {
+        build_tool_context_block(&state.context.tool_definitions)
+    };
+
+    // Apply overrides: skills block.
+    let skills_block = if overrides.is_some_and(|o| o.skip_skills) {
+        String::new()
+    } else {
+        format_skills_for_prompt(&state.context.skills)
+    };
+
+    // Apply overrides: env context.
+    let env_context = if overrides.is_some_and(|o| o.system_prompt.is_some()) {
+        // System prompt override replaces everything — skip env context.
+        String::new()
+    } else if overrides.is_some_and(|o| o.skip_context_files) {
+        build_env_context(persona, &[], &cwd)
+    } else {
+        build_env_context(persona, context_files, &cwd)
+    };
+
+    // Check for system prompt override.
+    let forced_system = overrides.and_then(|o| o.system_prompt.clone());
 
     // Split history into TOP/BOTTOM pins and working history.
     let (top_pins, bottom_pins, working_history) = split_history(history);
@@ -108,33 +161,35 @@ pub fn assemble_prompt(
         .filter(|m| !matches!(m, LlmMessage::System { .. }))
         .collect();
 
-    // Build env context using cached context files.
-    let env_context = build_env_context(persona, context_files, &cwd);
-
-    // Assemble system parts: skills → pinned system → env context → tool block.
-    let mut system_parts: Vec<String> = Vec::new();
-    if !skills_block.is_empty() {
-        system_parts.push(skills_block);
-    }
-    system_parts.extend(pinned_system_contents);
-    if !env_context.is_empty() {
-        system_parts.push(env_context);
-    }
-    if let Some(block) = tool_block {
-        system_parts.push(block);
-    }
+    // Assemble system parts.
+    let full_system = if let Some(content) = forced_system {
+        // Override replaces all generated system parts.
+        // Still include pinned system entries from history below.
+        Some(content)
+    } else {
+        let mut system_parts: Vec<String> = Vec::new();
+        if !skills_block.is_empty() {
+            system_parts.push(skills_block);
+        }
+        system_parts.extend(pinned_system_contents);
+        if !env_context.is_empty() {
+            system_parts.push(env_context);
+        }
+        if let Some(block) = tool_block {
+            system_parts.push(block);
+        }
+        if system_parts.is_empty() {
+            None
+        } else {
+            Some(system_parts.join("\n\n"))
+        }
+    };
 
     // Convert working history to messages.
     let messages = entries_to_messages(&working_history);
 
     // Build final message list.
     let mut final_messages = Vec::new();
-
-    let full_system = if system_parts.is_empty() {
-        None
-    } else {
-        Some(system_parts.join("\n\n"))
-    };
 
     if let Some(content) = full_system {
         final_messages.push(LlmMessage::System { content });
@@ -269,7 +324,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter());
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
         // Then the first message is System and contains the skill.
         assert!(
@@ -291,7 +346,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter());
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
         // Then the system message still has date and CWD from env context.
         assert!(!result.messages.is_empty());
@@ -315,7 +370,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter());
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
         // Then the bottom pin appears just before the last message.
         assert!(result.messages.len() >= 2, "need at least 2 messages");
@@ -344,7 +399,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter());
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
         // Then no message contains the thinking text.
         for msg in &result.messages {
@@ -370,7 +425,7 @@ mod tests {
         // When assembling the prompt.
         let counter = counter();
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter);
+        let result = assemble_prompt(&guard, &session_id, &counter, None);
 
         // Then token count is > 0 and matches manual count.
         assert!(
@@ -406,7 +461,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter());
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
         // Then tool definitions are included.
         assert_eq!(result.tool_definitions.len(), 1);
@@ -427,7 +482,7 @@ mod tests {
 
         // When assembling the prompt.
         let guard = state.read();
-        let result = assemble_prompt(&guard, &session_id, &counter());
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
         // Then the system message contains the context file content.
         assert!(!result.messages.is_empty());
@@ -438,5 +493,155 @@ mod tests {
             }
             other => panic!("expected System message, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn assemble_prompt_with_system_prompt_override_replaces_system_message() {
+        // Given a state with skills and context files.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
+        {
+            let mut guard = state.write();
+            guard.context.skills = vec![make_skill("test-skill")];
+            guard.context.context_files = vec![ContextFile {
+                path: std::path::PathBuf::from("/project/AGENTS.md"),
+                content: "Use Rust.".to_owned(),
+            }];
+        }
+
+        // When assembling with system_prompt override.
+        let overrides = AssemblyOverrides {
+            system_prompt: Some("You are a workflow assistant.".to_owned()),
+            ..Default::default()
+        };
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), Some(&overrides));
+
+        // Then the system message is exactly the override — no skills, no context files.
+        match &result.messages[0] {
+            LlmMessage::System { content } => {
+                assert_eq!(content, "You are a workflow assistant.");
+                assert!(!content.contains("test-skill"));
+                assert!(!content.contains("Use Rust."));
+            }
+            other => panic!("expected System message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_prompt_with_tool_definitions_override_replaces_tools() {
+        // Given a state with global tools.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
+        {
+            let mut guard = state.write();
+            guard
+                .context
+                .tool_definitions
+                .insert("global_tool".to_owned(), make_tool("global_tool"));
+        }
+
+        // When assembling with tool_definitions override.
+        let overrides = AssemblyOverrides {
+            tool_definitions: Some(vec![ToolDefinition {
+                name: "workflow_tool".to_owned(),
+                description: "A workflow tool".to_owned(),
+                parameters: serde_json::json!({"type": "object"}),
+                prompt_snippet: Some("workflow tool does things".to_owned()),
+                prompt_guidelines: vec![],
+            }]),
+            ..Default::default()
+        };
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), Some(&overrides));
+
+        // Then tool definitions are the override ones, not global.
+        assert_eq!(result.tool_definitions.len(), 1);
+        assert_eq!(result.tool_definitions[0].name, "workflow_tool");
+    }
+
+    #[test]
+    fn assemble_prompt_with_skip_skills_excludes_skills_block() {
+        // Given a state with skills.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
+        {
+            let mut guard = state.write();
+            guard.context.skills = vec![make_skill("test-skill")];
+        }
+
+        // When assembling with skip_skills.
+        let overrides = AssemblyOverrides {
+            skip_skills: true,
+            ..Default::default()
+        };
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), Some(&overrides));
+
+        // Then the system message does NOT contain the skill.
+        match &result.messages[0] {
+            LlmMessage::System { content } => {
+                assert!(!content.contains("test-skill"));
+            }
+            other => panic!("expected System message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_prompt_with_skip_context_files_excludes_files() {
+        // Given a state with context files.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
+        {
+            let mut guard = state.write();
+            guard.context.context_files = vec![ContextFile {
+                path: std::path::PathBuf::from("/project/AGENTS.md"),
+                content: "Use Rust.".to_owned(),
+            }];
+        }
+
+        // When assembling with skip_context_files.
+        let overrides = AssemblyOverrides {
+            skip_context_files: true,
+            ..Default::default()
+        };
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), Some(&overrides));
+
+        // Then the system message does NOT contain the context file content.
+        match &result.messages[0] {
+            LlmMessage::System { content } => {
+                assert!(!content.contains("Use Rust."));
+                assert!(!content.contains("Project Context"));
+                // But still has env context (date, CWD).
+                assert!(content.contains("Current date:"));
+            }
+            other => panic!("expected System message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_prompt_with_none_overrides_is_identical_to_no_overrides() {
+        // Given a state with skills and tools.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
+        {
+            let mut guard = state.write();
+            guard.context.skills = vec![make_skill("test-skill")];
+            guard
+                .context
+                .tool_definitions
+                .insert("bash".to_owned(), make_tool("bash"));
+        }
+
+        // When assembling with None overrides.
+        let guard = state.read();
+        let result_none = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then the result matches what we'd get from the original behavior.
+        assert!(!result_none.messages.is_empty());
+        match &result_none.messages[0] {
+            LlmMessage::System { content } => {
+                assert!(content.contains("test-skill"));
+            }
+            other => panic!("expected System message, got {other:?}"),
+        }
+        assert_eq!(result_none.tool_definitions.len(), 1);
+        assert_eq!(result_none.tool_definitions[0].name, "bash");
     }
 }
