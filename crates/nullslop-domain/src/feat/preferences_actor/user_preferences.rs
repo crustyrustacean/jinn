@@ -706,4 +706,22 @@ budget = 100_000
         // Then the default budget is used.
         assert_eq!(prefs.context_token_budget.budget, 150_000);
     }
+
+    #[rstest::rstest]
+    fn save_then_load_round_trips_min_collapse_count() {
+        // Given preferences with a min_collapse_count override.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let prefs = UserPreferences {
+            min_collapse_count: Some(5),
+            ..UserPreferences::default()
+        };
+
+        // When saving and reloading.
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+
+        // Then the round-tripped value matches.
+        assert_eq!(reloaded.min_collapse_count, Some(5));
+    }
 }
