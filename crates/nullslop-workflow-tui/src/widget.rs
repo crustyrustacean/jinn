@@ -20,8 +20,11 @@ use crate::viewport::ViewportState;
 /// Constructed fresh each frame (standard ratatui pattern). Renders the entire
 /// graph — nodes with status indicators, typed ports, and L-shaped connections.
 pub struct WorkflowWidget<'a> {
+    /// Workflow execution snapshot to render.
     snapshot: &'a ExecutionSnapshot,
+    /// Viewport state for pan/zoom and selection.
     viewport: &'a ViewportState,
+    /// Animation tick counter for spinner frames.
     tick: u8,
 }
 

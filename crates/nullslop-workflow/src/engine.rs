@@ -69,51 +69,27 @@ enum CompletionMsg {
     },
 }
 
-/// Executes pending nodes in a workflow.
+/// Initializes tracking state for all nodes in the workflow.
 ///
-/// A unified entry point that handles fresh execution, resume after cancellation,
-/// and re-run after invalidation. The function:
-///
-/// 1. Resets `Failed`/`Skipped` nodes to `Pending`.
-/// 2. Scans for `Pending` nodes with fully satisfied inputs.
-/// 3. Spawns them, propagates outputs via topological push.
-///
-/// # Errors
-///
-/// Returns an error if the engine encounters an internal failure.
-///
-/// # Panics
-///
-/// Panics if internal invariant is violated (e.g., channel closed unexpectedly).
-#[allow(clippy::too_many_lines, reason = "main execution loop, split would harm readability")]
-pub async fn run_pending(
-    execution: Arc<WorkflowExecution>,
-    ctx: Arc<dyn NodeContext>,
-    cancel: CancellationToken,
-) -> Result<WorkflowResult, Report<EngineError>> {
-    let graph = execution.graph();
-    let inner = graph.inner();
-    let name_to_index = graph.name_to_index();
-
-    // Build maps for node lookup.
-    let mut node_map: HashMap<String, Box<dyn WorkflowNode>> = HashMap::new();
-    let mut node_names: HashMap<petgraph::graph::NodeIndex, String> = HashMap::new();
-    for (name, &idx) in name_to_index {
-        node_map.insert(name.clone(), inner[idx].node.clone_box());
-        node_names.insert(idx, name.clone());
-    }
-
-    // Read current snapshot for cached state.
-    let snapshot = execution.snapshot();
-
-    // Initialize tracking.
+/// Builds maps for node lookup, seeds pending inputs from cached snapshot data,
+/// and resets `Failed`/`Skipped` nodes to `Pending` for resume/re-run.
+#[expect(clippy::type_complexity, reason = "returns four tracking maps")]
+fn initialize_tracking(
+    snapshot: &crate::execution::ExecutionSnapshot,
+    execution: &Arc<WorkflowExecution>,
+    node_map: &HashMap<String, Box<dyn WorkflowNode>>,
+) -> (
+    HashMap<String, NodeStatus>,
+    HashMap<String, PortValues>,
+    HashMap<String, usize>,
+    HashMap<String, PortValues>,
+) {
     let mut statuses: HashMap<String, NodeStatus> = HashMap::new();
     let mut pending_inputs: HashMap<String, PortValues> = HashMap::new();
     let mut pending_count: HashMap<String, usize> = HashMap::new();
     let mut outputs: HashMap<String, PortValues> = HashMap::new();
-    let mut handles: HashMap<String, tokio::task::JoinHandle<()>> = HashMap::new();
 
-    for (name, node) in &node_map {
+    for (name, node) in node_map {
         let current_status = snapshot
             .status_of(name)
             .unwrap_or(NodeStatus::Pending);
@@ -162,39 +138,64 @@ pub async fn run_pending(
         }
     }
 
-    // Channel for completion messages.
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<CompletionMsg>(64);
+    (statuses, pending_inputs, pending_count, outputs)
+}
 
-    // Spawn any Pending node with fully satisfied inputs.
+/// Spawns all Pending nodes that have fully satisfied inputs.
+#[expect(clippy::too_many_arguments, reason = "internal helper with many mutable state references")]
+fn spawn_ready_nodes(
+    pending_count: &HashMap<String, usize>,
+    statuses: &mut HashMap<String, NodeStatus>,
+    pending_inputs: &mut HashMap<String, PortValues>,
+    node_map: &HashMap<String, Box<dyn WorkflowNode>>,
+    ctx: &Arc<dyn NodeContext>,
+    tx: &tokio::sync::mpsc::Sender<CompletionMsg>,
+    handles: &mut HashMap<String, tokio::task::JoinHandle<()>>,
+    execution: &Arc<WorkflowExecution>,
+) {
     let spawnable: Vec<String> = pending_count
         .iter()
-        .filter_map(|(name, &remaining)| {
-            (remaining == 0 && statuses.get(name.as_str()) == Some(&NodeStatus::Pending))
-                .then(|| name.clone())
+        .filter(|&(name, &remaining)| {
+            remaining == 0 && statuses.get(name.as_str()) == Some(&NodeStatus::Pending)
         })
+        .map(|(name, _)| name.clone())
         .collect();
 
     for name in spawnable {
         let inputs = pending_inputs.remove(&name).unwrap_or_default();
         spawn_node(
             name,
-            &node_map,
-            &mut statuses,
+            node_map,
+            statuses,
             inputs,
-            &ctx,
-            &tx,
-            &mut handles,
-            &execution,
+            ctx,
+            tx,
+            handles,
+            execution,
         );
     }
+}
 
-    // Main execution loop — identical to execute_with_cancel.
-    let total_nodes = node_map.len();
-    let mut completed_count = statuses
-        .values()
-        .filter(|s| s.is_terminal())
-        .count();
-
+/// Runs the main select loop until all nodes are terminal.
+#[expect(clippy::too_many_arguments, reason = "internal helper with many mutable state references")]
+async fn run_main_loop(
+    execution: Arc<WorkflowExecution>,
+    inner: &petgraph::graph::DiGraph<crate::graph::NodeData, crate::graph::EdgeData>,
+    name_to_index: &HashMap<String, petgraph::graph::NodeIndex>,
+    node_names: &HashMap<petgraph::graph::NodeIndex, String>,
+    node_map: &HashMap<String, Box<dyn WorkflowNode>>,
+    statuses: &mut HashMap<String, NodeStatus>,
+    pending_inputs: &mut HashMap<String, PortValues>,
+    pending_count: &mut HashMap<String, usize>,
+    outputs: &mut HashMap<String, PortValues>,
+    handles: &mut HashMap<String, tokio::task::JoinHandle<()>>,
+    ctx: &Arc<dyn NodeContext>,
+    tx: &tokio::sync::mpsc::Sender<CompletionMsg>,
+    rx: &mut tokio::sync::mpsc::Receiver<CompletionMsg>,
+    cancel: CancellationToken,
+    total_nodes: usize,
+    mut completed_count: usize,
+) {
     loop {
         // Check if all nodes are terminal.
         if completed_count >= total_nodes {
@@ -216,20 +217,20 @@ pub async fn run_pending(
                     msg,
                     inner,
                     name_to_index,
-                    &node_names,
-                    &node_map,
-                    &mut statuses,
-                    &mut pending_inputs,
-                    &mut pending_count,
-                    &mut outputs,
-                    &mut handles,
+                    node_names,
+                    node_map,
+                    statuses,
+                    pending_inputs,
+                    pending_count,
+                    outputs,
+                    handles,
                     &mut completed_count,
-                    &ctx,
-                    &tx,
+                    ctx,
+                    tx,
                     &execution,
                 );
             }
-            Some(panic_name) = check_panics_async(&handles, &statuses) => {
+            Some(panic_name) = check_panics_async(handles, statuses) => {
                 if let Some(handle) = handles.remove(&panic_name) {
                     handle.abort();
                 }
@@ -238,7 +239,7 @@ pub async fn run_pending(
                 completed_count += 1;
 
                 let failed_idx = name_to_index[&panic_name];
-                let downstream = find_downstream(failed_idx, inner, &node_names);
+                let downstream = find_downstream(failed_idx, inner, node_names);
                 for down_name in &downstream {
                     if statuses.get(down_name) == Some(&NodeStatus::Pending) {
                         statuses.insert(down_name.clone(), NodeStatus::Skipped);
@@ -251,7 +252,7 @@ pub async fn run_pending(
                 for (_, handle) in handles.drain() {
                     handle.abort();
                 }
-                for (name, status) in &mut statuses {
+                for (name, status) in statuses {
                     match status {
                         NodeStatus::Running => {
                             execution.set_status(name, NodeStatus::Failed);
@@ -269,24 +270,91 @@ pub async fn run_pending(
             () = panic_check => {}
         }
     }
-
-    Ok(WorkflowResult { outputs, statuses })
 }
 
-/// Executes a validated workflow graph.
+/// Executes pending nodes in a workflow.
 ///
-/// Takes a [`WorkflowExecution`] shared reference. The execution tracks
-/// node statuses atomically — consumers can read snapshots at any time.
-/// Returns when all reachable nodes have completed or failed.
+/// A unified entry point that handles fresh execution, resume after cancellation,
+/// and re-run after invalidation. The function:
+///
+/// 1. Resets `Failed`/`Skipped` nodes to `Pending`.
+/// 2. Scans for `Pending` nodes with fully satisfied inputs.
+/// 3. Spawns them, propagates outputs via topological push.
 ///
 /// # Errors
 ///
 /// Returns an error if the engine encounters an internal failure.
-pub async fn execute(
+///
+/// # Panics
+///
+/// Panics if internal invariant is violated (e.g., channel closed unexpectedly).
+pub async fn run_pending(
     execution: Arc<WorkflowExecution>,
     ctx: Arc<dyn NodeContext>,
+    cancel: CancellationToken,
 ) -> Result<WorkflowResult, Report<EngineError>> {
-    run_pending(execution, ctx, CancellationToken::new()).await
+    let graph = execution.graph();
+    let inner = graph.inner();
+    let name_to_index = graph.name_to_index();
+
+    // Build maps for node lookup.
+    let mut node_map: HashMap<String, Box<dyn WorkflowNode>> = HashMap::new();
+    let mut node_names: HashMap<petgraph::graph::NodeIndex, String> = HashMap::new();
+    for (name, &idx) in name_to_index {
+        node_map.insert(name.clone(), inner[idx].node.clone_box());
+        node_names.insert(idx, name.clone());
+    }
+
+    // Read current snapshot for cached state.
+    let snapshot = execution.snapshot();
+
+    // Initialize tracking.
+    let (mut statuses, mut pending_inputs, mut pending_count, mut outputs) =
+        initialize_tracking(&snapshot, &execution, &node_map);
+
+    // Channel for completion messages.
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<CompletionMsg>(64);
+
+    // Spawn any Pending node with fully satisfied inputs.
+    let mut handles: HashMap<String, tokio::task::JoinHandle<()>> = HashMap::new();
+    spawn_ready_nodes(
+        &pending_count,
+        &mut statuses,
+        &mut pending_inputs,
+        &node_map,
+        &ctx,
+        &tx,
+        &mut handles,
+        &execution,
+    );
+
+    let total_nodes = node_map.len();
+    let completed_count = statuses
+        .values()
+        .filter(|s| s.is_terminal())
+        .count();
+
+    run_main_loop(
+        execution.clone(),
+        inner,
+        name_to_index,
+        &node_names,
+        &node_map,
+        &mut statuses,
+        &mut pending_inputs,
+        &mut pending_count,
+        &mut outputs,
+        &mut handles,
+        &ctx,
+        &tx,
+        &mut rx,
+        cancel,
+        total_nodes,
+        completed_count,
+    )
+    .await;
+
+    Ok(WorkflowResult { outputs, statuses })
 }
 
 /// Executes a workflow with cancellation support.
@@ -307,6 +375,22 @@ pub async fn execute_with_cancel(
     cancel: CancellationToken,
 ) -> Result<WorkflowResult, Report<EngineError>> {
     run_pending(execution, ctx, cancel).await
+}
+
+/// Executes a validated workflow graph.
+///
+/// Takes a [`WorkflowExecution`] shared reference. The execution tracks
+/// node statuses atomically — consumers can read snapshots at any time.
+/// Returns when all reachable nodes have completed or failed.
+///
+/// # Errors
+///
+/// Returns an error if the engine encounters an internal failure.
+pub async fn execute(
+    execution: Arc<WorkflowExecution>,
+    ctx: Arc<dyn NodeContext>,
+) -> Result<WorkflowResult, Report<EngineError>> {
+    run_pending(execution, ctx, CancellationToken::new()).await
 }
 
 /// Async check: finds a Running node whose handle has finished (panicked).

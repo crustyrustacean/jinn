@@ -24,11 +24,8 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::widgets::{Paragraph, Widget};
 
-#[expect(clippy::expect_used, reason = "example code")]
-fn main() {
-    let mut terminal = common::setup_terminal();
-
-    // Build: load_data → parse → validate → enrich → transform → output
+/// Builds a 6-node linear pipeline graph: load_data → parse → validate → enrich → transform → save.
+fn build_pipeline() -> WorkflowExecution {
     let graph = {
         let mut b = WorkflowGraphBuilder::new();
         b.add_node(
@@ -88,10 +85,22 @@ fn main() {
     execution.set_status("validate", NodeStatus::Completed);
     execution.set_status("enrich", NodeStatus::Running);
     // transform and save stay Pending
+    execution
+}
 
-    let node_names: Vec<String> = execution.snapshot().structure().node_names().map(std::borrow::ToOwned::to_owned).collect();
+#[expect(clippy::expect_used, reason = "example code")]
+fn main() {
+    let mut terminal = common::setup_terminal();
 
-    let the_layout = layout::compute(&*execution.snapshot());
+    let execution = build_pipeline();
+    let node_names: Vec<String> = execution
+        .snapshot()
+        .structure()
+        .node_names()
+        .map(std::borrow::ToOwned::to_owned)
+        .collect();
+
+    let the_layout = layout::compute(&execution.snapshot());
     let content_size = the_layout.content_size();
 
     let mut viewport = ViewportState::new();
@@ -137,21 +146,22 @@ fn main() {
         tick = tick.wrapping_add(1);
 
         if ratatui::crossterm::event::poll(Duration::from_millis(80)).expect("poll")
-            && let Event::Key(key) = ratatui::crossterm::event::read().expect("read") {
-                if key.kind != KeyEventKind::Press {
-                    continue;
-                }
-                match key.code {
-                    KeyCode::Char('q') => break,
-                    KeyCode::Left => viewport.translate(3, 0, content_size, viewport_dims),
-                    KeyCode::Right => viewport.translate(-3, 0, content_size, viewport_dims),
-                    KeyCode::Up => viewport.translate(0, 1, content_size, viewport_dims),
-                    KeyCode::Down => viewport.translate(0, -1, content_size, viewport_dims),
-                    KeyCode::Tab => viewport.select_next(&node_names),
-                    KeyCode::BackTab => viewport.select_prev(&node_names),
-                    _ => {}
-                }
+            && let Event::Key(key) = ratatui::crossterm::event::read().expect("read")
+        {
+            if key.kind != KeyEventKind::Press {
+                continue;
             }
+            match key.code {
+                KeyCode::Char('q') => break,
+                KeyCode::Left => viewport.translate(3, 0, content_size, viewport_dims),
+                KeyCode::Right => viewport.translate(-3, 0, content_size, viewport_dims),
+                KeyCode::Up => viewport.translate(0, 1, content_size, viewport_dims),
+                KeyCode::Down => viewport.translate(0, -1, content_size, viewport_dims),
+                KeyCode::Tab => viewport.select_next(&node_names),
+                KeyCode::BackTab => viewport.select_prev(&node_names),
+                _ => {}
+            }
+        }
     }
 
     common::restore_terminal(&mut terminal);
