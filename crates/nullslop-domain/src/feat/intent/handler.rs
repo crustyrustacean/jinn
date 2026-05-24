@@ -37,6 +37,7 @@ use crate::Intent;
 use crate::feat;
 
 use crate::IntentResult;
+use nullslop_workflow::spatial_layout::SpatialDirection;
 
 /// Processes user intents — the single decision point for all user input.
 ///
@@ -378,17 +379,19 @@ impl IntentHandler {
             }
 
             // --- Workflow Navigation ---
-            Intent::WorkflowNodeDown => handle_workflow_node_down(state),
-            Intent::WorkflowNodeUp => handle_workflow_node_up(state),
+            Intent::WorkflowNodeLeft => handle_workflow_node_spatial(state, SpatialDirection::Left),
+            Intent::WorkflowNodeDown => handle_workflow_node_spatial(state, SpatialDirection::Down),
+            Intent::WorkflowNodeUp => handle_workflow_node_spatial(state, SpatialDirection::Up),
+            Intent::WorkflowNodeRight => handle_workflow_node_spatial(state, SpatialDirection::Right),
             Intent::WorkflowInspectToggle => handle_workflow_inspect_toggle(state),
             Intent::WorkflowInspectScrollUp => handle_workflow_inspect_scroll_up(state),
             Intent::WorkflowInspectScrollDown => handle_workflow_inspect_scroll_down(state),
             Intent::WorkflowEscape => handle_workflow_escape(state),
             Intent::WorkflowRerunNode => handle_workflow_rerun_node(state),
-            Intent::WorkflowPanLeft => handle_workflow_pan(state, -5, 0),
-            Intent::WorkflowPanDown => handle_workflow_pan(state, 0, 5),
-            Intent::WorkflowPanUp => handle_workflow_pan(state, 0, -5),
-            Intent::WorkflowPanRight => handle_workflow_pan(state, 5, 0),
+            Intent::WorkflowPanLeft => handle_workflow_pan(state, 5, 0),
+            Intent::WorkflowPanDown => handle_workflow_pan(state, 0, -5),
+            Intent::WorkflowPanUp => handle_workflow_pan(state, 0, 5),
+            Intent::WorkflowPanRight => handle_workflow_pan(state, -5, 0),
         }
     }
 }
@@ -484,92 +487,54 @@ fn handle_compaction_cancel(state: &mut AppState, session_id: SessionId) -> Inte
 
 // --- Workflow Intent Handlers ---
 
-/// Navigate to the next downstream node (graph-aware).
-fn handle_workflow_node_down(state: &mut AppState) -> IntentResult {
-    // Dismiss cancel prompt if showing.
+/// Navigate to the spatially nearest node in the given direction.
+///
+/// Uses the cached spatial index (`node_rects`) to find the nearest node
+/// in the pressed direction. Falls back to graph-traversal (first source)
+/// when no node is currently selected.
+fn handle_workflow_node_spatial(
+    state: &mut AppState,
+    direction: SpatialDirection,
+) -> IntentResult {
     state.frontend.workflow_ui.cancel_prompt = false;
 
     let Some(workflow) = state.workflow.active() else {
         return IntentResult::empty();
     };
     let snapshot = workflow.execution.snapshot();
-    let structure = snapshot.structure();
+
+    // Recompute spatial index if empty (cache invalidation).
+    if state.frontend.workflow_ui.node_rects.is_empty() {
+        state.frontend.workflow_ui.node_rects =
+            nullslop_workflow::spatial_layout::compute_spatial_layout(snapshot.structure());
+    }
+
+    let rects = &state.frontend.workflow_ui.node_rects;
 
     // If no node selected, select the first source node.
-    let Some(current) = &state.frontend.workflow_ui.selected_node else {
-        let sources = structure.sources();
+    let Some(current_name) = &state.frontend.workflow_ui.selected_node else {
+        let sources = snapshot.structure().sources();
         if let Some(first) = sources.first() {
             state.frontend.workflow_ui.selected_node = Some(first.clone());
         }
         return IntentResult::empty();
     };
 
-    let children = structure.children_of(current);
-    if children.is_empty() {
-        // At a leaf node — wrap to first source.
-        let sources = structure.sources();
-        if let Some(first) = sources.first() {
-            state.frontend.workflow_ui.selected_node = Some(first.clone());
-        }
-        return IntentResult::empty();
-    }
-
-    // If only one child, navigate to it.
-    if children.len() == 1 {
-        state.frontend.workflow_ui.selected_node = Some(children[0].to_owned());
-        return IntentResult::empty();
-    }
-
-    // Multiple children: check if current node is a sibling — cycle siblings.
-    let parents = structure.parents_of(current);
-    if let Some(parent) = parents.first() {
-        let siblings = structure.children_of(parent);
-        if siblings.len() > 1 {
-            // Find current position among siblings and advance.
-            let current_idx = siblings
-                .iter()
-                .position(|s| *s == *current)
-                .unwrap_or(0);
-            let next_idx = (current_idx + 1) % siblings.len();
-            state.frontend.workflow_ui.selected_node =
-                Some(siblings[next_idx].to_owned());
-            return IntentResult::empty();
-        }
-    }
-
-    // Default: pick the first child (sorted by children_of()).
-    state.frontend.workflow_ui.selected_node = Some(children[0].to_owned());
-    IntentResult::empty()
-}
-
-/// Navigate to the previous upstream node (graph-aware).
-fn handle_workflow_node_up(state: &mut AppState) -> IntentResult {
-    // Dismiss cancel prompt if showing.
-    state.frontend.workflow_ui.cancel_prompt = false;
-
-    let Some(workflow) = state.workflow.active() else {
-        return IntentResult::empty();
-    };
-    let snapshot = workflow.execution.snapshot();
-    let structure = snapshot.structure();
-
-    let Some(current) = &state.frontend.workflow_ui.selected_node else {
-        // Nothing selected — select the first source.
-        let sources = structure.sources();
-        if let Some(first) = sources.first() {
-            state.frontend.workflow_ui.selected_node = Some(first.clone());
-        }
+    let Some(current_rect) = rects.get(current_name) else {
         return IntentResult::empty();
     };
 
-    let parents = structure.parents_of(current);
-    if parents.is_empty() {
-        // At a source node — stay here.
-        return IntentResult::empty();
+    let next = nullslop_workflow::spatial_layout::spatial_nearest(
+        current_rect,
+        direction,
+        rects,
+        current_name,
+    );
+
+    if let Some(next_name) = next {
+        state.frontend.workflow_ui.selected_node = Some(next_name);
     }
 
-    // Pick the first parent (sorted by parents_of()).
-    state.frontend.workflow_ui.selected_node = Some(parents[0].to_owned());
     IntentResult::empty()
 }
 
