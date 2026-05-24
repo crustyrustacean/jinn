@@ -30,6 +30,7 @@ use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::compaction_actor::protocol::command::{CompactContext, EnqueueCompaction};
+use crate::feat::compaction_actor::protocol::event::CompactionCompleted;
 use crate::feat::context::assemble::assemble_prompt;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::feat::provider::protocol::command::SendToLlmProvider;
@@ -65,6 +66,7 @@ impl Actor for QueueActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.set_description("Dispatches queued turns when sessions become idle");
         ctx.subscribe_event::<SessionPhaseChanged>();
+        ctx.subscribe_event::<CompactionCompleted>();
         ctx.subscribe_command::<EnqueueCompaction>();
 
         Self {
@@ -77,6 +79,9 @@ impl Actor for QueueActor {
         match msg {
             ActorEnvelope::Event(Event::SessionPhaseChanged(payload)) => {
                 self.handle_session_phase_changed(&payload, ctx).await;
+            }
+            ActorEnvelope::Event(Event::CompactionCompleted(payload)) => {
+                self.handle_compaction_completed(&payload, ctx).await;
             }
             ActorEnvelope::Command(Command::EnqueueCompaction(payload)) => {
                 self.handle_enqueue_compaction(&payload, ctx).await;
@@ -241,6 +246,78 @@ impl QueueActor {
             tracing::warn!(
                 err = ?e,
                 "queue-actor failed to emit SendToLlmProvider from tool continuation"
+            );
+        }
+    }
+
+    /// Handle `CompactionCompleted` — when auto-compaction succeeded, dispatch
+    /// the continuation (assemble prompt + send to LLM) from the Sending phase.
+    async fn handle_compaction_completed(
+        &self,
+        payload: &CompactionCompleted,
+        ctx: &ActorContext,
+    ) {
+        if !payload.auto || payload.entries_compacted == 0 {
+            return;
+        }
+
+        // The session should be in Sending phase (set by handle_end_compaction
+        // with auto=true). Assemble the prompt and send to the LLM provider.
+        self.dispatch_compaction_continuation(&payload.session_id, ctx)
+            .await;
+    }
+
+    /// Dispatch a compaction continuation: assemble prompt and emit SendToLlmProvider.
+    ///
+    /// This is used after auto-compaction when the session has been transitioned
+    /// to Sending with a continuation user entry already pushed.
+    #[allow(clippy::unused_async)]
+    async fn dispatch_compaction_continuation(
+        &self,
+        session_id: &crate::protocol::SessionId,
+        ctx: &ActorContext,
+    ) {
+        let phase = {
+            let state = self.state.read();
+            state.session(session_id).phase()
+        };
+
+        if !matches!(phase, SessionPhase::Sending) {
+            tracing::warn!(
+                session_id = ?session_id,
+                current_phase = ?phase,
+                "CompactionCompleted(auto) but session is not Sending — skipping continuation"
+            );
+            return;
+        }
+
+        let assembled = {
+            let guard = self.state.read();
+            assemble_prompt(&guard, session_id, &self.counter)
+        };
+
+        let provider_id = {
+            let state = self.state.read();
+            let model = state.session(session_id).profile().model.clone();
+            if model == crate::feat::provider_infra::NO_PROVIDER_ID {
+                None
+            } else {
+                Some(model)
+            }
+        };
+
+        let estimated_tokens = assembled.estimated_tokens();
+
+        if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: assembled.messages,
+            provider_id,
+            estimated_tokens,
+            tool_definitions: assembled.tool_definitions,
+        })) {
+            tracing::warn!(
+                err = ?e,
+                "queue-actor failed to emit SendToLlmProvider from compaction continuation"
             );
         }
     }
@@ -602,5 +679,99 @@ mod tests {
             .iter()
             .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(has_send, "expected SendToLlmProvider command");
+    }
+
+    #[tokio::test]
+    async fn compaction_completed_auto_dispatches_continuation_when_sending() {
+        // Given a session in Sending phase with history (simulating auto-compaction
+        // where handle_end_compaction pushed the continuation entry and set Sending).
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("previous message"));
+            session.push_entry(ChatEntry::user(
+                "A compaction has just occurred. Continue",
+            ));
+            session.begin_sending();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling CompactionCompleted with auto=true.
+        let payload = CompactionCompleted {
+            session_id: session_id.clone(),
+            entries_compacted: 5,
+            auto: true,
+        };
+        actor.handle_compaction_completed(&payload, &ctx).await;
+
+        // Then SendToLlmProvider was emitted for the continuation.
+        let commands = sink.commands();
+        let has_send = commands
+            .iter()
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
+        assert!(
+            has_send,
+            "expected SendToLlmProvider for auto-compaction continuation"
+        );
+    }
+
+    #[tokio::test]
+    async fn compaction_completed_auto_skips_when_not_sending() {
+        // Given a session in Idle phase (not Sending — should not happen in practice
+        // but we guard against it).
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling CompactionCompleted with auto=true but session is Idle.
+        let payload = CompactionCompleted {
+            session_id: session_id.clone(),
+            entries_compacted: 5,
+            auto: true,
+        };
+        actor.handle_compaction_completed(&payload, &ctx).await;
+
+        // Then no SendToLlmProvider was emitted.
+        let commands = sink.commands();
+        let has_send = commands
+            .iter()
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
+        assert!(
+            !has_send,
+            "expected no SendToLlmProvider when session is not Sending"
+        );
+    }
+
+    #[tokio::test]
+    async fn compaction_completed_manual_is_noop() {
+        // Given a session in Sending phase (shouldn't matter for manual).
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            state.active_session_mut().begin_sending();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling CompactionCompleted with auto=false (manual compaction).
+        let payload = CompactionCompleted {
+            session_id: session_id.clone(),
+            entries_compacted: 5,
+            auto: false,
+        };
+        actor.handle_compaction_completed(&payload, &ctx).await;
+
+        // Then no SendToLlmProvider was emitted (manual compaction doesn't
+        // trigger continuation).
+        let commands = sink.commands();
+        assert!(
+            commands.is_empty(),
+            "expected no commands for manual compaction"
+        );
     }
 }
