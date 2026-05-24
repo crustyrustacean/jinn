@@ -7,8 +7,12 @@ use std::time::Duration;
 
 use crate::task::{BenchTask, BenchTools, VerificationReport};
 use crate::tasks::checks;
+use include_dir::Dir;
 
 const EXPECTED_MAIN_PY: &str = include_str!("edit_rename_all/expected/main.py");
+
+
+static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_rename_all/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -18,7 +22,7 @@ pub fn task() -> BenchTask {
             "Rename the variable `counter` to `item_count` everywhere it appears in \
              main.py. Do not change anything else.",
         ],
-        fixture_dir: Some("src/tasks/edit/edit_rename_all/fixtures"),
+        fixture_dir: Some(&FIXTURES),
         timeout: Duration::from_secs(300),
         persona: None,
         tools: BenchTools {

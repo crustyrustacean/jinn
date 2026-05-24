@@ -7,6 +7,10 @@ use std::time::Duration;
 
 use crate::task::{BenchTask, BenchTools, VerificationReport};
 use crate::tasks::checks;
+use include_dir::Dir;
+
+
+static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/redirect/redirect_switch_language/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -18,7 +22,7 @@ pub fn task() -> BenchTask {
              src/main.rs. The Rust version should read input.txt and print word \
              count, character count, and unique word count.",
         ],
-        fixture_dir: Some("src/tasks/redirect/redirect_switch_language/fixtures"),
+        fixture_dir: Some(&FIXTURES),
         timeout: Duration::from_secs(300),
         persona: None,
         tools: BenchTools {

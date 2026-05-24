@@ -7,8 +7,12 @@ use std::time::Duration;
 
 use crate::task::{BenchTask, BenchTools, VerificationReport};
 use crate::tasks::checks;
+use include_dir::Dir;
 
 const EXPECTED_DATA: &str = include_str!("edit_json_array/expected/data.json");
+
+
+static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_json_array/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -17,7 +21,7 @@ pub fn task() -> BenchTask {
         messages: vec![
             "Remove the user with id 17 from data.json. Keep everything else exactly the same.",
         ],
-        fixture_dir: Some("src/tasks/edit/edit_json_array/fixtures"),
+        fixture_dir: Some(&FIXTURES),
         timeout: Duration::from_secs(300),
         persona: None,
         tools: BenchTools {
