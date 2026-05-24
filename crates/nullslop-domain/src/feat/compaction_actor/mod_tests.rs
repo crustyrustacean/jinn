@@ -451,3 +451,151 @@ fn flag_resets_after_cancel_compaction_allows_retrigger() {
         "expected 1 EnqueueCompaction after cancel reset, got {count}"
     );
 }
+
+// --- Tool-chain boundary detection tests ---
+
+#[test]
+fn cut_on_user_entry_needs_no_adjustment() {
+    // Given history with User entries at clear boundaries.
+    let history = vec![
+        ChatEntry::user("msg1"),
+        ChatEntry::assistant("resp1"),
+        ChatEntry::user("msg2"),
+        ChatEntry::assistant("resp2"),
+    ];
+
+    // When cut lands on a User entry.
+    let result = super::adjust_cut_to_boundary(&history, 2);
+
+    // Then no adjustment needed.
+    assert_eq!(result, 2);
+}
+
+#[test]
+fn cut_on_tool_call_walks_to_next_user() {
+    // Given history with a tool call chain.
+    let history = vec![
+        ChatEntry::user("msg1"),
+        ChatEntry::assistant("resp1"),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::tool_result("tc1", "bash", "file.txt", ToolResultStatus::Success),
+        ChatEntry::assistant("done"),
+        ChatEntry::user("msg2"),
+    ];
+
+    // When cut lands on ToolCall entry.
+    let result = super::adjust_cut_to_boundary(&history, 2);
+
+    // Then it walks forward to the next User entry.
+    assert_eq!(result, 5);
+}
+
+#[test]
+fn cut_on_tool_result_walks_to_next_user() {
+    // Given history with a tool call chain.
+    let history = vec![
+        ChatEntry::user("msg1"),
+        ChatEntry::assistant("resp1"),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::tool_result("tc1", "bash", "file.txt", ToolResultStatus::Success),
+        ChatEntry::assistant("done"),
+        ChatEntry::user("msg2"),
+    ];
+
+    // When cut lands on ToolResult entry.
+    let result = super::adjust_cut_to_boundary(&history, 3);
+
+    // Then it walks forward to the next User entry.
+    assert_eq!(result, 5);
+}
+
+#[test]
+fn cut_on_assistant_after_tool_result_walks_to_next_user() {
+    // Given history with a tool call chain.
+    let history = vec![
+        ChatEntry::user("msg1"),
+        ChatEntry::assistant("resp1"),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::tool_result("tc1", "bash", "file.txt", ToolResultStatus::Success),
+        ChatEntry::assistant("done"),
+        ChatEntry::user("msg2"),
+    ];
+
+    // When cut lands on the responding Assistant entry.
+    let result = super::adjust_cut_to_boundary(&history, 4);
+
+    // Then it walks forward to the next User entry.
+    assert_eq!(result, 5);
+}
+
+#[test]
+fn multiple_tool_call_batches_walks_past_all() {
+    // Given history with multiple consecutive tool call batches.
+    let history = vec![
+        ChatEntry::user("msg1"),
+        ChatEntry::assistant("resp1"),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::tool_result("tc1", "bash", "file.txt", ToolResultStatus::Success),
+        ChatEntry::assistant("checking"),
+        ChatEntry::tool_call("tc2", "read", "file.rs"),
+        ChatEntry::tool_result("tc2", "read", "contents", ToolResultStatus::Success),
+        ChatEntry::assistant("final"),
+        ChatEntry::user("msg2"),
+    ];
+
+    // When cut lands on the first ToolCall.
+    let result = super::adjust_cut_to_boundary(&history, 2);
+
+    // Then it walks past the entire multi-batch chain to the next User.
+    assert_eq!(result, 8);
+}
+
+#[test]
+fn no_user_after_cut_returns_history_len() {
+    // Given history ending with a tool chain (no trailing User).
+    let history = vec![
+        ChatEntry::user("msg1"),
+        ChatEntry::assistant("resp1"),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::tool_result("tc1", "bash", "file.txt", ToolResultStatus::Success),
+    ];
+
+    // When cut lands on ToolCall with no User after it.
+    let result = super::adjust_cut_to_boundary(&history, 2);
+
+    // Then the entire history gets compacted.
+    assert_eq!(result, 4);
+}
+
+#[test]
+fn cut_at_end_returns_end() {
+    // Given a simple history.
+    let history = vec![
+        ChatEntry::user("msg1"),
+        ChatEntry::assistant("resp1"),
+    ];
+
+    // When cut is already at the end.
+    let result = super::adjust_cut_to_boundary(&history, 2);
+
+    // Then it stays at the end.
+    assert_eq!(result, 2);
+}
+
+#[test]
+fn cut_on_standalone_assistant_walks_to_next_user() {
+    // Given history where the cut lands on a standalone Assistant.
+    let history = vec![
+        ChatEntry::user("msg1"),
+        ChatEntry::assistant("resp1"),
+        ChatEntry::assistant("resp2"),
+        ChatEntry::user("msg2"),
+    ];
+
+    // When cut lands on a standalone Assistant (not in a tool chain).
+    let result = super::adjust_cut_to_boundary(&history, 1);
+
+    // Then it walks forward to the next User entry.
+    assert_eq!(result, 3);
+}
+
