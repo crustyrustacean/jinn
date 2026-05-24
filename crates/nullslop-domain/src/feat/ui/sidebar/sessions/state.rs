@@ -16,6 +16,11 @@ pub struct SessionsSectionState {
     pub selected_index: Option<usize>,
     /// Scroll offset: the first session entry index that is visible.
     pub scroll_offset: usize,
+    /// Visual-parent index: maps a loaded session to its nearest loaded ancestor
+    /// when the direct parent has been archived/removed from memory.
+    /// Updated reactively in `remove_and_replace()`, invalidated on session load.
+    /// Empty when no intermediate parents have been hidden.
+    pub visual_parents: HashMap<SessionId, SessionId>,
 }
 
 #[derive(Clone)]
@@ -75,24 +80,51 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
         .collect();
 
     // Index entries by ID for O(1) lookup.
-    let entry_map: HashMap<SessionId, SessionEntry> =
+    let mut entry_map: HashMap<SessionId, SessionEntry> =
         entries.into_iter().map(|e| (e.id.clone(), e)).collect();
 
     // Build parent → children map and identify roots.
+    // Uses visual_parents index to resolve effective parent when
+    // the direct parent has been archived/removed from memory.
+    let visual_parents = &state.frontend.sessions_section.visual_parents;
     let mut children_map: HashMap<SessionId, Vec<SessionId>> = HashMap::new();
     let mut roots: Vec<SessionId> = Vec::new();
 
+    // Track effective parent for each entry so we can patch entry.parent_id later.
+    let mut effective_parents: HashMap<SessionId, SessionId> = HashMap::new();
+
     for entry in entry_map.values() {
-        match &entry.parent_id {
-            Some(pid) if entry_map.contains_key(pid) => {
+        let effective_parent = match &entry.parent_id {
+            // Direct parent is loaded — use it directly.
+            Some(pid) if entry_map.contains_key(pid) => Some(pid.clone()),
+            // Direct parent not loaded — try visual_parents for reparenting.
+            Some(pid) => visual_parents
+                .get(pid)
+                .or_else(|| visual_parents.get(&entry.id))
+                .filter(|vp| entry_map.contains_key(*vp))
+                .cloned(),
+            // No parent at all.
+            None => None,
+        };
+
+        match effective_parent {
+            Some(ref pid) => {
                 children_map
                     .entry(pid.clone())
                     .or_default()
                     .push(entry.id.clone());
+                effective_parents.insert(entry.id.clone(), pid.clone());
             }
-            _ => {
+            None => {
                 roots.push(entry.id.clone());
             }
+        }
+    }
+
+    // Patch entry.parent_id to reflect effective visual parent.
+    for (id, ep) in effective_parents {
+        if let Some(entry) = entry_map.get_mut(&id) {
+            entry.parent_id = Some(ep);
         }
     }
 
@@ -131,6 +163,108 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
     }
 
     result
+}
+
+/// Updates the visual-parent index when a session is about to be removed.
+///
+/// Must be called BEFORE the session is removed from the `SessionMap`.
+/// Resolves the nearest loaded ancestor for any orphaned children and
+/// updates the `visual_parents` index accordingly.
+///
+/// Also handles transitive chains: if any existing `visual_parents` entries
+/// point to the removed session as their effective ancestor, those entries
+/// are updated to point to the resolved ancestor instead.
+pub fn update_visual_parents_on_removal(state: &mut AppState, removed_id: &SessionId) {
+    let effective_ancestor = {
+        // Resolve the nearest loaded ancestor for the session being removed.
+        let Some(removed_session) = state.session.get(removed_id) else {
+            return;
+        };
+
+        match removed_session.parent_session() {
+            // Direct parent is loaded — use it.
+            Some(pid) if state.session.contains(pid) => Some(pid.clone()),
+            // Direct parent not loaded — check if it has a visual_parents entry.
+            Some(pid) => state
+                .frontend
+                .sessions_section
+                .visual_parents
+                .get(pid)
+                .cloned()
+                .or_else(|| {
+                    // The parent's parent may not be in visual_parents,
+                    // but the removed session itself might have been reparented.
+                    state
+                        .frontend
+                        .sessions_section
+                        .visual_parents
+                        .get(removed_id)
+                        .cloned()
+                }),
+            // No parent at all — check if the removed session itself has a visual parent.
+            None => state
+                .frontend
+                .sessions_section
+                .visual_parents
+                .get(removed_id)
+                .cloned(),
+        }
+    };
+
+    let visual_parents = &mut state.frontend.sessions_section.visual_parents;
+
+    // Find direct children of the removed session and reparent them.
+    let orphan_ids: Vec<SessionId> = state
+        .session
+        .iter()
+        .filter(|(_, s)| s.parent_session().as_ref() == Some(removed_id))
+        .map(|(id, _)| id.clone())
+        .collect();
+
+    for orphan_id in orphan_ids {
+        match &effective_ancestor {
+            Some(ancestor_id) => {
+                visual_parents.insert(orphan_id, ancestor_id.clone());
+            }
+            None => {
+                visual_parents.remove(&orphan_id);
+            }
+        }
+    }
+
+    // Update transitive entries: any session already bypassing the removed session.
+    let keys_to_update: Vec<SessionId> = visual_parents
+        .iter()
+        .filter(|(_, v)| *v == removed_id)
+        .map(|(k, _)| k.clone())
+        .collect();
+
+    for key in keys_to_update {
+        match &effective_ancestor {
+            Some(ancestor_id) => {
+                visual_parents.insert(key, ancestor_id.clone());
+            }
+            None => {
+                visual_parents.remove(&key);
+            }
+        }
+    }
+}
+
+/// Removes stale `visual_parents` entries when a session is loaded back.
+///
+/// When a session is unarchived/loaded, its children no longer need to bypass
+/// it in the tree. This function removes any `visual_parents` entries whose
+/// **value** equals the loaded session's ID.
+///
+/// Entries where the loaded session is the **key** are preserved — the loaded
+/// session may itself have a hidden parent that it needs to be reparented under.
+pub fn clear_visual_parents_on_load(state: &mut AppState, loaded_id: &SessionId) {
+    state
+        .frontend
+        .sessions_section
+        .visual_parents
+        .retain(|_k, v| v != loaded_id);
 }
 
 /// Recursively emits children in DFS order, recording tree metadata.

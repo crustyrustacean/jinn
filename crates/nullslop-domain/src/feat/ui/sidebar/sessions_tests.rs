@@ -1449,3 +1449,154 @@ fn render_tree_shows_tree_characters() {
         "rendered output should contain tree connectors, got: {text}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Visual reparenting tests
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn archiving_intermediate_parent_reparents_grandchild_under_grandparent() {
+    // Given state with root_a -> child_a1 -> grandchild_a1a.
+    let mut state = state_with_tree();
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+    let sessions = sorted_open_sessions(&state);
+    let child_a1_index = sessions
+        .iter()
+        .position(|s| s.title.contains("child a1"))
+        .expect("child a1");
+    let child_a1_id = sessions[child_a1_index].id.clone();
+    let root_a_id = sessions
+        .iter()
+        .find(|s| s.title.contains("root a"))
+        .map(|s| s.id.clone())
+        .expect("root a");
+    let grandchild_id = sessions
+        .iter()
+        .find(|s| s.title.contains("grandchild"))
+        .map(|s| s.id.clone())
+        .expect("grandchild");
+    state.frontend.sessions_section.selected_index = Some(child_a1_index);
+
+    // When closing child_a1 (the intermediate parent).
+    handle_session_close(&mut state);
+
+    // Then child_a1 is removed.
+    assert!(!state.session.contains(&child_a1_id));
+    // And the visual_parents index maps grandchild -> root_a.
+    assert_eq!(
+        state.frontend.sessions_section.visual_parents.get(&grandchild_id),
+        Some(&root_a_id),
+        "grandchild should be reparented to root_a in visual_parents"
+    );
+    // And sorted_open_sessions shows grandchild at depth 1 under root_a.
+    let remaining = sorted_open_sessions(&state);
+    let grandchild_entry = remaining
+        .iter()
+        .find(|s| s.title.contains("grandchild"))
+        .expect("grandchild should exist");
+    assert_eq!(
+        grandchild_entry.depth, 1,
+        "grandchild should be at depth 1 under root_a, got depth {}",
+        grandchild_entry.depth
+    );
+    assert_eq!(
+        grandchild_entry.parent_id,
+        Some(root_a_id),
+        "grandchild's effective parent should be root_a"
+    );
+}
+
+#[rstest::rstest]
+fn archiving_root_does_not_create_visual_parents_for_orphaned_children() {
+    // Given state with root_a having children.
+    let mut state = state_with_tree();
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+    let sessions = sorted_open_sessions(&state);
+    let root_a_index = sessions
+        .iter()
+        .position(|s| s.title.contains("root a"))
+        .expect("root a");
+    let root_a_id = sessions[root_a_index].id.clone();
+    state.frontend.sessions_section.selected_index = Some(root_a_index);
+
+    // When closing root_a (no loaded ancestor to reparent to).
+    handle_session_close(&mut state);
+
+    // Then the visual_parents index should be empty (root has no loaded ancestor).
+    assert!(
+        state.frontend.sessions_section.visual_parents.is_empty(),
+        "no visual_parents entries should exist when root is closed"
+    );
+}
+
+#[rstest::rstest]
+fn multi_level_intermediate_hiding_reparents_to_nearest_loaded_ancestor() {
+    // Given a chain: root -> A -> B -> leaf.
+    let mut state = AppState::default();
+
+    let mut root = ChatSessionState::new();
+    root.set_title("root".to_owned());
+    let root_id = root.session_id().clone();
+    state.session.insert(root);
+
+    let mut a = ChatSessionState::new();
+    a.set_title("session A".to_owned());
+    a.set_parent_session(root_id.clone());
+    let a_id = a.session_id().clone();
+    state.session.insert(a);
+
+    let mut b = ChatSessionState::new();
+    b.set_title("session B".to_owned());
+    b.set_parent_session(a_id.clone());
+    let b_id = b.session_id().clone();
+    state.session.insert(b);
+
+    let mut leaf = ChatSessionState::new();
+    leaf.set_title("leaf".to_owned());
+    leaf.set_parent_session(b_id.clone());
+    let leaf_id = leaf.session_id().clone();
+    state.session.insert(leaf);
+
+    // Remove default session.
+    let default_id = state.session.active_session_id().clone();
+    if default_id != root_id {
+        state.session.remove(&default_id);
+    }
+    state.session.set_active(root_id.clone());
+
+    // When archiving A.
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+    let sessions = sorted_open_sessions(&state);
+    let a_index = sessions.iter().position(|s| s.id == a_id).expect("A");
+    state.frontend.sessions_section.selected_index = Some(a_index);
+    handle_session_close(&mut state);
+
+    // Then B is reparented to root.
+    assert_eq!(
+        state.frontend.sessions_section.visual_parents.get(&b_id),
+        Some(&root_id),
+        "B should be reparented to root"
+    );
+
+    // When archiving B.
+    let sessions = sorted_open_sessions(&state);
+    let b_index = sessions.iter().position(|s| s.id == b_id).expect("B");
+    state.frontend.sessions_section.selected_index = Some(b_index);
+    handle_session_close(&mut state);
+
+    // Then leaf is reparented to root (transitive via B visual parent).
+    assert_eq!(
+        state.frontend.sessions_section.visual_parents.get(&leaf_id),
+        Some(&root_id),
+        "leaf should be reparented to root (transitive)"
+    );
+
+    // And the sidebar tree shows leaf at depth 1 under root.
+    let remaining = sorted_open_sessions(&state);
+    let leaf_entry = remaining.iter().find(|s| s.id == leaf_id).expect("leaf");
+    assert_eq!(
+        leaf_entry.depth, 1,
+        "leaf should be at depth 1 under root, got depth {}",
+        leaf_entry.depth
+    );
+}

@@ -70,6 +70,11 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
     let index = state.frontend.sessions_section.selected_index.unwrap();
     let sessions = sorted_open_sessions(state);
     let closing_id = sessions[index].id.clone();
+    drop(sessions);
+
+    // Update visual-parent index before removing the session
+    // (need it in memory to resolve its parent chain).
+    super::update_visual_parents_on_removal(state, &closing_id);
 
     // Remove and replace if last session.
     let was_last = state.session.session_count() == 1;
