@@ -423,3 +423,60 @@ fn session_new_works_when_not_in_sidebar() {
     // Then a new session is created (no section restriction outside sidebar).
     assert_ne!(*state.session.active_session_id(), old_id);
 }
+
+// --- sync_chat_log_cursor tests ---
+
+#[rstest::rstest]
+fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
+    // Given a session with ignored entries (causing visual-item index != history index)
+    // and a pinned entry deep in history.
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+
+    let mut state = AppState::default();
+    state.active_session_mut().push_entry(ChatEntry::user("a")); // hist 0
+    for _ in 0..15 {
+        let mut entry = ChatEntry::user("ignored");
+        entry.ignored = true;
+        state.active_session_mut().push_entry(entry);
+    } // hist 1..15 (collapsed into 1 visual item)
+    state.active_session_mut().push_entry(ChatEntry::user("b")); // hist 16
+
+    // Pin the entry at history index 12 (inside the ignored block).
+    // When the block is expanded, this entry should be selectable.
+    let pinned_id = state.active_session().history()[12].id.clone();
+    state.active_session_mut().pin_entry(&pinned_id, PinPosition::Top);
+
+    // Expand the ignored block so the pinned entry is visible.
+    let block_start_id = state.active_session().history()[1].id.clone();
+    state.active_session_mut().toggle_ignored_block_visibility(&block_start_id);
+
+    // Build visual items (now expanded — individual Entry items).
+    let items = build_visual_items(
+        state.active_session().history(),
+        &state.active_session().ui.shown_ignored_blocks,
+        PROXIMITY_COUNT,
+    );
+    state.active_session_mut().set_visual_items(items);
+
+    // Select the pinned entry in the pins section.
+    state.frontend.pins.select_by_id(pinned_id.clone());
+
+    // Set cursor to something else first.
+    let first_entry_id = state.active_session().history()[0].id.clone();
+    state.active_session_mut().set_selected_cursor_id(first_entry_id);
+    assert_ne!(
+        state.active_session().selected_cursor_id(),
+        Some(&pinned_id),
+        "precondition: cursor should not be on pinned entry"
+    );
+
+    // When sync_chat_log_cursor is called.
+    crate::feat::ui::sidebar::pins::pins_section::sync_chat_log_cursor(&mut state);
+
+    // Then the chat log cursor is set to the pinned entry by ID.
+    assert_eq!(
+        state.active_session().selected_cursor_id(),
+        Some(&pinned_id),
+        "sync_chat_log_cursor should set cursor to pinned entry by ID"
+    );
+}

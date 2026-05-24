@@ -1549,6 +1549,35 @@ fn move_cursor_to_last_visible_sets_index() {
     assert_eq!(session.selected_entry_index(), Some(2));
 }
 
+#[rstest::rstest]
+fn visible_entry_range_uses_rendered_scroll_offset_not_scroll_offset() {
+    // Given a session where scroll_offset (user intent) disagrees with
+    // rendered_scroll_offset (actual viewport position).
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+    session.push_entry(ChatEntry::user("d"));
+    session.push_entry(ChatEntry::user("e"));
+
+    // Entry ranges: [0..2), [2..4), [4..6), [6..8), [8..10)
+    session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6), (6, 8), (8, 10)]);
+    session.set_viewport_height(5);
+    session.set_blank_count(0);
+
+    // Stale scroll_offset: None (auto-scroll → bottom = offset 5).
+    // Actual rendered position: offset 2 (viewport showing entries 1-3).
+    session.set_rendered_scroll_offset(2);
+
+    // When computing visible range.
+    let range = session.visible_entry_range();
+
+    // Then it uses the rendered offset (2), not the stale scroll_offset.
+    // viewport_top=2, viewport_bottom=7
+    // Entry 1 (lines 2..4), Entry 2 (lines 4..6), Entry 3 (lines 6..8) are visible.
+    assert_eq!(range, 1..4);
+}
+
 // --- CWD persistence tests ---
 
 #[rstest::rstest]
