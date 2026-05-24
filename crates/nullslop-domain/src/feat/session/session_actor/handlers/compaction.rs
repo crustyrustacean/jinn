@@ -81,11 +81,24 @@ impl SessionPersistenceActor {
                     "Context was compacted. {} messages were summarized.",
                     result.entries_compacted
                 )));
+
+                if payload.auto {
+                    // Auto-compaction succeeded — push continuation message and
+                    // transition to Sending so the QueueActor dispatches the prompt.
+                    session.push_entry(ChatEntry::user(
+                        "A compaction has just occurred. Continue",
+                    ));
+                    session.finish_compacting_into_sending();
+                } else {
+                    // Manual compaction — return to Idle.
+                    session.finish_compacting();
+                }
             } else {
                 let error_msg = payload.error.as_deref().unwrap_or("Unknown error");
                 session.push_entry(ChatEntry::error(format!("Compaction failed: {error_msg}")));
+                // Both auto and manual compaction failure → Idle (safe fallback).
+                session.finish_compacting();
             }
-            session.finish_compacting();
 
             new_phase = session.phase();
         }
@@ -435,6 +448,105 @@ mod tests {
         let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(session.phase(), SessionPhase::Idle);
         assert!(!session.history().iter().any(ChatEntry::is_compaction));
+    }
+
+    #[tokio::test]
+    async fn end_compaction_auto_success_transitions_to_sending_with_continuation() {
+        // Given a session in Compacting phase (simulating auto-compaction).
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("old message"));
+            session.begin_compacting(vec![]);
+            state.session.active_session_id().clone()
+        };
+
+        // When handling EndCompaction with auto=true and a successful result.
+        actor
+            .handle_end_compaction(
+                &crate::feat::compaction_actor::protocol::command::EndCompaction {
+                    session_id: session_id.clone(),
+                    result: Some(
+                        crate::feat::compaction_actor::protocol::command::CompactionResult {
+                            summary: "summarized".to_owned(),
+                            entries_compacted: 1,
+                            tokens_before: 100,
+                            model_used: "test/model".to_owned(),
+                            boundary_index: 1,
+                        },
+                    ),
+                    error: None,
+                    auto: true,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the session is in Sending phase (not Idle).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Sending),
+            "expected Sending after auto-compaction success, got {:?}",
+            session.phase()
+        );
+
+        // And the continuation user entry was pushed.
+        let last_entry = session.history().last().expect("has continuation entry");
+        assert!(
+            matches!(&last_entry.kind, ChatEntryKind::User { display, .. } if display == "A compaction has just occurred. Continue"),
+            "expected continuation user entry, got {:?}",
+            last_entry.kind
+        );
+
+        // And SessionPhaseChanged was emitted (Compacting → Sending).
+        let events = sink.events();
+        let has_phase_change = events.iter().any(|e| {
+            matches!(e, crate::protocol::Event::SessionPhaseChanged(p) if p.session_id == session_id)
+        });
+        assert!(has_phase_change, "expected SessionPhaseChanged event");
+    }
+
+    #[tokio::test]
+    async fn end_compaction_auto_failure_falls_back_to_idle() {
+        // Given a session in Compacting phase (simulating auto-compaction).
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            state.active_session_mut().begin_compacting(vec![]);
+            state.session.active_session_id().clone()
+        };
+
+        // When handling EndCompaction with auto=true but a failure.
+        actor
+            .handle_end_compaction(
+                &crate::feat::compaction_actor::protocol::command::EndCompaction {
+                    session_id: session_id.clone(),
+                    result: None,
+                    error: Some("LLM call failed".to_owned()),
+                    auto: true,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the session falls back to Idle (safe fallback).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Idle),
+            "expected Idle after auto-compaction failure, got {:?}",
+            session.phase()
+        );
+
+        // And an error entry is present (no continuation entry).
+        let last = session.history().last().expect("has an entry");
+        assert!(
+            matches!(&last.kind, ChatEntryKind::Error(msg) if msg.contains("Compaction failed"))
+        );
     }
 
     #[tokio::test]
