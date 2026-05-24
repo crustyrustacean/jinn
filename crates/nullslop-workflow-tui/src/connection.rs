@@ -131,16 +131,20 @@ impl ConnectionRouter for SimpleRouter {
         }
 
         // Vertical from y1 to y2 at mid_x.
-        if y1 < y2 {
-            for y in (y1 + 1)..=y2 {
-                cells.push((mid_x, y));
+        match y1.cmp(&y2) {
+            std::cmp::Ordering::Less => {
+                for y in (y1 + 1)..=y2 {
+                    cells.push((mid_x, y));
+                }
             }
-        } else if y1 > y2 {
-            for y in (y2..y1).rev() {
-                cells.push((mid_x, y));
+            std::cmp::Ordering::Greater => {
+                for y in (y2..y1).rev() {
+                    cells.push((mid_x, y));
+                }
             }
-        } else {
-            // y1 == y2: no vertical segment needed.
+            std::cmp::Ordering::Equal => {
+                // y1 == y2: no vertical segment needed.
+            }
         }
 
         // Horizontal right from midpoint to target.
