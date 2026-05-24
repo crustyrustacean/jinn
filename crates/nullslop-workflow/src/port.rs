@@ -88,21 +88,40 @@ impl PortType {
 /// A named, typed port definition on a node.
 ///
 /// Ports are the connection points — think of them as pins on a
-/// blueprint node. Each port has a name (for routing) and a type
-/// (for validation).
+/// blueprint node. Each port has a name (for routing), a type
+/// (for validation), and a `required` flag.
+///
+/// Optional ports (`required: false`) are not checked for incoming edges
+/// during graph validation and do not contribute to the pending-input count
+/// in the execution engine. Use them for ports that have sensible defaults.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortDef {
     /// The port name (e.g., `"prompt"`, `"response"`, `"data"`).
     pub name: &'static str,
     /// The type this port accepts or produces.
     pub value_type: PortType,
+    /// Whether this port must be connected for the graph to be valid.
+    ///
+    /// Defaults to `true`. Set to `false` via [`PortDef::optional`].
+    pub required: bool,
 }
 
 impl PortDef {
     /// Creates a new port definition.
     #[must_use]
     pub fn new(name: &'static str, value_type: PortType) -> Self {
-        Self { name, value_type }
+        Self {
+            name,
+            value_type,
+            required: true,
+        }
+    }
+
+    /// Marks this port as optional (not required to be connected).
+    #[must_use]
+    pub fn optional(mut self) -> Self {
+        self.required = false;
+        self
     }
 
     /// Convenience: creates a `Single(Text)` port definition.
