@@ -1213,7 +1213,24 @@ impl ChatSessionState {
             );
             return;
         }
+        self.core.ephemeral.compaction_gathered_indices.clear();
         self.core.ephemeral.phase = SessionPhase::Idle;
+    }
+
+    /// Mark compaction as finished and transition to Sending phase.
+    ///
+    /// Used after successful auto-compaction to resume the turn.
+    /// The session goes `Compacting → Sending` instead of `Compacting → Idle`.
+    pub fn finish_compacting_into_sending(&mut self) {
+        if !matches!(self.core.ephemeral.phase, SessionPhase::Compacting) {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.phase,
+                "finish_compacting_into_sending called while not compacting — ignoring"
+            );
+            return;
+        }
+        self.core.ephemeral.compaction_gathered_indices.clear();
+        self.core.ephemeral.phase = SessionPhase::Sending;
     }
 
     /// Mark the session as running a lifecycle teardown script.
