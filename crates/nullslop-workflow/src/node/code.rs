@@ -51,8 +51,8 @@ type ExecuteFn = Arc<
 /// );
 /// ```
 pub struct CodeNode {
-    /// Human-readable name for debugging (leaked once at construction for `&'static str`).
-    name: &'static str,
+    /// Human-readable name for debugging.
+    name: String,
     /// Declared input ports.
     input_ports: Vec<PortDef>,
     /// Declared output ports.
@@ -78,7 +78,7 @@ impl CodeNode {
         Fut: Future<Output = Result<PortValues, Report<NodeError>>> + Send + 'static,
     {
         Self {
-            name: Box::leak(name.into_boxed_str()),
+            name,
             input_ports: inputs,
             output_ports: outputs,
             execute_fn: Arc::new(move |inputs, ctx| Box::pin(execute_fn(inputs, ctx))),
@@ -88,8 +88,8 @@ impl CodeNode {
 
 #[async_trait::async_trait]
 impl WorkflowNode for CodeNode {
-    fn name(&self) -> &'static str {
-        self.name
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn input_ports(&self) -> Vec<PortDef> {
@@ -110,7 +110,7 @@ impl WorkflowNode for CodeNode {
 
     fn clone_box(&self) -> Box<dyn WorkflowNode> {
         Box::new(Self {
-            name: self.name,
+            name: self.name.clone(),
             input_ports: self.input_ports.clone(),
             output_ports: self.output_ports.clone(),
             execute_fn: Arc::clone(&self.execute_fn),

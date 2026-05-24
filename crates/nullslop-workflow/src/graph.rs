@@ -583,6 +583,7 @@ fn find_port_type(ports: &[PortDef], name: &str) -> Option<PortType> {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    #![allow(clippy::unnecessary_literal_bound, reason = "test code")]
     use super::*;
     use crate::node::NodeContext;
     use crate::port::{PortDef, PortValues};
@@ -626,7 +627,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl WorkflowNode for TestNode {
-        fn name(&self) -> &'static str {
+        fn name(&self) -> &str {
             self.node_name
         }
 
