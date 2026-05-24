@@ -2152,6 +2152,7 @@ dependencies = [
  "error-stack",
  "nullslop-workflow",
  "ratatui",
+ "serde_json",
  "tokio",
 ]
 
