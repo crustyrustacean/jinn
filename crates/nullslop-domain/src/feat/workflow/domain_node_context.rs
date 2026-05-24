@@ -86,6 +86,15 @@ impl DomainNodeContext {
         session.core.is_workflow = true;
         session.core.workflow_overrides = Some(overrides);
 
+        // Resolve provider: explicit node config takes priority, otherwise
+        // inherit the active session's model so the LLM actor can create
+        // a per-request factory via the provider registry.
+        let model = _provider_id.unwrap_or_else(|| {
+            let state = self.state.read();
+            state.active_session().profile().model.clone()
+        });
+        session.set_model(model);
+
         let session_id = session.session_id().clone();
 
         // Insert into app state.
