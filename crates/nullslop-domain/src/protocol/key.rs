@@ -41,7 +41,6 @@ pub enum Key {
     F(u8),
 }
 
-#[cfg(feature = "which-key")]
 impl ratatui_which_key::Key for KeyEvent {
     fn display(&self) -> String {
         if self.modifiers.ctrl
@@ -130,7 +129,6 @@ impl KeyEvent {
     /// - `"tab"` → Tab
     /// - `"f5"` → F5
     /// - `"lt"` → <
-    #[cfg(feature = "which-key")]
     pub fn parse_notation(name: &str) -> Option<Self> {
         let lower = name.to_ascii_lowercase();
 
@@ -154,7 +152,6 @@ impl KeyEvent {
 ///
 /// Handles named keys (`"tab"`, `"enter"`, …), function keys (`"f1"`–`"f12"`),
 /// symbolic aliases (`"lt"`, `"gt"`, `"space"`), and bare single characters.
-#[cfg(feature = "which-key")]
 fn parse_key_name(name: &str) -> Option<Key> {
     match name {
         "tab" => Some(Key::Tab),
