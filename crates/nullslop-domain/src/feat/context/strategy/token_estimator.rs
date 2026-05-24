@@ -23,12 +23,8 @@ pub trait TokenEstimator: Send + Sync {
 
 /// Estimate the token count for a single chat entry's text content.
 ///
-/// Uses the same fields that `entries_to_messages` would convert to LLM messages:
-/// [`ChatEntryKind::User`]/[`ChatEntryKind::Assistant`] content, [`ChatEntryKind::ToolCall`] name+arguments, [`ChatEntryKind::ToolResult`] name+content.
-///
-/// Unpinned System and Actor entries contribute 0 tokens since they are not
-/// sent to the LLM. Pinned System and Actor entries are estimated based on the
-/// text that `entries_to_messages` would produce for them.
+/// Uses the same fields that `entries_to_messages` would convert to LLM messages.
+/// Entries not in context (per `is_in_context()`) contribute 0 tokens.
 pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) -> usize {
     // Entries not in context contribute 0 tokens.
     if !entry.is_in_context() {
@@ -37,40 +33,27 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
 
     match &entry.kind {
         ChatEntryKind::User { expanded, .. } => estimator.estimate(expanded),
-        ChatEntryKind::Assistant(text) | ChatEntryKind::Error(text) => estimator.estimate(text),
+        ChatEntryKind::Assistant(text) => estimator.estimate(text),
         ChatEntryKind::ToolCall {
             name, arguments, ..
         } => estimator.estimate(name) + estimator.estimate(arguments),
         ChatEntryKind::ToolResult { name, content, .. } => {
             estimator.estimate(name) + estimator.estimate(content)
         }
-        // Pinned System entries produce LlmMessage::System when sent to the LLM.
-        ChatEntryKind::System(text) => {
-            if entry.is_pinned() {
-                estimator.estimate(text)
-            } else {
-                0
-            }
-        }
-        // Pinned Actor entries produce LlmMessage::User with a prefix when sent to the LLM.
+        // System entries produce LlmMessage::System when in context.
+        ChatEntryKind::System(text) => estimator.estimate(text),
+        // Actor entries produce LlmMessage::User with a prefix when in context.
         ChatEntryKind::Actor { source, text } => {
-            if entry.is_pinned() {
-                estimator.estimate(&format!("[Actor: {source}] {text}"))
-            } else {
-                0
-            }
+            estimator.estimate(&format!("[Actor: {source}] {text}"))
         }
-        // Thinking entries are excluded from context assembly — contribute 0 tokens.
-        // Transient entries are UI-only — excluded from context assembly.
-        ChatEntryKind::Thinking(_) | ChatEntryKind::Transient(_) => 0,
+        // Error entries produce LlmMessage::User with [Error] prefix.
+        ChatEntryKind::Error(text) => estimator.estimate(&format!("[Error] {text}")),
+        // Thinking entries produce LlmMessage::User with [Thinking] prefix when in context.
+        ChatEntryKind::Thinking(text) => estimator.estimate(&format!("[Thinking] {text}")),
+        // Transient entries produce LlmMessage::User with [Transient] prefix when in context.
+        ChatEntryKind::Transient(text) => estimator.estimate(&format!("[Transient] {text}")),
         // Skill entries produce LlmMessage::System with XML wrapping.
-        ChatEntryKind::Skill { content, .. } => {
-            if entry.is_pinned() {
-                estimator.estimate(content)
-            } else {
-                0
-            }
-        }
+        ChatEntryKind::Skill { content, .. } => estimator.estimate(content),
         // Compaction entries carry an LLM-generated summary that replaces compacted history.
         ChatEntryKind::Compaction { summary, .. } => estimator.estimate(summary),
     }

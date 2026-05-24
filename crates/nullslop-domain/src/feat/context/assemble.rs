@@ -13,7 +13,7 @@ use crate::feat::context::strategy::token_estimator::TokenCounter;
 use crate::feat::context::tool_prompt::build_tool_context_block;
 use crate::feat::skills::format::format_skills_for_prompt;
 use crate::protocol::{
-    ChatEntry, ChatEntryKind, LlmMessage, PinPosition, SessionId, ToolDefinition,
+    ChatEntry, LlmMessage, PinPosition, SessionId, ToolDefinition,
     entries_to_messages,
 };
 
@@ -219,23 +219,18 @@ pub fn assemble_prompt(
 
 /// Splits history entries into TOP pins, BOTTOM pins, and working history.
 ///
-/// Filters out thinking entries and ignored (non-pinned) entries.
+/// Filters out entries not in context (per `is_in_context()`).
+/// Pinned entries are always in context regardless of kind.
 fn split_history(history: &[ChatEntry]) -> (Vec<ChatEntry>, Vec<ChatEntry>, Vec<ChatEntry>) {
     let top_pins: Vec<ChatEntry> = history
         .iter()
-        .filter(|e| {
-            e.pin_position() == Some(PinPosition::Top)
-                && !matches!(e.kind, ChatEntryKind::Thinking(_))
-        })
+        .filter(|e| e.pin_position() == Some(PinPosition::Top))
         .cloned()
         .collect();
 
     let bottom_pins: Vec<ChatEntry> = history
         .iter()
-        .filter(|e| {
-            e.pin_position() == Some(PinPosition::Bottom)
-                && !matches!(e.kind, ChatEntryKind::Thinking(_))
-        })
+        .filter(|e| e.pin_position() == Some(PinPosition::Bottom))
         .cloned()
         .collect();
 
@@ -243,7 +238,6 @@ fn split_history(history: &[ChatEntry]) -> (Vec<ChatEntry>, Vec<ChatEntry>, Vec<
         .iter()
         .filter(|e| {
             (e.pin_position().is_none() || e.pin_position() == Some(PinPosition::Relative))
-                && !matches!(e.kind, ChatEntryKind::Thinking(_))
                 && e.is_in_context()
         })
         .cloned()
