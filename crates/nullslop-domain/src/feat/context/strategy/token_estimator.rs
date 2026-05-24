@@ -33,15 +33,16 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
 
     match &entry.kind {
         ChatEntryKind::User { expanded, .. } => estimator.estimate(expanded),
-        ChatEntryKind::Assistant(text) => estimator.estimate(text),
+        ChatEntryKind::Assistant(text)
+        | ChatEntryKind::System(text)
+        | ChatEntryKind::Skill { content: text, .. }
+        | ChatEntryKind::Compaction { summary: text, .. } => estimator.estimate(text),
         ChatEntryKind::ToolCall {
             name, arguments, ..
         } => estimator.estimate(name) + estimator.estimate(arguments),
         ChatEntryKind::ToolResult { name, content, .. } => {
             estimator.estimate(name) + estimator.estimate(content)
         }
-        // System entries produce LlmMessage::System when in context.
-        ChatEntryKind::System(text) => estimator.estimate(text),
         // Actor entries produce LlmMessage::User with a prefix when in context.
         ChatEntryKind::Actor { source, text } => {
             estimator.estimate(&format!("[Actor: {source}] {text}"))
@@ -52,10 +53,6 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
         ChatEntryKind::Thinking(text) => estimator.estimate(&format!("[Thinking] {text}")),
         // Transient entries produce LlmMessage::User with [Transient] prefix when in context.
         ChatEntryKind::Transient(text) => estimator.estimate(&format!("[Transient] {text}")),
-        // Skill entries produce LlmMessage::System with XML wrapping.
-        ChatEntryKind::Skill { content, .. } => estimator.estimate(content),
-        // Compaction entries carry an LLM-generated summary that replaces compacted history.
-        ChatEntryKind::Compaction { summary, .. } => estimator.estimate(summary),
     }
 }
 
