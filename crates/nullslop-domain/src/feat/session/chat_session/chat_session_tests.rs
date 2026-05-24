@@ -2492,6 +2492,8 @@ fn toggle_ignored_block_visibility_noop_for_unknown_id() {
 #[rstest::rstest]
 fn select_next_walks_visual_items_with_collapsed_block() {
     // Given a session with visual items: [Entry, CollapsedBlock, Entry].
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // index 0
     for _ in 0..15 {
@@ -2502,7 +2504,6 @@ fn select_next_walks_visual_items_with_collapsed_block() {
     session.push_entry(ChatEntry::user("b")); // index 16
 
     // Force visual items computation.
-    use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
     let items = build_visual_items(
         session.history(),
         &session.ui.shown_ignored_blocks,
@@ -2524,6 +2525,8 @@ fn select_next_walks_visual_items_with_collapsed_block() {
 #[rstest::rstest]
 fn select_prev_walks_visual_items_with_collapsed_block() {
     // Given a session with visual items: [Entry, CollapsedBlock, Entry, ...].
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // index 0
     for _ in 0..15 {
@@ -2533,7 +2536,6 @@ fn select_prev_walks_visual_items_with_collapsed_block() {
     } // indices 1..15, collapsed
     session.push_entry(ChatEntry::user("b")); // index 16
 
-    use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
     let items = build_visual_items(
         session.history(),
         &session.ui.shown_ignored_blocks,
@@ -2555,6 +2557,8 @@ fn select_prev_walks_visual_items_with_collapsed_block() {
 #[rstest::rstest]
 fn selected_entry_returns_none_for_collapsed_block() {
     // Given a session with visual items where a collapsed block is selected.
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
     for _ in 0..15 {
@@ -2564,7 +2568,6 @@ fn selected_entry_returns_none_for_collapsed_block() {
     }
     session.push_entry(ChatEntry::user("b"));
 
-    use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
     let items = build_visual_items(
         session.history(),
         &session.ui.shown_ignored_blocks,
