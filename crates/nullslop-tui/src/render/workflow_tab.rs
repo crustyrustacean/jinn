@@ -4,13 +4,14 @@
 
 use nullslop_domain::AppState;
 use nullslop_domain::common::app_state::WorkflowUiState;
+use nullslop_domain::feat::ui::chat_log::{entry_to_lines, RenderContext};
 use nullslop_workflow_tui::widget::WorkflowWidget;
 use ratatui::{
     Frame,
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, Paragraph},
 };
 
 /// Renders the workflow tab content.
@@ -150,14 +151,13 @@ fn render_cancel_prompt(frame: &mut Frame<'_>, area: Rect) {
     frame.render_widget(prompt, popup_area);
 }
 
-/// Renders the sticky inspector popup overlay.
-///
-/// Shows the selected node's details: name, status, config, inputs, outputs.
-/// The popup is anchored to the top-right of the workflow area.
 /// Builds the content lines for the inspector popup.
 fn build_inspector_lines(
+    node_name: &str,
     node_state: Option<&nullslop_workflow::execution::NodeState>,
     status: &str,
+    content_width: u16,
+    state: &AppState,
 ) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'_>> = vec![];
 
@@ -177,8 +177,16 @@ fn build_inspector_lines(
             Style::default().add_modifier(Modifier::BOLD),
         )));
         let config_str = format!("{config}");
+        let config_indent = 2;
+        let config_max = (content_width as usize).saturating_sub(config_indent).max(3);
         for line in config_str.lines().take(5) {
-            let truncated: String = line.chars().take(60).collect();
+            let truncated: String = if line.chars().count() > config_max {
+                let mut s: String = line.chars().take(config_max.saturating_sub(3)).collect();
+                s.push_str("...");
+                s
+            } else {
+                line.to_owned()
+            };
             lines.push(Line::from(Span::styled(
                 format!("  {truncated}"),
                 Style::default().add_modifier(Modifier::DIM),
@@ -197,11 +205,7 @@ fn build_inspector_lines(
             Style::default().add_modifier(Modifier::BOLD),
         )));
         for (name, value) in inputs.iter() {
-            let summary = port_value_summary(value);
-            lines.push(Line::from(vec![
-                Span::styled(format!("  {name}: "), Style::default()),
-                Span::styled(summary, Style::default().add_modifier(Modifier::DIM)),
-            ]));
+            lines.extend(port_value_lines(name, value, content_width));
         }
     }
 
@@ -216,23 +220,42 @@ fn build_inspector_lines(
             Style::default().add_modifier(Modifier::BOLD),
         )));
         for (name, value) in outputs.iter() {
-            let summary = port_value_summary(value);
-            lines.push(Line::from(vec![
-                Span::styled(format!("  {name}: "), Style::default()),
-                Span::styled(summary, Style::default().add_modifier(Modifier::DIM)),
-            ]));
+            lines.extend(port_value_lines(name, value, content_width));
         }
     }
 
-    // Footer with keybinds.
-    lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        "i close · ↑↓ scroll · r re-run",
-        Style::default()
-            .add_modifier(Modifier::DIM)
-            .fg(ratatui::style::Color::DarkGray),
-    )));
+    // Session section — render using the chat log's per-entry renderer.
+    if let Some(session) = lookup_node_session(state, node_name) {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Session",
+            Style::default().add_modifier(Modifier::BOLD),
+        )));
+        let ctx = RenderContext {
+            content_width,
+            _is_selected: false,
+            is_expanded: false,
+            tool_entry_max_lines: 6,
+            theme: state.frontend.theme.clone(),
+            paired_status: None,
+            is_streaming: false,
+        };
+        for entry in session.history() {
+            lines.extend(entry_to_lines(entry, &ctx));
+        }
+    }
+
     lines
+}
+
+/// Looks up the session associated with a workflow node.
+fn lookup_node_session<'a>(
+    state: &'a AppState,
+    node_name: &str,
+) -> Option<&'a nullslop_domain::feat::session::chat_session::ChatSessionState> {
+    let workflow = state.workflow.active()?;
+    let session_id = workflow.node_sessions.get(node_name)?;
+    state.session.get(session_id)
 }
 
 /// Renders the sticky inspector popup overlay.
@@ -251,13 +274,31 @@ fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         .status_of(node_name)
         .map_or_else(|| "Unknown".to_owned(), |s| format!("{s:?}"));
 
-    let lines = build_inspector_lines(node_state, &status);
+    // Check if this node has an associated session.
+    let has_session = workflow
+        .node_sessions
+        .get(node_name)
+        .and_then(|id| state.session.get(id))
+        .is_some();
 
-    // Compute popup dimensions.
+    // Compute popup dimensions — expand for session history.
+    let popup_width = if has_session {
+        (area.width * 70 / 100).clamp(40, 80)
+    } else {
+        (area.width * 50 / 100).clamp(30, 60)
+    };
+
+    // Build lines — pass inner content width.
+    let inner_width = popup_width.saturating_sub(2); // inside borders
+    let lines = build_inspector_lines(node_name, node_state, &status, inner_width, state);
+
     let content_height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
-    let popup_width = (area.width * 50 / 100).clamp(30, 60);
-    let desired_height = content_height.saturating_add(2); // +2 for borders
-    let max_height = area.height / 2;
+    let desired_height = content_height.saturating_add(3); // +2 for borders, +1 for footer
+    let max_height = if has_session {
+        area.height * 80 / 100
+    } else {
+        area.height / 2
+    };
     let popup_height = desired_height.min(max_height).max(5);
 
     // Anchor to top-right.
@@ -293,50 +334,120 @@ fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         return;
     }
 
-    // Render content with scroll offset.
-    let scroll_offset = ui.inspector_scroll;
-    let content = Paragraph::new(lines).wrap(Wrap { trim: false }).scroll((scroll_offset, 0));
-    frame.render_widget(content, inner_area);
+    // Split inner area into scrollable content + static footer.
+    let footer_height: u16 = 1;
+    let content_area = Rect {
+        height: inner_area.height.saturating_sub(footer_height),
+        ..inner_area
+    };
+    let footer_area = Rect {
+        y: inner_area.y + content_area.height,
+        height: footer_height,
+        ..inner_area
+    };
+
+    // Clamp scroll to content bounds and write back the clamped value
+    // so repeated "scroll down" inputs don't accumulate past the limit.
+    let visible_height = content_area.height as usize;
+    let max_scroll = lines.len().saturating_sub(visible_height);
+    let scroll_offset = ui.inspector_scroll.min(max_scroll as u16);
+    state.frontend.workflow_ui.inspector_scroll_rendered.store(
+        scroll_offset,
+        std::sync::atomic::Ordering::Relaxed,
+    );
+
+    // Render scrollable content (no Wrap — lines are pre-wrapped to content_width).
+    let content = Paragraph::new(lines).scroll((scroll_offset, 0));
+    frame.render_widget(content, content_area);
+
+    // Render static footer.
+    let footer = Paragraph::new(Line::from(Span::styled(
+        "i close · ↑↓ scroll · r re-run",
+        Style::default()
+            .add_modifier(Modifier::DIM)
+            .fg(ratatui::style::Color::DarkGray),
+    )));
+    frame.render_widget(footer, footer_area);
 }
 
-/// Produces a short summary of a `PortValue` for display.
-fn port_value_summary(value: &nullslop_workflow::port::PortValue) -> String {
+/// Maximum number of lines a single port value may occupy.
+const MAX_PORT_LINES: usize = 4;
+
+/// Renders a port value as pre-wrapped lines, capped at `MAX_PORT_LINES`.
+/// First line has `"  {name}: "` prefix; continuation lines indent with 4 spaces.
+/// If the value exceeds `MAX_PORT_LINES` lines, the last line is truncated with `"..."`.
+fn port_value_lines(
+    name: &str,
+    value: &nullslop_workflow::port::PortValue,
+    content_width: u16,
+) -> Vec<Line<'static>> {
     use nullslop_workflow::port::{PortValue, ScalarValue};
-    match value {
-        PortValue::Single(ScalarValue::Text(s)) => {
-            if s.len() > 80 {
-                let truncated: String = s.chars().take(77).collect();
-                format!("{truncated}...")
-            } else {
-                s.clone()
-            }
-        }
-        PortValue::Single(ScalarValue::Number(n)) => {
-            let s = format!("{n}");
-            if s.len() > 80 {
-                let truncated: String = s.chars().take(77).collect();
-                format!("{truncated}...")
-            } else {
-                s
-            }
-        }
+
+    let raw = match value {
+        PortValue::Single(ScalarValue::Text(s)) => s.clone(),
+        PortValue::Single(ScalarValue::Number(n)) => format!("{n}"),
         PortValue::Single(ScalarValue::Boolean(b)) => b.to_string(),
         PortValue::Single(ScalarValue::Json(v)) => {
-            let s = serde_json::to_string(v).unwrap_or_else(|_| format!("{v}"));
-            if s.len() > 200 {
-                let truncated: String = s.chars().take(197).collect();
-                format!("{truncated}...")
-            } else {
-                s
-            }
+            serde_json::to_string(v).unwrap_or_else(|_| format!("{v}"))
         }
-        PortValue::Vector(items) => {
-            let s = format!("[{} items]", items.len());
-            s
-        }
-        PortValue::Map(entries) => {
-            let s = format!("{{{} entries}}", entries.len());
-            s
-        }
+        PortValue::Vector(items) => format!("[{} items]", items.len()),
+        PortValue::Map(entries) => format!("{{{} entries}}", entries.len()),
+    };
+
+    let label = format!("  {name}: ");
+    let label_len = label.chars().count();
+    let cont_indent = "    ";
+    let width = content_width as usize;
+
+    let first_budget = width.saturating_sub(label_len);
+    let cont_budget = width.saturating_sub(cont_indent.len());
+
+    let dim = Style::default().add_modifier(Modifier::DIM);
+
+    let mut result = Vec::new();
+    let mut chars = raw.chars().peekable();
+
+    // First line: label + as many value chars as fit.
+    let first_val: String = chars.by_ref().take(first_budget).collect();
+    if chars.peek().is_none() {
+        // Entire value fits on one line.
+        result.push(Line::from(vec![
+            Span::styled(label, Style::default()),
+            Span::styled(first_val, dim),
+        ]));
+        return result;
     }
+
+    result.push(Line::from(vec![
+        Span::styled(label, Style::default()),
+        Span::styled(first_val, dim),
+    ]));
+
+    // Continuation lines.
+    while result.len() < MAX_PORT_LINES {
+        let chunk: String = chars.by_ref().take(cont_budget).collect();
+        if chunk.is_empty() {
+            break;
+        }
+
+        let is_last_slot = result.len() == MAX_PORT_LINES - 1;
+        let has_more = chars.peek().is_some();
+
+        let text = if is_last_slot && has_more {
+            // Truncate and append "..."
+            let budget = cont_budget.saturating_sub(3);
+            let mut s: String = chunk.chars().take(budget).collect();
+            s.push_str("...");
+            s
+        } else {
+            chunk
+        };
+
+        result.push(Line::from(Span::styled(
+            format!("{cont_indent}{text}"),
+            dim,
+        )));
+    }
+
+    result
 }
