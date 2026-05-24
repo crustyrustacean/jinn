@@ -981,6 +981,99 @@ fn pin_position_survives_restore_history() {
     assert_eq!(pinned[1].pin_position, Some(PinPosition::Bottom));
 }
 
+// --- Pin + ignored block propagation tests ---
+
+#[rstest::rstest]
+fn pin_entry_propagates_shown_to_forward_sub_block() {
+    // Given: a shown (expanded) ignored block with entries before and after the pin target.
+    // Layout: [user] [ignored-A] [ignored-B] [ignored-C] [ignored-D] [user]
+    // Block rep = ignored-A. Pin ignored-B → splits into:
+    //   backward sub-block: [ignored-A] (rep=ignored-A, already shown)
+    //   pinned: ignored-B
+    //   forward sub-block: [ignored-C, ignored-D] (rep=ignored-C, must be auto-shown)
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("before"));
+    session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 1 — block rep
+    session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 2 — will pin
+    session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3 — forward sub-block start
+    session.push_entry(ChatEntry::assistant("d").with_ignored(true)); // idx 4 — forward sub-block
+    session.push_entry(ChatEntry::user("after"));
+
+    // Expand the ignored block.
+    let rep_id = session.history()[1].id.clone();
+    session.toggle_ignored_block_visibility(&rep_id);
+    assert!(session.ui.shown_ignored_blocks.contains(&rep_id));
+
+    // Pin ignored-B (entry at idx 2).
+    let pin_id = session.history()[2].id.clone();
+    session.pin_entry(&pin_id, PinPosition::Top);
+
+    // The forward sub-block representative (ignored-C) should be auto-shown.
+    let forward_rep = session.history()[3].id.clone();
+    assert!(
+        session.ui.shown_ignored_blocks.contains(&forward_rep),
+        "forward sub-block should be auto-shown after pin inside shown block"
+    );
+
+    // Original block rep should still be shown.
+    assert!(session.ui.shown_ignored_blocks.contains(&rep_id));
+}
+
+#[rstest::rstest]
+fn pin_entry_no_propagation_for_non_ignored() {
+    // Pinning a non-ignored entry should never touch shown_ignored_blocks.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("normal"));
+    let id = session.history()[0].id.clone();
+    session.pin_entry(&id, PinPosition::Top);
+    assert!(session.ui.shown_ignored_blocks.is_empty());
+}
+
+#[rstest::rstest]
+fn pin_entry_no_propagation_for_collapsed_block() {
+    // Pinning an ignored entry inside a collapsed block should NOT auto-show.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("before"));
+    session.push_entry(ChatEntry::assistant("a").with_ignored(true));
+    session.push_entry(ChatEntry::assistant("b").with_ignored(true));
+    session.push_entry(ChatEntry::assistant("c").with_ignored(true));
+    session.push_entry(ChatEntry::user("after"));
+
+    // Do NOT expand the block — it stays collapsed.
+    let pin_id = session.history()[2].id.clone();
+    session.pin_entry(&pin_id, PinPosition::Top);
+
+    // Forward sub-block should NOT be shown.
+    let forward_rep = session.history()[3].id.clone();
+    assert!(
+        !session.ui.shown_ignored_blocks.contains(&forward_rep),
+        "forward sub-block should NOT be auto-shown when parent block was collapsed"
+    );
+}
+
+#[rstest::rstest]
+fn pin_entry_at_block_end_no_forward_propagation() {
+    // Pinning the last entry in an ignored block — no forward sub-block exists.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("before"));
+    session.push_entry(ChatEntry::assistant("a").with_ignored(true));
+    session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // pin this (last in block)
+    session.push_entry(ChatEntry::user("after")); // non-ignored, breaks block
+
+    // Expand the block.
+    let rep_id = session.history()[1].id.clone();
+    session.toggle_ignored_block_visibility(&rep_id);
+
+    // Pin the last ignored entry.
+    let pin_id = session.history()[2].id.clone();
+    session.pin_entry(&pin_id, PinPosition::Top);
+
+    // No new shown_ignored_blocks entries — forward entry is non-ignored.
+    // Only the original rep should be shown.
+    assert_eq!(session.ui.shown_ignored_blocks.len(), 1);
+    assert!(session.ui.shown_ignored_blocks.contains(&rep_id));
+}
+
 // --- Selection tests ---
 
 #[rstest::rstest]
