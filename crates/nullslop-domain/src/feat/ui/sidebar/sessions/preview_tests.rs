@@ -235,7 +235,7 @@ fn model_line_shows_no_model_selected_when_unset() {
 #[case::normal(30, 5)]
 #[case::content_exceeds_space(30, 20)]
 #[case::cursor_near_top(10, 5)]
-fn popup_bottom_edge_is_two_rows_above_cursor(
+fn popup_bottom_edge_is_one_row_above_cursor(
     #[case] cursor_y: u16,
     #[case] content_line_count: usize,
 ) {
@@ -246,11 +246,11 @@ fn popup_bottom_edge_is_two_rows_above_cursor(
     let popup_rect =
         session_preview_popup_rect(frame_area, cursor_y, content_line_count);
 
-    // Then the popup bottom edge + 2 = cursor_y.
+    // Then the popup bottom edge + 1 = cursor_y.
     assert_eq!(
-        popup_rect.y + popup_rect.height + 2,
+        popup_rect.y + popup_rect.height + 1,
         cursor_y,
-        "popup bottom edge + 2 should equal cursor_y ({cursor_y}), \
+        "popup bottom edge + 1 should equal cursor_y ({cursor_y}), \
          got popup_y={}, popup_height={}",
         popup_rect.y,
         popup_rect.height
@@ -267,16 +267,16 @@ fn popup_follows_cursor_not_section_top() {
     let rect_at_20 = session_preview_popup_rect(frame_area, 20, content_lines);
     let rect_at_25 = session_preview_popup_rect(frame_area, 25, content_lines);
 
-    // Then each popup is anchored to its cursor (2-row gap invariant).
+    // Then each popup is anchored to its cursor (1-row gap invariant).
     assert_eq!(
-        rect_at_20.y + rect_at_20.height + 2,
+        rect_at_20.y + rect_at_20.height + 1,
         20,
-        "popup at cursor_y=20 should satisfy 2-row gap invariant"
+        "popup at cursor_y=20 should satisfy 1-row gap invariant"
     );
     assert_eq!(
-        rect_at_25.y + rect_at_25.height + 2,
+        rect_at_25.y + rect_at_25.height + 1,
         25,
-        "popup at cursor_y=25 should satisfy 2-row gap invariant"
+        "popup at cursor_y=25 should satisfy 1-row gap invariant"
     );
 
     // And the popup positions are different (cursor-relative, not fixed).
@@ -297,18 +297,17 @@ fn popup_height_capped_when_cursor_near_top() {
     let popup_rect =
         session_preview_popup_rect(frame_area, cursor_y, content_line_count);
 
-    // Then the popup height is capped (max_height = 7 - 0 - 2 = 5).
-    // With max(5) floor, popup_height should be exactly 5.
+    // Then the popup height is capped (max_height = 7 - 0 - 1 = 6).
     assert_eq!(
-        popup_rect.height, 5,
-        "popup height should be capped to minimum when cursor is near top, \
+        popup_rect.height, 6,
+        "popup height should be capped when cursor is near top, \
          got: {}",
         popup_rect.height
     );
 
     // And the popup does not extend past the gap boundary toward the cursor.
     assert!(
-        popup_rect.y + popup_rect.height + 2 <= cursor_y,
-        "popup should not encroach on the 2-row gap above cursor"
+        popup_rect.y + popup_rect.height + 1 <= cursor_y,
+        "popup should not encroach on the 1-row gap above cursor"
     );
 }

@@ -378,7 +378,7 @@ fn build_preview_lines(
 /// Computes the popup rectangle for the session preview overlay.
 ///
 /// The popup is anchored to the right edge of the frame and sits just above
-/// the cursor row in the sessions section, with a 2-row gap. Width is 60% of
+/// the cursor row in the sessions section, with a 1-row gap. Width is 60% of
 /// the frame. Height is computed from the content line count plus borders and
 /// keybinds bar, capped to fit within the available space above the cursor.
 pub fn session_preview_popup_rect(
@@ -390,16 +390,16 @@ pub fn session_preview_popup_rect(
 
     // Total height: content + footer (3) + top border (1) + bottom border (1).
     let desired_height = (content_line_count + 3 + 2) as u16;
-    // Cap to available space above the cursor (with 2-row gap).
+    // Cap to available space above the cursor (with 1-row gap).
     let max_height = cursor_y
         .saturating_sub(frame_area.y)
-        .saturating_sub(2);
+        .saturating_sub(1);
     let popup_height = desired_height.min(max_height).max(5);
 
     // Right-align: right edge = frame right edge.
     let popup_x = frame_area.x + frame_area.width.saturating_sub(popup_width);
-    // Bottom edge sits 2 rows above the cursor.
-    let popup_y = cursor_y.saturating_sub(popup_height).saturating_sub(2);
+    // Bottom edge sits 1 row above the cursor.
+    let popup_y = cursor_y.saturating_sub(popup_height).saturating_sub(1);
 
     Rect::new(popup_x, popup_y, popup_width, popup_height)
 }
