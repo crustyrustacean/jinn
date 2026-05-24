@@ -709,7 +709,8 @@ mod tests {
         let plan = build_plan(
             &["test-model".to_owned()],
             &["hello-world".to_owned(), "json-parser".to_owned()],
-        );
+        )
+        .expect("plan");
         let (state, session_id) = test_state_with_session();
         let csv_dir = tempfile::TempDir::new().expect("temp dir");
         let csv_path = csv_dir.path().join("results.csv");
@@ -1060,7 +1061,7 @@ mod tests {
     #[test]
     fn plan_driven_actor_starts_first_pair_on_activate() {
         // Given a plan with 1 model and 1 task.
-        let plan = build_plan(&["test-model".to_owned()], &["hello-world".to_owned()]);
+        let plan = build_plan(&["test-model".to_owned()], &["hello-world".to_owned()]).expect("plan");
 
         let state = State::new(nullslop_domain::AppState::default());
         let (sink, _ctx) = test_context();
