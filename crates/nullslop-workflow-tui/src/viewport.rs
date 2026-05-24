@@ -62,17 +62,16 @@ impl ViewportState {
     ) {
         let (cw, ch) = content_size;
         let (vw, vh) = viewport_size;
-        #[expect(clippy::similar_names, reason = "half cell width / half cell height")]
-        let half_cw = i32::from(cw / 2);
-        let half_ch = i32::from(ch / 2);
+        let half_content_w = i32::from(cw / 2);
+        let half_content_h = i32::from(ch / 2);
 
         self.offset_x = self.offset_x.saturating_add(dx);
         self.offset_y = self.offset_y.saturating_add(dy);
 
-        let min_x = half_cw - i32::from(vw);
-        let max_x = half_cw;
-        let min_y = half_ch - i32::from(vh);
-        let max_y = half_ch;
+        let min_x = half_content_w - i32::from(vw);
+        let max_x = half_content_w;
+        let min_y = half_content_h - i32::from(vh);
+        let max_y = half_content_h;
 
         self.offset_x = self.offset_x.clamp(min_x, max_x);
         self.offset_y = self.offset_y.clamp(min_y, max_y);

@@ -83,7 +83,7 @@ pub fn compute(snapshot: &ExecutionSnapshot) -> GraphLayout {
         let input_defs = structure.node_input_ports(name).unwrap_or_default();
         let output_defs = structure.node_output_ports(name).unwrap_or_default();
         let status = snapshot.status_of(name).unwrap_or(NodeStatus::Pending);
-        let node = VisualNode::compute(name.to_string(), &input_defs, &output_defs, status);
+        let node = VisualNode::compute(name.to_string(), input_defs, output_defs, status);
         visual_nodes.insert(name, node);
     }
 
@@ -296,13 +296,6 @@ mod tests {
         b.build().unwrap()
     }
 
-    fn all_pending(graph: &WorkflowGraph) -> HashMap<String, NodeStatus> {
-        graph
-            .node_names()
-            .map(|n| (n.to_owned(), NodeStatus::Pending))
-            .collect()
-    }
-
     #[test]
     fn linear_graph_assigns_correct_columns() {
         let graph = build_linear();
@@ -341,7 +334,7 @@ mod tests {
     fn layout_produces_non_overlapping_positions() {
         let graph = build_diamond();
         let execution = WorkflowExecution::new(graph);
-        let layout = compute(&*execution.snapshot());
+        let layout = compute(&execution.snapshot());
 
         for i in 0..layout.nodes.len() {
             for j in (i + 1)..layout.nodes.len() {
@@ -363,7 +356,7 @@ mod tests {
     fn layout_port_positions_are_outside_borders() {
         let graph = build_linear();
         let execution = WorkflowExecution::new(graph);
-        let layout = compute(&*execution.snapshot());
+        let layout = compute(&execution.snapshot());
 
         for node in &layout.nodes {
             for (i, port) in node.input_ports.iter().enumerate() {
@@ -421,7 +414,7 @@ mod tests {
         // Given a 3-node linear graph.
         let graph = build_linear();
         let execution = WorkflowExecution::new(graph);
-        let layout = compute(&*execution.snapshot());
+        let layout = compute(&execution.snapshot());
 
         // Then content_size returns non-zero bounds.
         let (w, h) = layout.content_size();
@@ -434,7 +427,7 @@ mod tests {
         // Given a diamond graph (fan-out + fan-in).
         let graph = build_diamond();
         let execution = WorkflowExecution::new(graph);
-        let layout = compute(&*execution.snapshot());
+        let layout = compute(&execution.snapshot());
 
         // Then content_size returns bounds larger than a single node.
         let (w, h) = layout.content_size();

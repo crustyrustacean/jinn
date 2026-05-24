@@ -93,7 +93,7 @@ mod tests {
         let mut inputs = PortValues::new();
         inputs.insert("in".to_owned(), PortValue::String("data".to_owned()));
         let start = Instant::now();
-        let result = node.execute(inputs, &_ctx()).await;
+        let result = node.execute(inputs, &test_ctx()).await;
 
         // Then it delays by approximately the configured duration.
         let elapsed = start.elapsed();
@@ -118,7 +118,7 @@ mod tests {
         let mut inputs = PortValues::new();
         inputs.insert("text".to_owned(), PortValue::String("hello".to_owned()));
         inputs.insert("label".to_owned(), PortValue::String("greeting".to_owned()));
-        let result = node.execute(inputs, &_ctx()).await;
+        let result = node.execute(inputs, &test_ctx()).await;
 
         // Then both values are passed through.
         #[expect(clippy::expect_used, reason = "test assertion")]
@@ -131,8 +131,7 @@ mod tests {
     struct TestContext;
     impl NodeContext for TestContext {}
 
-    #[expect(clippy::used_underscore_items, reason = "test helper")]
-    fn _ctx() -> TestContext {
+    fn test_ctx() -> TestContext {
         TestContext
     }
 }
