@@ -30,10 +30,12 @@ pub struct BeginCompaction {
     pub gathered_indices: Vec<usize>,
 }
 
-/// Inserts the compaction result and sets the session phase back to Idle.
+/// Inserts the compaction result and sets the session phase.
 ///
 /// Emitted by the compaction actor after the LLM call completes (success or failure).
 /// Handled by the session actor, which is the sole state owner.
+/// When `auto` is true, the session transitions to Sending instead of Idle
+/// so the turn can resume automatically.
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("end-compaction")]
 pub struct EndCompaction {
@@ -43,6 +45,8 @@ pub struct EndCompaction {
     pub result: Option<CompactionResult>,
     /// Error message if the LLM call failed.
     pub error: Option<String>,
+    /// Whether this was an automatically triggered compaction (not manual `/compact`).
+    pub auto: bool,
 }
 
 /// The result of a successful context compaction.
