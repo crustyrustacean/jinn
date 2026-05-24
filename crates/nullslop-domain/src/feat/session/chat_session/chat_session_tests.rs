@@ -1486,7 +1486,7 @@ fn visible_entry_range_returns_visible_entries() {
     session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6), (6, 8), (8, 10)]);
     session.set_viewport_height(5);
     session.set_blank_count(0);
-    session.ui.scroll_offset = Some(2);
+    session.set_rendered_scroll_offset(2);
 
     // When computing visible range.
     // viewport_top=2, viewport_bottom=7
@@ -1520,7 +1520,7 @@ fn move_cursor_to_first_visible_sets_index() {
     session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6)]);
     session.set_viewport_height(4);
     session.set_blank_count(0);
-    session.ui.scroll_offset = Some(2);
+    session.set_rendered_scroll_offset(2);
 
     // When moving cursor to first visible.
     session.move_cursor_to_first_visible();
@@ -1540,7 +1540,7 @@ fn move_cursor_to_last_visible_sets_index() {
     session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6)]);
     session.set_viewport_height(4);
     session.set_blank_count(0);
-    session.ui.scroll_offset = Some(2);
+    session.set_rendered_scroll_offset(2);
 
     // When moving cursor to last visible.
     session.move_cursor_to_last_visible();

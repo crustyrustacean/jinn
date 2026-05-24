@@ -105,6 +105,7 @@ impl UiElement<AppState> for ChatLogElement {
             session.set_entry_line_ranges(render.entry_line_ranges.clone());
             session.set_viewport_height(area.height);
             session.set_blank_count(render.scroll.blank_count as u16);
+            session.set_rendered_scroll_offset(render.scroll.clamped);
         }
 
         render.find_visible_indices();

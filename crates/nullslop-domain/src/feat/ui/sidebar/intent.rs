@@ -320,6 +320,7 @@ mod tests {
         state.active_session().set_viewport_height(5);
         state.active_session().set_blank_count(0);
         state.active_session().set_last_max_offset(5); // 10 lines - 5 viewport
+        state.active_session().set_rendered_scroll_offset(5); // viewport at bottom
 
         // Enter sidebar pins — this saves history position and syncs cursor to pin.
         state.frontend.scope_stack.push(FocusScope::SidebarPins);
