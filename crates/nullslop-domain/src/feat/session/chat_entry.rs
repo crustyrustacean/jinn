@@ -527,21 +527,6 @@ impl ChatEntry {
     }
 
     /// Whether this entry kind can be pinned to the context.
-    ///
-    /// Only user messages, assistant responses, tool results, and skill loads
-    /// can be pinned. Transient entries, system messages, errors, actors, thinking,
-    /// tool calls, and compaction entries are not pinnable.
-    #[must_use]
-    pub fn is_pinnable(&self) -> bool {
-        matches!(
-            self.kind,
-            ChatEntryKind::User { .. }
-                | ChatEntryKind::Assistant(..)
-                | ChatEntryKind::ToolResult { .. }
-                | ChatEntryKind::Skill { .. }
-        )
-    }
-
     /// Whether this entry is a compaction summary.
     ///
     /// Compaction entries act as delimiters in the chat history. They are
