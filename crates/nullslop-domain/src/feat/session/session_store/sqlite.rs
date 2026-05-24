@@ -362,6 +362,7 @@ struct SessionRow {
     archived: bool,
     lifecycle_script_state: String,
     metadata: Option<String>,
+    is_workflow: bool,
 }
 
 /// Insert model for the `sessions` table.
@@ -382,6 +383,7 @@ struct NewSessionRow {
     archived: bool,
     lifecycle_script_state: String,
     metadata: Option<String>,
+    is_workflow: bool,
 }
 
 /// Reading model for the `entries` table.
@@ -491,8 +493,6 @@ struct PersistableCore {
     lifecycle_name: Option<String>,
     lifecycle_args: Vec<String>,
     lifecycle_script_state: LifecycleScriptState,
-    #[serde(default)]
-    is_workflow: bool,
 }
 
 impl From<&SessionCore> for PersistableCore {
@@ -510,7 +510,6 @@ impl From<&SessionCore> for PersistableCore {
             lifecycle_name: core.lifecycle_name.clone(),
             lifecycle_args: core.lifecycle_args.clone(),
             lifecycle_script_state: core.lifecycle_script_state,
-            is_workflow: core.is_workflow,
         }
     }
 }
@@ -534,7 +533,7 @@ impl From<PersistableCore> for SessionCore {
             session_state: SessionState::Loaded, // overridden by TryFrom<SessionLoadContext> from archived column
             lifecycle_script_state: core.lifecycle_script_state,
             ephemeral: SessionCoreEphemeral::default(),
-            is_workflow: core.is_workflow,
+            is_workflow: false, // set from DB column after deserialization
         }
     }
 }
@@ -565,7 +564,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     ephemeral: _ephemeral, // runtime-only state, not persisted
                     session_state,
                     lifecycle_script_state,
-                    is_workflow: _,
+                    is_workflow,
                 },
             ui: _ui, // runtime-only UI state, not persisted
         } = session;
@@ -603,6 +602,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                 .change_context(SessionStoreError)
                 .attach("failed to serialize lifecycle_script_state")?,
             metadata: Some(metadata),
+            is_workflow: *is_workflow,
         })
     }
 }
@@ -636,6 +636,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
             archived,
             lifecycle_script_state,
             metadata,
+            is_workflow,
         } = ctx.row;
 
         // When a metadata JSON blob exists (v8+), deserialize it as the
@@ -687,6 +688,9 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 is_workflow: false,
             }
         };
+
+        // Single source of truth: is_workflow column → core.is_workflow.
+        core.is_workflow = is_workflow;
 
         // Single source of truth: archived column → session_state.
         core.session_state = if archived {
@@ -741,6 +745,7 @@ fn save_blocking(
                 sessions::archived.eq(excluded(sessions::archived)),
                 sessions::lifecycle_script_state.eq(excluded(sessions::lifecycle_script_state)),
                 sessions::metadata.eq(excluded(sessions::metadata)),
+                sessions::is_workflow.eq(excluded(sessions::is_workflow)),
             ))
             .execute(txn)?;
 
@@ -1023,6 +1028,7 @@ fn fork_blocking(
                 archived: false,
                 lifecycle_script_state: source_meta.lifecycle_script_state,
                 metadata: fork_metadata(source_meta.metadata.as_ref(), &source_str, &new_id_str),
+                is_workflow: source_meta.is_workflow,
             })
             .execute(txn)?;
 
