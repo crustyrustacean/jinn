@@ -39,6 +39,7 @@ pub use preview::{
 pub use reconcile::reconcile_after_session_removal;
 pub use render::SessionsSection;
 pub use state::SessionsSectionState;
+pub use state::update_visual_parents_on_removal;
 pub(crate) use state::sorted_open_sessions;
 pub use teardown::handle_session_teardown;
 

@@ -138,6 +138,82 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
     result
 }
 
+/// Updates the visual-parent index when a session is about to be removed.
+///
+/// Must be called BEFORE the session is removed from the `SessionMap`.
+/// Resolves the nearest loaded ancestor for any orphaned children and
+/// updates the `visual_parents` index accordingly.
+///
+/// Also handles transitive chains: if any existing `visual_parents` entries
+/// point to the removed session as their effective ancestor, those entries
+/// are updated to point to the resolved ancestor instead.
+pub fn update_visual_parents_on_removal(state: &mut AppState, removed_id: &SessionId) {
+    let effective_ancestor = {
+        // Resolve the nearest loaded ancestor for the session being removed.
+        let Some(removed_session) = state.session.get(removed_id) else {
+            return;
+        };
+
+        match removed_session.parent_session() {
+            // Direct parent is loaded — use it.
+            Some(pid) if state.session.contains(pid) => Some(pid.clone()),
+            // Direct parent not loaded — check if it has a visual_parents entry.
+            Some(pid) => state
+                .frontend
+                .sessions_section
+                .visual_parents
+                .get(pid)
+                .cloned(),
+            // No parent at all — check if the removed session itself has a visual parent.
+            None => state
+                .frontend
+                .sessions_section
+                .visual_parents
+                .get(removed_id)
+                .cloned(),
+        }
+    };
+
+    let visual_parents = &mut state.frontend.sessions_section.visual_parents;
+
+    // Find direct children of the removed session and reparent them.
+    let orphan_ids: Vec<SessionId> = state
+        .session
+        .iter()
+        .filter(|(_, s)| s.parent_session().as_ref() == Some(removed_id))
+        .map(|(id, _)| id.clone())
+        .collect();
+
+    for orphan_id in orphan_ids {
+        match &effective_ancestor {
+            Some(ancestor_id) => {
+                visual_parents.insert(orphan_id, ancestor_id.clone());
+            }
+            None => {
+                visual_parents.remove(&orphan_id);
+            }
+        }
+    }
+
+    // Update transitive entries: any session already bypassing the removed session.
+    let keys_to_update: Vec<SessionId> = visual_parents
+        .iter()
+        .filter(|(_, v)| *v == removed_id)
+        .map(|(k, _)| k.clone())
+        .collect();
+
+    for key in keys_to_update {
+        match &effective_ancestor {
+            Some(ancestor_id) => {
+                visual_parents.insert(key, ancestor_id.clone());
+            }
+            None => {
+                visual_parents.remove(&key);
+            }
+        }
+    }
+}
+
 /// Recursively emits children in DFS order, recording tree metadata.
 ///
 /// `ancestor_continuations` tracks whether each ancestor level has younger
