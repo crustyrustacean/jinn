@@ -3,65 +3,70 @@
 //! [`LlmNode`] is a workflow node that sends a prompt to the LLM and returns
 //! the response as a string output port.
 //!
-//! Two modes:
-//! - **Source mode** ([`LlmNode::source`]) — zero input ports, embeds the user prompt.
-//!   Used as the entry point of a workflow graph.
-//! - **Internal mode** ([`LlmNode::new`]) — declares a `prompt` input port,
-//!   receives data from upstream nodes.
+//! # Ports
+//!
+//! - Input `system` (optional, string) — system prompt override.
+//! - Input `prompt` (optional, string) — template/context from upstream.
+//! - Input `user` (required, string) — the user message body.
+//! - Output `response` (string) — the final assistant response.
+//!
+//! If both `prompt` and `user` are connected, their values are concatenated
+//! (`prompt` first, then `user`). If only `user` is connected, only the user
+//! value is used. The `system` port overrides the node's configured system
+//! prompt when connected.
 
 use error_stack::Report;
 use nullslop_workflow::node::{NodeContext, NodeError, WorkflowNode};
 use nullslop_workflow::port::{PortDef, PortValue, PortValues, ScalarValue};
+use nullslop_workflow::tool_schema::ToolSchema;
 
 /// A workflow node that calls the LLM.
 ///
-/// # Source mode
+/// # Configuration
 ///
-/// Source nodes have zero input ports and embed the user prompt at construction
-/// time. They are the entry points of a workflow graph.
+/// - `system_prompt` — default system prompt. Overridden by the `system` input
+///   port when connected.
+/// - `provider_id` — optional provider ID. `None` uses the global default.
+/// - `tool_schemas` — tool definitions available to the LLM during this call.
 ///
-/// Output port: `response` (string)
+/// # Port design
 ///
-/// # Internal mode
+/// The three input ports allow flexible wiring:
 ///
-/// Internal nodes declare a `prompt` input port and receive data from upstream nodes.
-///
-/// Input port: `prompt` (string)
-/// Output port: `response` (string)
+/// | Connected ports | User message content | System prompt |
+/// |-----------------|---------------------|---------------|
+/// | `user` only     | `user` value         | configured default |
+/// | `prompt` + `user` | `prompt` + `user` | configured default |
+/// | `system` + `user` | `user` value       | `system` value |
+/// | all three       | `prompt` + `user`   | `system` value |
 #[derive(Debug, Clone)]
 pub struct LlmNode {
-    /// System prompt to prepend to the user's prompt.
-    system_prompt: String,
-    /// Optional provider ID override.
+    /// Default system prompt. Overridden by the `system` input port when connected.
+    system_prompt: Option<String>,
+    /// Optional provider ID override. `None` = global default.
     provider_id: Option<String>,
-    /// If `Some`, this is a source node (zero input ports) that uses this prompt directly.
-    /// If `None`, this is an internal node with a `prompt` input port.
-    initial_prompt: Option<String>,
+    /// Tool definitions available to the LLM during this call.
+    tool_schemas: Vec<ToolSchema>,
 }
 
 impl LlmNode {
-    /// Create an internal LLM node with a `prompt` input port.
-    ///
-    /// The node receives its prompt from upstream nodes via the `prompt` input port.
+    /// Create a new LLM node with the given default system prompt.
     #[must_use]
     pub fn new(system_prompt: impl Into<String>) -> Self {
         Self {
-            system_prompt: system_prompt.into(),
+            system_prompt: Some(system_prompt.into()),
             provider_id: None,
-            initial_prompt: None,
+            tool_schemas: vec![],
         }
     }
 
-    /// Create a source LLM node with zero input ports.
-    ///
-    /// The `user_prompt` is embedded in the node and used directly as the user message.
-    /// Source nodes are entry points in a workflow graph — they have no incoming edges.
+    /// Create an LLM node with no default system prompt.
     #[must_use]
-    pub fn source(system_prompt: impl Into<String>, user_prompt: impl Into<String>) -> Self {
+    pub fn without_system_prompt() -> Self {
         Self {
-            system_prompt: system_prompt.into(),
+            system_prompt: None,
             provider_id: None,
-            initial_prompt: Some(user_prompt.into()),
+            tool_schemas: vec![],
         }
     }
 
@@ -69,6 +74,13 @@ impl LlmNode {
     #[must_use]
     pub fn with_provider(mut self, provider_id: impl Into<String>) -> Self {
         self.provider_id = Some(provider_id.into());
+        self
+    }
+
+    /// Add tool definitions for this node.
+    #[must_use]
+    pub fn with_tools(mut self, tools: Vec<ToolSchema>) -> Self {
+        self.tool_schemas = tools;
         self
     }
 }
@@ -80,11 +92,11 @@ impl WorkflowNode for LlmNode {
     }
 
     fn input_ports(&self) -> Vec<PortDef> {
-        if self.initial_prompt.is_some() {
-            vec![] // source node — no input ports
-        } else {
-            vec![PortDef::text("prompt")] // internal node
-        }
+        vec![
+            PortDef::text("system").optional(),
+            PortDef::text("prompt").optional(),
+            PortDef::text("user"),
+        ]
     }
 
     fn output_ports(&self) -> Vec<PortDef> {
@@ -96,20 +108,39 @@ impl WorkflowNode for LlmNode {
         mut inputs: PortValues,
         ctx: &dyn NodeContext,
     ) -> Result<PortValues, Report<NodeError>> {
-        let prompt = if let Some(ref initial) = self.initial_prompt {
-            initial.clone()
-        } else {
-            inputs
-                .take_text("prompt")
-                .map_err(|e: nullslop_workflow::port::PortError| Report::new(NodeError).attach(e.to_string()))?
+        // Resolve system prompt: input port overrides configured default.
+        let system_prompt = inputs
+            .take_text("system")
+            .ok()
+            .or_else(|| self.system_prompt.clone());
+
+        // Build user message from prompt + user inputs.
+        let prompt_text = inputs.take_text("prompt").ok();
+        let user_text = inputs
+            .take_text("user")
+            .map_err(|e: nullslop_workflow::port::PortError| {
+                Report::new(NodeError).attach(e.to_string())
+            })?;
+
+        let user_message = match prompt_text {
+            Some(prompt) => format!("{prompt}\n{user_text}"),
+            None => user_text,
         };
 
         let response = ctx
-            .send_llm_request(&self.system_prompt, &prompt, self.provider_id.as_deref())
+            .send_llm_request(
+                &user_message,
+                system_prompt.as_deref(),
+                self.tool_schemas.clone(),
+                self.provider_id.as_deref(),
+            )
             .await?;
 
         let mut output = PortValues::new();
-        output.insert("response".to_owned(), PortValue::single(ScalarValue::Text(response)));
+        output.insert(
+            "response".to_owned(),
+            PortValue::single(ScalarValue::Text(response)),
+        );
         Ok(output)
     }
 

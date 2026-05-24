@@ -16,6 +16,7 @@ use error_stack::Report;
 use wherror::Error;
 
 use crate::port::PortValues;
+use crate::tool_schema::ToolSchema;
 
 pub mod code;
 pub mod delay;
@@ -32,17 +33,27 @@ pub use delay::DelayNode;
 /// Default methods are no-ops or return errors. Override them in the
 /// host environment's implementation.
 pub trait NodeContext: Send + Sync {
-    /// Send an LLM request and await the full response.
+    /// Send an LLM request through the session pipeline and await the full response.
+    ///
+    /// Creates a new workflow session, stores the provided overrides, enqueues a user
+    /// message, waits for `SessionPhaseChanged(Idle)`, and extracts the final assistant
+    /// response.
+    ///
+    /// - `user_prompt` — the user message text.
+    /// - `system_prompt` — optional system prompt override.
+    /// - `tool_schemas` — tool definitions for this request.
+    /// - `provider_id` — optional provider ID override; `None` uses global default.
     ///
     /// Default: returns an error (no LLM capability).
     /// Override in `DomainNodeContext` to route through the actor bus.
     fn send_llm_request<'a>(
         &'a self,
-        system_prompt: &str,
         user_prompt: &str,
+        system_prompt: Option<&str>,
+        tool_schemas: Vec<ToolSchema>,
         provider_id: Option<&str>,
     ) -> Pin<Box<dyn Future<Output = Result<String, Report<NodeError>>> + Send + 'a>> {
-        let _ = (system_prompt, user_prompt, provider_id);
+        let _ = (user_prompt, system_prompt, tool_schemas, provider_id);
         Box::pin(async { Err(Report::new(NodeError)) })
     }
 }
