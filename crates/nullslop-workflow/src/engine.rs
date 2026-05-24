@@ -91,7 +91,7 @@ fn initialize_tracking(
     let mut pending_count: HashMap<String, usize> = HashMap::new();
     let mut outputs: HashMap<String, PortValues> = HashMap::new();
 
-    for (name, _node) in node_map {
+    for name in node_map.keys() {
         let current_status = snapshot
             .status_of(name)
             .unwrap_or(NodeStatus::Pending);
