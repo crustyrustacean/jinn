@@ -21,7 +21,9 @@ pub mod graph;
 pub mod node;
 pub mod port;
 pub mod spatial_layout;
+pub mod validation;
 
 pub use engine::NodeStatus;
 pub use execution::{ExecutionSnapshot, NodePorts, NodeState, OwnedEdgeInfo, WorkflowExecution, WorkflowStructure};
 pub use graph::EdgeInfo;
+pub use validation::{ValidationDiagnostic, ValidationSeverity};
