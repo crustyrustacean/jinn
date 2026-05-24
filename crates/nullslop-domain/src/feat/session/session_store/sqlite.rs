@@ -419,7 +419,9 @@ struct SessionEntryRow {
     entry_id: String,
     ordinal: i32,
     pin_position: Option<String>,
+    /// Legacy column kept for backward compatibility. New code uses `context_override`.
     ignored: bool,
+    context_override: String,
 }
 
 /// Insert model for the `session_history` table.
@@ -431,6 +433,7 @@ struct NewSessionEntryRow {
     ordinal: i32,
     pin_position: Option<String>,
     ignored: bool,
+    context_override: String,
 }
 
 /// Reading model for the `token_ledger` table.
@@ -794,6 +797,8 @@ fn save_blocking(
                     ordinal: ordinal as i32,
                     pin_position: pin_str,
                     ignored: entry.ignored(),
+                    context_override: serde_json::to_string(&entry.context_override)
+                        .unwrap_or_else(|_| "\"default\"".to_owned()),
                 })
                 .execute(txn)?;
         }
@@ -902,18 +907,28 @@ fn load_session_blocking(
             });
 
             ChatEntry {
-                id: ChatEntryId::from(entry.id.unwrap_or_default()),
+                id: ChatEntryId::from(entry.id.clone().unwrap_or_default()),
                 timestamp: entry
                     .timestamp
                     .parse()
                     .unwrap_or_else(|_| jiff::Timestamp::now()),
                 kind,
                 pin_position,
-                context_override: if junction.ignored {
-                        ContextOverride::ForcedExclude
-                    } else {
-                        ContextOverride::Default
-                    },
+                context_override: serde_json::from_str(&junction.context_override)
+                    .unwrap_or_else(|e| {
+                        tracing::warn!(
+                            entry_id = %entry.id.as_deref().unwrap_or("?"),
+                            raw = %junction.context_override,
+                            error = %e,
+                            "failed to deserialize context_override, falling back to Default"
+                        );
+                        // Fallback: use legacy ignored column if context_override is corrupt
+                        if junction.ignored {
+                            ContextOverride::ForcedExclude
+                        } else {
+                            ContextOverride::Default
+                        }
+                    }),
             }
         })
         .collect();
@@ -1053,6 +1068,7 @@ fn fork_blocking(
                     ordinal: row.ordinal,
                     pin_position: row.pin_position,
                     ignored: row.ignored,
+                    context_override: row.context_override,
                 })
                 .execute(txn)?;
         }
