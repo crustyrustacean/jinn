@@ -4,6 +4,7 @@
 
 use nullslop_domain::AppState;
 use nullslop_domain::common::app_state::WorkflowUiState;
+use nullslop_domain::feat::session::chat_entry::ChatEntryKind;
 use nullslop_workflow_tui::widget::WorkflowWidget;
 use ratatui::{
     Frame,
@@ -150,14 +151,12 @@ fn render_cancel_prompt(frame: &mut Frame<'_>, area: Rect) {
     frame.render_widget(prompt, popup_area);
 }
 
-/// Renders the sticky inspector popup overlay.
-///
-/// Shows the selected node's details: name, status, config, inputs, outputs.
-/// The popup is anchored to the top-right of the workflow area.
 /// Builds the content lines for the inspector popup.
 fn build_inspector_lines(
+    node_name: &str,
     node_state: Option<&nullslop_workflow::execution::NodeState>,
     status: &str,
+    state: &AppState,
 ) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'_>> = vec![];
 
@@ -224,6 +223,68 @@ fn build_inspector_lines(
         }
     }
 
+    // Session section — look up node→session mapping and render history.
+    if let Some(workflow) = state.workflow.active() {
+        if let Some(session_id) = workflow.node_sessions.get(node_name) {
+            if let Some(session) = state.session.get(session_id) {
+                lines.push(Line::from(""));
+                lines.push(Line::from(Span::styled(
+                    "Session",
+                    Style::default().add_modifier(Modifier::BOLD),
+                )));
+                for entry in session.history() {
+                    match &entry.kind {
+                        ChatEntryKind::User { display, .. } => {
+                            render_truncated_lines(&mut lines, &format!("> {display}"), 80);
+                        }
+                        ChatEntryKind::Assistant(text) => {
+                            render_truncated_lines(&mut lines, &format!("  {text}"), 80);
+                        }
+                        ChatEntryKind::System(text) => {
+                            render_truncated_lines(&mut lines, &format!("  [system] {text}"), 80);
+                        }
+                        ChatEntryKind::Error(text) => {
+                            render_truncated_lines(&mut lines, &format!("  [error] {text}"), 80);
+                        }
+                        ChatEntryKind::Thinking(text) => {
+                            render_truncated_lines(&mut lines, &format!("  [thinking] {text}"), 80);
+                        }
+                        ChatEntryKind::ToolCall { name, .. } => {
+                            lines.push(Line::from(Span::styled(
+                                format!("  [tool:{name}]"),
+                                Style::default().add_modifier(Modifier::DIM),
+                            )));
+                        }
+                        ChatEntryKind::ToolResult { name, .. } => {
+                            lines.push(Line::from(Span::styled(
+                                format!("  [result:{name}]"),
+                                Style::default().add_modifier(Modifier::DIM),
+                            )));
+                        }
+                        ChatEntryKind::Skill { name, .. } => {
+                            lines.push(Line::from(Span::styled(
+                                format!("  [skill:{name}]"),
+                                Style::default().add_modifier(Modifier::DIM),
+                            )));
+                        }
+                        ChatEntryKind::Actor { source, text } => {
+                            render_truncated_lines(&mut lines, &format!("  [{source}] {text}"), 80);
+                        }
+                        ChatEntryKind::Compaction { .. } => {
+                            lines.push(Line::from(Span::styled(
+                                "  [compaction summary]",
+                                Style::default().add_modifier(Modifier::DIM),
+                            )));
+                        }
+                        ChatEntryKind::Transient(_) => {
+                            // Skip ephemeral entries
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Footer with keybinds.
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
@@ -233,6 +294,18 @@ fn build_inspector_lines(
             .fg(ratatui::style::Color::DarkGray),
     )));
     lines
+}
+
+/// Renders text that may contain newlines as multiple inspector lines.
+/// Each resulting line is truncated to `max_chars` characters.
+fn render_truncated_lines(lines: &mut Vec<Line<'static>>, text: &str, max_chars: usize) {
+    for raw_line in text.lines() {
+        let truncated: String = raw_line.chars().take(max_chars).collect();
+        lines.push(Line::from(Span::styled(
+            truncated,
+            Style::default().add_modifier(Modifier::DIM),
+        )));
+    }
 }
 
 /// Renders the sticky inspector popup overlay.
@@ -251,13 +324,28 @@ fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         .status_of(node_name)
         .map_or_else(|| "Unknown".to_owned(), |s| format!("{s:?}"));
 
-    let lines = build_inspector_lines(node_state, &status);
+    // Check if this node has an associated session.
+    let has_session = workflow
+        .node_sessions
+        .get(node_name)
+        .and_then(|id| state.session.get(id))
+        .is_some();
 
-    // Compute popup dimensions.
+    let lines = build_inspector_lines(node_name, node_state, &status, state);
+
+    // Compute popup dimensions — expand for session history.
     let content_height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
-    let popup_width = (area.width * 50 / 100).clamp(30, 60);
+    let popup_width = if has_session {
+        (area.width * 70 / 100).clamp(40, 80)
+    } else {
+        (area.width * 50 / 100).clamp(30, 60)
+    };
     let desired_height = content_height.saturating_add(2); // +2 for borders
-    let max_height = area.height / 2;
+    let max_height = if has_session {
+        area.height * 80 / 100
+    } else {
+        area.height / 2
+    };
     let popup_height = desired_height.min(max_height).max(5);
 
     // Anchor to top-right.
