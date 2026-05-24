@@ -6,6 +6,10 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::task::{BenchTask, BenchTools, CheckResult, VerificationReport};
+use include_dir::Dir;
+
+
+static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/redirect/redirect_refactor_function/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -19,7 +23,7 @@ pub fn task() -> BenchTask {
              function called calculate_paint_needed that estimates paint in liters \
              (area * 0.1 liters per square meter for walls). Print that instead.",
         ],
-        fixture_dir: Some("src/tasks/redirect/redirect_refactor_function/fixtures"),
+        fixture_dir: Some(&FIXTURES),
         timeout: Duration::from_secs(300),
         persona: None,
         tools: BenchTools {
