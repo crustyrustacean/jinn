@@ -214,10 +214,14 @@ pub enum Intent {
     SwitchTab,
 
     // --- Workflow Navigation ---
-    /// Select the next downstream node (graph-aware).
+    /// Select the nearest node to the left (spatial).
+    WorkflowNodeLeft,
+    /// Select the nearest node downward (spatial).
     WorkflowNodeDown,
-    /// Select the previous upstream node (graph-aware).
+    /// Select the nearest node upward (spatial).
     WorkflowNodeUp,
+    /// Select the nearest node to the right (spatial).
+    WorkflowNodeRight,
     /// Toggle the sticky node inspector popup.
     WorkflowInspectToggle,
     /// Scroll the inspector popup up one line.
@@ -239,6 +243,7 @@ pub enum Intent {
 }
 
 impl std::fmt::Display for Intent {
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Intent::InsertChar { ch } => write!(f, "insert '{ch}'"),
@@ -330,8 +335,10 @@ impl std::fmt::Display for Intent {
             Intent::SwitchTab => write!(f, "switch tab"),
 
             // --- Workflow Navigation ---
+            Intent::WorkflowNodeLeft => write!(f, "workflow node left"),
             Intent::WorkflowNodeDown => write!(f, "workflow node down"),
             Intent::WorkflowNodeUp => write!(f, "workflow node up"),
+            Intent::WorkflowNodeRight => write!(f, "workflow node right"),
             Intent::WorkflowInspectToggle => write!(f, "workflow inspect toggle"),
             Intent::WorkflowInspectScrollUp => write!(f, "workflow inspect scroll up"),
             Intent::WorkflowInspectScrollDown => write!(f, "workflow inspect scroll down"),

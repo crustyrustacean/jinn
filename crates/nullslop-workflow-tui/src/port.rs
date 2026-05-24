@@ -46,27 +46,13 @@ pub fn port_type_color(port_type: PortType) -> Color {
     }
 }
 
-/// Returns a short display label for a scalar type.
-#[must_use]
-fn scalar_type_label(scalar: ScalarType) -> &'static str {
-    match scalar {
-        ScalarType::Text => "Text",
-        ScalarType::Number => "Num",
-        ScalarType::Boolean => "Bool",
-        ScalarType::Json => "Json",
-    }
-}
-
 /// Returns a short display label for a port type.
 ///
 /// Used for rendering type labels inside node boxes.
+/// Delegates to [`PortType::label`](nullslop_workflow::port::PortType::label).
 #[must_use]
 pub fn port_type_label(port_type: PortType) -> String {
-    match port_type {
-        PortType::Single(scalar) => scalar_type_label(scalar).to_owned(),
-        PortType::Vector(scalar) => format!("Vec<{}>", scalar_type_label(scalar)),
-        PortType::Map(scalar) => format!("Map<{}>", scalar_type_label(scalar)),
-    }
+    port_type.label()
 }
 
 #[cfg(test)]

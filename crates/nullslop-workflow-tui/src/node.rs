@@ -11,6 +11,8 @@ use ratatui::layout::Position;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 
+use nullslop_workflow::spatial_layout;
+
 use crate::port::{port_type_color, port_type_label};
 use crate::status::{status_color, status_symbol};
 
@@ -62,9 +64,6 @@ pub struct VisualNode {
 
 /// Horizontal padding inside the border (space between border and content).
 const H_PAD: usize = 1;
-
-/// Minimum content width (prevents tiny boxes).
-const MIN_CONTENT_WIDTH: usize = 4;
 
 impl VisualNode {
     /// Computes a `VisualNode` from its name, port definitions, and status.
@@ -128,20 +127,12 @@ impl VisualNode {
     /// Width is the maximum of:
     /// - Title length + space for status indicator
     /// - Longest "Type name" label among all ports
+    ///
+    /// Delegates to [`spatial_layout::compute_node_size`] for the math.
     fn compute_content_width(name: &str, inputs: &[PortDef], outputs: &[PortDef]) -> usize {
-        let title_width = name.len() + 1; // name + space for status indicator
-
-        let port_width = inputs
-            .iter()
-            .chain(outputs.iter())
-            .map(|def| {
-                let type_str = port_type_label(def.value_type);
-                type_str.len() + 1 + def.name.len() // "Type name"
-            })
-            .max()
-            .unwrap_or(0);
-
-        title_width.max(port_width).max(MIN_CONTENT_WIDTH)
+        let (w, _h) = spatial_layout::compute_node_size(name, inputs, outputs);
+        // Subtract borders + padding to get content width.
+        usize::from(w).saturating_sub(2 + 2 * H_PAD)
     }
 
     /// Renders the node into the given buffer at the node's `(x, y)` position.
