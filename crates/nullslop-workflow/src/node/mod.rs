@@ -56,6 +56,15 @@ pub trait NodeContext: Send + Sync {
         let _ = (user_prompt, system_prompt, tool_schemas, provider_id);
         Box::pin(async { Err(Report::new(NodeError)) })
     }
+
+    /// Called by the engine before executing a node.
+    ///
+    /// Domain implementations can use this to record node identity
+    /// for session tracking and other cross-cutting concerns.
+    fn set_node_name(&self, _name: &str) {}
+
+    /// Called by the engine after node execution completes.
+    fn clear_node_name(&self) {}
 }
 
 /// Error type for node execution failures.
