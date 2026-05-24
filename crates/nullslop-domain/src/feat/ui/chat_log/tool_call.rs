@@ -376,7 +376,7 @@ mod tests {
     fn streaming_non_bash_renders_multiple_lines() {
         // Given a streaming write tool call with escaped newlines.
         let ctx = streaming_context(6);
-        let args = r#"line 1\nline 2\nline 3"#;
+        let args = r"line 1\nline 2\nline 3";
 
         // When converting to lines.
         let lines = to_lines("write", args, &ctx);
@@ -467,7 +467,7 @@ mod tests {
     fn expanded_non_bash_shows_all_lines() {
         // Given an expanded write tool call with escaped newlines.
         let ctx = expanded_context();
-        let args = r#"line 1\nline 2\nline 3"#;
+        let args = r"line 1\nline 2\nline 3";
 
         // When converting to lines.
         let lines = to_lines("write", args, &ctx);

@@ -574,6 +574,8 @@ impl SessionPersistenceActor {
                         // then return immediately. The spawned task signals completion
                         // via FinishSessionTeardown with close_after: true.
                         let (old_phase, rendered) = {
+                            use crate::feat::session_lifecycle::command_template::CommandTemplate;
+
                             let mut state = self.state.write();
                             let Some(session) = state.session.get_mut(&payload.session_id) else {
                                 return;
@@ -581,7 +583,6 @@ impl SessionPersistenceActor {
                             let old_phase = session.phase();
                             session.begin_tearing_down();
                             session.mark_busy();
-                            use crate::feat::session_lifecycle::command_template::CommandTemplate;
                             let template = CommandTemplate::parse(&shell_cmd);
                             let rendered = if lifecycle_args.is_empty() {
                                 shell_cmd.clone()

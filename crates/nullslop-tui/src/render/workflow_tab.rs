@@ -88,17 +88,14 @@ fn render_status_line(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
             let snapshot = workflow.execution.snapshot();
             let status_str = snapshot
                 .status_of(name)
-                .map(|s| format!("{s:?}"))
-                .unwrap_or_else(|| "Unknown".to_owned());
+                .map_or_else(|| "Unknown".to_owned(), |s| format!("{s:?}"));
             let ns = snapshot.node_state(name);
             let in_count = ns
                 .and_then(|s| s.inputs.as_ref())
-                .map(|p| p.len())
-                .unwrap_or(0);
+                .map_or(0, |p| p.len());
             let out_count = ns
                 .and_then(|s| s.outputs.as_ref())
-                .map(|p| p.len())
-                .unwrap_or(0);
+                .map_or(0, |p| p.len());
             Line::from(vec![
                 Span::styled(" [", Style::default().add_modifier(Modifier::DIM)),
                 Span::styled(
@@ -106,10 +103,7 @@ fn render_status_line(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
                     Style::default().add_modifier(Modifier::BOLD),
                 ),
                 Span::styled("] ", Style::default().add_modifier(Modifier::DIM)),
-                Span::styled(
-                    format!("{status_str}"),
-                    Style::default().add_modifier(Modifier::DIM),
-                ),
+                Span::raw(status_str),
                 Span::styled(
                     format!(" │ in:{in_count} │ out:{out_count}"),
                     Style::default().add_modifier(Modifier::DIM),
@@ -160,6 +154,88 @@ fn render_cancel_prompt(frame: &mut Frame<'_>, area: Rect) {
 ///
 /// Shows the selected node's details: name, status, config, inputs, outputs.
 /// The popup is anchored to the top-right of the workflow area.
+/// Builds the content lines for the inspector popup.
+fn build_inspector_lines(
+    node_state: Option<&nullslop_workflow::execution::NodeState>,
+    status: &str,
+) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'_>> = vec![];
+
+    // Status line.
+    lines.push(Line::from(vec![
+        Span::styled("Status: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw(status.to_owned()),
+    ]));
+
+    // Config section.
+    if let Some(ns) = node_state
+        && let Some(config) = &ns.config
+    {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Config",
+            Style::default().add_modifier(Modifier::BOLD),
+        )));
+        let config_str = format!("{config}");
+        for line in config_str.lines().take(5) {
+            let truncated: String = line.chars().take(60).collect();
+            lines.push(Line::from(Span::styled(
+                format!("  {truncated}"),
+                Style::default().add_modifier(Modifier::DIM),
+            )));
+        }
+    }
+
+    // Inputs section.
+    if let Some(ns) = node_state
+        && let Some(inputs) = &ns.inputs
+        && !inputs.is_empty()
+    {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Inputs",
+            Style::default().add_modifier(Modifier::BOLD),
+        )));
+        for (name, value) in inputs.iter() {
+            let summary = port_value_summary(value);
+            lines.push(Line::from(vec![
+                Span::styled(format!("  {name}: "), Style::default()),
+                Span::styled(summary, Style::default().add_modifier(Modifier::DIM)),
+            ]));
+        }
+    }
+
+    // Outputs section.
+    if let Some(ns) = node_state
+        && let Some(outputs) = &ns.outputs
+        && !outputs.is_empty()
+    {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Outputs",
+            Style::default().add_modifier(Modifier::BOLD),
+        )));
+        for (name, value) in outputs.iter() {
+            let summary = port_value_summary(value);
+            lines.push(Line::from(vec![
+                Span::styled(format!("  {name}: "), Style::default()),
+                Span::styled(summary, Style::default().add_modifier(Modifier::DIM)),
+            ]));
+        }
+    }
+
+    // Footer with keybinds.
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "i close · ↑↓ scroll · r re-run",
+        Style::default()
+            .add_modifier(Modifier::DIM)
+            .fg(ratatui::style::Color::DarkGray),
+    )));
+    lines
+}
+
+/// Renders the sticky inspector popup overlay.
 fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let ui = &state.frontend.workflow_ui;
     let Some(node_name) = &ui.selected_node else {
@@ -173,89 +249,13 @@ fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let node_state = snapshot.node_state(node_name);
     let status = snapshot
         .status_of(node_name)
-        .map(|s| format!("{s:?}"))
-        .unwrap_or_else(|| "Unknown".to_owned());
+        .map_or_else(|| "Unknown".to_owned(), |s| format!("{s:?}"));
 
-    // Build content lines.
-    let mut lines: Vec<Line<'_>> = vec![];
-
-    // Status line.
-    lines.push(Line::from(vec![
-        Span::styled("Status: ", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw(&status),
-    ]));
-
-    // Config section.
-    if let Some(ns) = &node_state {
-        if let Some(config) = &ns.config {
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                "Config",
-                Style::default().add_modifier(Modifier::BOLD),
-            )));
-            let config_str = format!("{config}");
-            for line in config_str.lines().take(5) {
-                let truncated: String = line.chars().take(60).collect();
-                lines.push(Line::from(Span::styled(
-                    format!("  {truncated}"),
-                    Style::default().add_modifier(Modifier::DIM),
-                )));
-            }
-        }
-    }
-
-    // Inputs section.
-    if let Some(ns) = &node_state {
-        if let Some(inputs) = &ns.inputs {
-            if !inputs.is_empty() {
-                lines.push(Line::from(""));
-                lines.push(Line::from(Span::styled(
-                    "Inputs",
-                    Style::default().add_modifier(Modifier::BOLD),
-                )));
-                for (name, value) in inputs.iter() {
-                    let summary = port_value_summary(value);
-                    lines.push(Line::from(vec![
-                        Span::styled(format!("  {name}: "), Style::default()),
-                        Span::styled(summary, Style::default().add_modifier(Modifier::DIM)),
-                    ]));
-                }
-            }
-        }
-    }
-
-    // Outputs section.
-    if let Some(ns) = &node_state {
-        if let Some(outputs) = &ns.outputs {
-            if !outputs.is_empty() {
-                lines.push(Line::from(""));
-                lines.push(Line::from(Span::styled(
-                    "Outputs",
-                    Style::default().add_modifier(Modifier::BOLD),
-                )));
-                for (name, value) in outputs.iter() {
-                    let summary = port_value_summary(value);
-                    lines.push(Line::from(vec![
-                        Span::styled(format!("  {name}: "), Style::default()),
-                        Span::styled(summary, Style::default().add_modifier(Modifier::DIM)),
-                    ]));
-                }
-            }
-        }
-    }
-
-    // Footer with keybinds.
-    lines.push(Line::from(""));
-    lines.push(Line::from(Span::styled(
-        "i close · ↑↓ scroll · r re-run",
-        Style::default()
-            .add_modifier(Modifier::DIM)
-            .fg(ratatui::style::Color::DarkGray),
-    )));
+    let lines = build_inspector_lines(node_state, &status);
 
     // Compute popup dimensions.
     let content_height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
-    let popup_width = (u16::try_from(area.width * 50 / 100).unwrap_or(30)).max(30).min(60);
+    let popup_width = (area.width * 50 / 100).clamp(30, 60);
     let desired_height = content_height.saturating_add(2); // +2 for borders
     let max_height = area.height / 2;
     let popup_height = desired_height.min(max_height).max(5);
