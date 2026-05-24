@@ -68,6 +68,13 @@ impl IntentHandler {
             return result;
         }
 
+        // Close session confirmation intercept: if the prompt is showing,
+        // x (SidebarSessionClose) confirms the close;
+        // any other intent dismisses the prompt and continues processing.
+        if let Some(result) = try_handle_close_session_prompt(intent, state) {
+            return result;
+        }
+
         match intent {
             // --- Arg Input (takes priority when ArgInput scope is active) ---
             Intent::InsertChar { ch }
@@ -261,7 +268,10 @@ impl IntentHandler {
                 feat::picker::intent::handle_open_picker(state, PickerKind::SessionLifecycle)
             }
             Intent::SidebarSessionClose => {
-                feat::ui::sidebar::sessions::handle_session_close_with_lifecycle(state)
+                // First press — show confirmation prompt.
+                // The interceptor (try_handle_close_session_prompt) handles the second press.
+                state.frontend.close_session_prompt = true;
+                IntentResult::empty()
             }
             Intent::SidebarSessionTeardown => {
                 feat::ui::sidebar::sessions::handle_session_teardown(state)
@@ -414,6 +424,36 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
     Some(IntentResult::with_commands(vec![Command::CancelStream(
         crate::feat::provider::protocol::command::CancelStream { session_id },
     )]))
+}
+
+/// Close session confirmation prompt intercept.
+///
+/// If the close-session confirmation prompt is showing:
+/// - `SidebarSessionClose` confirms the close (re-validates, emits CloseSession).
+/// - Any other intent dismisses the prompt and returns `None` (fall through to normal processing).
+///
+/// Returns `None` if the prompt is not showing or was dismissed.
+fn try_handle_close_session_prompt(
+    intent: &Intent,
+    state: &mut AppState,
+) -> Option<IntentResult> {
+    if !state.frontend.close_session_prompt {
+        return None;
+    }
+
+    // Dismiss the prompt regardless of which intent triggered it.
+    state.frontend.close_session_prompt = false;
+
+    if !matches!(intent, Intent::SidebarSessionClose) {
+        // Any other key — dismiss prompt, fall through to normal processing.
+        return None;
+    }
+
+    // Second x press — perform the close.
+    // Re-validates in case session became busy between taps.
+    Some(feat::ui::sidebar::sessions::handle_session_close_with_lifecycle(
+        state,
+    ))
 }
 
 /// Handle cancelling an in-progress context compaction.

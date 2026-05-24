@@ -58,6 +58,7 @@ pub(super) fn render_chat_tab(
         rects,
     );
 
+
     // Compute sub-areas at the bottom of the content area.
     let content_area = layout.content;
     let queue_len = state.active_session().queue_len() as u16;

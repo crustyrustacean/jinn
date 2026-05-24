@@ -53,6 +53,6 @@ pub(crate) const ACTIVE_PREFIX: &str = "▸ ";
 /// Inactive session prefix (two spaces to align with `ACTIVE_PREFIX`).
 pub(crate) const INACTIVE_PREFIX: &str = "  ";
 /// Maximum number of session entries visible at once.
-pub(crate) const MAX_VISIBLE_SESSIONS: usize = 15;
+pub const MAX_VISIBLE_SESSIONS: usize = 15;
 /// Minimum time between animation frame advances.
 pub(crate) const ANIMATION_INTERVAL: Duration = Duration::from_millis(80);
