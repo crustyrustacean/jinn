@@ -1,6 +1,7 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
 use crate::feat::session::tool_result_status::ToolResultStatus;
+use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
 use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, PinPosition, PromptStrategyId};
 use std::path::PathBuf;
 
@@ -2906,4 +2907,48 @@ fn selected_entry_returns_none_for_collapsed_block() {
         session.selected_history_index().is_none(),
         "collapsed block has no history index"
     );
+}
+
+#[rstest::rstest]
+fn toggle_entry_ignored_flips_false_to_true() {
+    // Given a session with a selected user entry (default ignored=false).
+    let mut session = ChatSessionState::new();
+    let idx = session.push_entry(ChatEntry::user("hello"));
+    let items = build_visual_items(
+        session.history(),
+        &session.ui.shown_ignored_blocks,
+        PROXIMITY_COUNT,
+    );
+    session.set_visual_items(items);
+    // Select the entry.
+    session.set_selected_entry_index(0);
+    assert!(!session.history()[idx].ignored, "entry should start un-ignored");
+
+    // When toggling ignored.
+    session.toggle_entry_ignored();
+
+    // Then the entry is ignored.
+    assert!(session.history()[idx].ignored, "entry should be ignored after toggle");
+}
+
+#[rstest::rstest]
+fn toggle_entry_ignored_flips_true_to_false() {
+    // Given a session with a selected ignored entry.
+    let mut session = ChatSessionState::new();
+    let idx = session.push_entry(ChatEntry::user("hello").with_ignored(true));
+    let items = build_visual_items(
+        session.history(),
+        &session.ui.shown_ignored_blocks,
+        PROXIMITY_COUNT,
+    );
+    session.set_visual_items(items);
+    // Select the entry.
+    session.set_selected_entry_index(0);
+    assert!(session.history()[idx].ignored, "entry should start ignored");
+
+    // When toggling ignored.
+    session.toggle_entry_ignored();
+
+    // Then the entry is un-ignored.
+    assert!(!session.history()[idx].ignored, "entry should be un-ignored after toggle");
 }
