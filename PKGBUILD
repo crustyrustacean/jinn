@@ -37,12 +37,12 @@ package() {
     install -Dm0755 target/release/nullslop -t "$pkgdir/usr/bin/"
 
     # Install default themes, personas, and prompts to /usr/share/nullslop/.
-    install -Dm0644 -t "$pkgdir/usr/share/nullslop/themes/" themes/*.toml
-    install -Dm0644 -t "$pkgdir/usr/share/nullslop/personas/" personas/*.md
-    install -Dm0644 -t "$pkgdir/usr/share/nullslop/prompts/" prompts/*.md
+    install -Dm0644 -t "$pkgdir/usr/share/nullslop/themes/" res/themes/*.toml
+    install -Dm0644 -t "$pkgdir/usr/share/nullslop/personas/" res/personas/*.md
+    install -Dm0644 -t "$pkgdir/usr/share/nullslop/prompts/" res/prompts/*.md
 
     # Install default plugins to /usr/share/nullslop/plugins/.
-    for plugin_dir in plugins/*/; do
+    for plugin_dir in res/plugins/*/; do
         local plugin_name=$(basename "$plugin_dir")
         install -Dm0644 "$plugin_dir"init.lua -t "$pkgdir/usr/share/nullslop/plugins/$plugin_name/"
     done
