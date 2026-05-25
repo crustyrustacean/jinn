@@ -27,6 +27,7 @@ fn compaction_entry_is_compaction_returns_true() {
         kind: ChatEntryKind::Compaction {
             summary: "test".to_owned(),
             tokens_before: 100,
+            tokens_after: 50,
             entries_compacted: 5,
             model_used: "test/model".to_owned(),
         },
@@ -147,6 +148,7 @@ fn vec_order_after_compaction_insertion() {
         kind: ChatEntryKind::Compaction {
             summary: "summarized".to_owned(),
             tokens_before: 50,
+            tokens_after: 25,
             entries_compacted: 2,
             model_used: "test".to_owned(),
         },
@@ -178,6 +180,7 @@ fn boundary_detection_finds_last_compaction() {
         kind: ChatEntryKind::Compaction {
             summary: "first compaction".to_owned(),
             tokens_before: 100,
+            tokens_after: 50,
             entries_compacted: 1,
             model_used: "test".to_owned(),
         },
