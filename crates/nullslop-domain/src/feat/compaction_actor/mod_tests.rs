@@ -337,6 +337,9 @@ fn test_actor_with_low_budget() -> (
     let state = State::new(app_state);
     let session_id = state.read().session.active_session_id().clone();
 
+    // Set a test compaction prompt so generate_summary doesn't get an empty prompt.
+    state.write().context.compaction_prompt = "test compaction prompt".to_owned();
+
     let services = Services::new();
     let handle = services.handle.clone();
     let deps = CompactionActorDeps {
