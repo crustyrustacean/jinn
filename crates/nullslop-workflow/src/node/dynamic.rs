@@ -134,6 +134,14 @@ impl WorkflowNode for DynamicNode {
 
 #[cfg(test)]
 mod tests {
+    #![allow(
+        dead_code,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        clippy::unnecessary_literal_bound,
+        reason = "test code"
+    )]
     use super::*;
     use crate::port::{PortValue, ScalarValue};
 

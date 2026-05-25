@@ -15,7 +15,22 @@ pub(crate) type PreflightMap = Arc<Mutex<HashMap<String, Vec<Function>>>>;
 
 /// Wrapper to make [`PreflightMap`] a distinct type for mlua `app_data`.
 #[derive(Clone)]
-pub(crate) struct Preflights(pub(crate) PreflightMap);
+pub(crate) struct Preflights {
+    /// Inner preflight map.
+    inner: PreflightMap,
+}
+
+impl Preflights {
+    /// Creates a new `Preflights` wrapper.
+    pub(crate) fn new(inner: PreflightMap) -> Self {
+        Self { inner }
+    }
+
+    /// Returns a reference to the inner preflight map.
+    pub(crate) fn get(&self) -> &PreflightMap {
+        &self.inner
+    }
+}
 
 /// Installs the preflight map into Lua app_data.
 ///
@@ -25,7 +40,7 @@ pub(crate) struct Preflights(pub(crate) PreflightMap);
 pub fn init(lua: &Lua) -> PreflightMap {
     #[expect(clippy::arc_with_non_send_sync, reason = "mlua::Function is not Send but only used from the single Lua thread")]
     let map: PreflightMap = Arc::new(Mutex::new(HashMap::new()));
-    lua.set_app_data(Preflights(map.clone()));
+    lua.set_app_data(Preflights::new(map.clone()));
     map
 }
 
@@ -40,7 +55,7 @@ pub fn register(lua: &Lua, command_name: String, callback: Function) {
         tracing::warn!("preflight map not found in Lua app_data");
         return;
     };
-    guard.0.lock().entry(command_name).or_default().push(callback);
+    guard.get().lock().entry(command_name).or_default().push(callback);
 }
 
 /// Dispatches a preflight check for a command.
@@ -54,7 +69,7 @@ pub fn dispatch(lua: &Lua, command_name: &str, payload: &serde_json::Value) -> b
     };
 
     let callbacks: Vec<Function> = {
-        let map = guard.0.lock();
+        let map = guard.get().lock();
         map.get(command_name).cloned().unwrap_or_default()
     };
 

@@ -327,6 +327,7 @@ impl WorkflowGraphBuilder {
     }
 
     /// Sets a human-readable description for the workflow.
+    #[must_use]
     pub fn with_description<S>(mut self, desc: S) -> Self
     where
         S: Into<String>,
@@ -501,7 +502,7 @@ impl WorkflowGraphBuilder {
                 if !has_edge {
                     return Err(Report::new(GraphError::DisconnectedInput {
                         node: name.clone(),
-                        port: port_def.name.to_owned(),
+                        port: port_def.name.clone(),
                     }));
                 }
             }
