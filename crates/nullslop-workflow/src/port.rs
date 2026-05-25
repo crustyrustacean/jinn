@@ -134,7 +134,10 @@ pub struct PortDef {
 impl PortDef {
     /// Creates a new port definition.
     #[must_use]
-    pub fn new<N: Into<String>>(name: N, value_type: PortType) -> Self {
+    pub fn new<N>(name: N, value_type: PortType) -> Self
+    where
+        N: Into<String>,
+    {
         Self {
             name: name.into(),
             value_type,
@@ -151,37 +154,55 @@ impl PortDef {
 
     /// Convenience: creates a `Single(Text)` port definition.
     #[must_use]
-    pub fn text<N: Into<String>>(name: N) -> Self {
+    pub fn text<N>(name: N) -> Self
+    where
+        N: Into<String>,
+    {
         Self::new(name, PortType::Single(ScalarType::Text))
     }
 
     /// Convenience: creates a `Single(Number)` port definition.
     #[must_use]
-    pub fn number<N: Into<String>>(name: N) -> Self {
+    pub fn number<N>(name: N) -> Self
+    where
+        N: Into<String>,
+    {
         Self::new(name, PortType::Single(ScalarType::Number))
     }
 
     /// Convenience: creates a `Single(Boolean)` port definition.
     #[must_use]
-    pub fn boolean<N: Into<String>>(name: N) -> Self {
+    pub fn boolean<N>(name: N) -> Self
+    where
+        N: Into<String>,
+    {
         Self::new(name, PortType::Single(ScalarType::Boolean))
     }
 
     /// Convenience: creates a `Single(Json)` port definition.
     #[must_use]
-    pub fn json<N: Into<String>>(name: N) -> Self {
+    pub fn json<N>(name: N) -> Self
+    where
+        N: Into<String>,
+    {
         Self::new(name, PortType::Single(ScalarType::Json))
     }
 
     /// Convenience: creates a `Vector(element_type)` port definition.
     #[must_use]
-    pub fn vec_of<N: Into<String>>(name: N, element_type: ScalarType) -> Self {
+    pub fn vec_of<N>(name: N, element_type: ScalarType) -> Self
+    where
+        N: Into<String>,
+    {
         Self::new(name, PortType::Vector(element_type))
     }
 
     /// Convenience: creates a `Map(value_type)` port definition.
     #[must_use]
-    pub fn map_of<N: Into<String>>(name: N, value_type: ScalarType) -> Self {
+    pub fn map_of<N>(name: N, value_type: ScalarType) -> Self
+    where
+        N: Into<String>,
+    {
         Self::new(name, PortType::Map(value_type))
     }
 }
