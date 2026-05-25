@@ -162,23 +162,20 @@ impl App {
                     }
                 };
 
-                // Load bundled plugins.
+                // Load system plugins (/usr/share/nullslop/plugins).
                 if let Some(ref host) = plugin_host {
-                    let bundled_dir = std::path::Path::new("plugins");
-                    if bundled_dir.is_dir() {
-                        let infos = host.load_all(bundled_dir);
+                    let system_dir = paths.system_plugins_dir();
+                    if system_dir.is_dir() {
+                        let infos = host.load_all(&system_dir);
                         if !infos.is_empty() {
-                            tracing::info!(count = infos.len(), "loaded bundled plugins");
+                            tracing::info!(count = infos.len(), "loaded system plugins");
                         }
                     }
 
-                    // Load user plugins.
-                    let user_plugins_dir = dirs::config_dir()
-                        .unwrap_or_default()
-                        .join("nullslop")
-                        .join("plugins");
-                    if user_plugins_dir.is_dir() {
-                        let infos = host.load_all(&user_plugins_dir);
+                    // Load user plugins (~/.config/nullslop/plugins).
+                    let user_dir = paths.plugins_dir();
+                    if user_dir.is_dir() {
+                        let infos = host.load_all(&user_dir);
                         if !infos.is_empty() {
                             tracing::info!(count = infos.len(), "loaded user plugins");
                         }
