@@ -13,6 +13,7 @@ use crate::host::CommandSender;
 
 /// Translates `"welcome::show"` dynamic commands into typed `PushChatEntry`.
 pub struct WelcomeSubscriber {
+    /// The command sender callback.
     sender: CommandSender,
 }
 
