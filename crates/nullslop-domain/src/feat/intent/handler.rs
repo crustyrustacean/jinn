@@ -719,9 +719,31 @@ fn handle_workflow_run(state: &mut AppState) -> IntentResult {
     // Invalidate all nodes to reset to Pending before running.
     let has_terminal = snapshot.statuses().any(|(_, s)| s.is_terminal());
     if has_terminal {
+        // Save source node outputs before invalidation clears them.
+        // Source nodes that had user-provided data must retain it across re-runs.
+        let sources = snapshot.structure().sources();
+        let saved_outputs: Vec<(String, nullslop_workflow::port::PortValues)> = sources
+            .iter()
+            .filter_map(|name| {
+                snapshot
+                    .node_state(name)
+                    .and_then(|s| s.outputs.as_ref())
+                    .map(|arc| (name.clone(), (**arc).clone()))
+            })
+            .collect();
+
         for node_name in snapshot.structure().node_names() {
             workflow.execution.invalidate_from(node_name);
         }
+
+        // Restore source node outputs so they survive the re-run.
+        for (name, outputs) in &saved_outputs {
+            workflow.execution.set_node_outputs(name, outputs.clone());
+            workflow
+                .execution
+                .set_status(name, nullslop_workflow::engine::NodeStatus::Pending);
+        }
+
         // Replace cancellation token with fresh one.
         if let Some(w) = state.workflow.active_mut() {
             w.cancel = tokio_util::sync::CancellationToken::new();
@@ -1004,6 +1026,47 @@ mod tests {
             cmd,
             crate::protocol::Command::StartWorkflow(_)
         ));
+    }
+
+    /// Verifies that re-running a workflow preserves source node outputs.
+    /// `invalidate_from` clears outputs, but `handle_workflow_run` saves/restores
+    /// source node outputs so user-provided data survives across re-runs.
+    #[test]
+    fn workflow_run_preserves_source_outputs_on_rerun() {
+        // Given a workflow where the source node has Completed (simulating first run).
+        let mut state = AppState::default();
+        let execution = std::sync::Arc::new(
+            nullslop_workflow::execution::WorkflowExecution::new(source_graph_for_test()),
+        );
+        let workflow_state = crate::feat::workflow::workflow_state::WorkflowState::new(
+            "test".to_owned(),
+            execution.clone(),
+        );
+        state.workflow.insert(workflow_state);
+        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
+
+        // Set source node to Completed with user-provided output.
+        let mut outputs = nullslop_workflow::port::PortValues::new();
+        outputs.insert(
+            "out".to_owned(),
+            nullslop_workflow::port::PortValue::Single(
+                nullslop_workflow::port::ScalarValue::Text("user_data".to_owned()),
+            ),
+        );
+        execution.set_node_outputs("source", outputs);
+        execution.set_status("source", nullslop_workflow::engine::NodeStatus::Completed);
+
+        // When handling WorkflowRun (re-run because Completed is terminal).
+        let result = IntentHandler::handle(&Intent::WorkflowRun, &mut state);
+
+        // Then a StartWorkflow command is emitted.
+        assert!(!result.commands.is_empty());
+
+        // And the source node's output is preserved after the invalidation cycle.
+        let snapshot = execution.snapshot();
+        let node_state = snapshot.node_state("source").expect("node exists");
+        let outputs = node_state.outputs.as_ref().expect("has outputs");
+        assert_eq!(outputs.get_text("out").unwrap(), "user_data");
     }
 
     /// Helper: builds a minimal source-only graph for testing.
