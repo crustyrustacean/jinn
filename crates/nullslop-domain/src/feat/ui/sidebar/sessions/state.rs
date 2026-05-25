@@ -41,6 +41,8 @@ pub(crate) struct SessionEntry {
     /// Whether this entry is the last child of its parent.
     /// Used to render `└` vs `├`.
     pub(crate) is_last_child: bool,
+    /// Whether this session is a judge session.
+    pub(crate) is_judge: bool,
 }
 
 /// Collects all loaded sessions in tree order (DFS).
@@ -76,6 +78,7 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
             depth: 0,
             ancestor_continuations: vec![],
             is_last_child: false,
+            is_judge: session.is_judge(),
         })
         .collect();
 

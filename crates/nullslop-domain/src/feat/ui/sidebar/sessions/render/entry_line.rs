@@ -121,11 +121,16 @@ pub(crate) fn assemble_entry_line(
         theme,
     );
     let truncated = truncate_str(&entry.title, max_title_len.saturating_sub(tree_len));
+    let display_title = if entry.is_judge {
+        format!("⚖ {}", truncated)
+    } else {
+        truncated.to_owned()
+    };
 
     let mut spans = vec![indicator, Span::raw(" "), arrow];
     if !tree.is_empty() {
         spans.push(Span::styled(tree, Style::default().fg(theme.muted_text)));
     }
-    spans.push(Span::styled(truncated, style));
+    spans.push(Span::styled(display_title, style));
     Line::from(spans)
 }

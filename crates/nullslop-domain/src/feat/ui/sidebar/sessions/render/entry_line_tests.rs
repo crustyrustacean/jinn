@@ -32,6 +32,7 @@ fn tree_entry(
         depth,
         ancestor_continuations,
         is_last_child,
+        is_judge: false,
     }
 }
 
@@ -173,6 +174,7 @@ fn assembled_line_includes_tree_prefix_for_non_root() {
         depth: 1,
         ancestor_continuations: vec![true],
         is_last_child: true,
+        is_judge: false,
     };
     let theme = default_theme();
 
@@ -201,6 +203,7 @@ fn assembled_line_has_no_tree_prefix_for_root() {
         depth: 0,
         ancestor_continuations: vec![],
         is_last_child: true,
+        is_judge: false,
     };
     let theme = default_theme();
 
@@ -230,6 +233,7 @@ fn assembled_line_has_tree_prefix_span_for_child() {
         depth: 1,
         ancestor_continuations: vec![true],
         is_last_child: false,
+        is_judge: false,
     };
     let theme = default_theme();
 
@@ -263,6 +267,7 @@ fn title_is_truncated_more_at_higher_depth() {
         depth: 0,
         ancestor_continuations: vec![],
         is_last_child: true,
+        is_judge: false,
     };
     let child = SessionEntry {
         id: SessionId::new(),
@@ -275,6 +280,7 @@ fn title_is_truncated_more_at_higher_depth() {
         depth: 3,
         ancestor_continuations: vec![true, true, true],
         is_last_child: true,
+        is_judge: false,
     };
     let theme = default_theme();
     let max_len = 20;
@@ -312,6 +318,7 @@ fn active_arrow_shows_at_depth_greater_than_zero() {
         depth: 2,
         ancestor_continuations: vec![true, true],
         is_last_child: true,
+        is_judge: false,
     };
     let theme = default_theme();
 
@@ -345,6 +352,7 @@ fn tree_prefix_uses_muted_text_color() {
         depth: 1,
         ancestor_continuations: vec![true],
         is_last_child: true,
+        is_judge: false,
     };
     let theme = default_theme();
 
