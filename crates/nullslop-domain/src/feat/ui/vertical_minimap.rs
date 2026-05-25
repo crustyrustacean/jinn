@@ -12,8 +12,12 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::common::app_state::AppState;
-use crate::feat::session::chat_entry::ChatEntryKind;
+use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
 use crate::feat::theme::contrast::darken;
+use crate::feat::ui::chat_log::visual_item::VisualItem;
+
+#[cfg(test)]
+use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
 
 /// Full block character for minimap entries.
 const FULL_BLOCK: &str = "\u{2588}";
@@ -37,6 +41,8 @@ enum MinimapCategory {
     Skill,
     /// Thinking/reasoning blocks — dark gray.
     Thinking,
+    /// Collapsed ignored entries — dim gray.
+    Collapsed,
 }
 
 impl MinimapCategory {
@@ -50,7 +56,7 @@ impl MinimapCategory {
             Self::Error => Color::Red,
             Self::System => Color::Yellow,
             Self::Skill => Color::Rgb(255, 165, 0),
-            Self::Thinking => Color::DarkGray,
+            Self::Thinking | Self::Collapsed => Color::DarkGray,
         }
     }
 
@@ -71,43 +77,80 @@ impl MinimapCategory {
     }
 }
 
+/// Extension trait for determining whether a visual item should produce
+/// a minimap block. Defined here so the minimap owns its own visibility
+/// logic — the `VisualItem` type knows nothing about the minimap.
+trait MinimapVisibility {
+    /// Whether this visual item should produce a minimap block.
+    fn is_minimap_visible(&self, history: &[ChatEntry]) -> bool;
+}
+
+impl MinimapVisibility for VisualItem {
+    fn is_minimap_visible(&self, history: &[ChatEntry]) -> bool {
+        match self {
+            VisualItem::CollapsedIgnoredBlock { .. } => true,
+            VisualItem::Entry(hist_idx) => {
+                let entry = &history[*hist_idx];
+                if entry.is_empty_assistant() {
+                    return false;
+                }
+                // Actor entries are excluded from the minimap.
+                !matches!(entry.kind, ChatEntryKind::Actor { .. })
+            }
+        }
+    }
+}
+
 /// A visible entry in the minimap (non-excluded).
 struct VisibleEntry {
-    /// Index into the history slice.
-    history_index: usize,
+    /// Visual-item index (bridges block position to VI index).
+    vi_index: usize,
     /// Color category.
     category: MinimapCategory,
     /// Whether the entry is ignored.
     ignored: bool,
 }
 
-/// Computes the list of visible (non-excluded) entries from history.
+/// Computes the list of visible (non-excluded) entries from visual items.
 fn compute_visible_entries(state: &AppState) -> Vec<VisibleEntry> {
     let session = state.active_session();
-    session
-        .history()
+    let history = session.history();
+    let items = session.visual_items();
+
+    items
         .iter()
         .enumerate()
-        .filter_map(|(i, entry)| {
-            if entry.is_empty_assistant() {
+        .filter_map(|(vi_idx, item)| {
+            if !item.is_minimap_visible(history) {
                 return None;
             }
-            MinimapCategory::from_kind(&entry.kind).map(|cat| VisibleEntry {
-                history_index: i,
-                category: cat,
-                ignored: !entry.is_in_context(),
+            let category = match item {
+                VisualItem::CollapsedIgnoredBlock { .. } => MinimapCategory::Collapsed,
+                VisualItem::Entry(hist_idx) => {
+                    let entry = &history[*hist_idx];
+                    MinimapCategory::from_kind(&entry.kind)?
+                }
+            };
+            let ignored = match item {
+                VisualItem::CollapsedIgnoredBlock { .. } => false,
+                VisualItem::Entry(hist_idx) => !history[*hist_idx].is_in_context(),
+            };
+            Some(VisibleEntry {
+                vi_index: vi_idx,
+                category,
+                ignored,
             })
         })
         .collect()
 }
 
-/// Finds the block index corresponding to the given history index.
+/// Finds the block index corresponding to the given visual-item index.
 ///
-/// Returns `None` if the history index maps to an excluded entry or
-/// is out of range.
-fn find_block_index(history_idx: Option<usize>, visible: &[VisibleEntry]) -> Option<usize> {
-    match history_idx {
-        Some(idx) => visible.iter().position(|e| e.history_index == idx),
+/// Returns `None` if the visual-item index is not found among visible entries
+/// or is out of range.
+fn find_block_index(selected_vi_idx: Option<usize>, visible: &[VisibleEntry]) -> Option<usize> {
+    match selected_vi_idx {
+        Some(idx) => visible.iter().position(|e| e.vi_index == idx),
         None => visible.len().checked_sub(1),
     }
 }
@@ -295,34 +338,34 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
     use crate::common::app_state::AppState;
-    use crate::feat::session::chat_entry::ChatEntry;
-    
+    use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
+    use crate::protocol::ChatEntryId;
     use crate::feat::theme::default_theme;
 
     // --- find_block_index ---
 
     #[rstest::rstest]
     fn find_block_index_returns_position_for_existing_entry() {
-        // Given visible entries mapping to history indices 0, 2, 5.
+        // Given visible entries mapping to visual-item indices 0, 2, 5.
         let visible = vec![
             VisibleEntry {
-                history_index: 0,
+                vi_index: 0,
                 category: MinimapCategory::User,
                 ignored: false,
             },
             VisibleEntry {
-                history_index: 2,
+                vi_index: 2,
                 category: MinimapCategory::Assistant,
                 ignored: false,
             },
             VisibleEntry {
-                history_index: 5,
+                vi_index: 5,
                 category: MinimapCategory::User,
                 ignored: false,
             },
         ];
 
-        // When looking for history index 2.
+        // When looking for visual-item index 2.
         let result = find_block_index(Some(2), &visible);
 
         // Then it returns block index 1.
@@ -331,21 +374,21 @@ mod tests {
 
     #[rstest::rstest]
     fn find_block_index_returns_none_for_excluded_entry() {
-        // Given visible entries at history indices 0, 2.
+        // Given visible entries at visual-item indices 0, 2.
         let visible = vec![
             VisibleEntry {
-                history_index: 0,
+                vi_index: 0,
                 category: MinimapCategory::User,
                 ignored: false,
             },
             VisibleEntry {
-                history_index: 2,
+                vi_index: 2,
                 category: MinimapCategory::Assistant,
                 ignored: false,
             },
         ];
 
-        // When looking for history index 1 (excluded).
+        // When looking for visual-item index 1 (excluded).
         let result = find_block_index(Some(1), &visible);
 
         // Then it returns None (no fallback).
@@ -354,21 +397,21 @@ mod tests {
 
     #[rstest::rstest]
     fn find_block_index_returns_last_when_none() {
-        // Given visible entries at history indices 0, 2, 5.
+        // Given visible entries at visual-item indices 0, 2, 5.
         let visible = vec![
             VisibleEntry {
-                history_index: 0,
+                vi_index: 0,
                 category: MinimapCategory::User,
                 ignored: false,
             },
             VisibleEntry {
-                history_index: 2,
+                vi_index: 2,
                 category: MinimapCategory::Assistant,
                 ignored: false,
             },
         ];
 
-        // When history index is None.
+        // When visual-item index is None.
         let result = find_block_index(None, &visible);
 
         // Then it returns the last block index.
@@ -437,6 +480,7 @@ mod tests {
         width: u16,
         height: u16,
     ) -> (Option<MinimapArrow>, Vec<String>) {
+        setup_visual_items(state);
         let (mut terminal, area) = nullslop_testutil::setup_term(width, height);
         let theme = default_theme();
         let mut arrow_result = None;
@@ -727,5 +771,126 @@ mod tests {
             "expected 2 blocks (user + tool call), got {block_count}"
         );
         assert!(arrow.is_some());
+    }
+
+    /// Sets up visual items on the session so the minimap can read them.
+    /// This simulates what the chat log render pipeline does before the
+    /// minimap renders.
+    fn setup_visual_items(state: &AppState) {
+        let session = state.active_session();
+        let items = build_visual_items(
+            session.history(),
+            &session.ui.shown_ignored_blocks,
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
+        state.active_session().set_visual_items(items);
+    }
+
+    #[rstest::rstest]
+    fn collapsed_ignored_block_produces_single_block() {
+        // Given 3 non-ignored + 5 ignored + 10 non-ignored entries (18 total).
+        let mut state = AppState::default();
+        for _ in 0..3 {
+            state.active_session_mut().push_entry(ChatEntry::user("visible"));
+        }
+        for _ in 0..5 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("hidden").with_ignored(true));
+        }
+        for _ in 0..10 {
+            state.active_session_mut().push_entry(ChatEntry::user("visible"));
+        }
+
+        // When rendering in a 20-row viewport.
+        let (arrow, rows) = render_to_buffer(&state, 1, 20);
+
+        // Then the 5 ignored entries collapse into a single block.
+        // Visual items: 3 Entry, 1 CollapsedIgnoredBlock, 10 Entry = 14 items.
+        // Minimap blocks: 14 total, but viewport shows 20 rows with selected at
+        // block 13 (midpoint=10), so rows 0-10 have blocks (11), minus 1 for ▲ = 10.
+        let block_count = rows.iter().filter(|r| r.contains('\u{2588}')).count();
+        assert_eq!(
+            block_count, 10,
+            "expected 10 visible blocks in 20-row viewport with selected at end, got {block_count}"
+        );
+        // The collapsed block is at VI index 3, which maps to row 0 (block 3).
+        // But ▲ overwrites it. So check the ▲ is present.
+        assert!(rows[0].contains('▲'), "expected ▲ at top");
+        assert!(arrow.is_some(), "arrow should exist");
+    }
+
+    #[rstest::rstest]
+    fn selected_entry_after_collapsed_region_resolves_correctly() {
+        // Given 3 non-ignored + 5 ignored + 10 non-ignored entries (18 total).
+        // Select the first entry after the collapsed region.
+        let mut state = AppState::default();
+        for _ in 0..3 {
+            state.active_session_mut().push_entry(ChatEntry::user("visible"));
+        }
+        for _ in 0..5 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("hidden").with_ignored(true));
+        }
+        // Push 10 more, then select the first one after the ignored block.
+        for i in 0..10 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(format!("after-{i}")));
+        }
+        // Visual items: 3 Entry, 1 CollapsedIgnoredBlock, 10 Entry.
+        // The first entry after the collapsed block is VI index 4.
+        // But VI 3 is the CollapsedIgnoredBlock, VI 4 is Entry(8).
+        // Selecting entry at history index 8 → VI index 4.
+        state.active_session_mut().set_selected_entry_index(4);
+
+        // When rendering.
+        let (arrow, _rows) = render_to_buffer(&state, 1, 20);
+
+        // Then the arrow exists (selection resolved correctly).
+        assert!(arrow.is_some(), "arrow should resolve for entry after collapsed block");
+    }
+
+    #[rstest::rstest]
+    fn compaction_with_ignored_entries_tracks_correctly() {
+        // Given: user, assistant, compaction (marks prior as ignored), user, assistant.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("msg1"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("reply1"));
+        // Create compaction entry directly (no helper constructor).
+        let compaction = ChatEntry {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::Compaction {
+                summary: "summary".to_owned(),
+                tokens_before: 100,
+                entries_compacted: 2,
+                model_used: "test".to_owned(),
+            },
+            pin_position: None,
+            context_override: ContextOverride::Default,
+        };
+        state.active_session_mut().push_entry(compaction);
+        state.active_session_mut().push_entry(ChatEntry::user("msg2"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("reply2"));
+        // Mark entries before compaction as ignored.
+        state.active_session_mut().mark_entries_ignored(&[0, 1]);
+
+        // When rendering in a 10-row viewport.
+        let (arrow, rows) = render_to_buffer(&state, 1, 10);
+
+        // Then the minimap shows blocks for compaction + user + assistant.
+        // The ignored entries may or may not be collapsed depending on count
+        // (2 entries, below DEFAULT_MIN_COLLAPSE_COUNT of 3, so shown individually).
+        // But key point: the arrow resolves correctly.
+        let block_count = rows.iter().filter(|r| r.contains('\u{2588}')).count();
+        assert!(block_count >= 3, "expected at least 3 blocks, got {block_count}");
+        assert!(arrow.is_some(), "arrow should exist after compaction");
     }
 }
