@@ -211,6 +211,8 @@ impl SessionPersistenceActor {
                 self.on_judges_loaded(payload);
             }
 
+            Event::JudgeVerdict(..) => {}
+
             _ => {}
         }
     }

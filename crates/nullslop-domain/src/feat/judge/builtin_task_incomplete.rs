@@ -15,7 +15,6 @@
 
 //! `task_incomplete` built-in tool — report that the origin session's task is NOT complete.
 
-use crate::common::actor::message_sink::MessageSink;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::feat::tools_actor::BoxedToolFuture;
 use crate::protocol::Event;

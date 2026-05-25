@@ -15,7 +15,6 @@
 
 //! `task_complete` built-in tool — mark the origin session's task as passed.
 
-use crate::common::actor::message_sink::MessageSink;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::feat::tools_actor::BoxedToolFuture;
 use crate::protocol::Event;

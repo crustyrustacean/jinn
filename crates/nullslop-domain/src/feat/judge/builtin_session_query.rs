@@ -102,7 +102,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             .collect();
 
         // Simple substring matching for query.
-        let mut scored: Vec<&ChatEntry> = entries
+        let scored: Vec<&ChatEntry> = entries
             .iter()
             .filter(|e| e.text().to_lowercase().contains(&query.to_lowercase()))
             .copied()

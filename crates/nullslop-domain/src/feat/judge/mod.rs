@@ -25,12 +25,14 @@ pub mod builtin_session_query;
 pub mod builtin_task_complete;
 pub mod builtin_task_incomplete;
 pub mod judge;
+pub mod judge_coordinator_actor;
 pub mod judge_scan_actor;
 pub mod loader;
 pub mod picker_entry;
 pub mod protocol;
 
 pub use judge::{Judge, JudgeMeta};
+pub use judge_coordinator_actor::{JudgeCoordinatorActor, JudgeCoordinatorActorDeps};
 pub use judge_scan_actor::{JudgeScanActor, JudgeScanActorDeps};
 pub use loader::{parse_judge_file, scan_judges_dir, scan_judges_merged};
 pub use picker_entry::JudgePickerEntry;
