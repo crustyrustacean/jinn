@@ -403,6 +403,7 @@ fn flag_resets_after_compact_context_allows_retrigger() {
     // And then receiving CompactContext (simulates queue dispatching it).
     let compact_cmd = CompactContext {
         session_id: session_id.clone(),
+        compact_all: false,
     };
     actor.handle_compact_context(&compact_cmd, &ctx);
 

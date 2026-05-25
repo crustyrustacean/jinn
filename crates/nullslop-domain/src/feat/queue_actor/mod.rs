@@ -345,6 +345,7 @@ impl QueueActor {
 
         if let Err(e) = ctx.send_command(Command::CompactContext(CompactContext {
             session_id: session_id.clone(),
+            compact_all: false,
         })) {
             tracing::warn!(err = ?e, "queue-actor failed to emit CompactContext");
         }
@@ -518,6 +519,7 @@ mod tests {
         // When handling EnqueueCompaction.
         let payload = EnqueueCompaction {
             session_id: session_id.clone(),
+            compact_all: false,
         };
         actor.handle_enqueue_compaction(&payload, &ctx).await;
 
@@ -548,6 +550,7 @@ mod tests {
         // When handling EnqueueCompaction.
         let payload = EnqueueCompaction {
             session_id: session_id.clone(),
+            compact_all: false,
         };
         actor.handle_enqueue_compaction(&payload, &ctx).await;
 

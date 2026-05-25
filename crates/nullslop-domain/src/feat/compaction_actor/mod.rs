@@ -127,10 +127,11 @@ impl CompactionActor {
         let state = self.state.clone();
         let services = self.services.clone();
         let rt_handle = self.handle.clone();
+        let compact_all = cmd.compact_all;
 
         let task = rt_handle.clone().spawn(async move {
             let result =
-                perform_compaction(&state, &services, &rt_handle, &session_id, &sink, was_auto).await;
+                perform_compaction(&state, &services, &rt_handle, &session_id, &sink, was_auto, compact_all).await;
 
             match result {
                 Ok(entries_compacted) => {
@@ -231,6 +232,7 @@ impl CompactionActor {
             self.auto_compaction_pending = true;
             let _ = ctx.send_command(Command::EnqueueCompaction(EnqueueCompaction {
                 session_id: session_id.clone(),
+                compact_all: false,
             }));
             let _ = ctx.send_command(Command::SoftCancelTurn(
                 crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn { session_id },
@@ -287,6 +289,7 @@ async fn perform_compaction(
     session_id: &crate::protocol::SessionId,
     sink: &std::sync::Arc<dyn crate::common::actor::message_sink::MessageSink>,
     auto: bool,
+    compact_all: bool,
 ) -> Result<usize, error_stack::Report<CompactionError>> {
     // Read config and session state.
     let (config, model_name, history_len, retry_config) = {
@@ -319,15 +322,21 @@ async fn perform_compaction(
         // Find cut point: walk backwards accumulating tokens.
         let estimator = CharRatioEstimator;
         let mut accumulated_tokens = 0usize;
-        let mut cut_index = start_index;
+        let mut cut_index = if compact_all {
+            history.len() // Compact everything after start boundary.
+        } else {
+            start_index // Compact nothing by default (reserve protects everything).
+        };
 
-        for i in (start_index..history.len()).rev() {
-            let entry = &history[i];
-            let tokens = estimate_entry_tokens(&estimator, entry);
-            accumulated_tokens += tokens;
-            if accumulated_tokens > config.keep_recent_tokens {
-                cut_index = i + 1;
-                break;
+        if !compact_all {
+            for i in (start_index..history.len()).rev() {
+                let entry = &history[i];
+                let tokens = estimate_entry_tokens(&estimator, entry);
+                accumulated_tokens += tokens;
+                if accumulated_tokens > config.keep_recent_tokens {
+                    cut_index = i + 1;
+                    break;
+                }
             }
         }
 

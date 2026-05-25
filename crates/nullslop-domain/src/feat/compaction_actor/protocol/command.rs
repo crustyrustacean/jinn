@@ -15,6 +15,9 @@ use crate::protocol::{CommandMsg, SessionId};
 pub struct CompactContext {
     /// The session to compact.
     pub session_id: SessionId,
+    /// If true, ignore `reserve_tokens` and compact everything after start boundary.
+    #[serde(default)]
+    pub compact_all: bool,
 }
 
 /// Marks entries as ignored and sets the session phase to Compacting.
@@ -80,6 +83,9 @@ pub struct CompactionResult {
 pub struct EnqueueCompaction {
     /// The session to compact.
     pub session_id: SessionId,
+    /// If true, the resulting CompactContext will compact everything (ignore reserve).
+    #[serde(default)]
+    pub compact_all: bool,
 }
 
 /// Cancel an in-progress compaction for a session.

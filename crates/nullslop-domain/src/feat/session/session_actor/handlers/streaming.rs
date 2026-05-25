@@ -180,6 +180,7 @@ impl SessionPersistenceActor {
         if should_emit_compact_context
             && let Err(e) = ctx.send_command(Command::CompactContext(CompactContext {
                 session_id: event.session_id.clone(),
+                compact_all: false,
             }))
         {
             tracing::warn!(err = ?e, "failed to emit CompactContext after soft cancel");
