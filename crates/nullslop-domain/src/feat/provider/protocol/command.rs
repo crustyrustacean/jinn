@@ -78,6 +78,12 @@ pub struct RescanPromptTemplates;
 #[cmd("provider")]
 pub struct LoadProviderPickerEntries;
 
+/// The provider actor receives this, loads compaction model entries (provider
+/// entries + a "session default" sentinel) and writes them into `AppState`.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("provider")]
+pub struct LoadCompactionModelPickerEntries;
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]

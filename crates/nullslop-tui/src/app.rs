@@ -69,6 +69,12 @@ pub struct TuiApp {
     pub sidebar: Sidebar,
     /// Cache for session preview popup rendered lines.
     pub preview_cache: PreviewCache,
+    /// Plugin host for Lua plugins.
+    #[debug(skip)]
+    pub plugin_host: Option<nullslop_plugin::PluginHost>,
+    /// Subscriber that translates dynamic plugin commands into typed commands.
+    #[debug(skip)]
+    pub welcome_subscriber: Option<nullslop_plugin::WelcomeSubscriber>,
 }
 
 impl TuiApp {
@@ -173,6 +179,15 @@ impl TuiApp {
                 }
             }
             Msg::Command(cmd) => {
+                // Intercept dynamic commands for plugin subscribers.
+                if let nullslop_domain::Command::Dynamic(ref dc) = cmd
+                    && let Some(ref sub) = self.welcome_subscriber
+                {
+                    let session_id =
+                        self.core.state.read().session.active_session_id().clone();
+                    sub.handle(dc, &session_id);
+                }
+
                 let _ = self.core.sender().send(AppMsg::Command {
                     command: cmd,
                     source: None,
@@ -259,6 +274,18 @@ impl TuiApp {
             });
         }
 
+        // Step 4b: Dispatch Lua events for session creation.
+        if matches!(intent, Intent::SessionNew | Intent::SessionNewWithLifecycle) {
+            if let Some(ref host) = self.plugin_host {
+                let session_id =
+                    self.core.state.read().session.active_session_id().clone();
+                host.dispatch_event(
+                    "session::created",
+                    &serde_json::json!({ "session_id": session_id.to_string() }),
+                );
+            }
+        }
+
         // Step 5: Handle TUI signals.
         if signals.toggle_whichkey {
             self.which_key.toggle();
@@ -316,6 +343,7 @@ pub fn scope_for_focus(focus: &nullslop_domain::FocusScope) -> Scope {
             PickerKind::Theme => Scope::PickerTheme,
             PickerKind::SessionLifecycle => Scope::PickerLifecycle,
             PickerKind::Workflow => Scope::PickerWorkflow,
+            PickerKind::CompactionModel => Scope::PickerCompactionModel,
         },
         FocusScope::Input => Scope::Input,
         FocusScope::SidebarPersona => Scope::SidebarPersona,
