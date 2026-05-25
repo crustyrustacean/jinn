@@ -116,9 +116,11 @@ pub fn create_core_with_actor_host(
 
     // ── Infrastructure actors (no lifecycle events) ──────────────────────
 
+    let mut actors = Vec::new();
+
     // System-ready actor: counts ActorStarted, signals main thread when done.
     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
-    let system_ready_result = system_spawn::<SystemReadyActor>(
+    actors.push(system_spawn::<SystemReadyActor>(
         "system-ready",
         sink.clone(),
         handle,
@@ -128,7 +130,7 @@ pub fn create_core_with_actor_host(
             ready_tx,
             counter: counter.clone(),
         },
-    );
+    ));
 
     // Emit lifecycle events for the infrastructure actor manually.
     let _ = sink.send_event(Event::ActorStarting(ActorStarting {
@@ -143,7 +145,7 @@ pub fn create_core_with_actor_host(
     // ── Init actors (self-schedule Initialize during activate) ────────────
 
     // Env init: loads providers.toml, resolves API keys, emits EnvironmentLoaded.
-    let env_init_result = spawn::<EnvInitActor>(
+    actors.push(spawn::<EnvInitActor>(
         "env-init",
         &sink,
         handle,
@@ -153,10 +155,10 @@ pub fn create_core_with_actor_host(
             config_storage: config_storage.clone(),
             api_keys: api_keys.clone(),
         },
-    );
+    ));
 
     // Provider init: on EnvironmentLoaded, builds registry, merges cache, resolves last_model.
-    let provider_init_result = spawn::<ProviderInitActor>(
+    actors.push(spawn::<ProviderInitActor>(
         "provider-init",
         &sink,
         handle,
@@ -166,10 +168,10 @@ pub fn create_core_with_actor_host(
             services: services.clone(),
             state: state.clone(),
         },
-    );
+    ));
 
     // Preferences: loads and persists user preferences.
-    let prefs_result =
+    actors.push(
         spawn::<nullslop_domain::feat::preferences_actor::preferences_actor::PreferencesActor>(
             "preferences",
             &sink,
@@ -179,22 +181,23 @@ pub fn create_core_with_actor_host(
             nullslop_domain::feat::preferences_actor::preferences_actor::PreferencesActorDeps {
                 storage: user_preferences_storage.clone(),
             },
-        );
+        ),
+    );
 
     // Preferences state sync: updates AppState from PreferencesUpdated events.
-    let prefs_sync_result = spawn::<
+    actors.push(spawn::<
         nullslop_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActor,
     >("preferences-sync", &sink, handle, &counter, &shutdown_tracker,
         nullslop_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActorDeps {
             state: state.clone(),
             paths: paths.clone(),
         },
-    );
+    ));
 
     // ── Domain actors ────────────────────────────────────────────────────
 
     // LLM streaming actor.
-    let llm_result = spawn::<nullslop_domain::feat::llm_actor::LlmActor>(
+    actors.push(spawn::<nullslop_domain::feat::llm_actor::LlmActor>(
         "llm-streaming",
         &sink,
         handle,
@@ -205,10 +208,10 @@ pub fn create_core_with_actor_host(
             services: Some(services.clone()),
             state: state.clone(),
         },
-    );
+    ));
 
     // Model discovery actor.
-    let discover_result = spawn::<nullslop_domain::feat::provider::discover_actor::DiscoverActor>(
+    actors.push(spawn::<nullslop_domain::feat::provider::discover_actor::DiscoverActor>(
         "llm-provider-listing",
         &sink,
         handle,
@@ -220,10 +223,10 @@ pub fn create_core_with_actor_host(
             state: state.clone(),
             app_paths: paths.clone(),
         },
-    );
+    ));
 
     // Tool orchestrator actor.
-    let orch_result = spawn::<nullslop_domain::feat::tools_actor::ToolOrchestratorActor>(
+    actors.push(spawn::<nullslop_domain::feat::tools_actor::ToolOrchestratorActor>(
         "tool-orchestrator",
         &sink,
         handle,
@@ -235,11 +238,11 @@ pub fn create_core_with_actor_host(
             builtin_filter: None,
             shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
         },
-    );
+    ));
 
     // Session persistence actor.
     let token_counter = TiktokenCounter::o200k_base();
-    let sp_result = spawn::<nullslop_domain::feat::session::session_actor::SessionPersistenceActor>(
+    actors.push(spawn::<nullslop_domain::feat::session::session_actor::SessionPersistenceActor>(
         "session-persistence",
         &sink,
         handle,
@@ -261,10 +264,10 @@ pub fn create_core_with_actor_host(
             },
             shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
         },
-    );
+    ));
 
     // Prompt scan actor.
-    let scan_result = spawn::<nullslop_domain::feat::context::prompt_scan_actor::PromptScanActor>(
+    actors.push(spawn::<nullslop_domain::feat::context::prompt_scan_actor::PromptScanActor>(
         "prompt-scan",
         &sink,
         handle,
@@ -273,10 +276,10 @@ pub fn create_core_with_actor_host(
         nullslop_domain::feat::context::prompt_scan_actor::PromptScanActorDeps {
             paths: services.paths.clone(),
         },
-    );
+    ));
 
     // Skills scan actor.
-    let skills_result = spawn::<nullslop_domain::feat::skills::skills_scan_actor::SkillsScanActor>(
+    actors.push(spawn::<nullslop_domain::feat::skills::skills_scan_actor::SkillsScanActor>(
         "skills-scan",
         &sink,
         handle,
@@ -286,10 +289,10 @@ pub fn create_core_with_actor_host(
             paths: services.paths.clone(),
             state: state.clone(),
         },
-    );
+    ));
 
     // Persona scan actor.
-    let persona_scan_result =
+    actors.push(
         spawn::<nullslop_domain::feat::persona::persona_scan_actor::PersonaScanActor>(
             "persona-scan",
             &sink,
@@ -299,10 +302,11 @@ pub fn create_core_with_actor_host(
             nullslop_domain::feat::persona::persona_scan_actor::PersonaScanActorDeps {
                 paths: services.paths.clone(),
             },
-        );
+        ),
+    );
 
     // Provider actor.
-    let prov_result = spawn::<nullslop_domain::feat::provider::provider_actor::ProviderActor>(
+    actors.push(spawn::<nullslop_domain::feat::provider::provider_actor::ProviderActor>(
         "provider",
         &sink,
         handle,
@@ -312,10 +316,10 @@ pub fn create_core_with_actor_host(
             state: state.clone(),
             services: services.clone(),
         },
-    );
+    ));
 
     // Compaction actor.
-    let compaction_result = spawn::<nullslop_domain::feat::compaction_actor::CompactionActor>(
+    actors.push(spawn::<nullslop_domain::feat::compaction_actor::CompactionActor>(
         "compaction",
         &sink,
         handle,
@@ -326,10 +330,10 @@ pub fn create_core_with_actor_host(
             services: services.clone(),
             handle: handle.clone(),
         },
-    );
+    ));
 
     // Queue actor — dispatches queued turns when sessions become idle.
-    let queue_result = spawn::<nullslop_domain::feat::queue_actor::QueueActor>(
+    actors.push(spawn::<nullslop_domain::feat::queue_actor::QueueActor>(
         "queue",
         &sink,
         handle,
@@ -339,10 +343,10 @@ pub fn create_core_with_actor_host(
             state: state.clone(),
             counter: token_counter,
         },
-    );
+    ));
 
     // Sidebar state actor — keeps sidebar cursor in sync after session removal.
-    let sidebar_state_result =
+    actors.push(
         spawn::<nullslop_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor>(
             "sidebar-state",
             &sink,
@@ -352,15 +356,18 @@ pub fn create_core_with_actor_host(
             nullslop_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActorDeps {
                 state: state.clone(),
             },
-        );
+        ),
+    );
 
     // Build workflow registry and register built-in workflows.
-    let mut workflow_registry = nullslop_domain::feat::workflow::WorkflowRegistry::new();
-    nullslop_domain::feat::workflow::register_all_workflows(&mut workflow_registry);
-    let workflow_registry = Arc::new(workflow_registry);
+    let workflow_registry = Arc::new({
+        let mut registry = nullslop_domain::feat::workflow::WorkflowRegistry::new();
+        nullslop_domain::feat::workflow::register_all_workflows(&mut registry);
+        registry
+    });
 
     // Workflow actor — bridges workflow engine to actor bus.
-    let workflow_result = spawn::<WorkflowActor>(
+    actors.push(spawn::<WorkflowActor>(
         "workflow",
         &sink,
         handle,
@@ -371,33 +378,11 @@ pub fn create_core_with_actor_host(
             services: services.clone(),
             registry: workflow_registry,
         },
-    );
-
-    // ── Build actor host ─────────────────────────────────────────────────
-
-    let mut actors = vec![
-        system_ready_result,
-        env_init_result,
-        provider_init_result,
-        prefs_result,
-        prefs_sync_result,
-        llm_result,
-        discover_result,
-        orch_result,
-        sp_result,
-        scan_result,
-        skills_result,
-        persona_scan_result,
-        prov_result,
-        compaction_result,
-        queue_result,
-        sidebar_state_result,
-        workflow_result,
-    ];
+    ));
 
     // ── Bench actor (conditional) ─────────────────────────────────────────
     if bench_csv_path.is_some() {
-        let bench_result = spawn::<nullslop_bench::bench_actor::BenchActor>(
+        actors.push(spawn::<nullslop_bench::bench_actor::BenchActor>(
             "bench",
             &sink,
             handle,
@@ -408,15 +393,13 @@ pub fn create_core_with_actor_host(
                 csv_path: bench_csv_path.clone(),
                 plan: bench_plan,
             },
-        );
-        actors.push(bench_result);
+        ));
     }
 
-    let host = InMemoryActorHost::from_actors_with_handle(actors, handle.clone(), shutdown_tracker);
-    let host_arc: Arc<dyn nullslop_domain::ActorHost> = Arc::new(host);
-
     // Spawn the async forwarding task — continuously drains AppMsg channel → actor host.
-    let actor_host_service = ActorHostService::new(host_arc);
+    let actor_host_service = ActorHostService::new(Arc::new(
+        InMemoryActorHost::from_actors_with_handle(actors, handle.clone(), shutdown_tracker),
+    ));
     spawn_forwarding_task(receiver, actor_host_service.clone(), handle);
 
     // Signal that all actors have been spawned.
