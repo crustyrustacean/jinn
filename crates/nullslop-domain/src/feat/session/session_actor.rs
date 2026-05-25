@@ -199,9 +199,6 @@ impl SessionPersistenceActor {
             Event::ChatEntryPinChanged(payload) => {
                 self.save_active_session(&payload.session_id).await;
             }
-            Event::UserInteracted(..) => {
-                // No-op: flag was set by the command handler.
-            }
 
             // Context-related events (relocated from PromptAssemblyActor).
             Event::ToolsRegistered(payload) => {
