@@ -316,8 +316,36 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("<esc>", Intent::WorkflowEscape, KeyCategory::General)
         // Run / re-run workflow
         .bind("<enter>", Intent::WorkflowRun, KeyCategory::General)
+        // Edit source node data
+        .bind("e", Intent::WorkflowEditNode, KeyCategory::Input)
         // Re-run from node
         .bind("r", Intent::WorkflowRerunNode, KeyCategory::General);
+    });
+
+    // WorkflowInput scope — editing source node data.
+    keymap.scope(Scope::WorkflowInput, |b| {
+        b
+        .bind("<esc>", Intent::WorkflowInputCancel, KeyCategory::General)
+        .bind("<enter>", Intent::WorkflowInputSubmit, KeyCategory::Input)
+        .bind("<s-enter>", Intent::WorkflowInputInsertChar { ch: '\n' }, KeyCategory::Input)
+        .bind("<backspace>", Intent::WorkflowInputDeleteGrapheme, KeyCategory::Input)
+        .bind("<delete>", Intent::WorkflowInputDeleteGraphemeForward, KeyCategory::Input)
+        .bind("<left>", Intent::WorkflowInputCursorLeft, KeyCategory::Input)
+        .bind("<right>", Intent::WorkflowInputCursorRight, KeyCategory::Input)
+        .bind("<home>", Intent::WorkflowInputCursorToStart, KeyCategory::Input)
+        .bind("<end>", Intent::WorkflowInputCursorToEnd, KeyCategory::Input)
+        .bind("<c-left>", Intent::WorkflowInputCursorWordLeft, KeyCategory::Input)
+        .bind("<c-right>", Intent::WorkflowInputCursorWordRight, KeyCategory::Input)
+        .bind("<up>", Intent::WorkflowInputCursorUp, KeyCategory::Input)
+        .bind("<down>", Intent::WorkflowInputCursorDown, KeyCategory::Input)
+        .bind("<c-j>", Intent::WorkflowInputInsertChar { ch: '\n' }, KeyCategory::Input)
+        .catch_all(|key: KeyEvent| {
+            if let Key::Char(c) = key.key {
+                Some(Intent::WorkflowInputInsertChar { ch: c })
+            } else {
+                None
+            }
+        });
     });
 
     keymap.on_mouse(|mouse: event::MouseEvent, _scope: &Scope| {

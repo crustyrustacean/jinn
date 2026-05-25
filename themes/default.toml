@@ -17,6 +17,7 @@ error_text = "red"
 success = "green"
 warning = "yellow"
 streaming = "cyan"
+node_awaiting_input = "cyan"
 
 # Chat log backgrounds
 gutter_bg = [25, 27, 30]

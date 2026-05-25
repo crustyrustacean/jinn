@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use nullslop_workflow::execution::ExecutionSnapshot;
-use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
+use ratatui::{buffer::Buffer, layout::Rect, style::Color, widgets::Widget};
 
 use crate::connection::{
     CellInfo, ConnectionRouter, SimpleRouter, insert_path_into_grid, render_merged_grid,
@@ -26,16 +26,24 @@ pub struct WorkflowWidget<'a> {
     viewport: &'a ViewportState,
     /// Animation tick counter for spinner frames.
     tick: u8,
+    /// Color to use for AwaitingInput node borders and indicators.
+    awaiting_input_color: Color,
 }
 
 impl<'a> WorkflowWidget<'a> {
     /// Creates a new workflow widget.
     #[must_use]
-    pub fn new(snapshot: &'a ExecutionSnapshot, viewport: &'a ViewportState, tick: u8) -> Self {
+    pub fn new(
+        snapshot: &'a ExecutionSnapshot,
+        viewport: &'a ViewportState,
+        tick: u8,
+        awaiting_input_color: Color,
+    ) -> Self {
         Self {
             snapshot,
             viewport,
             tick,
+            awaiting_input_color,
         }
     }
 
@@ -128,7 +136,7 @@ impl Widget for WorkflowWidget<'_> {
             if !shifted.is_visible() {
                 continue;
             }
-            shifted.render(buf, selected, self.tick);
+            shifted.render(buf, selected, self.tick, self.awaiting_input_color);
         }
     }
 }
@@ -224,7 +232,7 @@ mod tests {
         let execution = WorkflowExecution::new(graph);
         let snapshot = execution.snapshot();
         let viewport = ViewportState::new();
-        let widget = WorkflowWidget::new(&snapshot, &viewport, 0);
+        let widget = WorkflowWidget::new(&snapshot, &viewport, 0, Color::Cyan);
 
         let area = Rect {
             x: 0,
@@ -249,7 +257,7 @@ mod tests {
         let execution = WorkflowExecution::new(graph);
         let snapshot = execution.snapshot();
         let viewport = ViewportState::new();
-        let widget = WorkflowWidget::new(&snapshot, &viewport, 0);
+        let widget = WorkflowWidget::new(&snapshot, &viewport, 0, Color::Cyan);
 
         let area = Rect {
             x: 0,
@@ -267,7 +275,7 @@ mod tests {
         let execution = WorkflowExecution::new(graph);
         let snapshot = execution.snapshot();
         let viewport = ViewportState::with_selected("src".to_owned());
-        let widget = WorkflowWidget::new(&snapshot, &viewport, 0);
+        let widget = WorkflowWidget::new(&snapshot, &viewport, 0, Color::Cyan);
 
         let area = Rect {
             x: 0,
@@ -299,7 +307,7 @@ mod tests {
         let mut buf = Buffer::empty(area);
 
         // Render with tick=0.
-        let w = WorkflowWidget::new(&snapshot, &viewport, 0);
+        let w = WorkflowWidget::new(&snapshot, &viewport, 0, Color::Cyan);
         w.render(area, &mut buf);
 
         // The spinner frame for tick=0 is ⠋. Check it appears somewhere.
@@ -332,7 +340,7 @@ mod tests {
         let execution = WorkflowExecution::new(graph);
         let snapshot = execution.snapshot();
         let viewport = ViewportState::new();
-        let widget = WorkflowWidget::new(&snapshot, &viewport, 0);
+        let widget = WorkflowWidget::new(&snapshot, &viewport, 0, Color::Cyan);
 
         let area = Rect {
             x: 0,

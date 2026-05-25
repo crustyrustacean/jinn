@@ -84,7 +84,7 @@ async fn main() {
                     height: help_height,
                 };
 
-                let widget = WorkflowWidget::new(&snapshot, &viewport, tick);
+                let widget = WorkflowWidget::new(&snapshot, &viewport, tick, Color::Cyan);
                 widget.render(main_area, f.buffer_mut());
 
                 f.render_widget(
@@ -137,7 +137,7 @@ async fn main() {
                 height: help_height,
             };
 
-            let widget = WorkflowWidget::new(&snapshot, &viewport, tick);
+            let widget = WorkflowWidget::new(&snapshot, &viewport, tick, Color::Cyan);
             widget.render(main_area, f.buffer_mut());
 
             f.render_widget(status_msg, help_area);
