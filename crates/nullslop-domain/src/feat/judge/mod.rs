@@ -24,6 +24,9 @@
 pub mod builtin_session_query;
 #[cfg(test)]
 mod builtin_session_query_tests;
+pub mod builtin_session_query_recent;
+#[cfg(test)]
+mod builtin_session_query_recent_tests;
 pub mod builtin_task_complete;
 #[cfg(test)]
 mod builtin_task_complete_tests;
@@ -54,6 +57,7 @@ use nullslop_provider::ToolDefinition;
 pub fn judge_tool_definitions() -> Vec<ToolDefinition> {
     vec![
         builtin_session_query::definition(),
+        builtin_session_query_recent::definition(),
         builtin_task_complete::definition(),
         builtin_task_incomplete::definition(),
     ]

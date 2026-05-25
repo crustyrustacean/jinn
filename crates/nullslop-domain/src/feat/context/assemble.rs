@@ -643,4 +643,78 @@ mod tests {
         assert_eq!(result_none.tool_definitions.len(), 1);
         assert_eq!(result_none.tool_definitions[0].name, "bash");
     }
+
+    #[test]
+    fn assemble_prompt_includes_judge_tools_for_judge_session() {
+        // Given a judge session (session with judge metadata).
+        use crate::feat::judge::JudgeMeta;
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("evaluate")]);
+        {
+            let mut guard = state.write();
+            // Create a new session as the judge.
+            let mut judge_session = crate::feat::session::chat_session::ChatSessionState::new();
+            let _judge_id = judge_session.session_id().clone();
+            judge_session.set_judge(JudgeMeta {
+                origin_session: session_id,
+                is_attached: true,
+                judge_name: "test-judge".to_owned(),
+            });
+            guard.session.insert(judge_session);
+        }
+
+        // Get the judge session ID.
+        let judge_id = {
+            let guard = state.read();
+            guard
+                .session
+                .iter()
+                .find(|(_, s)| s.is_judge())
+                .map(|(id, _)| id.clone())
+                .expect("judge session exists")
+        };
+
+        // When assembling the prompt for the judge session.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &judge_id, &counter(), None);
+
+        // Then the tool definitions include the judge tools.
+        let tool_names: Vec<&str> = result.tool_definitions.iter().map(|t| t.name.as_str()).collect();
+        assert!(
+            tool_names.contains(&"session_query"),
+            "judge tools should include session_query, got: {tool_names:?}"
+        );
+        assert!(
+            tool_names.contains(&"session_query_recent"),
+            "judge tools should include session_query_recent, got: {tool_names:?}"
+        );
+        assert!(
+            tool_names.contains(&"task_complete"),
+            "judge tools should include task_complete, got: {tool_names:?}"
+        );
+        assert!(
+            tool_names.contains(&"task_incomplete"),
+            "judge tools should include task_incomplete, got: {tool_names:?}"
+        );
+    }
+
+    #[test]
+    fn assemble_prompt_excludes_judge_tools_for_regular_session() {
+        // Given a regular (non-judge) session.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then the tool definitions do NOT include judge tools.
+        let tool_names: Vec<&str> = result.tool_definitions.iter().map(|t| t.name.as_str()).collect();
+        assert!(
+            !tool_names.contains(&"session_query"),
+            "regular sessions should not have session_query, got: {tool_names:?}"
+        );
+        assert!(
+            !tool_names.contains(&"task_complete"),
+            "regular sessions should not have task_complete, got: {tool_names:?}"
+        );
+    }
 }
