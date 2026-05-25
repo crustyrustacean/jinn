@@ -54,6 +54,7 @@ impl SessionPersistenceActor {
     /// For `ToolUse` reason, transitions to sending state instead of fully idle,
     /// so the streaming indicator remains visible while the followup response
     /// is awaited. The queue is NOT drained — the turn hasn't ended.
+    #[expect(clippy::too_many_lines, reason = "1 line over limit")]
     pub(in crate::feat::session::session_actor) async fn on_stream_completed(
         &self,
         event: &StreamCompleted,

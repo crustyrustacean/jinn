@@ -3,7 +3,7 @@
 //! These tests verify end-to-end scenarios using the node registry and
 //! `DynamicNode` to build and execute graphs from data, not closures.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::unwrap_used, reason = "test code")]
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unwrap_used, reason = "test code")]
 
 use std::sync::Arc;
 
