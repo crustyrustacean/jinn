@@ -33,6 +33,7 @@ use crate::feat::provider::protocol::command::{
 };
 use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
+use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
@@ -126,6 +127,8 @@ pub enum Command {
     CancelCompaction(CancelCompaction),
     /// Close a session from the sessions map.
     CloseSession(CloseSession),
+    /// Mark a session as having been interacted with by the user.
+    MarkSessionInteracted(MarkSessionInteracted),
     /// Archive a session without running teardown.
     ArchiveSession(crate::feat::session::protocol::archive_session::ArchiveSession),
     /// Persist a session's full state to SQLite immediately.
@@ -196,6 +199,7 @@ impl Command {
             Self::EndCompaction(..) => Some(EndCompaction::NAME),
             Self::CancelCompaction(..) => Some(CancelCompaction::NAME),
             Self::CloseSession(..) => Some(CloseSession::NAME),
+            Self::MarkSessionInteracted(..) => Some(MarkSessionInteracted::NAME),
             Self::ArchiveSession(..) => {
                 Some(crate::feat::session::protocol::archive_session::ArchiveSession::NAME)
             }
@@ -329,6 +333,9 @@ impl std::fmt::Display for Command {
             }
             Command::CloseSession(payload) => {
                 write!(f, "close session {}", payload.session_id)
+            }
+            Command::MarkSessionInteracted(payload) => {
+                write!(f, "mark session interacted {}", payload.session_id)
             }
             Command::ArchiveSession(payload) => {
                 write!(f, "archive session {}", payload.session_id)

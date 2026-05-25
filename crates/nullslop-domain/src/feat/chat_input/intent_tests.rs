@@ -92,10 +92,14 @@ fn submit_message_returns_enqueue_command() {
     // When handling SubmitMessage.
     let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
 
-    // Then an EnqueueUserMessage command is returned.
-    assert_eq!(result.commands.len(), 1);
+    // Then a MarkSessionInteracted and an EnqueueUserMessage command are returned.
+    assert_eq!(result.commands.len(), 2);
     assert!(matches!(
         &result.commands[0],
+        Command::MarkSessionInteracted(..)
+    ));
+    assert!(matches!(
+        &result.commands[1],
         Command::EnqueueUserMessage(..)
     ));
 }
@@ -1058,9 +1062,14 @@ fn submit_unknown_slash_command_sends_as_chat() {
     let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
 
     // Then the message is submitted as a normal chat message.
-    assert_eq!(result.commands.len(), 1);
+    // MarkSessionInteracted + EnqueueUserMessage.
+    assert_eq!(result.commands.len(), 2);
     assert!(
-        matches!(&result.commands[0], Command::EnqueueUserMessage(..)),
+        matches!(&result.commands[0], Command::MarkSessionInteracted(..)),
+        "first command should be MarkSessionInteracted"
+    );
+    assert!(
+        matches!(&result.commands[1], Command::EnqueueUserMessage(..)),
         "unknown /command should be sent as chat"
     );
 }
@@ -1088,10 +1097,14 @@ fn submit_compact_slash_command_sends_enqueue_compaction() {
     // When handling SubmitMessage.
     let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
 
-    // Then an EnqueueCompaction command is dispatched.
-    assert_eq!(result.commands.len(), 1);
+    // Then a MarkSessionInteracted and an EnqueueCompaction command are dispatched.
+    assert_eq!(result.commands.len(), 2);
     assert!(
-        matches!(&result.commands[0], Command::EnqueueCompaction(cmd) if cmd.session_id == session_id),
+        matches!(&result.commands[0], Command::MarkSessionInteracted(..)),
+        "first command should be MarkSessionInteracted"
+    );
+    assert!(
+        matches!(&result.commands[1], Command::EnqueueCompaction(cmd) if cmd.session_id == session_id),
         "/compact should send EnqueueCompaction command"
     );
 }
