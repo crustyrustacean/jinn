@@ -166,21 +166,28 @@ impl App {
 
                 // Load system plugins (/usr/share/nullslop/plugins).
                 if let Some(ref host) = plugin_host {
+                    let mut plugin_count = 0usize;
+
+                    // Built-in plugins (embedded in the binary, always available).
+                    let builtins = host.load_builtins();
+                    plugin_count += builtins.len();
+
+                    // System plugins (installed by package manager).
                     let system_dir = paths.system_plugins_dir();
                     if system_dir.is_dir() {
                         let infos = host.load_all(&system_dir);
-                        if !infos.is_empty() {
-                            tracing::info!(count = infos.len(), "loaded system plugins");
-                        }
+                        plugin_count += infos.len();
                     }
 
-                    // Load user plugins (~/.config/nullslop/plugins).
+                    // User plugins (~/.config/nullslop/plugins).
                     let user_dir = paths.plugins_dir();
                     if user_dir.is_dir() {
                         let infos = host.load_all(&user_dir);
-                        if !infos.is_empty() {
-                            tracing::info!(count = infos.len(), "loaded user plugins");
-                        }
+                        plugin_count += infos.len();
+                    }
+
+                    if plugin_count > 0 {
+                        tracing::info!(count = plugin_count, "loaded plugins");
                     }
 
                     // Fire app::started event.
