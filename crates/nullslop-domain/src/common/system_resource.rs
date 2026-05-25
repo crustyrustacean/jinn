@@ -136,4 +136,40 @@ mod tests {
         let msg = format!("{err:#?}");
         assert!(msg.contains("not found"), "error should mention 'not found'");
     }
+
+    #[rstest::rstest]
+    fn load_returns_err_on_read_failure() {
+        // Given a system dir with an unreadable file (permission denied).
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let user_dir = root.path().join("config/nullslop/prompts");
+        let system_dir = root.path().join("share/prompts");
+        std::fs::create_dir_all(&user_dir).expect("create user dir");
+        std::fs::create_dir_all(&system_dir).expect("create system dir");
+
+        let file_path = system_dir.join("_compaction.md");
+        std::fs::write(&file_path, "system prompt").expect("write");
+
+        // Make file unreadable.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&file_path, std::fs::Permissions::from_mode(0o000))
+                .expect("chmod");
+        }
+
+        // When loading the system resource.
+        let result = load_system_resource("_compaction.md", &user_dir, &system_dir);
+
+        // Then an error is returned (on Unix, permission denied prevents reading).
+        #[cfg(unix)]
+        assert!(result.is_err(), "expected error when file is unreadable");
+
+        // Restore permissions so temp dir cleanup can succeed.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&file_path, std::fs::Permissions::from_mode(0o644))
+                .expect("restore perms");
+        }
+    }
 }
