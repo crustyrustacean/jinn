@@ -414,4 +414,61 @@ mod tests {
         let result = rx.try_recv().expect("try_recv should succeed");
         assert!(result.is_none(), "should not emit on second app::started");
     }
+
+    #[rstest::rstest]
+    fn builtin_welcome_emits_session_tip_on_session_created() {
+        // Given a plugin host with builtins loaded.
+        let (sender, rx) = test_sender();
+        let host = PluginHost::new(sender).expect("host creation");
+        host.load_builtins();
+
+        // When dispatching session::created.
+        host.dispatch_event(
+            "session::created",
+            &serde_json::json!({ "session_id": "abc-123" }),
+        );
+
+        // Then a welcome::session_tip dynamic command is emitted.
+        let cmd = rx.recv_timeout(std::time::Duration::from_secs(2))
+            .expect("should receive command within 2s");
+        match cmd {
+            Command::Dynamic(dc) => {
+                assert_eq!(dc.name, "welcome::session_tip");
+                let msg = dc.payload.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                assert!(msg.contains("New session started"), "got: {msg}");
+            }
+            other => panic!("expected Dynamic command, got: {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    fn builtin_welcome_emits_session_tip_on_every_session() {
+        // Given a plugin host with builtins loaded.
+        let (sender, rx) = test_sender();
+        let host = PluginHost::new(sender).expect("host creation");
+        host.load_builtins();
+
+        // When dispatching session::created twice.
+        host.dispatch_event(
+            "session::created",
+            &serde_json::json!({ "session_id": "session-1" }),
+        );
+        let cmd1 = rx.recv_timeout(std::time::Duration::from_secs(2))
+            .expect("should receive first command");
+        assert!(
+            matches!(cmd1, Command::Dynamic(ref dc) if dc.name == "welcome::session_tip"),
+            "first should be session_tip"
+        );
+
+        host.dispatch_event(
+            "session::created",
+            &serde_json::json!({ "session_id": "session-2" }),
+        );
+        let cmd2 = rx.recv_timeout(std::time::Duration::from_secs(2))
+            .expect("should receive second command");
+        assert!(
+            matches!(cmd2, Command::Dynamic(ref dc) if dc.name == "welcome::session_tip"),
+            "second should also be session_tip"
+        );
+    }
 }
