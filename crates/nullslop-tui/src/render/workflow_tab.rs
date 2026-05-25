@@ -529,8 +529,9 @@ fn render_workflow_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
                 break;
             }
 
-            let content: String =
-                graphemes[wrap_line.grapheme_start..wrap_line.grapheme_end].join("");
+            let start = wrap_line.grapheme_start.min(graphemes.len());
+            let end = wrap_line.grapheme_end.min(graphemes.len());
+            let content: String = graphemes.get(start..end).map(|s| s.join("")).unwrap_or_default();
             lines.push(Line::from(vec![
                 Span::styled("  ", indent_style),
                 Span::styled(content, text_style),
