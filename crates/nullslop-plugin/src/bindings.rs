@@ -23,7 +23,22 @@ pub(crate) type SubscriptionMap = Arc<Mutex<HashMap<String, Vec<Function>>>>;
 
 /// Wrapper to make [`SubscriptionMap`] a distinct type for mlua `app_data`.
 #[derive(Clone)]
-pub(crate) struct Subscriptions(pub(crate) SubscriptionMap);
+pub(crate) struct Subscriptions {
+    /// Inner subscription map.
+    inner: SubscriptionMap,
+}
+
+impl Subscriptions {
+    /// Creates a new `Subscriptions` wrapper.
+    pub(crate) fn new(inner: SubscriptionMap) -> Self {
+        Self { inner }
+    }
+
+    /// Returns a reference to the inner subscription map.
+    pub(crate) fn get(&self) -> &SubscriptionMap {
+        &self.inner
+    }
+}
 
 /// Installs the `ns` and `ps` global tables into the Lua VM.
 ///
@@ -33,7 +48,7 @@ pub(crate) struct Subscriptions(pub(crate) SubscriptionMap);
 pub fn install(lua: &Lua, sender: &CommandSender) -> Result<(), mlua::Error> {
     #[expect(clippy::arc_with_non_send_sync, reason = "mlua::Function is not Send but only used from the single Lua thread")]
     let subs: SubscriptionMap = Arc::new(Mutex::new(HashMap::new()));
-    lua.set_app_data(Subscriptions(subs.clone()));
+    lua.set_app_data(Subscriptions::new(subs.clone()));
 
     // ns table — namespace for nullslop commands.
     let ns = lua.create_table()?;

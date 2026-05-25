@@ -36,6 +36,7 @@ impl WelcomeSubscriber {
         }
     }
 
+    /// Handles the `welcome::show` plugin command.
     fn handle_welcome_show(&self, cmd: &DynamicCommand, session_id: &SessionId) {
         let message = cmd
             .payload
@@ -52,6 +53,7 @@ impl WelcomeSubscriber {
         self.sender.send(nullslop_domain::Command::PushChatEntry(push));
     }
 
+    /// Handles the `welcome::session_tip` plugin command.
     fn handle_session_tip(&self, cmd: &DynamicCommand, session_id: &SessionId) {
         let message = cmd
             .payload

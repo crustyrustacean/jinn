@@ -234,7 +234,7 @@ fn build_inspector_lines(
         )));
         let ctx = RenderContext {
             content_width,
-            _is_selected: false,
+            is_selected: false,
             is_expanded: false,
             tool_entry_max_lines: 6,
             theme: state.frontend.theme.clone(),

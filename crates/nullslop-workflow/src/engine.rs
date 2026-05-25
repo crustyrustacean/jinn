@@ -130,12 +130,9 @@ fn initialize_tracking(
         // Count actual incoming edges — each edge delivers one value.
         // This is the true "waiting for" count: optional ports that are
         // connected still need to receive their data before the node runs.
-        let idx = match name_to_index.get(name) {
-            Some(&idx) => idx,
-            None => {
-                tracing::error!(node = name, "node not found in name_to_index during tracking initialization");
-                continue;
-            }
+        let Some(&idx) = name_to_index.get(name) else {
+            tracing::error!(node = name, "node not found in name_to_index during tracking initialization");
+            continue;
         };
         let incoming_edge_count = inner
             .edges_directed(idx, petgraph::Direction::Incoming)
@@ -246,13 +243,10 @@ async fn run_main_loop(
 
         tokio::select! {
             msg = rx.recv() => {
-                let msg = match msg {
-                    Some(m) => m,
-                    None => {
-                        // Channel closed — all senders dropped.
-                        // This should only happen when all nodes are done or errored.
-                        break;
-                    }
+                let Some(msg) = msg else {
+                    // Channel closed — all senders dropped.
+                    // This should only happen when all nodes are done or errored.
+                    break;
                 };
                 handle_completion(
                     msg,
