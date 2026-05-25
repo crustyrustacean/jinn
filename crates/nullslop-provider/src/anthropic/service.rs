@@ -141,6 +141,10 @@ impl AnthropicService {
 
 #[async_trait::async_trait]
 impl LlmService for AnthropicService {
+    fn name(&self) -> &'static str {
+        "anthropic"
+    }
+
     async fn chat_stream(
         &self,
         messages: Vec<LlmMessage>,

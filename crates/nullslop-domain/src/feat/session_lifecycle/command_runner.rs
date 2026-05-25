@@ -45,12 +45,11 @@ pub enum LifecycleCommandError {
 /// Shared shell invocation logic used by both setup and teardown runners.
 async fn run_command(
     command: &str,
+    shell: &str,
 ) -> Result<(std::process::Output, String, String), Report<LifecycleCommandError>> {
     use error_stack::ResultExt as _;
 
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned());
-
-    let output = tokio::process::Command::new(&shell)
+    let output = tokio::process::Command::new(shell)
         .arg("-c")
         .arg(command)
         .output()
@@ -74,7 +73,7 @@ async fn run_command(
 
 /// Runs a setup command and returns the resulting directory path.
 ///
-/// Spawns the command via the user's shell (`$SHELL`, falling back to `/bin/sh`).
+/// Spawns the command via the provided shell.
 /// Captures stdout and stderr. On success, returns the last non-empty line of
 /// stdout (trimmed), canonicalized and verified as an existing directory.
 ///
@@ -85,10 +84,13 @@ async fn run_command(
 /// Returns [`LifecycleCommandError::InvalidPath`] if the path cannot be resolved.
 /// Returns [`LifecycleCommandError::NotADirectory`] if the path is not a directory.
 /// Returns [`LifecycleCommandError::ExecutionFailed`] if the process cannot be spawned.
-pub async fn run_setup_command(command: &str) -> Result<PathBuf, Report<LifecycleCommandError>> {
+pub async fn run_setup_command(
+    command: &str,
+    shell: &str,
+) -> Result<PathBuf, Report<LifecycleCommandError>> {
     use error_stack::ResultExt as _;
 
-    let (_output, stdout, _stderr) = run_command(command).await?;
+    let (_output, stdout, _stderr) = run_command(command, shell).await?;
 
     let last_line = stdout
         .lines()
@@ -116,14 +118,17 @@ pub async fn run_setup_command(command: &str) -> Result<PathBuf, Report<Lifecycl
 
 /// Runs a teardown command. Only checks the exit code — output is ignored.
 ///
-/// Spawns the command via the user's shell (`$SHELL`, falling back to `/bin/sh`).
+/// Spawns the command via the provided shell.
 ///
 /// # Errors
 ///
 /// Returns [`LifecycleCommandError::CommandFailed`] if the process exits non-zero.
 /// Returns [`LifecycleCommandError::ExecutionFailed`] if the process cannot be spawned.
-pub async fn run_teardown_command(command: &str) -> Result<(), Report<LifecycleCommandError>> {
-    run_command(command).await?;
+pub async fn run_teardown_command(
+    command: &str,
+    shell: &str,
+) -> Result<(), Report<LifecycleCommandError>> {
+    run_command(command, shell).await?;
     Ok(())
 }
 
@@ -143,7 +148,7 @@ mod tests {
         let expected = std::fs::canonicalize(dir.path()).expect("canonicalize");
 
         // When running the setup command.
-        let result = run_setup_command(&format!("echo {path}")).await;
+        let result = run_setup_command(&format!("echo {path}"), "/bin/sh").await;
 
         // Then the result is the canonicalized directory path.
         assert!(result.is_ok());
@@ -159,7 +164,7 @@ mod tests {
         let expected = std::fs::canonicalize(dir.path()).expect("canonicalize");
 
         // When running the setup command with leading output.
-        let result = run_setup_command(&format!("echo 'setting up...'; echo '{path}'")).await;
+        let result = run_setup_command(&format!("echo 'setting up...'; echo '{path}'"), "/bin/sh").await;
 
         // Then the result is the canonicalized last non-empty line.
         assert!(result.is_ok());
@@ -175,7 +180,7 @@ mod tests {
         let expected = std::fs::canonicalize(dir.path()).expect("canonicalize");
 
         // When running the setup command.
-        let result = run_setup_command(&format!("echo '{path}  '")).await;
+        let result = run_setup_command(&format!("echo '{path}  '"), "/bin/sh").await;
 
         // Then the result is trimmed and canonicalized.
         assert!(result.is_ok());
@@ -186,7 +191,7 @@ mod tests {
     #[tokio::test]
     async fn setup_returns_error_on_nonzero_exit() {
         // Given a command that exits with code 1.
-        let result = run_setup_command("exit 1").await;
+        let result = run_setup_command("exit 1", "/bin/sh").await;
 
         // Then the result is a CommandFailed error.
         assert!(result.is_err());
@@ -207,7 +212,7 @@ mod tests {
     async fn setup_captures_stdout_and_stderr_on_failure() {
         // Given a command that writes to both stdout and stderr before failing.
         let result =
-            run_setup_command("echo 'stdout message'; echo 'stderr message' >&2; exit 1").await;
+            run_setup_command("echo 'stdout message'; echo 'stderr message' >&2; exit 1", "/bin/sh").await;
 
         // Then the error contains both stdout and stderr output.
         assert!(result.is_err());
@@ -228,7 +233,7 @@ mod tests {
     #[tokio::test]
     async fn setup_returns_error_on_empty_stdout() {
         // Given a setup command that succeeds with no output.
-        let result = run_setup_command("true").await;
+        let result = run_setup_command("true", "/bin/sh").await;
 
         // Then the result is a NoOutput error.
         assert!(result.is_err());
@@ -253,7 +258,7 @@ mod tests {
         let expected = std::fs::canonicalize(dir.path()).expect("canonicalize");
 
         // When running the setup command with a relative path.
-        let result = run_setup_command(&format!("echo './{dir_name}'")).await;
+        let result = run_setup_command(&format!("echo './{dir_name}'"), "/bin/sh").await;
 
         // Then the result is the canonicalized absolute path.
         assert!(
@@ -268,7 +273,7 @@ mod tests {
     #[tokio::test]
     async fn setup_returns_error_when_path_does_not_exist() {
         // Given a setup command that outputs a non-existent path.
-        let result = run_setup_command("echo /nonexistent/path/xyzzy").await;
+        let result = run_setup_command("echo /nonexistent/path/xyzzy", "/bin/sh").await;
 
         // Then the result is an InvalidPath error.
         assert!(result.is_err());
@@ -293,7 +298,7 @@ mod tests {
         std::fs::write(&file_path, b"contents").expect("write file");
 
         // When running the setup command.
-        let result = run_setup_command(&format!("echo '{}'", file_path.display())).await;
+        let result = run_setup_command(&format!("echo '{}'", file_path.display()), "/bin/sh").await;
 
         // Then the result is a NotADirectory error.
         assert!(result.is_err());
@@ -316,10 +321,10 @@ mod tests {
     #[tokio::test]
     async fn setup_canonicalizes_dot_to_actual_cwd() {
         // Given a setup command that outputs ".".
-        let expected = std::env::current_dir().expect("current dir");
+        let expected = std::fs::canonicalize(".").expect("canonicalize cwd");
 
         // When running the setup command.
-        let result = run_setup_command("echo .").await;
+        let result = run_setup_command("echo .", "/bin/sh").await;
 
         // Then the result is the canonicalized current working directory.
         assert!(result.is_ok());
@@ -338,7 +343,7 @@ mod tests {
         assert!(marker.exists(), "marker should exist before teardown");
 
         // When running the teardown command.
-        let result = run_teardown_command(&format!("rm -f {}", marker.display())).await;
+        let result = run_teardown_command(&format!("rm -f {}", marker.display()), "/bin/sh").await;
 
         // Then the command succeeds (teardown doesn't require stdout).
         assert!(result.is_ok(), "teardown should succeed without stdout");
@@ -350,7 +355,7 @@ mod tests {
     #[tokio::test]
     async fn teardown_returns_failure_on_nonzero_exit() {
         // Given a teardown command that fails.
-        let result = run_teardown_command("exit 42").await;
+        let result = run_teardown_command("exit 42", "/bin/sh").await;
 
         // Then we get a CommandFailed error.
         assert!(result.is_err());
@@ -375,8 +380,8 @@ mod tests {
         // When running two teardown commands sequentially (as shutdown does).
         let cmd_a = format!("rm -f {}", marker_a.display());
         let cmd_b = format!("rm -f {}", marker_b.display());
-        let _ = run_teardown_command(&cmd_a).await;
-        let _ = run_teardown_command(&cmd_b).await;
+        let _ = run_teardown_command(&cmd_a, "/bin/sh").await;
+        let _ = run_teardown_command(&cmd_b, "/bin/sh").await;
 
         // Then both files are removed.
         assert!(!marker_a.exists(), "first teardown should remove marker a");
@@ -387,7 +392,7 @@ mod tests {
     #[tokio::test]
     async fn teardown_succeeds_with_any_stdout() {
         // Given a teardown command that produces stdout but exits 0.
-        let result = run_teardown_command("echo 'cleaning up...'").await;
+        let result = run_teardown_command("echo 'cleaning up...'", "/bin/sh").await;
 
         // Then the command succeeds (stdout is ignored).
         assert!(result.is_ok());

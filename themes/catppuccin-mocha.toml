@@ -23,6 +23,7 @@ user_block_bg = [49, 50, 68]   # Surface0
 tool_fg = [147, 153, 178] # Overlay2
 tool_success_bg = [36, 50, 36]
 tool_failure_bg = [50, 30, 38]
+compaction_block_bg = [55, 45, 72]   # muted mauve blend
 truncation_fg = [69, 71, 90]   # Surface1
 
 # Picker

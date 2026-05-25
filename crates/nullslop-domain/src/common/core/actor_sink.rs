@@ -24,6 +24,10 @@ impl ActorMessageSink {
 }
 
 impl MessageSink for ActorMessageSink {
+    fn name(&self) -> &'static str {
+        "actor_message_sink"
+    }
+
     fn send_command(&self, command: Command) -> SendResult {
         self.sender
             .send(AppMsg::Command {

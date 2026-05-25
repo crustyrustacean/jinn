@@ -67,6 +67,10 @@ struct SampleLlmService;
 
 #[async_trait::async_trait]
 impl LlmService for SampleLlmService {
+    fn name(&self) -> &'static str {
+        "sample"
+    }
+
     async fn chat_stream(
         &self,
         messages: Vec<LlmMessage>,

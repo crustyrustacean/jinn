@@ -103,11 +103,21 @@ mod tests {
         let mut state = AppState::default();
 
         // When handling SidebarResizeExpand.
-        let result = handle_resize_expand(&mut state);
+        let _ = handle_resize_expand(&mut state);
 
         // Then sidebar_width increased by 2.
         assert_eq!(state.frontend.sidebar_width, 32);
-        // And an UpdatePreferences command was emitted.
+    }
+
+    #[rstest::rstest]
+    fn expand_emits_update_preferences_command() {
+        // Given default state (sidebar_width = 30).
+        let mut state = AppState::default();
+
+        // When handling SidebarResizeExpand.
+        let result = handle_resize_expand(&mut state);
+
+        // Then an UpdatePreferences command with the new width was emitted.
         assert_eq!(result.commands.len(), 1);
         assert!(matches!(
             &result.commands[0],
@@ -122,11 +132,21 @@ mod tests {
         let mut state = AppState::default();
 
         // When handling SidebarResizeContract.
-        let result = handle_resize_contract(&mut state);
+        let _ = handle_resize_contract(&mut state);
 
         // Then sidebar_width decreased by 2.
         assert_eq!(state.frontend.sidebar_width, 28);
-        // And an UpdatePreferences command was emitted.
+    }
+
+    #[rstest::rstest]
+    fn contract_emits_update_preferences_command() {
+        // Given default state (sidebar_width = 30).
+        let mut state = AppState::default();
+
+        // When handling SidebarResizeContract.
+        let result = handle_resize_contract(&mut state);
+
+        // Then an UpdatePreferences command was emitted.
         assert_eq!(result.commands.len(), 1);
     }
 

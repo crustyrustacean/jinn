@@ -51,13 +51,16 @@ impl DynamicNode {
     ///
     /// The `name` is stored as a `String` and borrowed for the [`WorkflowNode::name`]
     /// return value.
-    pub fn new<S: Into<String>>(
+    pub fn new<S>(
         name: S,
         input_ports: Vec<PortDef>,
         output_ports: Vec<PortDef>,
         config: Option<serde_json::Value>,
         execute_fn: DynamicExecuteFn,
-    ) -> Self {
+    ) -> Self
+    where
+        S: Into<String>,
+    {
         let name = name.into();
         Self {
             name,
@@ -69,7 +72,10 @@ impl DynamicNode {
     }
 
     /// Creates a passthrough dynamic node that copies input "in" to output "out".
-    pub fn passthrough<S: Into<String>>(name: S) -> Self {
+    pub fn passthrough<S>(name: S) -> Self
+    where
+        S: Into<String>,
+    {
         Self::new(
             name,
             vec![PortDef::text("in")],
