@@ -32,9 +32,6 @@ use crate::feat::session::chat_session::SessionPhase;
 use crate::feat::session::protocol::history_appended::HistoryAppended;
 use crate::protocol::{Command, Event};
 
-/// Hardcoded compaction system prompt.
-const COMPACTION_PROMPT: &str = include_str!("compaction.md");
-
 /// Errors during compaction.
 #[derive(Debug, Error)]
 #[error("compaction error")]
@@ -325,14 +322,15 @@ async fn perform_compaction(
     compact_all: bool,
 ) -> Result<usize, error_stack::Report<CompactionError>> {
     // Read config and session state.
-    let (config, model_name, history_len, retry_config) = {
+    let (config, model_name, history_len, retry_config, compaction_prompt) = {
         let state = state.read();
         let session = state.session(session_id);
         let config = state.frontend.preferences.compaction.clone();
         let model_name = session.profile().model.clone();
         let history_len = session.history().len();
         let retry_config = state.frontend.preferences.request_retry.to_retry_config();
-        (config, model_name, history_len, retry_config)
+        let compaction_prompt = state.context.compaction_prompt.clone();
+        (config, model_name, history_len, retry_config, compaction_prompt)
     };
 
     if history_len == 0 {
@@ -488,6 +486,7 @@ async fn perform_compaction(
         &model_name,
         &config,
         &retry_config,
+        &compaction_prompt,
     )
     .await?;
 
@@ -521,6 +520,7 @@ async fn generate_summary(
     session_model: &str,
     config: &CompactionConfig,
     retry_config: &nullslop_provider::RetryConfig,
+    compaction_prompt: &str,
 ) -> Result<String, error_stack::Report<CompactionError>> {
     // Try compaction model first, fall back to session model.
     let model_id = config.model.as_deref().unwrap_or(session_model);
@@ -549,7 +549,7 @@ async fn generate_summary(
     // Wrap with retry decorator — compaction retries are logged at warn level.
     let service = RetryingLlmService::new(service, retry_config.clone(), Box::new(NoOpOnRetry));
 
-    let system_prompt = COMPACTION_PROMPT.to_owned();
+    let system_prompt = compaction_prompt.to_owned();
 
     let mut user_content = String::new();
     if let Some(prev) = previous_summary {
