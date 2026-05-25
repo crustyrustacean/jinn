@@ -201,12 +201,12 @@ impl PluginHost {
         let lua = &self.lua;
 
         // Get the subscription map from app_data.
-        let Some(guard) = lua.app_data_ref::<bindings::SubscriptionMap>() else {
+        let Some(guard) = lua.app_data_ref::<bindings::Subscriptions>() else {
             return;
         };
 
         let callbacks: Vec<mlua::Function> = {
-            let map = guard.lock();
+            let map = guard.0.lock();
             map.get(event_name).cloned().unwrap_or_default()
         };
 
@@ -382,5 +382,36 @@ mod tests {
 
         // Then 2 plugins are loaded, no panic.
         assert_eq!(loaded.len(), 2);
+    }
+
+    #[rstest::rstest]
+    fn builtin_welcome_pipeline_emits_dynamic_command() {
+        // Given a plugin host with a channel-based sender.
+        let (sender, rx) = test_sender();
+        let host = PluginHost::new(sender).expect("host creation");
+
+        // When loading builtins and dispatching app::started.
+        let builtins = host.load_builtins();
+        assert_eq!(builtins.len(), 1);
+        assert_eq!(builtins[0].name, "welcome");
+
+        host.dispatch_event("app::started", &serde_json::Value::Null);
+
+        // Then a dynamic command is emitted (with timeout).
+        let cmd = rx.recv_timeout(std::time::Duration::from_secs(2))
+            .expect("should receive command within 2s");
+        match cmd {
+            Command::Dynamic(dc) => {
+                assert_eq!(dc.name, "welcome::show");
+                let msg = dc.payload.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                assert!(msg.contains("Welcome to nullslop"), "got: {msg}");
+            }
+            other => panic!("expected Dynamic command, got: {other:?}"),
+        }
+
+        // And dispatching app::started again does NOT emit another command.
+        host.dispatch_event("app::started", &serde_json::Value::Null);
+        let result = rx.try_recv().expect("try_recv should succeed");
+        assert!(result.is_none(), "should not emit on second app::started");
     }
 }
