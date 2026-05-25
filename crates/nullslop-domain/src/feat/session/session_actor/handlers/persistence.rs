@@ -57,7 +57,7 @@ impl SessionPersistenceActor {
     /// Marks a session as having been interacted with by the user.
     ///
     /// Sets `has_interacted = true` on the session and emits a `UserInteracted` event.
-    pub(in crate::feat::session::session_actor) fn handle_mark_session_interacted(
+    pub(in crate::feat::session::session_actor) async fn handle_mark_session_interacted(
         &mut self,
         payload: &crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted,
         ctx: &crate::common::actor::ActorContext,
@@ -76,6 +76,8 @@ impl SessionPersistenceActor {
         )) {
             tracing::warn!(err = ?e, "session-actor failed to emit UserInteracted");
         }
+
+        self.save_active_session(&payload.session_id).await;
     }
 
     /// Loads a full session from disk and sends back a `SessionLoadCompleted` command.
@@ -224,13 +226,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn handle_mark_session_interacted_sets_flag_and_emits_event() {
+    #[tokio::test]
+    async fn handle_mark_session_interacted_sets_flag_emits_event_and_persists() {
         use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
         use crate::protocol::Event;
 
         // Given an actor with a new session.
-        let (mut actor, _store) = test_actor_with_store(vec![]);
+        let (mut actor, store) = test_actor_with_store(vec![]);
         let session_id = actor.state.read().session.active_session_id().clone();
         let (sink, ctx) = test_context();
 
@@ -240,7 +242,7 @@ mod tests {
                 session_id: session_id.clone(),
             },
             &ctx,
-        );
+        ).await;
 
         // Then the session has_interacted flag is set.
         let state = actor.state.read();
@@ -253,5 +255,11 @@ mod tests {
             matches!(e, Event::UserInteracted(e) if e.session_id == session_id)
         });
         assert!(has_event, "UserInteracted event should be emitted");
+
+        // And the session was persisted to the store.
+        assert!(
+            store.last_saved_session(&session_id).is_some(),
+            "interacted session should be persisted after MarkSessionInteracted"
+        );
     }
 }
