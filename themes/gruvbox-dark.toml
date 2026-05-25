@@ -23,6 +23,7 @@ user_block_bg = [50, 48, 47]
 tool_fg = [102, 92, 84]
 tool_success_bg = [40, 45, 38]
 tool_failure_bg = [52, 34, 34]
+compaction_block_bg = [60, 45, 60]   # faded purple — Gruvbox earthy tone
 truncation_fg = [73, 69, 64]
 
 # Picker
