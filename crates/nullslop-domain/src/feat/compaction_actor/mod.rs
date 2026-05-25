@@ -333,7 +333,7 @@ async fn perform_compaction(
                 let entry = &history[i];
                 let tokens = estimate_entry_tokens(&estimator, entry);
                 accumulated_tokens += tokens;
-                if accumulated_tokens > config.keep_recent_tokens {
+                if accumulated_tokens > config.reserve_tokens {
                     cut_index = i + 1;
                     break;
                 }
@@ -362,7 +362,7 @@ async fn perform_compaction(
 
             let skip_msg = format!(
                 "Skipped compaction: {} tokens within the {} token reserve. Use /compact-all to force.",
-                total_tokens, config.keep_recent_tokens
+                total_tokens, config.reserve_tokens
             );
 
             // Emit BeginCompaction so session enters Compacting phase.
