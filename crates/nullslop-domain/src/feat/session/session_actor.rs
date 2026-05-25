@@ -275,7 +275,7 @@ impl SessionPersistenceActor {
                 self.handle_finish_session_teardown(payload, ctx).await;
             }
             Command::MarkSessionInteracted(payload) => {
-                self.handle_mark_session_interacted(payload, ctx);
+                self.handle_mark_session_interacted(payload, ctx).await;
             }
             // Commands NOT subscribed to - these should not arrive.
             Command::SendToLlmProvider(..)
