@@ -107,6 +107,8 @@ pub struct ToolOrchestratorActor {
     pub(crate) state: State,
     /// Application filesystem paths.
     app_paths: crate::common::app_paths::AppPaths,
+    /// Shell binary path (captured at startup from `$SHELL`).
+    shell: String,
 }
 
 /// Dependencies for [`ToolOrchestratorActor`].
@@ -118,6 +120,8 @@ pub struct ToolOrchestratorActorDeps {
     /// Override which built-in tools to register. `None` means register all.
     /// Each entry is a tool name (e.g., `"bash"`, `"read"`, `"write"`).
     pub builtin_filter: Option<Vec<String>>,
+    /// Shell binary path (captured at startup from `$SHELL`).
+    pub shell: String,
 }
 
 impl Actor for ToolOrchestratorActor {
@@ -136,6 +140,7 @@ impl Actor for ToolOrchestratorActor {
             pending: HashMap::new(),
             state: deps.state,
             app_paths: deps.app_paths,
+            shell: deps.shell,
         };
 
         let all_builtins = builtin::builtin_tools();
@@ -324,6 +329,7 @@ impl ToolOrchestratorActor {
             session_id: Some(session_id.clone()),
             app_paths: self.app_paths.clone(),
             sink: Some(sink),
+            shell: self.shell.clone(),
             max_output_lines,
             max_output_bytes,
         }

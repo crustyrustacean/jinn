@@ -55,6 +55,9 @@ pub type ToolStream =
 /// Use [`LlmServiceFactory`] to create instances.
 #[async_trait::async_trait]
 pub trait LlmService: Send + Sync {
+    /// Returns a human-readable name for this service, for debugging.
+    fn name(&self) -> &'static str;
+
     /// Start a streaming chat completion (text only).
     ///
     /// Returns a stream of text tokens. The stream ends when the LLM finishes

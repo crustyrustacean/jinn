@@ -34,9 +34,12 @@ pub enum FrontmatterError {
 /// # Errors
 ///
 /// Returns [`FrontmatterError`] if the content is malformed.
-pub fn parse_toml_frontmatter<T: DeserializeOwned>(
+pub fn parse_toml_frontmatter<T>(
     content: &str,
-) -> Result<(T, String), error_stack::Report<FrontmatterError>> {
+) -> Result<(T, String), error_stack::Report<FrontmatterError>>
+where
+    T: DeserializeOwned,
+{
     let trimmed = content.trim_start();
 
     let Some(after_open) = trimmed.strip_prefix("+++") else {
