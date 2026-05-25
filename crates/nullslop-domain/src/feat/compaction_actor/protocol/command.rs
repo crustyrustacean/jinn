@@ -43,10 +43,16 @@ pub struct EndCompaction {
     pub session_id: SessionId,
     /// The compaction result — `None` means the LLM call failed.
     pub result: Option<CompactionResult>,
-    /// Error message if the LLM call failed.
+    /// Error or informational message.
+    /// For skipped compaction, this contains a user-facing explanation.
+    /// For failed compaction, this contains the error message.
     pub error: Option<String>,
     /// Whether this was an automatically triggered compaction (not manual `/compact`).
     pub auto: bool,
+    /// If true, compaction was skipped because all tokens fit within the reserve.
+    /// The `error` field contains a user-facing explanation message.
+    #[serde(default)]
+    pub skipped: bool,
 }
 
 /// The result of a successful context compaction.
