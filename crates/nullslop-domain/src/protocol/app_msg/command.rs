@@ -10,10 +10,13 @@
 //! below. Creating the struct alone is not enough — the bus dispatches based on
 //! enum variants, so a missing variant means the command is invisible to the system.
 
+use std::borrow::Cow;
+
 use serde::{Deserialize, Serialize};
 
 pub use crate::common::actor::command_msg::CommandMsg;
 use crate::common::actor::protocol::command::ProceedWithShutdown;
+pub use crate::common::actor::protocol::dynamic_command::DynamicCommand;
 use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
@@ -133,6 +136,12 @@ pub enum Command {
     CancelWorkflow(crate::feat::workflow::protocol::command::CancelWorkflow),
     /// Request to re-run a workflow from a specific node.
     RerunFromNode(crate::feat::workflow::protocol::command::RerunFromNode),
+    /// A dynamic command from a plugin, carrying an arbitrary JSON payload.
+    ///
+    /// Routed by the runtime [`name`](DynamicCommand::name) field, not the
+    /// static `CommandMsg::NAME`. If no actor subscribes to that name, the
+    /// command is silently dropped.
+    Dynamic(DynamicCommand),
 }
 
 impl Command {
@@ -189,6 +198,20 @@ impl Command {
             Self::RerunFromNode(..) => {
                 Some(crate::feat::workflow::protocol::command::RerunFromNode::NAME)
             }
+            Self::Dynamic(..) => Some(DynamicCommand::NAME),
+        }
+    }
+
+    /// Returns the routing key for bus dispatch.
+    ///
+    /// Typed variants return their static command name as an owned `Cow`.
+    /// `Dynamic` returns the runtime `.name` field as a borrowed `Cow`,
+    /// allowing plugins to define arbitrary routing keys.
+    #[must_use]
+    pub fn routing_key(&self) -> Option<Cow<'_, str>> {
+        match self {
+            Self::Dynamic(d) => Some(Cow::Borrowed(&d.name)),
+            _ => self.command_name().map(|s| Cow::Owned(s.to_owned())),
         }
     }
 }
@@ -314,6 +337,9 @@ impl std::fmt::Display for Command {
                     payload.workflow_id, payload.node_name
                 )
             }
+            Command::Dynamic(d) => {
+                write!(f, "dynamic command '{}'", d.name)
+            }
         }
     }
 }
@@ -367,5 +393,34 @@ mod tests {
     #[case::session(crate::PickerKind::Session, "sessions")]
     fn picker_kind_display(#[case] kind: crate::PickerKind, #[case] expected: &str) {
         assert_eq!(kind.to_string(), expected);
+    }
+
+    #[rstest::rstest]
+    fn routing_key_returns_runtime_name_for_dynamic() {
+        // Given a Dynamic command with a custom name.
+        let cmd = Command::Dynamic(DynamicCommand {
+            name: "welcome::show".to_owned(),
+            payload: serde_json::Value::Null,
+        });
+
+        // When calling routing_key().
+        let key = cmd.routing_key().expect("should have routing key");
+
+        // Then it returns the runtime name, not the static "dynamic".
+        assert_eq!(&*key, "welcome::show");
+    }
+
+    #[rstest::rstest]
+    fn routing_key_returns_static_name_for_typed_command() {
+        // Given a typed command.
+        let cmd = Command::CancelStream(CancelStream {
+            session_id: SessionId::new(),
+        });
+
+        // When calling routing_key().
+        let key = cmd.routing_key().expect("should have routing key");
+
+        // Then it returns the static command name.
+        assert_eq!(&*key, CancelStream::NAME);
     }
 }
