@@ -211,8 +211,7 @@ impl CompactionActor {
                 .provider_registry
                 .get(&provider_id)
                 .and_then(|r| r.context_length)
-                .map(|c| c as usize)
-                .unwrap_or(config.fallback_context_window);
+                .map_or(config.fallback_context_window, |c| c as usize);
 
             let total_tokens = payload.total_estimated_tokens;
 
