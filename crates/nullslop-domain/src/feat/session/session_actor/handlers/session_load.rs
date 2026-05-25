@@ -212,4 +212,34 @@ mod tests {
             "context_size should be positive"
         );
     }
+
+    #[tokio::test]
+    async fn handle_session_load_completed_marks_session_as_interacted() {
+        // Given a session loaded from disk.
+        let mut session = ChatSessionState::new();
+        session.push_entry(ChatEntry::user("hello"));
+        let session_id = session.session_id().clone();
+
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+
+        let payload = SessionLoadCompleted { session };
+
+        // When handling SessionLoadCompleted.
+        actor
+            .handle_session_load_completed(&payload, &ctx)
+            .await;
+
+        // Then the session has been marked as interacted (it came from disk).
+        let state = actor.state.read();
+        let loaded = state.session.get(&session_id).expect("session exists");
+        assert!(
+            loaded.has_interacted(),
+            "loaded session should be marked as interacted"
+        );
+        assert!(
+            loaded.is_persistable(),
+            "loaded session should be persistable"
+        );
+    }
 }

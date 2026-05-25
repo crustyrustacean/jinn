@@ -187,4 +187,71 @@ mod tests {
             "archived session should appear in sidebar after loading"
         );
     }
+
+    #[tokio::test]
+    async fn save_active_session_skips_non_persistable_session() {
+        // Given an actor with a new (non-interacted) session and a recording store.
+        let (actor, store) = test_actor_with_store(vec![]);
+        let session_id = actor.state.read().session.active_session_id().clone();
+
+        // When saving the active session.
+        actor.save_active_session(&session_id).await;
+
+        // Then the session was NOT saved because it is not persistable.
+        assert!(
+            store.last_saved_session(&session_id).is_none(),
+            "non-interacted session should not be persisted"
+        );
+    }
+
+    #[tokio::test]
+    async fn save_active_session_persists_interacted_session() {
+        // Given an actor with an interacted session and a recording store.
+        let (actor, store) = test_actor_with_store(vec![]);
+        let session_id = actor.state.read().session.active_session_id().clone();
+        {
+            let mut state = actor.state.write();
+            state.active_session_mut().mark_interacted();
+        }
+
+        // When saving the active session.
+        actor.save_active_session(&session_id).await;
+
+        // Then the session was saved.
+        assert!(
+            store.last_saved_session(&session_id).is_some(),
+            "interacted session should be persisted"
+        );
+    }
+
+    #[test]
+    fn handle_mark_session_interacted_sets_flag_and_emits_event() {
+        use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
+        use crate::protocol::Event;
+
+        // Given an actor with a new session.
+        let (mut actor, _store) = test_actor_with_store(vec![]);
+        let session_id = actor.state.read().session.active_session_id().clone();
+        let (sink, ctx) = test_context();
+
+        // When handling MarkSessionInteracted.
+        actor.handle_mark_session_interacted(
+            &MarkSessionInteracted {
+                session_id: session_id.clone(),
+            },
+            &ctx,
+        );
+
+        // Then the session has_interacted flag is set.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(session.has_interacted());
+        assert!(session.is_persistable());
+
+        // And a UserInteracted event was emitted.
+        let has_event = sink.events().iter().any(|e| {
+            matches!(e, Event::UserInteracted(e) if e.session_id == session_id)
+        });
+        assert!(has_event, "UserInteracted event should be emitted");
+    }
 }
