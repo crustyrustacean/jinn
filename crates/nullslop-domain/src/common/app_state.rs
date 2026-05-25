@@ -170,6 +170,8 @@ pub enum FocusScope {
     SidebarResize,
     /// Workflow tab — browsing workflow node status.
     Workflow,
+    /// Workflow input editing — typing into the source node output buffer.
+    WorkflowInput,
 }
 
 impl FocusScope {
@@ -183,7 +185,8 @@ impl FocusScope {
             | Self::SidebarSessions
             | Self::SidebarResize
             | Self::Workflow => Mode::Normal,
-            Self::Input | Self::ArgInput | Self::RenameSessionInput => Mode::Input,
+            Self::Input | Self::ArgInput | Self::RenameSessionInput
+            | Self::WorkflowInput => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
         }
     }
@@ -202,6 +205,7 @@ impl std::fmt::Display for FocusScope {
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
             Self::Workflow => write!(f, "Workflow"),
+            Self::WorkflowInput => write!(f, "WorkflowInput"),
         }
     }
 }
@@ -380,6 +384,11 @@ pub struct WorkflowUiState {
     /// Recomputed lazily when empty and a spatial navigation intent fires.
     /// Cleared when the active workflow changes.
     pub node_rects: HashMap<String, SpatialRect>,
+    /// The text editing buffer for the workflow node being edited.
+    /// Reuses `ChatInputBoxState` for cursor, wrapping, and scroll management.
+    pub input_buffer: ChatInputBoxState,
+    /// The name of the source node currently being edited, if any.
+    pub editing_node: Option<String>,
 }
 
 impl Clone for WorkflowUiState {
@@ -395,6 +404,8 @@ impl Clone for WorkflowUiState {
             ),
             cancel_prompt: self.cancel_prompt,
             node_rects: self.node_rects.clone(),
+            input_buffer: self.input_buffer.clone(),
+            editing_node: self.editing_node.clone(),
         }
     }
 }
