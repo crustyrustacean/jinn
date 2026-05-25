@@ -152,6 +152,10 @@ impl std::fmt::Debug for RetryingLlmService {
 
 #[async_trait::async_trait]
 impl LlmService for RetryingLlmService {
+    fn name(&self) -> &'static str {
+        "retrying"
+    }
+
     async fn chat_stream(
         &self,
         messages: Vec<LlmMessage>,
@@ -196,6 +200,10 @@ mod tests {
 
     #[async_trait::async_trait]
     impl LlmService for FlakyService {
+        fn name(&self) -> &'static str {
+            "flaky"
+        }
+
         async fn chat_stream(
             &self,
             _messages: Vec<LlmMessage>,

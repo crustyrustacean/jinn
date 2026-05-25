@@ -10,6 +10,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Position;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
+use unicode_segmentation::UnicodeSegmentation;
 
 use nullslop_workflow::spatial_layout;
 
@@ -199,10 +200,10 @@ impl VisualNode {
         let start_col = 2;
         let max_title_len = usize::from(self.width).saturating_sub(4); // ╭─  ╮
         let title = truncate_str(&self.name, max_title_len);
-        for (i, ch) in title.chars().enumerate() {
+        for (i, g) in title.graphemes(true).enumerate() {
             let col = start_col + u16::try_from(i).unwrap_or(u16::MAX);
             if col < self.width.saturating_sub(2) {
-                self.set_cell(buf, col, 0, &ch.to_string(), border_style);
+                self.set_cell(buf, col, 0, g, border_style);
             }
         }
     }
@@ -235,7 +236,7 @@ impl VisualNode {
             let label = truncate_str(&label, content_width);
             let style = Style::default().fg(port_type_color(port.port_type));
             // Right-align: compute starting column.
-            let label_len = label.chars().count();
+            let label_len = label.graphemes(true).count();
             let start_col = (content_start + content_width)
                 .saturating_sub(label_len)
                 .max(content_start);
@@ -285,10 +286,10 @@ impl VisualNode {
 
     /// Renders text starting at local coordinates.
     fn render_text(&self, buf: &mut Buffer, start_col: usize, row: u16, text: &str, style: Style) {
-        for (i, ch) in text.chars().enumerate() {
+        for (i, g) in text.graphemes(true).enumerate() {
             let col = u16::try_from(start_col + i).unwrap_or(u16::MAX);
             if col < self.width.saturating_sub(1) {
-                self.set_cell(buf, col, row, &ch.to_string(), style);
+                self.set_cell(buf, col, row, g, style);
             }
         }
     }
@@ -454,10 +455,10 @@ impl ShiftedNode<'_> {
         let start_col = 2;
         let max_title_len = usize::from(self.inner.width).saturating_sub(4);
         let title = truncate_str(&self.inner.name, max_title_len);
-        for (i, ch) in title.chars().enumerate() {
+        for (i, g) in title.graphemes(true).enumerate() {
             let col = start_col + u16::try_from(i).unwrap_or(u16::MAX);
             if col < self.inner.width.saturating_sub(2) {
-                self.set_cell(buf, col, 0, &ch.to_string(), border_style);
+                self.set_cell(buf, col, 0, g, border_style);
             }
         }
     }
@@ -486,7 +487,7 @@ impl ShiftedNode<'_> {
             let label = format!("{} {}", port_type_label(port.port_type), port.name);
             let label = truncate_str(&label, content_width);
             let style = Style::default().fg(port_type_color(port.port_type));
-            let label_len = label.chars().count();
+            let label_len = label.graphemes(true).count();
             let start_col = (content_start + content_width)
                 .saturating_sub(label_len)
                 .max(content_start);
@@ -517,21 +518,21 @@ impl ShiftedNode<'_> {
 
     /// Renders a text string at the given position within the node.
     fn render_text(&self, buf: &mut Buffer, start_col: usize, row: u16, text: &str, style: Style) {
-        for (i, ch) in text.chars().enumerate() {
+        for (i, g) in text.graphemes(true).enumerate() {
             let col = u16::try_from(start_col + i).unwrap_or(u16::MAX);
             if col < self.inner.width.saturating_sub(1) {
-                self.set_cell(buf, col, row, &ch.to_string(), style);
+                self.set_cell(buf, col, row, g, style);
             }
         }
     }
 }
 
-/// Truncates a string to at most `max_len` characters.
+/// Truncates a string to at most `max_len` grapheme clusters.
 fn truncate_str(s: &str, max_len: usize) -> String {
-    if s.chars().count() <= max_len {
+    if s.graphemes(true).count() <= max_len {
         s.to_owned()
     } else {
-        s.chars().take(max_len).collect()
+        s.graphemes(true).take(max_len).collect()
     }
 }
 

@@ -17,6 +17,7 @@ use nullslop_domain::protocol::SessionId;
 use crate::fixture;
 use crate::task::VerificationReport;
 use crate::tasks;
+use unicode_segmentation::UnicodeSegmentation;
 
 /// Registers all bench tasks as builtin lifecycle handlers.
 ///
@@ -69,10 +70,14 @@ impl std::fmt::Debug for BenchTaskHandler {
 /// Full IDs like `s-01923abc-def4-7def-8901-234567890abc` are unwieldy;
 /// `s-01923abc` is enough to be unique within a single bench run.
 fn session_id_short(id: &SessionId) -> String {
-    id.to_string().chars().take(10).collect()
+    id.to_string().graphemes(true).take(10).collect()
 }
 
 impl BuiltinHandler for BenchTaskHandler {
+    fn name(&self) -> &'static str {
+        "bench_task"
+    }
+
     fn setup(
         &self,
         session_id: &SessionId,
