@@ -79,13 +79,13 @@ impl App {
 
         // Provider registry is populated by the provider-init actor.
         // Start with an empty registry.
-        let empty_config = nullslop_domain::ProvidersConfig {
-            providers: vec![],
-            aliases: vec![],
-            default_provider: None,
-        };
         let provider_registry = ProviderRegistryService::new(
-            ProviderRegistry::from_config(empty_config).change_context(AppError)?,
+            ProviderRegistry::from_config(nullslop_domain::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+            })
+            .change_context(AppError)?,
         );
 
         // Initial factory is the no-provider sentinel until actors resolve the real one.
