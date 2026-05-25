@@ -80,18 +80,6 @@ pub fn handle_session_lifecycle_setup(
     lifecycle_name: &str,
     args: &[String],
 ) -> IntentResult {
-    // Auto-close the active session if it is empty (no history entries).
-    // This prevents ghost "Untitled Session" entries from accumulating
-    // when the user creates sessions in quick succession without sending
-    // any messages. Teardown is skipped because an empty session has no
-    // meaningful state to clean up.
-    if state.active_session().is_empty() {
-        let old_id = state.session.active_session_id().clone();
-        state.session.remove_without_replacement(&old_id);
-        // If that was the last session, we'll create a new one below.
-        // The insert + set_active below will restore the invariant.
-    }
-
     // Extract setup command before mutating state (borrow checker).
     let setup_command = find_lifecycle(state, lifecycle_name).and_then(|l| l.setup.clone());
 
@@ -337,10 +325,10 @@ mod tests {
 
         // Then a new session is created.
         assert_ne!(*state.session.active_session_id(), old_id);
-        // And the old empty session was auto-closed.
-        assert!(!state.session.contains(&old_id));
-        // And only one session remains (the new one).
-        assert_eq!(state.session.session_count(), 1);
+        // And the old empty session is preserved (no auto-close).
+        assert!(state.session.contains(&old_id));
+        // And two sessions exist.
+        assert_eq!(state.session.session_count(), 2);
         // And no commands emitted (no setup command).
         assert!(result.commands.is_empty());
         // And the session has no lifecycle name.
@@ -978,7 +966,7 @@ mod tests {
     // --- Auto-close empty session tests ---
 
     #[rstest::rstest]
-    fn auto_close_removes_empty_active_session_on_new_session() {
+    fn empty_session_is_preserved_on_new_session() {
         // Given default state with a single empty session.
         let mut state = AppState::default();
         let old_id = state.session.active_session_id().clone();
@@ -987,14 +975,14 @@ mod tests {
         // When creating a new session via lifecycle setup.
         let _result = handle_session_lifecycle_setup(&mut state, "", &[]);
 
-        // Then the old empty session is removed.
-        assert!(!state.session.contains(&old_id));
-        // And only one session remains.
-        assert_eq!(state.session.session_count(), 1);
+        // Then the old empty session is preserved (no auto-close).
+        assert!(state.session.contains(&old_id));
+        // And two sessions exist.
+        assert_eq!(state.session.session_count(), 2);
     }
 
     #[rstest::rstest]
-    fn auto_close_preserves_session_with_history() {
+    fn session_with_history_is_preserved_on_new_session() {
         // Given an active session with history.
         let mut state = AppState::default();
         let old_id = state.session.active_session_id().clone();
@@ -1014,7 +1002,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn auto_close_replaces_last_empty_session() {
+    fn lifecycle_setup_preserves_empty_session_when_creating_lifecycle_session() {
         // Given a single empty session (app just started).
         let mut state = AppState::default();
         assert_eq!(state.session.session_count(), 1);
@@ -1036,8 +1024,8 @@ mod tests {
             });
         let result = handle_session_lifecycle_setup(&mut state, "fossil branch", &[]);
 
-        // Then only the new session remains (old empty one was auto-closed).
-        assert_eq!(state.session.session_count(), 1);
+        // Then both sessions exist (old empty one is preserved).
+        assert_eq!(state.session.session_count(), 2);
         // And the new session has the lifecycle name.
         assert_eq!(
             state.active_session().lifecycle_name(),
