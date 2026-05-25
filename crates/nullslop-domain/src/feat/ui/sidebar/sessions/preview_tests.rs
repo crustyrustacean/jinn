@@ -307,7 +307,7 @@ fn popup_height_capped_when_cursor_near_top() {
 
     // And the popup does not extend past the gap boundary toward the cursor.
     assert!(
-        popup_rect.y + popup_rect.height + 1 <= cursor_y,
+        popup_rect.y + popup_rect.height < cursor_y,
         "popup should not encroach on the 1-row gap above cursor"
     );
 }
