@@ -57,6 +57,9 @@ const DEFAULT_COMPACTION_THRESHOLD: f64 = 0.7;
 /// Default number of recent tokens to reserve from compaction.
 const DEFAULT_RESERVE_TOKENS: usize = 20_000;
 
+/// Default fallback context window when the provider doesn't report one.
+const DEFAULT_FALLBACK_CONTEXT_WINDOW: usize = 150_000;
+
 /// Compaction configuration.
 ///
 /// Serialized as `[compaction]` in `nullslop.toml`.
@@ -75,6 +78,11 @@ pub struct CompactionConfig {
     /// Default: 20,000.
     #[serde(default = "default_reserve_tokens")]
     pub reserve_tokens: usize,
+    /// Fallback context window size when the provider doesn't report `context_length`.
+    /// Used for auto-compaction threshold calculation with local models (Ollama, LM Studio).
+    /// Default: 150,000.
+    #[serde(default = "default_fallback_context_window")]
+    pub fallback_context_window: usize,
 }
 
 fn default_compaction_threshold() -> f64 {
@@ -85,12 +93,17 @@ fn default_reserve_tokens() -> usize {
     DEFAULT_RESERVE_TOKENS
 }
 
+fn default_fallback_context_window() -> usize {
+    DEFAULT_FALLBACK_CONTEXT_WINDOW
+}
+
 impl Default for CompactionConfig {
     fn default() -> Self {
         Self {
             model: None,
             threshold: DEFAULT_COMPACTION_THRESHOLD,
             reserve_tokens: DEFAULT_RESERVE_TOKENS,
+            fallback_context_window: DEFAULT_FALLBACK_CONTEXT_WINDOW,
         }
     }
 }
