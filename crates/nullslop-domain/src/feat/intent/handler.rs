@@ -387,6 +387,7 @@ impl IntentHandler {
             Intent::WorkflowInspectScrollUp => handle_workflow_inspect_scroll_up(state),
             Intent::WorkflowInspectScrollDown => handle_workflow_inspect_scroll_down(state),
             Intent::WorkflowEscape => handle_workflow_escape(state),
+            Intent::WorkflowRun => handle_workflow_run(state),
             Intent::WorkflowRerunNode => handle_workflow_rerun_node(state),
             Intent::WorkflowPanLeft => handle_workflow_pan(state, 5, 0),
             Intent::WorkflowPanDown => handle_workflow_pan(state, 0, -5),
@@ -579,6 +580,20 @@ fn handle_workflow_inspect_scroll_down(state: &mut AppState) -> IntentResult {
 
 /// ESC in workflow scope: two-press cancel with confirmation.
 fn handle_workflow_escape(state: &mut AppState) -> IntentResult {
+    // If no active workflow, or workflow has no running nodes, just reset prompt and no-op.
+    let has_running = state.workflow.active().map_or(false, |w| {
+        w.execution.snapshot().statuses().any(|(_, s)| {
+            s == nullslop_workflow::engine::NodeStatus::Running
+        })
+    });
+
+    if !has_running {
+        // Workflow is idle or completed — ESC just resets any stale prompt state.
+        state.frontend.workflow_ui.cancel_prompt = false;
+        return IntentResult::empty();
+    }
+
+    // Workflow has running nodes — use two-press cancel confirmation.
     if state.frontend.workflow_ui.cancel_prompt {
         // Second ESC — confirm cancel.
         state.frontend.workflow_ui.cancel_prompt = false;
@@ -594,6 +609,52 @@ fn handle_workflow_escape(state: &mut AppState) -> IntentResult {
         state.frontend.workflow_ui.cancel_prompt = true;
         IntentResult::empty()
     }
+}
+
+/// Run the loaded workflow.
+///
+/// Validates that an active workflow exists and is in a runnable state
+/// (all nodes Pending = first run, or has result from previous run = re-run).
+/// Emits StartWorkflow to trigger engine execution.
+fn handle_workflow_run(state: &mut AppState) -> IntentResult {
+    state.frontend.workflow_ui.cancel_prompt = false;
+
+    let Some(workflow) = state.workflow.active() else {
+        return IntentResult::empty();
+    };
+
+    let snapshot = workflow.execution.snapshot();
+
+    // Check if any node is currently Running — if so, no-op (already executing).
+    let has_running = snapshot.statuses().any(|(_, s)| {
+        s == nullslop_workflow::engine::NodeStatus::Running
+    });
+    if has_running {
+        return IntentResult::empty();
+    }
+
+    let workflow_id = workflow.id.clone();
+    let name = workflow.name.clone();
+
+    // If any node has completed/failed/skipped, this is a re-run.
+    // Invalidate all nodes to reset to Pending before running.
+    let has_terminal = snapshot.statuses().any(|(_, s)| s.is_terminal());
+    if has_terminal {
+        for node_name in snapshot.structure().node_names() {
+            workflow.execution.invalidate_from(node_name);
+        }
+        // Replace cancellation token with fresh one.
+        if let Some(w) = state.workflow.active_mut() {
+            w.cancel = tokio_util::sync::CancellationToken::new();
+        }
+    }
+
+    IntentResult::with_commands(vec![Command::StartWorkflow(
+        crate::feat::workflow::protocol::command::StartWorkflow {
+            name,
+            workflow_id,
+        },
+    )])
 }
 
 /// Re-run the workflow from the currently selected node.
