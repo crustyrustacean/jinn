@@ -23,6 +23,7 @@ use nullslop_workflow::port::{PortDef, PortValue, PortValues, ScalarValue};
 use nullslop_workflow::registry::{NodeFactory, NodeRegistry};
 use nullslop_workflow_tui::viewport::ViewportState;
 use nullslop_workflow_tui::widget::WorkflowWidget;
+use ratatui::style::Color;
 use ratatui::widgets::Widget;
 
 /// A factory that creates source nodes outputting a fixed string.
@@ -176,7 +177,7 @@ fn main() {
 
     terminal
         .draw(|f| {
-            let widget = WorkflowWidget::new(&snapshot, &viewport, 0);
+            let widget = WorkflowWidget::new(&snapshot, &viewport, 0, Color::Cyan);
             widget.render(f.area(), f.buffer_mut());
         })
         .expect("draw failed");
