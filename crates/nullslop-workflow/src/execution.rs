@@ -14,8 +14,8 @@ use arc_swap::ArcSwap;
 
 use crate::engine::NodeStatus;
 use crate::graph::WorkflowGraph;
-use crate::port::{PortDef, PortValues};
 use crate::port::PortType;
+use crate::port::{PortDef, PortValues};
 
 /// Owned version of [`EdgeInfo`](crate::graph::EdgeInfo).
 ///
@@ -93,7 +93,9 @@ impl WorkflowStructure {
     /// Returns `None` if no node with the given name exists.
     #[must_use]
     pub fn node_input_ports(&self, name: &str) -> Option<&[PortDef]> {
-        self.node_ports.get(name).map(|np| np.input_ports.as_slice())
+        self.node_ports
+            .get(name)
+            .map(|np| np.input_ports.as_slice())
     }
 
     /// Returns the output port definitions for a named node.
@@ -101,7 +103,9 @@ impl WorkflowStructure {
     /// Returns `None` if no node with the given name exists.
     #[must_use]
     pub fn node_output_ports(&self, name: &str) -> Option<&[PortDef]> {
-        self.node_ports.get(name).map(|np| np.output_ports.as_slice())
+        self.node_ports
+            .get(name)
+            .map(|np| np.output_ports.as_slice())
     }
 
     /// Returns all edges in the graph.
@@ -173,9 +177,7 @@ impl WorkflowStructure {
         queue.push_back(node_name);
         while let Some(name) = queue.pop_front() {
             for edge in &self.edges {
-                if edge.source_node == name
-                    && downstream.insert(edge.target_node.as_str())
-                {
+                if edge.source_node == name && downstream.insert(edge.target_node.as_str()) {
                     queue.push_back(&edge.target_node);
                 }
             }
@@ -291,7 +293,10 @@ impl WorkflowExecution {
                 )
             })
             .collect();
-        let snapshot = ExecutionSnapshot { structure, node_states };
+        let snapshot = ExecutionSnapshot {
+            structure,
+            node_states,
+        };
         Self {
             graph,
             snapshot: ArcSwap::from_pointee(snapshot),
@@ -400,9 +405,7 @@ impl WorkflowExecution {
 
         let mut new_states = current.node_states.clone();
 
-        if include_self
-            && let Some(state) = new_states.get_mut(node_name)
-        {
+        if include_self && let Some(state) = new_states.get_mut(node_name) {
             state.inputs = None;
             state.outputs = None;
             state.status = NodeStatus::Pending;
@@ -562,9 +565,18 @@ mod tests {
 
         // And node ports are correct.
         assert_eq!(structure.node_input_ports("a"), Some(&[][..]));
-        assert_eq!(structure.node_output_ports("a"), Some(&[PortDef::text("out")][..]));
-        assert_eq!(structure.node_input_ports("b"), Some(&[PortDef::text("in")][..]));
-        assert_eq!(structure.node_output_ports("b"), Some(&[PortDef::text("out")][..]));
+        assert_eq!(
+            structure.node_output_ports("a"),
+            Some(&[PortDef::text("out")][..])
+        );
+        assert_eq!(
+            structure.node_input_ports("b"),
+            Some(&[PortDef::text("in")][..])
+        );
+        assert_eq!(
+            structure.node_output_ports("b"),
+            Some(&[PortDef::text("out")][..])
+        );
     }
 
     #[rstest::rstest]
@@ -740,25 +752,40 @@ mod tests {
         execution.set_status("a", NodeStatus::Completed);
         execution.set_status("b", NodeStatus::Completed);
         let mut a_out = PortValues::new();
-        a_out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text("hello".to_owned())));
+        a_out.insert(
+            "out".to_owned(),
+            PortValue::Single(ScalarValue::Text("hello".to_owned())),
+        );
         execution.set_node_outputs("a", a_out.clone());
         let mut b_out = PortValues::new();
-        b_out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text("world".to_owned())));
+        b_out.insert(
+            "out".to_owned(),
+            PortValue::Single(ScalarValue::Text("world".to_owned())),
+        );
         execution.set_node_outputs("b", b_out.clone());
         execution.set_node_inputs("b", {
             let mut pv = PortValues::new();
-            pv.insert("in".to_owned(), PortValue::Single(ScalarValue::Text("hello".to_owned())));
+            pv.insert(
+                "in".to_owned(),
+                PortValue::Single(ScalarValue::Text("hello".to_owned())),
+            );
             pv
         });
         execution.set_node_inputs("c", {
             let mut pv = PortValues::new();
-            pv.insert("in".to_owned(), PortValue::Single(ScalarValue::Text("world".to_owned())));
+            pv.insert(
+                "in".to_owned(),
+                PortValue::Single(ScalarValue::Text("world".to_owned())),
+            );
             pv
         });
 
         // Mutate a's output.
         let mut new_a_out = PortValues::new();
-        new_a_out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text("changed".to_owned())));
+        new_a_out.insert(
+            "out".to_owned(),
+            PortValue::Single(ScalarValue::Text("changed".to_owned())),
+        );
         execution.update_output("a", new_a_out.clone());
 
         let snap = execution.snapshot();
@@ -766,7 +793,15 @@ mod tests {
         // a's output changed but status stays Completed.
         assert_eq!(snap.status_of("a"), Some(NodeStatus::Completed));
         let a_state = snap.node_state("a").expect("a exists");
-        assert_eq!(a_state.outputs.as_ref().expect("has outputs").get("out").unwrap(), &PortValue::Single(ScalarValue::Text("changed".to_owned())));
+        assert_eq!(
+            a_state
+                .outputs
+                .as_ref()
+                .expect("has outputs")
+                .get("out")
+                .unwrap(),
+            &PortValue::Single(ScalarValue::Text("changed".to_owned()))
+        );
 
         // b is invalidated (cleared inputs/outputs, Pending).
         assert_eq!(snap.status_of("b"), Some(NodeStatus::Pending));
@@ -788,7 +823,10 @@ mod tests {
         // Simulate: a completed with output.
         execution.set_status("a", NodeStatus::Completed);
         let mut a_out = PortValues::new();
-        a_out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text("data".to_owned())));
+        a_out.insert(
+            "out".to_owned(),
+            PortValue::Single(ScalarValue::Text("data".to_owned())),
+        );
         execution.set_node_outputs("a", a_out);
 
         // Invalidate from a (includes a itself).
@@ -809,7 +847,10 @@ mod tests {
         // Simulate: a completed with output.
         execution.set_status("a", NodeStatus::Completed);
         let mut a_out = PortValues::new();
-        a_out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text("hello".to_owned())));
+        a_out.insert(
+            "out".to_owned(),
+            PortValue::Single(ScalarValue::Text("hello".to_owned())),
+        );
         execution.set_node_outputs("a", a_out);
 
         // Seed b's inputs from a's outputs.

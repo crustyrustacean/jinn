@@ -1,6 +1,6 @@
 //! Tests for workflow input validators.
 
-use super::validator::{validate_workflow_edit_node, WorkflowEditNodeError};
+use super::validator::{WorkflowEditNodeError, validate_workflow_edit_node};
 use crate::common::app_state::AppState;
 use crate::feat::workflow::workflow_state::WorkflowState;
 use nullslop_workflow::graph::{WorkflowGraph, WorkflowGraphBuilder};
@@ -125,7 +125,10 @@ fn validate_edit_node_rejects_running_workflow() {
     let result = validate_workflow_edit_node(&state);
 
     // Then returns WorkflowRunning error.
-    assert!(matches!(result, Err(WorkflowEditNodeError::WorkflowRunning)));
+    assert!(matches!(
+        result,
+        Err(WorkflowEditNodeError::WorkflowRunning)
+    ));
 }
 
 #[test]

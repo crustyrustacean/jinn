@@ -16,7 +16,9 @@ use crate::feat::workflow::domain_node_context::DomainNodeContext;
 use crate::feat::workflow::protocol::command::{
     CancelWorkflow, InitWorkflow, LoadWorkflowPickerEntries, RerunFromNode, StartWorkflow,
 };
-use crate::feat::workflow::protocol::event::{WorkflowCompleted, WorkflowInitialized, WorkflowStarted};
+use crate::feat::workflow::protocol::event::{
+    WorkflowCompleted, WorkflowInitialized, WorkflowStarted,
+};
 use crate::feat::workflow::workflow_registry::WorkflowRegistry;
 use crate::feat::workflow::workflow_state::WorkflowState;
 use crate::protocol::{Command, Event};
@@ -117,7 +119,9 @@ impl WorkflowActor {
         };
 
         // Build the graph once and wrap in a WorkflowExecution.
-        let execution = Arc::new(nullslop_workflow::execution::WorkflowExecution::new(builder()));
+        let execution = Arc::new(nullslop_workflow::execution::WorkflowExecution::new(
+            builder(),
+        ));
 
         // Create workflow state with the shared execution.
         let mut workflow_state = WorkflowState::new(name.clone(), execution.clone());
@@ -131,7 +135,10 @@ impl WorkflowActor {
             let snapshot = execution.snapshot();
             let sources = snapshot.structure().sources();
             for source_name in sources {
-                execution.set_status(source_name, nullslop_workflow::engine::NodeStatus::AwaitingInput);
+                execution.set_status(
+                    source_name,
+                    nullslop_workflow::engine::NodeStatus::AwaitingInput,
+                );
             }
         }
 
@@ -295,10 +302,7 @@ impl WorkflowActor {
 
         let cancel = {
             let guard = self.state.read();
-            guard
-                .workflow
-                .get(&workflow_id)
-                .map(|w| w.cancel.clone())
+            guard.workflow.get(&workflow_id).map(|w| w.cancel.clone())
         };
         let Some(cancel) = cancel else {
             tracing::warn!(id = %workflow_id, "workflow cancel token not found for rerun");
@@ -316,12 +320,8 @@ impl WorkflowActor {
         );
 
         tokio::spawn(async move {
-            let result = nullslop_workflow::engine::run_pending(
-                execution,
-                domain_ctx.clone(),
-                cancel,
-            )
-            .await;
+            let result =
+                nullslop_workflow::engine::run_pending(execution, domain_ctx.clone(), cancel).await;
 
             match result {
                 Ok(workflow_result) => {

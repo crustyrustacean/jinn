@@ -229,12 +229,7 @@ impl BenchActor {
     }
 
     /// Handle setup errors for bench sessions: record a failure row and advance.
-    fn handle_setup_error(
-        &mut self,
-        session_id: &SessionId,
-        error: &str,
-        ctx: &ActorContext,
-    ) {
+    fn handle_setup_error(&mut self, session_id: &SessionId, error: &str, ctx: &ActorContext) {
         // Check if this session has a bench lifecycle name.
         let task_name = {
             let state = self.state.read();
@@ -401,8 +396,14 @@ impl BenchActor {
     }
 
     /// Handle `SessionPhaseChanged` — finalize result when tracked session returns to Idle.
-    #[expect(clippy::unused_async, reason = "called via .await from the async handle method")]
-    #[expect(clippy::too_many_lines, reason = "linear lifecycle handler orchestrating teardown, archive, cleanup phases")]
+    #[expect(
+        clippy::unused_async,
+        reason = "called via .await from the async handle method"
+    )]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "linear lifecycle handler orchestrating teardown, archive, cleanup phases"
+    )]
     async fn handle_session_phase_changed(
         &mut self,
         payload: &SessionPhaseChanged,
@@ -1059,7 +1060,8 @@ mod tests {
     #[test]
     fn plan_driven_actor_starts_first_pair_on_activate() {
         // Given a plan with 1 model and 1 task.
-        let plan = build_plan(&["test-model".to_owned()], &["hello-world".to_owned()]).expect("plan");
+        let plan =
+            build_plan(&["test-model".to_owned()], &["hello-world".to_owned()]).expect("plan");
 
         let state = State::new(nullslop_domain::AppState::default());
         let (sink, _ctx) = test_context();

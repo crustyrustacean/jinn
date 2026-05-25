@@ -690,9 +690,8 @@ fn pinned_transient_entry_produces_user_message() {
 fn forced_include_system_entry_produces_system_message() {
     // Given a System entry with ForcedInclude (not pinned).
     use crate::protocol::ContextOverride;
-    let entries = vec![
-        ChatEntry::system("important").with_context_override(ContextOverride::ForcedInclude),
-    ];
+    let entries =
+        vec![ChatEntry::system("important").with_context_override(ContextOverride::ForcedInclude)];
 
     // When converting to messages.
     let messages = entries_to_messages(&entries);
@@ -711,9 +710,8 @@ fn forced_include_system_entry_produces_system_message() {
 fn forced_include_actor_entry_produces_user_message() {
     // Given an Actor entry with ForcedInclude (not pinned).
     use crate::protocol::ContextOverride;
-    let entries = vec![
-        ChatEntry::actor("src", "text").with_context_override(ContextOverride::ForcedInclude),
-    ];
+    let entries =
+        vec![ChatEntry::actor("src", "text").with_context_override(ContextOverride::ForcedInclude)];
 
     // When converting to messages.
     let messages = entries_to_messages(&entries);

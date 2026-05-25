@@ -60,7 +60,11 @@ impl<'a> WorkflowWidget<'a> {
         node_map: &HashMap<&str, &VisualNode>,
         area: Rect,
     ) {
-        let node_rects: Vec<Rect> = layout.nodes.iter().map(super::node::VisualNode::rect).collect();
+        let node_rects: Vec<Rect> = layout
+            .nodes
+            .iter()
+            .map(super::node::VisualNode::rect)
+            .collect();
         let mut grid: HashMap<(i32, i32), CellInfo> = HashMap::new();
 
         // Area origin offset for connection paths (same as node rendering).
@@ -95,10 +99,18 @@ impl<'a> WorkflowWidget<'a> {
             let (tx, ty) = tgt_node.input_port_pos(tgt_idx);
 
             // Apply viewport offset and area origin using i32 arithmetic.
-            let sx = i32::from(sx).saturating_sub(self.viewport.offset_x).saturating_add(ox);
-            let sy = i32::from(sy).saturating_sub(self.viewport.offset_y).saturating_add(oy);
-            let tx = i32::from(tx).saturating_sub(self.viewport.offset_x).saturating_add(ox);
-            let ty = i32::from(ty).saturating_sub(self.viewport.offset_y).saturating_add(oy);
+            let sx = i32::from(sx)
+                .saturating_sub(self.viewport.offset_x)
+                .saturating_add(ox);
+            let sy = i32::from(sy)
+                .saturating_sub(self.viewport.offset_y)
+                .saturating_add(oy);
+            let tx = i32::from(tx)
+                .saturating_sub(self.viewport.offset_x)
+                .saturating_add(ox);
+            let ty = i32::from(ty)
+                .saturating_sub(self.viewport.offset_y)
+                .saturating_add(oy);
 
             let path = SimpleRouter::route((sx, sy), (tx, ty), &node_rects);
             insert_path_into_grid(&mut grid, &path, edge.port_type);
@@ -315,9 +327,10 @@ mod tests {
         for row in 0..area.height {
             for col in 0..area.width {
                 if let Some(cell) = buf.cell(ratatui::layout::Position::new(col, row))
-                    && cell.symbol() == "\u{280b}" {
-                        has_spinner = true;
-                    }
+                    && cell.symbol() == "\u{280b}"
+                {
+                    has_spinner = true;
+                }
             }
         }
         assert!(has_spinner, "should find spinner frame ⠋ for Running node");

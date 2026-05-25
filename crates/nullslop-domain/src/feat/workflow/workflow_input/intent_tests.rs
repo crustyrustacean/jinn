@@ -32,17 +32,13 @@ fn source_only_graph() -> WorkflowGraph {
 
 /// Helper: inserts a workflow into state with Workflow as base scope.
 fn insert_workflow_and_select_source(state: &mut AppState) {
-    let execution =
-        std::sync::Arc::new(nullslop_workflow::execution::WorkflowExecution::new(
-            source_only_graph(),
-        ));
+    let execution = std::sync::Arc::new(nullslop_workflow::execution::WorkflowExecution::new(
+        source_only_graph(),
+    ));
     let workflow_state = WorkflowState::new("test".to_owned(), execution);
     state.workflow.insert(workflow_state);
     state.frontend.workflow_ui.selected_node = Some("source".to_owned());
-    state
-        .frontend
-        .scope_stack
-        .swap_base(FocusScope::Workflow);
+    state.frontend.scope_stack.swap_base(FocusScope::Workflow);
 }
 
 #[test]
@@ -72,11 +68,7 @@ fn workflow_input_submit_writes_output() {
     let mut state = AppState::default();
     insert_workflow_and_select_source(&mut state);
     IntentHandler::handle(&Intent::WorkflowEditNode, &mut state);
-    state
-        .frontend
-        .workflow_ui
-        .input_buffer
-        .insert_text("hello");
+    state.frontend.workflow_ui.input_buffer.insert_text("hello");
 
     // When handling WorkflowInputSubmit.
     IntentHandler::handle(&Intent::WorkflowInputSubmit, &mut state);
@@ -101,10 +93,7 @@ fn workflow_input_submit_pops_scope() {
 
     // Then editing_node is None and scope is back to Workflow.
     assert!(state.frontend.workflow_ui.editing_node.is_none());
-    assert_eq!(
-        state.frontend.scope_stack.current(),
-        &FocusScope::Workflow
-    );
+    assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Workflow);
 }
 
 #[test]
@@ -125,10 +114,7 @@ fn workflow_input_cancel_discards_changes() {
     // Then editing_node is None, buffer is empty, scope is Workflow.
     assert!(state.frontend.workflow_ui.editing_node.is_none());
     assert!(state.frontend.workflow_ui.input_buffer.is_empty());
-    assert_eq!(
-        state.frontend.scope_stack.current(),
-        &FocusScope::Workflow
-    );
+    assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Workflow);
 }
 
 #[test]
@@ -207,9 +193,10 @@ fn workflow_input_submit_transitions_status_to_pending() {
 
     // Mark as AwaitingInput (simulating what handle_init_workflow does).
     let workflow = state.workflow.active().expect("workflow exists");
-    workflow
-        .execution
-        .set_status("source", nullslop_workflow::engine::NodeStatus::AwaitingInput);
+    workflow.execution.set_status(
+        "source",
+        nullslop_workflow::engine::NodeStatus::AwaitingInput,
+    );
 
     // Enter edit mode and type text.
     IntentHandler::handle(&Intent::WorkflowEditNode, &mut state);

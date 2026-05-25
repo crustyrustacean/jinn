@@ -187,7 +187,10 @@ mod tests {
                 .take_text("in")
                 .map_err(|_port_err| Report::new(NodeError))?;
             let mut output = PortValues::new();
-            output.insert("out".to_owned(), PortValue::Single(ScalarValue::Text(value)));
+            output.insert(
+                "out".to_owned(),
+                PortValue::Single(ScalarValue::Text(value)),
+            );
             Ok(output)
         }
 
@@ -202,7 +205,10 @@ mod tests {
         let node = EchoNode;
         let ctx = TestContext;
         let mut inputs = PortValues::new();
-        inputs.insert("in".to_owned(), PortValue::Single(ScalarValue::Text("hello".to_owned())));
+        inputs.insert(
+            "in".to_owned(),
+            PortValue::Single(ScalarValue::Text("hello".to_owned())),
+        );
 
         // When executing the node.
         let result = node.execute(inputs, &ctx).await;

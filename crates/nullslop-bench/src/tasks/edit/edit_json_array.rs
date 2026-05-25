@@ -11,8 +11,8 @@ use include_dir::Dir;
 
 const EXPECTED_DATA: &str = include_str!("edit_json_array/expected/data.json");
 
-
-static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_json_array/fixtures");
+static FIXTURES: Dir<'_> =
+    include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_json_array/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {

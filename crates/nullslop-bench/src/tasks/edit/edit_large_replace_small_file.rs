@@ -9,8 +9,9 @@ use crate::task::{BenchTask, BenchTools, CheckResult, VerificationReport};
 use crate::tasks::checks;
 use include_dir::Dir;
 
-
-static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_large_replace_small_file/fixtures");
+static FIXTURES: Dir<'_> = include_dir::include_dir!(
+    "$CARGO_MANIFEST_DIR/src/tasks/edit/edit_large_replace_small_file/fixtures"
+);
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -50,9 +51,7 @@ fn verify(dir: &Path) -> VerificationReport {
         &["__init__", "load", "sum", "average", "median", "__str__"],
     ));
     checks.push(checks::check_python_top_level_function_exists(
-        dir,
-        "main.py",
-        "main",
+        dir, "main.py", "main",
     ));
 
     // Behavioral checks — run the program and verify output.
@@ -221,7 +220,10 @@ if __name__ == "__main__":
             .iter()
             .find(|c| c.name.contains("python_run("))
             .expect("run check");
-        assert!(run_check.passed, "python_run should pass even with wrong structure");
+        assert!(
+            run_check.passed,
+            "python_run should pass even with wrong structure"
+        );
     }
 
     #[test]

@@ -10,7 +10,7 @@ use ratatui::layout::{Position, Rect};
 use ratatui::style::Color;
 
 use crate::port::port_type_color;
-use nullslop_workflow::port::{PortType};
+use nullslop_workflow::port::PortType;
 
 /// A cell on a connection path, with its direction information for character selection.
 #[derive(Debug, Clone, Copy)]
@@ -57,13 +57,15 @@ pub(crate) fn insert_path_into_grid(
         }
 
         if i > 0
-            && let Some(d) = dir_toward(cell.pos, path[i - 1].pos) {
-                entry.dirs.insert(d);
-            }
+            && let Some(d) = dir_toward(cell.pos, path[i - 1].pos)
+        {
+            entry.dirs.insert(d);
+        }
         if i + 1 < path.len()
-            && let Some(d) = dir_toward(cell.pos, path[i + 1].pos) {
-                entry.dirs.insert(d);
-            }
+            && let Some(d) = dir_toward(cell.pos, path[i + 1].pos)
+        {
+            entry.dirs.insert(d);
+        }
     }
 }
 
@@ -188,7 +190,10 @@ fn box_char_from_dirs(dirs: &HashSet<Dir2D>) -> char {
     let has_left = dirs.contains(&Dir2D::Left);
     let has_right = dirs.contains(&Dir2D::Right);
 
-    #[expect(clippy::match_same_arms, reason = "end caps intentionally match their parent line style")]
+    #[expect(
+        clippy::match_same_arms,
+        reason = "end caps intentionally match their parent line style"
+    )]
     match (has_up, has_down, has_left, has_right) {
         // Straight lines
         (false, false, true, true) => '─',
@@ -286,8 +291,8 @@ pub fn render_path(buf: &mut Buffer, path: &[PathCell], port_type: PortType, are
 #[expect(clippy::indexing_slicing, reason = "test indices are known-valid")]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use nullslop_workflow::port::ScalarType;
     use super::*;
+    use nullslop_workflow::port::ScalarType;
 
     #[test]
     fn l_shaped_path_connects_side_by_side() {

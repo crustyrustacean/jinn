@@ -796,7 +796,9 @@ fn ignored_user_entry_is_not_in_context() {
 #[rstest::rstest]
 fn ignored_but_pinned_entry_is_in_context() {
     // Given a User entry that is both ignored and pinned.
-    let entry = ChatEntry::user("hello").with_ignored(true).with_pin(PinPosition::Top);
+    let entry = ChatEntry::user("hello")
+        .with_ignored(true)
+        .with_pin(PinPosition::Top);
 
     // Then pin overrides ignore — it IS in context.
     assert!(entry.is_in_context());
@@ -805,7 +807,9 @@ fn ignored_but_pinned_entry_is_in_context() {
 #[rstest::rstest]
 fn pinned_ignored_thinking_entry_is_in_context() {
     // Given a Thinking entry that is both ignored and pinned.
-    let entry = ChatEntry::thinking("reason").with_ignored(true).with_pin(PinPosition::Bottom);
+    let entry = ChatEntry::thinking("reason")
+        .with_ignored(true)
+        .with_pin(PinPosition::Bottom);
 
     // Then pin overrides both kind default and ignore — it IS in context.
     assert!(entry.is_in_context());
@@ -825,7 +829,11 @@ fn all_include_default_kinds_are_in_context() {
 
     // Then all are in context by default.
     for entry in &entries {
-        assert!(entry.is_in_context(), "{} should be in context", entry.kind_str());
+        assert!(
+            entry.is_in_context(),
+            "{} should be in context",
+            entry.kind_str()
+        );
     }
 }
 
@@ -841,7 +849,11 @@ fn all_exclude_default_kinds_are_not_in_context() {
 
     // Then none are in context by default.
     for entry in &entries {
-        assert!(!entry.is_in_context(), "{} should NOT be in context", entry.kind_str());
+        assert!(
+            !entry.is_in_context(),
+            "{} should NOT be in context",
+            entry.kind_str()
+        );
     }
 }
 

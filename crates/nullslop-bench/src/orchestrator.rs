@@ -6,8 +6,8 @@
 
 use std::collections::HashMap;
 
-use globset::GlobBuilder;
 use error_stack::ResultExt;
+use globset::GlobBuilder;
 
 use crate::task::BenchTask;
 use crate::tasks;
@@ -217,10 +217,7 @@ mod tests {
 
         // Then broken tasks appear (fix-syntax-broken-rust, fix-syntax-broken-python).
         assert_eq!(plan.pairs.len(), 2);
-        assert!(plan
-            .pairs
-            .iter()
-            .all(|(name, _)| name.contains("-broken-")));
+        assert!(plan.pairs.iter().all(|(name, _)| name.contains("-broken-")));
     }
 
     #[test]
@@ -235,7 +232,11 @@ mod tests {
         // Then all edit tasks + hello-world appear.
         let names: Vec<&str> = plan.pairs.iter().map(|(n, _)| n.as_str()).collect();
         assert!(names.contains(&"hello-world"));
-        assert!(names.iter().all(|n| n.starts_with("edit-") || *n == "hello-world"));
+        assert!(
+            names
+                .iter()
+                .all(|n| n.starts_with("edit-") || *n == "hello-world")
+        );
     }
 
     #[test]

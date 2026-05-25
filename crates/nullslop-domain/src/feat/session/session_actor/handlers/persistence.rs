@@ -103,6 +103,29 @@ impl SessionPersistenceActor {
                 // Reset in-memory state so the sidebar filter includes this session.
                 session.set_session_state(crate::feat::session::chat_session::SessionState::Loaded);
 
+                // Load judge sessions that belong to this origin.
+                // They may have been cascade-archived alongside the origin.
+                // We unarchive and insert them into memory so the coordinator
+                // can trigger them on the next IDLE transition.
+                let judge_sessions =
+                    match store.load_judge_sessions_for_origin(&evt.session_id).await {
+                        Ok(sessions) => sessions,
+                        Err(e) => {
+                            tracing::warn!(
+                                err = ?e,
+                                "failed to load judge sessions for origin"
+                            );
+                            Vec::new()
+                        }
+                    };
+
+                if !judge_sessions.is_empty() {
+                    let mut state = self.state.write();
+                    for judge_session in judge_sessions {
+                        state.session.insert(judge_session);
+                    }
+                }
+
                 let _ =
                     ctx.send_command(Command::SessionLoadCompleted(CompletedPayload { session }));
             }

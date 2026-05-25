@@ -10,9 +10,9 @@ use crate::protocol::PinPosition;
 use crate::common::actor::Actor;
 use crate::common::actor::ActorContext;
 use crate::common::actor::RecordingSink;
+use crate::common::app_state::AppState;
 use crate::common::services::Services;
 use crate::common::state::State;
-use crate::common::app_state::AppState;
 use crate::feat::compaction_actor::CompactionActor;
 use crate::feat::compaction_actor::CompactionActorDeps;
 use crate::feat::compaction_actor::protocol::command::{CancelCompaction, CompactContext};
@@ -577,10 +577,7 @@ fn no_user_after_cut_returns_history_len() {
 #[test]
 fn cut_at_end_returns_end() {
     // Given a simple history.
-    let history = vec![
-        ChatEntry::user("msg1"),
-        ChatEntry::assistant("resp1"),
-    ];
+    let history = vec![ChatEntry::user("msg1"), ChatEntry::assistant("resp1")];
 
     // When cut is already at the end.
     let result = super::adjust_cut_to_boundary(&history, 2);
@@ -846,8 +843,8 @@ fn cut_index_equals_history_len_when_compact_all() {
 
     // Then cut_index equals history.len() — everything gets compacted.
     assert_eq!(
-        cut_index, history.len(),
+        cut_index,
+        history.len(),
         "cut_index should be history.len() when compact_all=true"
     );
 }
-

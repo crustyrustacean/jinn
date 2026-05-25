@@ -79,6 +79,14 @@ impl SessionStore for FakeSessionStore {
     ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
         Ok(Vec::new())
     }
+
+    async fn load_judge_sessions_for_origin(
+        &self,
+        _origin_session_id: &SessionId,
+    ) -> Result<Vec<crate::feat::session::chat_session::ChatSessionState>, Report<SessionStoreError>>
+    {
+        Ok(Vec::new())
+    }
 }
 
 /// A builder for constructing [Services] with fake implementations for tests.

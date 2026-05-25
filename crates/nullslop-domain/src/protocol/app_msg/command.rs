@@ -146,9 +146,9 @@ pub enum Command {
     /// Request to re-run a workflow from a specific node.
     RerunFromNode(crate::feat::workflow::protocol::command::RerunFromNode),
     /// Load entries for the workflow picker.
-    LoadWorkflowPickerEntries(
-        crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries,
-    ),
+    LoadWorkflowPickerEntries(crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries),
+    /// Rescan the judges directory and reload judge definitions.
+    RescanJudges(crate::feat::judge::RescanJudges),
     /// A dynamic command from a plugin, carrying an arbitrary JSON payload.
     ///
     /// Routed by the runtime [`name`](DynamicCommand::name) field, not the
@@ -181,9 +181,9 @@ impl Command {
             Self::ProceedWithShutdown(..) => Some(ProceedWithShutdown::NAME),
             Self::SessionLoadCompleted(..) => Some(SessionLoadCompleted::NAME),
             Self::LoadProviderPickerEntries(..) => Some(LoadProviderPickerEntries::NAME),
-            Self::LoadCompactionModelPickerEntries(..) => {
-                Some(crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries::NAME)
-            }
+            Self::LoadCompactionModelPickerEntries(..) => Some(
+                crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries::NAME,
+            ),
             Self::LoadSessionPickerEntries(..) => Some(LoadSessionPickerEntries::NAME),
             Self::SessionLoadRequested(..) => Some(SessionLoadRequested::NAME),
             Self::ScanSkills => Some(ScanSkills::NAME),
@@ -221,6 +221,7 @@ impl Command {
             Self::LoadWorkflowPickerEntries(..) => {
                 Some(crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries::NAME)
             }
+            Self::RescanJudges(..) => Some(crate::feat::judge::RescanJudges::NAME),
             Self::Dynamic(..) => Some(DynamicCommand::NAME),
         }
     }
@@ -240,7 +241,10 @@ impl Command {
 }
 
 impl std::fmt::Display for Command {
-    #[expect(clippy::too_many_lines, reason = "large match on enum variants, each arm is 1-4 lines")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "large match on enum variants, each arm is 1-4 lines"
+    )]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Command::SendMessage(..) => write!(f, "send message"),
@@ -375,6 +379,9 @@ impl std::fmt::Display for Command {
             }
             Command::LoadWorkflowPickerEntries(..) => {
                 write!(f, "load workflow picker entries")
+            }
+            Command::RescanJudges(..) => {
+                write!(f, "rescan judges")
             }
             Command::Dynamic(d) => {
                 write!(f, "dynamic command '{}'", d.name)

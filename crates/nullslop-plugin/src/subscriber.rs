@@ -4,8 +4,8 @@
 //! into a typed `PushChatEntry` command so the message appears in the
 //! chat UI.
 
-use nullslop_domain::DynamicCommand;
 use nullslop_domain::ChatEntry;
+use nullslop_domain::DynamicCommand;
 use nullslop_domain::SessionId;
 use nullslop_domain::feat::chat_input::protocol::command::PushChatEntry;
 
@@ -50,7 +50,8 @@ impl WelcomeSubscriber {
             entry,
         };
 
-        self.sender.send(nullslop_domain::Command::PushChatEntry(push));
+        self.sender
+            .send(nullslop_domain::Command::PushChatEntry(push));
     }
 
     /// Handles the `welcome::session_tip` plugin command.
@@ -67,7 +68,8 @@ impl WelcomeSubscriber {
             entry,
         };
 
-        self.sender.send(nullslop_domain::Command::PushChatEntry(push));
+        self.sender
+            .send(nullslop_domain::Command::PushChatEntry(push));
     }
 }
 
@@ -111,7 +113,10 @@ mod tests {
                 assert_eq!(pce.session_id, session_id);
                 // The system message should contain our custom text.
                 let text = pce.entry.text();
-                assert!(text.contains("Hello, plugin!"), "message should contain custom text");
+                assert!(
+                    text.contains("Hello, plugin!"),
+                    "message should contain custom text"
+                );
             }
             other => panic!("expected PushChatEntry, got {other:?}"),
         }
@@ -211,9 +216,6 @@ mod tests {
 
         // Then no command is emitted.
         let result = rx.try_recv().expect("try_recv should succeed");
-        assert!(
-            result.is_none(),
-            "non-welcome commands should be ignored"
-        );
+        assert!(result.is_none(), "non-welcome commands should be ignored");
     }
 }

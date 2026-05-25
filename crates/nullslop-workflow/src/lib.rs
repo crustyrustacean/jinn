@@ -25,7 +25,9 @@ pub mod spatial_layout;
 pub mod validation;
 
 pub use engine::NodeStatus;
-pub use execution::{ExecutionSnapshot, NodePorts, NodeState, OwnedEdgeInfo, WorkflowExecution, WorkflowStructure};
+pub use execution::{
+    ExecutionSnapshot, NodePorts, NodeState, OwnedEdgeInfo, WorkflowExecution, WorkflowStructure,
+};
 pub use graph::EdgeInfo;
 pub use node::DynamicNode;
 pub use registry::{NodeFactory, NodeRegistry, RegistryError};

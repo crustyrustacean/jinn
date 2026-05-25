@@ -12,8 +12,8 @@
 
 use std::collections::HashMap;
 
-use crate::port::PortDef;
 use crate::execution::WorkflowStructure;
+use crate::port::PortDef;
 
 /// A bounding rectangle in content-space coordinates.
 ///
@@ -179,9 +179,7 @@ pub fn compute_spatial_layout(structure: &WorkflowStructure) -> HashMap<String, 
         let mut y_cursor: u16 = 0;
         for name in col_names {
             #[expect(clippy::expect_used, reason = "size was computed in first pass")]
-            let &(width, height) = node_sizes
-                .get(name)
-                .expect("size computed in first pass");
+            let &(width, height) = node_sizes.get(name).expect("size computed in first pass");
             result.insert(
                 (*name).to_owned(),
                 SpatialRect {
@@ -250,15 +248,13 @@ fn compute_x_offset(
 ) -> u16 {
     let mut x: u16 = 0;
     for col in 0..target_col {
-        let max_width = column_nodes
-            .get(&col)
-            .map_or(0, |names| {
-                names
-                    .iter()
-                    .filter_map(|n| node_sizes.get(n).map(|(w, _)| *w))
-                    .max()
-                    .unwrap_or(0)
-            });
+        let max_width = column_nodes.get(&col).map_or(0, |names| {
+            names
+                .iter()
+                .filter_map(|n| node_sizes.get(n).map(|(w, _)| *w))
+                .max()
+                .unwrap_or(0)
+        });
         x = x + max_width + H_SPACING;
     }
     x
@@ -289,13 +285,12 @@ pub fn spatial_nearest(
     current_name: &str,
 ) -> Option<String> {
     type RectGetter = fn(&SpatialRect) -> u16;
-    let (primary, cross, sign_positive): (RectGetter, RectGetter, bool) =
-        match direction {
-            SpatialDirection::Down => (SpatialRect::center_y, SpatialRect::center_x, true),
-            SpatialDirection::Up => (SpatialRect::center_y, SpatialRect::center_x, false),
-            SpatialDirection::Right => (SpatialRect::center_x, SpatialRect::center_y, true),
-            SpatialDirection::Left => (SpatialRect::center_x, SpatialRect::center_y, false),
-        };
+    let (primary, cross, sign_positive): (RectGetter, RectGetter, bool) = match direction {
+        SpatialDirection::Down => (SpatialRect::center_y, SpatialRect::center_x, true),
+        SpatialDirection::Up => (SpatialRect::center_y, SpatialRect::center_x, false),
+        SpatialDirection::Right => (SpatialRect::center_x, SpatialRect::center_y, true),
+        SpatialDirection::Left => (SpatialRect::center_x, SpatialRect::center_y, false),
+    };
 
     let cur_primary = primary(current);
     let cur_cross = cross(current);

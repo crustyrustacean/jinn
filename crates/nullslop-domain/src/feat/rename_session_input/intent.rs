@@ -21,7 +21,11 @@ pub fn handle_rename_session_enter(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     };
 
-    let title = entry.title.clone();
+    let title = state
+        .session
+        .get(&entry.id)
+        .map(|s| s.title().unwrap_or("Untitled Session").to_owned())
+        .unwrap_or_default();
     let cursor_pos = title.len();
 
     state.frontend.rename_session_input = RenameSessionInputState {

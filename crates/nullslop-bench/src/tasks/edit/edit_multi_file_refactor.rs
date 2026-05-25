@@ -12,8 +12,9 @@ use include_dir::Dir;
 const EXPECTED_LIB_RS: &str = include_str!("edit_multi_file_refactor/expected/src/lib.rs");
 const EXPECTED_MAIN_RS: &str = include_str!("edit_multi_file_refactor/expected/src/main.rs");
 
-
-static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_multi_file_refactor/fixtures");
+static FIXTURES: Dir<'_> = include_dir::include_dir!(
+    "$CARGO_MANIFEST_DIR/src/tasks/edit/edit_multi_file_refactor/fixtures"
+);
 
 pub fn task() -> BenchTask {
     BenchTask {

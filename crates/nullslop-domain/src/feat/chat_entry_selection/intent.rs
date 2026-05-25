@@ -158,7 +158,9 @@ pub fn handle_toggle_ignored_block(state: &mut AppState) -> IntentResult {
     };
 
     drop(items);
-    state.active_session_mut().toggle_ignored_block_visibility(&entry_id);
+    state
+        .active_session_mut()
+        .toggle_ignored_block_visibility(&entry_id);
     IntentResult::empty()
 }
 
@@ -724,7 +726,9 @@ mod tests {
     fn toggle_ignored_block_noop_with_non_ignored_entry() {
         // Given a state with a selected non-ignored entry.
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("hello"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
         state.active_session_mut().select_next_entry();
 
         // When handling toggle ignored block.
@@ -737,7 +741,9 @@ mod tests {
     #[rstest::rstest]
     fn toggle_ignored_block_expands_collapsed_block() {
         // Given a session with a collapsed ignored block selected.
-        use crate::feat::ui::chat_log::visual_item::{build_visual_items, VisualItem, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
+        use crate::feat::ui::chat_log::visual_item::{
+            DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
+        };
 
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry::user("a"));
@@ -761,11 +767,17 @@ mod tests {
             .iter()
             .position(|i| matches!(i, VisualItem::CollapsedIgnoredBlock { .. }))
             .expect("should have a collapsed block");
-        state.active_session_mut().set_selected_entry_index(collapsed_vi_idx);
+        state
+            .active_session_mut()
+            .set_selected_entry_index(collapsed_vi_idx);
 
         let block_start_id = state.active_session().history()[1].id.clone();
         assert!(
-            !state.active_session().ui.shown_ignored_blocks.contains(&block_start_id),
+            !state
+                .active_session()
+                .ui
+                .shown_ignored_blocks
+                .contains(&block_start_id),
             "block should start collapsed"
         );
 
@@ -774,7 +786,11 @@ mod tests {
 
         // Then the block is expanded.
         assert!(
-            state.active_session().ui.shown_ignored_blocks.contains(&block_start_id),
+            state
+                .active_session()
+                .ui
+                .shown_ignored_blocks
+                .contains(&block_start_id),
             "block should be shown after toggle on collapsed block"
         );
     }
@@ -782,7 +798,9 @@ mod tests {
     #[rstest::rstest]
     fn toggle_ignored_block_collapses_expanded_block() {
         // Given a session with an expanded ignored block, an ignored entry selected.
-        use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
+        use crate::feat::ui::chat_log::visual_item::{
+            DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
+        };
 
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry::user("a"));
@@ -801,7 +819,11 @@ mod tests {
             .active_session_mut()
             .toggle_ignored_block_visibility(&entry_5_id);
         assert!(
-            state.active_session().ui.shown_ignored_blocks.contains(&block_start_id),
+            state
+                .active_session()
+                .ui
+                .shown_ignored_blocks
+                .contains(&block_start_id),
             "block should be expanded"
         );
 
@@ -821,14 +843,20 @@ mod tests {
                 matches!(i, crate::feat::ui::chat_log::visual_item::VisualItem::Entry(hist_idx) if *hist_idx == 5)
             })
             .expect("should find ignored entry at history index 5");
-        state.active_session_mut().set_selected_entry_index(target_vi_idx);
+        state
+            .active_session_mut()
+            .set_selected_entry_index(target_vi_idx);
 
         // When handling toggle ignored block.
         let _result = handle_toggle_ignored_block(&mut state);
 
         // Then the block is collapsed.
         assert!(
-            !state.active_session().ui.shown_ignored_blocks.contains(&block_start_id),
+            !state
+                .active_session()
+                .ui
+                .shown_ignored_blocks
+                .contains(&block_start_id),
             "block should be collapsed after toggle on ignored entry"
         );
     }
@@ -851,9 +879,13 @@ mod tests {
         let selected = state.active_session().selected_entry().expect("entry");
         assert!(selected.ignored(), "entry should be ignored after toggle");
         // And a PersistSession command is returned.
-        assert!(result.commands.iter().any(|c| {
-            matches!(c, Command::PersistSession(_))
-        }), "should contain PersistSession command");
+        assert!(
+            result
+                .commands
+                .iter()
+                .any(|c| { matches!(c, Command::PersistSession(_)) }),
+            "should contain PersistSession command"
+        );
     }
 
     #[rstest::rstest]
@@ -870,7 +902,10 @@ mod tests {
 
         // Then the entry is now un-ignored.
         let selected = state.active_session().selected_entry().expect("entry");
-        assert!(!selected.ignored(), "entry should be un-ignored after toggle");
+        assert!(
+            !selected.ignored(),
+            "entry should be un-ignored after toggle"
+        );
     }
 
     #[rstest::rstest]
@@ -882,7 +917,10 @@ mod tests {
         let result = handle_ignore_selected(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty(), "empty history should produce no commands");
+        assert!(
+            result.commands.is_empty(),
+            "empty history should produce no commands"
+        );
     }
 
     #[rstest::rstest]
@@ -898,7 +936,10 @@ mod tests {
         let result = handle_ignore_selected(&mut state);
 
         // Then no commands are emitted.
-        assert!(result.commands.is_empty(), "no selection should produce no commands");
+        assert!(
+            result.commands.is_empty(),
+            "no selection should produce no commands"
+        );
     }
 
     #[rstest::rstest]
@@ -914,9 +955,15 @@ mod tests {
         let result = handle_ignore_selected(&mut state);
 
         // Then no commands are emitted and ignored is unchanged.
-        assert!(result.commands.is_empty(), "pinned entry should produce no commands");
+        assert!(
+            result.commands.is_empty(),
+            "pinned entry should produce no commands"
+        );
         let selected = state.active_session().selected_entry().expect("entry");
-        assert!(!selected.ignored(), "pinned entry ignored should stay false");
+        assert!(
+            !selected.ignored(),
+            "pinned entry ignored should stay false"
+        );
     }
 
     #[rstest::rstest]
@@ -932,7 +979,10 @@ mod tests {
         let result = handle_ignore_selected(&mut state);
 
         // Then the entry is toggled (System is excluded by default, so toggle → ForcedInclude).
-        assert!(!result.commands.is_empty(), "system entry toggle should produce commands");
+        assert!(
+            !result.commands.is_empty(),
+            "system entry toggle should produce commands"
+        );
         let selected = state.active_session().selected_entry().expect("entry");
         assert_eq!(selected.context_override, ContextOverride::ForcedInclude);
     }
@@ -950,7 +1000,10 @@ mod tests {
         let result = handle_ignore_selected(&mut state);
 
         // Then the entry is toggled (Thinking is excluded by default, so toggle → ForcedInclude).
-        assert!(!result.commands.is_empty(), "thinking entry toggle should produce commands");
+        assert!(
+            !result.commands.is_empty(),
+            "thinking entry toggle should produce commands"
+        );
         let selected = state.active_session().selected_entry().expect("entry");
         assert_eq!(selected.context_override, ContextOverride::ForcedInclude);
     }
@@ -968,7 +1021,10 @@ mod tests {
         let result = handle_ignore_selected(&mut state);
 
         // Then the entry is toggled (Transient is excluded by default, so toggle → ForcedInclude).
-        assert!(!result.commands.is_empty(), "transient entry toggle should produce commands");
+        assert!(
+            !result.commands.is_empty(),
+            "transient entry toggle should produce commands"
+        );
         let selected = state.active_session().selected_entry().expect("entry");
         assert_eq!(selected.context_override, ContextOverride::ForcedInclude);
     }
@@ -996,7 +1052,10 @@ mod tests {
         let result = handle_ignore_selected(&mut state);
 
         // Then the entry is toggled (Compaction is included by default, so toggle → ForcedExclude).
-        assert!(!result.commands.is_empty(), "compaction entry toggle should produce commands");
+        assert!(
+            !result.commands.is_empty(),
+            "compaction entry toggle should produce commands"
+        );
         let selected = state.active_session().selected_entry().expect("entry");
         assert_eq!(selected.context_override, ContextOverride::ForcedExclude);
     }

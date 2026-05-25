@@ -11,7 +11,6 @@ use crate::common::app_state::FocusScope;
 use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch};
-use crate::feat::provider::loader::SESSION_DEFAULT_PROVIDER_ID;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::protocol::{Command, Intent, IntentResult, PickerKind};
@@ -53,6 +52,9 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::Workflow => {
             state.frontend.workflow_picker.reset();
         }
+        PickerKind::Judge => {
+            state.frontend.judge_picker.reset();
+        }
         PickerKind::CompactionModel => {
             state.frontend.compaction_model_picker.reset();
         }
@@ -86,8 +88,12 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
                 crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries,
             )])
         }
+        PickerKind::Judge => {
+            // Populate from scanned judge definitions (already in state.context.judges).
+            load_judge_picker_entries(state);
+            IntentResult::empty()
+        }
         PickerKind::CompactionModel => {
-            // Entries will be loaded by ProviderActor via LoadCompactionModelPickerEntries command.
             IntentResult::with_commands(vec![Command::LoadCompactionModelPickerEntries(
                 crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
             )])
@@ -199,8 +205,8 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::Theme) => (confirm_theme(state), None),
         Some(PickerKind::SessionLifecycle) => (confirm_session_lifecycle(state), None),
         Some(PickerKind::Workflow) => (confirm_workflow(state), None),
-        Some(PickerKind::CompactionModel) => (confirm_compaction_model(state), None),
-        None => (IntentResult::empty(), None),
+        Some(PickerKind::Judge) => (confirm_judge(state), None),
+        Some(PickerKind::CompactionModel) | None => (IntentResult::empty(), None),
     }
 }
 
@@ -445,156 +451,265 @@ fn confirm_workflow(state: &mut AppState) -> IntentResult {
         .swap_base(crate::common::app_state::FocusScope::Workflow);
 
     IntentResult::with_commands(vec![Command::InitWorkflow(
-        crate::feat::workflow::protocol::command::InitWorkflow {
-            name,
-            workflow_id,
-        },
+        crate::feat::workflow::protocol::command::InitWorkflow { name, workflow_id },
     )])
 }
 
-/// Confirms the selected compaction model and persists it to preferences.
-///
-/// If the sentinel "session default" entry is selected, emits
-/// `SetCompactionModel(None)` (fall back to session model).
-/// Otherwise emits `SetCompactionModel(Some(provider_id))`.
-fn confirm_compaction_model(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.frontend.compaction_model_picker.selected_item() else {
+/// Populates the judge picker from scanned judge definitions.
+fn load_judge_picker_entries(state: &mut AppState) {
+    use crate::feat::judge::JudgePickerEntry;
+
+    let active_id = state.session.active_session_id().clone();
+    let theme = state.frontend.theme.clone();
+    let entries: Vec<JudgePickerEntry> = state
+        .context
+        .judges
+        .iter()
+        .map(|j| {
+            let already_attached = state.session.iter().any(|(_, s)| {
+                s.judge()
+                    .as_ref()
+                    .is_some_and(|m| m.judge_name == j.name && m.origin_session == active_id)
+            });
+            JudgePickerEntry::from_judge(j, already_attached, theme.clone())
+        })
+        .collect();
+    state.frontend.judge_picker.set_items(entries);
+}
+
+/// Confirms the selected judge and creates a judge session.
+fn confirm_judge(state: &mut AppState) -> IntentResult {
+    use crate::feat::session::chat_session::ChatSessionState;
+
+    let Some(entry) = state.frontend.judge_picker.selected_item().cloned() else {
         return IntentResult::empty();
     };
 
-    // Determine the model value.
-    let model_value = if entry.provider_id == SESSION_DEFAULT_PROVIDER_ID {
-        // Sentinel selected — clear compaction model.
-        None
-    } else {
-        // Real entry selected — check availability.
-        if !entry.is_available {
-            return IntentResult::empty();
-        }
-        Some(entry.provider_id.clone())
+    let active_id = state.session.active_session_id().clone();
+
+    let Some(judge_def) = state
+        .context
+        .judges
+        .iter()
+        .find(|j| j.name == entry.name)
+        .cloned()
+    else {
+        return IntentResult::empty();
     };
 
-    state.frontend.scope_stack.pop();
+    // Check for existing detached judge with same name on this origin.
+    let existing_id = state
+        .session
+        .iter()
+        .find(|(_, s)| {
+            s.judge().as_ref().is_some_and(|m| {
+                m.origin_session == active_id && m.judge_name == entry.name && !m.is_attached
+            })
+        })
+        .map(|(id, _)| id.clone());
+    if let Some(existing_id) = existing_id {
+        // Re-attach: set is_attached = true, activate the origin.
+        if let Some(judge_session) = state.session.get_mut(&existing_id) {
+            judge_session.set_judge_attached(true);
+        }
+        state.session.set_active(active_id);
+        state.frontend.scope_stack.push(FocusScope::Input);
+        state.frontend.judge_picker.reset();
 
-    IntentResult::with_commands(vec![Command::UpdatePreferences(UpdatePreferences {
-        updates: vec![PreferenceUpdate::SetCompactionModel(model_value)],
-    })])
+        tracing::info!(
+            judge_session = %existing_id,
+            judge_name = %entry.name,
+            "re-attached existing detached judge session"
+        );
+        return IntentResult::empty();
+    }
+
+    // Create a new judge session.
+    let mut judge_session = ChatSessionState::new();
+    let judge_id = judge_session.session_id().clone();
+
+    // Set judge metadata — link to origin, mark as attached.
+    judge_session.set_judge(crate::feat::judge::JudgeMeta {
+        origin_session: active_id.clone(),
+        is_attached: true,
+        judge_name: entry.name.clone(),
+    });
+
+    // Set parent so it nests under the origin in the sidebar tree.
+    judge_session.set_parent_session(active_id.clone());
+
+    // Title the judge session after its definition name.
+    judge_session.set_title(format!("judge/{}", &entry.name));
+
+    // Set model override if the judge definition specifies one.
+    if let Some(ref model) = judge_def.model {
+        judge_session.set_model(model.clone());
+    }
+
+    // Pin the judge's body as a system entry at TOP position
+    // so it survives compaction.
+    let system_entry = crate::protocol::ChatEntry::system(&judge_def.body)
+        .with_pin(crate::protocol::PinPosition::Top);
+    judge_session.push_entry(system_entry);
+
+    // Insert into session map and activate.
+    state.session.insert(judge_session);
+    state.session.set_active(judge_id.clone());
+    state.frontend.scope_stack.pop();
+    state.frontend.scope_stack.push(FocusScope::Input);
+
+    IntentResult::with_commands(vec![Command::PersistSession(
+        crate::feat::session_lifecycle::protocol::command::PersistSession {
+            session_id: judge_id,
+        },
+    )])
 }
 
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use super::*;
+    use crate::feat::judge::Judge;
+    use crate::feat::session::chat_session::ChatSessionState;
+    use crate::protocol::PinPosition;
+    use std::path::PathBuf;
 
-    use crate::common::app_state::AppState;
-    use crate::feat::picker::intent::confirm_compaction_model;
-    use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
-    use crate::feat::provider::loader::SESSION_DEFAULT_PROVIDER_ID;
-    use crate::protocol::{Command, PickerEntry};
-
-    fn make_entry(provider_id: &str, is_available: bool, theme: &crate::feat::theme::Theme) -> PickerEntry {
-        PickerEntry {
-            provider_id: provider_id.to_owned(),
-            name: String::new(),
-            provider_name: String::new(),
-            backend: String::new(),
-            model: provider_id.to_owned(),
-            search_text: provider_id.to_owned(),
-            is_alias: false,
-            alias_target: None,
-            is_available,
-            is_remote: false,
-            is_active: false,
-            theme: theme.clone(),
+    fn make_judge(name: &str, body: &str, model: Option<&str>) -> Judge {
+        Judge {
+            name: name.to_owned(),
+            description: format!("{name} description"),
+            body: body.to_owned(),
+            model: model.map(std::borrow::ToOwned::to_owned),
+            file_path: PathBuf::new(),
         }
     }
 
-    fn make_sentinel(theme: &crate::feat::theme::Theme) -> PickerEntry {
-        PickerEntry {
-            provider_id: SESSION_DEFAULT_PROVIDER_ID.to_owned(),
-            name: String::new(),
-            provider_name: String::new(),
-            backend: String::new(),
-            model: "session default".to_owned(),
-            search_text: "session default".to_owned(),
-            is_alias: false,
-            alias_target: None,
-            is_available: true,
-            is_remote: false,
-            is_active: false,
-            theme: theme.clone(),
-        }
-    }
-
-    fn extract_set_compaction_model(result: &crate::protocol::IntentResult) -> Option<&Option<String>> {
-        result.commands.iter().find_map(|cmd| {
-            if let Command::UpdatePreferences(UpdatePreferences { updates }) = cmd {
-                updates.iter().find_map(|u| match u {
-                    PreferenceUpdate::SetCompactionModel(v) => Some(v),
-                    _ => None,
-                })
-            } else {
-                None
-            }
-        })
-    }
-
-    #[test]
-    fn confirm_compaction_model_sentinel_entry_emits_set_compaction_model_none() {
-        // Given a compaction model picker with sentinel + a real entry, sentinel selected.
+    fn setup_state_with_judge() -> AppState {
         let mut state = AppState::default();
-        let entries = vec![
-            make_sentinel(&state.frontend.theme),
-            make_entry("anthropic/claude-sonnet-4-20250514", true, &state.frontend.theme),
-        ];
-        state.frontend.compaction_model_picker.set_items(entries);
-        // Default selection is 0 (sentinel).
 
-        // When confirming the compaction model picker.
-        let result = confirm_compaction_model(&mut state);
+        // Create and insert an active origin session.
+        let origin = ChatSessionState::new();
+        let origin_id = origin.session_id().clone();
+        state.session.insert(origin);
+        state.session.set_active(origin_id);
 
-        // Then SetCompactionModel(None) was emitted.
-        let model = extract_set_compaction_model(&result)
-            .expect("expected UpdatePreferences with SetCompactionModel");
-        assert!(model.is_none());
+        // Add a judge definition.
+        state
+            .context
+            .judges
+            .push(make_judge("accuracy", "Check accuracy.", None));
+
+        // Populate the picker and select the judge.
+        load_judge_picker_entries(&mut state);
+        // Select the first (and only) entry.
+        state.frontend.judge_picker.move_down(1);
+
+        state
     }
 
-    #[test]
-    fn confirm_compaction_model_real_entry_emits_set_compaction_model_some() {
-        // Given a compaction model picker with sentinel + a real entry, real entry selected.
-        let mut state = AppState::default();
-        let entries = vec![
-            make_sentinel(&state.frontend.theme),
-            make_entry("anthropic/claude-sonnet-4-20250514", true, &state.frontend.theme),
-        ];
-        state.frontend.compaction_model_picker.set_items(entries);
-        // Select index 1 (real entry).
-        state.frontend.compaction_model_picker.set_selection(1);
+    #[rstest::rstest]
+    fn confirm_judge_creates_session_with_correct_judge_meta() {
+        let mut state = setup_state_with_judge();
 
-        // When confirming the compaction model picker.
-        let result = confirm_compaction_model(&mut state);
+        let origin_id = state.session.active_session_id().clone();
+        let result = confirm_judge(&mut state);
 
-        // Then SetCompactionModel(Some("anthropic/claude-sonnet-4-20250514")) was emitted.
-        let model = extract_set_compaction_model(&result)
-            .expect("expected UpdatePreferences with SetCompactionModel");
-        assert_eq!(model.as_deref(), Some("anthropic/claude-sonnet-4-20250514"));
+        // Should have produced a PersistSession command.
+        assert_eq!(result.commands.len(), 1);
+
+        // The new active session should be a judge session.
+        let active = state.active_session();
+        let meta = active.judge().as_ref().expect("should have judge meta");
+        assert_eq!(meta.judge_name, "accuracy");
+        assert_eq!(meta.origin_session, origin_id);
+        assert!(meta.is_attached);
     }
 
-    #[test]
-    fn confirm_compaction_model_unavailable_entry_returns_empty() {
-        // Given a compaction model picker with an unavailable real entry selected.
-        let mut state = AppState::default();
-        let entries = vec![
-            make_sentinel(&state.frontend.theme),
-            make_entry("anthropic/claude-sonnet-4-20250514", false, &state.frontend.theme),
-        ];
-        state.frontend.compaction_model_picker.set_items(entries);
-        // Select index 1 (unavailable entry).
-        state.frontend.compaction_model_picker.set_selection(1);
+    #[rstest::rstest]
+    fn confirm_judge_sets_parent_session_to_origin() {
+        let mut state = setup_state_with_judge();
+        let origin_id = state.session.active_session_id().clone();
 
-        // When confirming the compaction model picker.
-        let result = confirm_compaction_model(&mut state);
+        let _ = confirm_judge(&mut state);
 
-        // Then no commands are emitted.
-        assert!(result.commands.is_empty());
+        let active = state.active_session();
+        assert_eq!(active.parent_session().as_ref(), Some(&origin_id));
+    }
+
+    #[rstest::rstest]
+    fn confirm_judge_pins_system_entry_at_top() {
+        let mut state = setup_state_with_judge();
+
+        let _ = confirm_judge(&mut state);
+
+        let active = state.active_session();
+        let pinned: Vec<_> = active.pinned_entries();
+        assert_eq!(pinned.len(), 1, "should have exactly one pinned entry");
+        assert_eq!(pinned[0].pin_position, Some(PinPosition::Top));
+        assert!(pinned[0].text().contains("Check accuracy."));
+    }
+
+    #[rstest::rstest]
+    fn confirm_judge_re_attaches_detached_session() {
+        // Given a detached judge session.
+        let mut state = setup_state_with_judge();
+        let origin_id = state.session.active_session_id().clone();
+        confirm_judge(&mut state);
+
+        // Find the judge session and detach it.
+        let (judge_id, _) = state
+            .session
+            .iter()
+            .find(|(_, s)| s.is_judge())
+            .expect("judge session exists");
+        let judge_id = judge_id.clone();
+        state
+            .session
+            .get_mut(&judge_id)
+            .expect("judge session")
+            .set_judge_attached(false);
+
+        // Switch back to origin session and re-populate picker.
+        state.session.set_active(origin_id);
+        load_judge_picker_entries(&mut state);
+        state.frontend.judge_picker.move_down(1);
+
+        // When confirming the picker again.
+        let commands = confirm_judge(&mut state);
+
+        // Then no new session is created.
+        assert!(
+            commands.commands.is_empty(),
+            "should not create new session"
+        );
+
+        // And the judge session is re-attached.
+        let judge_session = state
+            .session
+            .get(&judge_id)
+            .expect("judge session should exist");
+        assert!(
+            judge_session
+                .judge()
+                .as_ref()
+                .is_some_and(|m| m.is_attached)
+        );
+    }
+
+    #[rstest::rstest]
+    fn confirm_judge_sets_title_to_judge_name() {
+        // Given state with a judge definition.
+        let mut state = setup_state_with_judge();
+
+        // When confirming the picker.
+        let _ = confirm_judge(&mut state);
+
+        // Then the judge session title includes the judge name.
+        let active = state.active_session();
+        assert_eq!(
+            active.title().as_deref(),
+            Some("judge/accuracy"),
+            "title should be 'judge/<name>'"
+        );
     }
 }

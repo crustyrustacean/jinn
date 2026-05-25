@@ -391,9 +391,7 @@ pub fn session_preview_popup_rect(
     // Total height: content + footer (3) + top border (1) + bottom border (1).
     let desired_height = (content_line_count + 3 + 2) as u16;
     // Cap to available space above the cursor (with 1-row gap).
-    let max_height = cursor_y
-        .saturating_sub(frame_area.y)
-        .saturating_sub(1);
+    let max_height = cursor_y.saturating_sub(frame_area.y).saturating_sub(1);
     let popup_height = desired_height.min(max_height).max(5);
 
     // Right-align: right edge = frame right edge.

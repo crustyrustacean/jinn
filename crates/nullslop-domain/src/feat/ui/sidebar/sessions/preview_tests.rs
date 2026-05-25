@@ -243,8 +243,7 @@ fn popup_bottom_edge_is_one_row_above_cursor(
     let frame_area = Rect::new(0, 0, 80, 40);
 
     // When computing the popup rect.
-    let popup_rect =
-        session_preview_popup_rect(frame_area, cursor_y, content_line_count);
+    let popup_rect = session_preview_popup_rect(frame_area, cursor_y, content_line_count);
 
     // Then the popup bottom edge + 1 = cursor_y.
     assert_eq!(
@@ -294,8 +293,7 @@ fn popup_height_capped_when_cursor_near_top() {
     let content_line_count = 20;
 
     // When computing the popup rect.
-    let popup_rect =
-        session_preview_popup_rect(frame_area, cursor_y, content_line_count);
+    let popup_rect = session_preview_popup_rect(frame_area, cursor_y, content_line_count);
 
     // Then the popup height is capped (max_height = 7 - 0 - 1 = 6).
     assert_eq!(

@@ -62,10 +62,7 @@ pub fn check_cargo_check(dir: &Path) -> CheckResult {
                 ),
             )
         }
-        Err(e) => CheckResult::fail(
-            "cargo_check",
-            format!("failed to execute cargo check: {e}"),
-        ),
+        Err(e) => CheckResult::fail("cargo_check", format!("failed to execute cargo check: {e}")),
     }
 }
 
@@ -91,10 +88,7 @@ pub fn check_cargo_run(dir: &Path) -> CheckResult {
                 ),
             )
         }
-        Err(e) => CheckResult::fail(
-            "cargo_run",
-            format!("failed to execute cargo run: {e}"),
-        ),
+        Err(e) => CheckResult::fail("cargo_run", format!("failed to execute cargo run: {e}")),
     }
 }
 
@@ -162,10 +156,7 @@ pub fn check_cargo_run_contains(dir: &Path, expected: &str) -> CheckResult {
                 )
             }
         }
-        Err(e) => CheckResult::fail(
-            check_name,
-            format!("failed to execute cargo run: {e}"),
-        ),
+        Err(e) => CheckResult::fail(check_name, format!("failed to execute cargo run: {e}")),
     }
 }
 
@@ -215,11 +206,7 @@ pub fn check_python_run_contains(dir: &Path, script: &str, expected: &str) -> Ch
 /// Uses Tree-sitter to parse the file and look for a `class_definition`
 /// node with a matching name. Cosmetic differences like docstrings,
 /// comments, type hints, and formatting are ignored.
-pub fn check_python_class_exists(
-    dir: &Path,
-    filename: &str,
-    class_name: &str,
-) -> CheckResult {
+pub fn check_python_class_exists(dir: &Path, filename: &str, class_name: &str) -> CheckResult {
     let check_name = format!("python_class_exists({filename}, {class_name})");
     let source = std::fs::read_to_string(dir.join(filename)).unwrap_or_default();
 
@@ -420,8 +407,7 @@ mod tests {
     fn check_snapshot_fails_with_first_diff_when_content_mismatches() {
         // Given a temp directory with a file that differs on line 2.
         let root = tempfile::TempDir::new().expect("temp dir");
-        std::fs::write(root.path().join("data.txt"), "line1\nwrong\nline3\n")
-            .expect("write");
+        std::fs::write(root.path().join("data.txt"), "line1\nwrong\nline3\n").expect("write");
 
         // When checking snapshot against expected content.
         let result = check_snapshot(root.path(), "data.txt", "line1\nline2\nline3\n");
@@ -488,12 +474,8 @@ class Foo:
         std::fs::write(root.path().join("main.py"), source).expect("write");
 
         // When checking for methods load and save.
-        let results = check_python_class_has_methods(
-            root.path(),
-            "main.py",
-            "Foo",
-            &["load", "save"],
-        );
+        let results =
+            check_python_class_has_methods(root.path(), "main.py", "Foo", &["load", "save"]);
 
         // Then all checks pass.
         assert_eq!(results.len(), 2);
@@ -514,17 +496,19 @@ class Foo:
         std::fs::write(root.path().join("main.py"), source).expect("write");
 
         // When checking for methods load and save.
-        let results = check_python_class_has_methods(
-            root.path(),
-            "main.py",
-            "Foo",
-            &["load", "save"],
-        );
+        let results =
+            check_python_class_has_methods(root.path(), "main.py", "Foo", &["load", "save"]);
 
         // Then load passes and save fails.
         assert_eq!(results.len(), 2);
-        let load_result = results.iter().find(|r| r.name.contains("load")).expect("load result");
-        let save_result = results.iter().find(|r| r.name.contains("save")).expect("save result");
+        let load_result = results
+            .iter()
+            .find(|r| r.name.contains("load"))
+            .expect("load result");
+        let save_result = results
+            .iter()
+            .find(|r| r.name.contains("save"))
+            .expect("save result");
         assert!(load_result.passed);
         assert!(!save_result.passed);
         assert!(save_result.detail.contains("missing method: save"));
@@ -537,12 +521,7 @@ class Foo:
         std::fs::write(root.path().join("main.py"), "x = 1\n").expect("write");
 
         // When checking methods on a non-existent class.
-        let results = check_python_class_has_methods(
-            root.path(),
-            "main.py",
-            "Foo",
-            &["load"],
-        );
+        let results = check_python_class_has_methods(root.path(), "main.py", "Foo", &["load"]);
 
         // Then a single failure result is returned.
         assert_eq!(results.len(), 1);

@@ -222,9 +222,10 @@ impl ThemeFile {
             streaming: self
                 .streaming
                 .map_or(fallback.streaming, crate::color::ThemeColor::inner),
-            node_awaiting_input: self
-                .node_awaiting_input
-                .map_or(fallback.node_awaiting_input, crate::color::ThemeColor::inner),
+            node_awaiting_input: self.node_awaiting_input.map_or(
+                fallback.node_awaiting_input,
+                crate::color::ThemeColor::inner,
+            ),
             gutter_bg: self
                 .gutter_bg
                 .map_or(fallback.gutter_bg, crate::color::ThemeColor::inner),
@@ -247,9 +248,10 @@ impl ThemeFile {
             tool_pending_bg: self
                 .tool_pending_bg
                 .map_or(fallback.tool_pending_bg, crate::color::ThemeColor::inner),
-            compaction_block_bg: self
-                .compaction_block_bg
-                .map_or(fallback.compaction_block_bg, crate::color::ThemeColor::inner),
+            compaction_block_bg: self.compaction_block_bg.map_or(
+                fallback.compaction_block_bg,
+                crate::color::ThemeColor::inner,
+            ),
             truncation_fg: self
                 .truncation_fg
                 .map_or(fallback.truncation_fg, crate::color::ThemeColor::inner),

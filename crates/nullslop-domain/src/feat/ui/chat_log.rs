@@ -10,7 +10,6 @@ pub(crate) mod assistant;
 pub(crate) mod compaction;
 pub(crate) mod error_entry;
 pub(crate) mod history;
-pub(crate) mod visual_item;
 #[cfg(test)]
 mod history_tests;
 pub(crate) mod line_count_cache;
@@ -23,6 +22,7 @@ pub(crate) mod tool_call;
 pub(crate) mod tool_result;
 pub(crate) mod transient;
 pub(crate) mod user;
+pub(crate) mod visual_item;
 
 pub use history::ChatLogElement;
 pub use history::entry_to_lines;

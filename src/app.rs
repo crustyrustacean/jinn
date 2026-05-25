@@ -541,7 +541,10 @@ fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
 async fn fetch_models() -> Result<(), Report<AppError>> {
     use nullslop_domain::common::app_info::APP_NAME;
 
-    tracing::info!(url = "https://models.dev/api.json", "fetching model metadata");
+    tracing::info!(
+        url = "https://models.dev/api.json",
+        "fetching model metadata"
+    );
 
     let response = reqwest::get("https://models.dev/api.json")
         .await
@@ -549,10 +552,9 @@ async fn fetch_models() -> Result<(), Report<AppError>> {
         .attach("failed to fetch models.dev API")?;
 
     if !response.status().is_success() {
-        return Err(Report::new(AppError).attach(format!(
-            "models.dev returned HTTP {}",
-            response.status()
-        )));
+        return Err(
+            Report::new(AppError).attach(format!("models.dev returned HTTP {}", response.status()))
+        );
     }
 
     let body = response

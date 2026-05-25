@@ -4,7 +4,7 @@
 
 use nullslop_domain::AppState;
 use nullslop_domain::common::app_state::WorkflowUiState;
-use nullslop_domain::feat::ui::chat_log::{entry_to_lines, RenderContext};
+use nullslop_domain::feat::ui::chat_log::{RenderContext, entry_to_lines};
 use nullslop_workflow_tui::widget::WorkflowWidget;
 use ratatui::{
     Frame,
@@ -29,7 +29,10 @@ pub fn render_workflow_tab(frame: &mut Frame<'_>, area: Rect, state: &AppState, 
     // If editing a source node, split area: graph gets the top, input gets the bottom.
     let (graph_area, input_area) = if state.frontend.workflow_ui.editing_node.is_some() {
         let input_height: u16 = 5; // border (1) + 3 visible lines + padding
-        let graph_height = area.height.saturating_sub(input_height).max(area.height / 2);
+        let graph_height = area
+            .height
+            .saturating_sub(input_height)
+            .max(area.height / 2);
         let actual_input_height = area.height.saturating_sub(graph_height);
         (
             Rect {
@@ -51,7 +54,12 @@ pub fn render_workflow_tab(frame: &mut Frame<'_>, area: Rect, state: &AppState, 
 
     let snapshot = workflow.execution.snapshot();
     let viewport = viewport_from_ui(&state.frontend.workflow_ui);
-    let widget = WorkflowWidget::new(&snapshot, &viewport, tick, state.frontend.theme.node_awaiting_input);
+    let widget = WorkflowWidget::new(
+        &snapshot,
+        &viewport,
+        tick,
+        state.frontend.theme.node_awaiting_input,
+    );
     frame.render_widget(widget, graph_area);
 
     // Status line at the bottom of the graph area.
@@ -98,10 +106,7 @@ fn render_no_workflow_placeholder(frame: &mut Frame<'_>, area: Rect) {
             Style::default().add_modifier(Modifier::DIM),
         ),
     ]);
-    frame.render_widget(
-        Paragraph::new(line).block(Block::default()),
-        area,
-    );
+    frame.render_widget(Paragraph::new(line).block(Block::default()), area);
 }
 
 /// Renders the status line at the bottom of the workflow tab.
@@ -120,18 +125,11 @@ fn render_status_line(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
                 .status_of(name)
                 .map_or_else(|| "Unknown".to_owned(), |s| format!("{s:?}"));
             let ns = snapshot.node_state(name);
-            let in_count = ns
-                .and_then(|s| s.inputs.as_ref())
-                .map_or(0, |p| p.len());
-            let out_count = ns
-                .and_then(|s| s.outputs.as_ref())
-                .map_or(0, |p| p.len());
+            let in_count = ns.and_then(|s| s.inputs.as_ref()).map_or(0, |p| p.len());
+            let out_count = ns.and_then(|s| s.outputs.as_ref()).map_or(0, |p| p.len());
             Line::from(vec![
                 Span::styled(" [", Style::default().add_modifier(Modifier::DIM)),
-                Span::styled(
-                    name.as_str(),
-                    Style::default().add_modifier(Modifier::BOLD),
-                ),
+                Span::styled(name.as_str(), Style::default().add_modifier(Modifier::BOLD)),
                 Span::styled("] ", Style::default().add_modifier(Modifier::DIM)),
                 Span::raw(status_str),
                 Span::styled(
@@ -207,10 +205,15 @@ fn build_inspector_lines(
         )));
         let config_str = format!("{config}");
         let config_indent = 2;
-        let config_max = (content_width as usize).saturating_sub(config_indent).max(3);
+        let config_max = (content_width as usize)
+            .saturating_sub(config_indent)
+            .max(3);
         for line in config_str.lines().take(5) {
             let truncated: String = if line.graphemes(true).count() > config_max {
-                let mut s: String = line.graphemes(true).take(config_max.saturating_sub(3)).collect();
+                let mut s: String = line
+                    .graphemes(true)
+                    .take(config_max.saturating_sub(3))
+                    .collect();
                 s.push_str("...");
                 s
             } else {
@@ -380,10 +383,11 @@ fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let visible_height = content_area.height as usize;
     let max_scroll = lines.len().saturating_sub(visible_height);
     let scroll_offset = ui.inspector_scroll.min(max_scroll as u16);
-    state.frontend.workflow_ui.inspector_scroll_rendered.store(
-        scroll_offset,
-        std::sync::atomic::Ordering::Relaxed,
-    );
+    state
+        .frontend
+        .workflow_ui
+        .inspector_scroll_rendered
+        .store(scroll_offset, std::sync::atomic::Ordering::Relaxed);
 
     // Render scrollable content (no Wrap — lines are pre-wrapped to content_width).
     let content = Paragraph::new(lines).scroll((scroll_offset, 0));
@@ -437,7 +441,9 @@ fn port_value_lines(
     let mut graphemes = raw.graphemes(true).collect::<Vec<_>>();
 
     // First line: label + as many value graphemes as fit.
-    let first_val: String = graphemes.drain(..first_budget.min(graphemes.len())).collect();
+    let first_val: String = graphemes
+        .drain(..first_budget.min(graphemes.len()))
+        .collect();
     if graphemes.is_empty() {
         // Entire value fits on one line.
         result.push(Line::from(vec![
@@ -454,7 +460,9 @@ fn port_value_lines(
 
     // Continuation lines.
     while result.len() < MAX_PORT_LINES {
-        let chunk: String = graphemes.drain(..cont_budget.min(graphemes.len())).collect();
+        let chunk: String = graphemes
+            .drain(..cont_budget.min(graphemes.len()))
+            .collect();
         if chunk.is_empty() {
             break;
         }
@@ -531,7 +539,10 @@ fn render_workflow_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
 
             let start = wrap_line.grapheme_start.min(graphemes.len());
             let end = wrap_line.grapheme_end.min(graphemes.len());
-            let content: String = graphemes.get(start..end).map(|s| s.join("")).unwrap_or_default();
+            let content: String = graphemes
+                .get(start..end)
+                .map(|s| s.join(""))
+                .unwrap_or_default();
             lines.push(Line::from(vec![
                 Span::styled("  ", indent_style),
                 Span::styled(content, text_style),

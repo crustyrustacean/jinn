@@ -196,9 +196,7 @@ mod tests {
         let payload = SessionLoadCompleted { session };
 
         // When handling SessionLoadCompleted.
-        actor
-            .handle_session_load_completed(&payload, &ctx)
-            .await;
+        actor.handle_session_load_completed(&payload, &ctx).await;
 
         // Then context_size is populated (not None).
         let state = actor.state.read();
