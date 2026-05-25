@@ -42,7 +42,10 @@ impl DelayNode {
 
 #[async_trait::async_trait]
 impl WorkflowNode for DelayNode {
-    #[expect(clippy::unnecessary_literal_bound, reason = "trait contract requires &str")]
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "trait contract requires &str"
+    )]
     fn name(&self) -> &str {
         "delay"
     }
@@ -92,7 +95,10 @@ mod tests {
 
         // When executing the node.
         let mut inputs = PortValues::new();
-        inputs.insert("in".to_owned(), PortValue::Single(ScalarValue::Text("data".to_owned())));
+        inputs.insert(
+            "in".to_owned(),
+            PortValue::Single(ScalarValue::Text("data".to_owned())),
+        );
         let start = Instant::now();
         let result = node.execute(inputs, &test_ctx()).await;
 
@@ -117,8 +123,14 @@ mod tests {
 
         // When executing with values for both ports.
         let mut inputs = PortValues::new();
-        inputs.insert("text".to_owned(), PortValue::Single(ScalarValue::Text("hello".to_owned())));
-        inputs.insert("label".to_owned(), PortValue::Single(ScalarValue::Text("greeting".to_owned())));
+        inputs.insert(
+            "text".to_owned(),
+            PortValue::Single(ScalarValue::Text("hello".to_owned())),
+        );
+        inputs.insert(
+            "label".to_owned(),
+            PortValue::Single(ScalarValue::Text("greeting".to_owned())),
+        );
         let result = node.execute(inputs, &test_ctx()).await;
 
         // Then both values are passed through.

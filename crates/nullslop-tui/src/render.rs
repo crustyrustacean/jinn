@@ -148,12 +148,18 @@ fn prepare_workflow_input_scroll(
     }
     let input_height: u16 = 5; // border (1) + 3 visible lines + padding
     let content_height = area.height.saturating_sub(pre_layout.status_bar.height);
-    let graph_height = content_height.saturating_sub(input_height).max(content_height / 2);
+    let graph_height = content_height
+        .saturating_sub(input_height)
+        .max(content_height / 2);
     let actual_input_height = content_height.saturating_sub(graph_height);
     // Borders::TOP consumes 1 row, indent is 2 chars.
     let inner_height = actual_input_height.saturating_sub(1) as usize;
     let text_width = area.width.saturating_sub(2) as usize; // 2-char indent
-    wstate.frontend.workflow_ui.input_buffer.set_wrap_width(text_width);
+    wstate
+        .frontend
+        .workflow_ui
+        .input_buffer
+        .set_wrap_width(text_width);
     if wstate.frontend.scope_stack.current().mode() == Mode::Input {
         wstate
             .frontend

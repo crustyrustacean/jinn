@@ -103,7 +103,10 @@ impl SidebarSection for SessionsSection {
                     theme,
                     throbber_state: &self.throbber_state,
                 };
-                let session = state.session.get(&tree.id).expect("tree entry maps to loaded session");
+                let session = state
+                    .session
+                    .get(&tree.id)
+                    .expect("tree entry maps to loaded session");
                 lines.push(assemble_entry_line(
                     tree,
                     session,
@@ -168,7 +171,8 @@ impl SidebarSection for SessionsSection {
         frame.render_widget(widget, area);
 
         // Close session confirmation prompt — overlay 1 row above the cursor.
-        if state.frontend.close_session_prompt && section_focused
+        if state.frontend.close_session_prompt
+            && section_focused
             && let Some(sel) = selected_index
         {
             let visual_row = sel.saturating_sub(scroll_offset) as u16;

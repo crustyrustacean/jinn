@@ -417,8 +417,7 @@ impl SessionPersistenceActor {
                 tokio::spawn(async move {
                     let result =
                         crate::feat::session_lifecycle::command_runner::run_teardown_command(
-                            &rendered,
-                            &shell,
+                            &rendered, &shell,
                         )
                         .await;
                     let error = result.err().map(|report| {
@@ -914,8 +913,7 @@ impl SessionPersistenceActor {
         // Update visual-parent index before removing the session
         // (need it in memory to resolve its parent chain).
         crate::feat::ui::sidebar::sessions::update_visual_parents_on_removal(
-            &mut state,
-            session_id,
+            &mut state, session_id,
         );
 
         let fresh_session = {
@@ -2316,7 +2314,9 @@ mod tests {
 
         {
             let mut state = actor.state.write();
-            state.active_session_mut().push_entry(ChatEntry::user("do work"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("do work"));
             state.session.insert(judge_a);
             state.session.insert(judge_b);
         }
@@ -2334,8 +2334,14 @@ mod tests {
         // Then all judge sessions are removed from memory.
         let state = actor.state.read();
         assert!(!state.session.contains(&origin_id), "origin should be gone");
-        assert!(!state.session.contains(&judge_a_id), "judge-a should be gone");
-        assert!(!state.session.contains(&judge_b_id), "judge-b should be gone");
+        assert!(
+            !state.session.contains(&judge_a_id),
+            "judge-a should be gone"
+        );
+        assert!(
+            !state.session.contains(&judge_b_id),
+            "judge-b should be gone"
+        );
     }
 
     #[tokio::test]
@@ -2367,7 +2373,9 @@ mod tests {
 
         {
             let mut state = actor.state.write();
-            state.active_session_mut().push_entry(ChatEntry::user("do work"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("do work"));
             state.session.insert(judge_a);
             state.session.insert(judge_b);
         }

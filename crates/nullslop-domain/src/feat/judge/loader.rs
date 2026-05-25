@@ -77,16 +77,16 @@ pub(crate) fn parse_judge_content(
     content: &str,
     path: &Path,
 ) -> Result<Judge, Report<JudgeParseError>> {
-    let (frontmatter, body) =
-        crate::common::frontmatter::parse_toml_frontmatter::<Frontmatter>(content).map_err(
-            |report| {
-                let ctx = match report.current_context() {
-                    crate::common::frontmatter::FrontmatterError::Parse => JudgeParseError::Parse,
-                    _ => JudgeParseError::Frontmatter,
-                };
-                report.change_context(ctx)
-            },
-        )?;
+    let (frontmatter, body) = crate::common::frontmatter::parse_toml_frontmatter::<Frontmatter>(
+        content,
+    )
+    .map_err(|report| {
+        let ctx = match report.current_context() {
+            crate::common::frontmatter::FrontmatterError::Parse => JudgeParseError::Parse,
+            _ => JudgeParseError::Frontmatter,
+        };
+        report.change_context(ctx)
+    })?;
 
     Ok(Judge {
         name: frontmatter.name,
@@ -182,7 +182,8 @@ mod tests {
     #[rstest::rstest]
     fn parse_judge_with_model_override() {
         // Given a judge file with a model override.
-        let content = "+++\nname = \"fast-check\"\nmodel = \"anthropic/claude-haiku\"\n+++\n\nQuick check.";
+        let content =
+            "+++\nname = \"fast-check\"\nmodel = \"anthropic/claude-haiku\"\n+++\n\nQuick check.";
 
         // When parsing.
         let judge = parse_judge_content(content, &test_path("fast-check")).expect("parse");

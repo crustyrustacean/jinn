@@ -9,8 +9,9 @@ use crate::task::{BenchTask, BenchTools, VerificationReport};
 use crate::tasks::checks;
 use include_dir::Dir;
 
-
-static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/fix_code/fix_syntax_broken_python/fixtures");
+static FIXTURES: Dir<'_> = include_dir::include_dir!(
+    "$CARGO_MANIFEST_DIR/src/tasks/fix_code/fix_syntax_broken_python/fixtures"
+);
 
 pub fn task() -> BenchTask {
     BenchTask {

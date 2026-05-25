@@ -15,8 +15,8 @@
 
 //! `task_complete` built-in tool — mark the origin session's task as passed.
 
-use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::feat::tools_actor::BoxedToolFuture;
+use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::Event;
 
 use super::protocol::{JudgeVerdict, Verdict};
@@ -71,8 +71,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 return ToolResult {
                     tool_call_id: call.id,
                     name: call.name,
-                    content: "Error: task_complete can only be used in judge sessions."
-                        .to_owned(),
+                    content: "Error: task_complete can only be used in judge sessions.".to_owned(),
                     success: false,
                     full_content: None,
                     truncation: None,

@@ -35,14 +35,12 @@ pub fn port_type_color(port_type: PortType) -> Color {
                 ScalarType::Json => Color::Rgb(100, 100, 200),
             }
         }
-        PortType::Map(scalar) => {
-            match scalar {
-                ScalarType::Text => Color::Rgb(100, 180, 100),
-                ScalarType::Number => Color::Rgb(180, 180, 100),
-                ScalarType::Boolean => Color::Rgb(200, 100, 200),
-                ScalarType::Json => Color::Rgb(100, 140, 200),
-            }
-        }
+        PortType::Map(scalar) => match scalar {
+            ScalarType::Text => Color::Rgb(100, 180, 100),
+            ScalarType::Number => Color::Rgb(180, 180, 100),
+            ScalarType::Boolean => Color::Rgb(200, 100, 200),
+            ScalarType::Json => Color::Rgb(100, 140, 200),
+        },
     }
 }
 
@@ -92,7 +90,10 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::indexing_slicing, reason = "test iterates over known-size array")]
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "test iterates over known-size array"
+    )]
     fn all_scalar_types_have_distinct_colors() {
         // Given all scalar types.
         let colors: Vec<Color> = [

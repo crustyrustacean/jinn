@@ -164,7 +164,8 @@ mod tests {
         let expected = std::fs::canonicalize(dir.path()).expect("canonicalize");
 
         // When running the setup command with leading output.
-        let result = run_setup_command(&format!("echo 'setting up...'; echo '{path}'"), "/bin/sh").await;
+        let result =
+            run_setup_command(&format!("echo 'setting up...'; echo '{path}'"), "/bin/sh").await;
 
         // Then the result is the canonicalized last non-empty line.
         assert!(result.is_ok());
@@ -211,8 +212,11 @@ mod tests {
     #[tokio::test]
     async fn setup_captures_stdout_and_stderr_on_failure() {
         // Given a command that writes to both stdout and stderr before failing.
-        let result =
-            run_setup_command("echo 'stdout message'; echo 'stderr message' >&2; exit 1", "/bin/sh").await;
+        let result = run_setup_command(
+            "echo 'stdout message'; echo 'stderr message' >&2; exit 1",
+            "/bin/sh",
+        )
+        .await;
 
         // Then the error contains both stdout and stderr output.
         assert!(result.is_err());

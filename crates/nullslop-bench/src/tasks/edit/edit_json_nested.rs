@@ -11,8 +11,8 @@ use include_dir::Dir;
 
 const EXPECTED_CONFIG: &str = include_str!("edit_json_nested/expected/config.json");
 
-
-static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_json_nested/fixtures");
+static FIXTURES: Dir<'_> =
+    include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_json_nested/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {

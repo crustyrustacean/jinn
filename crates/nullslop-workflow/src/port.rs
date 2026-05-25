@@ -995,11 +995,8 @@ mod tests {
     #[test]
     fn port_type_from_vector_numbers_returns_vector_number() {
         // Given a vector of numbers.
-        let value = PortValue::vector(vec![
-            ScalarValue::Number(1.0),
-            ScalarValue::Number(2.0),
-        ])
-        .unwrap();
+        let value =
+            PortValue::vector(vec![ScalarValue::Number(1.0), ScalarValue::Number(2.0)]).unwrap();
         // When getting its port type.
         let result = PortType::from_value(&value);
         // Then it is Vector(Number).
@@ -1056,7 +1053,10 @@ mod tests {
     fn take_text_returns_type_mismatch_for_number_value() {
         // Given a PortValues with a number port.
         let mut values = PortValues::new();
-        values.insert("count".to_owned(), PortValue::Single(ScalarValue::Number(42.0)));
+        values.insert(
+            "count".to_owned(),
+            PortValue::Single(ScalarValue::Number(42.0)),
+        );
         // When taking as text.
         let result = values.take_text("count");
         // Then it returns TypeMismatch error.
@@ -1081,7 +1081,10 @@ mod tests {
     fn take_number_returns_value_when_present() {
         // Given a PortValues with a number port.
         let mut values = PortValues::new();
-        values.insert("count".to_owned(), PortValue::Single(ScalarValue::Number(42.0)));
+        values.insert(
+            "count".to_owned(),
+            PortValue::Single(ScalarValue::Number(42.0)),
+        );
         // When taking the number value.
         let result = values.take_number("count");
         // Then it returns the value.
@@ -1283,10 +1286,7 @@ mod tests {
             "a".to_owned(),
             PortValue::Single(ScalarValue::Text("1".to_owned())),
         );
-        values.insert(
-            "b".to_owned(),
-            PortValue::Single(ScalarValue::Number(2.0)),
-        );
+        values.insert("b".to_owned(), PortValue::Single(ScalarValue::Number(2.0)));
         // When iterating.
         let pairs: Vec<_> = values.iter().collect();
         // Then both pairs are present.
@@ -1356,13 +1356,7 @@ mod tests {
         let number_val = PortValue::Single(ScalarValue::Number(42.0));
         // When getting their port types.
         // Then they match their variants.
-        assert_eq!(
-            text_val.port_type(),
-            PortType::Single(ScalarType::Text)
-        );
-        assert_eq!(
-            number_val.port_type(),
-            PortType::Single(ScalarType::Number)
-        );
+        assert_eq!(text_val.port_type(), PortType::Single(ScalarType::Text));
+        assert_eq!(number_val.port_type(), PortType::Single(ScalarType::Number));
     }
 }

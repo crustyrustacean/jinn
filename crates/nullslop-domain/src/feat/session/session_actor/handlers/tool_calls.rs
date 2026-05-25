@@ -155,7 +155,12 @@ impl SessionPersistenceActor {
         };
         let assembled = {
             let guard = self.state.read();
-            assemble_prompt(&guard, &event.session_id, &self.counter, workflow_overrides.as_ref())
+            assemble_prompt(
+                &guard,
+                &event.session_id,
+                &self.counter,
+                workflow_overrides.as_ref(),
+            )
         };
 
         let (old_phase, new_phase) = {
@@ -380,7 +385,11 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("run it"));
-            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{\"command\":\"ls\"}"#));
+            session.push_entry(ChatEntry::tool_call(
+                "tc-1",
+                "bash",
+                r#"{\"command\":\"ls\"}"#,
+            ));
             session.begin_tool_result("tc-1", "bash");
             state.session.active_session_id().clone()
         };
@@ -401,9 +410,12 @@ mod tests {
 
         // Then a HistoryAppended event was emitted.
         let events = sink.events();
-        let has_history = events
-            .iter()
-            .any(|e| matches!(e, Event::HistoryAppended(payload) if payload.session_id == session_id));
-        assert!(has_history, "expected HistoryAppended event after tool execution completed");
+        let has_history = events.iter().any(
+            |e| matches!(e, Event::HistoryAppended(payload) if payload.session_id == session_id),
+        );
+        assert!(
+            has_history,
+            "expected HistoryAppended event after tool execution completed"
+        );
     }
 }

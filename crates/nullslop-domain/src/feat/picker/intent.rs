@@ -451,10 +451,7 @@ fn confirm_workflow(state: &mut AppState) -> IntentResult {
         .swap_base(crate::common::app_state::FocusScope::Workflow);
 
     IntentResult::with_commands(vec![Command::InitWorkflow(
-        crate::feat::workflow::protocol::command::InitWorkflow {
-            name,
-            workflow_id,
-        },
+        crate::feat::workflow::protocol::command::InitWorkflow { name, workflow_id },
     )])
 }
 
@@ -469,10 +466,11 @@ fn load_judge_picker_entries(state: &mut AppState) {
         .judges
         .iter()
         .map(|j| {
-            let already_attached = state
-                .session
-                .iter()
-                .any(|(_, s)| s.judge().as_ref().is_some_and(|m| m.judge_name == j.name && m.origin_session == active_id));
+            let already_attached = state.session.iter().any(|(_, s)| {
+                s.judge()
+                    .as_ref()
+                    .is_some_and(|m| m.judge_name == j.name && m.origin_session == active_id)
+            });
             JudgePickerEntry::from_judge(j, already_attached, theme.clone())
         })
         .collect();
@@ -500,11 +498,15 @@ fn confirm_judge(state: &mut AppState) -> IntentResult {
     };
 
     // Check for existing detached judge with same name on this origin.
-    let existing_id = state.session.iter().find(|(_, s)| {
-        s.judge()
-            .as_ref()
-            .is_some_and(|m| m.origin_session == active_id && m.judge_name == entry.name && !m.is_attached)
-    }).map(|(id, _)| id.clone());
+    let existing_id = state
+        .session
+        .iter()
+        .find(|(_, s)| {
+            s.judge().as_ref().is_some_and(|m| {
+                m.origin_session == active_id && m.judge_name == entry.name && !m.is_attached
+            })
+        })
+        .map(|(id, _)| id.clone());
     if let Some(existing_id) = existing_id {
         // Re-attach: set is_attached = true, activate the origin.
         if let Some(judge_session) = state.session.get_mut(&existing_id) {
@@ -535,6 +537,9 @@ fn confirm_judge(state: &mut AppState) -> IntentResult {
 
     // Set parent so it nests under the origin in the sidebar tree.
     judge_session.set_parent_session(active_id.clone());
+
+    // Title the judge session after its definition name.
+    judge_session.set_title(format!("judge/{}", &entry.name));
 
     // Set model override if the judge definition specifies one.
     if let Some(ref model) = judge_def.model {
@@ -589,7 +594,10 @@ mod tests {
         state.session.set_active(origin_id);
 
         // Add a judge definition.
-        state.context.judges.push(make_judge("accuracy", "Check accuracy.", None));
+        state
+            .context
+            .judges
+            .push(make_judge("accuracy", "Check accuracy.", None));
 
         // Populate the picker and select the judge.
         load_judge_picker_entries(&mut state);
@@ -655,7 +663,11 @@ mod tests {
             .find(|(_, s)| s.is_judge())
             .expect("judge session exists");
         let judge_id = judge_id.clone();
-        state.session.get_mut(&judge_id).expect("judge session").set_judge_attached(false);
+        state
+            .session
+            .get_mut(&judge_id)
+            .expect("judge session")
+            .set_judge_attached(false);
 
         // Switch back to origin session and re-populate picker.
         state.session.set_active(origin_id);
@@ -666,10 +678,38 @@ mod tests {
         let commands = confirm_judge(&mut state);
 
         // Then no new session is created.
-        assert!(commands.commands.is_empty(), "should not create new session");
+        assert!(
+            commands.commands.is_empty(),
+            "should not create new session"
+        );
 
         // And the judge session is re-attached.
-        let judge_session = state.session.get(&judge_id).expect("judge session should exist");
-        assert!(judge_session.judge().as_ref().is_some_and(|m| m.is_attached));
+        let judge_session = state
+            .session
+            .get(&judge_id)
+            .expect("judge session should exist");
+        assert!(
+            judge_session
+                .judge()
+                .as_ref()
+                .is_some_and(|m| m.is_attached)
+        );
+    }
+
+    #[rstest::rstest]
+    fn confirm_judge_sets_title_to_judge_name() {
+        // Given state with a judge definition.
+        let mut state = setup_state_with_judge();
+
+        // When confirming the picker.
+        let _ = confirm_judge(&mut state);
+
+        // Then the judge session title includes the judge name.
+        let active = state.active_session();
+        assert_eq!(
+            active.title().as_deref(),
+            Some("judge/accuracy"),
+            "title should be 'judge/<name>'"
+        );
     }
 }

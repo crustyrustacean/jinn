@@ -60,7 +60,11 @@ async fn task_incomplete_leaves_is_attached_true() {
     let guard = state.read();
     let session = guard.session(&judge_id);
     assert!(
-        session.judge().as_ref().expect("has judge meta").is_attached,
+        session
+            .judge()
+            .as_ref()
+            .expect("has judge meta")
+            .is_attached,
         "is_attached should still be true after task_incomplete"
     );
 }
@@ -101,7 +105,9 @@ async fn task_incomplete_includes_summary_in_verdict() {
     ctx.sink = Some(sink.clone());
 
     // When executing task_incomplete with a specific summary.
-    let _result = super::builtin_task_incomplete::execute(make_call("coverage is below threshold"), ctx).await;
+    let _result =
+        super::builtin_task_incomplete::execute(make_call("coverage is below threshold"), ctx)
+            .await;
 
     // Then the verdict contains the summary.
     let events = sink.events();

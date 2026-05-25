@@ -396,7 +396,9 @@ impl std::fmt::Display for Intent {
             Intent::WorkflowInputCancel => write!(f, "workflow input cancel"),
             Intent::WorkflowInputInsertChar { ch } => write!(f, "workflow input insert '{ch}'"),
             Intent::WorkflowInputDeleteGrapheme => write!(f, "workflow input delete"),
-            Intent::WorkflowInputDeleteGraphemeForward => write!(f, "workflow input forward delete"),
+            Intent::WorkflowInputDeleteGraphemeForward => {
+                write!(f, "workflow input forward delete")
+            }
             Intent::WorkflowInputPasteText { text } => {
                 let line_count = text.lines().count();
                 write!(f, "workflow input paste ({line_count} lines)")

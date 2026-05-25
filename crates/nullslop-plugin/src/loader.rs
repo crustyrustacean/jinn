@@ -117,18 +117,9 @@ mod tests {
 
         // Then it finds 3 plugins sorted alphabetically.
         assert_eq!(result.len(), 3);
-        assert_eq!(
-            result[0].file_name().expect("name"),
-            "alpha"
-        );
-        assert_eq!(
-            result[1].file_name().expect("name"),
-            "beta"
-        );
-        assert_eq!(
-            result[2].file_name().expect("name"),
-            "gamma"
-        );
+        assert_eq!(result[0].file_name().expect("name"), "alpha");
+        assert_eq!(result[1].file_name().expect("name"), "beta");
+        assert_eq!(result[2].file_name().expect("name"), "gamma");
     }
 
     #[rstest::rstest]

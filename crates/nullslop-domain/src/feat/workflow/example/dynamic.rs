@@ -214,7 +214,10 @@ pub fn build_dynamic() -> WorkflowGraph {
         .connect("prefix", "out", "sink", "in")
         .expect("prefix → sink");
 
-    builder.with_description("Dynamic graph constructed from runtime parameters").build().expect("dynamic graph should be valid")
+    builder
+        .with_description("Dynamic graph constructed from runtime parameters")
+        .build()
+        .expect("dynamic graph should be valid")
 }
 
 /// Constructs the node registry with all factories for the dynamic workflow.

@@ -76,19 +76,17 @@ impl SessionPersistenceActor {
                 // They may have been cascade-archived alongside the origin.
                 // We unarchive and insert them into memory so the coordinator
                 // can trigger them on the next IDLE transition.
-                let judge_sessions = match store
-                    .load_judge_sessions_for_origin(&evt.session_id)
-                    .await
-                {
-                    Ok(sessions) => sessions,
-                    Err(e) => {
-                        tracing::warn!(
-                            err = ?e,
-                            "failed to load judge sessions for origin"
-                        );
-                        Vec::new()
-                    }
-                };
+                let judge_sessions =
+                    match store.load_judge_sessions_for_origin(&evt.session_id).await {
+                        Ok(sessions) => sessions,
+                        Err(e) => {
+                            tracing::warn!(
+                                err = ?e,
+                                "failed to load judge sessions for origin"
+                            );
+                            Vec::new()
+                        }
+                    };
 
                 if !judge_sessions.is_empty() {
                     let mut state = self.state.write();

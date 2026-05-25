@@ -22,11 +22,11 @@
 //! the origin session's work, and which tools to use for reporting verdicts.
 
 pub mod builtin_session_query;
-#[cfg(test)]
-mod builtin_session_query_tests;
 pub mod builtin_session_query_recent;
 #[cfg(test)]
 mod builtin_session_query_recent_tests;
+#[cfg(test)]
+mod builtin_session_query_tests;
 pub mod builtin_task_complete;
 #[cfg(test)]
 mod builtin_task_complete_tests;

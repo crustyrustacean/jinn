@@ -520,7 +520,7 @@ impl ChatEntry {
     /// Equivalent to `context_override == ForcedExclude`. Used during migration
     /// from `ignored: bool` to `context_override: ContextOverride`.
     ///
- /// Prefer `is_in_context()` or `context_override` directly.
+    /// Prefer `is_in_context()` or `context_override` directly.
     #[must_use]
     pub fn ignored(&self) -> bool {
         self.context_override == ContextOverride::ForcedExclude

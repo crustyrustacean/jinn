@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use error_stack::Report;
 
 use crate::node::{NodeContext, NodeError, WorkflowNode};
-use crate::port::{PortDef, PortValues, PortValue, ScalarValue};
+use crate::port::{PortDef, PortValue, PortValues, ScalarValue};
 
 /// Type alias for the dynamic execute function.
 type DynamicExecuteFn = Arc<
@@ -162,10 +162,19 @@ mod tests {
 
         // Then input_ports and output_ports return the declared ports.
         assert_eq!(node.input_ports().len(), 2);
-        assert_eq!(node.input_ports().first().map(|p| p.name.as_str()), Some("input_a"));
-        assert_eq!(node.input_ports().get(1).map(|p| p.name.as_str()), Some("input_b"));
+        assert_eq!(
+            node.input_ports().first().map(|p| p.name.as_str()),
+            Some("input_a")
+        );
+        assert_eq!(
+            node.input_ports().get(1).map(|p| p.name.as_str()),
+            Some("input_b")
+        );
         assert_eq!(node.output_ports().len(), 1);
-        assert_eq!(node.output_ports().first().map(|p| p.name.as_str()), Some("output"));
+        assert_eq!(
+            node.output_ports().first().map(|p| p.name.as_str()),
+            Some("output")
+        );
     }
 
     #[test]

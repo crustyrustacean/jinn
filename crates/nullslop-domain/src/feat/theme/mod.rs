@@ -9,6 +9,6 @@ pub use nullslop_theme::contrast;
 
 // Re-export individual types and functions.
 pub use nullslop_theme::{
-    default_theme, discover_themes, load_theme, load_theme_from_dir, resolve_theme,
-    resolve_theme_from_dir, Theme, ThemeColor, ThemeEntry, ThemeError,
+    Theme, ThemeColor, ThemeEntry, ThemeError, default_theme, discover_themes, load_theme,
+    load_theme_from_dir, resolve_theme, resolve_theme_from_dir,
 };

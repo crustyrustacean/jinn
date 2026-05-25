@@ -334,9 +334,10 @@ fn execute_slash_command(
         SlashCommand::Workflow => {
             let workflow_id = crate::feat::workflow::workflow_state::WorkflowId::new();
             state.frontend.active_tab = crate::protocol::tab::ActiveTab::Workflow;
-            state.frontend.scope_stack.swap_base(
-                crate::common::app_state::FocusScope::Workflow,
-            );
+            state
+                .frontend
+                .scope_stack
+                .swap_base(crate::common::app_state::FocusScope::Workflow);
             // Parse workflow name from "/workflow <name>"; default to "dynamic".
             let name = display
                 .strip_prefix('/')
@@ -344,10 +345,7 @@ fn execute_slash_command(
                 .unwrap_or("dynamic")
                 .to_owned();
             IntentResult::with_commands(vec![Command::InitWorkflow(
-                crate::feat::workflow::protocol::command::InitWorkflow {
-                    name,
-                    workflow_id,
-                },
+                crate::feat::workflow::protocol::command::InitWorkflow { name, workflow_id },
             )])
         }
     }

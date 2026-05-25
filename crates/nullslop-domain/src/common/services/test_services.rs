@@ -83,7 +83,8 @@ impl SessionStore for FakeSessionStore {
     async fn load_judge_sessions_for_origin(
         &self,
         _origin_session_id: &SessionId,
-    ) -> Result<Vec<crate::feat::session::chat_session::ChatSessionState>, Report<SessionStoreError>> {
+    ) -> Result<Vec<crate::feat::session::chat_session::ChatSessionState>, Report<SessionStoreError>>
+    {
         Ok(Vec::new())
     }
 }

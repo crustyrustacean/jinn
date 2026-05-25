@@ -88,9 +88,9 @@ pub fn handle_workflow_input_submit(state: &mut AppState) -> IntentResult {
     let mut outputs = nullslop_workflow::port::PortValues::new();
     outputs.insert(
         output_port_name,
-        nullslop_workflow::port::PortValue::Single(
-            nullslop_workflow::port::ScalarValue::Text(text),
-        ),
+        nullslop_workflow::port::PortValue::Single(nullslop_workflow::port::ScalarValue::Text(
+            text,
+        )),
     );
 
     workflow.execution.set_node_outputs(&node_name, outputs);
@@ -165,7 +165,11 @@ pub fn handle_workflow_input_cursor_right(state: &mut AppState) -> IntentResult 
 
 /// Moves the cursor to the start of the workflow input buffer.
 pub fn handle_workflow_input_cursor_to_start(state: &mut AppState) -> IntentResult {
-    state.frontend.workflow_ui.input_buffer.move_cursor_to_start();
+    state
+        .frontend
+        .workflow_ui
+        .input_buffer
+        .move_cursor_to_start();
     IntentResult::empty()
 }
 
@@ -177,13 +181,21 @@ pub fn handle_workflow_input_cursor_to_end(state: &mut AppState) -> IntentResult
 
 /// Moves the cursor one word left in the workflow input buffer.
 pub fn handle_workflow_input_cursor_word_left(state: &mut AppState) -> IntentResult {
-    state.frontend.workflow_ui.input_buffer.move_cursor_word_left();
+    state
+        .frontend
+        .workflow_ui
+        .input_buffer
+        .move_cursor_word_left();
     IntentResult::empty()
 }
 
 /// Moves the cursor one word right in the workflow input buffer.
 pub fn handle_workflow_input_cursor_word_right(state: &mut AppState) -> IntentResult {
-    state.frontend.workflow_ui.input_buffer.move_cursor_word_right();
+    state
+        .frontend
+        .workflow_ui
+        .input_buffer
+        .move_cursor_word_right();
     IntentResult::empty()
 }
 

@@ -3,8 +3,8 @@
 use crate::feat::provider_infra::{ApiKeys, ProviderEntry, ProviderRegistry, ProvidersConfig};
 use crate::feat::theme::default_theme;
 use nullslop_selection_widget::PickerItem;
-use unicode_segmentation::UnicodeSegmentation;
 use std::ops::Range;
+use unicode_segmentation::UnicodeSegmentation;
 
 use super::entries::*;
 use crate::feat::provider::picker_entry::PickerEntry;
@@ -724,7 +724,11 @@ fn format_footer_truncates_to_width() {
     let line = format_footer(None, 10, &default_theme());
 
     // Then the total character count fits within 10.
-    let total_len: usize = line.spans.iter().map(|s| s.content.graphemes(true).count()).sum();
+    let total_len: usize = line
+        .spans
+        .iter()
+        .map(|s| s.content.graphemes(true).count())
+        .sum();
     assert!(total_len <= 10);
 }
 
@@ -821,7 +825,11 @@ fn truncate_line_fits_within_width() {
     let result = truncate_line(line, 8);
 
     // Then the total character count is exactly 8.
-    let total_len: usize = result.spans.iter().map(|s| s.content.graphemes(true).count()).sum();
+    let total_len: usize = result
+        .spans
+        .iter()
+        .map(|s| s.content.graphemes(true).count())
+        .sum();
     assert_eq!(total_len, 8);
 }
 

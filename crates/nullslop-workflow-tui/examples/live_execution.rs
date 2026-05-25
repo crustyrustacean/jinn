@@ -61,7 +61,8 @@ async fn main() {
     // Spawn the engine in a background task.
     let execution = Arc::new(WorkflowExecution::new(build_graph()));
     let engine_exec = execution.clone();
-    let engine_handle = tokio::spawn(async move { engine::execute(engine_exec, Arc::new(Ctx)).await });
+    let engine_handle =
+        tokio::spawn(async move { engine::execute(engine_exec, Arc::new(Ctx)).await });
     let viewport = ViewportState::new();
     let mut tick: u8 = 0;
 
@@ -99,11 +100,13 @@ async fn main() {
 
         if ratatui::crossterm::event::poll(Duration::from_millis(80)).expect("poll")
             && let Event::Key(key) = ratatui::crossterm::event::read().expect("read")
-                && key.kind == KeyEventKind::Press && key.code == KeyCode::Char('q') {
-                    engine_handle.abort();
-                    common::restore_terminal(&mut terminal);
-                    return;
-                }
+            && key.kind == KeyEventKind::Press
+            && key.code == KeyCode::Char('q')
+        {
+            engine_handle.abort();
+            common::restore_terminal(&mut terminal);
+            return;
+        }
 
         if engine_handle.is_finished() {
             break;
@@ -148,9 +151,11 @@ async fn main() {
     loop {
         if ratatui::crossterm::event::poll(Duration::from_millis(100)).expect("poll")
             && let Event::Key(key) = ratatui::crossterm::event::read().expect("read")
-                && key.kind == KeyEventKind::Press && key.code == KeyCode::Char('q') {
-                    break;
-                }
+            && key.kind == KeyEventKind::Press
+            && key.code == KeyCode::Char('q')
+        {
+            break;
+        }
     }
 
     common::restore_terminal(&mut terminal);

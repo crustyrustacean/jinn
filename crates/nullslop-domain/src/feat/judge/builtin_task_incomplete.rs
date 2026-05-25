@@ -15,8 +15,8 @@
 
 //! `task_incomplete` built-in tool — report that the origin session's task is NOT complete.
 
-use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::feat::tools_actor::BoxedToolFuture;
+use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::Event;
 
 use super::protocol::{JudgeVerdict, Verdict};
@@ -48,7 +48,8 @@ pub fn definition() -> ToolDefinition {
 /// Does NOT change `is_attached` (it stays `true`). Emits a `JudgeVerdict(Fail(summary))` event.
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
-        let args: serde_json::Value = serde_json::from_str(&call.arguments).unwrap_or(serde_json::Value::Null);
+        let args: serde_json::Value =
+            serde_json::from_str(&call.arguments).unwrap_or(serde_json::Value::Null);
         let summary = args
             .get("summary")
             .and_then(|v| v.as_str())

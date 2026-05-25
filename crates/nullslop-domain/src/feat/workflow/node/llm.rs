@@ -87,7 +87,10 @@ impl LlmNode {
 
 #[async_trait::async_trait]
 impl WorkflowNode for LlmNode {
-    #[allow(clippy::unnecessary_literal_bound, reason = "trait contract requires &str")]
+    #[allow(
+        clippy::unnecessary_literal_bound,
+        reason = "trait contract requires &str"
+    )]
     fn name(&self) -> &str {
         "llm"
     }
@@ -117,11 +120,12 @@ impl WorkflowNode for LlmNode {
 
         // Build user message from prompt + user inputs.
         let prompt_text = inputs.take_text("prompt").ok();
-        let user_text = inputs
-            .take_text("user")
-            .map_err(|e: nullslop_workflow::port::PortError| {
-                Report::new(NodeError).attach(e.to_string())
-            })?;
+        let user_text =
+            inputs
+                .take_text("user")
+                .map_err(|e: nullslop_workflow::port::PortError| {
+                    Report::new(NodeError).attach(e.to_string())
+                })?;
 
         let user_message = match prompt_text {
             Some(prompt) => format!("{prompt}\n{user_text}"),

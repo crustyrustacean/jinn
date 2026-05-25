@@ -556,8 +556,8 @@ impl From<PersistableCore> for SessionCore {
             session_state: SessionState::Loaded, // overridden by TryFrom<SessionLoadContext> from archived column
             lifecycle_script_state: core.lifecycle_script_state,
             ephemeral: SessionCoreEphemeral::default(),
-            is_workflow: false, // set from DB column after deserialization
-            judge: None, // set from DB column after deserialization
+            is_workflow: false,       // set from DB column after deserialization
+            judge: None,              // set from DB column after deserialization
             workflow_overrides: None, // runtime-only, never persisted
         }
     }

@@ -76,21 +76,17 @@ impl JudgeScanActor {
         match result {
             Ok(judges) => {
                 tracing::info!(count = judges.len(), "rescanned judges");
-                let _ = ctx.send_event(Event::JudgesLoaded(
-                    super::protocol::JudgesLoaded {
-                        judges,
-                        error: None,
-                    },
-                ));
+                let _ = ctx.send_event(Event::JudgesLoaded(super::protocol::JudgesLoaded {
+                    judges,
+                    error: None,
+                }));
             }
             Err(join_error) => {
                 tracing::error!("judge rescan task panicked: {join_error}");
-                let _ = ctx.send_event(Event::JudgesLoaded(
-                    super::protocol::JudgesLoaded {
-                        judges: vec![],
-                        error: Some(format!("rescan task failed: {join_error}")),
-                    },
-                ));
+                let _ = ctx.send_event(Event::JudgesLoaded(super::protocol::JudgesLoaded {
+                    judges: vec![],
+                    error: Some(format!("rescan task failed: {join_error}")),
+                }));
             }
         }
     }
@@ -137,9 +133,7 @@ mod tests {
         // When processing RescanJudges command.
         actor
             .handle(
-                ActorEnvelope::Command(Command::RescanJudges(
-                    protocol::RescanJudges,
-                )),
+                ActorEnvelope::Command(Command::RescanJudges(protocol::RescanJudges)),
                 &ctx,
             )
             .await;
@@ -162,9 +156,7 @@ mod tests {
         // When processing RescanJudges command.
         actor
             .handle(
-                ActorEnvelope::Command(Command::RescanJudges(
-                    protocol::RescanJudges,
-                )),
+                ActorEnvelope::Command(Command::RescanJudges(protocol::RescanJudges)),
                 &ctx,
             )
             .await;
@@ -194,9 +186,7 @@ mod tests {
         // When processing RescanJudges command.
         actor
             .handle(
-                ActorEnvelope::Command(Command::RescanJudges(
-                    protocol::RescanJudges,
-                )),
+                ActorEnvelope::Command(Command::RescanJudges(protocol::RescanJudges)),
                 &ctx,
             )
             .await;

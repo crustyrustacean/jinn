@@ -58,7 +58,14 @@ impl PickerItem for JudgePickerEntry {
     }
 
     fn render_row(&self, is_selected: bool) -> Line<'static> {
-        render_judge_row(&self.name, &self.description, self.already_attached, is_selected, &[], &self.theme)
+        render_judge_row(
+            &self.name,
+            &self.description,
+            self.already_attached,
+            is_selected,
+            &[],
+            &self.theme,
+        )
     }
 
     fn render_row_with_highlight(
@@ -66,7 +73,14 @@ impl PickerItem for JudgePickerEntry {
         is_selected: bool,
         match_indices: &[Range<usize>],
     ) -> Line<'static> {
-        render_judge_row(&self.name, &self.description, self.already_attached, is_selected, match_indices, &self.theme)
+        render_judge_row(
+            &self.name,
+            &self.description,
+            self.already_attached,
+            is_selected,
+            match_indices,
+            &self.theme,
+        )
     }
 }
 

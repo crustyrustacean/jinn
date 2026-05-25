@@ -71,5 +71,8 @@ pub fn build_summarize() -> WorkflowGraph {
         .connect("source", "text", "llm", "user")
         .expect("source.text → llm.user");
 
-    builder.with_description("LLM-powered summarization workflow").build().expect("summarize graph should be valid")
+    builder
+        .with_description("LLM-powered summarization workflow")
+        .build()
+        .expect("summarize graph should be valid")
 }

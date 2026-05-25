@@ -173,8 +173,6 @@ pub fn validate_chat_entry_ignore_selected(
     Ok(())
 }
 
-
-
 #[cfg(test)]
 mod fork_from_entry_tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
@@ -476,7 +474,10 @@ mod ignore_selected_tests {
         let result = validate_chat_entry_ignore_selected(&state);
 
         // Then validation fails with EmptyHistory.
-        assert!(matches!(result, Err(ChatEntryIgnoreSelectedError::EmptyHistory)));
+        assert!(matches!(
+            result,
+            Err(ChatEntryIgnoreSelectedError::EmptyHistory)
+        ));
     }
 
     #[rstest::rstest]
@@ -492,7 +493,10 @@ mod ignore_selected_tests {
         let result = validate_chat_entry_ignore_selected(&state);
 
         // Then validation fails with NoSelection.
-        assert!(matches!(result, Err(ChatEntryIgnoreSelectedError::NoSelection)));
+        assert!(matches!(
+            result,
+            Err(ChatEntryIgnoreSelectedError::NoSelection)
+        ));
     }
 
     #[rstest::rstest]
@@ -508,7 +512,10 @@ mod ignore_selected_tests {
         let result = validate_chat_entry_ignore_selected(&state);
 
         // Then validation fails with IsPinned.
-        assert!(matches!(result, Err(ChatEntryIgnoreSelectedError::IsPinned)));
+        assert!(matches!(
+            result,
+            Err(ChatEntryIgnoreSelectedError::IsPinned)
+        ));
     }
 
     #[rstest::rstest]
@@ -638,12 +645,14 @@ mod ignore_selected_tests {
     fn ignore_selected_accepts_tool_result() {
         // Given a state with a selected tool result entry.
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::tool_result(
-            "id",
-            "bash",
-            "output",
-            crate::feat::session::tool_result_status::ToolResultStatus::Success,
-        ));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::tool_result(
+                "id",
+                "bash",
+                "output",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ));
         state.active_session_mut().select_next_entry();
 
         // When validating ignore selected.
