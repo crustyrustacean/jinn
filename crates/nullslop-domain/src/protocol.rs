@@ -25,6 +25,8 @@ pub mod tab;
 pub use crate::common::actor::{CommandMsg, CommandName, EventMsg, EventTypeName};
 pub use app_msg::AppMsg;
 pub use app_msg::Command;
+pub use app_msg::DynamicCommand;
+pub use app_msg::DynamicEvent;
 pub use app_msg::Event;
 pub use intent::Intent;
 pub use intent::IntentResult;

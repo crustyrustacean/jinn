@@ -11,6 +11,7 @@ use crate::common::app_state::FocusScope;
 use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch};
+use crate::feat::provider::loader::SESSION_DEFAULT_PROVIDER_ID;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::protocol::{Command, Intent, IntentResult, PickerKind};
@@ -52,6 +53,9 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::Workflow => {
             state.frontend.workflow_picker.reset();
         }
+        PickerKind::CompactionModel => {
+            state.frontend.compaction_model_picker.reset();
+        }
     }
 
     match kind {
@@ -80,6 +84,12 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             // Entries will be populated by WorkflowActor via LoadWorkflowPickerEntries command.
             IntentResult::with_commands(vec![Command::LoadWorkflowPickerEntries(
                 crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries,
+            )])
+        }
+        PickerKind::CompactionModel => {
+            // Entries will be loaded by ProviderActor via LoadCompactionModelPickerEntries command.
+            IntentResult::with_commands(vec![Command::LoadCompactionModelPickerEntries(
+                crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
             )])
         }
     }
@@ -189,6 +199,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::Theme) => (confirm_theme(state), None),
         Some(PickerKind::SessionLifecycle) => (confirm_session_lifecycle(state), None),
         Some(PickerKind::Workflow) => (confirm_workflow(state), None),
+        Some(PickerKind::CompactionModel) => (confirm_compaction_model(state), None),
         None => (IntentResult::empty(), None),
     }
 }
@@ -439,4 +450,151 @@ fn confirm_workflow(state: &mut AppState) -> IntentResult {
             workflow_id,
         },
     )])
+}
+
+/// Confirms the selected compaction model and persists it to preferences.
+///
+/// If the sentinel "session default" entry is selected, emits
+/// `SetCompactionModel(None)` (fall back to session model).
+/// Otherwise emits `SetCompactionModel(Some(provider_id))`.
+fn confirm_compaction_model(state: &mut AppState) -> IntentResult {
+    let Some(entry) = state.frontend.compaction_model_picker.selected_item() else {
+        return IntentResult::empty();
+    };
+
+    // Determine the model value.
+    let model_value = if entry.provider_id == SESSION_DEFAULT_PROVIDER_ID {
+        // Sentinel selected — clear compaction model.
+        None
+    } else {
+        // Real entry selected — check availability.
+        if !entry.is_available {
+            return IntentResult::empty();
+        }
+        Some(entry.provider_id.clone())
+    };
+
+    state.frontend.scope_stack.pop();
+
+    IntentResult::with_commands(vec![Command::UpdatePreferences(UpdatePreferences {
+        updates: vec![PreferenceUpdate::SetCompactionModel(model_value)],
+    })])
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+
+    use crate::common::app_state::AppState;
+    use crate::feat::picker::intent::confirm_compaction_model;
+    use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
+    use crate::feat::provider::loader::SESSION_DEFAULT_PROVIDER_ID;
+    use crate::protocol::{Command, PickerEntry};
+
+    fn make_entry(provider_id: &str, is_available: bool, theme: &crate::feat::theme::Theme) -> PickerEntry {
+        PickerEntry {
+            provider_id: provider_id.to_owned(),
+            name: String::new(),
+            provider_name: String::new(),
+            backend: String::new(),
+            model: provider_id.to_owned(),
+            search_text: provider_id.to_owned(),
+            is_alias: false,
+            alias_target: None,
+            is_available,
+            is_remote: false,
+            is_active: false,
+            theme: theme.clone(),
+        }
+    }
+
+    fn make_sentinel(theme: &crate::feat::theme::Theme) -> PickerEntry {
+        PickerEntry {
+            provider_id: SESSION_DEFAULT_PROVIDER_ID.to_owned(),
+            name: String::new(),
+            provider_name: String::new(),
+            backend: String::new(),
+            model: "session default".to_owned(),
+            search_text: "session default".to_owned(),
+            is_alias: false,
+            alias_target: None,
+            is_available: true,
+            is_remote: false,
+            is_active: false,
+            theme: theme.clone(),
+        }
+    }
+
+    fn extract_set_compaction_model(result: &crate::protocol::IntentResult) -> Option<&Option<String>> {
+        result.commands.iter().find_map(|cmd| {
+            if let Command::UpdatePreferences(UpdatePreferences { updates }) = cmd {
+                updates.iter().find_map(|u| match u {
+                    PreferenceUpdate::SetCompactionModel(v) => Some(v),
+                    _ => None,
+                })
+            } else {
+                None
+            }
+        })
+    }
+
+    #[test]
+    fn confirm_compaction_model_sentinel_entry_emits_set_compaction_model_none() {
+        // Given a compaction model picker with sentinel + a real entry, sentinel selected.
+        let mut state = AppState::default();
+        let entries = vec![
+            make_sentinel(&state.frontend.theme),
+            make_entry("anthropic/claude-sonnet-4-20250514", true, &state.frontend.theme),
+        ];
+        state.frontend.compaction_model_picker.set_items(entries);
+        // Default selection is 0 (sentinel).
+
+        // When confirming the compaction model picker.
+        let result = confirm_compaction_model(&mut state);
+
+        // Then SetCompactionModel(None) was emitted.
+        let model = extract_set_compaction_model(&result)
+            .expect("expected UpdatePreferences with SetCompactionModel");
+        assert!(model.is_none());
+    }
+
+    #[test]
+    fn confirm_compaction_model_real_entry_emits_set_compaction_model_some() {
+        // Given a compaction model picker with sentinel + a real entry, real entry selected.
+        let mut state = AppState::default();
+        let entries = vec![
+            make_sentinel(&state.frontend.theme),
+            make_entry("anthropic/claude-sonnet-4-20250514", true, &state.frontend.theme),
+        ];
+        state.frontend.compaction_model_picker.set_items(entries);
+        // Select index 1 (real entry).
+        state.frontend.compaction_model_picker.set_selection(1);
+
+        // When confirming the compaction model picker.
+        let result = confirm_compaction_model(&mut state);
+
+        // Then SetCompactionModel(Some("anthropic/claude-sonnet-4-20250514")) was emitted.
+        let model = extract_set_compaction_model(&result)
+            .expect("expected UpdatePreferences with SetCompactionModel");
+        assert_eq!(model.as_deref(), Some("anthropic/claude-sonnet-4-20250514"));
+    }
+
+    #[test]
+    fn confirm_compaction_model_unavailable_entry_returns_empty() {
+        // Given a compaction model picker with an unavailable real entry selected.
+        let mut state = AppState::default();
+        let entries = vec![
+            make_sentinel(&state.frontend.theme),
+            make_entry("anthropic/claude-sonnet-4-20250514", false, &state.frontend.theme),
+        ];
+        state.frontend.compaction_model_picker.set_items(entries);
+        // Select index 1 (unavailable entry).
+        state.frontend.compaction_model_picker.set_selection(1);
+
+        // When confirming the compaction model picker.
+        let result = confirm_compaction_model(&mut state);
+
+        // Then no commands are emitted.
+        assert!(result.commands.is_empty());
+    }
 }

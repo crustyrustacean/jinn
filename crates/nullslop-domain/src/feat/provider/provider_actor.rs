@@ -23,8 +23,8 @@ use crate::feat::provider::protocol::command::ProviderSwitch;
 use crate::feat::provider::protocol::event::{ModelCacheLoaded, ModelsRefreshed, ProviderSwitched};
 use crate::protocol::{Command, Event};
 
-use super::loader::load_provider_picker_items;
-use crate::feat::provider::protocol::command::LoadProviderPickerEntries;
+use super::loader::{load_compaction_model_picker_items, load_provider_picker_items};
+use crate::feat::provider::protocol::command::{LoadCompactionModelPickerEntries, LoadProviderPickerEntries};
 
 /// The provider actor.
 ///
@@ -52,6 +52,7 @@ impl Actor for ProviderActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.subscribe_command::<ProviderSwitch>();
         ctx.subscribe_command::<LoadProviderPickerEntries>();
+        ctx.subscribe_command::<LoadCompactionModelPickerEntries>();
         ctx.subscribe_event::<ModelsRefreshed>();
         ctx.subscribe_event::<ModelCacheLoaded>();
 
@@ -86,6 +87,9 @@ impl ProviderActor {
             }
             Command::LoadProviderPickerEntries(payload) => {
                 self.handle_load_provider_picker_entries(payload);
+            }
+            Command::LoadCompactionModelPickerEntries(payload) => {
+                self.handle_load_compaction_model_picker_entries(payload);
             }
             // Commands NOT subscribed to — these should not arrive.
             Command::SendMessage(..)
@@ -126,7 +130,8 @@ impl ProviderActor {
             | Command::StartWorkflow(..)
             | Command::CancelWorkflow(..)
             | Command::RerunFromNode(..)
-            | Command::LoadWorkflowPickerEntries(..) => {}
+            | Command::LoadWorkflowPickerEntries(..)
+            | Command::Dynamic(..) => {}
         }
     }
 
@@ -153,6 +158,15 @@ impl ProviderActor {
     fn handle_load_provider_picker_entries(&self, _payload: &LoadProviderPickerEntries) {
         let mut state = self.state.write();
         load_provider_picker_items(&self.services, &mut state);
+    }
+
+    /// LoadCompactionModelPickerEntries: load compaction model picker entries.
+    fn handle_load_compaction_model_picker_entries(
+        &self,
+        _payload: &LoadCompactionModelPickerEntries,
+    ) {
+        let mut state = self.state.write();
+        load_compaction_model_picker_items(&self.services, &mut state);
     }
 
     // --- Event handlers ---

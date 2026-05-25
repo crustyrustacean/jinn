@@ -9,7 +9,7 @@ default-run = "nullslop"
 members = ["crates/*", "tests/*", "vendor/*"]
 
 [workspace.package]
-version = "0.34.0"
+version = "0.35.0"
 edition = "2024"
 
 [profile.release]
@@ -27,6 +27,7 @@ nullslop-cli = { workspace = true }
 nullslop-tui = { workspace = true }
 nullslop-domain = { workspace = true }
 nullslop-bench = { workspace = true }
+nullslop-plugin = { workspace = true }
 clap_complete = { workspace = true }
 tokio = { workspace = true }
 kanal = { workspace = true }
@@ -52,6 +53,7 @@ rstest = { workspace = true }
 [workspace.dependencies]
 # Internal
 nullslop-domain = { path = "crates/nullslop-domain" }
+nullslop-plugin = { path = "crates/nullslop-plugin" }
 ratatui-markdown = { path = "vendor/ratatui-markdown", features = ["markdown", "highlight", "highlight-lang-all", "highlight-pest", "mermaid"] }
 nullslop-provider = { path = "crates/nullslop-provider" }
 nullslop-tui = { path = "crates/nullslop-tui" }
@@ -83,6 +85,9 @@ crossterm = { version = "0.29", features = ["event-stream"] }
 ratatui-which-key = "0.12.0"
 ratatui-spatial-splits = "0.2.0"
 throbber-widgets-tui = "0.11"
+
+# Lua
+mlua = { version = "0.10", features = ["lua54", "vendored", "serialize"] }
 
 # State
 parking_lot = "0.12"

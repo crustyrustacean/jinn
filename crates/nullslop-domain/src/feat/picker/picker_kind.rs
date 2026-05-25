@@ -22,6 +22,8 @@ pub enum PickerKind {
     SessionLifecycle,
     /// Workflow picker — select a workflow to launch.
     Workflow,
+    /// Compaction model picker — select a model for context compaction summarization.
+    CompactionModel,
 }
 
 impl std::fmt::Display for PickerKind {
@@ -34,6 +36,7 @@ impl std::fmt::Display for PickerKind {
 
             Self::SessionLifecycle => write!(f, "session-lifecycle"),
             Self::Workflow => write!(f, "workflows"),
+            Self::CompactionModel => write!(f, "compaction model"),
         }
     }
 }

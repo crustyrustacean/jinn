@@ -1,7 +1,7 @@
 # Maintainer: Jayson Lennon <jayson@jaysonlennon.dev>
 
 pkgname=nullslop
-pkgver=0.34.0
+pkgver=0.35.0
 pkgrel=1
 pkgdesc='Agentic LLM agent harness'
 url='https://github.com/jayson-lennon/nullslop'
@@ -40,6 +40,12 @@ package() {
     install -Dm0644 -t "$pkgdir/usr/share/nullslop/themes/" themes/*.toml
     install -Dm0644 -t "$pkgdir/usr/share/nullslop/personas/" personas/*.md
     install -Dm0644 -t "$pkgdir/usr/share/nullslop/prompts/" prompts/*.md
+
+    # Install default plugins to /usr/share/nullslop/plugins/.
+    for plugin_dir in plugins/*/; do
+        local plugin_name=$(basename "$plugin_dir")
+        install -Dm0644 "$plugin_dir"init.lua -t "$pkgdir/usr/share/nullslop/plugins/$plugin_name/"
+    done
 
     # Install shell completions.
     local _bin="target/release/nullslop"
