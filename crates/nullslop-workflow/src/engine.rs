@@ -29,6 +29,10 @@ pub enum NodeStatus {
     Failed,
     /// Skipped because an upstream node failed.
     Skipped,
+    /// Waiting for user input before execution can proceed.
+    /// This is a pre-execution state for source nodes.
+    /// It is NOT terminal — the engine never sees this status during execution.
+    AwaitingInput,
 }
 
 impl NodeStatus {

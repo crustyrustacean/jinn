@@ -126,6 +126,15 @@ impl WorkflowActor {
         // Insert into app state.
         self.state.write().workflow.insert(workflow_state);
 
+        // Mark source nodes as AwaitingInput so the UI shows they need user data.
+        {
+            let snapshot = execution.snapshot();
+            let sources = snapshot.structure().sources();
+            for source_name in sources {
+                execution.set_status(source_name, nullslop_workflow::engine::NodeStatus::AwaitingInput);
+            }
+        }
+
         // Emit WorkflowInitialized event.
         let _ = ctx.send_event(Event::WorkflowInitialized(WorkflowInitialized {
             workflow_id: workflow_id.clone(),

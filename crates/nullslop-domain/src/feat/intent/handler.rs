@@ -704,6 +704,14 @@ fn handle_workflow_run(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
 
+    // Check if any source node is still awaiting user input.
+    let has_awaiting_input = snapshot.statuses().any(|(_, s)| {
+        s == nullslop_workflow::engine::NodeStatus::AwaitingInput
+    });
+    if has_awaiting_input {
+        return IntentResult::empty();
+    }
+
     let workflow_id = workflow.id.clone();
     let name = workflow.name.clone();
 
@@ -943,5 +951,83 @@ mod tests {
         assert_eq!(state.frontend.rename_session_input.input, "Hllo");
         assert_eq!(state.frontend.rename_session_input.cursor_pos, 1);
         assert!(result.commands.is_empty());
+    }
+
+    #[test]
+    fn workflow_run_rejects_when_source_node_awaiting_input() {
+        // Given an initialized workflow where a source node has AwaitingInput status.
+        let mut state = AppState::default();
+        let execution = std::sync::Arc::new(
+            nullslop_workflow::execution::WorkflowExecution::new(source_graph_for_test()),
+        );
+        let workflow_state = crate::feat::workflow::workflow_state::WorkflowState::new(
+            "test".to_owned(),
+            execution.clone(),
+        );
+        state.workflow.insert(workflow_state);
+        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
+
+        // Mark source node as AwaitingInput.
+        execution.set_status("source", nullslop_workflow::engine::NodeStatus::AwaitingInput);
+
+        // When handling WorkflowRun.
+        let result = IntentHandler::handle(&Intent::WorkflowRun, &mut state);
+
+        // Then no StartWorkflow command is emitted.
+        assert!(result.commands.is_empty());
+    }
+
+    #[test]
+    fn workflow_run_accepts_after_source_nodes_provided() {
+        // Given a workflow where the source node has been given data (Pending status).
+        let mut state = AppState::default();
+        let execution = std::sync::Arc::new(
+            nullslop_workflow::execution::WorkflowExecution::new(source_graph_for_test()),
+        );
+        let workflow_state = crate::feat::workflow::workflow_state::WorkflowState::new(
+            "test".to_owned(),
+            execution.clone(),
+        );
+        state.workflow.insert(workflow_state);
+        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
+
+        // Source node is Pending (user has provided data).
+        execution.set_status("source", nullslop_workflow::engine::NodeStatus::Pending);
+
+        // When handling WorkflowRun.
+        let result = IntentHandler::handle(&Intent::WorkflowRun, &mut state);
+
+        // Then a StartWorkflow command is emitted.
+        assert!(!result.commands.is_empty());
+        let cmd = &result.commands[0];
+        assert!(matches!(
+            cmd,
+            crate::protocol::Command::StartWorkflow(_)
+        ));
+    }
+
+    /// Helper: builds a minimal source-only graph for testing.
+    fn source_graph_for_test() -> nullslop_workflow::graph::WorkflowGraph {
+        use nullslop_workflow::node::code::CodeNode;
+        use nullslop_workflow::port::{PortDef, PortValue, PortValues, ScalarValue};
+
+        let source = CodeNode::new(
+            "source".to_owned(),
+            vec![],
+            vec![PortDef::text("out")],
+            |_inputs, _ctx| {
+                Box::pin(async move {
+                    let mut out = PortValues::new();
+                    out.insert(
+                        "out".to_owned(),
+                        PortValue::Single(ScalarValue::Text("data".to_owned())),
+                    );
+                    Ok(out)
+                })
+            },
+        );
+        let mut builder = nullslop_workflow::graph::WorkflowGraphBuilder::new();
+        builder.add_node("source".to_owned(), Box::new(source));
+        builder.build().expect("graph should be valid")
     }
 }
