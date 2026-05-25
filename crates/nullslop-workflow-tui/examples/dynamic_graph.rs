@@ -18,7 +18,7 @@ use std::time::Duration;
 use nullslop_workflow::engine::NodeStatus;
 use nullslop_workflow::execution::WorkflowExecution;
 use nullslop_workflow::graph::WorkflowGraphBuilder;
-use nullslop_workflow::node::{DynamicNode, NodeContext, NodeError, WorkflowNode};
+use nullslop_workflow::node::{DynamicNode, NodeError, WorkflowNode};
 use nullslop_workflow::port::{PortDef, PortValue, PortValues, ScalarValue};
 use nullslop_workflow::registry::{NodeFactory, NodeRegistry};
 use nullslop_workflow_tui::viewport::ViewportState;

@@ -307,7 +307,7 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
 /// Executes a slash command.
 fn execute_slash_command(
     command: SlashCommand,
-    _display: &str,
+    display: &str,
     state: &mut AppState,
 ) -> IntentResult {
     match command {
@@ -333,7 +333,7 @@ fn execute_slash_command(
                 crate::common::app_state::FocusScope::Workflow,
             );
             // Parse workflow name from "/workflow <name>"; default to "dynamic".
-            let name = _display
+            let name = display
                 .strip_prefix('/')
                 .and_then(|s| s.split_whitespace().nth(1))
                 .unwrap_or("dynamic")

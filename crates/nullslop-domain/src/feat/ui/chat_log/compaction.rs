@@ -80,7 +80,7 @@ mod tests {
     fn render_ctx(is_expanded: bool) -> RenderContext {
         RenderContext {
             content_width: 80,
-            _is_selected: false,
+            is_selected: false,
             is_expanded,
             tool_entry_max_lines: 20,
             theme: default_theme(),

@@ -343,7 +343,7 @@ fn build_preview_lines(
 
     let ctx = RenderContext {
         content_width,
-        _is_selected: false,
+        is_selected: false,
         is_expanded: false,
         tool_entry_max_lines: tool_entry_max_lines.unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES),
         theme: theme.clone(),
