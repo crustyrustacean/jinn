@@ -168,11 +168,6 @@ impl App {
                 if let Some(ref host) = plugin_host {
                     let mut plugin_count = 0usize;
 
-                    // Built-in plugins (embedded in the binary, always available).
-                    let builtins = host.load_builtins();
-                    tracing::info!(count = builtins.len(), "loaded builtin plugins");
-                    plugin_count += builtins.len();
-
                     // System plugins (installed by package manager).
                     let system_dir = paths.system_plugins_dir();
                     if system_dir.is_dir() {
