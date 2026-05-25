@@ -8,6 +8,7 @@ use std::sync::OnceLock;
 
 use crate::feat::tools_actor::tool_types::ToolDefinition;
 use crate::protocol::{ChatEntry, ChatEntryKind};
+use unicode_segmentation::UnicodeSegmentation;
 
 /// Estimates the token count of text.
 ///
@@ -75,10 +76,11 @@ pub fn estimate_tool_schema_tokens(
         .sum()
 }
 
-/// Simple heuristic estimator: 1 token ≈ 4 Unicode characters.
+/// Simple heuristic estimator: 1 token ≈ 4 grapheme clusters.
 ///
-/// Good enough for initial use. Uses `text.chars().count()` for Unicode correctness
-/// rather than byte length. Always returns at least 1 to avoid zero-token estimates.
+/// Good enough for initial use. Uses grapheme-cluster counting via
+/// `unicode-segmentation` rather than byte length. Always returns at least 1
+/// to avoid zero-token estimates.
 pub struct CharRatioEstimator;
 
 impl TokenEstimator for CharRatioEstimator {
@@ -87,7 +89,7 @@ impl TokenEstimator for CharRatioEstimator {
         reason = "1 token ≈ 4 characters is intentional rounding"
     )]
     fn estimate(&self, text: &str) -> usize {
-        text.chars().count() / 4 + 1
+        text.graphemes(true).count() / 4 + 1
     }
 
     fn name(&self) -> &'static str {

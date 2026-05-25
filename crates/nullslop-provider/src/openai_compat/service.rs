@@ -198,6 +198,10 @@ fn create_tool_stream(response: reqwest::Response, provider_name: &str) -> ToolS
 
 #[async_trait::async_trait]
 impl LlmService for OpenAiCompatibleService {
+    fn name(&self) -> &'static str {
+        "openai_compatible"
+    }
+
     async fn chat_stream(
         &self,
         messages: Vec<LlmMessage>,

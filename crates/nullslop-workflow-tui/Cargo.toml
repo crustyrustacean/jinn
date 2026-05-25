@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 nullslop-workflow = { path = "../nullslop-workflow" }
 ratatui = { workspace = true }
+unicode-segmentation = { workspace = true }
 
 [dev-dependencies]
 async-trait = { workspace = true }

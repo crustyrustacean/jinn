@@ -26,6 +26,7 @@ tool_fg = [97, 105, 117]
 tool_success_bg = [44, 55, 44]
 tool_failure_bg = [60, 40, 40]
 tool_pending_bg = [45, 45, 50]
+compaction_block_bg = [60, 50, 80]
 truncation_fg = [83, 83, 83]
 
 # Picker

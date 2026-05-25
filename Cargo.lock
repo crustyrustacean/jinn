@@ -2024,6 +2024,7 @@ dependencies = [
  "tracing",
  "tree-sitter",
  "tree-sitter-python",
+ "unicode-segmentation",
  "wherror",
 ]
 
@@ -2239,6 +2240,7 @@ dependencies = [
  "ratatui",
  "serde_json",
  "tokio",
+ "unicode-segmentation",
 ]
 
 [[package]]
