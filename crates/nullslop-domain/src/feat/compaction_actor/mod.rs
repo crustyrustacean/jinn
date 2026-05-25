@@ -24,7 +24,7 @@ use crate::feat::compaction_actor::protocol::command::{
     BeginCompaction, CancelCompaction, CompactionResult, EndCompaction,
 };
 use crate::feat::compaction_actor::serializer::serialize_entries_for_compaction;
-use crate::feat::context::strategy::token_estimator::CharRatioEstimator;
+use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, TokenEstimator};
 use crate::feat::context::strategy::token_estimator::estimate_entry_tokens;
 use crate::feat::preferences_actor::user_preferences::CompactionConfig;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
@@ -492,12 +492,14 @@ async fn perform_compaction(
     .await?;
 
     // Step 4: Emit EndCompaction — session actor inserts entry, sets phase to Idle.
+    let tokens_after = CharRatioEstimator.estimate(&summary);
     let _ = sink.send_command(Command::EndCompaction(EndCompaction {
         session_id: session_id.clone(),
         result: Some(CompactionResult {
             summary,
             entries_compacted,
             tokens_before,
+            tokens_after,
             model_used: model_name.clone(),
             boundary_index,
         }),
