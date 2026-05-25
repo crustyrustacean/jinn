@@ -30,6 +30,8 @@ pub enum Scope {
     PickerLifecycle,
     /// Picker — Workflow selection.
     PickerWorkflow,
+    /// Judge picker scope.
+    PickerJudge,
     /// Input mode — typing into the input buffer.
     Input,
     /// Arg input mode — typing positional args for a lifecycle command.
@@ -58,6 +60,7 @@ impl std::fmt::Display for Scope {
             Self::PickerTheme => write!(f, "Picker(theme)"),
             Self::PickerLifecycle => write!(f, "Picker(lifecycle)"),
             Self::PickerWorkflow => write!(f, "Picker(workflow)"),
+            Self::PickerJudge => write!(f, "Picker(judge)"),
             Self::Input => write!(f, "Input"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
@@ -83,6 +86,7 @@ impl std::str::FromStr for Scope {
             "Picker(theme)" => Ok(Self::PickerTheme),
             "Picker(lifecycle)" => Ok(Self::PickerLifecycle),
             "Picker(workflow)" => Ok(Self::PickerWorkflow),
+            "Picker(judge)" => Ok(Self::PickerJudge),
             "Input" => Ok(Self::Input),
             "ArgInput" => Ok(Self::ArgInput),
             "TokenBudgetInput" => Ok(Self::TokenBudgetInput),

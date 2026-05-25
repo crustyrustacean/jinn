@@ -24,9 +24,11 @@
 pub mod judge;
 pub mod judge_scan_actor;
 pub mod loader;
+pub mod picker_entry;
 pub mod protocol;
 
 pub use judge::{Judge, JudgeMeta};
 pub use judge_scan_actor::{JudgeScanActor, JudgeScanActorDeps};
 pub use loader::{parse_judge_file, scan_judges_dir, scan_judges_merged};
+pub use picker_entry::JudgePickerEntry;
 pub use protocol::{JudgesLoaded, RescanJudges};

@@ -316,6 +316,7 @@ pub fn scope_for_focus(focus: &nullslop_domain::FocusScope) -> Scope {
             PickerKind::Theme => Scope::PickerTheme,
             PickerKind::SessionLifecycle => Scope::PickerLifecycle,
             PickerKind::Workflow => Scope::PickerWorkflow,
+            PickerKind::Judge => Scope::PickerJudge,
         },
         FocusScope::Input => Scope::Input,
         FocusScope::SidebarPersona => Scope::SidebarPersona,
