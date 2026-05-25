@@ -421,7 +421,7 @@ impl IntentHandler {
             }
             Intent::WorkflowInputPasteText { text } => {
                 crate::feat::workflow::workflow_input::intent::handle_workflow_input_paste_text(
-                    &text, state,
+                    text, state,
                 )
             }
             Intent::WorkflowInputCursorLeft => {
@@ -652,7 +652,7 @@ fn handle_workflow_inspect_scroll_down(state: &mut AppState) -> IntentResult {
 /// ESC in workflow scope: two-press cancel with confirmation.
 fn handle_workflow_escape(state: &mut AppState) -> IntentResult {
     // If no active workflow, or workflow has no running nodes, just reset prompt and no-op.
-    let has_running = state.workflow.active().map_or(false, |w| {
+    let has_running = state.workflow.active().is_some_and(|w| {
         w.execution.snapshot().statuses().any(|(_, s)| {
             s == nullslop_workflow::engine::NodeStatus::Running
         })
