@@ -33,6 +33,16 @@ pub struct RerunFromNode {
     pub node_name: String,
 }
 
+/// Request to load (initialize) a named workflow without executing it.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("workflow")]
+pub struct InitWorkflow {
+    /// The registered workflow name.
+    pub name: String,
+    /// A unique ID for this workflow execution.
+    pub workflow_id: WorkflowId,
+}
+
 /// Request to load workflow picker entries from the registry.
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("workflow")]

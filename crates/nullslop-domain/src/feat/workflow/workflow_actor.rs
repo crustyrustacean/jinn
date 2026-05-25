@@ -14,9 +14,9 @@ use crate::feat::session::chat_entry::ChatEntryKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::workflow::domain_node_context::DomainNodeContext;
 use crate::feat::workflow::protocol::command::{
-    CancelWorkflow, LoadWorkflowPickerEntries, RerunFromNode, StartWorkflow,
+    CancelWorkflow, InitWorkflow, LoadWorkflowPickerEntries, RerunFromNode, StartWorkflow,
 };
-use crate::feat::workflow::protocol::event::{WorkflowCompleted, WorkflowStarted};
+use crate::feat::workflow::protocol::event::{WorkflowCompleted, WorkflowInitialized, WorkflowStarted};
 use crate::feat::workflow::workflow_registry::WorkflowRegistry;
 use crate::feat::workflow::workflow_state::WorkflowState;
 use crate::protocol::{Command, Event};
@@ -49,6 +49,7 @@ impl Actor for WorkflowActor {
     type Deps = WorkflowActorDeps;
 
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
+        ctx.subscribe_command::<InitWorkflow>();
         ctx.subscribe_command::<StartWorkflow>();
         ctx.subscribe_command::<CancelWorkflow>();
         ctx.subscribe_command::<RerunFromNode>();
@@ -81,6 +82,9 @@ impl WorkflowActor {
     /// Dispatches a command to the appropriate handler.
     fn handle_command(&mut self, cmd: &Command, ctx: &ActorContext) {
         match cmd {
+            Command::InitWorkflow(payload) => {
+                self.handle_init_workflow(payload, ctx);
+            }
             Command::StartWorkflow(payload) => {
                 self.handle_start_workflow(payload, ctx);
             }
@@ -96,6 +100,40 @@ impl WorkflowActor {
             // Commands NOT subscribed to — these should not arrive.
             _ => {}
         }
+    }
+
+    /// Handle an `InitWorkflow` command.
+    ///
+    /// Loads the workflow graph and creates the execution state, but does NOT
+    /// spawn the engine. The user must press Enter (WorkflowRun) to start execution.
+    fn handle_init_workflow(&mut self, payload: &InitWorkflow, ctx: &ActorContext) {
+        let name = &payload.name;
+        let workflow_id = payload.workflow_id.clone();
+
+        // Look up the graph builder from the injected registry.
+        let Some(builder) = self.registry.get(name) else {
+            tracing::warn!(name = %name, "unknown workflow requested");
+            return;
+        };
+
+        // Build the graph once and wrap in a WorkflowExecution.
+        let execution = Arc::new(nullslop_workflow::execution::WorkflowExecution::new(builder()));
+
+        // Create workflow state with the shared execution.
+        let mut workflow_state = WorkflowState::new(name.clone(), execution.clone());
+        workflow_state.id = workflow_id.clone();
+
+        // Insert into app state.
+        self.state.write().workflow.insert(workflow_state);
+
+        // Emit WorkflowInitialized event.
+        let _ = ctx.send_event(Event::WorkflowInitialized(WorkflowInitialized {
+            workflow_id: workflow_id.clone(),
+            name: name.clone(),
+        }));
+
+        // Do NOT spawn execute_with_cancel() here.
+        // The user must press Enter (WorkflowRun) to start execution.
     }
 
     /// Handle a `StartWorkflow` command.
