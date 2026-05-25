@@ -64,6 +64,7 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
             .session_lifecycle_picker
             .selected_item()
             .is_some(),
+        PickerKind::Workflow => state.frontend.workflow_picker.selected_item().is_some(),
     };
 
     if has_selection {

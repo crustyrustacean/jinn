@@ -49,6 +49,9 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::SessionLifecycle => {
             state.frontend.session_lifecycle_picker.reset();
         }
+        PickerKind::Workflow => {
+            state.frontend.workflow_picker.reset();
+        }
     }
 
     match kind {
@@ -72,6 +75,12 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             // Populate from user preferences + implicit blank lifecycle.
             load_lifecycle_picker_entries(state);
             IntentResult::empty()
+        }
+        PickerKind::Workflow => {
+            // Entries will be populated by WorkflowActor via LoadWorkflowPickerEntries command.
+            IntentResult::with_commands(vec![Command::LoadWorkflowPickerEntries(
+                crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries,
+            )])
         }
     }
 }
@@ -179,6 +188,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::Persona) => (confirm_persona(state), None),
         Some(PickerKind::Theme) => (confirm_theme(state), None),
         Some(PickerKind::SessionLifecycle) => (confirm_session_lifecycle(state), None),
+        Some(PickerKind::Workflow) => (confirm_workflow(state), None),
         None => (IntentResult::empty(), None),
     }
 }
@@ -403,4 +413,30 @@ fn confirm_session_lifecycle(state: &mut AppState) -> IntentResult {
         &lifecycle_name,
         &[],
     )
+}
+
+/// Confirms the selected workflow, starts it, and switches to the Workflow tab.
+fn confirm_workflow(state: &mut AppState) -> IntentResult {
+    let Some(entry) = state.frontend.workflow_picker.selected_item() else {
+        return IntentResult::empty();
+    };
+    let name = entry.name.clone();
+    let workflow_id = crate::feat::workflow::WorkflowId::new();
+
+    // Pop picker overlay.
+    state.frontend.scope_stack.pop();
+
+    // Switch to workflow tab.
+    state.frontend.active_tab = crate::protocol::tab::ActiveTab::Workflow;
+    state
+        .frontend
+        .scope_stack
+        .swap_base(crate::common::app_state::FocusScope::Workflow);
+
+    IntentResult::with_commands(vec![Command::StartWorkflow(
+        crate::feat::workflow::protocol::command::StartWorkflow {
+            name,
+            workflow_id,
+        },
+    )])
 }

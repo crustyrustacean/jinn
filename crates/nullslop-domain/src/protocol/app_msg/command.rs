@@ -133,6 +133,10 @@ pub enum Command {
     CancelWorkflow(crate::feat::workflow::protocol::command::CancelWorkflow),
     /// Request to re-run a workflow from a specific node.
     RerunFromNode(crate::feat::workflow::protocol::command::RerunFromNode),
+    /// Load entries for the workflow picker.
+    LoadWorkflowPickerEntries(
+        crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries,
+    ),
 }
 
 impl Command {
@@ -188,6 +192,9 @@ impl Command {
             }
             Self::RerunFromNode(..) => {
                 Some(crate::feat::workflow::protocol::command::RerunFromNode::NAME)
+            }
+            Self::LoadWorkflowPickerEntries(..) => {
+                Some(crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries::NAME)
             }
         }
     }
@@ -313,6 +320,9 @@ impl std::fmt::Display for Command {
                     "rerun workflow {} from node '{}'",
                     payload.workflow_id, payload.node_name
                 )
+            }
+            Command::LoadWorkflowPickerEntries(..) => {
+                write!(f, "load workflow picker entries")
             }
         }
     }
