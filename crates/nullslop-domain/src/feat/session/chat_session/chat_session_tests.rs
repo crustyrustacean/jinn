@@ -2,7 +2,7 @@
 
 use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
-use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId};
+use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId, SessionId};
 use std::path::PathBuf;
 
 use super::*;
@@ -2965,4 +2965,49 @@ fn toggle_entry_ignored_flips_true_to_false() {
 
     // Then the entry is un-ignored.
     assert!(!session.history()[idx].ignored(), "entry should be un-ignored after toggle");
+}
+
+// --- is_persistable tests ---
+
+#[test]
+fn new_session_is_not_persistable() {
+    // Given a new session with no history or interaction.
+    let session = ChatSessionState::new();
+
+    // Then the session is not persistable.
+    assert!(!session.is_persistable());
+}
+
+#[test]
+fn session_becomes_persistable_after_mark_interacted() {
+    // Given a new session.
+    let mut session = ChatSessionState::new();
+
+    // When marking the session as interacted.
+    session.mark_interacted();
+
+    // Then the session is persistable.
+    assert!(session.is_persistable());
+}
+
+#[test]
+fn lifecycle_session_is_always_persistable() {
+    // Given a new session with a lifecycle name but no interaction.
+    let mut session = ChatSessionState::new();
+    session.core.lifecycle_name = Some("test-lifecycle".to_owned());
+
+    // Then the session is persistable even without interaction.
+    assert!(session.is_persistable());
+    assert!(!session.has_interacted());
+}
+
+#[test]
+fn forked_session_is_always_persistable() {
+    // Given a new session with a parent session but no interaction.
+    let mut session = ChatSessionState::new();
+    session.core.parent_session = Some(SessionId::new());
+
+    // Then the session is persistable even without interaction.
+    assert!(session.is_persistable());
+    assert!(!session.has_interacted());
 }
