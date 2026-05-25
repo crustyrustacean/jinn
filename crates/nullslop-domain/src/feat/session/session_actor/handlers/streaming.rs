@@ -180,6 +180,7 @@ impl SessionPersistenceActor {
         if should_emit_compact_context
             && let Err(e) = ctx.send_command(Command::CompactContext(CompactContext {
                 session_id: event.session_id.clone(),
+                compact_all: false,
             }))
         {
             tracing::warn!(err = ?e, "failed to emit CompactContext after soft cancel");
@@ -477,7 +478,7 @@ mod tests {
             let session = state.active_session_mut();
             session.begin_streaming();
             session.request_soft_cancel();
-            session.enqueue(crate::feat::session::queue_item::QueueItem::CompactionNeeded);
+            session.enqueue(crate::feat::session::queue_item::QueueItem::CompactionNeeded { compact_all: false });
             state.session.active_session_id().clone()
         };
 

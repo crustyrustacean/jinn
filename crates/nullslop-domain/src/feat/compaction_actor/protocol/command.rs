@@ -15,6 +15,9 @@ use crate::protocol::{CommandMsg, SessionId};
 pub struct CompactContext {
     /// The session to compact.
     pub session_id: SessionId,
+    /// If true, ignore `reserve_tokens` and compact everything after start boundary.
+    #[serde(default)]
+    pub compact_all: bool,
 }
 
 /// Marks entries as ignored and sets the session phase to Compacting.
@@ -43,10 +46,16 @@ pub struct EndCompaction {
     pub session_id: SessionId,
     /// The compaction result — `None` means the LLM call failed.
     pub result: Option<CompactionResult>,
-    /// Error message if the LLM call failed.
+    /// Error or informational message.
+    /// For skipped compaction, this contains a user-facing explanation.
+    /// For failed compaction, this contains the error message.
     pub error: Option<String>,
     /// Whether this was an automatically triggered compaction (not manual `/compact`).
     pub auto: bool,
+    /// If true, compaction was skipped because all tokens fit within the reserve.
+    /// The `error` field contains a user-facing explanation message.
+    #[serde(default)]
+    pub skipped: bool,
 }
 
 /// The result of a successful context compaction.
@@ -74,6 +83,9 @@ pub struct CompactionResult {
 pub struct EnqueueCompaction {
     /// The session to compact.
     pub session_id: SessionId,
+    /// If true, the resulting CompactContext will compact everything (ignore reserve).
+    #[serde(default)]
+    pub compact_all: bool,
 }
 
 /// Cancel an in-progress compaction for a session.

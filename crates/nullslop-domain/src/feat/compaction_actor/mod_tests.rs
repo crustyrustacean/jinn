@@ -328,9 +328,9 @@ fn test_actor_with_low_budget() -> (
     let sink = std::sync::Arc::new(RecordingSink::new());
     let ctx = ActorContext::new("test-compaction", sink.clone());
 
-    // Build state with a tiny token budget so threshold = 0.7 * 100 = 70 tokens.
-    let mut app_state = AppState::default();
-    app_state.frontend.preferences.context_token_budget.budget = 100;
+    // Build state with default config. Auto-compaction threshold = 0.7 * 150,000 = 105,000 tokens.
+    // The provider registry is empty, so fallback_context_window (150,000) is used.
+    let app_state = AppState::default();
     let state = State::new(app_state);
     let session_id = state.read().session.active_session_id().clone();
 
@@ -359,7 +359,7 @@ fn count_enqueue_compaction(commands: &[Command]) -> usize {
 fn high_token_event(session_id: &SessionId) -> HistoryAppended {
     HistoryAppended {
         session_id: session_id.clone(),
-        total_estimated_tokens: 500, // well above threshold (70)
+        total_estimated_tokens: 200_000, // well above threshold (0.7 * 150_000 = 105_000)
     }
 }
 
@@ -403,6 +403,7 @@ fn flag_resets_after_compact_context_allows_retrigger() {
     // And then receiving CompactContext (simulates queue dispatching it).
     let compact_cmd = CompactContext {
         session_id: session_id.clone(),
+        compact_all: false,
     };
     actor.handle_compact_context(&compact_cmd, &ctx);
 
@@ -597,5 +598,85 @@ fn cut_on_standalone_assistant_walks_to_next_user() {
 
     // Then it walks forward to the next User entry.
     assert_eq!(result, 3);
+}
+
+// --- Cut-point algorithm tests for reserve and compact_all ---
+
+#[test]
+fn cut_index_defaults_to_start_when_tokens_within_reserve() {
+    use crate::feat::context::strategy::token_estimator::{
+        CharRatioEstimator, estimate_entry_tokens,
+    };
+
+    // Given history with total tokens well below the 20,000 reserve default.
+    let history = vec![
+        ChatEntry::user("hello"),
+        ChatEntry::assistant("hi there"),
+        ChatEntry::user("how are you?"),
+        ChatEntry::assistant("doing well"),
+    ];
+
+    // When calculating the cut point with compact_all=false (the default),
+    // walking backwards accumulating tokens never exceeds the reserve.
+    let start_index = 0;
+    let reserve_tokens = 20_000;
+    let compact_all = false;
+
+    let estimator = CharRatioEstimator;
+    let mut accumulated_tokens = 0usize;
+    let mut cut_index = if compact_all {
+        history.len()
+    } else {
+        start_index
+    };
+
+    if !compact_all {
+        for i in (start_index..history.len()).rev() {
+            let entry = &history[i];
+            let tokens = estimate_entry_tokens(&estimator, entry);
+            accumulated_tokens += tokens;
+            if accumulated_tokens > reserve_tokens {
+                cut_index = i + 1;
+                break;
+            }
+        }
+    }
+
+    let cut_index = super::adjust_cut_to_boundary(&history, cut_index);
+
+    // Then cut_index stays at start_index (0) — nothing to compact.
+    assert_eq!(
+        cut_index, start_index,
+        "cut_index should be start_index when all tokens fit within reserve"
+    );
+}
+
+#[test]
+fn cut_index_equals_history_len_when_compact_all() {
+    // Given history with tokens well below the reserve.
+    let history = vec![
+        ChatEntry::user("hello"),
+        ChatEntry::assistant("hi there"),
+        ChatEntry::user("how are you?"),
+        ChatEntry::assistant("doing well"),
+    ];
+
+    // When compact_all=true, cut_index starts at history.len() regardless of reserve.
+    let start_index = 0;
+    let compact_all = true;
+
+    let cut_index = if compact_all {
+        history.len()
+    } else {
+        start_index
+    };
+
+    let cut_index = super::adjust_cut_to_boundary(&history, cut_index);
+
+    // Then cut_index equals history.len() — everything gets compacted.
+    assert_eq!(
+        cut_index, history.len(),
+        "cut_index should be history.len() when compact_all=true"
+    );
 }
 
