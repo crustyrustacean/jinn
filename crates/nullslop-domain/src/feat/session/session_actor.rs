@@ -211,6 +211,8 @@ impl SessionPersistenceActor {
                 self.on_judges_loaded(payload);
             }
 
+            // JudgeVerdict is handled by JudgeCoordinatorActor, not session actor.
+            #[allow(clippy::match_same_arms)]
             Event::JudgeVerdict(..) => {}
 
             _ => {}

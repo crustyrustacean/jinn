@@ -552,7 +552,7 @@ mod tests {
             name: name.to_owned(),
             description: format!("{name} description"),
             body: body.to_owned(),
-            model: model.map(|m| m.to_owned()),
+            model: model.map(std::borrow::ToOwned::to_owned),
             file_path: PathBuf::new(),
         }
     }

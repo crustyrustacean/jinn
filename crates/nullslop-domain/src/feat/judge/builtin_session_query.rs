@@ -134,7 +134,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             let display = if text.len() > 500 {
                 format!("{}...", &text[..500])
             } else {
-                text.to_owned()
+                text.clone()
             };
             output.push_str(&format!("[{role}] {display}\n\n"));
         }
