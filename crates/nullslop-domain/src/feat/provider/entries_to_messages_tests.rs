@@ -433,6 +433,7 @@ fn compaction_entry_produces_user_message_with_summary() {
         kind: crate::protocol::ChatEntryKind::Compaction {
             summary: "User asked to fix a bug. Work completed.".to_owned(),
             tokens_before: 5000,
+            tokens_after: 250,
             entries_compacted: 10,
             model_used: "test/model".to_owned(),
         },
@@ -543,6 +544,7 @@ fn message_order_after_compaction() {
             kind: crate::protocol::ChatEntryKind::Compaction {
                 summary: "The user asked about X and was told Y".to_owned(),
                 tokens_before: 500,
+            tokens_after: 25,
                 entries_compacted: 2,
                 model_used: "test/model".to_owned(),
             },

@@ -177,6 +177,15 @@ impl PromptTemplateStore {
                 continue;
             }
 
+            // Skip system/internal files (underscore-prefixed).
+            if path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .is_some_and(|stem| stem.starts_with('_'))
+            {
+                continue;
+            }
+
             match parse_template_file(&path) {
                 Ok(template) => {
                     if seen_names.contains(&template.name) {
@@ -228,6 +237,15 @@ impl PromptTemplateStore {
             }
 
             if path.extension().is_none_or(|ext| ext != "md") {
+                continue;
+            }
+
+            // Skip system/internal files (underscore-prefixed).
+            if path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .is_some_and(|stem| stem.starts_with('_'))
+            {
                 continue;
             }
 
