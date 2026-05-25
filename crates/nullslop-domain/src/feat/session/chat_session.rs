@@ -295,6 +295,11 @@ pub struct SessionCore {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) judge: Option<crate::feat::judge::JudgeMeta>,
+    /// Whether the user has meaningfully interacted with this session.
+    /// Sessions with `has_interacted = false` are not persisted to disk.
+    /// OWNER: session-actor (set via MarkSessionInteracted command).
+    #[serde(default)]
+    pub(crate) has_interacted: bool,
     /// Prompt overrides for workflow sessions. When set, these replace global
     /// defaults in `assemble_prompt`. Runtime-only — not persisted.
     /// OWNER: workflow-actor (set before first message).
@@ -326,6 +331,7 @@ impl Default for SessionCore {
             is_workflow: false,
             judge: None,
             workflow_overrides: None,
+            has_interacted: false,
             ephemeral: SessionCoreEphemeral::default(),
         }
     }
@@ -638,6 +644,38 @@ impl ChatSessionState {
         if let Some(ref mut meta) = self.core.judge {
             meta.is_attached = attached;
         }
+    }
+
+    /// Mark this session as having been meaningfully interacted with by the user.
+    /// Once set, the session becomes eligible for persistence.
+    pub fn mark_interacted(&mut self) {
+        self.core.has_interacted = true;
+    }
+
+    /// Whether this session has been interacted with.
+    #[must_use]
+    pub fn has_interacted(&self) -> bool {
+        self.core.has_interacted
+    }
+
+    /// Whether this session should be persisted to disk.
+    ///
+    /// Returns `true` if any of:
+    /// - The user has interacted with this session (`has_interacted`)
+    /// - The session has a lifecycle (setup/teardown scripts)
+    /// - The session was forked from another session
+    #[must_use]
+    pub fn is_persistable(&self) -> bool {
+        if self.core.lifecycle_name.is_some() {
+            return true;
+        }
+        if self.core.parent_session.is_some() {
+            return true;
+        }
+        if self.core.has_interacted {
+            return true;
+        }
+        false
     }
 
     /// Append an entry to the history and return its index.

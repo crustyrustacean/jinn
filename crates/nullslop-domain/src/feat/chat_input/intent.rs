@@ -23,7 +23,8 @@ use crate::feat::chat_input::state::autocomplete::AutocompleteState;
 use crate::feat::compaction_actor::protocol::command::EnqueueCompaction;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::session::chat_session::SessionPhase;
-use crate::protocol::{ChatEntry, Command, IntentResult};
+use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
+use crate::protocol::{ChatEntry, Command, IntentResult, SessionId};
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use super::validator;
@@ -228,6 +229,7 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
 
+    let session_id = state.session.active_session_id().clone();
     let display = state.active_chat_input().text().to_owned();
 
     // Check for slash command execution.
@@ -236,22 +238,24 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
         let cmd = command_name.split_whitespace().next().unwrap_or("");
         if let Some(cmd) = SlashCommand::lookup(cmd) {
             state.active_chat_input_mut().reset();
-            return execute_slash_command(cmd, &display, state);
+            return with_mark_interacted(session_id, execute_slash_command(cmd, &display, state));
         }
         // Unknown /command — fall through to normal message.
     }
 
-    let session_id = state.session.active_session_id().clone();
     let expanded = crate::feat::context::prompt_template::expand_tokens(
         &display,
         &state.context.prompt_templates,
     );
     state.active_chat_input_mut().reset();
 
-    IntentResult::with_commands(vec![Command::EnqueueUserMessage(EnqueueUserMessage {
+    with_mark_interacted(
         session_id,
-        entry: ChatEntry::user_expanded(display, expanded),
-    })])
+        IntentResult::with_commands(vec![Command::EnqueueUserMessage(EnqueueUserMessage {
+            session_id: state.session.active_session_id().clone(),
+            entry: ChatEntry::user_expanded(display, expanded),
+        })]),
+    )
 }
 
 /// Handles Enter when autocomplete is active — completes the selection and submits.
@@ -279,6 +283,7 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
         return IntentResult::empty();
     }
 
+    let session_id = state.session.active_session_id().clone();
     let display = state.active_chat_input().text().to_owned();
 
     match trigger {
@@ -288,7 +293,10 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
                 let cmd = command_name.split_whitespace().next().unwrap_or("");
                 if let Some(cmd) = SlashCommand::lookup(cmd) {
                     state.active_chat_input_mut().reset();
-                    return execute_slash_command(cmd, &display, state);
+                    return with_mark_interacted(
+                        session_id,
+                        execute_slash_command(cmd, &display, state),
+                    );
                 }
             }
             // Fall through to normal submit.
@@ -296,17 +304,27 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
         _ => {}
     }
 
-    let session_id = state.session.active_session_id().clone();
     let expanded = crate::feat::context::prompt_template::expand_tokens(
         &display,
         &state.context.prompt_templates,
     );
     state.active_chat_input_mut().reset();
 
-    IntentResult::with_commands(vec![Command::EnqueueUserMessage(EnqueueUserMessage {
+    with_mark_interacted(
         session_id,
-        entry: ChatEntry::user_expanded(display, expanded),
-    })])
+        IntentResult::with_commands(vec![Command::EnqueueUserMessage(EnqueueUserMessage {
+            session_id: state.session.active_session_id().clone(),
+            entry: ChatEntry::user_expanded(display, expanded),
+        })]),
+    )
+}
+
+/// Prepends a `MarkSessionInteracted` command to the result.
+fn with_mark_interacted(session_id: SessionId, mut result: IntentResult) -> IntentResult {
+    result
+        .commands
+        .insert(0, Command::MarkSessionInteracted(MarkSessionInteracted { session_id }));
+    result
 }
 
 /// Executes a slash command.

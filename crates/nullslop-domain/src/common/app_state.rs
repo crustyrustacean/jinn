@@ -127,6 +127,9 @@ pub struct ContextAssemblyState {
     /// Discovered judges from `~/.config/nullslop/judges/`.
     /// OWNER: session-actor (replaces on JudgesLoaded event).
     pub judges: Vec<crate::feat::judge::Judge>,
+    /// Loaded compaction system prompt from `~/.config/nullslop/prompts/_compaction.md`.
+    /// OWNER: populated once at startup by the app init code.
+    pub compaction_prompt: String,
 }
 
 impl Default for ContextAssemblyState {
@@ -139,6 +142,7 @@ impl Default for ContextAssemblyState {
             tool_definitions: HashMap::new(),
             context_files: Vec::new(),
             judges: Vec::new(),
+            compaction_prompt: String::new(),
         }
     }
 }

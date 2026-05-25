@@ -314,6 +314,7 @@ mod tests {
             kind: crate::protocol::ChatEntryKind::Compaction {
                 summary: "summary".to_owned(),
                 tokens_before: 100,
+                tokens_after: 50,
                 entries_compacted: 5,
                 model_used: "test/model".to_owned(),
             },
@@ -576,6 +577,7 @@ mod ignore_selected_tests {
             kind: crate::protocol::ChatEntryKind::Compaction {
                 summary: "summary".to_owned(),
                 tokens_before: 100,
+                tokens_after: 50,
                 entries_compacted: 5,
                 model_used: "test/model".to_owned(),
             },

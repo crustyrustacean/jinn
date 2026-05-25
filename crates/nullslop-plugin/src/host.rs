@@ -1,5 +1,7 @@
 //! Plugin host — owns the Lua VM and orchestrates plugin loading and dispatch.
 
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -58,6 +60,9 @@ pub struct PluginHost {
     /// The command sender callback.
     #[expect(dead_code, reason = "needed for future wiring phases")]
     sender: CommandSender,
+    /// Names of plugins that have been successfully loaded.
+    /// Prevents loading the same plugin name from multiple directories.
+    loaded: RefCell<HashSet<String>>,
 }
 
 impl PluginHost {
@@ -79,7 +84,11 @@ impl PluginHost {
 
         crate::preflight::init(&lua);
 
-        Ok(Self { lua, sender })
+        Ok(Self {
+            lua,
+            sender,
+            loaded: RefCell::new(HashSet::new()),
+        })
     }
 
     /// Loads a single plugin from a directory containing `init.lua`.
@@ -91,15 +100,19 @@ impl PluginHost {
     pub fn load_plugin(&self, dir: &Path) -> Result<PluginInfo, Report<PluginError>> {
         let init_path = dir.join("init.lua");
         if !init_path.is_file() {
-            return Err(
-                Report::new(PluginError).attach(format!("no init.lua in {}", dir.display()))
-            );
+            return Err(Report::new(PluginError)
+                .attach(format!("no init.lua in {}", dir.display())));
         }
 
-        let name = dir.file_name().map_or_else(
-            || String::from("unknown"),
-            |n| n.to_string_lossy().into_owned(),
-        );
+        let name = dir
+            .file_name()
+            .map_or_else(|| String::from("unknown"), |n| n.to_string_lossy().into_owned());
+
+        if self.loaded.borrow().contains(&name) {
+            tracing::warn!(plugin = %name, "skipping plugin: already loaded");
+            return Err(Report::new(PluginError)
+                .attach(format!("plugin '{name}' is already loaded")));
+        }
 
         let source = std::fs::read_to_string(&init_path).map_err(|e| {
             tracing::error!(err = %e, path = %init_path.display(), "failed to read init.lua");
@@ -116,6 +129,8 @@ impl PluginHost {
             })?;
 
         tracing::info!(plugin = %name, "loaded plugin");
+
+        self.loaded.borrow_mut().insert(name.clone());
 
         Ok(PluginInfo {
             name,
@@ -144,55 +159,6 @@ impl PluginHost {
                 Err(e) => {
                     tracing::warn!(err = %e, "skipping plugin");
                 }
-            }
-        }
-
-        loaded
-    }
-
-    /// Loads a built-in plugin from a Lua source string.
-    ///
-    /// Used for plugins that are bundled into the binary via `include_str!`
-    /// so they work regardless of filesystem layout.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the Lua script fails to execute.
-    pub fn load_builtin(
-        &self,
-        name: &str,
-        source: &str,
-    ) -> Result<PluginInfo, Report<PluginError>> {
-        self.lua
-            .load(source)
-            .set_name(format!("builtin/{name}/init.lua"))
-            .exec()
-            .map_err(|e| {
-                tracing::error!(err = %e, plugin = %name, "builtin plugin failed to load");
-                Report::new(PluginError).attach(format!("builtin plugin '{name}' failed to load"))
-            })?;
-
-        tracing::info!(plugin = %name, "loaded builtin plugin");
-
-        Ok(PluginInfo {
-            name: name.to_owned(),
-            path: PathBuf::from(format!("builtin://{name}")),
-        })
-    }
-
-    /// Loads all built-in plugins embedded in the binary.
-    ///
-    /// Returns info for successfully loaded plugins. Failures are logged
-    /// but not propagated — a broken built-in plugin should not prevent
-    /// the app from starting.
-    pub fn load_builtins(&self) -> Vec<PluginInfo> {
-        let mut loaded = Vec::new();
-
-        let welcome_source = include_str!("../../../plugins/welcome/init.lua");
-        match self.load_builtin("welcome", welcome_source) {
-            Ok(info) => loaded.push(info),
-            Err(e) => {
-                tracing::warn!(err = %e, "skipping builtin welcome plugin");
             }
         }
 
@@ -391,102 +357,59 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn builtin_welcome_pipeline_emits_dynamic_command() {
-        // Given a plugin host with a channel-based sender.
-        let (sender, rx) = test_sender();
+    fn load_plugin_skips_duplicate_name() {
+        // Given two temp directories with the same plugin directory name.
+        let (sender, _) = test_sender();
         let host = PluginHost::new(sender).expect("host creation");
 
-        // When loading builtins and dispatching app::started.
-        let builtins = host.load_builtins();
-        assert_eq!(builtins.len(), 1);
-        assert_eq!(builtins[0].name, "welcome");
+        let dir1 = tempfile::tempdir().expect("create temp dir 1");
+        let plugin_dir1 = dir1.path().join("dup");
+        fs::create_dir_all(&plugin_dir1).expect("create plugin dir 1");
+        fs::write(plugin_dir1.join("init.lua"), "-- first").expect("write init.lua 1");
 
-        host.dispatch_event("app::started", &serde_json::Value::Null);
+        let dir2 = tempfile::tempdir().expect("create temp dir 2");
+        let plugin_dir2 = dir2.path().join("dup");
+        fs::create_dir_all(&plugin_dir2).expect("create plugin dir 2");
+        fs::write(plugin_dir2.join("init.lua"), "-- second").expect("write init.lua 2");
 
-        // Then a dynamic command is emitted (with timeout).
-        let cmd = rx
-            .recv_timeout(std::time::Duration::from_secs(2))
-            .expect("should receive command within 2s");
-        match cmd {
-            Command::Dynamic(dc) => {
-                assert_eq!(dc.name, "welcome::show");
-                let msg = dc
-                    .payload
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                assert!(msg.contains("Welcome to nullslop"), "got: {msg}");
-            }
-            other => panic!("expected Dynamic command, got: {other:?}"),
-        }
+        // When loading both.
+        let first = host.load_plugin(&plugin_dir1);
+        let second = host.load_plugin(&plugin_dir2);
 
-        // And dispatching app::started again does NOT emit another command.
-        host.dispatch_event("app::started", &serde_json::Value::Null);
-        let result = rx.try_recv().expect("try_recv should succeed");
-        assert!(result.is_none(), "should not emit on second app::started");
+        // Then the first succeeds and the second is rejected.
+        assert!(first.is_ok(), "first load should succeed");
+        assert!(second.is_err(), "duplicate should be rejected");
     }
 
     #[rstest::rstest]
-    fn builtin_welcome_emits_session_tip_on_session_created() {
-        // Given a plugin host with builtins loaded.
-        let (sender, rx) = test_sender();
+    fn load_all_skips_already_loaded_plugin() {
+        // Given a host with one plugin already loaded.
+        let (sender, _) = test_sender();
         let host = PluginHost::new(sender).expect("host creation");
-        host.load_builtins();
 
-        // When dispatching session::created.
-        host.dispatch_event(
-            "session::created",
-            &serde_json::json!({ "session_id": "abc-123" }),
-        );
+        let dir1 = tempfile::tempdir().expect("create temp dir 1");
+        let plugin_dir1 = dir1.path().join("alpha");
+        fs::create_dir_all(&plugin_dir1).expect("create plugin dir 1");
+        fs::write(plugin_dir1.join("init.lua"), "-- first").expect("write init.lua 1");
 
-        // Then a welcome::session_tip dynamic command is emitted.
-        let cmd = rx
-            .recv_timeout(std::time::Duration::from_secs(2))
-            .expect("should receive command within 2s");
-        match cmd {
-            Command::Dynamic(dc) => {
-                assert_eq!(dc.name, "welcome::session_tip");
-                let msg = dc
-                    .payload
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                assert!(msg.contains("New session started"), "got: {msg}");
-            }
-            other => panic!("expected Dynamic command, got: {other:?}"),
-        }
-    }
+        let result = host.load_plugin(&plugin_dir1);
+        assert!(result.is_ok(), "initial load should succeed");
 
-    #[rstest::rstest]
-    fn builtin_welcome_emits_session_tip_on_every_session() {
-        // Given a plugin host with builtins loaded.
-        let (sender, rx) = test_sender();
-        let host = PluginHost::new(sender).expect("host creation");
-        host.load_builtins();
+        // And a second directory also containing "alpha".
+        let dir2 = tempfile::tempdir().expect("create temp dir 2");
+        let plugin_dir2 = dir2.path().join("alpha");
+        fs::create_dir_all(&plugin_dir2).expect("create plugin dir 2");
+        fs::write(plugin_dir2.join("init.lua"), "-- second").expect("write init.lua 2");
+        // Also add a new plugin "beta".
+        let plugin_dir3 = dir2.path().join("beta");
+        fs::create_dir_all(&plugin_dir3).expect("create plugin dir 3");
+        fs::write(plugin_dir3.join("init.lua"), "-- beta").expect("write init.lua 3");
 
-        // When dispatching session::created twice.
-        host.dispatch_event(
-            "session::created",
-            &serde_json::json!({ "session_id": "session-1" }),
-        );
-        let cmd1 = rx
-            .recv_timeout(std::time::Duration::from_secs(2))
-            .expect("should receive first command");
-        assert!(
-            matches!(cmd1, Command::Dynamic(ref dc) if dc.name == "welcome::session_tip"),
-            "first should be session_tip"
-        );
+        // When loading all from the second directory.
+        let loaded = host.load_all(dir2.path());
 
-        host.dispatch_event(
-            "session::created",
-            &serde_json::json!({ "session_id": "session-2" }),
-        );
-        let cmd2 = rx
-            .recv_timeout(std::time::Duration::from_secs(2))
-            .expect("should receive second command");
-        assert!(
-            matches!(cmd2, Command::Dynamic(ref dc) if dc.name == "welcome::session_tip"),
-            "second should also be session_tip"
-        );
+        // Then only beta is loaded (alpha was skipped as duplicate).
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].name, "beta");
     }
 }
