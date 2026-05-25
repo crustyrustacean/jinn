@@ -56,8 +56,7 @@ impl MinimapCategory {
             Self::Error => Color::Red,
             Self::System => Color::Yellow,
             Self::Skill => Color::Rgb(255, 165, 0),
-            Self::Thinking => Color::DarkGray,
-            Self::Collapsed => Color::DarkGray,
+            Self::Thinking | Self::Collapsed => Color::DarkGray,
         }
     }
 
