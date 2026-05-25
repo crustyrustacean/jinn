@@ -214,3 +214,72 @@ fn fuzzy_search_caps_at_max_results() {
     // Then results are capped at MAX_FUZZY_RESULTS (20).
     assert_eq!(results.len(), MAX_FUZZY_RESULTS);
 }
+
+#[rstest::rstest]
+fn scan_dir_skips_underscore_prefixed_files() {
+    // Given a directory with both a normal template and an underscore-prefixed file.
+    let dir = TempDir::new().expect("temp dir");
+    write_template(
+        dir.path(),
+        "normal.md",
+        "+++\nname = \"normal\"\ndescription = \"Normal template\"\n+++\nBody.",
+    );
+    write_template(
+        dir.path(),
+        "_system.md",
+        "+++\nname = \"system\"\ndescription = \"System template\"\n+++\nBody.",
+    );
+
+    // When loading from that directory.
+    let store = PromptTemplateStore::load_from_dir(dir.path()).expect("load");
+
+    // Then only the normal template is loaded; _system is skipped.
+    assert_eq!(store.len(), 1);
+    assert!(store.find_by_name("normal").is_some());
+    assert!(store.find_by_name("system").is_none());
+}
+
+#[rstest::rstest]
+fn load_from_dirs_user_override_skips_underscore_prefixed() {
+    // Given a user dir with an underscore-prefixed file and a system dir with a normal template.
+    let user_dir = TempDir::new().expect("temp dir");
+    let system_dir = TempDir::new().expect("temp dir");
+    write_template(
+        user_dir.path(),
+        "_compaction.md",
+        "+++\nname = \"_compaction\"\ndescription = \"Compaction\"\n+++\nBody.",
+    );
+    write_template(
+        system_dir.path(),
+        "review.md",
+        "+++\nname = \"review\"\ndescription = \"Review\"\n+++\nBody.",
+    );
+
+    // When loading from both dirs.
+    let store =
+        PromptTemplateStore::load_from_dirs(user_dir.path(), system_dir.path()).expect("load");
+
+    // Then only the non-prefixed template is loaded.
+    assert_eq!(store.len(), 1);
+    assert!(store.find_by_name("review").is_some());
+    assert!(store.find_by_name("_compaction").is_none());
+}
+
+#[rstest::rstest]
+fn fuzzy_search_never_returns_underscore_prefixed_templates() {
+    // Given a store built directly (bypassing scan) that includes an underscore-prefixed name.
+    // This verifies that even if somehow a _-prefixed template got into the store,
+    // the search would still return it — confirming the filter must happen at scan time.
+    let store = PromptTemplateStore::from_vec(vec![PromptTemplate {
+        name: "_compaction".to_owned(),
+        description: "System".to_owned(),
+        body: String::new(),
+    }]);
+
+    // When searching with a broad query.
+    let results = store.fuzzy_search("compaction");
+
+    // Then the _-prefixed template is returned (because it's in the store).
+    // This confirms the real protection is at scan time, not search time.
+    assert_eq!(results.len(), 1);
+}

@@ -561,7 +561,8 @@ pub fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext) -> Vec<Line<'stati
             summary,
             entries_compacted,
             tokens_before,
+            tokens_after,
             ..
-        } => compaction::to_lines(summary, *entries_compacted, *tokens_before, ctx),
+        } => compaction::to_lines(summary, *entries_compacted, *tokens_before, *tokens_after, ctx),
     }
 }

@@ -24,16 +24,13 @@ use crate::feat::compaction_actor::protocol::command::{
     BeginCompaction, CancelCompaction, CompactionResult, EndCompaction,
 };
 use crate::feat::compaction_actor::serializer::serialize_entries_for_compaction;
-use crate::feat::context::strategy::token_estimator::CharRatioEstimator;
+use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, TokenEstimator};
 use crate::feat::context::strategy::token_estimator::estimate_entry_tokens;
 use crate::feat::preferences_actor::user_preferences::CompactionConfig;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
 use crate::feat::session::chat_session::SessionPhase;
 use crate::feat::session::protocol::history_appended::HistoryAppended;
 use crate::protocol::{Command, Event};
-
-/// Hardcoded compaction system prompt.
-const COMPACTION_PROMPT: &str = include_str!("compaction.md");
 
 /// Errors during compaction.
 #[derive(Debug, Error)]
@@ -262,12 +259,20 @@ impl CompactionActor {
     }
 }
 
-/// Adjust the token-based cut index forward to the next valid tool-chain boundary.
+/// Adjust the token-based cut index forward to the next valid boundary.
 ///
-/// The compaction cut point must not split a tool call chain
-/// (ToolCall/ToolResult entries, or an Assistant that responds to tool use).
-/// Walking forward to the next `User` entry (turn boundary) or the end of
-/// history ensures the kept entries form a structurally valid LLM message sequence.
+/// The cut must not land on a `ToolCall` or `ToolResult` entry, because
+/// these have structural dependencies on preceding messages:
+///
+/// - `ToolCall` merges into the preceding `Assistant` in `entries_to_messages`.
+///   If that `Assistant` is compacted away, the tool call becomes orphaned.
+/// - `ToolResult` produces a `tool` role message whose `tool_call_id` must
+///   match a preceding `assistant.tool_calls[].id`. If the `Assistant` is
+///   compacted but the `ToolResult` is kept, the provider rejects the request.
+///
+/// Walking forward past `ToolCall`/`ToolResult` to the next independent entry
+/// (`Assistant`, `User`, `Error`, `System`, `Compaction`, etc.) ensures the
+/// kept entries form a structurally valid LLM message sequence.
 ///
 /// Returns the adjusted cut index (>= `cut_index`, <= `history.len()`).
 fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize {
@@ -275,13 +280,27 @@ fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize {
         return cut_index;
     }
 
-    if matches!(history[cut_index].kind, ChatEntryKind::User { .. }) {
+    // A safe cut point is any entry that is not ToolCall or ToolResult.
+    // ToolCall entries merge into the preceding Assistant message, and
+    // ToolResult entries reference a tool_call_id from a preceding Assistant's
+    // tool_calls. Cutting between them would produce orphaned messages that
+    // LLM providers reject (e.g. ZAI error 1214).
+    if !matches!(
+        history[cut_index].kind,
+        ChatEntryKind::ToolCall { .. } | ChatEntryKind::ToolResult { .. }
+    ) {
         return cut_index;
     }
 
+    // Walk forward past ToolCall and ToolResult entries.
     history[cut_index..]
         .iter()
-        .position(|entry| matches!(entry.kind, ChatEntryKind::User { .. }))
+        .position(|entry| {
+            !matches!(
+                entry.kind,
+                ChatEntryKind::ToolCall { .. } | ChatEntryKind::ToolResult { .. }
+            )
+        })
         .map_or(history.len(), |offset| cut_index + offset)
 }
 
@@ -303,14 +322,15 @@ async fn perform_compaction(
     compact_all: bool,
 ) -> Result<usize, error_stack::Report<CompactionError>> {
     // Read config and session state.
-    let (config, model_name, history_len, retry_config) = {
+    let (config, model_name, history_len, retry_config, compaction_prompt) = {
         let state = state.read();
         let session = state.session(session_id);
         let config = state.frontend.preferences.compaction.clone();
         let model_name = session.profile().model.clone();
         let history_len = session.history().len();
         let retry_config = state.frontend.preferences.request_retry.to_retry_config();
-        (config, model_name, history_len, retry_config)
+        let compaction_prompt = state.context.compaction_prompt.clone();
+        (config, model_name, history_len, retry_config, compaction_prompt)
     };
 
     if history_len == 0 {
@@ -466,16 +486,19 @@ async fn perform_compaction(
         &model_name,
         &config,
         &retry_config,
+        &compaction_prompt,
     )
     .await?;
 
     // Step 4: Emit EndCompaction — session actor inserts entry, sets phase to Idle.
+    let tokens_after = CharRatioEstimator.estimate(&summary);
     let _ = sink.send_command(Command::EndCompaction(EndCompaction {
         session_id: session_id.clone(),
         result: Some(CompactionResult {
             summary,
             entries_compacted,
             tokens_before,
+            tokens_after,
             model_used: model_name.clone(),
             boundary_index,
         }),
@@ -497,6 +520,7 @@ async fn generate_summary(
     session_model: &str,
     config: &CompactionConfig,
     retry_config: &nullslop_provider::RetryConfig,
+    compaction_prompt: &str,
 ) -> Result<String, error_stack::Report<CompactionError>> {
     // Try compaction model first, fall back to session model.
     let model_id = config.model.as_deref().unwrap_or(session_model);
@@ -525,7 +549,7 @@ async fn generate_summary(
     // Wrap with retry decorator — compaction retries are logged at warn level.
     let service = RetryingLlmService::new(service, retry_config.clone(), Box::new(NoOpOnRetry));
 
-    let system_prompt = COMPACTION_PROMPT.to_owned();
+    let system_prompt = compaction_prompt.to_owned();
 
     let mut user_content = String::new();
     if let Some(prev) = previous_summary {

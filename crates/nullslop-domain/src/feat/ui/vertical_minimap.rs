@@ -868,6 +868,7 @@ mod tests {
             kind: ChatEntryKind::Compaction {
                 summary: "summary".to_owned(),
                 tokens_before: 100,
+                tokens_after: 50,
                 entries_compacted: 2,
                 model_used: "test".to_owned(),
             },

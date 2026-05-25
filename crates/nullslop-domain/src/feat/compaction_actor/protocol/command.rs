@@ -67,6 +67,8 @@ pub struct CompactionResult {
     pub entries_compacted: usize,
     /// Estimated token count of the entries before compaction.
     pub tokens_before: usize,
+    /// Estimated token count of the compaction summary (after compaction).
+    pub tokens_after: usize,
     /// The model used for summarization.
     pub model_used: String,
     /// Insertion point for the compaction entry (right after the last gathered entry).
