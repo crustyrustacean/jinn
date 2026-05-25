@@ -729,6 +729,126 @@ async fn lifecycle_script_state_nothing_ran_round_trips() {
 
 #[rstest::rstest]
 #[tokio::test]
+async fn judge_meta_round_trips() {
+    // Given a session with judge metadata.
+    let (_dir, store) = make_store();
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("Judge Session".to_owned());
+    session.push_entry(ChatEntry::user("hello"));
+    let origin_id = SessionId::new();
+    let meta = crate::feat::judge::JudgeMeta {
+        origin_session: origin_id.clone(),
+        is_attached: true,
+        judge_name: "accuracy".to_owned(),
+    };
+    session.set_judge(meta.clone());
+
+    // When saving and loading.
+    store.save(&session).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then judge metadata is preserved.
+    assert!(loaded.is_judge());
+    let loaded_meta = loaded.judge().as_ref().expect("should have judge meta");
+    assert_eq!(loaded_meta.origin_session, origin_id);
+    assert!(loaded_meta.is_attached);
+    assert_eq!(loaded_meta.judge_name, "accuracy");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn regular_session_has_no_judge_meta() {
+    // Given a regular session.
+    let (_dir, store) = make_store();
+    let session_id = SessionId::new();
+    let session = make_session(&session_id, "Regular Session");
+
+    // When saving and loading.
+    store.save(&session).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then judge metadata is None.
+    assert!(!loaded.is_judge());
+    assert!(loaded.judge().is_none());
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn judge_meta_update_round_trips() {
+    // Given a session with initial judge metadata.
+    let (_dir, store) = make_store();
+    let session_id = SessionId::new();
+    let origin_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("Judge Session".to_owned());
+    session.push_entry(ChatEntry::user("hello"));
+    session.set_judge(crate::feat::judge::JudgeMeta {
+        origin_session: origin_id.clone(),
+        is_attached: true,
+        judge_name: "accuracy".to_owned(),
+    });
+    store.save(&session).await.expect("save v1");
+
+    // When updating is_attached to false and saving again.
+    session.restore_judge(Some(crate::feat::judge::JudgeMeta {
+        origin_session: origin_id,
+        is_attached: false,
+        judge_name: "accuracy".to_owned(),
+    }));
+    store.save(&session).await.expect("save v2");
+
+    // Then the updated value is preserved.
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+    assert!(!loaded.judge().as_ref().expect("should have judge meta").is_attached);
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn fork_does_not_inherit_judge_meta() {
+    // Given a judge session.
+    let (_dir, store) = make_store();
+    let source_id = SessionId::new();
+    let mut source = ChatSessionState::new();
+    source.set_session_id(source_id.clone());
+    source.set_title("Judge Session".to_owned());
+    source.push_entry(ChatEntry::user("hello"));
+    source.set_judge(crate::feat::judge::JudgeMeta {
+        origin_session: SessionId::new(),
+        is_attached: true,
+        judge_name: "accuracy".to_owned(),
+    });
+    store.save(&source).await.expect("save source");
+
+    // When forking.
+    let forked_id = store.fork(&source_id, 0).await.expect("fork");
+
+    // Then the forked session is NOT a judge.
+    let forked = store
+        .load_session(&forked_id)
+        .await
+        .expect("load forked")
+        .expect("should exist");
+    assert!(!forked.is_judge());
+    assert!(forked.judge().is_none());
+}
+
+#[rstest::rstest]
+#[tokio::test]
 async fn fork_inherits_lifecycle_script_state() {
     // Given a store with a session that has SetupRan.
     let (_dir, store) = make_store();
