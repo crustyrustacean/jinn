@@ -336,6 +336,35 @@ fn sorted_sessions_count_matches_hashmap() {
     assert_eq!(sorted_open_sessions(&state).len(), 4);
 }
 
+#[rstest::rstest]
+fn mark_busy_makes_session_not_idle() {
+    // Given a session that is Idle but has mark_busy() called.
+    let mut state = AppState::default();
+    state.active_session_mut().mark_busy();
+
+    // When collecting sorted open sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then the session entry is not idle (throbber will animate).
+    assert_eq!(sessions.len(), 1);
+    assert!(!sessions[0].is_idle);
+}
+
+#[rstest::rstest]
+fn mark_busy_complete_returns_to_idle() {
+    // Given a session that was busy but completed.
+    let mut state = AppState::default();
+    state.active_session_mut().mark_busy();
+    state.active_session_mut().mark_busy_complete();
+
+    // When collecting sorted open sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then the session entry is idle again.
+    assert_eq!(sessions.len(), 1);
+    assert!(sessions[0].is_idle);
+}
+
 // --- Rendering ---
 
 use nullslop_testutil::setup_term;
@@ -698,6 +727,21 @@ fn close_session_rejected_when_streaming() {
     state.frontend.scope_stack.push(FocusScope::SidebarSessions);
     state.frontend.sessions_section.selected_index = Some(0);
     state.active_session_mut().begin_streaming();
+
+    // When validating close.
+    let result = validate_session_close(&state);
+
+    // Then validation fails with SessionBusy.
+    assert_eq!(result, Err(SessionCloseError::SessionBusy));
+}
+
+#[rstest::rstest]
+fn close_session_rejected_when_busy_counter_nonzero() {
+    // Given state with a session that has mark_busy() called but is Idle.
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+    state.frontend.sessions_section.selected_index = Some(0);
+    state.active_session_mut().mark_busy();
 
     // When validating close.
     let result = validate_session_close(&state);
