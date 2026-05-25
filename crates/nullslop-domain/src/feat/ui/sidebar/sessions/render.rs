@@ -167,21 +167,19 @@ impl SidebarSection for SessionsSection {
             let visual_row = sel.saturating_sub(scroll_offset) as u16;
             let cursor_y = area.y + visual_row;
             let prompt_y = cursor_y.saturating_sub(1);
-            if prompt_y >= area.y {
-                let prompt = Paragraph::new(Line::from(Span::styled(
-                    " Press x again to close ",
-                    Style::default().fg(Color::Black).bg(Color::Yellow),
-                )));
-                frame.render_widget(
-                    prompt,
-                    Rect {
-                        x: area.x,
-                        y: prompt_y,
-                        width: area.width,
-                        height: 1,
-                    },
-                );
-            }
+            let prompt = Paragraph::new(Line::from(Span::styled(
+                " Press x again to close ",
+                Style::default().fg(Color::Black).bg(Color::Yellow),
+            )));
+            frame.render_widget(
+                prompt,
+                Rect {
+                    x: area.x,
+                    y: prompt_y,
+                    width: area.width,
+                    height: 1,
+                },
+            );
         }
     }
 
