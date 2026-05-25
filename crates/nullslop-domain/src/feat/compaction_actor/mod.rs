@@ -127,10 +127,11 @@ impl CompactionActor {
         let state = self.state.clone();
         let services = self.services.clone();
         let rt_handle = self.handle.clone();
+        let compact_all = cmd.compact_all;
 
         let task = rt_handle.clone().spawn(async move {
             let result =
-                perform_compaction(&state, &services, &rt_handle, &session_id, &sink, was_auto).await;
+                perform_compaction(&state, &services, &rt_handle, &session_id, &sink, was_auto, compact_all).await;
 
             match result {
                 Ok(entries_compacted) => {
@@ -156,6 +157,7 @@ impl CompactionActor {
                         result: None,
                         error: Some(format!("{e:#}")),
                         auto: was_auto,
+                        skipped: false,
                     }));
                     let _ = sink.send_event(Event::CompactionCompleted(CompactionCompleted {
                         session_id,
@@ -197,13 +199,24 @@ impl CompactionActor {
                 return;
             }
 
-            let config = &state.frontend.preferences.compaction;
-            let token_budget = state.frontend.preferences.context_token_budget.budget;
+            let config = state.frontend.preferences.compaction.clone();
+
+            // Resolve context window from the provider registry.
+            // Falls back to `fallback_context_window` when the provider
+            // doesn't report `context_length` (e.g., local models).
+            let model_name = session.profile().model.clone();
+            let provider_id = crate::feat::provider_infra::ProviderId::from(model_name);
+            let context_window = self
+                .services
+                .provider_registry
+                .get(&provider_id)
+                .and_then(|r| r.context_length)
+                .map_or(config.fallback_context_window, |c| c as usize);
 
             let total_tokens = payload.total_estimated_tokens;
 
             #[allow(clippy::cast_precision_loss)]
-            let threshold_tokens = (config.threshold * token_budget as f64) as usize;
+            let threshold_tokens = (config.threshold * context_window as f64) as usize;
             let should = total_tokens > threshold_tokens;
 
             tracing::debug!(
@@ -230,6 +243,7 @@ impl CompactionActor {
             self.auto_compaction_pending = true;
             let _ = ctx.send_command(Command::EnqueueCompaction(EnqueueCompaction {
                 session_id: session_id.clone(),
+                compact_all: false,
             }));
             let _ = ctx.send_command(Command::SoftCancelTurn(
                 crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn { session_id },
@@ -286,6 +300,7 @@ async fn perform_compaction(
     session_id: &crate::protocol::SessionId,
     sink: &std::sync::Arc<dyn crate::common::actor::message_sink::MessageSink>,
     auto: bool,
+    compact_all: bool,
 ) -> Result<usize, error_stack::Report<CompactionError>> {
     // Read config and session state.
     let (config, model_name, history_len, retry_config) = {
@@ -318,15 +333,21 @@ async fn perform_compaction(
         // Find cut point: walk backwards accumulating tokens.
         let estimator = CharRatioEstimator;
         let mut accumulated_tokens = 0usize;
-        let mut cut_index = history.len(); // Default: compact everything after start.
+        let mut cut_index = if compact_all {
+            history.len() // Compact everything after start boundary.
+        } else {
+            start_index // Compact nothing by default (reserve protects everything).
+        };
 
-        for i in (start_index..history.len()).rev() {
-            let entry = &history[i];
-            let tokens = estimate_entry_tokens(&estimator, entry);
-            accumulated_tokens += tokens;
-            if accumulated_tokens > config.keep_recent_tokens {
-                cut_index = i + 1;
-                break;
+        if !compact_all {
+            for i in (start_index..history.len()).rev() {
+                let entry = &history[i];
+                let tokens = estimate_entry_tokens(&estimator, entry);
+                accumulated_tokens += tokens;
+                if accumulated_tokens > config.reserve_tokens {
+                    cut_index = i + 1;
+                    break;
+                }
             }
         }
 
@@ -344,6 +365,31 @@ async fn perform_compaction(
         }
 
         if gathered_indices.is_empty() {
+            // Nothing to compact — all tokens fit within the reserve.
+            let total_tokens: usize = history[start_index..]
+                .iter()
+                .map(|e| estimate_entry_tokens(&estimator, e))
+                .sum();
+
+            let skip_msg = format!(
+                "Skipped compaction: {} tokens within the {} token reserve. Use /compact-all to force.",
+                total_tokens, config.reserve_tokens
+            );
+
+            // Emit BeginCompaction so session enters Compacting phase.
+            let _ = sink.send_command(Command::BeginCompaction(BeginCompaction {
+                session_id: session_id.clone(),
+                gathered_indices: vec![],
+            }));
+            // Emit EndCompaction with skipped flag so session shows message and returns to Idle.
+            let _ = sink.send_command(Command::EndCompaction(EndCompaction {
+                session_id: session_id.clone(),
+                result: None,
+                error: Some(skip_msg),
+                auto,
+                skipped: true,
+            }));
+
             return Ok(0);
         }
 
@@ -435,6 +481,7 @@ async fn perform_compaction(
         }),
         error: None,
         auto,
+        skipped: false,
     }));
 
     Ok(entries_compacted)

@@ -176,14 +176,12 @@ impl BenchActor {
                 .active_persona
                 .as_ref()
                 .map_or_else(|| "coding-assistant".to_owned(), |p| p.name.clone());
-            let token_budget = state.frontend.preferences.context_token_budget.budget;
             let sliding_window_size = state.frontend.preferences.context_sliding_window.size;
 
             let mut new_session = ChatSessionState::new_with_profile(SessionProfile::new(
                 model.clone(),
                 strategy,
                 persona_name,
-                token_budget,
                 sliding_window_size,
             ));
             new_session.set_lifecycle_name(Some(task_name.clone()));

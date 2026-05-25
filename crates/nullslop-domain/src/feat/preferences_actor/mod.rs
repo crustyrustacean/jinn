@@ -14,7 +14,7 @@ pub mod user_preferences_storage;
 mod preferences_actor_tests;
 
 pub use user_preferences::{
-    ContextSlidingWindowConfig, ContextTokenBudgetConfig, RequestRetryConfig, UserPreferences,
+    CompactionConfig, ContextSlidingWindowConfig, RequestRetryConfig, UserPreferences,
 };
 pub use user_preferences_storage::{
     FilesystemUserPreferencesStorage, InMemoryUserPreferencesStorage, UserPreferencesStorageService,
