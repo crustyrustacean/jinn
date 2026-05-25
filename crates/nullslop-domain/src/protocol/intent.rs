@@ -242,6 +242,44 @@ pub enum Intent {
     WorkflowPanUp,
     /// Pan the workflow viewport right.
     WorkflowPanRight,
+
+    // --- Workflow Input Editing ---
+    /// Enter editing mode on the selected workflow source node.
+    WorkflowEditNode,
+    /// Submit the workflow input buffer (write to node output).
+    WorkflowInputSubmit,
+    /// Cancel workflow input editing (discard changes).
+    WorkflowInputCancel,
+    /// Insert a character into the workflow input buffer.
+    WorkflowInputInsertChar {
+        /// The character to insert.
+        ch: char,
+    },
+    /// Delete grapheme before cursor in workflow input buffer.
+    WorkflowInputDeleteGrapheme,
+    /// Delete grapheme after cursor (forward delete) in workflow input buffer.
+    WorkflowInputDeleteGraphemeForward,
+    /// Paste text into the workflow input buffer.
+    WorkflowInputPasteText {
+        /// The pasted text content.
+        text: String,
+    },
+    /// Move cursor left in workflow input buffer.
+    WorkflowInputCursorLeft,
+    /// Move cursor right in workflow input buffer.
+    WorkflowInputCursorRight,
+    /// Move cursor to start of workflow input buffer.
+    WorkflowInputCursorToStart,
+    /// Move cursor to end of workflow input buffer.
+    WorkflowInputCursorToEnd,
+    /// Move cursor one word left in workflow input buffer.
+    WorkflowInputCursorWordLeft,
+    /// Move cursor one word right in workflow input buffer.
+    WorkflowInputCursorWordRight,
+    /// Move cursor up one visual line in workflow input buffer.
+    WorkflowInputCursorUp,
+    /// Move cursor down one visual line in workflow input buffer.
+    WorkflowInputCursorDown,
 }
 
 impl std::fmt::Display for Intent {
@@ -351,6 +389,26 @@ impl std::fmt::Display for Intent {
             Intent::WorkflowPanDown => write!(f, "workflow pan down"),
             Intent::WorkflowPanUp => write!(f, "workflow pan up"),
             Intent::WorkflowPanRight => write!(f, "workflow pan right"),
+
+            // --- Workflow Input Editing ---
+            Intent::WorkflowEditNode => write!(f, "workflow edit node"),
+            Intent::WorkflowInputSubmit => write!(f, "workflow input submit"),
+            Intent::WorkflowInputCancel => write!(f, "workflow input cancel"),
+            Intent::WorkflowInputInsertChar { ch } => write!(f, "workflow input insert '{ch}'"),
+            Intent::WorkflowInputDeleteGrapheme => write!(f, "workflow input delete"),
+            Intent::WorkflowInputDeleteGraphemeForward => write!(f, "workflow input forward delete"),
+            Intent::WorkflowInputPasteText { text } => {
+                let line_count = text.lines().count();
+                write!(f, "workflow input paste ({line_count} lines)")
+            }
+            Intent::WorkflowInputCursorLeft => write!(f, "workflow input cursor left"),
+            Intent::WorkflowInputCursorRight => write!(f, "workflow input cursor right"),
+            Intent::WorkflowInputCursorToStart => write!(f, "workflow input cursor home"),
+            Intent::WorkflowInputCursorToEnd => write!(f, "workflow input cursor end"),
+            Intent::WorkflowInputCursorWordLeft => write!(f, "workflow input cursor word left"),
+            Intent::WorkflowInputCursorWordRight => write!(f, "workflow input cursor word right"),
+            Intent::WorkflowInputCursorUp => write!(f, "workflow input cursor up"),
+            Intent::WorkflowInputCursorDown => write!(f, "workflow input cursor down"),
         }
     }
 }

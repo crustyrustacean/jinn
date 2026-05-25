@@ -25,6 +25,7 @@ pub fn status_symbol(status: NodeStatus, tick: u8) -> &'static str {
             SPINNER_FRAMES[(tick as usize) % SPINNER_FRAMES.len()]
         }
         NodeStatus::Completed | NodeStatus::Failed | NodeStatus::Skipped => "●",
+        NodeStatus::AwaitingInput => "✎",
     }
 }
 
@@ -35,11 +36,13 @@ pub fn status_symbol(status: NodeStatus, tick: u8) -> &'static str {
 /// - `Completed` → [`Color::Green`]
 /// - `Failed` → [`Color::Red`]
 /// - `Skipped` → [`Color::Yellow`]
+/// - `AwaitingInput` → `awaiting_input_color`
 #[must_use]
-pub fn status_color(status: NodeStatus) -> Color {
+pub fn status_color(status: NodeStatus, awaiting_input_color: Color) -> Color {
     match status {
         NodeStatus::Pending => Color::DarkGray,
         NodeStatus::Running => Color::Cyan,
+        NodeStatus::AwaitingInput => awaiting_input_color,
         NodeStatus::Completed => Color::Green,
         NodeStatus::Failed => Color::Red,
         NodeStatus::Skipped => Color::Yellow,
