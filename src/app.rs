@@ -143,7 +143,7 @@ impl App {
                 let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
 
                 // Initialize plugin system.
-                let plugin_host = {
+                let (plugin_host, welcome_subscriber) = {
                     let sender = core.sender().clone();
                     let cmd_sender = nullslop_plugin::CommandSender::new(
                         move |cmd: nullslop_domain::Command| {
@@ -153,11 +153,12 @@ impl App {
                             });
                         },
                     );
+                    let welcome_sub = nullslop_plugin::WelcomeSubscriber::new(cmd_sender.clone());
                     match nullslop_plugin::PluginHost::new(cmd_sender) {
-                        Ok(host) => Some(host),
+                        Ok(host) => (Some(host), Some(welcome_sub)),
                         Err(e) => {
                             tracing::error!(err = ?e, "failed to create plugin host");
-                            None
+                            (None, None)
                         }
                     }
                 };
@@ -214,6 +215,7 @@ impl App {
                     },
                     preview_cache: nullslop_tui::app::PreviewCache::new(),
                     plugin_host,
+                    welcome_subscriber,
                 }));
                 runner.run().change_context(AppError)?;
             }
@@ -350,6 +352,7 @@ impl App {
                             },
                             preview_cache: nullslop_tui::app::PreviewCache::new(),
                             plugin_host: None,
+                            welcome_subscriber: None,
                         }));
                         runner.run().change_context(AppError)?;
                     }
@@ -421,6 +424,7 @@ impl App {
                             },
                             preview_cache: nullslop_tui::app::PreviewCache::new(),
                             plugin_host: None,
+                            welcome_subscriber: None,
                         }));
                         runner.run().change_context(AppError)?;
                     }

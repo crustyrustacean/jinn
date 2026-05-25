@@ -72,6 +72,9 @@ pub struct TuiApp {
     /// Plugin host for Lua plugins.
     #[debug(skip)]
     pub plugin_host: Option<nullslop_plugin::PluginHost>,
+    /// Subscriber that translates dynamic plugin commands into typed commands.
+    #[debug(skip)]
+    pub welcome_subscriber: Option<nullslop_plugin::WelcomeSubscriber>,
 }
 
 impl TuiApp {
@@ -176,6 +179,15 @@ impl TuiApp {
                 }
             }
             Msg::Command(cmd) => {
+                // Intercept dynamic commands for plugin subscribers.
+                if let nullslop_domain::Command::Dynamic(ref dc) = cmd
+                    && let Some(ref sub) = self.welcome_subscriber
+                {
+                    let session_id =
+                        self.core.state.read().session.active_session_id().clone();
+                    sub.handle(dc, &session_id);
+                }
+
                 let _ = self.core.sender().send(AppMsg::Command {
                     command: cmd,
                     source: None,

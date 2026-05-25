@@ -86,6 +86,7 @@ impl TuiAppBuilder {
             },
             preview_cache: super::PreviewCache::new(),
             plugin_host: None,
+            welcome_subscriber: None,
         }
     }
 }
