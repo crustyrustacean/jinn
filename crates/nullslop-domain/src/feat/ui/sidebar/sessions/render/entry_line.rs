@@ -122,9 +122,9 @@ pub(crate) fn assemble_entry_line(
     );
     let truncated = truncate_str(&entry.title, max_title_len.saturating_sub(tree_len));
     let display_title = if entry.is_judge {
-        format!("⚖ {}", truncated)
+        format!("⚖ {truncated}")
     } else {
-        truncated.to_owned()
+        truncated.to_string()
     };
 
     let mut spans = vec![indicator, Span::raw(" "), arrow];
