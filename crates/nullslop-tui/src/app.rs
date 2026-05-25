@@ -69,6 +69,9 @@ pub struct TuiApp {
     pub sidebar: Sidebar,
     /// Cache for session preview popup rendered lines.
     pub preview_cache: PreviewCache,
+    /// Plugin host for Lua plugins.
+    #[debug(skip)]
+    pub plugin_host: Option<nullslop_plugin::PluginHost>,
 }
 
 impl TuiApp {
