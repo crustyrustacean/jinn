@@ -199,7 +199,7 @@ impl PluginHost {
     pub fn load_builtins(&self) -> Vec<PluginInfo> {
         let mut loaded = Vec::new();
 
-        let welcome_source = include_str!("../../../plugins/welcome/init.lua");
+        let welcome_source = include_str!("../../../res/plugins/welcome/init.lua");
         match self.load_builtin("welcome", welcome_source) {
             Ok(info) => loaded.push(info),
             Err(e) => {

@@ -175,17 +175,20 @@ lint-testlength:
    if found:
        print(f"\n{found} inline test module(s) exceed {max_lines} lines")
 
-# Copy plugins, themes, and personas to user config directory
+# Copy plugins, themes, personas, and prompts to user config directory
 install-defaults:
     mkdir -p ~/.config/nullslop/themes
-    cp -r themes/*.toml ~/.config/nullslop/themes/
+    cp -r res/themes/*.toml ~/.config/nullslop/themes/
     mkdir -p ~/.config/nullslop/personas
-    cp -r personas/*.md ~/.config/nullslop/personas/
+    cp -r res/personas/*.md ~/.config/nullslop/personas/
     mkdir -p ~/.config/nullslop/prompts
-    cp -r prompts/*.md ~/.config/nullslop/prompts/
+    cp -r res/prompts/*.md ~/.config/nullslop/prompts/
+    mkdir -p ~/.config/nullslop/plugins
+    cp -r res/plugins/* ~/.config/nullslop/plugins/
     @echo "Themes installed to ~/.config/nullslop/themes/"
     @echo "Personas installed to ~/.config/nullslop/personas/"
     @echo "Prompts installed to ~/.config/nullslop/prompts/"
+    @echo "Plugins installed to ~/.config/nullslop/plugins/"
 
 # Report stale Fossil locks (hung processes + stale journal files)
 fossil-unlock:
