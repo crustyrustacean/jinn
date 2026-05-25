@@ -44,6 +44,9 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
                 .active_chat_input_mut()
                 .scroll_to_cursor(inner_height);
         }
+
+        // Pre-render mutation for workflow input buffer.
+        prepare_workflow_input_scroll(&mut wstate, area, &pre_layout);
     }
 
     let state = app.core.state.read();
@@ -128,4 +131,34 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     app.selectable_rects.rebuild(rects);
     selection_highlight::apply_selection_highlight(app, frame.buffer_mut());
     clipboard::flush_pending_clipboard(app, frame.buffer_mut());
+}
+
+/// Pre-render mutation for the workflow input buffer.
+///
+/// Sets wrap width and scroll offset so that `wrapped_lines()`, `scroll_offset()`,
+/// and `cursor_row_col()` return correct values during the read-only render pass.
+/// Mirrors the chat input pattern in `render()`.
+fn prepare_workflow_input_scroll(
+    wstate: &mut nullslop_domain::AppState,
+    area: ratatui::layout::Rect,
+    pre_layout: &AppLayout,
+) {
+    if wstate.frontend.workflow_ui.editing_node.is_none() {
+        return;
+    }
+    let input_height: u16 = 5; // border (1) + 3 visible lines + padding
+    let content_height = area.height.saturating_sub(pre_layout.status_bar.height);
+    let graph_height = content_height.saturating_sub(input_height).max(content_height / 2);
+    let actual_input_height = content_height.saturating_sub(graph_height);
+    // Borders::TOP consumes 1 row, indent is 2 chars.
+    let inner_height = actual_input_height.saturating_sub(1) as usize;
+    let text_width = area.width.saturating_sub(2) as usize; // 2-char indent
+    wstate.frontend.workflow_ui.input_buffer.set_wrap_width(text_width);
+    if wstate.frontend.scope_stack.current().mode() == Mode::Input {
+        wstate
+            .frontend
+            .workflow_ui
+            .input_buffer
+            .scroll_to_cursor(inner_height);
+    }
 }

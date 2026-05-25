@@ -140,9 +140,19 @@ impl VisualNode {
     ///
     /// If `selected` is true, the border is drawn with a highlight color.
     /// The `tick` counter drives the spinner animation for running nodes.
-    pub fn render(&self, buf: &mut Buffer, selected: bool, tick: u8) {
+    /// If the node has `AwaitingInput` status, the border uses `awaiting_input_color`
+    /// instead of the default selected/unselected color.
+    pub fn render(
+        &self,
+        buf: &mut Buffer,
+        selected: bool,
+        tick: u8,
+        awaiting_input_color: Color,
+    ) {
         let border_color = if selected {
             Color::White
+        } else if self.status == NodeStatus::AwaitingInput {
+            awaiting_input_color
         } else {
             Color::DarkGray
         };
@@ -152,7 +162,7 @@ impl VisualNode {
         self.render_title(buf, border_style, tick);
         self.render_port_labels(buf);
         self.render_port_indicators(buf);
-        self.render_status(buf, tick);
+        self.render_status(buf, tick, awaiting_input_color);
     }
 
     /// Renders the rounded box borders.
@@ -209,9 +219,9 @@ impl VisualNode {
     }
 
     /// Renders the status indicator (circle/spinner) at the top-right area.
-    fn render_status(&self, buf: &mut Buffer, tick: u8) {
+    fn render_status(&self, buf: &mut Buffer, tick: u8, awaiting_input_color: Color) {
         let symbol = status_symbol(self.status, tick);
-        let color = status_color(self.status);
+        let color = status_color(self.status, awaiting_input_color);
         // Place status indicator at column (width - 2), row 0 (top border).
         let col = self.width.saturating_sub(2);
         self.set_cell(buf, col, 0, symbol, Style::default().fg(color));
@@ -376,9 +386,20 @@ impl ShiftedNode<'_> {
     }
 
     /// Renders the node into the buffer at the shifted position.
-    pub fn render(&self, buf: &mut Buffer, selected: bool, tick: u8) {
+    ///
+    /// If the node has `AwaitingInput` status, the border uses `awaiting_input_color`
+    /// instead of the default selected/unselected color.
+    pub fn render(
+        &self,
+        buf: &mut Buffer,
+        selected: bool,
+        tick: u8,
+        awaiting_input_color: Color,
+    ) {
         let border_color = if selected {
             Color::White
+        } else if self.inner.status == NodeStatus::AwaitingInput {
+            awaiting_input_color
         } else {
             Color::DarkGray
         };
@@ -388,7 +409,7 @@ impl ShiftedNode<'_> {
         self.render_title(buf, border_style, tick);
         self.render_port_labels(buf);
         self.render_port_indicators(buf);
-        self.render_status(buf, tick);
+        self.render_status(buf, tick, awaiting_input_color);
     }
 
     /// Sets a cell in the buffer at the given local coordinates.
@@ -464,9 +485,9 @@ impl ShiftedNode<'_> {
     }
 
     /// Renders the status indicator on the top border.
-    fn render_status(&self, buf: &mut Buffer, tick: u8) {
+    fn render_status(&self, buf: &mut Buffer, tick: u8, awaiting_input_color: Color) {
         let symbol = status_symbol(self.inner.status, tick);
-        let color = status_color(self.inner.status);
+        let color = status_color(self.inner.status, awaiting_input_color);
         let col = self.inner.width.saturating_sub(2);
         self.set_cell(buf, col, 0, symbol, Style::default().fg(color));
     }
@@ -648,7 +669,7 @@ mod tests {
             height: 15,
         };
         let mut buf = Buffer::empty(area);
-        node.render(&mut buf, false, 0);
+        node.render(&mut buf, false, 0, Color::Cyan);
 
         // Then rounded corners are present.
         assert_eq!(buf.cell(Position::new(0, 0)).unwrap().symbol(), "╭");
@@ -693,7 +714,7 @@ mod tests {
             height: 15,
         };
         let mut buf = Buffer::empty(area);
-        node.render(&mut buf, false, 0);
+        node.render(&mut buf, false, 0, Color::Cyan);
 
         // Then port indicators appear at correct positions.
         // Input port at (0, input_ports[0].row_offset).
@@ -728,7 +749,7 @@ mod tests {
             height: 15,
         };
         let mut buf = Buffer::empty(area);
-        node.render(&mut buf, false, 0);
+        node.render(&mut buf, false, 0, Color::Cyan);
 
         // Then status indicator at (width-2, 0) shows ○.
         let col = node.width.saturating_sub(2);
@@ -753,7 +774,7 @@ mod tests {
             height: 15,
         };
         let mut buf = Buffer::empty(area);
-        node.render(&mut buf, false, 0);
+        node.render(&mut buf, false, 0, Color::Cyan);
 
         // Then status indicator shows ●.
         let col = node.width.saturating_sub(2);
