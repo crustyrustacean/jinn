@@ -23,15 +23,15 @@ pub struct SessionsSectionState {
     pub visual_parents: HashMap<SessionId, SessionId>,
 }
 
+/// DFS tree layout for a session entry.
+///
+/// Contains only computed tree structure — no session data.
+/// All session properties (title, phase, judge state, etc.) are read
+/// from the live `ChatSessionState` during render.
 #[derive(Clone)]
-pub(crate) struct SessionEntry {
+pub(crate) struct SessionTreeEntry {
     pub(crate) id: SessionId,
-    pub(crate) title: String,
-    pub(crate) is_active: bool,
-    pub(crate) created_at: jiff::Timestamp,
-    pub(crate) is_idle: bool,
-    pub(crate) last_entry_is_error: bool,
-    /// Parent session ID — `None` for root sessions.
+    /// Session ID of the parent, used for tree nesting.
     pub(crate) parent_id: Option<SessionId>,
     /// Depth in the session tree. 0 for roots, 1 for their children, etc.
     pub(crate) depth: usize,
@@ -41,8 +41,6 @@ pub(crate) struct SessionEntry {
     /// Whether this entry is the last child of its parent.
     /// Used to render `└` vs `├`.
     pub(crate) is_last_child: bool,
-    /// Whether this session is a judge session.
-    pub(crate) is_judge: bool,
 }
 
 /// Collects all loaded sessions in tree order (DFS).
@@ -54,59 +52,49 @@ pub(crate) struct SessionEntry {
 ///
 /// Only includes sessions with `SessionState::Loaded` — archived sessions
 /// are not in the `SessionMap` and thus excluded automatically.
-pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
-    let active_id = state.session.active_session_id();
-
-    // Collect all loaded sessions into entries.
-    let entries: Vec<SessionEntry> = state
+pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionTreeEntry> {
+    // Collect all loaded session IDs.
+    let loaded_ids: Vec<SessionId> = state
         .session
         .iter()
         .filter(|(_, session)| {
             session.session_state() == crate::feat::session::chat_session::SessionState::Loaded
         })
-        .map(|(id, session): (&_, &_)| SessionEntry {
-            id: id.clone(),
-            title: session.title().unwrap_or("Untitled Session").to_owned(),
-            is_active: id == active_id,
-            created_at: *session.created_at(),
-            is_idle: matches!(session.phase(), SessionPhase::Idle),
-            last_entry_is_error: session
-                .history()
-                .last()
-                .is_some_and(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::Error(..))),
-            parent_id: session.parent_session().clone(),
-            depth: 0,
-            ancestor_continuations: vec![],
-            is_last_child: false,
-            is_judge: session.is_judge(),
+        .map(|(id, _)| id.clone())
+        .collect();
+
+    // Build tree entries — only DFS structure, no session data.
+    let mut entry_map: HashMap<SessionId, SessionTreeEntry> = loaded_ids
+        .iter()
+        .map(|id| {
+            let parent_id = state.session.get(id).map(|s| s.parent_session().clone()).flatten();
+            (
+                id.clone(),
+                SessionTreeEntry {
+                    id: id.clone(),
+                    parent_id,
+                    depth: 0,
+                    ancestor_continuations: vec![],
+                    is_last_child: false,
+                },
+            )
         })
         .collect();
 
-    // Index entries by ID for O(1) lookup.
-    let mut entry_map: HashMap<SessionId, SessionEntry> =
-        entries.into_iter().map(|e| (e.id.clone(), e)).collect();
-
     // Build parent → children map and identify roots.
-    // Uses visual_parents index to resolve effective parent when
-    // the direct parent has been archived/removed from memory.
     let visual_parents = &state.frontend.sessions_section.visual_parents;
     let mut children_map: HashMap<SessionId, Vec<SessionId>> = HashMap::new();
     let mut roots: Vec<SessionId> = Vec::new();
-
-    // Track effective parent for each entry so we can patch entry.parent_id later.
     let mut effective_parents: HashMap<SessionId, SessionId> = HashMap::new();
 
     for entry in entry_map.values() {
         let effective_parent = match &entry.parent_id {
-            // Direct parent is loaded — use it directly.
             Some(pid) if entry_map.contains_key(pid) => Some(pid.clone()),
-            // Direct parent not loaded — try visual_parents for reparenting.
             Some(pid) => visual_parents
                 .get(pid)
                 .or_else(|| visual_parents.get(&entry.id))
                 .filter(|vp| entry_map.contains_key(*vp))
                 .cloned(),
-            // No parent at all.
             None => None,
         };
 
@@ -132,15 +120,40 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
     }
 
     // Sort roots descending by created_at (newest first).
-    roots.sort_by(|a, b| entry_map[b].created_at.cmp(&entry_map[a].created_at));
+    // Read created_at from live sessions, not from the entry.
+    roots.sort_by(|a, b| {
+        let a_time = state
+            .session
+            .get(a)
+            .map(|s| *s.created_at())
+            .unwrap_or_default();
+        let b_time = state
+            .session
+            .get(b)
+            .map(|s| *s.created_at())
+            .unwrap_or_default();
+        b_time.cmp(&a_time)
+    });
 
     // Sort each parent's children ascending by created_at (oldest first).
     for children in children_map.values_mut() {
-        children.sort_by(|a, b| entry_map[a].created_at.cmp(&entry_map[b].created_at));
+        children.sort_by(|a, b| {
+            let a_time = state
+                .session
+                .get(a)
+                .map(|s| *s.created_at())
+                .unwrap_or_default();
+            let b_time = state
+                .session
+                .get(b)
+                .map(|s| *s.created_at())
+                .unwrap_or_default();
+            a_time.cmp(&b_time)
+        });
     }
 
     // DFS traversal to produce flat list with tree metadata.
-    let mut result: Vec<SessionEntry> = Vec::new();
+    let mut result: Vec<SessionTreeEntry> = Vec::new();
     let mut visited: HashSet<SessionId> = HashSet::new();
     let root_count = roots.len();
 
@@ -277,8 +290,8 @@ pub fn clear_visual_parents_on_load(state: &mut AppState, loaded_id: &SessionId)
 fn dfs_children(
     parent_id: &SessionId,
     children_map: &HashMap<SessionId, Vec<SessionId>>,
-    entry_map: &HashMap<SessionId, SessionEntry>,
-    result: &mut Vec<SessionEntry>,
+    entry_map: &HashMap<SessionId, SessionTreeEntry>,
+    result: &mut Vec<SessionTreeEntry>,
     ancestor_continuations: Vec<bool>,
     visited: &mut HashSet<SessionId>,
 ) {

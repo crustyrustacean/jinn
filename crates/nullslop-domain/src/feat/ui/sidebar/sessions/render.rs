@@ -16,6 +16,7 @@ use std::time::Instant;
 use crate::common::app_state::AppState;
 use crate::feat::ui::sidebar::section_trait::{SidebarSection, SidebarSectionId};
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
+use entry_line::EntryRenderConfig;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -93,16 +94,22 @@ impl SidebarSection for SessionsSection {
             let start = scroll_offset.min(sessions.len());
             let end = (start + visible_count).min(sessions.len());
 
-            for (visual_i, entry) in sessions[start..end].iter().enumerate() {
+            for (visual_i, tree) in sessions[start..end].iter().enumerate() {
                 let i = start + visual_i;
                 let is_selected = section_focused && selected_index == Some(i);
-                let max_title_len = area.width.saturating_sub(5) as usize;
-                lines.push(assemble_entry_line(
-                    entry,
-                    is_selected,
-                    max_title_len,
-                    &self.throbber_state,
+                let is_active = state.session.active_session_id() == &tree.id;
+                let config = EntryRenderConfig {
+                    max_title_len: area.width.saturating_sub(5) as usize,
                     theme,
+                    throbber_state: &self.throbber_state,
+                };
+                let session = state.session.get(&tree.id).expect("tree entry maps to loaded session");
+                lines.push(assemble_entry_line(
+                    tree,
+                    session,
+                    is_active,
+                    is_selected,
+                    &config,
                 ));
             }
 

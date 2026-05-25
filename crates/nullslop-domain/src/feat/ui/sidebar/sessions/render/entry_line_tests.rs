@@ -4,12 +4,14 @@
 
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
-use jiff::Timestamp;
 use throbber_widgets_tui::ThrobberState;
 
 use crate::common::app_state::AppState;
-use crate::feat::ui::sidebar::sessions::render::entry_line::{assemble_entry_line, tree_prefix};
-use crate::feat::ui::sidebar::sessions::state::SessionEntry;
+use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::ui::sidebar::sessions::render::entry_line::{
+    EntryRenderConfig, assemble_entry_line, tree_prefix,
+};
+use crate::feat::ui::sidebar::sessions::state::SessionTreeEntry;
 use crate::protocol::SessionId;
 
 // ---------------------------------------------------------------------------
@@ -20,28 +22,30 @@ fn tree_entry(
     depth: usize,
     ancestor_continuations: Vec<bool>,
     is_last_child: bool,
-) -> SessionEntry {
-    SessionEntry {
+) -> SessionTreeEntry {
+    SessionTreeEntry {
         id: SessionId::new(),
-        title: "Test".to_owned(),
-        is_active: false,
-        created_at: Timestamp::now(),
-        is_idle: true,
-        last_entry_is_error: false,
         parent_id: None,
         depth,
         ancestor_continuations,
         is_last_child,
-        is_judge: false,
     }
+}
+
+fn default_session() -> ChatSessionState {
+    ChatSessionState::new()
 }
 
 fn default_theme() -> crate::feat::theme::Theme {
     AppState::default().frontend.theme
 }
 
-fn idle_throbber() -> ThrobberState {
-    ThrobberState::default()
+fn make_config(max_title_len: usize) -> EntryRenderConfig<'static> {
+    EntryRenderConfig {
+        max_title_len,
+        theme: Box::leak(Box::new(AppState::default().frontend.theme)),
+        throbber_state: Box::leak(Box::new(ThrobberState::default())),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -163,52 +167,30 @@ fn tree_prefix_deep_chain_last() {
 #[rstest::rstest]
 fn assembled_line_includes_tree_prefix_for_non_root() {
     // Given a child entry at depth 1.
-    let entry = SessionEntry {
-        id: SessionId::new(),
-        title: "Child".to_owned(),
-        is_active: false,
-        created_at: Timestamp::now(),
-        is_idle: true,
-        last_entry_is_error: false,
-        parent_id: None,
-        depth: 1,
-        ancestor_continuations: vec![true],
-        is_last_child: true,
-        is_judge: false,
-    };
-    let theme = default_theme();
+    let tree = tree_entry(1, vec![true], true);
+    let session = default_session();
+    let config = make_config(30);
 
     // When assembling the entry line.
-    let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
+    let line = assemble_entry_line(&tree, &session, false, false, &config);
 
-    // Then the line contains the \u{2514}\u{2500} tree characters.
+    // Then the line contains the └─ tree characters.
     let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
     assert!(
-        text.contains("\u{2514}\u{2500} "),
-        "line should contain \u{2514}\u{2500} , got: {text}"
+        text.contains("└─ "),
+        "line should contain └─ , got: {text}"
     );
 }
 
 #[rstest::rstest]
 fn assembled_line_has_no_tree_prefix_for_root() {
     // Given a root entry.
-    let entry = SessionEntry {
-        id: SessionId::new(),
-        title: "Root".to_owned(),
-        is_active: false,
-        created_at: Timestamp::now(),
-        is_idle: true,
-        last_entry_is_error: false,
-        parent_id: None,
-        depth: 0,
-        ancestor_continuations: vec![],
-        is_last_child: true,
-        is_judge: false,
-    };
-    let theme = default_theme();
+    let tree = tree_entry(0, vec![], true);
+    let session = default_session();
+    let config = make_config(30);
 
     // When assembling the entry line.
-    let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
+    let line = assemble_entry_line(&tree, &session, false, false, &config);
 
     // Then the line has 4 spans: indicator, space, arrow, title (no tree prefix span).
     assert_eq!(
@@ -222,23 +204,12 @@ fn assembled_line_has_no_tree_prefix_for_root() {
 #[rstest::rstest]
 fn assembled_line_has_tree_prefix_span_for_child() {
     // Given a child entry at depth 1.
-    let entry = SessionEntry {
-        id: SessionId::new(),
-        title: "Child".to_owned(),
-        is_active: false,
-        created_at: Timestamp::now(),
-        is_idle: true,
-        last_entry_is_error: false,
-        parent_id: None,
-        depth: 1,
-        ancestor_continuations: vec![true],
-        is_last_child: false,
-        is_judge: false,
-    };
-    let theme = default_theme();
+    let tree = tree_entry(1, vec![true], false);
+    let session = default_session();
+    let config = make_config(30);
 
     // When assembling the entry line.
-    let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
+    let line = assemble_entry_line(&tree, &session, false, false, &config);
 
     // Then the line has 5 spans: indicator, space, arrow, tree prefix, title.
     assert_eq!(
@@ -255,43 +226,23 @@ fn assembled_line_has_tree_prefix_span_for_child() {
 
 #[rstest::rstest]
 fn title_is_truncated_more_at_higher_depth() {
-    // Given two entries with the same title but different depths.
-    let root = SessionEntry {
-        id: SessionId::new(),
-        title: "A very long session title that should be truncated".to_owned(),
-        is_active: false,
-        created_at: Timestamp::now(),
-        is_idle: true,
-        last_entry_is_error: false,
-        parent_id: None,
-        depth: 0,
-        ancestor_continuations: vec![],
-        is_last_child: true,
-        is_judge: false,
-    };
-    let child = SessionEntry {
-        id: SessionId::new(),
-        title: "A very long session title that should be truncated".to_owned(),
-        is_active: false,
-        created_at: Timestamp::now(),
-        is_idle: true,
-        last_entry_is_error: false,
-        parent_id: None,
-        depth: 3,
-        ancestor_continuations: vec![true, true, true],
-        is_last_child: true,
-        is_judge: false,
-    };
-    let theme = default_theme();
-    let max_len = 20;
+    // Given two entries with the same long title but different depths.
+    let long_title = "A very long session title that should be truncated";
+    let root_tree = tree_entry(0, vec![], true);
+    let child_tree = tree_entry(3, vec![true, true, true], true);
+
+    let mut root_session = default_session();
+    root_session.set_title(long_title.to_owned());
+    let mut child_session = default_session();
+    child_session.set_title(long_title.to_owned());
+
+    let config = make_config(20);
 
     // When assembling entry lines with limited space.
-    let root_line = assemble_entry_line(&root, false, max_len, &idle_throbber(), &theme);
-    let child_line = assemble_entry_line(&child, false, max_len, &idle_throbber(), &theme);
+    let root_line = assemble_entry_line(&root_tree, &root_session, false, false, &config);
+    let child_line = assemble_entry_line(&child_tree, &child_session, false, false, &config);
 
     // Then the root title span is longer than the child title span.
-    // Root has 4 spans: indicator, space, arrow, title.
-    // Child has 5 spans: indicator, space, arrow, tree prefix, title.
     let root_title = &root_line.spans[3].content;
     let child_title = &child_line.spans[4].content;
     assert!(
@@ -307,23 +258,12 @@ fn title_is_truncated_more_at_higher_depth() {
 #[rstest::rstest]
 fn active_arrow_shows_at_depth_greater_than_zero() {
     // Given an active child entry at depth 2.
-    let entry = SessionEntry {
-        id: SessionId::new(),
-        title: "Deep Child".to_owned(),
-        is_active: true,
-        created_at: Timestamp::now(),
-        is_idle: true,
-        last_entry_is_error: false,
-        parent_id: None,
-        depth: 2,
-        ancestor_continuations: vec![true, true],
-        is_last_child: true,
-        is_judge: false,
-    };
-    let theme = default_theme();
+    let tree = tree_entry(2, vec![true, true], true);
+    let session = default_session();
+    let config = make_config(30);
 
-    // When assembling the entry line.
-    let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
+    // When assembling the entry line with is_active = true.
+    let line = assemble_entry_line(&tree, &session, true, false, &config);
 
     // Then the arrow span contains ▸.
     let arrow_span = &line.spans[2];
@@ -341,29 +281,18 @@ fn active_arrow_shows_at_depth_greater_than_zero() {
 #[rstest::rstest]
 fn tree_prefix_uses_muted_text_color() {
     // Given a child entry at depth 1.
-    let entry = SessionEntry {
-        id: SessionId::new(),
-        title: "Child".to_owned(),
-        is_active: false,
-        created_at: Timestamp::now(),
-        is_idle: true,
-        last_entry_is_error: false,
-        parent_id: None,
-        depth: 1,
-        ancestor_continuations: vec![true],
-        is_last_child: true,
-        is_judge: false,
-    };
-    let theme = default_theme();
+    let tree = tree_entry(1, vec![true], true);
+    let session = default_session();
+    let config = make_config(30);
 
     // When assembling the entry line.
-    let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
+    let line = assemble_entry_line(&tree, &session, false, false, &config);
 
     // Then the tree prefix span (index 3) uses muted_text color.
     let tree_span = &line.spans[3];
     assert_eq!(
         tree_span.style.fg,
-        Some(theme.muted_text),
+        Some(config.theme.muted_text),
         "tree prefix should use muted_text color"
     );
 }
