@@ -288,7 +288,7 @@ impl<'a> HistoryRender<'a> {
                             && self.state.active_session().is_tool_call_streaming(&entry.id);
                         let ctx = RenderContext {
                             content_width: self.content_width,
-                            _is_selected: is_selected,
+                            is_selected,
                             is_expanded,
                             tool_entry_max_lines: max_lines,
                             theme: self.theme.clone(),
@@ -432,7 +432,7 @@ impl<'a> HistoryRender<'a> {
                                 && self.state.active_session().is_tool_call_streaming(&entry.id);
                             let ctx = RenderContext {
                                 content_width: self.content_width,
-                                _is_selected: is_selected,
+                                is_selected,
                                 is_expanded,
                                 tool_entry_max_lines: max_lines,
                                 theme: self.theme.clone(),

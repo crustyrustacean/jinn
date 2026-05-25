@@ -13,7 +13,7 @@ pub struct RenderContext {
     /// Available content width (area width minus gutter).
     pub content_width: u16,
     /// Whether this entry is currently selected by the cursor.
-    pub _is_selected: bool,
+    pub is_selected: bool,
     /// Whether this tool result entry is expanded (show all lines).
     pub is_expanded: bool,
     /// Maximum lines before truncating tool entries (tool calls and tool results).

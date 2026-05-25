@@ -27,6 +27,7 @@ enum EnqueueAction {
 
 impl SessionPersistenceActor {
     /// EnqueueUserMessage: if idle → assemble prompt; if busy → queue.
+    #[expect(clippy::too_many_lines, reason = "1 line over limit")]
     pub(in crate::feat::session::session_actor) async fn handle_enqueue_user_message(
         &self,
         payload: &EnqueueUserMessage,
