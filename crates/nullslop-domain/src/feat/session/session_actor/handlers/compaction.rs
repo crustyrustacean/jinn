@@ -63,7 +63,13 @@ impl SessionPersistenceActor {
                 return;
             }
 
-            if let Some(result) = &payload.result {
+            if payload.skipped {
+                // Compaction was skipped — all tokens fit within the reserve.
+                if let Some(msg) = &payload.error {
+                    session.push_entry(ChatEntry::system(msg.clone()));
+                }
+                session.finish_compacting();
+            } else if let Some(result) = &payload.result {
                 let compaction_entry = ChatEntry {
                     id: ChatEntryId::new(),
                     timestamp: jiff::Timestamp::now(),
@@ -189,6 +195,7 @@ mod tests {
                     ),
                     error: None,
                     auto: false,
+                    skipped: false,
                 },
                 &ctx,
             )
@@ -224,6 +231,7 @@ mod tests {
                     result: None,
                     error: Some("LLM call failed".to_owned()),
                     auto: false,
+                    skipped: false,
                 },
                 &ctx,
             )
@@ -271,6 +279,7 @@ mod tests {
                     ),
                     error: None,
                     auto: false,
+                    skipped: false,
                 },
                 &ctx,
             )
@@ -310,6 +319,7 @@ mod tests {
                     result: None,
                     error: Some("LLM call failed".to_owned()),
                     auto: false,
+                    skipped: false,
                 },
                 &ctx,
             )
@@ -352,6 +362,7 @@ mod tests {
                     ),
                     error: None,
                     auto: false,
+                    skipped: false,
                 },
                 &ctx,
             )
@@ -400,6 +411,7 @@ mod tests {
                     ),
                     error: None,
                     auto: false,
+                    skipped: false,
                 },
                 &ctx,
             )
@@ -438,6 +450,7 @@ mod tests {
                     ),
                     error: None,
                     auto: false,
+                    skipped: false,
                 },
                 &ctx,
             )
@@ -479,6 +492,7 @@ mod tests {
                     ),
                     error: None,
                     auto: true,
+                    skipped: false,
                 },
                 &ctx,
             )
@@ -528,6 +542,7 @@ mod tests {
                     result: None,
                     error: Some("LLM call failed".to_owned()),
                     auto: true,
+                    skipped: false,
                 },
                 &ctx,
             )
@@ -546,6 +561,51 @@ mod tests {
         let last = session.history().last().expect("has an entry");
         assert!(
             matches!(&last.kind, ChatEntryKind::Error(msg) if msg.contains("Compaction failed"))
+        );
+    }
+
+    #[tokio::test]
+    async fn end_compaction_skipped_shows_system_message_and_returns_to_idle() {
+        // Given a session actor with a session in Compacting phase.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            state.active_session_mut().begin_compacting(vec![]);
+            state.session.active_session_id().clone()
+        };
+
+        // When handling EndCompaction with skipped=true.
+        actor
+            .handle_end_compaction(
+                &crate::feat::compaction_actor::protocol::command::EndCompaction {
+                    session_id: session_id.clone(),
+                    result: None,
+                    error: Some(
+                        "Skipped compaction: 500 tokens within the 20000 token reserve.".to_owned(),
+                    ),
+                    auto: false,
+                    skipped: true,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the session is back to Idle.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Idle),
+            "expected Idle after skipped compaction, got {:?}",
+            session.phase()
+        );
+
+        // And a system message (not error) was pushed.
+        let last = session.history().last().expect("has an entry");
+        assert!(
+            matches!(&last.kind, ChatEntryKind::System(msg) if msg.contains("Skipped compaction")),
+            "expected system message with skip explanation, got {:?}",
+            last.kind
         );
     }
 

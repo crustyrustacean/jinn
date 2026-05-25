@@ -486,10 +486,9 @@ impl ChatSessionState {
         Self {
             core: SessionCore {
                 profile: SessionProfile::from_config(
-                    crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
+                crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
                     strategy_id,
-                    crate::feat::session::profile::DEFAULT_TOKEN_BUDGET,
-                    crate::feat::session::profile::DEFAULT_SLIDING_WINDOW_SIZE,
+                crate::feat::session::profile::DEFAULT_SLIDING_WINDOW_SIZE,
                 ),
                 ..SessionCore::default()
             },
@@ -1115,7 +1114,7 @@ impl ChatSessionState {
             .ephemeral
             .message_queue
             .remove_first_matching(|item| {
-                matches!(item, crate::feat::session::queue_item::QueueItem::CompactionNeeded)
+                matches!(item, crate::feat::session::queue_item::QueueItem::CompactionNeeded { .. })
             })
             .is_some()
     }

@@ -315,6 +315,14 @@ fn execute_slash_command(
             let session_id = state.session.active_session_id().clone();
             IntentResult::with_commands(vec![Command::EnqueueCompaction(EnqueueCompaction {
                 session_id,
+                compact_all: false,
+            })])
+        }
+        SlashCommand::CompactAll => {
+            let session_id = state.session.active_session_id().clone();
+            IntentResult::with_commands(vec![Command::EnqueueCompaction(EnqueueCompaction {
+                session_id,
+                compact_all: true,
             })])
         }
         SlashCommand::New => crate::feat::session::intent::handle_session_new(state),

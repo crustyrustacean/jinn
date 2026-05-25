@@ -751,7 +751,6 @@ fn render_shows_token_budget_when_token_budget_strategy_active() {
     state
         .active_session_mut()
         .switch_strategy(crate::protocol::PromptStrategyId::token_budget());
-    state.active_session_mut().profile_mut().token_budget = 200_000;
     let (mut terminal, area) = setup_term(100, 2);
     terminal
         .draw(|frame| {
