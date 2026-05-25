@@ -262,12 +262,20 @@ impl CompactionActor {
     }
 }
 
-/// Adjust the token-based cut index forward to the next valid tool-chain boundary.
+/// Adjust the token-based cut index forward to the next valid boundary.
 ///
-/// The compaction cut point must not split a tool call chain
-/// (ToolCall/ToolResult entries, or an Assistant that responds to tool use).
-/// Walking forward to the next `User` entry (turn boundary) or the end of
-/// history ensures the kept entries form a structurally valid LLM message sequence.
+/// The cut must not land on a `ToolCall` or `ToolResult` entry, because
+/// these have structural dependencies on preceding messages:
+///
+/// - `ToolCall` merges into the preceding `Assistant` in `entries_to_messages`.
+///   If that `Assistant` is compacted away, the tool call becomes orphaned.
+/// - `ToolResult` produces a `tool` role message whose `tool_call_id` must
+///   match a preceding `assistant.tool_calls[].id`. If the `Assistant` is
+///   compacted but the `ToolResult` is kept, the provider rejects the request.
+///
+/// Walking forward past `ToolCall`/`ToolResult` to the next independent entry
+/// (`Assistant`, `User`, `Error`, `System`, `Compaction`, etc.) ensures the
+/// kept entries form a structurally valid LLM message sequence.
 ///
 /// Returns the adjusted cut index (>= `cut_index`, <= `history.len()`).
 fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize {
@@ -275,13 +283,27 @@ fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize {
         return cut_index;
     }
 
-    if matches!(history[cut_index].kind, ChatEntryKind::User { .. }) {
+    // A safe cut point is any entry that is not ToolCall or ToolResult.
+    // ToolCall entries merge into the preceding Assistant message, and
+    // ToolResult entries reference a tool_call_id from a preceding Assistant's
+    // tool_calls. Cutting between them would produce orphaned messages that
+    // LLM providers reject (e.g. ZAI error 1214).
+    if !matches!(
+        history[cut_index].kind,
+        ChatEntryKind::ToolCall { .. } | ChatEntryKind::ToolResult { .. }
+    ) {
         return cut_index;
     }
 
+    // Walk forward past ToolCall and ToolResult entries.
     history[cut_index..]
         .iter()
-        .position(|entry| matches!(entry.kind, ChatEntryKind::User { .. }))
+        .position(|entry| {
+            !matches!(
+                entry.kind,
+                ChatEntryKind::ToolCall { .. } | ChatEntryKind::ToolResult { .. }
+            )
+        })
         .map_or(history.len(), |offset| cut_index + offset)
 }
 
