@@ -127,8 +127,16 @@ impl CompactionActor {
         let compact_all = cmd.compact_all;
 
         let task = rt_handle.clone().spawn(async move {
-            let result =
-                perform_compaction(&state, &services, &rt_handle, &session_id, &sink, was_auto, compact_all).await;
+            let result = perform_compaction(
+                &state,
+                &services,
+                &rt_handle,
+                &session_id,
+                &sink,
+                was_auto,
+                compact_all,
+            )
+            .await;
 
             match result {
                 Ok(entries_compacted) => {

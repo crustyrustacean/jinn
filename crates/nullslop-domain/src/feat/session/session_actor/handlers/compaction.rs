@@ -92,9 +92,7 @@ impl SessionPersistenceActor {
                 if payload.auto {
                     // Auto-compaction succeeded — push continuation message and
                     // transition to Sending so the QueueActor dispatches the prompt.
-                    session.push_entry(ChatEntry::user(
-                        "A compaction has just occurred. Continue",
-                    ));
+                    session.push_entry(ChatEntry::user("A compaction has just occurred. Continue"));
                     session.finish_compacting_into_sending();
                 } else {
                     // Manual compaction — return to Idle.

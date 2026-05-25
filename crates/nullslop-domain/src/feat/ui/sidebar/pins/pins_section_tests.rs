@@ -430,7 +430,9 @@ fn session_new_works_when_not_in_sidebar() {
 fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
     // Given a session with ignored entries (causing visual-item index != history index)
     // and a pinned entry deep in history.
-    use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
+    use crate::feat::ui::chat_log::visual_item::{
+        DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
+    };
 
     let mut state = AppState::default();
     state.active_session_mut().push_entry(ChatEntry::user("a")); // hist 0
@@ -444,11 +446,15 @@ fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
     // Pin the entry at history index 12 (inside the ignored block).
     // When the block is expanded, this entry should be selectable.
     let pinned_id = state.active_session().history()[12].id.clone();
-    state.active_session_mut().pin_entry(&pinned_id, PinPosition::Top);
+    state
+        .active_session_mut()
+        .pin_entry(&pinned_id, PinPosition::Top);
 
     // Expand the ignored block so the pinned entry is visible.
     let block_start_id = state.active_session().history()[1].id.clone();
-    state.active_session_mut().toggle_ignored_block_visibility(&block_start_id);
+    state
+        .active_session_mut()
+        .toggle_ignored_block_visibility(&block_start_id);
 
     // Build visual items (now expanded — individual Entry items).
     let items = build_visual_items(
@@ -464,7 +470,9 @@ fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
 
     // Set cursor to something else first.
     let first_entry_id = state.active_session().history()[0].id.clone();
-    state.active_session_mut().set_selected_cursor_id(first_entry_id);
+    state
+        .active_session_mut()
+        .set_selected_cursor_id(first_entry_id);
     assert_ne!(
         state.active_session().selected_cursor_id(),
         Some(&pinned_id),

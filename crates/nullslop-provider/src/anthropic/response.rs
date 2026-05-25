@@ -206,7 +206,10 @@ impl AnthropicStreamParser {
             .and_then(|m| m.as_str())
             .unwrap_or("Unknown streaming error")
             .to_owned();
-        Some(StreamEvent::Error { error_type, message })
+        Some(StreamEvent::Error {
+            error_type,
+            message,
+        })
     }
 }
 

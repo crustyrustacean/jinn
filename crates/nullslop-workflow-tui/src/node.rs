@@ -142,13 +142,7 @@ impl VisualNode {
     /// The `tick` counter drives the spinner animation for running nodes.
     /// If the node has `AwaitingInput` status, the border uses `awaiting_input_color`
     /// instead of the default selected/unselected color.
-    pub fn render(
-        &self,
-        buf: &mut Buffer,
-        selected: bool,
-        tick: u8,
-        awaiting_input_color: Color,
-    ) {
+    pub fn render(&self, buf: &mut Buffer, selected: bool, tick: u8, awaiting_input_color: Color) {
         let border_color = if selected {
             Color::White
         } else if self.status == NodeStatus::AwaitingInput {
@@ -389,13 +383,7 @@ impl ShiftedNode<'_> {
     ///
     /// If the node has `AwaitingInput` status, the border uses `awaiting_input_color`
     /// instead of the default selected/unselected color.
-    pub fn render(
-        &self,
-        buf: &mut Buffer,
-        selected: bool,
-        tick: u8,
-        awaiting_input_color: Color,
-    ) {
+    pub fn render(&self, buf: &mut Buffer, selected: bool, tick: u8, awaiting_input_color: Color) {
         let border_color = if selected {
             Color::White
         } else if self.inner.status == NodeStatus::AwaitingInput {

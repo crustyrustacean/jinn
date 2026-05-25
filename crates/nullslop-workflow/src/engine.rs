@@ -102,7 +102,10 @@ enum CompletionMsg {
 /// (e.g., from user input) are marked `Completed` immediately and their
 /// outputs are propagated to downstream nodes. Returns the tracking maps
 /// plus the count of nodes that were pre-completed.
-#[expect(clippy::type_complexity, reason = "returns four tracking maps and a count")]
+#[expect(
+    clippy::type_complexity,
+    reason = "returns four tracking maps and a count"
+)]
 fn initialize_tracking(
     snapshot: &crate::execution::ExecutionSnapshot,
     execution: &Arc<WorkflowExecution>,
@@ -122,9 +125,7 @@ fn initialize_tracking(
     let mut outputs: HashMap<String, PortValues> = HashMap::new();
 
     for name in node_map.keys() {
-        let current_status = snapshot
-            .status_of(name)
-            .unwrap_or(NodeStatus::Pending);
+        let current_status = snapshot.status_of(name).unwrap_or(NodeStatus::Pending);
 
         // Reset Failed/Skipped to Pending for resume/re-run.
         let status = match current_status {
@@ -141,7 +142,10 @@ fn initialize_tracking(
         // This is the true "waiting for" count: optional ports that are
         // connected still need to receive their data before the node runs.
         let Some(&idx) = name_to_index.get(name) else {
-            tracing::error!(node = name, "node not found in name_to_index during tracking initialization");
+            tracing::error!(
+                node = name,
+                "node not found in name_to_index during tracking initialization"
+            );
             continue;
         };
         let incoming_edge_count = inner
@@ -165,10 +169,7 @@ fn initialize_tracking(
             if let Some(cached) = cached_inputs {
                 let satisfied = cached.len();
                 pending_inputs.insert(name.clone(), cached);
-                pending_count.insert(
-                    name.clone(),
-                    input_port_count.saturating_sub(satisfied),
-                );
+                pending_count.insert(name.clone(), input_port_count.saturating_sub(satisfied));
             } else {
                 pending_inputs.insert(name.clone(), PortValues::new());
                 pending_count.insert(name.clone(), input_port_count);
@@ -206,7 +207,9 @@ fn initialize_tracking(
 
         // Propagate this node's outputs to downstream nodes,
         // exactly like handle_completion does for normally-executed nodes.
-        if let (Some(&idx), Some(node_outputs)) = (name_to_index.get(name), outputs.get(name).cloned()) {
+        if let (Some(&idx), Some(node_outputs)) =
+            (name_to_index.get(name), outputs.get(name).cloned())
+        {
             for edge in inner.edges_directed(idx, petgraph::Direction::Outgoing) {
                 let source_port = &edge.weight().source_port;
                 let target_port = &edge.weight().target_port;
@@ -227,11 +230,20 @@ fn initialize_tracking(
         }
     }
 
-    (statuses, pending_inputs, pending_count, outputs, pre_completed_count)
+    (
+        statuses,
+        pending_inputs,
+        pending_count,
+        outputs,
+        pre_completed_count,
+    )
 }
 
 /// Spawns all Pending nodes that have fully satisfied inputs.
-#[expect(clippy::too_many_arguments, reason = "internal helper with many mutable state references")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "internal helper with many mutable state references"
+)]
 fn spawn_ready_nodes(
     pending_count: &HashMap<String, usize>,
     statuses: &mut HashMap<String, NodeStatus>,
@@ -253,20 +265,16 @@ fn spawn_ready_nodes(
     for name in spawnable {
         let inputs = pending_inputs.remove(&name).unwrap_or_default();
         spawn_node(
-            name,
-            node_map,
-            statuses,
-            inputs,
-            ctx,
-            tx,
-            handles,
-            execution,
+            name, node_map, statuses, inputs, ctx, tx, handles, execution,
         );
     }
 }
 
 /// Runs the main select loop until all nodes are terminal.
-#[expect(clippy::too_many_arguments, reason = "internal helper with many mutable state references")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "internal helper with many mutable state references"
+)]
 async fn run_main_loop(
     execution: Arc<WorkflowExecution>,
     inner: &petgraph::graph::DiGraph<crate::graph::NodeData, crate::graph::EdgeData>,
@@ -428,10 +436,7 @@ pub async fn run_pending(
     );
 
     let total_nodes = node_map.len();
-    let completed_count = statuses
-        .values()
-        .filter(|s| s.is_terminal())
-        .count();
+    let completed_count = statuses.values().filter(|s| s.is_terminal()).count();
 
     run_main_loop(
         execution.clone(),
@@ -543,10 +548,8 @@ fn handle_completion(
 
             // Propagate outputs to downstream nodes.
             let src_idx = *name_to_index.get(&name).ok_or_else(|| {
-                Report::new(EngineError::NodeNotFound {
-                    name: name.clone(),
-                })
-                .attach("completed node not found in name_to_index")
+                Report::new(EngineError::NodeNotFound { name: name.clone() })
+                    .attach("completed node not found in name_to_index")
             })?;
             for edge in inner.edges_directed(src_idx, petgraph::Direction::Outgoing) {
                 let tgt_idx = edge.target();
@@ -562,16 +565,12 @@ fn handle_completion(
 
                 // Get the output value for this port.
                 if let Some(value) = node_outputs.get(source_port).cloned() {
-                    let inputs = pending_inputs
-                        .get_mut(tgt_name)
-                        .ok_or_else(|| {
-                            Report::new(EngineError::NodeNotFound {
-                                name: tgt_name.clone(),
-                            })
-                            .attach(
-                                "downstream node not found in pending_inputs",
-                            )
-                        })?;
+                    let inputs = pending_inputs.get_mut(tgt_name).ok_or_else(|| {
+                        Report::new(EngineError::NodeNotFound {
+                            name: tgt_name.clone(),
+                        })
+                        .attach("downstream node not found in pending_inputs")
+                    })?;
                     inputs.insert(target_port.clone(), value);
                 }
 
@@ -580,9 +579,7 @@ fn handle_completion(
                     Report::new(EngineError::NodeNotFound {
                         name: tgt_name.clone(),
                     })
-                    .attach(
-                        "downstream node not found in pending_count",
-                    )
+                    .attach("downstream node not found in pending_count")
                 })?;
                 *count = count.saturating_sub(1);
 
@@ -592,9 +589,7 @@ fn handle_completion(
                         Report::new(EngineError::MissingInputs {
                             node: tgt_name.clone(),
                         })
-                        .attach(
-                            "pending inputs disappeared before spawn",
-                        )
+                        .attach("pending inputs disappeared before spawn")
                     })?;
                     spawn_node(
                         tgt_name.clone(),
@@ -617,10 +612,8 @@ fn handle_completion(
 
             // Propagate skip to all transitive downstream nodes.
             let failed_idx = *name_to_index.get(&name).ok_or_else(|| {
-                Report::new(EngineError::NodeNotFound {
-                    name: name.clone(),
-                })
-                .attach("failed node not found in name_to_index")
+                Report::new(EngineError::NodeNotFound { name: name.clone() })
+                    .attach("failed node not found in name_to_index")
             })?;
             let downstream = find_downstream(failed_idx, inner, node_names);
             for down_name in &downstream {
@@ -637,7 +630,10 @@ fn handle_completion(
 }
 
 /// Spawns a node execution as a tokio task.
-#[expect(clippy::too_many_arguments, reason = "internal helper with many mutable state references")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "internal helper with many mutable state references"
+)]
 fn spawn_node(
     name: String,
     node_map: &HashMap<String, Box<dyn WorkflowNode>>,
@@ -695,9 +691,10 @@ fn find_downstream(
         for edge in graph.edges_directed(idx, petgraph::Direction::Outgoing) {
             let tgt = edge.target();
             if let Some(name) = node_names.get(&tgt)
-                && downstream.insert(name.clone()) {
-                    queue.push_back(tgt);
-                }
+                && downstream.insert(name.clone())
+            {
+                queue.push_back(tgt);
+            }
         }
     }
 
@@ -706,7 +703,13 @@ fn find_downstream(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::indexing_slicing, clippy::unnecessary_literal_bound, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing,
+        clippy::unnecessary_literal_bound,
+        reason = "test code"
+    )]
 
     use super::*;
     use crate::graph::WorkflowGraphBuilder;
@@ -757,7 +760,10 @@ mod tests {
                 _ctx: &dyn NodeContext,
             ) -> Result<PortValues, Report<NodeError>> {
                 let mut out = PortValues::new();
-                out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text(self.output.clone())));
+                out.insert(
+                    "out".to_owned(),
+                    PortValue::Single(ScalarValue::Text(self.output.clone())),
+                );
                 Ok(out)
             }
             fn clone_box(&self) -> Box<dyn WorkflowNode> {
@@ -796,7 +802,10 @@ mod tests {
                     .take_text("in")
                     .map_err(|_e| Report::new(NodeError))?;
                 let mut out = PortValues::new();
-                out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text(val.to_uppercase())));
+                out.insert(
+                    "out".to_owned(),
+                    PortValue::Single(ScalarValue::Text(val.to_uppercase())),
+                );
                 Ok(out)
             }
             fn clone_box(&self) -> Box<dyn WorkflowNode> {
@@ -835,7 +844,11 @@ mod tests {
                 let mut out = PortValues::new();
                 out.insert(
                     "out".to_owned(),
-                    PortValue::Single(ScalarValue::Text(format!("{val}{suffix}", val = val, suffix = self.suffix))),
+                    PortValue::Single(ScalarValue::Text(format!(
+                        "{val}{suffix}",
+                        val = val,
+                        suffix = self.suffix
+                    ))),
                 );
                 Ok(out)
             }
@@ -1022,16 +1035,10 @@ mod tests {
 
         // Then A's output is "user_data", NOT "hardcoded".
         assert_eq!(status(&result, "a"), NodeStatus::Completed);
-        assert_eq!(
-            outputs(&result, "a").get_text("out").unwrap(),
-            "user_data"
-        );
+        assert_eq!(outputs(&result, "a").get_text("out").unwrap(), "user_data");
         // And B received the user's data (uppercased).
         assert_eq!(status(&result, "b"), NodeStatus::Completed);
-        assert_eq!(
-            outputs(&result, "b").get_text("out").unwrap(),
-            "USER_DATA"
-        );
+        assert_eq!(outputs(&result, "b").get_text("out").unwrap(), "USER_DATA");
     }
 
     #[tokio::test]
@@ -1104,10 +1111,7 @@ mod tests {
 
         // Then C received both inputs and concatenated them.
         assert_eq!(status(&result, "c"), NodeStatus::Completed);
-        assert_eq!(
-            outputs(&result, "c").get_text("out").unwrap(),
-            "left+right"
-        );
+        assert_eq!(outputs(&result, "c").get_text("out").unwrap(), "left+right");
     }
 
     #[tokio::test]
@@ -1132,10 +1136,7 @@ mod tests {
 
         // Then D received both paths.
         assert_eq!(status(&result, "d"), NodeStatus::Completed);
-        assert_eq!(
-            outputs(&result, "d").get_text("out").unwrap(),
-            "TEST+test?"
-        );
+        assert_eq!(outputs(&result, "d").get_text("out").unwrap(), "TEST+test?");
     }
 
     #[tokio::test]
@@ -1166,8 +1167,14 @@ mod tests {
                     .take_text("in2")
                     .map_err(|_e| Report::new(NodeError))?;
                 let mut out = PortValues::new();
-                out.insert("out1".to_owned(), PortValue::Single(ScalarValue::Text(v1.to_uppercase())));
-                out.insert("out2".to_owned(), PortValue::Single(ScalarValue::Text(format!("{v2}!"))));
+                out.insert(
+                    "out1".to_owned(),
+                    PortValue::Single(ScalarValue::Text(v1.to_uppercase())),
+                );
+                out.insert(
+                    "out2".to_owned(),
+                    PortValue::Single(ScalarValue::Text(format!("{v2}!"))),
+                );
                 Ok(out)
             }
             fn clone_box(&self) -> Box<dyn WorkflowNode> {
@@ -1198,10 +1205,7 @@ mod tests {
         assert_eq!(status(&result, "c"), NodeStatus::Completed);
         assert_eq!(status(&result, "e"), NodeStatus::Completed);
         assert_eq!(outputs(&result, "c").get_text("out").unwrap(), "HELLO");
-        assert_eq!(
-            outputs(&result, "e").get_text("out").unwrap(),
-            "world!!!!"
-        );
+        assert_eq!(outputs(&result, "e").get_text("out").unwrap(), "world!!!!");
     }
 
     #[tokio::test]
@@ -1347,10 +1351,7 @@ mod tests {
         assert_eq!(status(&result2, "a"), NodeStatus::Completed);
         assert_eq!(status(&result2, "b"), NodeStatus::Completed);
         assert_eq!(status(&result2, "c"), NodeStatus::Completed);
-        assert_eq!(
-            result2.outputs["c"].get_text("out").unwrap(),
-            "DATA"
-        );
+        assert_eq!(result2.outputs["c"].get_text("out").unwrap(), "DATA");
     }
 
     #[tokio::test]
@@ -1368,12 +1369,11 @@ mod tests {
         let execution = Arc::new(WorkflowExecution::new(graph));
 
         // First run: complete all.
-        let result1 = execute(execution.clone(), ctx.clone()).await.expect("execute");
+        let result1 = execute(execution.clone(), ctx.clone())
+            .await
+            .expect("execute");
         assert_eq!(status(&result1, "c"), NodeStatus::Completed);
-        assert_eq!(
-            result1.outputs["c"].get_text("out").unwrap(),
-            "HELLO-world"
-        );
+        assert_eq!(result1.outputs["c"].get_text("out").unwrap(), "HELLO-world");
 
         // Invalidate from b, seed inputs, re-run.
         execution.invalidate_from("b");
@@ -1385,10 +1385,7 @@ mod tests {
         assert_eq!(status(&result2, "a"), NodeStatus::Completed);
         assert_eq!(status(&result2, "b"), NodeStatus::Completed);
         assert_eq!(status(&result2, "c"), NodeStatus::Completed);
-        assert_eq!(
-            result2.outputs["c"].get_text("out").unwrap(),
-            "HELLO-world"
-        );
+        assert_eq!(result2.outputs["c"].get_text("out").unwrap(), "HELLO-world");
     }
 
     #[tokio::test]
@@ -1403,10 +1400,7 @@ mod tests {
                 "optional"
             }
             fn input_ports(&self) -> Vec<PortDef> {
-                vec![
-                    PortDef::text("required"),
-                    PortDef::text("extra").optional(),
-                ]
+                vec![PortDef::text("required"), PortDef::text("extra").optional()]
             }
             fn output_ports(&self) -> Vec<PortDef> {
                 vec![PortDef::text("out")]
@@ -1442,7 +1436,9 @@ mod tests {
             .add_node("opt".to_owned(), Box::new(OptionalNode));
 
         // Only connect the required port — optional port is disconnected.
-        builder.connect("src", "out", "opt", "required").expect("src→opt");
+        builder
+            .connect("src", "out", "opt", "required")
+            .expect("src→opt");
 
         let graph = builder.build().expect("build");
         let execution = Arc::new(WorkflowExecution::new(graph));
@@ -1452,10 +1448,7 @@ mod tests {
 
         // Then the node executed successfully with only the required input.
         assert_eq!(status(&result, "opt"), NodeStatus::Completed);
-        assert_eq!(
-            outputs(&result, "opt").get_text("out").unwrap(),
-            "hello+"
-        );
+        assert_eq!(outputs(&result, "opt").get_text("out").unwrap(), "hello+");
     }
 
     #[tokio::test]
@@ -1469,10 +1462,7 @@ mod tests {
                 "optional"
             }
             fn input_ports(&self) -> Vec<PortDef> {
-                vec![
-                    PortDef::text("required"),
-                    PortDef::text("extra").optional(),
-                ]
+                vec![PortDef::text("required"), PortDef::text("extra").optional()]
             }
             fn output_ports(&self) -> Vec<PortDef> {
                 vec![PortDef::text("out")]
@@ -1508,8 +1498,12 @@ mod tests {
             .add_node("opt".to_owned(), Box::new(OptionalNode));
 
         // Connect both required and optional ports.
-        builder.connect("src1", "out", "opt", "required").expect("src1→opt");
-        builder.connect("src2", "out", "opt", "extra").expect("src2→opt");
+        builder
+            .connect("src1", "out", "opt", "required")
+            .expect("src1→opt");
+        builder
+            .connect("src2", "out", "opt", "extra")
+            .expect("src2→opt");
 
         let graph = builder.build().expect("build");
         let execution = Arc::new(WorkflowExecution::new(graph));

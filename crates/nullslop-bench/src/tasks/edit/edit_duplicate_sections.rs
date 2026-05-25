@@ -11,8 +11,9 @@ use include_dir::Dir;
 
 const EXPECTED_MAIN_RS: &str = include_str!("edit_duplicate_sections/expected/src/main.rs");
 
-
-static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_duplicate_sections/fixtures");
+static FIXTURES: Dir<'_> = include_dir::include_dir!(
+    "$CARGO_MANIFEST_DIR/src/tasks/edit/edit_duplicate_sections/fixtures"
+);
 
 pub fn task() -> BenchTask {
     BenchTask {

@@ -3,7 +3,13 @@
 //! These tests verify end-to-end scenarios using the node registry and
 //! `DynamicNode` to build and execute graphs from data, not closures.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unwrap_used, reason = "test code")]
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used,
+    reason = "test code"
+)]
 
 use std::sync::Arc;
 
@@ -12,9 +18,7 @@ use nullslop_workflow::engine::{self, NodeStatus};
 use nullslop_workflow::execution::WorkflowExecution;
 use nullslop_workflow::graph::GraphError;
 use nullslop_workflow::graph::WorkflowGraphBuilder;
-use nullslop_workflow::node::{
-    DynamicNode, NodeContext, NodeError, WorkflowNode,
-};
+use nullslop_workflow::node::{DynamicNode, NodeContext, NodeError, WorkflowNode};
 use nullslop_workflow::port::{PortDef, PortValue, PortValues, ScalarValue};
 use nullslop_workflow::registry::{NodeFactory, NodeRegistry, RegistryError};
 
@@ -38,12 +42,16 @@ impl NodeFactory for SourceFactory {
         &self,
         config: serde_json::Value,
     ) -> Result<Box<dyn WorkflowNode>, Report<RegistryError>> {
-        let output = config.get("output").and_then(|v| v.as_str()).ok_or_else(|| {
-            Report::new(RegistryError::CreationFailed {
-                type_name: "source".to_owned(),
-                reason: "missing 'output' field".to_owned(),
-            })
-        })?.to_owned();
+        let output = config
+            .get("output")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                Report::new(RegistryError::CreationFailed {
+                    type_name: "source".to_owned(),
+                    reason: "missing 'output' field".to_owned(),
+                })
+            })?
+            .to_owned();
 
         Ok(Box::new(DynamicNode::new(
             "source",
@@ -126,9 +134,7 @@ impl NodeFactory for FailFactory {
             vec![PortDef::text("in")],
             vec![PortDef::text("out")],
             None,
-            Arc::new(|_, _| {
-                Box::pin(async { Err(Report::new(NodeError)) })
-            }),
+            Arc::new(|_, _| Box::pin(async { Err(Report::new(NodeError)) })),
         )))
     }
 }
@@ -164,16 +170,15 @@ async fn end_to_end_registry_graph_execution() {
             serde_json::json!({}),
         )
         .expect("add uppercase")
-        .add_node_from_registry(
-            "sink".to_owned(),
-            &registry,
-            "sink",
-            serde_json::json!({}),
-        )
+        .add_node_from_registry("sink".to_owned(), &registry, "sink", serde_json::json!({}))
         .expect("add sink");
 
-    builder.connect("src", "out", "upper", "in").expect("src→upper");
-    builder.connect("upper", "out", "sink", "in").expect("upper→sink");
+    builder
+        .connect("src", "out", "upper", "in")
+        .expect("src→upper");
+    builder
+        .connect("upper", "out", "sink", "in")
+        .expect("upper→sink");
 
     let graph = builder.build().expect("build");
     let execution = Arc::new(WorkflowExecution::new(graph));
@@ -243,23 +248,17 @@ async fn failing_node_skips_downstream() {
             serde_json::json!({"output": "hello"}),
         )
         .expect("add source")
-        .add_node_from_registry(
-            "fail".to_owned(),
-            &registry,
-            "fail",
-            serde_json::json!({}),
-        )
+        .add_node_from_registry("fail".to_owned(), &registry, "fail", serde_json::json!({}))
         .expect("add fail")
-        .add_node_from_registry(
-            "sink".to_owned(),
-            &registry,
-            "sink",
-            serde_json::json!({}),
-        )
+        .add_node_from_registry("sink".to_owned(), &registry, "sink", serde_json::json!({}))
         .expect("add sink");
 
-    builder.connect("src", "out", "fail", "in").expect("src→fail");
-    builder.connect("fail", "out", "sink", "in").expect("fail→sink");
+    builder
+        .connect("src", "out", "fail", "in")
+        .expect("src→fail");
+    builder
+        .connect("fail", "out", "sink", "in")
+        .expect("fail→sink");
 
     let graph = builder.build().expect("build");
     let execution = Arc::new(WorkflowExecution::new(graph));
@@ -291,15 +290,12 @@ async fn cancel_and_resume_registry_graph() {
             serde_json::json!({"output": "data"}),
         )
         .expect("add source")
-        .add_node_from_registry(
-            "sink".to_owned(),
-            &registry,
-            "sink",
-            serde_json::json!({}),
-        )
+        .add_node_from_registry("sink".to_owned(), &registry, "sink", serde_json::json!({}))
         .expect("add sink");
 
-    builder.connect("src", "out", "sink", "in").expect("src→sink");
+    builder
+        .connect("src", "out", "sink", "in")
+        .expect("src→sink");
 
     let graph = builder.build().expect("build");
     let execution = Arc::new(WorkflowExecution::new(graph));
@@ -348,7 +344,12 @@ async fn registry_round_trip() {
     assert_eq!(status(&result, "a"), NodeStatus::Completed);
     assert_eq!(status(&result, "b"), NodeStatus::Completed);
     assert_eq!(
-        result.outputs.get("b").expect("b outputs").get_text("out").unwrap(),
+        result
+            .outputs
+            .get("b")
+            .expect("b outputs")
+            .get_text("out")
+            .unwrap(),
         "WORLD"
     );
 }
@@ -379,12 +380,8 @@ async fn unknown_type_returns_error() {
     let registry = test_registry();
     let mut builder = WorkflowGraphBuilder::new();
 
-    let result = builder.add_node_from_registry(
-        "x".to_owned(),
-        &registry,
-        "unknown",
-        serde_json::json!({}),
-    );
+    let result =
+        builder.add_node_from_registry("x".to_owned(), &registry, "unknown", serde_json::json!({}));
 
     // Then it returns NotFound.
     assert!(matches!(
@@ -406,15 +403,12 @@ async fn validate_registry_built_graph() {
             serde_json::json!({"output": "data"}),
         )
         .expect("add source")
-        .add_node_from_registry(
-            "sink".to_owned(),
-            &registry,
-            "sink",
-            serde_json::json!({}),
-        )
+        .add_node_from_registry("sink".to_owned(), &registry, "sink", serde_json::json!({}))
         .expect("add sink");
 
-    builder.connect("src", "out", "sink", "in").expect("connect");
+    builder
+        .connect("src", "out", "sink", "in")
+        .expect("connect");
 
     let graph = builder.build().expect("build");
 

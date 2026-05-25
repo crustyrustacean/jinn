@@ -24,7 +24,9 @@ use crate::feat::provider::protocol::event::{ModelCacheLoaded, ModelsRefreshed, 
 use crate::protocol::{Command, Event};
 
 use super::loader::{load_compaction_model_picker_items, load_provider_picker_items};
-use crate::feat::provider::protocol::command::{LoadCompactionModelPickerEntries, LoadProviderPickerEntries};
+use crate::feat::provider::protocol::command::{
+    LoadCompactionModelPickerEntries, LoadProviderPickerEntries,
+};
 
 /// The provider actor.
 ///
@@ -112,6 +114,7 @@ impl ProviderActor {
             | Command::LoadSessionPickerEntries(..)
             | Command::ScanSkills
             | Command::RescanPersonas(..)
+            | Command::RescanJudges(..)
             | Command::LoadPersonaPickerEntries(..)
             | Command::UpdatePreferences(..)
             | Command::SessionForkRequested(..)

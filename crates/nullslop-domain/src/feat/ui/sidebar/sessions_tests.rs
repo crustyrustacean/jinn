@@ -12,6 +12,37 @@ use crate::feat::ui::sidebar::sessions::{
 use crate::protocol::ChatEntry;
 use ratatui::style::Color;
 
+/// Helper: get a session title from the live session map via a tree entry.
+fn entry_title(state: &AppState, id: &crate::protocol::SessionId) -> String {
+    state
+        .session
+        .get(id)
+        .map(|s| s.title().unwrap_or("Untitled Session").to_owned())
+        .unwrap_or_default()
+}
+
+/// Helper: get a session's created_at from the live session map.
+fn entry_created_at(state: &AppState, id: &crate::protocol::SessionId) -> jiff::Timestamp {
+    state
+        .session
+        .get(id)
+        .map(|s| *s.created_at())
+        .unwrap_or_default()
+}
+
+/// Helper: check if the session's last entry is an error.
+fn entry_last_is_error(state: &AppState, id: &crate::protocol::SessionId) -> bool {
+    state
+        .session
+        .get(id)
+        .map(|s| {
+            s.history()
+                .last()
+                .is_some_and(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::Error(..)))
+        })
+        .unwrap_or(false)
+}
+
 // Helper: create state with N sessions.
 fn state_with_sessions(count: usize) -> AppState {
     let mut state = AppState::default();
@@ -277,11 +308,26 @@ fn receive_cursor_noop_when_empty() {
 fn sorted_sessions_orders_by_created_at_descending() {
     let state = state_with_sessions(3);
     let sessions = sorted_open_sessions(&state);
-    // Sessions are sorted by created_at descending (newest first).
-    // The default session (created first) is the oldest, so it's last.
+    // Then sessions are sorted by created_at descending (newest first).
+    // Read created_at from live sessions, not from the tree entry.
     assert_eq!(sessions.len(), 3);
-    assert!(sessions[0].created_at >= sessions[1].created_at);
-    assert!(sessions[1].created_at >= sessions[2].created_at);
+    let a = state
+        .session
+        .get(&sessions[0].id)
+        .map(|s| *s.created_at())
+        .unwrap_or_default();
+    let b = state
+        .session
+        .get(&sessions[1].id)
+        .map(|s| *s.created_at())
+        .unwrap_or_default();
+    let c = state
+        .session
+        .get(&sessions[2].id)
+        .map(|s| *s.created_at())
+        .unwrap_or_default();
+    assert!(a >= b);
+    assert!(b >= c);
 }
 
 #[rstest::rstest]
@@ -782,7 +828,7 @@ fn sorted_sessions_reports_last_entry_is_error() {
     let sessions = sorted_open_sessions(&state);
 
     // Then the entry has last_entry_is_error = true.
-    assert!(sessions[0].last_entry_is_error);
+    assert!(entry_last_is_error(&state, &sessions[0].id));
 }
 
 #[rstest::rstest]
@@ -797,7 +843,7 @@ fn sorted_sessions_reports_last_entry_not_error() {
     let sessions = sorted_open_sessions(&state);
 
     // Then the entry has last_entry_is_error = false.
-    assert!(!sessions[0].last_entry_is_error);
+    assert!(!entry_last_is_error(&state, &sessions[0].id));
 }
 
 #[rstest::rstest]
@@ -809,7 +855,7 @@ fn sorted_sessions_empty_history_is_not_error() {
     let sessions = sorted_open_sessions(&state);
 
     // Then the entry has last_entry_is_error = false.
-    assert!(!sessions[0].last_entry_is_error);
+    assert!(!entry_last_is_error(&state, &sessions[0].id));
 }
 
 // --- Activate session ---
@@ -1225,7 +1271,7 @@ fn tree_roots_sorted_by_created_at_descending() {
     let roots: Vec<_> = sessions.iter().filter(|s| s.depth == 0).collect();
     assert_eq!(roots.len(), 2, "should have 2 roots");
     assert!(
-        roots[0].created_at >= roots[1].created_at,
+        entry_created_at(&state, &roots[0].id) >= entry_created_at(&state, &roots[1].id),
         "roots should be sorted newest-first"
     );
 }
@@ -1241,7 +1287,7 @@ fn tree_children_sorted_by_created_at_ascending_under_parent() {
     // Find root_a's children (depth 1, parent is root_a).
     let root_a_id = sessions
         .iter()
-        .find(|s| s.title.contains("root a"))
+        .find(|s| entry_title(&state, &s.id).contains("root a"))
         .map(|s| s.id.clone())
         .expect("root a should exist");
     let children: Vec<_> = sessions
@@ -1252,7 +1298,7 @@ fn tree_children_sorted_by_created_at_ascending_under_parent() {
     // Then children are sorted oldest-first.
     assert_eq!(children.len(), 2, "root_a should have 2 children");
     assert!(
-        children[0].created_at <= children[1].created_at,
+        entry_created_at(&state, &children[0].id) <= entry_created_at(&state, &children[1].id),
         "children should be sorted oldest-first"
     );
 }
@@ -1270,19 +1316,19 @@ fn tree_dfs_order_is_correct() {
     // The invariant is: root_a appears before its children, child_a1 appears before grandchild_a1a.
     let root_a_pos = sessions
         .iter()
-        .position(|s| s.title.contains("root a"))
+        .position(|s| entry_title(&state, &s.id).contains("root a"))
         .expect("root a");
     let child_a1_pos = sessions
         .iter()
-        .position(|s| s.title.contains("child a1"))
+        .position(|s| entry_title(&state, &s.id).contains("child a1"))
         .expect("child a1");
     let grandchild_pos = sessions
         .iter()
-        .position(|s| s.title.contains("grandchild"))
+        .position(|s| entry_title(&state, &s.id).contains("grandchild"))
         .expect("grandchild");
     let child_a2_pos = sessions
         .iter()
-        .position(|s| s.title.contains("child a2"))
+        .position(|s| entry_title(&state, &s.id).contains("child a2"))
         .expect("child a2");
 
     assert!(root_a_pos < child_a1_pos, "root_a before child_a1");
@@ -1306,7 +1352,9 @@ fn orphan_session_appears_as_root() {
     let sessions = sorted_open_sessions(&state);
 
     // Then the orphan appears as a root (depth 0).
-    let orphan_entry = sessions.iter().find(|s| s.title.contains("orphan"));
+    let orphan_entry = sessions
+        .iter()
+        .find(|s| entry_title(&state, &s.id).contains("orphan"));
     assert!(orphan_entry.is_some(), "orphan should appear");
     assert_eq!(
         orphan_entry.unwrap().depth,
@@ -1324,7 +1372,7 @@ fn navigate_down_from_root_goes_to_first_child() {
     let sessions = sorted_open_sessions(&state);
     let root_a_index = sessions
         .iter()
-        .position(|s| s.title.contains("root a"))
+        .position(|s| entry_title(&state, &s.id).contains("root a"))
         .expect("root a");
     state.frontend.sessions_section.selected_index = Some(root_a_index);
 
@@ -1341,7 +1389,7 @@ fn navigate_down_from_root_goes_to_first_child() {
     );
     // And the entry is child_a1.
     assert!(
-        new_sessions[new_index].title.contains("child a1"),
+        entry_title(&state, &new_sessions[new_index].id).contains("child a1"),
         "next entry should be child_a1"
     );
 }
@@ -1353,7 +1401,7 @@ fn navigate_up_from_child_goes_to_parent() {
     let sessions = sorted_open_sessions(&state);
     let child_a1_index = sessions
         .iter()
-        .position(|s| s.title.contains("child a1"))
+        .position(|s| entry_title(&state, &s.id).contains("child a1"))
         .expect("child a1");
     state.frontend.sessions_section.selected_index = Some(child_a1_index);
 
@@ -1369,7 +1417,7 @@ fn navigate_up_from_child_goes_to_parent() {
     );
     let new_sessions = sorted_open_sessions(&state);
     assert!(
-        new_sessions[new_index].title.contains("root a"),
+        entry_title(&state, &new_sessions[new_index].id).contains("root a"),
         "previous entry should be root_a"
     );
 }
@@ -1384,7 +1432,7 @@ fn close_child_session_clamps_cursor() {
     let sessions = sorted_open_sessions(&state);
     let child_a1_index = sessions
         .iter()
-        .position(|s| s.title.contains("child a1"))
+        .position(|s| entry_title(&state, &s.id).contains("child a1"))
         .expect("child a1");
     let child_a1_id = sessions[child_a1_index].id.clone();
     state.frontend.sessions_section.selected_index = Some(child_a1_index);
@@ -1408,7 +1456,7 @@ fn close_root_session_promotes_children_to_roots() {
     let sessions = sorted_open_sessions(&state);
     let root_a_index = sessions
         .iter()
-        .position(|s| s.title.contains("root a"))
+        .position(|s| entry_title(&state, &s.id).contains("root a"))
         .expect("root a");
     let root_a_id = sessions[root_a_index].id.clone();
     state.frontend.sessions_section.selected_index = Some(root_a_index);
@@ -1422,7 +1470,10 @@ fn close_root_session_promotes_children_to_roots() {
     let remaining = sorted_open_sessions(&state);
     let former_children: Vec<_> = remaining
         .iter()
-        .filter(|s| s.title.contains("child a") || s.title.contains("grandchild"))
+        .filter(|s| {
+            entry_title(&state, &s.id).contains("child a")
+                || entry_title(&state, &s.id).contains("grandchild")
+        })
         .collect();
     assert!(
         !former_children.is_empty(),
@@ -1430,7 +1481,9 @@ fn close_root_session_promotes_children_to_roots() {
     );
     // All former children should now be roots or have adjusted depth.
     // The children of root_a become orphans → treated as roots.
-    let child_a1_entry = remaining.iter().find(|s| s.title.contains("child a1"));
+    let child_a1_entry = remaining
+        .iter()
+        .find(|s| entry_title(&state, &s.id).contains("child a1"));
     assert!(child_a1_entry.is_some(), "child_a1 should still exist");
     assert_eq!(
         child_a1_entry.unwrap().depth,
@@ -1449,7 +1502,7 @@ fn activate_child_session_switches_active() {
     let sessions = sorted_open_sessions(&state);
     let child_a1_index = sessions
         .iter()
-        .position(|s| s.title.contains("child a1"))
+        .position(|s| entry_title(&state, &s.id).contains("child a1"))
         .expect("child a1");
     let child_a1_id = sessions[child_a1_index].id.clone();
     state.frontend.sessions_section.selected_index = Some(child_a1_index);
@@ -1506,17 +1559,17 @@ fn archiving_intermediate_parent_reparents_grandchild_under_grandparent() {
     let sessions = sorted_open_sessions(&state);
     let child_a1_index = sessions
         .iter()
-        .position(|s| s.title.contains("child a1"))
+        .position(|s| entry_title(&state, &s.id).contains("child a1"))
         .expect("child a1");
     let child_a1_id = sessions[child_a1_index].id.clone();
     let root_a_id = sessions
         .iter()
-        .find(|s| s.title.contains("root a"))
+        .find(|s| entry_title(&state, &s.id).contains("root a"))
         .map(|s| s.id.clone())
         .expect("root a");
     let grandchild_id = sessions
         .iter()
-        .find(|s| s.title.contains("grandchild"))
+        .find(|s| entry_title(&state, &s.id).contains("grandchild"))
         .map(|s| s.id.clone())
         .expect("grandchild");
     state.frontend.sessions_section.selected_index = Some(child_a1_index);
@@ -1528,7 +1581,11 @@ fn archiving_intermediate_parent_reparents_grandchild_under_grandparent() {
     assert!(!state.session.contains(&child_a1_id));
     // And the visual_parents index maps grandchild -> root_a.
     assert_eq!(
-        state.frontend.sessions_section.visual_parents.get(&grandchild_id),
+        state
+            .frontend
+            .sessions_section
+            .visual_parents
+            .get(&grandchild_id),
         Some(&root_a_id),
         "grandchild should be reparented to root_a in visual_parents"
     );
@@ -1536,7 +1593,7 @@ fn archiving_intermediate_parent_reparents_grandchild_under_grandparent() {
     let remaining = sorted_open_sessions(&state);
     let grandchild_entry = remaining
         .iter()
-        .find(|s| s.title.contains("grandchild"))
+        .find(|s| entry_title(&state, &s.id).contains("grandchild"))
         .expect("grandchild should exist");
     assert_eq!(
         grandchild_entry.depth, 1,
@@ -1558,7 +1615,7 @@ fn archiving_root_does_not_create_visual_parents_for_orphaned_children() {
     let sessions = sorted_open_sessions(&state);
     let root_a_index = sessions
         .iter()
-        .position(|s| s.title.contains("root a"))
+        .position(|s| entry_title(&state, &s.id).contains("root a"))
         .expect("root a");
     let _root_a_id = sessions[root_a_index].id.clone();
     state.frontend.sessions_section.selected_index = Some(root_a_index);

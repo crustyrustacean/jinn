@@ -128,6 +128,22 @@ impl SessionPersistenceActor {
         }
     }
 
+    /// Stores loaded judges in state.
+    pub(in crate::feat::session::session_actor) fn on_judges_loaded(
+        &self,
+        payload: &crate::feat::judge::JudgesLoaded,
+    ) {
+        if payload.error.is_some() {
+            tracing::warn!(
+                error = ?payload.error,
+                "judge scan reported an error"
+            );
+            return;
+        }
+        let mut state = self.state.write();
+        state.context.judges.clone_from(&payload.judges);
+    }
+
     /// Loads persona picker entries into `AppState`.
     pub(in crate::feat::session::session_actor) fn handle_load_persona_picker_entries(
         &self,

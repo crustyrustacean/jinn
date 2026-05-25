@@ -124,6 +124,9 @@ pub struct ContextAssemblyState {
     /// Cached project context files (AGENTS.md, CLAUDE.md).
     /// OWNER: populated on startup, refreshed on session/CWD change.
     pub context_files: Vec<ContextFile>,
+    /// Discovered judges from `~/.config/nullslop/judges/`.
+    /// OWNER: session-actor (replaces on JudgesLoaded event).
+    pub judges: Vec<crate::feat::judge::Judge>,
     /// Loaded compaction system prompt from `~/.config/nullslop/prompts/_compaction.md`.
     /// OWNER: populated once at startup by the app init code.
     pub compaction_prompt: String,
@@ -138,6 +141,7 @@ impl Default for ContextAssemblyState {
             active_persona: None,
             tool_definitions: HashMap::new(),
             context_files: Vec::new(),
+            judges: Vec::new(),
             compaction_prompt: String::new(),
         }
     }
@@ -189,8 +193,9 @@ impl FocusScope {
             | Self::SidebarSessions
             | Self::SidebarResize
             | Self::Workflow => Mode::Normal,
-            Self::Input | Self::ArgInput | Self::RenameSessionInput
-            | Self::WorkflowInput => Mode::Input,
+            Self::Input | Self::ArgInput | Self::RenameSessionInput | Self::WorkflowInput => {
+                Mode::Input
+            }
             Self::Picker { .. } => Mode::Picker,
         }
     }
@@ -358,10 +363,10 @@ pub struct StatusNotification {
     pub created_at: std::time::Instant,
 }
 
+use nullslop_workflow::spatial_layout::SpatialRect;
 /// Workflow tab UI state — persisted across frames in `FrontendState`.
 ///
 use std::sync::atomic::{AtomicU16, Ordering};
-use nullslop_workflow::spatial_layout::SpatialRect;
 
 /// OWNER: IntentHandler (selection, inspector toggle, cancel prompt).
 #[derive(Debug, Default)]
@@ -506,11 +511,19 @@ pub struct FrontendState {
 
     /// Workflow picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (workflow picker navigation) + WorkflowActor (entry population).
-    pub workflow_picker: nullslop_selection_widget::SelectionState<crate::feat::workflow::picker_entry::WorkflowPickerEntry>,
+    pub workflow_picker: nullslop_selection_widget::SelectionState<
+        crate::feat::workflow::picker_entry::WorkflowPickerEntry,
+    >,
+
+    /// Judge picker state (items, filter text, selection index).
+    /// OWNER: IntentHandler (judge picker navigation, confirm creates judge session).
+    pub judge_picker:
+        nullslop_selection_widget::SelectionState<crate::feat::judge::JudgePickerEntry>,
 
     /// Compaction model picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (compaction model picker navigation).
-    pub compaction_model_picker: nullslop_selection_widget::SelectionState<crate::protocol::PickerEntry>,
+    pub compaction_model_picker:
+        nullslop_selection_widget::SelectionState<crate::protocol::PickerEntry>,
 
     /// Arg input popup state — active when `FocusScope::ArgInput` is on the scope stack.
     /// OWNER: IntentHandler (arg input editing, confirmation).
@@ -562,6 +575,7 @@ impl Default for FrontendState {
             system_themes_dir: std::path::PathBuf::new(),
             session_lifecycle_picker: nullslop_selection_widget::SelectionState::new(),
             workflow_picker: nullslop_selection_widget::SelectionState::new(),
+            judge_picker: nullslop_selection_widget::SelectionState::new(),
             compaction_model_picker: nullslop_selection_widget::SelectionState::new(),
             arg_input: ArgInputState::default(),
             rename_session_input: RenameSessionInputState::default(),
@@ -630,6 +644,7 @@ impl AppState {
 
             PickerKind::SessionLifecycle => Some(&mut self.frontend.session_lifecycle_picker),
             PickerKind::Workflow => Some(&mut self.frontend.workflow_picker),
+            PickerKind::Judge => Some(&mut self.frontend.judge_picker),
             PickerKind::CompactionModel => Some(&mut self.frontend.compaction_model_picker),
         }
     }

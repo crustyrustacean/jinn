@@ -78,9 +78,7 @@ fn summarize(results: &[BenchResult]) -> (Vec<(String, BenchSummary)>, BenchSumm
     let mut map: HashMap<String, BenchSummary> = HashMap::new();
 
     for result in results {
-        map.entry(result.model.clone())
-            .or_default()
-            .add(result);
+        map.entry(result.model.clone()).or_default().add(result);
     }
 
     let mut per_model: Vec<_> = map.into_iter().collect();
@@ -268,9 +266,8 @@ fn print_grand_total_line(grand: &BenchSummary) {
 
 /// Reads a bench CSV file into a vector of results.
 pub(crate) fn read_csv(path: &Path) -> Result<Vec<BenchResult>, Box<dyn std::error::Error>> {
-    let mut reader = csv::Reader::from_path(path).map_err(|e| {
-        format!("Failed to open '{}' as CSV: {e}", path.display())
-    })?;
+    let mut reader = csv::Reader::from_path(path)
+        .map_err(|e| format!("Failed to open '{}' as CSV: {e}", path.display()))?;
     let mut results = Vec::new();
 
     for record in reader.records() {
@@ -434,8 +431,14 @@ mod tests {
 
         // Then we get two sorted groups with correct counts.
         assert_eq!(per_model.len(), 2);
-        let alpha = per_model.iter().find(|(n, _)| n == "alpha/model-a").unwrap();
-        let bravo = per_model.iter().find(|(n, _)| n == "bravo/model-b").unwrap();
+        let alpha = per_model
+            .iter()
+            .find(|(n, _)| n == "alpha/model-a")
+            .unwrap();
+        let bravo = per_model
+            .iter()
+            .find(|(n, _)| n == "bravo/model-b")
+            .unwrap();
         // Alpha sorts before bravo.
         assert!(alpha.0 < bravo.0);
         assert_eq!(alpha.1.tasks, 2);

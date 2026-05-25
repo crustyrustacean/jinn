@@ -38,7 +38,10 @@ impl Preflights {
 /// access to register preflight hooks yet — that API will be added in a
 /// future phase.
 pub fn init(lua: &Lua) -> PreflightMap {
-    #[expect(clippy::arc_with_non_send_sync, reason = "mlua::Function is not Send but only used from the single Lua thread")]
+    #[expect(
+        clippy::arc_with_non_send_sync,
+        reason = "mlua::Function is not Send but only used from the single Lua thread"
+    )]
     let map: PreflightMap = Arc::new(Mutex::new(HashMap::new()));
     lua.set_app_data(Preflights::new(map.clone()));
     map
@@ -48,14 +51,22 @@ pub fn init(lua: &Lua) -> PreflightMap {
 ///
 /// The hook is a Lua function that receives `(command_name, payload)` and
 /// returns `true` (allow) or `false` (veto).
-#[expect(clippy::allow_attributes, reason = "cannot use #[expect(dead_code)] because it's unfulfilled in test builds")]
+#[expect(
+    clippy::allow_attributes,
+    reason = "cannot use #[expect(dead_code)] because it's unfulfilled in test builds"
+)]
 #[allow(dead_code, reason = "scaffold for future Lua preflight registration")]
 pub fn register(lua: &Lua, command_name: String, callback: Function) {
     let Some(guard) = lua.app_data_ref::<Preflights>() else {
         tracing::warn!("preflight map not found in Lua app_data");
         return;
     };
-    guard.get().lock().entry(command_name).or_default().push(callback);
+    guard
+        .get()
+        .lock()
+        .entry(command_name)
+        .or_default()
+        .push(callback);
 }
 
 /// Dispatches a preflight check for a command.
@@ -80,7 +91,7 @@ pub fn dispatch(lua: &Lua, command_name: &str, payload: &serde_json::Value) -> b
     for callback in &callbacks {
         let lua_payload = crate::bindings::json_to_lua_value(lua, payload).unwrap_or(Value::Nil);
         match callback.call::<bool>((command_name, lua_payload)) {
-            Ok(true) => {},
+            Ok(true) => {}
             Ok(false) => return false,
             Err(e) => {
                 tracing::warn!(

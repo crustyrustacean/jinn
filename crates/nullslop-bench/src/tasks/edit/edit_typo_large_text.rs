@@ -11,8 +11,8 @@ use include_dir::Dir;
 
 const EXPECTED_PROSE: &str = include_str!("edit_typo_large_text/expected/prose.txt");
 
-
-static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_typo_large_text/fixtures");
+static FIXTURES: Dir<'_> =
+    include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_typo_large_text/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {

@@ -123,7 +123,8 @@ impl QueueActor {
                     .await;
             }
             QueueItem::CompactionNeeded { compact_all } => {
-                self.dispatch_compaction(&payload.session_id, compact_all, ctx).await;
+                self.dispatch_compaction(&payload.session_id, compact_all, ctx)
+                    .await;
             }
         }
     }
@@ -136,13 +137,16 @@ impl QueueActor {
             if matches!(session.phase(), SessionPhase::Idle) {
                 true
             } else {
-                session.enqueue(QueueItem::CompactionNeeded { compact_all: payload.compact_all });
+                session.enqueue(QueueItem::CompactionNeeded {
+                    compact_all: payload.compact_all,
+                });
                 false
             }
         };
 
         if is_idle {
-            self.dispatch_compaction(&payload.session_id, payload.compact_all, ctx).await;
+            self.dispatch_compaction(&payload.session_id, payload.compact_all, ctx)
+                .await;
         }
     }
 
@@ -252,11 +256,7 @@ impl QueueActor {
 
     /// Handle `CompactionCompleted` — when auto-compaction succeeded, dispatch
     /// the continuation (assemble prompt + send to LLM) from the Sending phase.
-    async fn handle_compaction_completed(
-        &self,
-        payload: &CompactionCompleted,
-        ctx: &ActorContext,
-    ) {
+    async fn handle_compaction_completed(&self, payload: &CompactionCompleted, ctx: &ActorContext) {
         if !payload.auto || payload.entries_compacted == 0 {
             return;
         }
@@ -695,9 +695,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("previous message"));
-            session.push_entry(ChatEntry::user(
-                "A compaction has just occurred. Continue",
-            ));
+            session.push_entry(ChatEntry::user("A compaction has just occurred. Continue"));
             session.begin_sending();
             state.session.active_session_id().clone()
         };

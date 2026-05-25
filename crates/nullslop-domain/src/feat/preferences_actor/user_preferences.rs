@@ -606,10 +606,6 @@ teardown_command = "~/.config/nullslop/scripts/fossil-cleanup.sh $1"
         ));
     }
 
-
-
-
-
     #[rstest::rstest]
     fn save_then_load_round_trips_min_collapse_count() {
         // Given preferences with a min_collapse_count override.

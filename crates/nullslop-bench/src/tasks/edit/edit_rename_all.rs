@@ -11,8 +11,8 @@ use include_dir::Dir;
 
 const EXPECTED_MAIN_PY: &str = include_str!("edit_rename_all/expected/main.py");
 
-
-static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_rename_all/fixtures");
+static FIXTURES: Dir<'_> =
+    include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_rename_all/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {

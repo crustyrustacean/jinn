@@ -18,8 +18,13 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState)
         Some(PickerKind::Workflow) => {
             render_workflow_picker(frame, area, state);
         }
+        Some(PickerKind::Judge) => {
+            render_judge_picker(frame, area, state);
+        }
         Some(PickerKind::CompactionModel) => {
-            render_compaction_model_picker(frame, area, state);
+            nullslop_domain::feat::provider::render::render_compaction_model_picker(
+                frame, area, state,
+            );
         }
         None => {}
     }
@@ -57,9 +62,9 @@ fn render_workflow_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     nullslop_domain::feat::picker::render::render_workflow_picker(frame, area, state);
 }
 
-/// Renders the compaction model picker overlay (delegates to domain render).
-fn render_compaction_model_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    nullslop_domain::feat::provider::render::render_compaction_model_picker(frame, area, state);
+/// Renders the judge picker overlay (delegates to domain render).
+fn render_judge_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    nullslop_domain::feat::picker::render::render_judge_picker(frame, area, state);
 }
 
 /// Renders the arg input popup (delegates to domain render).

@@ -18,7 +18,10 @@ use crate::port::{PortDef, PortType};
 use crate::validation::{ValidationDiagnostic, ValidationSeverity};
 
 /// Internal storage for a node in the graph.
-#[expect(clippy::field_scoped_visibility_modifiers, reason = "pub(crate) on pub(crate) struct keeps fields crate-local")]
+#[expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pub(crate) on pub(crate) struct keeps fields crate-local"
+)]
 pub(crate) struct NodeData {
     /// Node name.
     #[expect(dead_code, reason = "used for graph introspection")]
@@ -29,7 +32,10 @@ pub(crate) struct NodeData {
 
 /// Internal storage for an edge in the graph.
 #[derive(Debug)]
-#[expect(clippy::field_scoped_visibility_modifiers, reason = "pub(crate) on pub(crate) struct keeps fields crate-local")]
+#[expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pub(crate) on pub(crate) struct keeps fields crate-local"
+)]
 pub(crate) struct EdgeData {
     /// The output port name on the source node.
     pub(crate) source_port: String,
@@ -185,9 +191,7 @@ impl WorkflowGraph {
             if !has_incoming && !has_outgoing {
                 diagnostics.push(ValidationDiagnostic {
                     severity: ValidationSeverity::Warning,
-                    message: format!(
-                        "node '{name}' is isolated (no incoming or outgoing edges)"
-                    ),
+                    message: format!("node '{name}' is isolated (no incoming or outgoing edges)"),
                 });
             }
 
@@ -635,11 +639,7 @@ mod tests {
         }
 
         fn passthrough(name: &'static str) -> Self {
-            Self::new(
-                name,
-                vec![PortDef::text("in")],
-                vec![PortDef::text("out")],
-            )
+            Self::new(name, vec![PortDef::text("in")], vec![PortDef::text("out")])
         }
     }
 
@@ -962,7 +962,10 @@ mod tests {
                 "a".to_owned(),
                 Box::new(TestNode::new(
                     "a",
-                    vec![PortDef::text("required"), PortDef::text("optional").optional()],
+                    vec![
+                        PortDef::text("required"),
+                        PortDef::text("optional").optional(),
+                    ],
                     vec![PortDef::text("out")],
                 )),
             )
@@ -972,7 +975,9 @@ mod tests {
         builder.connect("b", "out", "a", "required").expect("b→a");
 
         // When building.
-        let graph = builder.build().expect("build should succeed with optional port disconnected");
+        let graph = builder
+            .build()
+            .expect("build should succeed with optional port disconnected");
 
         // Then the graph builds with 2 nodes, 1 edge.
         assert_eq!(graph.node_count(), 2);
@@ -987,7 +992,10 @@ mod tests {
             "a".to_owned(),
             Box::new(TestNode::new(
                 "a",
-                vec![PortDef::text("required"), PortDef::text("optional").optional()],
+                vec![
+                    PortDef::text("required"),
+                    PortDef::text("optional").optional(),
+                ],
                 vec![PortDef::text("out")],
             )),
         );
@@ -1050,7 +1058,11 @@ mod tests {
             .iter()
             .filter(|d| d.message.contains("isolated"))
             .collect();
-        assert_eq!(isolated.len(), 2, "expected 2 isolated warnings, got: {diagnostics:?}");
+        assert_eq!(
+            isolated.len(),
+            2,
+            "expected 2 isolated warnings, got: {diagnostics:?}"
+        );
     }
 
     #[test]
@@ -1083,7 +1095,11 @@ mod tests {
             .iter()
             .filter(|d| d.message.contains("'extra'") && d.message.contains("no outgoing edge"))
             .collect();
-        assert_eq!(dead.len(), 1, "expected 1 dead output warning, got: {diagnostics:?}");
+        assert_eq!(
+            dead.len(),
+            1,
+            "expected 1 dead output warning, got: {diagnostics:?}"
+        );
     }
 
     #[test]
@@ -1104,7 +1120,10 @@ mod tests {
         let diagnostics = graph.validate();
 
         // Then no warnings.
-        assert!(diagnostics.is_empty(), "expected no warnings, got: {diagnostics:?}");
+        assert!(
+            diagnostics.is_empty(),
+            "expected no warnings, got: {diagnostics:?}"
+        );
     }
 
     #[test]
@@ -1121,7 +1140,10 @@ mod tests {
         let diagnostics = graph.validate();
 
         // Then we get multiple diagnostics (one isolated warning per node, plus one dead output per node).
-        assert!(diagnostics.len() >= 2, "expected multiple diagnostics, got: {diagnostics:?}");
+        assert!(
+            diagnostics.len() >= 2,
+            "expected multiple diagnostics, got: {diagnostics:?}"
+        );
     }
 
     #[test]

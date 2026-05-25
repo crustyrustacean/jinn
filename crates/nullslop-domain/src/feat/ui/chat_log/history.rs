@@ -43,7 +43,9 @@ use ratatui_markdown::theme::Generation;
 
 use super::line_count_cache::EntryLineCache;
 use super::shared::{GUTTER_WIDTH, RenderContext};
-use super::visual_item::{VisualItem, build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
+use super::visual_item::{
+    DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
+};
 use super::{
     actor, assistant, compaction, error_entry, skill, system, thinking, tool_call, tool_result,
     transient, user,
@@ -226,7 +228,9 @@ impl<'a> HistoryRender<'a> {
             PROXIMITY_COUNT,
             min_collapse,
         );
-        self.state.active_session().set_visual_items(visual_items.clone());
+        self.state
+            .active_session()
+            .set_visual_items(visual_items.clone());
         self.visual_items = visual_items;
     }
 
@@ -285,7 +289,10 @@ impl<'a> HistoryRender<'a> {
                             .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
                         let paired_status = self.paired_status_for_entry(entry);
                         let is_streaming = matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
-                            && self.state.active_session().is_tool_call_streaming(&entry.id);
+                            && self
+                                .state
+                                .active_session()
+                                .is_tool_call_streaming(&entry.id);
                         let ctx = RenderContext {
                             content_width: self.content_width,
                             is_selected,
@@ -421,31 +428,33 @@ impl<'a> HistoryRender<'a> {
                         .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
 
                     // Get content lines — cached lines → miss lines → render fresh.
-                    let entry_content_lines =
-                        if let Some(lines) = self.cached_lines.remove(&vi_idx) {
-                            Arc::unwrap_or_clone(lines)
-                        } else if let Some(lines) = self.miss_lines.remove(&vi_idx) {
-                            lines
-                        } else {
-                            let paired_status = self.paired_status_for_entry(entry);
-                            let is_streaming = matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
-                                && self.state.active_session().is_tool_call_streaming(&entry.id);
-                            let ctx = RenderContext {
-                                content_width: self.content_width,
-                                is_selected,
-                                is_expanded,
-                                tool_entry_max_lines: max_lines,
-                                theme: self.theme.clone(),
-                                paired_status,
-                                is_streaming,
-                            };
-                            entry_to_lines(entry, &ctx)
+                    let entry_content_lines = if let Some(lines) = self.cached_lines.remove(&vi_idx)
+                    {
+                        Arc::unwrap_or_clone(lines)
+                    } else if let Some(lines) = self.miss_lines.remove(&vi_idx) {
+                        lines
+                    } else {
+                        let paired_status = self.paired_status_for_entry(entry);
+                        let is_streaming = matches!(&entry.kind, ChatEntryKind::ToolCall { .. })
+                            && self
+                                .state
+                                .active_session()
+                                .is_tool_call_streaming(&entry.id);
+                        let ctx = RenderContext {
+                            content_width: self.content_width,
+                            is_selected,
+                            is_expanded,
+                            tool_entry_max_lines: max_lines,
+                            theme: self.theme.clone(),
+                            paired_status,
+                            is_streaming,
                         };
+                        entry_to_lines(entry, &ctx)
+                    };
 
                     // Build gutter lines for this entry.
                     let is_pinned = entry.pin_position.is_some();
-                    let is_included_in_context =
-                        entry.is_in_context();
+                    let is_included_in_context = entry.is_in_context();
                     let gutter_ctx = gutter::GutterStyle {
                         is_pinned,
                         is_selected,
@@ -461,8 +470,7 @@ impl<'a> HistoryRender<'a> {
 
                     // Track lines above viewport for scroll calculation.
                     if abs_entry_start < viewport_top {
-                        self.lines_before_viewport +=
-                            viewport_top.saturating_sub(abs_entry_start);
+                        self.lines_before_viewport += viewport_top.saturating_sub(abs_entry_start);
                     }
 
                     self.content_lines.extend(entry_content_lines);
@@ -472,8 +480,7 @@ impl<'a> HistoryRender<'a> {
                     let is_selected = self.selected_idx == Some(vi_idx);
 
                     // Content: gray summary line.
-                    let text =
-                        format!("{count} hidden entries (press h to show)");
+                    let text = format!("{count} hidden entries (press h to show)");
                     let style = Style::default().fg(self.theme.border_unfocused);
                     let line = Line::from(Span::styled(text, style));
                     self.content_lines.push(line);
@@ -489,8 +496,7 @@ impl<'a> HistoryRender<'a> {
 
                     // Track lines above viewport.
                     if abs_entry_start < viewport_top {
-                        self.lines_before_viewport +=
-                            viewport_top.saturating_sub(abs_entry_start);
+                        self.lines_before_viewport += viewport_top.saturating_sub(abs_entry_start);
                     }
                 }
             }

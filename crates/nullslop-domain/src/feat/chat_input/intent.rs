@@ -216,6 +216,11 @@ pub fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
 /// Handles `SubmitMessage` — confirms autocomplete if active, executes slash commands,
 /// or submits the message as chat input.
 pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
+    // Judge sessions are driven by the coordinator — no user input.
+    if state.active_session().is_judge() {
+        return IntentResult::empty();
+    }
+
     if state.active_chat_input().autocomplete().is_some() {
         return handle_submit_message_with_autocomplete(state);
     }
@@ -347,9 +352,10 @@ fn execute_slash_command(
         SlashCommand::Workflow => {
             let workflow_id = crate::feat::workflow::workflow_state::WorkflowId::new();
             state.frontend.active_tab = crate::protocol::tab::ActiveTab::Workflow;
-            state.frontend.scope_stack.swap_base(
-                crate::common::app_state::FocusScope::Workflow,
-            );
+            state
+                .frontend
+                .scope_stack
+                .swap_base(crate::common::app_state::FocusScope::Workflow);
             // Parse workflow name from "/workflow <name>"; default to "dynamic".
             let name = display
                 .strip_prefix('/')
@@ -357,10 +363,7 @@ fn execute_slash_command(
                 .unwrap_or("dynamic")
                 .to_owned();
             IntentResult::with_commands(vec![Command::InitWorkflow(
-                crate::feat::workflow::protocol::command::InitWorkflow {
-                    name,
-                    workflow_id,
-                },
+                crate::feat::workflow::protocol::command::InitWorkflow { name, workflow_id },
             )])
         }
     }
@@ -490,6 +493,11 @@ pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
 /// Handles `EnterInsertMode` — pushes Input onto the scope stack.
 pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
     use crate::common::app_state::FocusScope;
+
+    // Judge sessions are driven by the coordinator — no user input.
+    if state.active_session().is_judge() {
+        return IntentResult::empty();
+    }
 
     // If entering from pins, restore the viewport to its pre-pin position.
     // The pin cursor jump is only for pin → Normal, not pin → Insert.

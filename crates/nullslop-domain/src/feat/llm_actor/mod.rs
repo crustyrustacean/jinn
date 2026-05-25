@@ -389,7 +389,10 @@ impl LlmActor {
                                 }));
                             }
                         }
-                        StreamEvent::Error { error_type, message } => {
+                        StreamEvent::Error {
+                            error_type,
+                            message,
+                        } => {
                             tracing::error!(
                                 error_type = %error_type,
                                 message = %message,
@@ -440,7 +443,8 @@ impl LlmActor {
                 let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
                     session_id: sid.clone(),
                     entry: ChatEntry::error(
-                        "LLM stream ended unexpectedly. The connection may have been interrupted.".to_owned(),
+                        "LLM stream ended unexpectedly. The connection may have been interrupted."
+                            .to_owned(),
                     ),
                 }));
                 let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {

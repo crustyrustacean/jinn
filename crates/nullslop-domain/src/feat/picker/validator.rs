@@ -65,7 +65,12 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
             .selected_item()
             .is_some(),
         PickerKind::Workflow => state.frontend.workflow_picker.selected_item().is_some(),
-        PickerKind::CompactionModel => state.frontend.compaction_model_picker.selected_item().is_some(),
+        PickerKind::Judge => state.frontend.judge_picker.selected_item().is_some(),
+        PickerKind::CompactionModel => state
+            .frontend
+            .compaction_model_picker
+            .selected_item()
+            .is_some(),
     };
 
     if has_selection {

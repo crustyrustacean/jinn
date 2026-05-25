@@ -11,16 +11,14 @@ use include_dir::Dir;
 
 const EXPECTED_CONFIG: &str = include_str!("edit_config_value/expected/config.yaml");
 
-
-static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_config_value/fixtures");
+static FIXTURES: Dir<'_> =
+    include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_config_value/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {
         name: "edit-config-value",
         category: "edit",
-        messages: vec![
-            "Change the server port from 8080 to 9090 in config.yaml.",
-        ],
+        messages: vec!["Change the server port from 8080 to 9090 in config.yaml."],
         fixture_dir: Some(&FIXTURES),
         timeout: Duration::from_secs(300),
         persona: None,

@@ -127,21 +127,22 @@ impl ProviderInitActor {
             state.active_session().profile().model.clone()
         };
         if active_session_model == crate::feat::provider_infra::NO_PROVIDER_ID
-            && let Some(ref model) = prefs.last_model {
-                let id = crate::feat::provider_infra::ProviderId::new(model.clone());
-                let api_keys = self.services.api_keys.read();
-                if self.services.provider_registry.is_available(&id, &api_keys) {
-                    tracing::info!(last_model = %model, "provider-init resolving last_model");
-                    if let Err(e) = ctx.send_command(Command::ProviderSwitch(ProviderSwitch {
-                        session_id: self.state.read().session.active_session_id().clone(),
-                        provider_id: model.clone(),
-                    })) {
-                        tracing::warn!(err = ?e, "provider-init failed to send ProviderSwitch");
-                    }
-                } else {
-                    tracing::warn!(last_model = %model, "provider-init: last_model not available, skipping");
+            && let Some(ref model) = prefs.last_model
+        {
+            let id = crate::feat::provider_infra::ProviderId::new(model.clone());
+            let api_keys = self.services.api_keys.read();
+            if self.services.provider_registry.is_available(&id, &api_keys) {
+                tracing::info!(last_model = %model, "provider-init resolving last_model");
+                if let Err(e) = ctx.send_command(Command::ProviderSwitch(ProviderSwitch {
+                    session_id: self.state.read().session.active_session_id().clone(),
+                    provider_id: model.clone(),
+                })) {
+                    tracing::warn!(err = ?e, "provider-init failed to send ProviderSwitch");
                 }
+            } else {
+                tracing::warn!(last_model = %model, "provider-init: last_model not available, skipping");
             }
+        }
     }
 }
 
@@ -199,7 +200,7 @@ mod tests {
                 last_model: Some("sample/sample".to_owned()),
                 last_strategy: None,
                 tool_entry_max_lines: None,
-            min_collapse_count: None,
+                min_collapse_count: None,
                 theme_name: None,
                 persona_name: None,
                 session_lifecycles: vec![],
@@ -418,7 +419,7 @@ mod tests {
                 last_model: Some("wrong-model".to_owned()),
                 last_strategy: None,
                 tool_entry_max_lines: None,
-            min_collapse_count: None,
+                min_collapse_count: None,
                 theme_name: None,
                 persona_name: None,
                 session_lifecycles: vec![],

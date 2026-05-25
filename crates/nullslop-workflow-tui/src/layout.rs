@@ -171,15 +171,13 @@ fn compute_x_offset(
 ) -> u16 {
     let mut x: u16 = 0;
     for col in 0..target_col {
-        let max_width = column_nodes
-            .get(&col)
-            .map_or(0, |names| {
-                names
-                    .iter()
-                    .filter_map(|n| visual_nodes.get(n).map(|node| node.width))
-                    .max()
-                    .unwrap_or(0)
-            });
+        let max_width = column_nodes.get(&col).map_or(0, |names| {
+            names
+                .iter()
+                .filter_map(|n| visual_nodes.get(n).map(|node| node.width))
+                .max()
+                .unwrap_or(0)
+        });
         x = x + max_width + H_SPACING;
     }
     x
