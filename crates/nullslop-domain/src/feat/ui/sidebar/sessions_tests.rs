@@ -690,6 +690,21 @@ fn close_session_rejected_when_streaming() {
 }
 
 #[rstest::rstest]
+fn close_session_rejected_when_busy_counter_nonzero() {
+    // Given state with a session that has mark_busy() called but is Idle.
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+    state.frontend.sessions_section.selected_index = Some(0);
+    state.active_session_mut().mark_busy();
+
+    // When validating close.
+    let result = validate_session_close(&state);
+
+    // Then validation fails with SessionBusy.
+    assert_eq!(result, Err(SessionCloseError::SessionBusy));
+}
+
+#[rstest::rstest]
 fn close_session_rejected_when_wrong_section() {
     // Given state with sessions section NOT focused.
     let state = AppState::default();
