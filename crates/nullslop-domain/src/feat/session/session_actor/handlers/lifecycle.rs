@@ -2284,4 +2284,145 @@ mod tests {
             LifecycleScriptState::TeardownRan
         );
     }
+
+    // --- Cascade archive to judge sessions ---
+
+    #[tokio::test]
+    async fn archiving_origin_cascades_to_judge_sessions() {
+        use crate::feat::judge::JudgeMeta;
+
+        // Given an origin session with two judge sessions.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let origin_id = actor.state.read().session.active_session_id().clone();
+
+        let mut judge_a = ChatSessionState::new();
+        let judge_a_id = judge_a.session_id().clone();
+        judge_a.set_judge(JudgeMeta {
+            origin_session: origin_id.clone(),
+            is_attached: true,
+            judge_name: "judge-a".to_owned(),
+        });
+        judge_a.push_entry(ChatEntry::user("evaluate"));
+
+        let mut judge_b = ChatSessionState::new();
+        let judge_b_id = judge_b.session_id().clone();
+        judge_b.set_judge(JudgeMeta {
+            origin_session: origin_id.clone(),
+            is_attached: true,
+            judge_name: "judge-b".to_owned(),
+        });
+        judge_b.push_entry(ChatEntry::user("evaluate"));
+
+        {
+            let mut state = actor.state.write();
+            state.active_session_mut().push_entry(ChatEntry::user("do work"));
+            state.session.insert(judge_a);
+            state.session.insert(judge_b);
+        }
+
+        // When archiving the origin.
+        actor
+            .handle_archive_session(
+                &crate::feat::session::protocol::archive_session::ArchiveSession {
+                    session_id: origin_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then all judge sessions are removed from memory.
+        let state = actor.state.read();
+        assert!(!state.session.contains(&origin_id), "origin should be gone");
+        assert!(!state.session.contains(&judge_a_id), "judge-a should be gone");
+        assert!(!state.session.contains(&judge_b_id), "judge-b should be gone");
+    }
+
+    #[tokio::test]
+    async fn archiving_origin_emits_session_archived_for_each_judge() {
+        use crate::feat::judge::JudgeMeta;
+
+        // Given an origin session with two judge sessions.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let origin_id = actor.state.read().session.active_session_id().clone();
+
+        let mut judge_a = ChatSessionState::new();
+        let judge_a_id = judge_a.session_id().clone();
+        judge_a.set_judge(JudgeMeta {
+            origin_session: origin_id.clone(),
+            is_attached: true,
+            judge_name: "judge-a".to_owned(),
+        });
+        judge_a.push_entry(ChatEntry::user("evaluate"));
+
+        let mut judge_b = ChatSessionState::new();
+        let judge_b_id = judge_b.session_id().clone();
+        judge_b.set_judge(JudgeMeta {
+            origin_session: origin_id.clone(),
+            is_attached: true,
+            judge_name: "judge-b".to_owned(),
+        });
+        judge_b.push_entry(ChatEntry::user("evaluate"));
+
+        {
+            let mut state = actor.state.write();
+            state.active_session_mut().push_entry(ChatEntry::user("do work"));
+            state.session.insert(judge_a);
+            state.session.insert(judge_b);
+        }
+
+        // When archiving the origin.
+        actor
+            .handle_archive_session(
+                &crate::feat::session::protocol::archive_session::ArchiveSession {
+                    session_id: origin_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then SessionArchived events were emitted for origin and both judges.
+        let events = sink.events();
+        let archived_ids: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                crate::protocol::Event::SessionArchived(ev) => Some(ev.session_id.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            archived_ids.contains(&origin_id),
+            "origin should have SessionArchived"
+        );
+        assert!(
+            archived_ids.contains(&judge_a_id),
+            "judge-a should have SessionArchived"
+        );
+        assert!(
+            archived_ids.contains(&judge_b_id),
+            "judge-b should have SessionArchived"
+        );
+
+        // And SessionClosed events for all three.
+        let closed_ids: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                crate::protocol::Event::SessionClosed(ev) => Some(ev.session_id.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            closed_ids.contains(&origin_id),
+            "origin should have SessionClosed"
+        );
+        assert!(
+            closed_ids.contains(&judge_a_id),
+            "judge-a should have SessionClosed"
+        );
+        assert!(
+            closed_ids.contains(&judge_b_id),
+            "judge-b should have SessionClosed"
+        );
+    }
 }
