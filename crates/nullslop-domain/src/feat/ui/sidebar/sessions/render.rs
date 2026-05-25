@@ -161,8 +161,8 @@ impl SidebarSection for SessionsSection {
         frame.render_widget(widget, area);
 
         // Close session confirmation prompt — overlay 1 row above the cursor.
-        if state.frontend.close_session_prompt && section_focused {
-            if let Some(sel) = selected_index {
+        if state.frontend.close_session_prompt && section_focused
+            && let Some(sel) = selected_index {
                 let visual_row = sel.saturating_sub(scroll_offset) as u16;
                 let cursor_y = area.y + visual_row;
                 let prompt_y = cursor_y.saturating_sub(1);
@@ -182,7 +182,6 @@ impl SidebarSection for SessionsSection {
                     );
                 }
             }
-        }
     }
 
     fn content_height(&self, state: &AppState) -> u16 {
