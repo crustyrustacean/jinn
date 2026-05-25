@@ -1,5 +1,7 @@
 //! Plugin host — owns the Lua VM and orchestrates plugin loading and dispatch.
 
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -58,6 +60,9 @@ pub struct PluginHost {
     /// The command sender callback.
     #[expect(dead_code, reason = "needed for future wiring phases")]
     sender: CommandSender,
+    /// Names of plugins that have been successfully loaded.
+    /// Prevents loading the same plugin name from multiple directories.
+    loaded: RefCell<HashSet<String>>,
 }
 
 impl PluginHost {
@@ -79,7 +84,11 @@ impl PluginHost {
 
         crate::preflight::init(&lua);
 
-        Ok(Self { lua, sender })
+        Ok(Self {
+            lua,
+            sender,
+            loaded: RefCell::new(HashSet::new()),
+        })
     }
 
     /// Loads a single plugin from a directory containing `init.lua`.
@@ -99,6 +108,12 @@ impl PluginHost {
             .file_name()
             .map_or_else(|| String::from("unknown"), |n| n.to_string_lossy().into_owned());
 
+        if self.loaded.borrow().contains(&name) {
+            tracing::warn!(plugin = %name, "skipping plugin: already loaded");
+            return Err(Report::new(PluginError)
+                .attach(format!("plugin '{name}' is already loaded")));
+        }
+
         let source = std::fs::read_to_string(&init_path).map_err(|e| {
             tracing::error!(err = %e, path = %init_path.display(), "failed to read init.lua");
             Report::new(PluginError).attach(format!("read error: {}", init_path.display()))
@@ -114,6 +129,8 @@ impl PluginHost {
             })?;
 
         tracing::info!(plugin = %name, "loaded plugin");
+
+        self.loaded.borrow_mut().insert(name.clone());
 
         Ok(PluginInfo {
             name,
@@ -470,5 +487,62 @@ mod tests {
             matches!(cmd2, Command::Dynamic(ref dc) if dc.name == "welcome::session_tip"),
             "second should also be session_tip"
         );
+    }
+
+    #[rstest::rstest]
+    fn load_plugin_skips_duplicate_name() {
+        // Given two temp directories with the same plugin directory name.
+        let (sender, _) = test_sender();
+        let host = PluginHost::new(sender).expect("host creation");
+
+        let dir1 = tempfile::tempdir().expect("create temp dir 1");
+        let plugin_dir1 = dir1.path().join("dup");
+        fs::create_dir_all(&plugin_dir1).expect("create plugin dir 1");
+        fs::write(plugin_dir1.join("init.lua"), "-- first").expect("write init.lua 1");
+
+        let dir2 = tempfile::tempdir().expect("create temp dir 2");
+        let plugin_dir2 = dir2.path().join("dup");
+        fs::create_dir_all(&plugin_dir2).expect("create plugin dir 2");
+        fs::write(plugin_dir2.join("init.lua"), "-- second").expect("write init.lua 2");
+
+        // When loading both.
+        let first = host.load_plugin(&plugin_dir1);
+        let second = host.load_plugin(&plugin_dir2);
+
+        // Then the first succeeds and the second is rejected.
+        assert!(first.is_ok(), "first load should succeed");
+        assert!(second.is_err(), "duplicate should be rejected");
+    }
+
+    #[rstest::rstest]
+    fn load_all_skips_already_loaded_plugin() {
+        // Given a host with one plugin already loaded.
+        let (sender, _) = test_sender();
+        let host = PluginHost::new(sender).expect("host creation");
+
+        let dir1 = tempfile::tempdir().expect("create temp dir 1");
+        let plugin_dir1 = dir1.path().join("alpha");
+        fs::create_dir_all(&plugin_dir1).expect("create plugin dir 1");
+        fs::write(plugin_dir1.join("init.lua"), "-- first").expect("write init.lua 1");
+
+        let result = host.load_plugin(&plugin_dir1);
+        assert!(result.is_ok(), "initial load should succeed");
+
+        // And a second directory also containing "alpha".
+        let dir2 = tempfile::tempdir().expect("create temp dir 2");
+        let plugin_dir2 = dir2.path().join("alpha");
+        fs::create_dir_all(&plugin_dir2).expect("create plugin dir 2");
+        fs::write(plugin_dir2.join("init.lua"), "-- second").expect("write init.lua 2");
+        // Also add a new plugin "beta".
+        let plugin_dir3 = dir2.path().join("beta");
+        fs::create_dir_all(&plugin_dir3).expect("create plugin dir 3");
+        fs::write(plugin_dir3.join("init.lua"), "-- beta").expect("write init.lua 3");
+
+        // When loading all from the second directory.
+        let loaded = host.load_all(dir2.path());
+
+        // Then only beta is loaded (alpha was skipped as duplicate).
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].name, "beta");
     }
 }
