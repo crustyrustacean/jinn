@@ -55,26 +55,33 @@ pub fn build_request(
 ) -> ChatCompletionRequest {
     // Concatenate all System messages into one system-role message.
     let mut system_contents: Vec<String> = Vec::new();
-    let mut openai_messages: Vec<serde_json::Value> = Vec::new();
+    let mut non_system: Vec<&LlmMessage> = Vec::new();
     for msg in messages {
         match msg {
             LlmMessage::System { content } => {
                 system_contents.push(content.clone());
             }
             other => {
-                openai_messages.push(message_to_json(other));
+                non_system.push(other);
             }
         }
     }
-    if !system_contents.is_empty() {
-        openai_messages.insert(
-            0,
-            serde_json::json!({
-                "role": "system",
-                "content": system_contents.join("\n\n"),
-            }),
-        );
-    }
+
+    // Coalesce consecutive same-role messages (user, assistant without tool_calls)
+    // into single messages. Many OpenAI-compatible providers (e.g. ZAI) reject
+    // consecutive messages with the same role.
+    let openai_messages = coalesce_messages(&non_system);
+
+    let openai_messages = if !system_contents.is_empty() {
+        let mut result = vec![serde_json::json!({
+            "role": "system",
+            "content": system_contents.join("\n\n"),
+        })];
+        result.extend(openai_messages);
+        result
+    } else {
+        openai_messages
+    };
 
     let openai_tools = if tools.is_empty() {
         None
@@ -99,6 +106,46 @@ pub fn build_request(
         tool_choice,
         extra: extra_body.clone(),
     }
+}
+
+/// Coalesce consecutive messages of the same coalescable role into one.
+///
+/// Only `user` and `assistant` (without tool_calls) messages are coalescable.
+/// Messages with tool_calls, tool results, and other role-specific fields
+/// are never merged because they carry distinct semantic meaning.
+fn coalesce_messages(messages: &[&LlmMessage]) -> Vec<serde_json::Value> {
+    let mut result: Vec<serde_json::Value> = Vec::new();
+
+    for msg in messages {
+        let json = message_to_json(msg);
+        let can_coalesce = matches!(msg, LlmMessage::User { .. })
+            || matches!(msg, LlmMessage::Assistant { tool_calls: None, .. });
+
+        if can_coalesce {
+            if let Some(last) = result.last_mut() {
+                // Only merge if the previous message is also a plain user or
+                // assistant (no tool_calls, no tool_call_id) and has the same role.
+                let last_is_coalescable =
+                    (last["role"] == "user" || last["role"] == "assistant")
+                        && !last.get("tool_calls").is_some()
+                        && !last.get("tool_call_id").is_some();
+
+                if last_is_coalescable && last["role"] == json["role"] {
+                    // Append content to the previous message of the same role.
+                    let existing = last["content"].as_str().unwrap_or("");
+                    let incoming = json["content"].as_str().unwrap_or("");
+                    last["content"] = serde_json::Value::String(format!(
+                        "{existing}\n\n{incoming}"
+                    ));
+                    continue;
+                }
+            }
+        }
+
+        result.push(json);
+    }
+
+    result
 }
 
 /// Convert an [`LlmMessage`] to an OpenAI-format JSON object.
@@ -299,5 +346,377 @@ mod tests {
         let calls = json["tool_calls"].as_array().unwrap();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0]["function"]["name"], "echo");
+    }
+
+    #[rstest::rstest]
+    fn consecutive_user_messages_are_coalesced() {
+        // Given two consecutive user messages.
+        let messages = vec![
+            LlmMessage::User {
+                content: "first".into(),
+            },
+            LlmMessage::User {
+                content: "second".into(),
+            },
+        ];
+
+        // When building request.
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+
+        // Then they are merged into one user message.
+        assert_eq!(req.messages.len(), 1);
+        assert_eq!(req.messages[0]["role"], "user");
+        assert_eq!(
+            req.messages[0]["content"].as_str().unwrap(),
+            "first\n\nsecond"
+        );
+    }
+
+    #[rstest::rstest]
+    fn consecutive_assistant_messages_are_coalesced() {
+        // Given two consecutive assistant messages without tool calls.
+        let messages = vec![
+            LlmMessage::Assistant {
+                content: "hello".into(),
+                tool_calls: None,
+            },
+            LlmMessage::Assistant {
+                content: "world".into(),
+                tool_calls: None,
+            },
+        ];
+
+        // When building request.
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+
+        // Then they are merged into one assistant message.
+        assert_eq!(req.messages.len(), 1);
+        assert_eq!(req.messages[0]["role"], "assistant");
+        assert_eq!(
+            req.messages[0]["content"].as_str().unwrap(),
+            "hello\n\nworld"
+        );
+    }
+
+    #[rstest::rstest]
+    fn assistant_with_tool_calls_is_not_coalesced() {
+        // Given an assistant with tool calls followed by another assistant.
+        let messages = vec![
+            LlmMessage::Assistant {
+                content: "checking".into(),
+                tool_calls: Some(vec![crate::tool_types::ToolCall {
+                    id: "call_1".into(),
+                    name: "echo".into(),
+                    arguments: "{}".into(),
+                }]),
+            },
+            LlmMessage::Assistant {
+                content: "result".into(),
+                tool_calls: None,
+            },
+        ];
+
+        // When building request.
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+
+        // Then both messages are kept separate.
+        assert_eq!(req.messages.len(), 2);
+        assert_eq!(req.messages[0]["role"], "assistant");
+        assert_eq!(req.messages[1]["role"], "assistant");
+    }
+
+    #[rstest::rstest]
+    fn tool_messages_are_not_coalesced() {
+        // Given two consecutive tool result messages.
+        let messages = vec![
+            LlmMessage::Tool {
+                tool_call_id: "call_1".into(),
+                name: "echo".into(),
+                content: "result1".into(),
+            },
+            LlmMessage::Tool {
+                tool_call_id: "call_2".into(),
+                name: "ls".into(),
+                content: "result2".into(),
+            },
+        ];
+
+        // When building request.
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+
+        // Then they are kept as separate messages.
+        assert_eq!(req.messages.len(), 2);
+        assert_eq!(req.messages[0]["tool_call_id"], "call_1");
+        assert_eq!(req.messages[1]["tool_call_id"], "call_2");
+    }
+
+    #[rstest::rstest]
+    fn alternating_roles_are_not_coalesced() {
+        // Given alternating user/assistant messages.
+        let messages = vec![
+            LlmMessage::User {
+                content: "hello".into(),
+            },
+            LlmMessage::Assistant {
+                content: "hi".into(),
+                tool_calls: None,
+            },
+            LlmMessage::User {
+                content: "how are you?".into(),
+            },
+        ];
+
+        // When building request.
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+
+        // Then all messages are kept separate.
+        assert_eq!(req.messages.len(), 3);
+        assert_eq!(req.messages[0]["role"], "user");
+        assert_eq!(req.messages[1]["role"], "assistant");
+        assert_eq!(req.messages[2]["role"], "user");
+    }
+
+    #[rstest::rstest]
+    fn three_consecutive_user_messages_are_coalesced_into_one() {
+        // Given three consecutive user messages.
+        let messages = vec![
+            LlmMessage::User {
+                content: "first".into(),
+            },
+            LlmMessage::User {
+                content: "second".into(),
+            },
+            LlmMessage::User {
+                content: "third".into(),
+            },
+        ];
+
+        // When building request.
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+
+        // Then all three are merged into a single user message.
+        assert_eq!(req.messages.len(), 1);
+        assert_eq!(req.messages[0]["role"], "user");
+        assert_eq!(
+            req.messages[0]["content"].as_str().unwrap(),
+            "first\n\nsecond\n\nthird"
+        );
+    }
+
+    #[rstest::rstest]
+    fn user_messages_separated_by_tool_result_are_not_coalesced() {
+        // Given user → tool → user.
+        let messages = vec![
+            LlmMessage::User {
+                content: "run the tool".into(),
+            },
+            LlmMessage::Tool {
+                tool_call_id: "call_1".into(),
+                name: "bash".into(),
+                content: "ok".into(),
+            },
+            LlmMessage::User {
+                content: "now do another thing".into(),
+            },
+        ];
+
+        // When building request.
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+
+        // Then the two user messages are kept separate.
+        assert_eq!(req.messages.len(), 3);
+        assert_eq!(req.messages[0]["role"], "user");
+        assert_eq!(req.messages[0]["content"], "run the tool");
+        assert_eq!(req.messages[1]["role"], "tool");
+        assert_eq!(req.messages[2]["role"], "user");
+        assert_eq!(req.messages[2]["content"], "now do another thing");
+    }
+
+    #[rstest::rstest]
+    fn user_messages_separated_by_assistant_with_tool_calls_are_not_coalesced() {
+        // Given user → assistant(with tool_calls) → user.
+        let messages = vec![
+            LlmMessage::User {
+                content: "check the weather".into(),
+            },
+            LlmMessage::Assistant {
+                content: "looking".into(),
+                tool_calls: Some(vec![crate::tool_types::ToolCall {
+                    id: "call_1".into(),
+                    name: "get_weather".into(),
+                    arguments: "{}".into(),
+                }]),
+            },
+            LlmMessage::User {
+                content: "what about tomorrow?".into(),
+            },
+        ];
+
+        // When building request.
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+
+        // Then the two user messages are kept separate.
+        assert_eq!(req.messages.len(), 3);
+        assert_eq!(req.messages[0]["role"], "user");
+        assert_eq!(req.messages[1]["role"], "assistant");
+        assert_eq!(req.messages[2]["role"], "user");
+    }
+
+    #[rstest::rstest]
+    fn system_messages_do_not_participate_in_coalescing() {
+        // Given system + user + system + user.
+        let messages = vec![
+            LlmMessage::System {
+                content: "You are helpful.".into(),
+            },
+            LlmMessage::User {
+                content: "hello".into(),
+            },
+            LlmMessage::System {
+                content: "Be concise.".into(),
+            },
+            LlmMessage::User {
+                content: "world".into(),
+            },
+        ];
+
+        // When building request.
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+
+        // Then system messages are merged at front and user messages are coalesced.
+        assert_eq!(req.messages.len(), 2);
+        assert_eq!(req.messages[0]["role"], "system");
+        assert_eq!(
+            req.messages[0]["content"].as_str().unwrap(),
+            "You are helpful.\n\nBe concise."
+        );
+        assert_eq!(req.messages[1]["role"], "user");
+        assert_eq!(
+            req.messages[1]["content"].as_str().unwrap(),
+            "hello\n\nworld"
+        );
+    }
+
+    #[rstest::rstest]
+    fn coalescing_preserves_content_order_in_multi_turn_tool_flow() {
+        // Given a realistic multi-turn conversation with tool use.
+        // User → Assistant → ToolCall → ToolResult → User → Assistant
+        // The two assistant messages (first has tool_calls, second doesn't)
+        // should stay separate.
+        let messages = vec![
+            LlmMessage::User {
+                content: "check the weather".into(),
+            },
+            LlmMessage::Assistant {
+                content: "Let me check.".into(),
+                tool_calls: Some(vec![crate::tool_types::ToolCall {
+                    id: "call_1".into(),
+                    name: "get_weather".into(),
+                    arguments: r#"{"city":"SF"}"#.into(),
+                }]),
+            },
+            LlmMessage::Tool {
+                tool_call_id: "call_1".into(),
+                name: "get_weather".into(),
+                content: "72°F sunny".into(),
+            },
+            LlmMessage::Assistant {
+                content: "It's 72°F and sunny in SF.".into(),
+                tool_calls: None,
+            },
+            LlmMessage::User {
+                content: "thanks".into(),
+            },
+        ];
+
+        // When building request.
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+
+        // Then all messages are preserved in order with no coalescing.
+        assert_eq!(req.messages.len(), 5);
+        assert_eq!(req.messages[0]["role"], "user");
+        assert_eq!(req.messages[1]["role"], "assistant");
+        assert_eq!(req.messages[2]["role"], "tool");
+        assert_eq!(req.messages[3]["role"], "assistant");
+        assert_eq!(req.messages[4]["role"], "user");
+    }
+
+    #[rstest::rstest]
+    fn single_message_is_not_modified_by_coalescing() {
+        // Given a single user message.
+        let messages = vec![LlmMessage::User {
+            content: "hello".into(),
+        }];
+
+        // When building request.
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+
+        // Then it is unchanged.
+        assert_eq!(req.messages.len(), 1);
+        assert_eq!(req.messages[0]["role"], "user");
+        assert_eq!(req.messages[0]["content"], "hello");
+    }
+
+    #[rstest::rstest]
+    fn empty_messages_list_produces_empty_request_messages() {
+        // Given no messages.
+        let messages: Vec<LlmMessage> = vec![];
+
+        // When building request.
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+
+        // Then request messages is empty.
+        assert!(req.messages.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn coalescing_user_with_empty_content_joins_with_separator() {
+        // Given two user messages where the first is empty.
+        let messages = vec![
+            LlmMessage::User {
+                content: String::new(),
+            },
+            LlmMessage::User {
+                content: "actual content".into(),
+            },
+        ];
+
+        // When building request.
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+
+        // Then they are coalesced with a separator.
+        assert_eq!(req.messages.len(), 1);
+        assert_eq!(
+            req.messages[0]["content"].as_str().unwrap(),
+            "\n\nactual content"
+        );
+    }
+
+    #[rstest::rstest]
+    fn realistic_consecutive_user_entries_produces_single_user_message() {
+        // Given a pattern matching the ZAI bug: user → actor → error.
+        // entries_to_messages maps all of these to User role.
+        let messages = vec![
+            LlmMessage::User {
+                content: "what files are here?".into(),
+            },
+            LlmMessage::User {
+                content: "[Actor: bash] ls\nfile1.txt\nfile2.txt".into(),
+            },
+            LlmMessage::User {
+                content: "[Error] connection timed out".into(),
+            },
+        ];
+
+        // When building request.
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+
+        // Then they are merged into one user message.
+        assert_eq!(req.messages.len(), 1);
+        assert_eq!(req.messages[0]["role"], "user");
+        let content = req.messages[0]["content"].as_str().unwrap();
+        assert!(content.contains("what files are here?"));
+        assert!(content.contains("[Actor: bash]"));
+        assert!(content.contains("[Error]"));
     }
 }

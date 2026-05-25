@@ -32,3 +32,8 @@ pub struct RerunFromNode {
     /// The node name to start re-execution from.
     pub node_name: String,
 }
+
+/// Request to load workflow picker entries from the registry.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("workflow")]
+pub struct LoadWorkflowPickerEntries;

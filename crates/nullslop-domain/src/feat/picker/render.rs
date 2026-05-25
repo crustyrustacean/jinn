@@ -47,3 +47,15 @@ pub fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) 
         .footer(Line::from(" ESC to cancel, Enter to apply "));
     widget.render(frame, area);
 }
+
+/// Renders the workflow picker overlay using [`SelectionWidget`].
+///
+/// Telescope-style layout: bordered popup with filter input at top,
+/// horizontal separator, scrollable workflow entries.
+pub fn render_workflow_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    let widget = SelectionWidget::new(&state.frontend.workflow_picker)
+        .title(Line::from(" Workflows "))
+        .title_style(Style::default().fg(state.frontend.theme.popup_title))
+        .footer(Line::from(" Enter to run, ESC to cancel "));
+    widget.render(frame, area);
+}
