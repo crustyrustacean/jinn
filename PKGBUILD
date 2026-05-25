@@ -41,6 +41,12 @@ package() {
     install -Dm0644 -t "$pkgdir/usr/share/nullslop/personas/" personas/*.md
     install -Dm0644 -t "$pkgdir/usr/share/nullslop/prompts/" prompts/*.md
 
+    # Install default plugins to /usr/share/nullslop/plugins/.
+    for plugin_dir in plugins/*/; do
+        local plugin_name=$(basename "$plugin_dir")
+        install -Dm0644 "$plugin_dir"init.lua -t "$pkgdir/usr/share/nullslop/plugins/$plugin_name/"
+    done
+
     # Install shell completions.
     local _bin="target/release/nullslop"
     install -Dm0644 /dev/stdin "$pkgdir/usr/share/bash-completion/completions/nullslop" \

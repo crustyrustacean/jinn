@@ -126,7 +126,8 @@ impl ProviderActor {
             | Command::StartWorkflow(..)
             | Command::CancelWorkflow(..)
             | Command::RerunFromNode(..)
-            | Command::LoadWorkflowPickerEntries(..) => {}
+            | Command::LoadWorkflowPickerEntries(..)
+            | Command::Dynamic(..) => {}
         }
     }
 
