@@ -19,15 +19,10 @@ use ratatui::widgets::Paragraph;
 #[derive(Debug)]
 pub struct StatusBarElement;
 
-/// Shorten a path for display: resolve `.` to absolute, replace home with `~`.
+/// Shorten a path for display: replace home directory prefix with `~`.
 fn shorten_path(path: &std::path::Path) -> String {
-    let absolute = if path == std::path::Path::new(".") {
-        std::env::current_dir().unwrap_or_else(|_| path.to_path_buf())
-    } else {
-        path.to_path_buf()
-    };
     if let Some(home) = dirs::home_dir()
-        && let Ok(relative) = absolute.strip_prefix(&home)
+        && let Ok(relative) = path.strip_prefix(&home)
     {
         let display = relative.display().to_string();
         if display.is_empty() {
@@ -35,7 +30,7 @@ fn shorten_path(path: &std::path::Path) -> String {
         }
         return format!("~/{display}");
     }
-    absolute.display().to_string()
+    path.display().to_string()
 }
 
 /// Format a token count in human-readable form with one decimal place.

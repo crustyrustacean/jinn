@@ -660,7 +660,10 @@ impl ChatEntry {
 
 impl Serialize for ChatEntryKind {
     #[allow(clippy::too_many_lines)]
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
         use serde::ser::SerializeMap;
         match self {
             ChatEntryKind::User { display, expanded } => {
@@ -828,7 +831,10 @@ impl Serialize for ChatEntryKind {
 
 impl<'de> Deserialize<'de> for ChatEntryKind {
     #[allow(clippy::too_many_lines)]
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
         use serde::de::{self, MapAccess, Visitor};
         use std::fmt;
 
@@ -842,7 +848,10 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
             }
 
             #[allow(clippy::too_many_lines)]
-            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
                 let key: String = map
                     .next_key()?
                     .ok_or_else(|| de::Error::missing_field("variant"))?;
