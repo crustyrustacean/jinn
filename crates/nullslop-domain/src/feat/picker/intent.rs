@@ -206,8 +206,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::SessionLifecycle) => (confirm_session_lifecycle(state), None),
         Some(PickerKind::Workflow) => (confirm_workflow(state), None),
         Some(PickerKind::Judge) => (confirm_judge(state), None),
-        Some(PickerKind::CompactionModel) => (IntentResult::empty(), None),
-        None => (IntentResult::empty(), None),
+        Some(PickerKind::CompactionModel) | None => (IntentResult::empty(), None),
     }
 }
 
@@ -500,6 +499,29 @@ fn confirm_judge(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     };
 
+    // Check for existing detached judge with same name on this origin.
+    let existing_id = state.session.iter().find(|(_, s)| {
+        s.judge()
+            .as_ref()
+            .is_some_and(|m| m.origin_session == active_id && m.judge_name == entry.name && !m.is_attached)
+    }).map(|(id, _)| id.clone());
+    if let Some(existing_id) = existing_id {
+        // Re-attach: set is_attached = true, activate the origin.
+        if let Some(judge_session) = state.session.get_mut(&existing_id) {
+            judge_session.set_judge_attached(true);
+        }
+        state.session.set_active(active_id);
+        state.frontend.scope_stack.push(FocusScope::Input);
+        state.frontend.judge_picker.reset();
+
+        tracing::info!(
+            judge_session = %existing_id,
+            judge_name = %entry.name,
+            "re-attached existing detached judge session"
+        );
+        return IntentResult::empty();
+    }
+
     // Create a new judge session.
     let mut judge_session = ChatSessionState::new();
     let judge_id = judge_session.session_id().clone();
@@ -617,5 +639,37 @@ mod tests {
         assert_eq!(pinned.len(), 1, "should have exactly one pinned entry");
         assert_eq!(pinned[0].pin_position, Some(PinPosition::Top));
         assert!(pinned[0].text().contains("Check accuracy."));
+    }
+
+    #[rstest::rstest]
+    fn confirm_judge_re_attaches_detached_session() {
+        // Given a detached judge session.
+        let mut state = setup_state_with_judge();
+        let origin_id = state.session.active_session_id().clone();
+        confirm_judge(&mut state);
+
+        // Find the judge session and detach it.
+        let (judge_id, _) = state
+            .session
+            .iter()
+            .find(|(_, s)| s.is_judge())
+            .expect("judge session exists");
+        let judge_id = judge_id.clone();
+        state.session.get_mut(&judge_id).expect("judge session").set_judge_attached(false);
+
+        // Switch back to origin session and re-populate picker.
+        state.session.set_active(origin_id);
+        load_judge_picker_entries(&mut state);
+        state.frontend.judge_picker.move_down(1);
+
+        // When confirming the picker again.
+        let commands = confirm_judge(&mut state);
+
+        // Then no new session is created.
+        assert!(commands.commands.is_empty(), "should not create new session");
+
+        // And the judge session is re-attached.
+        let judge_session = state.session.get(&judge_id).expect("judge session should exist");
+        assert!(judge_session.judge().as_ref().is_some_and(|m| m.is_attached));
     }
 }

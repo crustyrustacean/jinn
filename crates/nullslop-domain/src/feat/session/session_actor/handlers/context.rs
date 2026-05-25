@@ -141,7 +141,7 @@ impl SessionPersistenceActor {
             return;
         }
         let mut state = self.state.write();
-        state.context.judges = payload.judges.clone();
+        state.context.judges.clone_from(&payload.judges);
     }
 
     /// Loads persona picker entries into `AppState`.
