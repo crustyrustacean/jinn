@@ -42,35 +42,36 @@ pub fn validate_yank_selected(state: &AppState) -> Result<(), YankSelectedError>
     Ok(())
 }
 
-/// Errors from validating an ExpandToolEntry intent.
+/// Errors from validating an ExpandEntry intent.
 #[derive(Debug, Error)]
 #[error(debug)]
-pub enum ExpandToolEntryError {
+pub enum ExpandEntryError {
     /// No chat entry is currently selected.
     NoSelection,
-    /// The selected entry is not a tool entry (tool call or tool result).
-    NotToolEntry,
+    /// The selected entry is not expandable (not a tool entry or compaction).
+    NotExpandable,
 }
 
 /// Validates the ExpandToolEntry intent.
 ///
-/// Returns an error if no entry is selected or the selected entry is not a tool entry
-/// (tool call or tool result).
+/// Returns an error if no entry is selected or the selected entry is not expandable
+/// (tool call, tool result, or compaction).
 ///
 /// # Errors
 ///
-/// Returns an error if no entry is selected or the selected entry is not a tool entry.
-pub fn validate_expand_tool_entry(state: &AppState) -> Result<(), ExpandToolEntryError> {
+/// Returns an error if no entry is selected or the selected entry is not expandable.
+pub fn validate_expand_tool_entry(state: &AppState) -> Result<(), ExpandEntryError> {
     let selected = state
         .active_session()
         .selected_entry()
-        .ok_or(ExpandToolEntryError::NoSelection)?;
+        .ok_or(ExpandEntryError::NoSelection)?;
     if !matches!(
         selected.kind,
         crate::protocol::ChatEntryKind::ToolCall { .. }
             | crate::protocol::ChatEntryKind::ToolResult { .. }
+            | crate::protocol::ChatEntryKind::Compaction { .. }
     ) {
-        return Err(ExpandToolEntryError::NotToolEntry);
+        return Err(ExpandEntryError::NotExpandable);
     }
     Ok(())
 }
@@ -306,6 +307,31 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn expand_entry_succeeds_with_selected_compaction() {
+        // Given a state with a selected compaction entry.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry {
+            id: crate::protocol::ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: crate::protocol::ChatEntryKind::Compaction {
+                summary: "summary".to_owned(),
+                tokens_before: 100,
+                entries_compacted: 5,
+                model_used: "test/model".to_owned(),
+            },
+            pin_position: None,
+            context_override: crate::protocol::ContextOverride::Default,
+        });
+        state.active_session_mut().select_next_entry();
+
+        // When validating expand tool entry.
+        let result = validate_expand_tool_entry(&state);
+
+        // Then it succeeds.
+        assert!(result.is_ok());
+    }
+
+    #[rstest::rstest]
     fn expand_tool_entry_fails_with_no_selection() {
         // Given a state with empty history (no selection possible).
         let state = AppState::default();
@@ -314,7 +340,7 @@ mod tests {
         let result = validate_expand_tool_entry(&state);
 
         // Then it returns NoSelection error.
-        assert!(matches!(result, Err(ExpandToolEntryError::NoSelection)));
+        assert!(matches!(result, Err(ExpandEntryError::NoSelection)));
     }
 
     #[rstest::rstest]
@@ -329,8 +355,8 @@ mod tests {
         // When validating expand tool entry.
         let result = validate_expand_tool_entry(&state);
 
-        // Then it returns NotToolEntry error.
-        assert!(matches!(result, Err(ExpandToolEntryError::NotToolEntry)));
+        // Then it returns NotExpandable error.
+        assert!(matches!(result, Err(ExpandEntryError::NotExpandable)));
     }
 
     #[rstest::rstest]
