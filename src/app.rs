@@ -143,14 +143,15 @@ impl App {
                 let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
 
                 // Initialize plugin system.
+                // Create the MsgHandler early so the plugin CommandSender routes
+                // through the TUI message handler (where the welcome subscriber
+                // intercept lives) instead of directly to the actor host.
+                let tui_events = nullslop_tui::MsgHandler::new();
+                let tui_event_sender = tui_events.sender();
                 let (plugin_host, welcome_subscriber) = {
-                    let sender = core.sender().clone();
                     let cmd_sender = nullslop_plugin::CommandSender::new(
                         move |cmd: nullslop_domain::Command| {
-                            let _ = sender.send(nullslop_domain::AppMsg::Command {
-                                command: cmd,
-                                source: None,
-                            });
+                            tui_event_sender.send(nullslop_tui::msg::Msg::Command(cmd));
                         },
                     );
                     let welcome_sub = nullslop_plugin::WelcomeSubscriber::new(cmd_sender.clone());
@@ -199,7 +200,7 @@ impl App {
                     services,
                     actor_host,
                     ui_registry,
-                    events: nullslop_tui::MsgHandler::new(),
+                    events: tui_events,
                     which_key,
                     suspend: nullslop_tui::suspend::Suspend::new(),
                     event_thread: None,
