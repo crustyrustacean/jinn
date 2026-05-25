@@ -13,19 +13,12 @@ use crate::protocol::PromptStrategyId;
 /// Default persona name used when none is explicitly set.
 const DEFAULT_PERSONA_NAME: &str = "coding-assistant";
 
-/// Default token budget for the token-budget strategy.
-pub const DEFAULT_TOKEN_BUDGET: usize = 150_000;
-
 /// Default sliding window size for the sliding-window strategy.
 pub const DEFAULT_SLIDING_WINDOW_SIZE: usize = 5;
 
 /// Serde default for `persona_name` — ensures old serialized sessions deserialize correctly.
 fn default_persona_name() -> String {
     DEFAULT_PERSONA_NAME.to_owned()
-}
-
-fn default_token_budget() -> usize {
-    DEFAULT_TOKEN_BUDGET
 }
 
 fn default_sliding_window_size() -> usize {
@@ -49,14 +42,6 @@ pub struct SessionProfile {
     /// Old serialized sessions without this field deserialize to the default.
     #[serde(default = "default_persona_name")]
     pub persona_name: String,
-    /// The token budget for the token-budget strategy. Inherited from global config
-    /// on session creation. Old serialized sessions without this field deserialize
-    /// to the default (150_000).
-    #[serde(default = "default_token_budget")]
-    pub token_budget: usize,
-    /// The sliding window size for the sliding-window strategy. Inherited from
-    /// global config on session creation. Old serialized sessions without this
-    /// field deserialize to the default (5).
     #[serde(default = "default_sliding_window_size")]
     pub sliding_window_size: usize,
 }
@@ -67,7 +52,6 @@ impl Default for SessionProfile {
             model: NO_PROVIDER_ID.to_owned(),
             strategy: PromptStrategyId::passthrough(),
             persona_name: DEFAULT_PERSONA_NAME.to_owned(),
-            token_budget: DEFAULT_TOKEN_BUDGET,
             sliding_window_size: DEFAULT_SLIDING_WINDOW_SIZE,
         }
     }
@@ -78,14 +62,12 @@ impl SessionProfile {
     pub fn from_config(
         model: String,
         strategy: PromptStrategyId,
-        token_budget: usize,
         sliding_window_size: usize,
     ) -> Self {
         Self {
             model,
             strategy,
             persona_name: DEFAULT_PERSONA_NAME.to_owned(),
-            token_budget,
             sliding_window_size,
         }
     }
@@ -95,14 +77,12 @@ impl SessionProfile {
         model: String,
         strategy: PromptStrategyId,
         persona_name: String,
-        token_budget: usize,
         sliding_window_size: usize,
     ) -> Self {
         Self {
             model,
             strategy,
             persona_name,
-            token_budget,
             sliding_window_size,
         }
     }
@@ -129,13 +109,12 @@ mod tests {
         let profile = SessionProfile::from_config(
             "ollama/llama3".to_owned(),
             PromptStrategyId::sliding_window(),
-            200_000,
             10,
         );
 
         // Then the profile uses those values.
         assert_eq!(profile.model, "ollama/llama3");
         assert_eq!(profile.strategy, PromptStrategyId::sliding_window());
-        assert_eq!(profile.token_budget, 200_000);
+        assert_eq!(profile.sliding_window_size, 10);
     }
 }
