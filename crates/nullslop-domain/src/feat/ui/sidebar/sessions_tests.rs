@@ -290,6 +290,35 @@ fn sorted_sessions_count_matches_hashmap() {
     assert_eq!(sorted_open_sessions(&state).len(), 4);
 }
 
+#[rstest::rstest]
+fn mark_busy_makes_session_not_idle() {
+    // Given a session that is Idle but has mark_busy() called.
+    let mut state = AppState::default();
+    state.active_session_mut().mark_busy();
+
+    // When collecting sorted open sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then the session entry is not idle (throbber will animate).
+    assert_eq!(sessions.len(), 1);
+    assert!(!sessions[0].is_idle);
+}
+
+#[rstest::rstest]
+fn mark_busy_complete_returns_to_idle() {
+    // Given a session that was busy but completed.
+    let mut state = AppState::default();
+    state.active_session_mut().mark_busy();
+    state.active_session_mut().mark_busy_complete();
+
+    // When collecting sorted open sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then the session entry is idle again.
+    assert_eq!(sessions.len(), 1);
+    assert!(sessions[0].is_idle);
+}
+
 // --- Rendering ---
 
 use nullslop_testutil::setup_term;
