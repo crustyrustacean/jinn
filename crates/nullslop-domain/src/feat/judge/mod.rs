@@ -21,6 +21,9 @@
 //! Each judge defines a system prompt that instructs the LLM how to evaluate
 //! the origin session's work, and which tools to use for reporting verdicts.
 
+pub mod builtin_session_query;
+pub mod builtin_task_complete;
+pub mod builtin_task_incomplete;
 pub mod judge;
 pub mod judge_scan_actor;
 pub mod loader;
@@ -31,4 +34,19 @@ pub use judge::{Judge, JudgeMeta};
 pub use judge_scan_actor::{JudgeScanActor, JudgeScanActorDeps};
 pub use loader::{parse_judge_file, scan_judges_dir, scan_judges_merged};
 pub use picker_entry::JudgePickerEntry;
-pub use protocol::{JudgesLoaded, RescanJudges};
+pub use protocol::{JudgeVerdict, JudgesLoaded, RescanJudges, Verdict};
+
+use nullslop_provider::ToolDefinition;
+
+/// Returns the three judge-specific tool definitions.
+///
+/// These are injected into the prompt only for judge sessions
+/// (when `session.judge().is_some()`).
+#[must_use]
+pub fn judge_tool_definitions() -> Vec<ToolDefinition> {
+    vec![
+        builtin_session_query::definition(),
+        builtin_task_complete::definition(),
+        builtin_task_incomplete::definition(),
+    ]
+}

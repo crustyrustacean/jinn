@@ -132,6 +132,8 @@ pub enum Event {
     WorkflowNodeStatusChanged(crate::feat::workflow::protocol::event::WorkflowNodeStatusChanged),
     /// Judges have been scanned and loaded from disk.
     JudgesLoaded(crate::feat::judge::JudgesLoaded),
+    /// A judge rendered a verdict on its origin session.
+    JudgeVerdict(crate::feat::judge::JudgeVerdict),
     /// A dynamic event from a plugin, carrying an arbitrary JSON payload.
     ///
     /// Broadcast by the runtime [`name`](DynamicEvent::name) field, not the
@@ -205,6 +207,9 @@ impl Event {
             }
             Self::JudgesLoaded(..) => {
                 Some(crate::feat::judge::JudgesLoaded::TYPE_NAME)
+            }
+            Self::JudgeVerdict(..) => {
+                Some(crate::feat::judge::JudgeVerdict::TYPE_NAME)
             }
             Self::Dynamic(..) => Some(DynamicEvent::TYPE_NAME),
         }
