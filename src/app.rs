@@ -170,6 +170,7 @@ impl App {
 
                     // Built-in plugins (embedded in the binary, always available).
                     let builtins = host.load_builtins();
+                    tracing::info!(count = builtins.len(), "loaded builtin plugins");
                     plugin_count += builtins.len();
 
                     // System plugins (installed by package manager).
@@ -191,6 +192,7 @@ impl App {
                     }
 
                     // Fire app::started event.
+                    tracing::info!("dispatching app::started event");
                     host.dispatch_event("app::started", &serde_json::Value::Null);
                 }
 

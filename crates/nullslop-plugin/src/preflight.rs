@@ -13,6 +13,10 @@ use parking_lot::Mutex;
 /// Internal preflight hook map stored in Lua app_data.
 pub(crate) type PreflightMap = Arc<Mutex<HashMap<String, Vec<Function>>>>;
 
+/// Wrapper to make [`PreflightMap`] a distinct type for mlua `app_data`.
+#[derive(Clone)]
+pub(crate) struct Preflights(pub(crate) PreflightMap);
+
 /// Installs the preflight map into Lua app_data.
 ///
 /// Called once during host initialization. Lua plugins don't have direct
@@ -21,7 +25,7 @@ pub(crate) type PreflightMap = Arc<Mutex<HashMap<String, Vec<Function>>>>;
 pub fn init(lua: &Lua) -> PreflightMap {
     #[expect(clippy::arc_with_non_send_sync, reason = "mlua::Function is not Send but only used from the single Lua thread")]
     let map: PreflightMap = Arc::new(Mutex::new(HashMap::new()));
-    lua.set_app_data(map.clone());
+    lua.set_app_data(Preflights(map.clone()));
     map
 }
 
@@ -32,11 +36,11 @@ pub fn init(lua: &Lua) -> PreflightMap {
 #[expect(clippy::allow_attributes, reason = "cannot use #[expect(dead_code)] because it's unfulfilled in test builds")]
 #[allow(dead_code, reason = "scaffold for future Lua preflight registration")]
 pub fn register(lua: &Lua, command_name: String, callback: Function) {
-    let Some(guard) = lua.app_data_ref::<PreflightMap>() else {
+    let Some(guard) = lua.app_data_ref::<Preflights>() else {
         tracing::warn!("preflight map not found in Lua app_data");
         return;
     };
-    guard.lock().entry(command_name).or_default().push(callback);
+    guard.0.lock().entry(command_name).or_default().push(callback);
 }
 
 /// Dispatches a preflight check for a command.
@@ -45,12 +49,12 @@ pub fn register(lua: &Lua, command_name: String, callback: Function) {
 /// approve (or no hooks are registered). Returns `false` on the first veto.
 /// Lua errors during hook execution are logged and treated as vetoes.
 pub fn dispatch(lua: &Lua, command_name: &str, payload: &serde_json::Value) -> bool {
-    let Some(guard) = lua.app_data_ref::<PreflightMap>() else {
+    let Some(guard) = lua.app_data_ref::<Preflights>() else {
         return true; // No map → allow.
     };
 
     let callbacks: Vec<Function> = {
-        let map = guard.lock();
+        let map = guard.0.lock();
         map.get(command_name).cloned().unwrap_or_default()
     };
 
