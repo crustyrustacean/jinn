@@ -105,9 +105,14 @@ pub fn assemble_prompt(
     let history = session.history();
 
     // Apply overrides: tool definitions.
-    let tool_defs: Vec<ToolDefinition> = overrides
+    let mut tool_defs: Vec<ToolDefinition> = overrides
         .and_then(|o| o.tool_definitions.clone())
         .unwrap_or_else(|| state.context.tool_definitions.values().cloned().collect());
+
+    // Inject judge-specific tools for judge sessions.
+    if session.judge().is_some() {
+        tool_defs.extend(crate::feat::judge::judge_tool_definitions());
+    }
 
     // Apply overrides: tool context block.
     let tool_block = if overrides.is_some_and(|o| o.tool_definitions.is_some()) {

@@ -13,11 +13,11 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! Judge protocol types — commands and events for judge scanning.
+//! Judge protocol types — commands and events for judge scanning and verdicts.
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{CommandMsg, EventMsg};
+use crate::protocol::{CommandMsg, EventMsg, SessionId};
 
 use super::Judge;
 
@@ -34,4 +34,27 @@ pub struct JudgesLoaded {
     pub judges: Vec<Judge>,
     /// Error message if scanning failed, `None` on success.
     pub error: Option<String>,
+}
+
+/// A judge's evaluation verdict.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Verdict {
+    /// The task passed evaluation.
+    Pass,
+    /// The task failed evaluation, with a summary of issues.
+    Fail(String),
+}
+
+/// Emitted when a judge session renders a verdict on its origin.
+#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
+#[event_msg("judge-verdict")]
+pub struct JudgeVerdict {
+    /// The judge session that rendered the verdict.
+    pub judge_session_id: SessionId,
+    /// The origin session being evaluated.
+    pub origin_session_id: SessionId,
+    /// The name of the judge definition.
+    pub judge_name: String,
+    /// The verdict (pass or fail with summary).
+    pub verdict: Verdict,
 }

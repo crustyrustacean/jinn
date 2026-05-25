@@ -629,6 +629,15 @@ impl ChatSessionState {
         self.core.judge = judge;
     }
 
+    /// Update the `is_attached` flag on the judge metadata.
+    ///
+    /// No-op if this session is not a judge.
+    pub fn set_judge_attached(&mut self, attached: bool) {
+        if let Some(ref mut meta) = self.core.judge {
+            meta.is_attached = attached;
+        }
+    }
+
     /// Append an entry to the history and return its index.
     ///
     /// Implements smart auto-scroll: only resets scroll and advances cursor
