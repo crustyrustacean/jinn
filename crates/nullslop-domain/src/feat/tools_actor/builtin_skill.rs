@@ -132,6 +132,7 @@ mod tests {
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
             sink: None,
+            shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
         }
@@ -243,6 +244,7 @@ mod tests {
             session_id: Some(session_id.clone()),
             app_paths: crate::common::app_paths::AppPaths::default(),
             sink: None,
+            shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
         };
@@ -285,6 +287,7 @@ mod tests {
             session_id: Some(session_id),
             app_paths: crate::common::app_paths::AppPaths::default(),
             sink: None,
+            shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
         };

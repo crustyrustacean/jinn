@@ -47,6 +47,15 @@ pub enum ToolChoiceValue {
 }
 
 /// Builds a [`ChatCompletionRequest`] from protocol types.
+///
+/// Performs message sanitization required by strict OpenAI-compatible providers:
+///
+/// - All system messages are concatenated into a single leading system message.
+/// - Consecutive messages with the same role (user, assistant) are merged by
+///   joining their content with `\n\n`. This prevents "illegal messages" errors
+///   from providers like ZAI that reject same-role adjacency.
+/// - Assistant messages with tool calls use `null` content instead of empty
+///   string when the text content is empty (required by ZAI).
 pub fn build_request(
     model: &str,
     messages: &[LlmMessage],
@@ -76,6 +85,10 @@ pub fn build_request(
         );
     }
 
+    // Merge consecutive messages with the same role.
+    // Many providers (ZAI, etc.) reject adjacent same-role messages.
+    openai_messages = merge_consecutive_same_role(openai_messages);
+
     let openai_tools = if tools.is_empty() {
         None
     } else {
@@ -101,6 +114,58 @@ pub fn build_request(
     }
 }
 
+/// Merge consecutive messages that share the same role.
+///
+/// Only `user` and `assistant` messages are merged. `tool` messages are
+/// never merged (they are keyed by `tool_call_id`). Messages that have
+/// `tool_calls` are also never merged (the tool_calls array is not
+/// concatenatable).
+fn merge_consecutive_same_role(messages: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
+    if messages.is_empty() {
+        return messages;
+    }
+
+    let mut merged: Vec<serde_json::Value> = Vec::with_capacity(messages.len());
+    merged.push(messages[0].clone());
+
+    for msg in messages.iter().skip(1) {
+        let prev = merged.last_mut().expect("merged is non-empty");
+        let prev_role = prev.get("role").and_then(|r| r.as_str()).unwrap_or("");
+        let curr_role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("");
+
+        // Only merge user+user or assistant+assistant, and only when
+        // neither has tool_calls (those are structurally different).
+        if (prev_role == "user" && curr_role == "user")
+            || (prev_role == "assistant" && curr_role == "assistant"
+                && !prev.get("tool_calls").is_some()
+                && !msg.get("tool_calls").is_some())
+        {
+            // Concatenate content fields.
+            let prev_content = prev
+                .get("content")
+                .and_then(|c| c.as_str())
+                .unwrap_or("");
+            let curr_content = msg
+                .get("content")
+                .and_then(|c| c.as_str())
+                .unwrap_or("");
+
+            // Use null for empty assistant content, string otherwise.
+            let new_content = format!("{prev_content}\n\n{curr_content}");
+            let new_content = if prev_role == "assistant" && new_content.trim().is_empty() {
+                serde_json::Value::Null
+            } else {
+                serde_json::Value::String(new_content)
+            };
+            prev["content"] = new_content;
+        } else {
+            merged.push(msg.clone());
+        }
+    }
+
+    merged
+}
+
 /// Convert an [`LlmMessage`] to an OpenAI-format JSON object.
 fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
     match msg {
@@ -124,9 +189,16 @@ fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
             tool_calls: Some(calls),
         } => {
             let json_calls: Vec<serde_json::Value> = calls.iter().map(tool_call_to_json).collect();
+            // Use null for empty assistant content with tool calls.
+            // Some providers (ZAI) reject empty-string content.
+            let content_value = if content.is_empty() {
+                serde_json::Value::Null
+            } else {
+                serde_json::Value::String(content.clone())
+            };
             serde_json::json!({
                 "role": "assistant",
-                "content": content,
+                "content": content_value,
                 "tool_calls": json_calls,
             })
         }
@@ -296,8 +368,92 @@ mod tests {
             }]),
         });
         assert_eq!(json["role"], "assistant");
+        // Empty content with tool calls should serialize as null.
+        assert!(json["content"].is_null());
         let calls = json["tool_calls"].as_array().unwrap();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0]["function"]["name"], "echo");
+    }
+
+    #[rstest::rstest]
+    fn assistant_with_tool_calls_and_nonempty_content_serializes_as_string() {
+        let json = message_to_json(&LlmMessage::Assistant {
+            content: "Let me check.".into(),
+            tool_calls: Some(vec![crate::tool_types::ToolCall {
+                id: "call_1".into(),
+                name: "echo".into(),
+                arguments: r#"{\"x\":1}"#.into(),
+            }]),
+        });
+        assert_eq!(json["role"], "assistant");
+        assert_eq!(json["content"].as_str().unwrap(), "Let me check.");
+    }
+
+    #[rstest::rstest]
+    fn merge_consecutive_user_messages() {
+        let messages = vec![
+            LlmMessage::User { content: "hello".into() },
+            LlmMessage::User { content: "world".into() },
+        ];
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        assert_eq!(req.messages.len(), 1);
+        assert_eq!(req.messages[0]["role"], "user");
+        let content = req.messages[0]["content"].as_str().unwrap();
+        assert!(content.contains("hello"));
+        assert!(content.contains("world"));
+    }
+
+    #[rstest::rstest]
+    fn merge_consecutive_assistant_messages() {
+        let messages = vec![
+            LlmMessage::Assistant { content: "first".into(), tool_calls: None },
+            LlmMessage::Assistant { content: "second".into(), tool_calls: None },
+        ];
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        assert_eq!(req.messages.len(), 1);
+        assert_eq!(req.messages[0]["role"], "assistant");
+        let content = req.messages[0]["content"].as_str().unwrap();
+        assert!(content.contains("first"));
+        assert!(content.contains("second"));
+    }
+
+    #[rstest::rstest]
+    fn merge_does_not_combine_tool_messages() {
+        let messages = vec![
+            LlmMessage::Tool {
+                tool_call_id: "call_1".into(),
+                name: "echo".into(),
+                content: "result1".into(),
+            },
+            LlmMessage::Tool {
+                tool_call_id: "call_2".into(),
+                name: "echo".into(),
+                content: "result2".into(),
+            },
+        ];
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        assert_eq!(req.messages.len(), 2);
+        assert_eq!(req.messages[0]["tool_call_id"], "call_1");
+        assert_eq!(req.messages[1]["tool_call_id"], "call_2");
+    }
+
+    #[rstest::rstest]
+    fn merge_does_not_combine_assistant_with_tool_calls() {
+        let messages = vec![
+            LlmMessage::Assistant {
+                content: String::new(),
+                tool_calls: Some(vec![crate::tool_types::ToolCall {
+                    id: "call_1".into(),
+                    name: "echo".into(),
+                    arguments: "{}".into(),
+                }]),
+            },
+            LlmMessage::Assistant {
+                content: "plain text".into(),
+                tool_calls: None,
+            },
+        ];
+        let req = build_request("gpt-4", &messages, &[], &serde_json::Map::new());
+        assert_eq!(req.messages.len(), 2);
     }
 }

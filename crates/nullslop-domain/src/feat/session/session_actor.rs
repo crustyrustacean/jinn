@@ -65,6 +65,8 @@ pub struct SessionPersistenceActor {
     /// Registry of builtin lifecycle handlers.
     pub(in crate::feat::session::session_actor) builtin_registry:
         crate::feat::session_lifecycle::builtin::BuiltinRegistry,
+    /// Shell captured at startup for running lifecycle commands.
+    pub(in crate::feat::session::session_actor) shell: String,
 }
 
 /// Dependencies for [`SessionPersistenceActor`].
@@ -79,6 +81,8 @@ pub struct SessionPersistenceActorDeps {
     pub counter: TiktokenCounter,
     /// Registry of builtin lifecycle handlers.
     pub builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry,
+    /// Shell captured at startup for running lifecycle commands.
+    pub shell: String,
 }
 
 impl Actor for SessionPersistenceActor {
@@ -145,6 +149,7 @@ impl Actor for SessionPersistenceActor {
             store: deps.store,
             counter: deps.counter,
             builtin_registry: deps.builtin_registry,
+            shell: deps.shell,
         }
     }
 

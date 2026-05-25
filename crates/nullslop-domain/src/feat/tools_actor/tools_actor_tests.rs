@@ -39,6 +39,7 @@ fn default_test_ctx() -> (
         state,
         app_paths: crate::common::app_paths::AppPaths::default(),
         builtin_filter: None,
+        shell: "/bin/sh".to_owned(),
     };
     (sink, ctx, deps)
 }
@@ -258,6 +259,7 @@ async fn execute_builtin_get_time_tool() {
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
         sink: None,
+        shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
     };
@@ -294,6 +296,7 @@ async fn execute_builtin_read_tool() {
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
         sink: None,
+        shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
     };
@@ -324,6 +327,7 @@ async fn execute_builtin_read_tool_returns_error_on_missing_file() {
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
         sink: None,
+        shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
     };
@@ -659,6 +663,7 @@ async fn write_tool_returns_success() {
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
         sink: None,
+        shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
     };
@@ -695,6 +700,7 @@ async fn write_tool_creates_file_with_content() {
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
         sink: None,
+        shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
     };
@@ -730,6 +736,7 @@ async fn write_tool_creates_parent_dirs_and_file() {
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
         sink: None,
+        shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
     };
@@ -769,6 +776,7 @@ async fn write_tool_overwrites_existing_file() {
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
         sink: None,
+        shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
     };
@@ -798,6 +806,7 @@ async fn write_tool_returns_error_on_bad_json() {
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
         sink: None,
+        shell: "/bin/sh".to_owned(),
         max_output_lines: None,
         max_output_bytes: None,
     };
