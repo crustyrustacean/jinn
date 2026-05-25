@@ -24,6 +24,7 @@ user_block_bg = [48, 50, 58]   # slightly lighter bg
 tool_fg = [99, 101, 117] # comment
 tool_success_bg = [36, 50, 36]
 tool_failure_bg = [50, 30, 38]
+compaction_block_bg = [60, 45, 75]   # vivid purple matching Sonokai palette
 truncation_fg = [75, 78, 88]
 
 # Picker
