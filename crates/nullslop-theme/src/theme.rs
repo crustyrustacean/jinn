@@ -52,6 +52,8 @@ pub struct Theme {
     pub tool_failure_bg: Color,
     /// Tool result pending (still executing) block background.
     pub tool_pending_bg: Color,
+    /// Compaction summary block background.
+    pub compaction_block_bg: Color,
     /// Tool result truncation indicator foreground.
     pub truncation_fg: Color,
 
@@ -133,6 +135,8 @@ pub struct ThemeFile {
     pub tool_failure_bg: Option<ThemeColor>,
     #[serde(default)]
     pub tool_pending_bg: Option<ThemeColor>,
+    #[serde(default)]
+    pub compaction_block_bg: Option<ThemeColor>,
     #[serde(default)]
     pub truncation_fg: Option<ThemeColor>,
 
@@ -233,6 +237,9 @@ impl ThemeFile {
             tool_pending_bg: self
                 .tool_pending_bg
                 .map_or(fallback.tool_pending_bg, crate::color::ThemeColor::inner),
+            compaction_block_bg: self
+                .compaction_block_bg
+                .map_or(fallback.compaction_block_bg, crate::color::ThemeColor::inner),
             truncation_fg: self
                 .truncation_fg
                 .map_or(fallback.truncation_fg, crate::color::ThemeColor::inner),
@@ -338,6 +345,9 @@ impl ThemeFile {
             tool_pending_bg: self
                 .tool_pending_bg
                 .map_or(Color::Reset, crate::color::ThemeColor::inner),
+            compaction_block_bg: self
+                .compaction_block_bg
+                .map_or(Color::Reset, crate::color::ThemeColor::inner),
             truncation_fg: self
                 .truncation_fg
                 .map_or(Color::Reset, crate::color::ThemeColor::inner),
@@ -409,6 +419,7 @@ mod tests {
             tool_success_bg: None,
             tool_failure_bg: None,
             tool_pending_bg: None,
+            compaction_block_bg: None,
             truncation_fg: None,
             picker_active_marker: None,
             picker_selected_bg: None,
@@ -457,6 +468,7 @@ mod tests {
             tool_success_bg: None,
             tool_failure_bg: None,
             tool_pending_bg: None,
+            compaction_block_bg: None,
             truncation_fg: None,
             picker_active_marker: None,
             picker_selected_bg: None,
@@ -517,6 +529,7 @@ mod tests {
             tool_success_bg: Some(ThemeColor(Color::Rgb(40, 50, 40))),
             tool_failure_bg: Some(ThemeColor(Color::Rgb(60, 40, 40))),
             tool_pending_bg: Some(ThemeColor(Color::Rgb(45, 45, 50))),
+            compaction_block_bg: Some(ThemeColor(Color::Rgb(60, 50, 80))),
             truncation_fg: Some(ThemeColor(Color::Rgb(83, 83, 83))),
             picker_active_marker: Some(ThemeColor(Color::Green)),
             picker_selected_bg: Some(ThemeColor(Color::DarkGray)),
