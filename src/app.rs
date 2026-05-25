@@ -79,13 +79,13 @@ impl App {
 
         // Provider registry is populated by the provider-init actor.
         // Start with an empty registry.
-        let empty_config = nullslop_domain::ProvidersConfig {
-            providers: vec![],
-            aliases: vec![],
-            default_provider: None,
-        };
         let provider_registry = ProviderRegistryService::new(
-            ProviderRegistry::from_config(empty_config).change_context(AppError)?,
+            ProviderRegistry::from_config(nullslop_domain::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+            })
+            .change_context(AppError)?,
         );
 
         // Initial factory is the no-provider sentinel until actors resolve the real one.
@@ -499,17 +499,18 @@ fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
 async fn fetch_models() -> Result<(), Report<AppError>> {
     use nullslop_domain::common::app_info::APP_NAME;
 
-    let url = "https://models.dev/api.json";
-    tracing::info!(url, "fetching model metadata");
+    tracing::info!(url = "https://models.dev/api.json", "fetching model metadata");
 
-    let response = reqwest::get(url)
+    let response = reqwest::get("https://models.dev/api.json")
         .await
         .change_context(AppError)
         .attach("failed to fetch models.dev API")?;
 
-    let status = response.status();
-    if !status.is_success() {
-        return Err(Report::new(AppError).attach(format!("models.dev returned HTTP {status}")));
+    if !response.status().is_success() {
+        return Err(Report::new(AppError).attach(format!(
+            "models.dev returned HTTP {}",
+            response.status()
+        )));
     }
 
     let body = response
@@ -518,22 +519,24 @@ async fn fetch_models() -> Result<(), Report<AppError>> {
         .change_context(AppError)
         .attach("failed to read models.dev response")?;
 
-    // Validate that the response is valid JSON.
-    let parsed: serde_json::Value = serde_json::from_str(&body)
-        .change_context(AppError)
-        .attach("models.dev response is not valid JSON")?;
+    // Validate that the response is valid JSON and count providers/models.
+    let (provider_count, model_count) = {
+        let parsed: serde_json::Value = serde_json::from_str(&body)
+            .change_context(AppError)
+            .attach("models.dev response is not valid JSON")?;
 
-    // Count providers and models for the summary.
-    let mut provider_count = 0u32;
-    let mut model_count = 0u32;
-    if let serde_json::Value::Object(map) = &parsed {
-        for (_provider_name, provider_data) in map {
-            provider_count += 1;
-            if let Some(models) = provider_data.get("models").and_then(|m| m.as_object()) {
-                model_count += models.len() as u32;
+        let mut provider_count = 0u32;
+        let mut model_count = 0u32;
+        if let serde_json::Value::Object(map) = &parsed {
+            for (_provider_name, provider_data) in map {
+                provider_count += 1;
+                if let Some(models) = provider_data.get("models").and_then(|m| m.as_object()) {
+                    model_count += models.len() as u32;
+                }
             }
         }
-    }
+        (provider_count, model_count)
+    };
 
     // Write to user cache directory.
     let target_path = dirs::cache_dir()
