@@ -600,6 +600,170 @@ fn cut_on_standalone_assistant_stays() {
     assert_eq!(result, 1);
 }
 
+#[test]
+fn pure_tool_loop_cut_on_tool_call_finds_assistant() {
+    // Given a tool loop with no User messages after the initial one.
+    let history = vec![
+        ChatEntry::user("fix this bug"),
+        ChatEntry::assistant("checking"),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::tool_result("tc1", "bash", "file.txt", ToolResultStatus::Success),
+        ChatEntry::assistant("done"),
+    ];
+
+    // When cut lands on ToolCall entry.
+    let result = super::adjust_cut_to_boundary(&history, 2);
+
+    // Then it walks to the next Assistant (not history.len()).
+    assert_eq!(result, 4);
+}
+
+#[test]
+fn pure_tool_loop_cut_on_tool_result_finds_assistant() {
+    // Given a tool loop with no User messages after the initial one.
+    let history = vec![
+        ChatEntry::user("fix this bug"),
+        ChatEntry::assistant("checking"),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::tool_result("tc1", "bash", "file.txt", ToolResultStatus::Success),
+        ChatEntry::assistant("done"),
+    ];
+
+    // When cut lands on ToolResult entry.
+    let result = super::adjust_cut_to_boundary(&history, 3);
+
+    // Then it walks to the next Assistant.
+    assert_eq!(result, 4);
+}
+
+#[test]
+fn cut_on_assistant_in_tool_loop_stays() {
+    // Given a tool loop ending with Assistant.
+    let history = vec![
+        ChatEntry::user("fix this bug"),
+        ChatEntry::assistant("checking"),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::tool_result("tc1", "bash", "file.txt", ToolResultStatus::Success),
+        ChatEntry::assistant("done"),
+    ];
+
+    // When cut lands on Assistant.
+    let result = super::adjust_cut_to_boundary(&history, 4);
+
+    // Then it stays — Assistant is a valid cut point.
+    assert_eq!(result, 4);
+}
+
+#[test]
+fn tool_loop_no_trailing_assistant_returns_len() {
+    // Given a tool loop ending with ToolResult (no trailing Assistant).
+    let history = vec![
+        ChatEntry::user("fix this bug"),
+        ChatEntry::assistant("checking"),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::tool_result("tc1", "bash", "file.txt", ToolResultStatus::Success),
+    ];
+
+    // When cut lands on ToolCall with no non-tool entry after it.
+    let result = super::adjust_cut_to_boundary(&history, 2);
+
+    // Then it returns history.len() — compact everything.
+    assert_eq!(result, 4);
+}
+
+#[test]
+fn cut_between_tool_cycles_finds_assistant() {
+    // Given multiple tool cycles with no User messages.
+    let history = vec![
+        ChatEntry::user("fix this bug"),
+        ChatEntry::assistant("checking"),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::tool_result("tc1", "bash", "file.txt", ToolResultStatus::Success),
+        ChatEntry::assistant("reading file"),
+        ChatEntry::tool_call("tc2", "read", "file.rs"),
+        ChatEntry::tool_result("tc2", "read", "contents", ToolResultStatus::Success),
+        ChatEntry::assistant("final fix"),
+    ];
+
+    // When cut lands on ToolResult between cycles.
+    let result = super::adjust_cut_to_boundary(&history, 3);
+
+    // Then it walks to the next Assistant (start of next cycle).
+    assert_eq!(result, 4);
+}
+
+#[test]
+fn cut_on_error_is_safe() {
+    // Given history with an Error entry after tool chain.
+    let history = vec![
+        ChatEntry::user("fix this bug"),
+        ChatEntry::assistant("checking"),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::tool_result("tc1", "bash", "file.txt", ToolResultStatus::Success),
+        ChatEntry::error("something went wrong"),
+    ];
+
+    // When cut lands on Error.
+    let result = super::adjust_cut_to_boundary(&history, 4);
+
+    // Then it stays — Error is a valid cut point.
+    assert_eq!(result, 4);
+}
+
+#[test]
+fn cut_on_compaction_entry_is_safe() {
+    // Given history with a Compaction entry after tool chain.
+    let history = vec![
+        ChatEntry::user("fix this bug"),
+        ChatEntry::assistant("checking"),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::tool_result("tc1", "bash", "file.txt", ToolResultStatus::Success),
+        ChatEntry {
+            id: crate::protocol::ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::Compaction {
+                summary: "previous summary".to_owned(),
+                tokens_before: 100,
+                entries_compacted: 2,
+                model_used: "test".to_owned(),
+            },
+            pin_position: None,
+            context_override: crate::protocol::ContextOverride::Default,
+        },
+    ];
+
+    // When cut lands on Compaction.
+    let result = super::adjust_cut_to_boundary(&history, 4);
+
+    // Then it stays — Compaction is a valid cut point.
+    assert_eq!(result, 4);
+}
+
+#[test]
+fn long_tool_loop_finds_nearest_assistant() {
+    // Given a long autonomous tool loop with many cycles.
+    let history = vec![
+        ChatEntry::user("fix this bug"),
+        ChatEntry::assistant("cycle a"),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::tool_result("tc1", "bash", "file.txt", ToolResultStatus::Success),
+        ChatEntry::assistant("cycle b"),
+        ChatEntry::tool_call("tc2", "read", "file.rs"),
+        ChatEntry::tool_result("tc2", "read", "contents", ToolResultStatus::Success),
+        ChatEntry::assistant("cycle c"),
+        ChatEntry::tool_call("tc3", "bash", "cat other.txt"),
+        ChatEntry::tool_result("tc3", "bash", "other contents", ToolResultStatus::Success),
+        ChatEntry::assistant("final fix"),
+    ];
+
+    // When cut lands on ToolCall tc2 (index 5).
+    let result = super::adjust_cut_to_boundary(&history, 5);
+
+    // Then it walks to the nearest Assistant — "cycle c" at index 7.
+    // The reserve window keeps: Assistant("cycle c") → ToolCall(tc3) → ToolResult(tc3) → Assistant("final fix").
+    assert_eq!(result, 7);
+}
+
 // --- Cut-point algorithm tests for reserve and compact_all ---
 
 #[test]
