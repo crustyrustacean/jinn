@@ -137,6 +137,11 @@ impl App {
                     &paths.prompts_dir(),
                     &paths.system_prompts_dir(),
                 );
+                load_compaction_prompt(
+                    &core.state,
+                    &paths.prompts_dir(),
+                    &paths.system_prompts_dir(),
+                )?;
                 load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
                 // Resolve mouse selection config from environment.
@@ -167,11 +172,6 @@ impl App {
                 // Load system plugins (/usr/share/nullslop/plugins).
                 if let Some(ref host) = plugin_host {
                     let mut plugin_count = 0usize;
-
-                    // Built-in plugins (embedded in the binary, always available).
-                    let builtins = host.load_builtins();
-                    tracing::info!(count = builtins.len(), "loaded builtin plugins");
-                    plugin_count += builtins.len();
 
                     // System plugins (installed by package manager).
                     let system_dir = paths.system_plugins_dir();
@@ -249,6 +249,11 @@ impl App {
                     &_services.paths.prompts_dir(),
                     &_services.paths.system_prompts_dir(),
                 );
+                load_compaction_prompt(
+                    &core.state,
+                    &_services.paths.prompts_dir(),
+                    &_services.paths.system_prompts_dir(),
+                )?;
                 load_theme(
                     &core.state,
                     &_services.paths.themes_dir(),
@@ -330,6 +335,11 @@ impl App {
                             &paths.prompts_dir(),
                             &paths.system_prompts_dir(),
                         );
+                        load_compaction_prompt(
+                            &core.state,
+                            &paths.prompts_dir(),
+                            &paths.system_prompts_dir(),
+                        )?;
                         load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
                         let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
@@ -402,6 +412,11 @@ impl App {
                             &paths.prompts_dir(),
                             &paths.system_prompts_dir(),
                         );
+                        load_compaction_prompt(
+                            &core.state,
+                            &paths.prompts_dir(),
+                            &paths.system_prompts_dir(),
+                        )?;
                         load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
                         let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
@@ -464,6 +479,33 @@ fn load_prompt_templates(state: &State, user_dir: &Path, system_dir: &Path) {
         });
     tracing::info!(count = store.len(), "loaded prompt templates");
     state.write().context.prompt_templates = store;
+}
+
+/// Loads the compaction system prompt from user or system prompts directory.
+///
+/// Searches the user prompts directory first (`~/.config/nullslop/prompts/_compaction.md`),
+/// then the system prompts directory (`/usr/share/nullslop/prompts/_compaction.md`).
+///
+/// # Errors
+///
+/// Returns an error if the compaction prompt is missing from both directories
+/// or cannot be read. This is a fatal error — the application cannot run without it.
+fn load_compaction_prompt(
+    state: &State,
+    user_dir: &Path,
+    system_dir: &Path,
+) -> Result<(), Report<AppError>> {
+    let prompt = nullslop_domain::common::system_resource::load_system_resource(
+        "_compaction.md",
+        user_dir,
+        system_dir,
+    )
+    .change_context(AppError)
+    .attach("failed to load compaction prompt")?;
+
+    tracing::info!("loaded compaction prompt");
+    state.write().context.compaction_prompt = prompt;
+    Ok(())
 }
 
 /// Loads the theme from user preferences into the application state.
@@ -613,5 +655,42 @@ mod tests {
                 .find_by_name("test")
                 .is_some()
         );
+    }
+
+    #[rstest::rstest]
+    fn load_compaction_prompt_populates_state() {
+        // Given a user dir with a compaction prompt file.
+        let dir = tempfile::tempdir().expect("temp dir");
+        std::fs::write(dir.path().join("_compaction.md"), "test compaction prompt")
+            .expect("write compaction prompt");
+
+        let state = State::new(AppState::default());
+        let empty = PathBuf::from("/nonexistent");
+
+        // When loading the compaction prompt.
+        load_compaction_prompt(&state, dir.path(), &empty).expect("load");
+
+        // Then the state contains the prompt text.
+        let state = state.read();
+        assert_eq!(state.context.compaction_prompt, "test compaction prompt");
+    }
+
+    #[rstest::rstest]
+    fn load_compaction_prompt_returns_err_when_missing() {
+        // Given empty user and system dirs.
+        let user_dir = tempfile::tempdir().expect("temp dir");
+        let system_dir = tempfile::tempdir().expect("temp dir");
+
+        let state = State::new(AppState::default());
+
+        // When loading the compaction prompt with no file present.
+        let result = load_compaction_prompt(&state, user_dir.path(), system_dir.path());
+
+        // Then an error is returned (hard-fail semantics).
+        assert!(result.is_err(), "expected error when compaction prompt is missing");
+
+        // And the state compaction prompt remains empty.
+        let state = state.read();
+        assert!(state.context.compaction_prompt.is_empty());
     }
 }

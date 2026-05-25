@@ -2112,10 +2112,9 @@ mod tests {
     // --- Empty session archive/close tests ---
 
     #[tokio::test]
-    async fn archiving_empty_session_sets_archived_flag() {
-        // Given an actor with an empty session and a recording store.
+    async fn archiving_empty_session_does_not_persist_non_interacted() {
+        // Given an actor with an empty (non-interacted) session and a recording store.
         use super::super::super::helpers::{test_actor_with_store, test_context};
-        use crate::feat::session::chat_session::SessionState;
 
         let (actor, store) = test_actor_with_store(vec![]);
         let session_id = actor.state.read().session.active_session_id().clone();
@@ -2131,18 +2130,17 @@ mod tests {
             )
             .await;
 
-        // Then the session was saved with Archived state.
-        let saved = store
-            .last_saved_session(&session_id)
-            .expect("session should have been saved");
-        assert_eq!(saved.session_state(), SessionState::Archived);
+        // Then the session was NOT saved because it is not persistable.
+        assert!(
+            store.last_saved_session(&session_id).is_none(),
+            "empty non-interacted session should not be persisted"
+        );
     }
 
     #[tokio::test]
-    async fn closing_empty_session_sets_archived_flag() {
-        // Given an actor with an empty session and a recording store.
+    async fn closing_empty_session_does_not_persist_non_interacted() {
+        // Given an actor with an empty (non-interacted) session and a recording store.
         use super::super::super::helpers::{test_actor_with_store, test_context};
-        use crate::feat::session::chat_session::SessionState;
 
         let (actor, store) = test_actor_with_store(vec![]);
         let session_id = actor.state.read().session.active_session_id().clone();
@@ -2158,11 +2156,11 @@ mod tests {
             )
             .await;
 
-        // Then the session was saved with Archived state.
-        let saved = store
-            .last_saved_session(&session_id)
-            .expect("session should have been saved");
-        assert_eq!(saved.session_state(), SessionState::Archived);
+        // Then the session was NOT saved because it is not persistable.
+        assert!(
+            store.last_saved_session(&session_id).is_none(),
+            "empty non-interacted session should not be persisted"
+        );
     }
 
     // --- Teardown persistence tests ---

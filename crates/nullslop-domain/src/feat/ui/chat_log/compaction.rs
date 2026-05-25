@@ -24,6 +24,7 @@ pub fn to_lines(
     summary: &str,
     entries_compacted: usize,
     tokens_before: usize,
+    tokens_after: usize,
     ctx: &RenderContext,
 ) -> Vec<Line<'static>> {
     let bg = ctx.theme.compaction_block_bg;
@@ -31,12 +32,16 @@ pub fn to_lines(
     let muted_style = Style::default().fg(ctx.theme.muted_text).bg(bg);
 
     // Header line (always shown).
-    let header_text =
-        format!("📜 Compacted ({entries_compacted} messages, ~{tokens_before} tokens)");
+    let header_text = format!("📜 Compacted {entries_compacted} messages (~{tokens_before} tokens)");
     let mut header_line = Line::from(Span::styled(header_text, muted_style));
     pad_line_to_width(&mut header_line, ctx.content_width, bg_style);
 
-    let mut lines = vec![header_line];
+    // Summary size line (always shown).
+    let summary_text = format!("Summary size: ~{tokens_after} tokens");
+    let mut summary_line = Line::from(Span::styled(summary_text, muted_style));
+    pad_line_to_width(&mut summary_line, ctx.content_width, bg_style);
+
+    let mut lines = vec![header_line, summary_line];
 
     if ctx.is_expanded {
         // Render summary as markdown.
@@ -91,21 +96,25 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn collapsed_shows_header_and_hint() {
+    fn collapsed_shows_header_summary_and_hint() {
         // Given a compaction entry, not expanded.
         let ctx = render_ctx(false);
 
         // When rendering.
-        let lines = to_lines("some summary", 5, 1000, &ctx);
+        let lines = to_lines("some summary", 5, 1000, 50, &ctx);
 
-        // Then there are 4 lines: top pad + header + hint + bottom pad.
-        assert_eq!(lines.len(), 4);
+        // Then there are 5 lines: top pad + header + summary size + hint + bottom pad.
+        assert_eq!(lines.len(), 5);
         // And the header line contains the compacted count.
         let header: String = lines[1].spans.iter().map(|s| s.content.clone()).collect();
         assert!(header.contains("5 messages"));
         assert!(header.contains("~1000 tokens"));
+        // And the summary size line contains the token count.
+        let summary_size: String = lines[2].spans.iter().map(|s| s.content.clone()).collect();
+        assert!(summary_size.contains("Summary size"));
+        assert!(summary_size.contains("~50 tokens"));
         // And the hint line contains "e to expand".
-        let hint: String = lines[2].spans.iter().map(|s| s.content.clone()).collect();
+        let hint: String = lines[3].spans.iter().map(|s| s.content.clone()).collect();
         assert!(hint.contains("e to expand"));
     }
 
@@ -115,7 +124,7 @@ mod tests {
         let ctx = render_ctx(true);
 
         // When rendering.
-        let lines = to_lines("Summary of the conversation.", 3, 500, &ctx);
+        let lines = to_lines("Summary of the conversation.", 3, 500, 25, &ctx);
 
         // Then some content line contains the summary text.
         let all_text: String = lines
@@ -140,7 +149,7 @@ mod tests {
         let theme = default_theme();
 
         // When rendering.
-        let lines = to_lines("summary", 1, 100, &ctx);
+        let lines = to_lines("summary", 1, 100, 10, &ctx);
 
         // Then the top and bottom pad lines have the compaction background.
         let top_pad = &lines[0];
@@ -163,15 +172,20 @@ mod tests {
         let ctx = render_ctx(false);
 
         // When rendering.
-        let lines = to_lines("summary", 1, 100, &ctx);
+        let lines = to_lines("summary", 1, 100, 50, &ctx);
 
         // Then every content line (not just pad lines) spans full width.
-        // Header is lines[1], hint is lines[2].
+        // Header is lines[1], summary size is lines[2], hint is lines[3].
         let header_width: usize = lines[1].width();
-        let hint_width: usize = lines[2].width();
+        let summary_width: usize = lines[2].width();
+        let hint_width: usize = lines[3].width();
         assert_eq!(
             header_width, 80,
             "header line should be padded to content_width"
+        );
+        assert_eq!(
+            summary_width, 80,
+            "summary size line should be padded to content_width"
         );
         assert_eq!(
             hint_width, 80,
@@ -186,7 +200,7 @@ mod tests {
         let theme = default_theme();
 
         // When rendering.
-        let lines = to_lines("summary", 1, 100, &ctx);
+        let lines = to_lines("summary", 1, 100, 50, &ctx);
 
         // Then at least one span has the compaction_block_bg background.
         let has_bg = lines.iter().any(|line| {
@@ -203,13 +217,13 @@ mod tests {
         let ctx = render_ctx(true);
 
         // When rendering.
-        let lines = to_lines("", 1, 100, &ctx);
+        let lines = to_lines("", 1, 100, 0, &ctx);
 
-        // Then there are 3 lines: top pad + header + bottom pad (no summary lines).
+        // Then there are 4 lines: top pad + header + summary size + bottom pad (no summary content lines).
         assert_eq!(
             lines.len(),
-            3,
-            "empty summary expanded should have pad + header + pad, got {}",
+            4,
+            "empty summary expanded should have pad + header + summary size + pad, got {}",
             lines.len()
         );
         // And the header line contains the compacted count.
@@ -223,13 +237,13 @@ mod tests {
         let ctx = render_ctx(true);
 
         // When rendering.
-        let lines = to_lines("   \n  \n  ", 1, 100, &ctx);
+        let lines = to_lines("   \n  \n  ", 1, 100, 0, &ctx);
 
-        // Then there are 3 lines: top pad + header + bottom pad.
+        // Then there are 4 lines: top pad + header + summary size + bottom pad.
         assert_eq!(
             lines.len(),
-            3,
-            "whitespace-only summary expanded should have pad + header + pad, got {}",
+            4,
+            "whitespace-only summary expanded should have pad + header + summary size + pad, got {}",
             lines.len()
         );
     }
@@ -241,7 +255,7 @@ mod tests {
         let theme = default_theme();
 
         // When rendering.
-        let lines = to_lines("summary", 1, 100, &ctx);
+        let lines = to_lines("summary", 1, 100, 50, &ctx);
 
         // Then the header line uses muted_text as foreground.
         let header_line = &lines[1];

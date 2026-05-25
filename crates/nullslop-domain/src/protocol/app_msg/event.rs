@@ -118,6 +118,8 @@ pub enum Event {
     CompactionCompleted(CompactionCompleted),
     /// A session was closed and removed from the sessions map.
     SessionClosed(crate::feat::session::protocol::session_closed::SessionClosed),
+    /// A session was marked as interacted with by the user.
+    UserInteracted(crate::feat::session::protocol::user_interacted::UserInteracted),
     /// A session was archived in persistent storage.
     SessionArchived(crate::feat::session::protocol::session_archived::SessionArchived),
     /// A session's phase changed (e.g., Idle → Sending).
@@ -188,6 +190,9 @@ impl Event {
             Self::CompactionCompleted(..) => Some(CompactionCompleted::TYPE_NAME),
             Self::SessionClosed(..) => {
                 Some(crate::feat::session::protocol::session_closed::SessionClosed::TYPE_NAME)
+            }
+            Self::UserInteracted(..) => {
+                Some(crate::feat::session::protocol::user_interacted::UserInteracted::TYPE_NAME)
             }
             Self::SessionArchived(..) => {
                 Some(crate::feat::session::protocol::session_archived::SessionArchived::TYPE_NAME)

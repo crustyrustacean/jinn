@@ -1,12 +1,8 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
 use crate::feat::session::tool_result_status::ToolResultStatus;
-use crate::feat::ui::chat_log::visual_item::{
-    DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
-};
-use crate::protocol::{
-    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId,
-};
+use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
+use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId, SessionId};
 use std::path::PathBuf;
 
 use super::*;
@@ -1086,9 +1082,7 @@ fn pin_entry_at_block_end_no_forward_propagation() {
 /// would collapse because `shown_ignored_blocks` didn't cover it.
 #[rstest::rstest]
 fn regression_pin_in_expanded_block_keeps_all_visible() {
-    use crate::feat::ui::chat_log::visual_item::{
-        DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
-    };
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, VisualItem, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
 
     // Layout: [user] [ignored-A] [ignored-B] [ignored-C] [ignored-D] [user]
     let mut session = ChatSessionState::new();
@@ -1097,7 +1091,7 @@ fn regression_pin_in_expanded_block_keeps_all_visible() {
     session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 2 — pin target
     session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3
     session.push_entry(ChatEntry::assistant("d").with_ignored(true)); // idx 4
-    session.push_entry(ChatEntry::user("after")); // idx 5
+    session.push_entry(ChatEntry::user("after"));                     // idx 5
 
     // Expand the ignored block.
     let rep_id = session.history()[1].id.clone();
@@ -1117,13 +1111,8 @@ fn regression_pin_in_expanded_block_keeps_all_visible() {
     );
 
     // There should be no CollapsedIgnoredBlock — all entries are shown.
-    let collapsed = items
-        .iter()
-        .any(|item| matches!(item, VisualItem::CollapsedIgnoredBlock { .. }));
-    assert!(
-        !collapsed,
-        "no entries should be collapsed after pinning in expanded block"
-    );
+    let collapsed = items.iter().any(|item| matches!(item, VisualItem::CollapsedIgnoredBlock { .. }));
+    assert!(!collapsed, "no entries should be collapsed after pinning in expanded block");
 
     // All history entries should appear as VisualItem::Entry.
     let entry_count = items
@@ -1144,7 +1133,7 @@ fn regression_toggle_h_after_pin_split_toggles_correct_sub_block() {
     session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 2
     session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3
     session.push_entry(ChatEntry::assistant("d").with_ignored(true)); // idx 4
-    session.push_entry(ChatEntry::user("after")); // idx 5
+    session.push_entry(ChatEntry::user("after"));                     // idx 5
 
     // Expand, then pin ignored-B.
     let rep_id = session.history()[1].id.clone();
@@ -1170,9 +1159,7 @@ fn regression_toggle_h_after_pin_split_toggles_correct_sub_block() {
 /// one block controlled by the original representative.
 #[rstest::rstest]
 fn regression_unpin_remerges_block_correctly() {
-    use crate::feat::ui::chat_log::visual_item::{
-        DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
-    };
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, VisualItem, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
 
     // Layout: [user] [ignored-A] [ignored-B] [ignored-C] [user]
     let mut session = ChatSessionState::new();
@@ -1180,7 +1167,7 @@ fn regression_unpin_remerges_block_correctly() {
     session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 1
     session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 2
     session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3
-    session.push_entry(ChatEntry::user("after")); // idx 4
+    session.push_entry(ChatEntry::user("after"));                     // idx 4
 
     // Expand the block.
     let rep_id = session.history()[1].id.clone();
@@ -1202,19 +1189,14 @@ fn regression_unpin_remerges_block_correctly() {
     );
 
     // No collapsed block — all 5 entries visible.
-    let collapsed = items
-        .iter()
-        .any(|item| matches!(item, VisualItem::CollapsedIgnoredBlock { .. }));
+    let collapsed = items.iter().any(|item| matches!(item, VisualItem::CollapsedIgnoredBlock { .. }));
     assert!(!collapsed, "no collapsed block after unpin re-merge");
 
     let entry_count = items
         .iter()
         .filter(|item| matches!(item, VisualItem::Entry(_)))
         .count();
-    assert_eq!(
-        entry_count, 5,
-        "all 5 entries should be visible after unpin"
-    );
+    assert_eq!(entry_count, 5, "all 5 entries should be visible after unpin");
 
     // Toggle on the original rep should now collapse the re-merged block.
     session.toggle_ignored_block_visibility(&rep_id);
@@ -2559,11 +2541,7 @@ fn is_tool_call_streaming_returns_false_for_non_streaming_entry() {
     // Given a session with a finalized tool call entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
-    session.push_entry(ChatEntry::tool_call(
-        "tc-1",
-        "write",
-        r#"{"path":"foo.rs"}"#,
-    ));
+    session.push_entry(ChatEntry::tool_call("tc-1", "write", r#"{"path":"foo.rs"}"#));
 
     // When checking if the tool call entry is streaming.
     let entry_id = session.history()[1].id.clone();
@@ -2775,17 +2753,11 @@ fn toggle_ignored_block_visibility_stops_at_pinned_entry() {
     // Then the representative is the first entry of the second sub-block,
     // not the first entry of the whole ignored region.
     assert!(
-        session
-            .ui
-            .shown_ignored_blocks
-            .contains(&second_sub_block_id),
+        session.ui.shown_ignored_blocks.contains(&second_sub_block_id),
         "representative should be the second sub-block start (index 7)"
     );
     assert!(
-        !session
-            .ui
-            .shown_ignored_blocks
-            .contains(&first_sub_block_start_id),
+        !session.ui.shown_ignored_blocks.contains(&first_sub_block_start_id),
         "representative should NOT be the first sub-block start (index 3)"
     );
 }
@@ -2827,17 +2799,11 @@ fn toggle_ignored_block_visibility_stops_at_pinned_entry_in_first_sub_block() {
 
     // Then the representative is the first entry of the first sub-block only.
     assert!(
-        session
-            .ui
-            .shown_ignored_blocks
-            .contains(&first_sub_block_start_id),
+        session.ui.shown_ignored_blocks.contains(&first_sub_block_start_id),
         "representative should be the first sub-block start (index 3)"
     );
     assert!(
-        !session
-            .ui
-            .shown_ignored_blocks
-            .contains(&second_sub_block_start_id),
+        !session.ui.shown_ignored_blocks.contains(&second_sub_block_start_id),
         "representative should NOT be the second sub-block start (index 7)"
     );
 }
@@ -2847,9 +2813,7 @@ fn toggle_ignored_block_visibility_stops_at_pinned_entry_in_first_sub_block() {
 #[rstest::rstest]
 fn select_next_walks_visual_items_with_collapsed_block() {
     // Given a session with visual items: [Entry, CollapsedBlock, Entry].
-    use crate::feat::ui::chat_log::visual_item::{
-        DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
-    };
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
 
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // index 0
@@ -2883,9 +2847,7 @@ fn select_next_walks_visual_items_with_collapsed_block() {
 #[rstest::rstest]
 fn select_prev_walks_visual_items_with_collapsed_block() {
     // Given a session with visual items: [Entry, CollapsedBlock, Entry, ...].
-    use crate::feat::ui::chat_log::visual_item::{
-        DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
-    };
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
 
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // index 0
@@ -2918,9 +2880,7 @@ fn select_prev_walks_visual_items_with_collapsed_block() {
 #[rstest::rstest]
 fn selected_entry_returns_none_for_collapsed_block() {
     // Given a session with visual items where a collapsed block is selected.
-    use crate::feat::ui::chat_log::visual_item::{
-        DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
-    };
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
 
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
@@ -2975,19 +2935,13 @@ fn toggle_entry_ignored_flips_false_to_true() {
     session.set_visual_items(items);
     // Select the entry.
     session.set_selected_entry_index(0);
-    assert!(
-        !session.history()[idx].ignored(),
-        "entry should start un-ignored"
-    );
+    assert!(!session.history()[idx].ignored(), "entry should start un-ignored");
 
     // When toggling ignored.
     session.toggle_entry_ignored();
 
     // Then the entry is ignored.
-    assert!(
-        session.history()[idx].ignored(),
-        "entry should be ignored after toggle"
-    );
+    assert!(session.history()[idx].ignored(), "entry should be ignored after toggle");
 }
 
 #[rstest::rstest]
@@ -3004,17 +2958,56 @@ fn toggle_entry_ignored_flips_true_to_false() {
     session.set_visual_items(items);
     // Select the entry.
     session.set_selected_entry_index(0);
-    assert!(
-        session.history()[idx].ignored(),
-        "entry should start ignored"
-    );
+    assert!(session.history()[idx].ignored(), "entry should start ignored");
 
     // When toggling ignored.
     session.toggle_entry_ignored();
 
     // Then the entry is un-ignored.
-    assert!(
-        !session.history()[idx].ignored(),
-        "entry should be un-ignored after toggle"
-    );
+    assert!(!session.history()[idx].ignored(), "entry should be un-ignored after toggle");
+}
+
+// --- is_persistable tests ---
+
+#[test]
+fn new_session_is_not_persistable() {
+    // Given a new session with no history or interaction.
+    let session = ChatSessionState::new();
+
+    // Then the session is not persistable.
+    assert!(!session.is_persistable());
+}
+
+#[test]
+fn session_becomes_persistable_after_mark_interacted() {
+    // Given a new session.
+    let mut session = ChatSessionState::new();
+
+    // When marking the session as interacted.
+    session.mark_interacted();
+
+    // Then the session is persistable.
+    assert!(session.is_persistable());
+}
+
+#[test]
+fn lifecycle_session_is_always_persistable() {
+    // Given a new session with a lifecycle name but no interaction.
+    let mut session = ChatSessionState::new();
+    session.core.lifecycle_name = Some("test-lifecycle".to_owned());
+
+    // Then the session is persistable even without interaction.
+    assert!(session.is_persistable());
+    assert!(!session.has_interacted());
+}
+
+#[test]
+fn forked_session_is_always_persistable() {
+    // Given a new session with a parent session but no interaction.
+    let mut session = ChatSessionState::new();
+    session.core.parent_session = Some(SessionId::new());
+
+    // Then the session is persistable even without interaction.
+    assert!(session.is_persistable());
+    assert!(!session.has_interacted());
 }

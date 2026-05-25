@@ -214,6 +214,8 @@ pub enum ChatEntryKind {
         summary: String,
         /// Estimated tokens in the compacted region before compaction.
         tokens_before: usize,
+        /// Estimated tokens in the compaction summary (after compaction).
+        tokens_after: usize,
         /// How many entries were compacted (marked as ignored).
         entries_compacted: usize,
         /// Which model was used to generate the summary.
@@ -645,11 +647,13 @@ impl ChatEntry {
             }
             ChatEntryKind::Compaction {
                 summary,
+                tokens_after,
                 entries_compacted,
                 model_used,
                 ..
             } => {
                 summary.hash(&mut hasher);
+                tokens_after.hash(&mut hasher);
                 entries_compacted.hash(&mut hasher);
                 model_used.hash(&mut hasher);
             }
@@ -803,6 +807,7 @@ impl Serialize for ChatEntryKind {
             ChatEntryKind::Compaction {
                 summary,
                 tokens_before,
+                tokens_after,
                 entries_compacted,
                 model_used,
             } => {
@@ -810,6 +815,7 @@ impl Serialize for ChatEntryKind {
                 struct CompactionData {
                     summary: String,
                     tokens_before: usize,
+                    tokens_after: usize,
                     entries_compacted: usize,
                     model_used: String,
                 }
@@ -819,6 +825,7 @@ impl Serialize for ChatEntryKind {
                     &CompactionData {
                         summary: summary.clone(),
                         tokens_before: *tokens_before,
+                        tokens_after: *tokens_after,
                         entries_compacted: *entries_compacted,
                         model_used: model_used.clone(),
                     },
@@ -989,6 +996,8 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                         struct CompactionData {
                             summary: String,
                             tokens_before: usize,
+                            #[serde(default)]
+                            tokens_after: usize,
                             entries_compacted: usize,
                             model_used: String,
                         }
@@ -996,6 +1005,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                         Ok(ChatEntryKind::Compaction {
                             summary: data.summary,
                             tokens_before: data.tokens_before,
+                            tokens_after: data.tokens_after,
                             entries_compacted: data.entries_compacted,
                             model_used: data.model_used,
                         })
