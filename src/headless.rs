@@ -82,21 +82,23 @@ impl HeadlessApp {
     where
         R: std::io::Read,
     {
-        let keymap = nullslop_tui::keymap::init();
-        let mut which_key =
-            nullslop_tui::app::WhichKeyInstance::new(keymap, nullslop_tui::Scope::Normal);
-        let leader = nullslop_domain::KeyEvent {
-            key: nullslop_domain::Key::Char('\\'),
-            modifiers: nullslop_domain::Modifiers::none(),
+        let mut which_key = {
+            let keymap = nullslop_tui::keymap::init();
+            nullslop_tui::app::WhichKeyInstance::new(keymap, nullslop_tui::Scope::Normal)
         };
 
-        let mut content = String::new();
-        reader
-            .read_to_string(&mut content)
-            .change_context(HeadlessError)
-            .attach("failed to read script content")?;
-
-        let lines = parse_script(&content, &leader);
+        let lines = {
+            let leader = nullslop_domain::KeyEvent {
+                key: nullslop_domain::Key::Char('\\'),
+                modifiers: nullslop_domain::Modifiers::none(),
+            };
+            let mut content = String::new();
+            reader
+                .read_to_string(&mut content)
+                .change_context(HeadlessError)
+                .attach("failed to read script content")?;
+            parse_script(&content, &leader)
+        };
 
         for keys in lines {
             for key in keys {
