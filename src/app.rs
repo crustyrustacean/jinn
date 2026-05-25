@@ -654,4 +654,41 @@ mod tests {
                 .is_some()
         );
     }
+
+    #[rstest::rstest]
+    fn load_compaction_prompt_populates_state() {
+        // Given a user dir with a compaction prompt file.
+        let dir = tempfile::tempdir().expect("temp dir");
+        std::fs::write(dir.path().join("_compaction.md"), "test compaction prompt")
+            .expect("write compaction prompt");
+
+        let state = State::new(AppState::default());
+        let empty = PathBuf::from("/nonexistent");
+
+        // When loading the compaction prompt.
+        load_compaction_prompt(&state, dir.path(), &empty).expect("load");
+
+        // Then the state contains the prompt text.
+        let state = state.read();
+        assert_eq!(state.context.compaction_prompt, "test compaction prompt");
+    }
+
+    #[rstest::rstest]
+    fn load_compaction_prompt_returns_err_when_missing() {
+        // Given empty user and system dirs.
+        let user_dir = tempfile::tempdir().expect("temp dir");
+        let system_dir = tempfile::tempdir().expect("temp dir");
+
+        let state = State::new(AppState::default());
+
+        // When loading the compaction prompt with no file present.
+        let result = load_compaction_prompt(&state, user_dir.path(), system_dir.path());
+
+        // Then an error is returned (hard-fail semantics).
+        assert!(result.is_err(), "expected error when compaction prompt is missing");
+
+        // And the state compaction prompt remains empty.
+        let state = state.read();
+        assert!(state.context.compaction_prompt.is_empty());
+    }
 }
