@@ -537,3 +537,85 @@ fn confirm_judge(state: &mut AppState) -> IntentResult {
         },
     )])
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use super::*;
+    use crate::feat::judge::Judge;
+    use crate::feat::session::chat_session::ChatSessionState;
+    use crate::protocol::PinPosition;
+    use std::path::PathBuf;
+
+    fn make_judge(name: &str, body: &str, model: Option<&str>) -> Judge {
+        Judge {
+            name: name.to_owned(),
+            description: format!("{name} description"),
+            body: body.to_owned(),
+            model: model.map(|m| m.to_owned()),
+            file_path: PathBuf::new(),
+        }
+    }
+
+    fn setup_state_with_judge() -> AppState {
+        let mut state = AppState::default();
+
+        // Create and insert an active origin session.
+        let origin = ChatSessionState::new();
+        let origin_id = origin.session_id().clone();
+        state.session.insert(origin);
+        state.session.set_active(origin_id);
+
+        // Add a judge definition.
+        state.context.judges.push(make_judge("accuracy", "Check accuracy.", None));
+
+        // Populate the picker and select the judge.
+        load_judge_picker_entries(&mut state);
+        // Select the first (and only) entry.
+        state.frontend.judge_picker.move_down(1);
+
+        state
+    }
+
+    #[rstest::rstest]
+    fn confirm_judge_creates_session_with_correct_judge_meta() {
+        let mut state = setup_state_with_judge();
+
+        let origin_id = state.session.active_session_id().clone();
+        let result = confirm_judge(&mut state);
+
+        // Should have produced a PersistSession command.
+        assert_eq!(result.commands.len(), 1);
+
+        // The new active session should be a judge session.
+        let active = state.active_session();
+        let meta = active.judge().as_ref().expect("should have judge meta");
+        assert_eq!(meta.judge_name, "accuracy");
+        assert_eq!(meta.origin_session, origin_id);
+        assert!(meta.is_attached);
+    }
+
+    #[rstest::rstest]
+    fn confirm_judge_sets_parent_session_to_origin() {
+        let mut state = setup_state_with_judge();
+        let origin_id = state.session.active_session_id().clone();
+
+        let _ = confirm_judge(&mut state);
+
+        let active = state.active_session();
+        assert_eq!(active.parent_session().as_ref(), Some(&origin_id));
+    }
+
+    #[rstest::rstest]
+    fn confirm_judge_pins_system_entry_at_top() {
+        let mut state = setup_state_with_judge();
+
+        let _ = confirm_judge(&mut state);
+
+        let active = state.active_session();
+        let pinned: Vec<_> = active.pinned_entries();
+        assert_eq!(pinned.len(), 1, "should have exactly one pinned entry");
+        assert_eq!(pinned[0].pin_position, Some(PinPosition::Top));
+        assert!(pinned[0].text().contains("Check accuracy."));
+    }
+}
