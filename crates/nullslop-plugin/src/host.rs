@@ -148,6 +148,51 @@ impl PluginHost {
         loaded
     }
 
+    /// Loads a built-in plugin from a Lua source string.
+    ///
+    /// Used for plugins that are bundled into the binary via `include_str!`
+    /// so they work regardless of filesystem layout.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the Lua script fails to execute.
+    pub fn load_builtin(&self, name: &str, source: &str) -> Result<PluginInfo, Report<PluginError>> {
+        self.lua
+            .load(source)
+            .set_name(format!("builtin/{name}/init.lua"))
+            .exec()
+            .map_err(|e| {
+                tracing::error!(err = %e, plugin = %name, "builtin plugin failed to load");
+                Report::new(PluginError).attach(format!("builtin plugin '{name}' failed to load"))
+            })?;
+
+        tracing::info!(plugin = %name, "loaded builtin plugin");
+
+        Ok(PluginInfo {
+            name: name.to_owned(),
+            path: PathBuf::from(format!("builtin://{name}")),
+        })
+    }
+
+    /// Loads all built-in plugins embedded in the binary.
+    ///
+    /// Returns info for successfully loaded plugins. Failures are logged
+    /// but not propagated — a broken built-in plugin should not prevent
+    /// the app from starting.
+    pub fn load_builtins(&self) -> Vec<PluginInfo> {
+        let mut loaded = Vec::new();
+
+        let welcome_source = include_str!("../../../plugins/welcome/init.lua");
+        match self.load_builtin("welcome", welcome_source) {
+            Ok(info) => loaded.push(info),
+            Err(e) => {
+                tracing::warn!(err = %e, "skipping builtin welcome plugin");
+            }
+        }
+
+        loaded
+    }
+
     /// Dispatches an event to all Lua subscribers registered via `ps.sub`.
     ///
     /// Calls each subscriber's callback with the JSON payload converted to
