@@ -29,10 +29,14 @@ impl WelcomeSubscriber {
     /// payload (defaulting to a generic welcome) and emits a typed
     /// `PushChatEntry` with a system chat entry.
     pub fn handle(&self, cmd: &DynamicCommand, session_id: &SessionId) {
-        if cmd.name != "welcome::show" {
-            return;
+        match cmd.name.as_str() {
+            "welcome::show" => self.handle_welcome_show(cmd, session_id),
+            "welcome::session_tip" => self.handle_session_tip(cmd, session_id),
+            _ => {}
         }
+    }
 
+    fn handle_welcome_show(&self, cmd: &DynamicCommand, session_id: &SessionId) {
         let message = cmd
             .payload
             .get("message")
@@ -40,6 +44,22 @@ impl WelcomeSubscriber {
             .unwrap_or("Welcome to nullslop! Press ? for keybindings.");
 
         let entry = ChatEntry::system(message);
+        let push = PushChatEntry {
+            session_id: session_id.clone(),
+            entry,
+        };
+
+        self.sender.send(nullslop_domain::Command::PushChatEntry(push));
+    }
+
+    fn handle_session_tip(&self, cmd: &DynamicCommand, session_id: &SessionId) {
+        let message = cmd
+            .payload
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("New session started.");
+
+        let entry = ChatEntry::transient(message);
         let push = PushChatEntry {
             session_id: session_id.clone(),
             entry,
@@ -115,6 +135,58 @@ mod tests {
                 let text = pce.entry.text();
                 assert!(
                     text.contains("Welcome to nullslop"),
+                    "should use default message, got: {text}"
+                );
+            }
+            other => panic!("expected PushChatEntry, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    fn session_tip_sends_transient_chat_entry() {
+        // Given a welcome subscriber.
+        let (sub, rx) = test_setup();
+        let session_id = SessionId::new();
+
+        // When handling a welcome::session_tip command.
+        let cmd = DynamicCommand {
+            name: "welcome::session_tip".to_owned(),
+            payload: serde_json::json!({ "message": "New session started!" }),
+        };
+        sub.handle(&cmd, &session_id);
+
+        // Then a PushChatEntry command is emitted.
+        let result = rx.recv().expect("should receive command");
+        match result {
+            Command::PushChatEntry(pce) => {
+                assert_eq!(pce.session_id, session_id);
+                let text = pce.entry.text();
+                assert!(text.contains("New session started!"));
+            }
+            other => panic!("expected PushChatEntry, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    fn session_tip_uses_default_message_when_missing() {
+        // Given a welcome subscriber.
+        let (sub, rx) = test_setup();
+        let session_id = SessionId::new();
+
+        // When handling a session_tip with no message in payload.
+        let cmd = DynamicCommand {
+            name: "welcome::session_tip".to_owned(),
+            payload: serde_json::Value::Null,
+        };
+        sub.handle(&cmd, &session_id);
+
+        // Then the default session tip message is used.
+        let result = rx.recv().expect("should receive command");
+        match result {
+            Command::PushChatEntry(pce) => {
+                let text = pce.entry.text();
+                assert!(
+                    text.contains("New session started"),
                     "should use default message, got: {text}"
                 );
             }
