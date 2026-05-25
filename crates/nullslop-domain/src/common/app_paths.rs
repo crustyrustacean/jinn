@@ -145,6 +145,18 @@ impl AppPaths {
         self.system_data_dir.join("prompts")
     }
 
+    /// User plugins directory (`~/.config/nullslop/plugins`).
+    #[must_use]
+    pub fn plugins_dir(&self) -> PathBuf {
+        self.config_dir.join(APP_NAME).join("plugins")
+    }
+
+    /// System plugins directory (`/usr/share/nullslop/plugins`).
+    #[must_use]
+    pub fn system_plugins_dir(&self) -> PathBuf {
+        self.system_data_dir.join("plugins")
+    }
+
     /// User's models.dev reference file (`~/.cache/nullslop/models.dev.json`).
     ///
     /// Written by `nullslop fetch models`. Contains the full models.dev API
