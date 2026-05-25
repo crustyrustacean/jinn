@@ -14,6 +14,7 @@ pub mod picker_entry;
 pub mod protocol;
 pub mod tool_mapping;
 pub mod workflow_actor;
+pub mod workflow_input;
 pub mod workflow_registry;
 pub mod workflow_state;
 

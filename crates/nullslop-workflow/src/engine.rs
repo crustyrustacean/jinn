@@ -29,6 +29,10 @@ pub enum NodeStatus {
     Failed,
     /// Skipped because an upstream node failed.
     Skipped,
+    /// Waiting for user input before execution can proceed.
+    /// This is a pre-execution state for source nodes.
+    /// It is NOT terminal — the engine never sees this status during execution.
+    AwaitingInput,
 }
 
 impl NodeStatus {
@@ -93,7 +97,12 @@ enum CompletionMsg {
 ///
 /// Builds maps for node lookup, seeds pending inputs from cached snapshot data,
 /// and resets `Failed`/`Skipped` nodes to `Pending` for resume/re-run.
-#[expect(clippy::type_complexity, reason = "returns four tracking maps")]
+///
+/// Source nodes (no incoming edges) that already have cached outputs
+/// (e.g., from user input) are marked `Completed` immediately and their
+/// outputs are propagated to downstream nodes. Returns the tracking maps
+/// plus the count of nodes that were pre-completed.
+#[expect(clippy::type_complexity, reason = "returns four tracking maps and a count")]
 fn initialize_tracking(
     snapshot: &crate::execution::ExecutionSnapshot,
     execution: &Arc<WorkflowExecution>,
@@ -105,6 +114,7 @@ fn initialize_tracking(
     HashMap<String, PortValues>,
     HashMap<String, usize>,
     HashMap<String, PortValues>,
+    usize, // pre_completed_count
 ) {
     let mut statuses: HashMap<String, NodeStatus> = HashMap::new();
     let mut pending_inputs: HashMap<String, PortValues> = HashMap::new();
@@ -170,7 +180,54 @@ fn initialize_tracking(
         }
     }
 
-    (statuses, pending_inputs, pending_count, outputs)
+    // Pre-complete source nodes that already have outputs set (e.g., from user input).
+    // This prevents the engine from running their execute() closures, which
+    // would overwrite the user's data with hard-coded defaults.
+    // Instead, mark them Completed immediately and propagate outputs downstream.
+    let mut pre_completed_count: usize = 0;
+    let mut to_pre_complete: Vec<String> = Vec::new();
+    for name in node_map.keys() {
+        let is_source = pending_count.get(name) == Some(&0);
+        let is_pending = statuses.get(name) == Some(&NodeStatus::Pending);
+        let has_outputs = outputs.contains_key(name);
+        if is_source && is_pending && has_outputs {
+            to_pre_complete.push(name.clone());
+        }
+    }
+
+    // Build reverse index: NodeIndex → name.
+    let index_to_name: HashMap<petgraph::graph::NodeIndex, &String> =
+        name_to_index.iter().map(|(n, &i)| (i, n)).collect();
+
+    for name in &to_pre_complete {
+        statuses.insert(name.clone(), NodeStatus::Completed);
+        execution.set_status(name, NodeStatus::Completed);
+        pre_completed_count += 1;
+
+        // Propagate this node's outputs to downstream nodes,
+        // exactly like handle_completion does for normally-executed nodes.
+        if let (Some(&idx), Some(node_outputs)) = (name_to_index.get(name), outputs.get(name).cloned()) {
+            for edge in inner.edges_directed(idx, petgraph::Direction::Outgoing) {
+                let source_port = &edge.weight().source_port;
+                let target_port = &edge.weight().target_port;
+                let tgt_idx = edge.target();
+                let Some(tgt_name) = index_to_name.get(&tgt_idx) else {
+                    continue;
+                };
+                if let (Some(value), Some(inputs)) = (
+                    node_outputs.get(source_port).cloned(),
+                    pending_inputs.get_mut(*tgt_name),
+                ) {
+                    inputs.insert(target_port.clone(), value);
+                }
+                if let Some(count) = pending_count.get_mut(*tgt_name) {
+                    *count = count.saturating_sub(1);
+                }
+            }
+        }
+    }
+
+    (statuses, pending_inputs, pending_count, outputs, pre_completed_count)
 }
 
 /// Spawns all Pending nodes that have fully satisfied inputs.
@@ -351,7 +408,7 @@ pub async fn run_pending(
     let snapshot = execution.snapshot();
 
     // Initialize tracking.
-    let (mut statuses, mut pending_inputs, mut pending_count, mut outputs) =
+    let (mut statuses, mut pending_inputs, mut pending_count, mut outputs, _pre_completed_count) =
         initialize_tracking(&snapshot, &execution, &node_map, inner, name_to_index);
 
     // Channel for completion messages.
@@ -933,6 +990,48 @@ mod tests {
         }
 
         Box::new(PanicNode)
+    }
+
+    /// Verifies that pre-set outputs on a source node are NOT overwritten
+    /// by the node's execute() closure during engine execution.
+    ///
+    /// This is the core guarantee for user-provided workflow input.
+    #[tokio::test]
+    async fn pre_set_source_output_preserved_through_execution() {
+        // Given A → B where A's closure returns "hardcoded".
+        let ctx = Arc::new(TestContext);
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node("a".to_owned(), source_node("hardcoded"))
+            .add_node("b".to_owned(), uppercase_node());
+        builder.connect("a", "out", "b", "in").expect("a→b");
+        let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
+
+        // Pre-set A's output to user-provided data (simulating workflow input).
+        let mut user_outputs = PortValues::new();
+        user_outputs.insert(
+            "out".to_owned(),
+            PortValue::Single(ScalarValue::Text("user_data".to_owned())),
+        );
+        execution.set_node_outputs("a", user_outputs);
+        execution.set_status("a", NodeStatus::Pending);
+
+        // When executing.
+        let result = execute(execution, ctx).await.expect("execute");
+
+        // Then A's output is "user_data", NOT "hardcoded".
+        assert_eq!(status(&result, "a"), NodeStatus::Completed);
+        assert_eq!(
+            outputs(&result, "a").get_text("out").unwrap(),
+            "user_data"
+        );
+        // And B received the user's data (uppercased).
+        assert_eq!(status(&result, "b"), NodeStatus::Completed);
+        assert_eq!(
+            outputs(&result, "b").get_text("out").unwrap(),
+            "USER_DATA"
+        );
     }
 
     #[tokio::test]

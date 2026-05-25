@@ -393,6 +393,77 @@ impl IntentHandler {
             Intent::WorkflowPanDown => handle_workflow_pan(state, 0, -5),
             Intent::WorkflowPanUp => handle_workflow_pan(state, 0, 5),
             Intent::WorkflowPanRight => handle_workflow_pan(state, -5, 0),
+
+            // --- Workflow Input Editing ---
+            Intent::WorkflowEditNode => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_edit_node(state)
+            }
+            Intent::WorkflowInputSubmit => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_submit(state)
+            }
+            Intent::WorkflowInputCancel => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cancel(state)
+            }
+            Intent::WorkflowInputInsertChar { ch } => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_insert_char(
+                    *ch, state,
+                )
+            }
+            Intent::WorkflowInputDeleteGrapheme => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_delete_grapheme(
+                    state,
+                )
+            }
+            Intent::WorkflowInputDeleteGraphemeForward => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_delete_grapheme_forward(
+                    state,
+                )
+            }
+            Intent::WorkflowInputPasteText { text } => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_paste_text(
+                    text, state,
+                )
+            }
+            Intent::WorkflowInputCursorLeft => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_left(
+                    state,
+                )
+            }
+            Intent::WorkflowInputCursorRight => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_right(
+                    state,
+                )
+            }
+            Intent::WorkflowInputCursorToStart => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_to_start(
+                    state,
+                )
+            }
+            Intent::WorkflowInputCursorToEnd => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_to_end(
+                    state,
+                )
+            }
+            Intent::WorkflowInputCursorWordLeft => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_word_left(
+                    state,
+                )
+            }
+            Intent::WorkflowInputCursorWordRight => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_word_right(
+                    state,
+                )
+            }
+            Intent::WorkflowInputCursorUp => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_up(
+                    state,
+                )
+            }
+            Intent::WorkflowInputCursorDown => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_down(
+                    state,
+                )
+            }
         }
     }
 }
@@ -581,7 +652,7 @@ fn handle_workflow_inspect_scroll_down(state: &mut AppState) -> IntentResult {
 /// ESC in workflow scope: two-press cancel with confirmation.
 fn handle_workflow_escape(state: &mut AppState) -> IntentResult {
     // If no active workflow, or workflow has no running nodes, just reset prompt and no-op.
-    let has_running = state.workflow.active().map_or(false, |w| {
+    let has_running = state.workflow.active().is_some_and(|w| {
         w.execution.snapshot().statuses().any(|(_, s)| {
             s == nullslop_workflow::engine::NodeStatus::Running
         })
@@ -633,6 +704,14 @@ fn handle_workflow_run(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
 
+    // Check if any source node is still awaiting user input.
+    let has_awaiting_input = snapshot.statuses().any(|(_, s)| {
+        s == nullslop_workflow::engine::NodeStatus::AwaitingInput
+    });
+    if has_awaiting_input {
+        return IntentResult::empty();
+    }
+
     let workflow_id = workflow.id.clone();
     let name = workflow.name.clone();
 
@@ -640,9 +719,31 @@ fn handle_workflow_run(state: &mut AppState) -> IntentResult {
     // Invalidate all nodes to reset to Pending before running.
     let has_terminal = snapshot.statuses().any(|(_, s)| s.is_terminal());
     if has_terminal {
+        // Save source node outputs before invalidation clears them.
+        // Source nodes that had user-provided data must retain it across re-runs.
+        let sources = snapshot.structure().sources();
+        let saved_outputs: Vec<(String, nullslop_workflow::port::PortValues)> = sources
+            .iter()
+            .filter_map(|name| {
+                snapshot
+                    .node_state(name)
+                    .and_then(|s| s.outputs.as_ref())
+                    .map(|arc| (name.clone(), (**arc).clone()))
+            })
+            .collect();
+
         for node_name in snapshot.structure().node_names() {
             workflow.execution.invalidate_from(node_name);
         }
+
+        // Restore source node outputs so they survive the re-run.
+        for (name, outputs) in &saved_outputs {
+            workflow.execution.set_node_outputs(name, outputs.clone());
+            workflow
+                .execution
+                .set_status(name, nullslop_workflow::engine::NodeStatus::Pending);
+        }
+
         // Replace cancellation token with fresh one.
         if let Some(w) = state.workflow.active_mut() {
             w.cancel = tokio_util::sync::CancellationToken::new();
@@ -872,5 +973,124 @@ mod tests {
         assert_eq!(state.frontend.rename_session_input.input, "Hllo");
         assert_eq!(state.frontend.rename_session_input.cursor_pos, 1);
         assert!(result.commands.is_empty());
+    }
+
+    #[test]
+    fn workflow_run_rejects_when_source_node_awaiting_input() {
+        // Given an initialized workflow where a source node has AwaitingInput status.
+        let mut state = AppState::default();
+        let execution = std::sync::Arc::new(
+            nullslop_workflow::execution::WorkflowExecution::new(source_graph_for_test()),
+        );
+        let workflow_state = crate::feat::workflow::workflow_state::WorkflowState::new(
+            "test".to_owned(),
+            execution.clone(),
+        );
+        state.workflow.insert(workflow_state);
+        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
+
+        // Mark source node as AwaitingInput.
+        execution.set_status("source", nullslop_workflow::engine::NodeStatus::AwaitingInput);
+
+        // When handling WorkflowRun.
+        let result = IntentHandler::handle(&Intent::WorkflowRun, &mut state);
+
+        // Then no StartWorkflow command is emitted.
+        assert!(result.commands.is_empty());
+    }
+
+    #[test]
+    fn workflow_run_accepts_after_source_nodes_provided() {
+        // Given a workflow where the source node has been given data (Pending status).
+        let mut state = AppState::default();
+        let execution = std::sync::Arc::new(
+            nullslop_workflow::execution::WorkflowExecution::new(source_graph_for_test()),
+        );
+        let workflow_state = crate::feat::workflow::workflow_state::WorkflowState::new(
+            "test".to_owned(),
+            execution.clone(),
+        );
+        state.workflow.insert(workflow_state);
+        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
+
+        // Source node is Pending (user has provided data).
+        execution.set_status("source", nullslop_workflow::engine::NodeStatus::Pending);
+
+        // When handling WorkflowRun.
+        let result = IntentHandler::handle(&Intent::WorkflowRun, &mut state);
+
+        // Then a StartWorkflow command is emitted.
+        assert!(!result.commands.is_empty());
+        let cmd = &result.commands[0];
+        assert!(matches!(
+            cmd,
+            crate::protocol::Command::StartWorkflow(_)
+        ));
+    }
+
+    /// Verifies that re-running a workflow preserves source node outputs.
+    /// `invalidate_from` clears outputs, but `handle_workflow_run` saves/restores
+    /// source node outputs so user-provided data survives across re-runs.
+    #[test]
+    fn workflow_run_preserves_source_outputs_on_rerun() {
+        // Given a workflow where the source node has Completed (simulating first run).
+        let mut state = AppState::default();
+        let execution = std::sync::Arc::new(
+            nullslop_workflow::execution::WorkflowExecution::new(source_graph_for_test()),
+        );
+        let workflow_state = crate::feat::workflow::workflow_state::WorkflowState::new(
+            "test".to_owned(),
+            execution.clone(),
+        );
+        state.workflow.insert(workflow_state);
+        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
+
+        // Set source node to Completed with user-provided output.
+        let mut outputs = nullslop_workflow::port::PortValues::new();
+        outputs.insert(
+            "out".to_owned(),
+            nullslop_workflow::port::PortValue::Single(
+                nullslop_workflow::port::ScalarValue::Text("user_data".to_owned()),
+            ),
+        );
+        execution.set_node_outputs("source", outputs);
+        execution.set_status("source", nullslop_workflow::engine::NodeStatus::Completed);
+
+        // When handling WorkflowRun (re-run because Completed is terminal).
+        let result = IntentHandler::handle(&Intent::WorkflowRun, &mut state);
+
+        // Then a StartWorkflow command is emitted.
+        assert!(!result.commands.is_empty());
+
+        // And the source node's output is preserved after the invalidation cycle.
+        let snapshot = execution.snapshot();
+        let node_state = snapshot.node_state("source").expect("node exists");
+        let outputs = node_state.outputs.as_ref().expect("has outputs");
+        assert_eq!(outputs.get_text("out").unwrap(), "user_data");
+    }
+
+    /// Helper: builds a minimal source-only graph for testing.
+    fn source_graph_for_test() -> nullslop_workflow::graph::WorkflowGraph {
+        use nullslop_workflow::node::code::CodeNode;
+        use nullslop_workflow::port::{PortDef, PortValue, PortValues, ScalarValue};
+
+        let source = CodeNode::new(
+            "source".to_owned(),
+            vec![],
+            vec![PortDef::text("out")],
+            |_inputs, _ctx| {
+                Box::pin(async move {
+                    let mut out = PortValues::new();
+                    out.insert(
+                        "out".to_owned(),
+                        PortValue::Single(ScalarValue::Text("data".to_owned())),
+                    );
+                    Ok(out)
+                })
+            },
+        );
+        let mut builder = nullslop_workflow::graph::WorkflowGraphBuilder::new();
+        builder.add_node("source".to_owned(), Box::new(source));
+        builder.build().expect("graph should be valid")
     }
 }

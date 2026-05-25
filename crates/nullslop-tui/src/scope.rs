@@ -45,6 +45,8 @@ pub enum Scope {
     SidebarResize,
     /// Workflow tab — browsing workflow node status.
     Workflow,
+    /// Workflow input editing — typing into the source node output buffer.
+    WorkflowInput,
 }
 
 impl std::fmt::Display for Scope {
@@ -67,6 +69,7 @@ impl std::fmt::Display for Scope {
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
             Self::Workflow => write!(f, "Workflow"),
+            Self::WorkflowInput => write!(f, "WorkflowInput"),
         }
     }
 }
@@ -93,6 +96,7 @@ impl std::str::FromStr for Scope {
             "RenameSessionInput" => Ok(Self::RenameSessionInput),
             "SidebarResize" => Ok(Self::SidebarResize),
             "Workflow" => Ok(Self::Workflow),
+            "WorkflowInput" => Ok(Self::WorkflowInput),
             _ => Err(()),
         }
     }

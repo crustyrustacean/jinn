@@ -26,22 +26,50 @@ pub fn render_workflow_tab(frame: &mut Frame<'_>, area: Rect, state: &AppState, 
         return;
     };
 
+    // If editing a source node, split area: graph gets the top, input gets the bottom.
+    let (graph_area, input_area) = if state.frontend.workflow_ui.editing_node.is_some() {
+        let input_height: u16 = 5; // border (1) + 3 visible lines + padding
+        let graph_height = area.height.saturating_sub(input_height).max(area.height / 2);
+        let actual_input_height = area.height.saturating_sub(graph_height);
+        (
+            Rect {
+                x: area.x,
+                y: area.y,
+                width: area.width,
+                height: graph_height,
+            },
+            Rect {
+                x: area.x,
+                y: area.y + graph_height,
+                width: area.width,
+                height: actual_input_height,
+            },
+        )
+    } else {
+        (area, Rect::default())
+    };
+
     let snapshot = workflow.execution.snapshot();
     let viewport = viewport_from_ui(&state.frontend.workflow_ui);
-    let widget = WorkflowWidget::new(&snapshot, &viewport, tick);
-    frame.render_widget(widget, area);
+    let widget = WorkflowWidget::new(&snapshot, &viewport, tick, state.frontend.theme.node_awaiting_input);
+    frame.render_widget(widget, graph_area);
 
-    // Status line at the bottom of the workflow area.
-    render_status_line(frame, area, state);
+    // Status line at the bottom of the graph area.
+    render_status_line(frame, graph_area, state);
 
     // Cancel prompt overlay.
     if state.frontend.workflow_ui.cancel_prompt {
-        render_cancel_prompt(frame, area);
+        render_cancel_prompt(frame, graph_area);
     }
 
     // Inspector popup overlay.
     if state.frontend.workflow_ui.inspector_open {
-        render_inspector(frame, area, state);
+        render_inspector(frame, graph_area, state);
+    }
+
+    // Workflow input buffer — bottom area.
+    if state.frontend.workflow_ui.editing_node.is_some() && input_area.height > 0 {
+        render_workflow_input(frame, input_area, state);
     }
 }
 
@@ -451,4 +479,81 @@ fn port_value_lines(
     }
 
     result
+}
+
+/// Renders the workflow input buffer at the bottom of the workflow tab.
+///
+/// Shows an accent-colored "Editing Output" title on the top border, and the
+/// buffer content with word-wrap. Positions the cursor when in Input mode.
+fn render_workflow_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    let input_mode =
+        state.frontend.scope_stack.current().mode() == nullslop_domain::protocol::Mode::Input;
+    let theme = &state.frontend.theme;
+
+    let border_style = if input_mode {
+        Style::default().fg(theme.focus_accent)
+    } else {
+        Style::default().fg(theme.border_unfocused)
+    };
+
+    let block = Block::default()
+        .borders(Borders::TOP)
+        .border_style(border_style)
+        .title(Span::styled(
+            " Editing Output ",
+            Style::default()
+                .fg(theme.focus_accent)
+                .add_modifier(Modifier::BOLD),
+        ));
+    let inner = block.inner(area);
+    let max_visible_lines = inner.height as usize;
+
+    let text = state.frontend.workflow_ui.input_buffer.text();
+    let wrapped = state.frontend.workflow_ui.input_buffer.wrapped_lines();
+    let scroll_offset = state.frontend.workflow_ui.input_buffer.scroll_offset();
+
+    let text_style = Style::default();
+    let indent_style = Style::default().add_modifier(Modifier::DIM);
+
+    let mut lines = Vec::new();
+
+    if text.is_empty() {
+        lines.push(Line::from(vec![Span::styled("  ", indent_style)]));
+    } else {
+        let graphemes: Vec<&str> = text.graphemes(true).collect();
+        for (row, wrap_line) in wrapped.iter().enumerate() {
+            if row < scroll_offset {
+                continue;
+            }
+            if lines.len() >= max_visible_lines {
+                break;
+            }
+
+            let start = wrap_line.grapheme_start.min(graphemes.len());
+            let end = wrap_line.grapheme_end.min(graphemes.len());
+            let content: String = graphemes.get(start..end).map(|s| s.join("")).unwrap_or_default();
+            lines.push(Line::from(vec![
+                Span::styled("  ", indent_style),
+                Span::styled(content, text_style),
+            ]));
+        }
+
+        if lines.is_empty() {
+            lines.push(Line::from(vec![Span::styled("  ", indent_style)]));
+        }
+    }
+
+    let widget = Paragraph::new(lines).block(block);
+    frame.render_widget(widget, area);
+
+    // Position cursor when in input mode.
+    if input_mode {
+        let (row, col) = state.frontend.workflow_ui.input_buffer.cursor_row_col();
+        let visual_row = row.saturating_sub(scroll_offset);
+        let prefix_width: usize = 2; // "  " indent
+        let display_col = col; // Approximate: use grapheme offset as display column.
+        let cursor_x = inner.x + (prefix_width + display_col) as u16;
+        let cursor_y = inner.y + visual_row as u16;
+        frame.set_cursor_position((cursor_x, cursor_y));
+    }
 }
