@@ -15,5 +15,9 @@ pub enum QueueItem {
     /// Continue after a tool batch — re-assemble prompt with updated history.
     ToolContinuation,
     /// Context compaction is needed before any further turns.
-    CompactionNeeded,
+    CompactionNeeded {
+        /// If true, ignore `reserve_tokens` and compact everything after start boundary.
+        #[serde(default)]
+        compact_all: bool,
+    },
 }

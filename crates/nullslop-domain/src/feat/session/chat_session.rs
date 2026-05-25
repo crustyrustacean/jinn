@@ -1114,7 +1114,7 @@ impl ChatSessionState {
             .ephemeral
             .message_queue
             .remove_first_matching(|item| {
-                matches!(item, crate::feat::session::queue_item::QueueItem::CompactionNeeded)
+                matches!(item, crate::feat::session::queue_item::QueueItem::CompactionNeeded { .. })
             })
             .is_some()
     }

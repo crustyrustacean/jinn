@@ -478,7 +478,7 @@ mod tests {
             let session = state.active_session_mut();
             session.begin_streaming();
             session.request_soft_cancel();
-            session.enqueue(crate::feat::session::queue_item::QueueItem::CompactionNeeded);
+            session.enqueue(crate::feat::session::queue_item::QueueItem::CompactionNeeded { compact_all: false });
             state.session.active_session_id().clone()
         };
 

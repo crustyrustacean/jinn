@@ -122,8 +122,8 @@ impl QueueActor {
                 self.dispatch_tool_continuation(&payload.session_id, ctx)
                     .await;
             }
-            QueueItem::CompactionNeeded => {
-                self.dispatch_compaction(&payload.session_id, ctx).await;
+            QueueItem::CompactionNeeded { compact_all } => {
+                self.dispatch_compaction(&payload.session_id, compact_all, ctx).await;
             }
         }
     }
@@ -136,13 +136,13 @@ impl QueueActor {
             if matches!(session.phase(), SessionPhase::Idle) {
                 true
             } else {
-                session.enqueue(QueueItem::CompactionNeeded);
+                session.enqueue(QueueItem::CompactionNeeded { compact_all: payload.compact_all });
                 false
             }
         };
 
         if is_idle {
-            self.dispatch_compaction(&payload.session_id, ctx).await;
+            self.dispatch_compaction(&payload.session_id, payload.compact_all, ctx).await;
         }
     }
 
@@ -327,6 +327,7 @@ impl QueueActor {
     async fn dispatch_compaction(
         &self,
         session_id: &crate::protocol::SessionId,
+        compact_all: bool,
         ctx: &ActorContext,
     ) {
         let phase = {
@@ -345,7 +346,7 @@ impl QueueActor {
 
         if let Err(e) = ctx.send_command(Command::CompactContext(CompactContext {
             session_id: session_id.clone(),
-            compact_all: false,
+            compact_all,
         })) {
             tracing::warn!(err = ?e, "queue-actor failed to emit CompactContext");
         }
@@ -421,7 +422,7 @@ mod tests {
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
-            session.enqueue(QueueItem::CompactionNeeded);
+            session.enqueue(QueueItem::CompactionNeeded { compact_all: false });
             state.session.active_session_id().clone()
         };
 
@@ -648,7 +649,7 @@ mod tests {
         };
 
         // When dispatching compaction.
-        actor.dispatch_compaction(&session_id, &ctx).await;
+        actor.dispatch_compaction(&session_id, false, &ctx).await;
 
         // Then no CompactContext was emitted.
         let commands = sink.commands();
