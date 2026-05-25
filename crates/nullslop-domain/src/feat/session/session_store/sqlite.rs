@@ -336,6 +336,24 @@ impl SessionStore for SqliteSessionStore {
         .change_context(SessionStoreError)
         .attach("spawn_blocking panicked during shutdown")?
     }
+
+    async fn load_judge_sessions_for_origin(
+        &self,
+        origin_session_id: &SessionId,
+    ) -> Result<Vec<ChatSessionState>, Report<SessionStoreError>> {
+        let pool = self.pool.clone();
+        let origin_session_id = origin_session_id.clone();
+        spawn_blocking(move || {
+            let mut conn = pool
+                .get()
+                .change_context(SessionStoreError)
+                .attach("failed to acquire connection from pool")?;
+            load_judge_sessions_for_origin_blocking(&mut conn, &origin_session_id)
+        })
+        .await
+        .change_context(SessionStoreError)
+        .attach("spawn_blocking panicked during load_judge_sessions_for_origin")?
+    }
 }
 
 // ── Diesel model structs ─────────────────────────────────────────────────
@@ -1164,6 +1182,33 @@ fn load_unarchived_summaries_blocking(
         .collect();
 
     Ok(summaries)
+}
+
+/// Loads all non-archived judge sessions targeting the given origin.
+///
+/// Queries by `json_extract(judge_meta, '$.origin_session')`.
+/// Returns empty vec if no judge sessions found.
+fn load_judge_sessions_for_origin_blocking(
+    conn: &mut SqliteConnection,
+    origin_session_id: &SessionId,
+) -> Result<Vec<ChatSessionState>, Report<SessionStoreError>> {
+    let origin_str = origin_session_id.to_string();
+    let rows: Vec<SessionRow> = sql_query(
+        "SELECT * FROM sessions WHERE json_extract(judge_meta, '$.origin_session') = ? AND archived = FALSE",
+    )
+    .bind::<diesel::sql_types::Text, _>(&origin_str)
+    .get_results(conn)
+    .change_context(SessionStoreError)
+    .attach("failed to query judge sessions for origin")?;
+
+    let mut sessions = Vec::new();
+    for row in rows {
+        let session_id = SessionId::from(row.id.clone().unwrap_or_default());
+        if let Some(session) = load_session_blocking(conn, &session_id)? {
+            sessions.push(session);
+        }
+    }
+    Ok(sessions)
 }
 
 /// Deletes empty unarchived sessions and orphaned entries during shutdown.
