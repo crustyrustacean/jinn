@@ -301,6 +301,32 @@ pub fn create_core_with_actor_host(
             },
         );
 
+    // Judge scan actor — loads judge definitions from disk.
+    let judge_scan_result =
+        spawn::<nullslop_domain::feat::judge::JudgeScanActor>(
+            "judge-scan",
+            &sink,
+            handle,
+            &counter,
+            &shutdown_tracker,
+            nullslop_domain::feat::judge::JudgeScanActorDeps {
+                paths: services.paths.clone(),
+            },
+        );
+
+    // Judge coordinator actor — orchestrates evaluation cycles on origin Idle.
+    let judge_coordinator_result =
+        spawn::<nullslop_domain::feat::judge::JudgeCoordinatorActor>(
+            "judge-coordinator",
+            &sink,
+            handle,
+            &counter,
+            &shutdown_tracker,
+            nullslop_domain::feat::judge::JudgeCoordinatorActorDeps {
+                state: state.clone(),
+            },
+        );
+
     // Provider actor.
     let prov_result = spawn::<nullslop_domain::feat::provider::provider_actor::ProviderActor>(
         "provider",
@@ -388,6 +414,8 @@ pub fn create_core_with_actor_host(
         scan_result,
         skills_result,
         persona_scan_result,
+        judge_scan_result,
+        judge_coordinator_result,
         prov_result,
         compaction_result,
         queue_result,
@@ -438,6 +466,11 @@ pub fn create_core_with_actor_host(
     // Trigger initial persona scan.
     let _ = sink.send_command(nullslop_domain::Command::RescanPersonas(
         nullslop_domain::feat::context::protocol::command::RescanPersonas,
+    ));
+
+    // Trigger initial judge scan.
+    let _ = sink.send_command(nullslop_domain::Command::RescanJudges(
+        nullslop_domain::feat::judge::RescanJudges,
     ));
 
     (core, services, actor_host_service)
