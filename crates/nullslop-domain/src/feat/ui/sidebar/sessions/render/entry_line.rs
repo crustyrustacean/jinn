@@ -7,11 +7,21 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use throbber_widgets_tui::ThrobberState;
 
+use crate::feat::session::chat_entry::ChatEntryKind;
+use crate::feat::session::chat_session::{ChatSessionState, SessionPhase};
 use crate::feat::theme::Theme;
-use crate::feat::ui::sidebar::sessions::state::SessionEntry;
+use crate::feat::ui::sidebar::sessions::state::SessionTreeEntry;
 
 use super::super::{ACTIVE_PREFIX, INACTIVE_PREFIX};
 use super::truncate::truncate_str;
+
+/// Render configuration — layout, theme, animation.
+/// Groups everything the entry renderer needs that isn't session data.
+pub(crate) struct EntryRenderConfig<'a> {
+    pub(crate) max_title_len: usize,
+    pub(crate) theme: &'a Theme,
+    pub(crate) throbber_state: &'a ThrobberState,
+}
 
 /// Builds the animated throbber indicator span for a session entry.
 ///
@@ -81,7 +91,7 @@ pub(crate) fn entry_title_style(
 /// - Skips `ancestor_continuations[0]` (root-level) since roots have no prefix.
 /// - For each intermediate ancestor level: `│  ` if continuing, `   ` if not
 /// - For the entry's own level: `├─ ` if has younger siblings, `└─ ` if last child
-pub(crate) fn tree_prefix(entry: &SessionEntry) -> String {
+pub(crate) fn tree_prefix(entry: &SessionTreeEntry) -> String {
     if entry.depth == 0 {
         return String::new();
     }
@@ -101,35 +111,53 @@ pub(crate) fn tree_prefix(entry: &SessionEntry) -> String {
 
 /// Assembles a complete session entry line from its components.
 ///
-/// Combines the throbber indicator, arrow prefix, tree connector prefix,
-/// and styled truncated title into a single [`Line`] ready for rendering.
+/// Reads all session properties from the live `ChatSessionState`.
+/// Tree layout comes from `SessionTreeEntry`.
+/// Render config groups theme, animation, and layout parameters.
 pub(crate) fn assemble_entry_line(
-    entry: &SessionEntry,
+    tree: &SessionTreeEntry,
+    session: &ChatSessionState,
+    is_active: bool,
     is_selected: bool,
-    max_title_len: usize,
-    throbber_state: &ThrobberState,
-    theme: &Theme,
+    config: &EntryRenderConfig<'_>,
 ) -> Line<'static> {
-    let indicator = indicator_span(entry.is_idle, throbber_state);
-    let arrow = arrow_span(entry.is_active, theme);
-    let tree = tree_prefix(entry);
-    let tree_len = tree.len();
-    let style = entry_title_style(
-        is_selected,
-        entry.is_active,
-        entry.last_entry_is_error,
-        theme,
-    );
-    let truncated = truncate_str(&entry.title, max_title_len.saturating_sub(tree_len));
-    let display_title = if entry.is_judge {
+    let is_idle = matches!(session.phase(), SessionPhase::Idle);
+    let last_entry_is_error = session
+        .history()
+        .last()
+        .is_some_and(|e| matches!(&e.kind, ChatEntryKind::Error(..)));
+    let title = session.title().unwrap_or("Untitled Session");
+    let is_judge = session.is_judge();
+    let judge_attached = session.judge().as_ref().map(|m| m.is_attached);
+
+    let indicator = indicator_span(is_idle, config.throbber_state);
+    let arrow = arrow_span(is_active, config.theme);
+    let tree_str = tree_prefix(tree);
+    let tree_len = tree_str.len();
+    let mut style = entry_title_style(is_selected, is_active, last_entry_is_error, config.theme);
+
+    let display_title = if is_judge {
+        let truncated = truncate_str(title, config.max_title_len.saturating_sub(tree_len + 2));
         format!("⚖ {truncated}")
     } else {
-        truncated.to_string()
+        truncate_str(title, config.max_title_len.saturating_sub(tree_len)).to_string()
     };
 
+    // Overlay judge-specific colors.
+    if let Some(attached) = judge_attached {
+        if attached {
+            style = style.bg(Color::Rgb(80, 50, 120)).fg(Color::White);
+        } else {
+            style = style.fg(Color::Rgb(160, 130, 200));
+        }
+    }
+
     let mut spans = vec![indicator, Span::raw(" "), arrow];
-    if !tree.is_empty() {
-        spans.push(Span::styled(tree, Style::default().fg(theme.muted_text)));
+    if !tree_str.is_empty() {
+        spans.push(Span::styled(
+            tree_str,
+            Style::default().fg(config.theme.muted_text),
+        ));
     }
     spans.push(Span::styled(display_title, style));
     Line::from(spans)
