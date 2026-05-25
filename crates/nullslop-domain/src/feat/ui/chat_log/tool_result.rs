@@ -201,7 +201,7 @@ mod tests {
     fn render_context(max_lines: u16, is_expanded: bool) -> RenderContext {
         RenderContext {
             content_width: 80,
-            _is_selected: false,
+            is_selected: false,
             is_expanded,
             tool_entry_max_lines: max_lines,
             theme: crate::feat::theme::default_theme(),
@@ -213,7 +213,7 @@ mod tests {
     fn render_context_with_status(status: Option<ToolResultStatus>) -> RenderContext {
         RenderContext {
             content_width: 80,
-            _is_selected: false,
+            is_selected: false,
             is_expanded: false,
             tool_entry_max_lines: 5,
             theme: crate::feat::theme::default_theme(),

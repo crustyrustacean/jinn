@@ -265,6 +265,18 @@ impl TuiApp {
             });
         }
 
+        // Step 4b: Dispatch Lua events for session creation.
+        if matches!(intent, Intent::SessionNew | Intent::SessionNewWithLifecycle)
+            && let Some(ref host) = self.plugin_host
+        {
+            let session_id =
+                self.core.state.read().session.active_session_id().clone();
+            host.dispatch_event(
+                "session::created",
+                &serde_json::json!({ "session_id": session_id.to_string() }),
+            );
+        }
+
         // Step 5: Handle TUI signals.
         if signals.toggle_whichkey {
             self.which_key.toggle();
