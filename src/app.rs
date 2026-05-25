@@ -137,6 +137,11 @@ impl App {
                     &paths.prompts_dir(),
                     &paths.system_prompts_dir(),
                 );
+                load_compaction_prompt(
+                    &core.state,
+                    &paths.prompts_dir(),
+                    &paths.system_prompts_dir(),
+                )?;
                 load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
                 // Resolve mouse selection config from environment.
@@ -249,6 +254,11 @@ impl App {
                     &_services.paths.prompts_dir(),
                     &_services.paths.system_prompts_dir(),
                 );
+                load_compaction_prompt(
+                    &core.state,
+                    &_services.paths.prompts_dir(),
+                    &_services.paths.system_prompts_dir(),
+                )?;
                 load_theme(
                     &core.state,
                     &_services.paths.themes_dir(),
@@ -330,6 +340,11 @@ impl App {
                             &paths.prompts_dir(),
                             &paths.system_prompts_dir(),
                         );
+                        load_compaction_prompt(
+                            &core.state,
+                            &paths.prompts_dir(),
+                            &paths.system_prompts_dir(),
+                        )?;
                         load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
                         let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
@@ -402,6 +417,11 @@ impl App {
                             &paths.prompts_dir(),
                             &paths.system_prompts_dir(),
                         );
+                        load_compaction_prompt(
+                            &core.state,
+                            &paths.prompts_dir(),
+                            &paths.system_prompts_dir(),
+                        )?;
                         load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
                         let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
@@ -464,6 +484,33 @@ fn load_prompt_templates(state: &State, user_dir: &Path, system_dir: &Path) {
         });
     tracing::info!(count = store.len(), "loaded prompt templates");
     state.write().context.prompt_templates = store;
+}
+
+/// Loads the compaction system prompt from user or system prompts directory.
+///
+/// Searches the user prompts directory first (`~/.config/nullslop/prompts/_compaction.md`),
+/// then the system prompts directory (`/usr/share/nullslop/prompts/_compaction.md`).
+///
+/// # Errors
+///
+/// Returns an error if the compaction prompt is missing from both directories
+/// or cannot be read. This is a fatal error — the application cannot run without it.
+fn load_compaction_prompt(
+    state: &State,
+    user_dir: &Path,
+    system_dir: &Path,
+) -> Result<(), Report<AppError>> {
+    let prompt = nullslop_domain::common::system_resource::load_system_resource(
+        "_compaction.md",
+        user_dir,
+        system_dir,
+    )
+    .change_context(AppError)
+    .attach("failed to load compaction prompt")?;
+
+    tracing::info!("loaded compaction prompt");
+    state.write().context.compaction_prompt = prompt;
+    Ok(())
 }
 
 /// Loads the theme from user preferences into the application state.
