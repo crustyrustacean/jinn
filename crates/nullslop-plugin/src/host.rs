@@ -206,7 +206,7 @@ impl PluginHost {
         };
 
         let callbacks: Vec<mlua::Function> = {
-            let map = guard.0.lock();
+            let map = guard.get().lock();
             map.get(event_name).cloned().unwrap_or_default()
         };
 

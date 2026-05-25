@@ -219,7 +219,7 @@ mod tests {
     fn render_context(max_lines: u16, is_expanded: bool) -> RenderContext {
         RenderContext {
             content_width: 80,
-            _is_selected: false,
+            is_selected: false,
             is_expanded,
             tool_entry_max_lines: max_lines,
             theme: crate::feat::theme::default_theme(),
@@ -231,7 +231,7 @@ mod tests {
     fn render_context_with_status(status: Option<ToolResultStatus>) -> RenderContext {
         RenderContext {
             content_width: 80,
-            _is_selected: false,
+            is_selected: false,
             is_expanded: false,
             tool_entry_max_lines: 6,
             theme: crate::feat::theme::default_theme(),
@@ -243,7 +243,7 @@ mod tests {
     fn streaming_context(max_lines: u16) -> RenderContext {
         RenderContext {
             content_width: 80,
-            _is_selected: false,
+            is_selected: false,
             is_expanded: false,
             tool_entry_max_lines: max_lines,
             theme: crate::feat::theme::default_theme(),
@@ -255,7 +255,7 @@ mod tests {
     fn expanded_context() -> RenderContext {
         RenderContext {
             content_width: 80,
-            _is_selected: false,
+            is_selected: false,
             is_expanded: true,
             tool_entry_max_lines: 6,
             theme: crate::feat::theme::default_theme(),
@@ -578,7 +578,7 @@ mod tests {
         // Given a tool call with a very long command and narrow content width.
         let ctx = RenderContext {
             content_width: 20,
-            _is_selected: false,
+            is_selected: false,
             is_expanded: false,
             tool_entry_max_lines: 6,
             theme: crate::feat::theme::default_theme(),

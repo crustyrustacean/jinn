@@ -3,6 +3,8 @@
 //! Provides terminal setup/teardown and a `make_node()` function for defining
 //! placeholder [`WorkflowNode`]s with typed ports.
 
+#![allow(dead_code, reason = "shared example utilities - not all examples use every function")]
+
 use std::io::Stdout;
 
 use nullslop_workflow::node::{NodeContext, NodeError, WorkflowNode};
