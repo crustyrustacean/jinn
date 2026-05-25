@@ -296,7 +296,9 @@ impl SessionPersistenceActor {
             | Command::CancelWorkflow(..)
             | Command::RerunFromNode(..)
             | Command::LoadWorkflowPickerEntries(..)
-            | Command::RescanJudges(..) => {}
+            | Command::RescanJudges(..)
+            | Command::LoadCompactionModelPickerEntries(..)
+            | Command::Dynamic(..) => {}
         }
     }
 }

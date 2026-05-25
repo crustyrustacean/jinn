@@ -69,6 +69,12 @@ pub struct TuiApp {
     pub sidebar: Sidebar,
     /// Cache for session preview popup rendered lines.
     pub preview_cache: PreviewCache,
+    /// Plugin host for dynamic commands/events.
+    #[debug(skip)]
+    pub plugin_host: Option<nullslop_plugin::PluginHost>,
+    /// Welcome subscriber for plugin welcome events.
+    #[debug(skip)]
+    pub welcome_subscriber: Option<nullslop_plugin::WelcomeSubscriber>,
 }
 
 impl TuiApp {
@@ -317,6 +323,7 @@ pub fn scope_for_focus(focus: &nullslop_domain::FocusScope) -> Scope {
             PickerKind::SessionLifecycle => Scope::PickerLifecycle,
             PickerKind::Workflow => Scope::PickerWorkflow,
             PickerKind::Judge => Scope::PickerJudge,
+            PickerKind::CompactionModel => Scope::PickerCompactionModel,
         },
         FocusScope::Input => Scope::Input,
         FocusScope::SidebarPersona => Scope::SidebarPersona,

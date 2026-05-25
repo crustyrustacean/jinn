@@ -142,6 +142,60 @@ impl App {
                 // Resolve mouse selection config from environment.
                 let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
 
+                // Initialize plugin system.
+                // Create the MsgHandler early so the plugin CommandSender routes
+                // through the TUI message handler (where the welcome subscriber
+                // intercept lives) instead of directly to the actor host.
+                let tui_events = nullslop_tui::MsgHandler::new();
+                let tui_event_sender = tui_events.sender();
+                let (plugin_host, welcome_subscriber) = {
+                    let cmd_sender = nullslop_plugin::CommandSender::new(
+                        move |cmd: nullslop_domain::Command| {
+                            tui_event_sender.send(nullslop_tui::msg::Msg::Command(cmd));
+                        },
+                    );
+                    let welcome_sub = nullslop_plugin::WelcomeSubscriber::new(cmd_sender.clone());
+                    match nullslop_plugin::PluginHost::new(cmd_sender) {
+                        Ok(host) => (Some(host), Some(welcome_sub)),
+                        Err(e) => {
+                            tracing::error!(err = ?e, "failed to create plugin host");
+                            (None, None)
+                        }
+                    }
+                };
+
+                // Load system plugins (/usr/share/nullslop/plugins).
+                if let Some(ref host) = plugin_host {
+                    let mut plugin_count = 0usize;
+
+                    // Built-in plugins (embedded in the binary, always available).
+                    let builtins = host.load_builtins();
+                    tracing::info!(count = builtins.len(), "loaded builtin plugins");
+                    plugin_count += builtins.len();
+
+                    // System plugins (installed by package manager).
+                    let system_dir = paths.system_plugins_dir();
+                    if system_dir.is_dir() {
+                        let infos = host.load_all(&system_dir);
+                        plugin_count += infos.len();
+                    }
+
+                    // User plugins (~/.config/nullslop/plugins).
+                    let user_dir = paths.plugins_dir();
+                    if user_dir.is_dir() {
+                        let infos = host.load_all(&user_dir);
+                        plugin_count += infos.len();
+                    }
+
+                    if plugin_count > 0 {
+                        tracing::info!(count = plugin_count, "loaded plugins");
+                    }
+
+                    // Fire app::started event.
+                    tracing::info!("dispatching app::started event");
+                    host.dispatch_event("app::started", &serde_json::Value::Null);
+                }
+
                 let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
                 let mut ui_registry = nullslop_domain::AppUiRegistry::new();
                 nullslop_domain::register_all_ui_elements(&mut ui_registry);
@@ -155,7 +209,7 @@ impl App {
                     services,
                     actor_host,
                     ui_registry,
-                    events: nullslop_tui::MsgHandler::new(),
+                    events: tui_events,
                     which_key,
                     suspend: nullslop_tui::suspend::Suspend::new(),
                     event_thread: None,
@@ -170,6 +224,8 @@ impl App {
                         s
                     },
                     preview_cache: nullslop_tui::app::PreviewCache::new(),
+                    plugin_host,
+                    welcome_subscriber,
                 }));
                 runner.run().change_context(AppError)?;
             }
@@ -305,6 +361,8 @@ impl App {
                                 s
                             },
                             preview_cache: nullslop_tui::app::PreviewCache::new(),
+                            plugin_host: None,
+                            welcome_subscriber: None,
                         }));
                         runner.run().change_context(AppError)?;
                     }
@@ -375,6 +433,8 @@ impl App {
                                 s
                             },
                             preview_cache: nullslop_tui::app::PreviewCache::new(),
+                            plugin_host: None,
+                            welcome_subscriber: None,
                         }));
                         runner.run().change_context(AppError)?;
                     }

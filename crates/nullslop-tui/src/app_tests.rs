@@ -53,6 +53,8 @@ fn test_app() -> TuiApp {
             s
         },
         preview_cache: crate::app::PreviewCache::new(),
+        plugin_host: None,
+        welcome_subscriber: None,
     }
 }
 
@@ -62,6 +64,7 @@ fn test_app() -> TuiApp {
 #[case::input(nullslop_domain::FocusScope::Input, Scope::Input)]
 #[case::picker_provider(nullslop_domain::FocusScope::Picker { kind: nullslop_domain::PickerKind::Provider }, Scope::PickerProvider)]
 #[case::sidebar_resize(nullslop_domain::FocusScope::SidebarResize, Scope::SidebarResize)]
+#[case::picker_compaction_model(nullslop_domain::FocusScope::Picker { kind: nullslop_domain::PickerKind::CompactionModel }, Scope::PickerCompactionModel)]
 fn scope_for_focus_maps_correctly(
     #[case] focus: nullslop_domain::FocusScope,
     #[case] expected: Scope,
@@ -245,6 +248,8 @@ fn mouse_events_not_handled_when_mouse_selection_disabled() {
             s
         },
         preview_cache: crate::app::PreviewCache::new(),
+        plugin_host: None,
+        welcome_subscriber: None,
     };
     let rect = Rect::new(5, 5, 20, 10);
     app.selectable_rects.rebuild(vec![rect]);

@@ -55,6 +55,9 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::Judge => {
             state.frontend.judge_picker.reset();
         }
+        PickerKind::CompactionModel => {
+            state.frontend.compaction_model_picker.reset();
+        }
     }
 
     match kind {
@@ -89,6 +92,11 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             // Populate from scanned judge definitions (already in state.context.judges).
             load_judge_picker_entries(state);
             IntentResult::empty()
+        }
+        PickerKind::CompactionModel => {
+            IntentResult::with_commands(vec![Command::LoadCompactionModelPickerEntries(
+                crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
+            )])
         }
     }
 }
@@ -198,6 +206,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::SessionLifecycle) => (confirm_session_lifecycle(state), None),
         Some(PickerKind::Workflow) => (confirm_workflow(state), None),
         Some(PickerKind::Judge) => (confirm_judge(state), None),
+        Some(PickerKind::CompactionModel) => (IntentResult::empty(), None),
         None => (IntentResult::empty(), None),
     }
 }

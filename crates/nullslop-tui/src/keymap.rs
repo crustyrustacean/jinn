@@ -123,6 +123,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .describe_group_with_category("gc", "context", KeyCategory::Context)
             .bind("<leader>sl", Intent::OpenPicker { kind: PickerKind::SessionLifecycle }, KeyCategory::General)
             .bind("<leader>sj", Intent::OpenPicker { kind: PickerKind::Judge }, KeyCategory::General)
+            .bind("<leader>sc", Intent::OpenPicker { kind: PickerKind::CompactionModel }, KeyCategory::Model)
             .bind("gg", Intent::ScrollToTop, KeyCategory::Navigation)
             .bind("G", Intent::ScrollToBottom, KeyCategory::Navigation)
             .bind("gmr", Intent::RefreshModels, KeyCategory::Model)
@@ -239,6 +240,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             add_picker_base(b);
         })
         .scope(Scope::PickerJudge, |b| {
+            add_picker_base(b);
+        })
+        .scope(Scope::PickerCompactionModel, |b| {
             add_picker_base(b);
         });
 
