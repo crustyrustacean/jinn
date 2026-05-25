@@ -106,6 +106,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<leader>ss", Intent::OpenPicker { kind: PickerKind::Session }, KeyCategory::General)
             .bind("<leader>sp", Intent::OpenPicker { kind: PickerKind::Persona }, KeyCategory::General)
             .bind("<leader>st", Intent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
+            .bind("<leader>sc", Intent::OpenPicker { kind: PickerKind::CompactionModel }, KeyCategory::Model)
             // Input — enter input mode
             .bind("i", Intent::EnterInsertMode, KeyCategory::Input)
             .bind("<c-j>", Intent::EnterInsertMode, KeyCategory::Input)
@@ -235,6 +236,12 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             add_picker_base(b);
         })
         .scope(Scope::PickerLifecycle, |b| {
+            add_picker_base(b);
+        })
+        .scope(Scope::PickerWorkflow, |b| {
+            add_picker_base(b);
+        })
+        .scope(Scope::PickerCompactionModel, |b| {
             add_picker_base(b);
         });
 
