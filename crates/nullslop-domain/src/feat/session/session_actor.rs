@@ -292,8 +292,7 @@ impl SessionPersistenceActor {
             | Command::StartWorkflow(..)
             | Command::CancelWorkflow(..)
             | Command::RerunFromNode(..)
-            | Command::LoadWorkflowPickerEntries(..) => {}
-            | Command::RerunFromNode(..)
+            | Command::LoadWorkflowPickerEntries(..)
             | Command::Dynamic(..) => {}
         }
     }
