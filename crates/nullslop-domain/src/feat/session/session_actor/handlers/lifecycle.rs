@@ -160,7 +160,7 @@ impl SessionPersistenceActor {
 
     /// Runs a shell-based setup command via `run_setup_command`.
     async fn run_shell_setup(&self, payload: &RunSessionSetup, ctx: &ActorContext) {
-        let result = run_setup_command(&payload.command).await;
+        let result = run_setup_command(&payload.command, &self.shell).await;
 
         // Clear busy flag in all code paths.
         {
@@ -413,10 +413,12 @@ impl SessionPersistenceActor {
                 // Spawn tokio task to run the shell command.
                 let session_id = payload.session_id.clone();
                 let sink = ctx.sink();
+                let shell = self.shell.clone();
                 tokio::spawn(async move {
                     let result =
                         crate::feat::session_lifecycle::command_runner::run_teardown_command(
                             &rendered,
+                            &shell,
                         )
                         .await;
                     let error = result.err().map(|report| {
@@ -604,9 +606,11 @@ impl SessionPersistenceActor {
 
                         let session_id = payload.session_id.clone();
                         let sink = ctx.sink();
+                        let shell = self.shell.clone();
                         tokio::spawn(async move {
                             let result = crate::feat::session_lifecycle::command_runner::run_teardown_command(
                                 &rendered,
+                                &shell,
                             )
                             .await;
                             let error = result.err().map(|report| {

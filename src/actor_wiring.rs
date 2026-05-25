@@ -233,6 +233,7 @@ pub fn create_core_with_actor_host(
             state: state.clone(),
             app_paths: paths.clone(),
             builtin_filter: None,
+            shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
         },
     );
 
@@ -258,6 +259,7 @@ pub fn create_core_with_actor_host(
                 );
                 registry
             },
+            shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
         },
     );
 

@@ -2290,7 +2290,7 @@ fn lifecycle_script_state_defaults_to_nothing_ran() {
 }
 
 #[rstest::rstest]
-fn session_state_can_transition_to_archived_and_back() {
+fn session_state_can_be_set_to_archived() {
     // Given a new session.
     let mut session = ChatSessionState::new();
 
@@ -2299,6 +2299,13 @@ fn session_state_can_transition_to_archived_and_back() {
 
     // Then it is Archived.
     assert_eq!(session.session_state(), SessionState::Archived);
+}
+
+#[rstest::rstest]
+fn session_state_can_be_set_back_to_loaded_from_archived() {
+    // Given a session in Archived state.
+    let mut session = ChatSessionState::new();
+    session.set_session_state(SessionState::Archived);
 
     // When setting back to Loaded.
     session.set_session_state(SessionState::Loaded);
