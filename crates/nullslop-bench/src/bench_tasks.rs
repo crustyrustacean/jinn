@@ -74,6 +74,10 @@ fn session_id_short(id: &SessionId) -> String {
 }
 
 impl BuiltinHandler for BenchTaskHandler {
+    fn name(&self) -> &'static str {
+        "bench_task"
+    }
+
     fn setup(
         &self,
         session_id: &SessionId,

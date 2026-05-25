@@ -41,6 +41,10 @@ struct NoProvidersAvailableService;
 
 #[async_trait::async_trait]
 impl LlmService for NoProvidersAvailableService {
+    fn name(&self) -> &'static str {
+        "no_providers"
+    }
+
     async fn chat_stream(
         &self,
         _messages: Vec<LlmMessage>,

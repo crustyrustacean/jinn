@@ -15,6 +15,9 @@ use super::actor_ref::SendResult;
 /// `send_command`/`send_event` through their [`ActorContext`](crate::ActorContext),
 /// which delegates to the underlying `MessageSink`.
 pub trait MessageSink: Send + Sync + 'static {
+    /// Returns a human-readable name for this sink, for debugging.
+    fn name(&self) -> &'static str;
+
     /// Sends a command to the bus.
     ///
     /// # Errors
@@ -86,6 +89,10 @@ impl RecordingSink {
 }
 
 impl MessageSink for RecordingSink {
+    fn name(&self) -> &'static str {
+        "recording_sink"
+    }
+
     fn send_command(&self, command: Command) -> SendResult {
         self.commands.lock().push(command);
         Ok(())

@@ -103,6 +103,10 @@ mod tests {
     /// No-op sink for testing — records nothing.
     struct TestSink;
     impl MessageSink for TestSink {
+        fn name(&self) -> &'static str {
+            "test_sink"
+        }
+
         fn send_command(&self, _command: crate::protocol::Command) -> SendResult {
             Ok(())
         }
