@@ -142,6 +142,52 @@ impl App {
                 // Resolve mouse selection config from environment.
                 let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
 
+                // Initialize plugin system.
+                let plugin_host = {
+                    let sender = core.sender().clone();
+                    let cmd_sender = nullslop_plugin::CommandSender::new(
+                        move |cmd: nullslop_domain::Command| {
+                            let _ = sender.send(nullslop_domain::AppMsg::Command {
+                                command: cmd,
+                                source: None,
+                            });
+                        },
+                    );
+                    match nullslop_plugin::PluginHost::new(cmd_sender) {
+                        Ok(host) => Some(host),
+                        Err(e) => {
+                            tracing::error!(err = ?e, "failed to create plugin host");
+                            None
+                        }
+                    }
+                };
+
+                // Load bundled plugins.
+                if let Some(ref host) = plugin_host {
+                    let bundled_dir = std::path::Path::new("plugins");
+                    if bundled_dir.is_dir() {
+                        let infos = host.load_all(bundled_dir);
+                        if !infos.is_empty() {
+                            tracing::info!(count = infos.len(), "loaded bundled plugins");
+                        }
+                    }
+
+                    // Load user plugins.
+                    let user_plugins_dir = dirs::config_dir()
+                        .unwrap_or_default()
+                        .join("nullslop")
+                        .join("plugins");
+                    if user_plugins_dir.is_dir() {
+                        let infos = host.load_all(&user_plugins_dir);
+                        if !infos.is_empty() {
+                            tracing::info!(count = infos.len(), "loaded user plugins");
+                        }
+                    }
+
+                    // Fire app::started event.
+                    host.dispatch_event("app::started", &serde_json::Value::Null);
+                }
+
                 let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
                 let mut ui_registry = nullslop_domain::AppUiRegistry::new();
                 nullslop_domain::register_all_ui_elements(&mut ui_registry);
@@ -170,6 +216,7 @@ impl App {
                         s
                     },
                     preview_cache: nullslop_tui::app::PreviewCache::new(),
+                    plugin_host,
                 }));
                 runner.run().change_context(AppError)?;
             }
@@ -305,6 +352,7 @@ impl App {
                                 s
                             },
                             preview_cache: nullslop_tui::app::PreviewCache::new(),
+                            plugin_host: None,
                         }));
                         runner.run().change_context(AppError)?;
                     }
@@ -375,6 +423,7 @@ impl App {
                                 s
                             },
                             preview_cache: nullslop_tui::app::PreviewCache::new(),
+                            plugin_host: None,
                         }));
                         runner.run().change_context(AppError)?;
                     }

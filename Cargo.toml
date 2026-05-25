@@ -27,6 +27,7 @@ nullslop-cli = { workspace = true }
 nullslop-tui = { workspace = true }
 nullslop-domain = { workspace = true }
 nullslop-bench = { workspace = true }
+nullslop-plugin = { workspace = true }
 clap_complete = { workspace = true }
 tokio = { workspace = true }
 kanal = { workspace = true }
