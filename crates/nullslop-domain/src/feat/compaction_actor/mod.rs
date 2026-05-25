@@ -156,6 +156,7 @@ impl CompactionActor {
                         result: None,
                         error: Some(format!("{e:#}")),
                         auto: was_auto,
+                        skipped: false,
                     }));
                     let _ = sink.send_event(Event::CompactionCompleted(CompactionCompleted {
                         session_id,
@@ -318,7 +319,7 @@ async fn perform_compaction(
         // Find cut point: walk backwards accumulating tokens.
         let estimator = CharRatioEstimator;
         let mut accumulated_tokens = 0usize;
-        let mut cut_index = history.len(); // Default: compact everything after start.
+        let mut cut_index = start_index;
 
         for i in (start_index..history.len()).rev() {
             let entry = &history[i];
@@ -344,6 +345,31 @@ async fn perform_compaction(
         }
 
         if gathered_indices.is_empty() {
+            // Nothing to compact — all tokens fit within the reserve.
+            let total_tokens: usize = history[start_index..]
+                .iter()
+                .map(|e| estimate_entry_tokens(&estimator, e))
+                .sum();
+
+            let skip_msg = format!(
+                "Skipped compaction: {} tokens within the {} token reserve. Use /compact-all to force.",
+                total_tokens, config.keep_recent_tokens
+            );
+
+            // Emit BeginCompaction so session enters Compacting phase.
+            let _ = sink.send_command(Command::BeginCompaction(BeginCompaction {
+                session_id: session_id.clone(),
+                gathered_indices: vec![],
+            }));
+            // Emit EndCompaction with skipped flag so session shows message and returns to Idle.
+            let _ = sink.send_command(Command::EndCompaction(EndCompaction {
+                session_id: session_id.clone(),
+                result: None,
+                error: Some(skip_msg),
+                auto,
+                skipped: true,
+            }));
+
             return Ok(0);
         }
 
@@ -435,6 +461,7 @@ async fn perform_compaction(
         }),
         error: None,
         auto,
+        skipped: false,
     }));
 
     Ok(entries_compacted)
