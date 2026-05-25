@@ -13,6 +13,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
+use unicode_segmentation::UnicodeSegmentation;
 
 /// Renders the workflow tab content.
 ///
@@ -180,8 +181,8 @@ fn build_inspector_lines(
         let config_indent = 2;
         let config_max = (content_width as usize).saturating_sub(config_indent).max(3);
         for line in config_str.lines().take(5) {
-            let truncated: String = if line.chars().count() > config_max {
-                let mut s: String = line.chars().take(config_max.saturating_sub(3)).collect();
+            let truncated: String = if line.graphemes(true).count() > config_max {
+                let mut s: String = line.graphemes(true).take(config_max.saturating_sub(3)).collect();
                 s.push_str("...");
                 s
             } else {
@@ -395,7 +396,7 @@ fn port_value_lines(
     };
 
     let label = format!("  {name}: ");
-    let label_len = label.chars().count();
+    let label_len = label.graphemes(true).count();
     let cont_indent = "    ";
     let width = content_width as usize;
 
@@ -405,11 +406,11 @@ fn port_value_lines(
     let dim = Style::default().add_modifier(Modifier::DIM);
 
     let mut result = Vec::new();
-    let mut chars = raw.chars().peekable();
+    let mut graphemes = raw.graphemes(true).collect::<Vec<_>>();
 
-    // First line: label + as many value chars as fit.
-    let first_val: String = chars.by_ref().take(first_budget).collect();
-    if chars.peek().is_none() {
+    // First line: label + as many value graphemes as fit.
+    let first_val: String = graphemes.drain(..first_budget.min(graphemes.len())).collect();
+    if graphemes.is_empty() {
         // Entire value fits on one line.
         result.push(Line::from(vec![
             Span::styled(label, Style::default()),
@@ -425,18 +426,18 @@ fn port_value_lines(
 
     // Continuation lines.
     while result.len() < MAX_PORT_LINES {
-        let chunk: String = chars.by_ref().take(cont_budget).collect();
+        let chunk: String = graphemes.drain(..cont_budget.min(graphemes.len())).collect();
         if chunk.is_empty() {
             break;
         }
 
         let is_last_slot = result.len() == MAX_PORT_LINES - 1;
-        let has_more = chars.peek().is_some();
+        let has_more = !graphemes.is_empty();
 
         let text = if is_last_slot && has_more {
             // Truncate and append "..."
             let budget = cont_budget.saturating_sub(3);
-            let mut s: String = chunk.chars().take(budget).collect();
+            let mut s: String = chunk.graphemes(true).take(budget).collect();
             s.push_str("...");
             s
         } else {
