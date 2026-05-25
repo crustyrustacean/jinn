@@ -81,6 +81,10 @@ pub fn run_migrations(conn: &mut SqliteConnection) -> Result<(), Report<SessionS
         migrate_v12(conn)?;
         record_version(conn, 12, "replace_ignored_with_context_override")?;
     }
+    if current < 13 {
+        migrate_v13(conn)?;
+        record_version(conn, 13, "add_judge_meta_column")?;
+    }
     Ok(())
 }
 
@@ -408,6 +412,18 @@ fn migrate_v11(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErr
 /// `'default'`, `'forced_include'`, `'forced_exclude'`. The old `ignored`
 /// column is kept for backward compatibility — the new column takes precedence.
 /// Rows with `ignored = 1` are migrated to `'forced_exclude'`.
+/// v13: Add `judge_meta` column to sessions.
+///
+/// Stores judge metadata as a nullable JSON text blob.
+/// When NULL, the session is not a judge session.
+fn migrate_v13(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    sql_query("ALTER TABLE sessions ADD COLUMN judge_meta TEXT")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("v13: add judge_meta column to sessions")?;
+    Ok(())
+}
+
 fn migrate_v12(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query(
         "ALTER TABLE session_history ADD COLUMN context_override TEXT NOT NULL DEFAULT 'default'",
@@ -462,7 +478,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 13);
+        assert_eq!(rows.len(), 14);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -489,6 +505,8 @@ mod tests {
         assert_eq!(rows[11].name, "add_is_workflow_column");
         assert_eq!(rows[12].version, 12);
         assert_eq!(rows[12].name, "replace_ignored_with_context_override");
+        assert_eq!(rows[13].version, 13);
+        assert_eq!(rows[13].name, "add_judge_meta_column");
     }
 
     #[test]
@@ -512,7 +530,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 13);
+        assert_eq!(rows[0].count, 14);
     }
 
     #[test]

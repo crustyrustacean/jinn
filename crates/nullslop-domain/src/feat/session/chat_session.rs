@@ -287,6 +287,14 @@ pub struct SessionCore {
     /// OWNER: workflow-actor (set on creation).
     #[serde(default)]
     pub(crate) is_workflow: bool,
+    /// Judge metadata — `None` for regular sessions, `Some` for judge sessions.
+    ///
+    /// Presence is the single flag: `is_judge() == self.judge.is_some()`.
+    /// No separate `is_judge` boolean exists in application logic.
+    /// OWNER: intent handler (set on picker creation), judge tools (set is_attached).
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) judge: Option<crate::feat::judge::JudgeMeta>,
     /// Prompt overrides for workflow sessions. When set, these replace global
     /// defaults in `assemble_prompt`. Runtime-only — not persisted.
     /// OWNER: workflow-actor (set before first message).
@@ -316,6 +324,7 @@ impl Default for SessionCore {
             session_state: SessionState::Loaded,
             lifecycle_script_state: LifecycleScriptState::NothingRan,
             is_workflow: false,
+            judge: None,
             workflow_overrides: None,
             ephemeral: SessionCoreEphemeral::default(),
         }
@@ -594,6 +603,31 @@ impl ChatSessionState {
     #[must_use]
     pub fn is_workflow(&self) -> bool {
         self.core.is_workflow
+    }
+
+    /// Whether this session is a judge session.
+    ///
+    /// True when `judge` metadata is present. The single flag for all
+    /// judge-specific behavior — no separate `is_judge` boolean in logic.
+    #[must_use]
+    pub fn is_judge(&self) -> bool {
+        self.core.judge.is_some()
+    }
+
+    /// The judge metadata for this session, if it's a judge session.
+    #[must_use]
+    pub fn judge(&self) -> &Option<crate::feat::judge::JudgeMeta> {
+        &self.core.judge
+    }
+
+    /// Set the judge metadata on this session.
+    pub fn set_judge(&mut self, meta: crate::feat::judge::JudgeMeta) {
+        self.core.judge = Some(meta);
+    }
+
+    /// Restore judge metadata (e.g., after DB load or fork).
+    pub fn restore_judge(&mut self, judge: Option<crate::feat::judge::JudgeMeta>) {
+        self.core.judge = judge;
     }
 
     /// Append an entry to the history and return its index.
