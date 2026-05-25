@@ -232,6 +232,8 @@ pub enum Intent {
     WorkflowEscape,
     /// Re-run the workflow from the currently selected node.
     WorkflowRerunNode,
+    /// Run the loaded workflow (or re-run a completed/failed workflow).
+    WorkflowRun,
     /// Pan the workflow viewport left.
     WorkflowPanLeft,
     /// Pan the workflow viewport down.
@@ -344,6 +346,7 @@ impl std::fmt::Display for Intent {
             Intent::WorkflowInspectScrollDown => write!(f, "workflow inspect scroll down"),
             Intent::WorkflowEscape => write!(f, "workflow escape"),
             Intent::WorkflowRerunNode => write!(f, "workflow rerun node"),
+            Intent::WorkflowRun => write!(f, "workflow run"),
             Intent::WorkflowPanLeft => write!(f, "workflow pan left"),
             Intent::WorkflowPanDown => write!(f, "workflow pan down"),
             Intent::WorkflowPanUp => write!(f, "workflow pan up"),
