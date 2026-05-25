@@ -293,7 +293,8 @@ impl SessionPersistenceActor {
             | Command::CancelWorkflow(..)
             | Command::RerunFromNode(..)
             | Command::LoadWorkflowPickerEntries(..)
-            | Command::Dynamic(..) => {}
+            | Command::Dynamic(..)
+            | Command::LoadCompactionModelPickerEntries(..) => {}
         }
     }
 }

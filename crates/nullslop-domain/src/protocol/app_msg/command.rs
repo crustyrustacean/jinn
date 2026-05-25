@@ -92,6 +92,10 @@ pub enum Command {
     SessionLoadCompleted(SessionLoadCompleted),
     /// Load entries for the provider/model picker.
     LoadProviderPickerEntries(LoadProviderPickerEntries),
+    /// Load entries for the compaction model picker.
+    LoadCompactionModelPickerEntries(
+        crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
+    ),
     /// Load entries for the session picker.
     LoadSessionPickerEntries(LoadSessionPickerEntries),
     /// Request to load a full session from disk by byte offset.
@@ -172,6 +176,9 @@ impl Command {
             Self::ProceedWithShutdown(..) => Some(ProceedWithShutdown::NAME),
             Self::SessionLoadCompleted(..) => Some(SessionLoadCompleted::NAME),
             Self::LoadProviderPickerEntries(..) => Some(LoadProviderPickerEntries::NAME),
+            Self::LoadCompactionModelPickerEntries(..) => {
+                Some(crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries::NAME)
+            }
             Self::LoadSessionPickerEntries(..) => Some(LoadSessionPickerEntries::NAME),
             Self::SessionLoadRequested(..) => Some(SessionLoadRequested::NAME),
             Self::ScanSkills => Some(ScanSkills::NAME),
@@ -278,6 +285,9 @@ impl std::fmt::Display for Command {
             }
             Command::SessionLoadCompleted(..) => write!(f, "session load completed"),
             Command::LoadProviderPickerEntries(..) => write!(f, "load provider picker entries"),
+            Command::LoadCompactionModelPickerEntries(..) => {
+                write!(f, "load compaction model picker entries")
+            }
             Command::LoadSessionPickerEntries(..) => write!(f, "load session picker entries"),
             Command::SessionLoadRequested(..) => write!(f, "session load requested"),
             Command::ScanSkills => write!(f, "scan skills"),
