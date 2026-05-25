@@ -161,26 +161,26 @@ impl SidebarSection for SessionsSection {
         frame.render_widget(widget, area);
 
         // Close session confirmation prompt — overlay 1 row above the cursor.
-        if state.frontend.close_session_prompt && section_focused {
-            if let Some(sel) = selected_index {
-                let visual_row = sel.saturating_sub(scroll_offset) as u16;
-                let cursor_y = area.y + visual_row;
-                let prompt_y = cursor_y.saturating_sub(1);
-                if prompt_y >= area.y {
-                    let prompt = Paragraph::new(Line::from(Span::styled(
-                        " Press x again to close ",
-                        Style::default().fg(Color::Black).bg(Color::Yellow),
-                    )));
-                    frame.render_widget(
-                        prompt,
-                        Rect {
-                            x: area.x,
-                            y: prompt_y,
-                            width: area.width,
-                            height: 1,
-                        },
-                    );
-                }
+        if state.frontend.close_session_prompt && section_focused
+            && let Some(sel) = selected_index
+        {
+            let visual_row = sel.saturating_sub(scroll_offset) as u16;
+            let cursor_y = area.y + visual_row;
+            let prompt_y = cursor_y.saturating_sub(1);
+            if prompt_y >= area.y {
+                let prompt = Paragraph::new(Line::from(Span::styled(
+                    " Press x again to close ",
+                    Style::default().fg(Color::Black).bg(Color::Yellow),
+                )));
+                frame.render_widget(
+                    prompt,
+                    Rect {
+                        x: area.x,
+                        y: prompt_y,
+                        width: area.width,
+                        height: 1,
+                    },
+                );
             }
         }
     }

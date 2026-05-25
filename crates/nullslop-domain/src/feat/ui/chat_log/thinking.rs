@@ -20,7 +20,7 @@ mod tests {
     fn render_context() -> RenderContext {
         RenderContext {
             content_width: 80,
-            _is_selected: false,
+            is_selected: false,
             is_expanded: false,
             tool_entry_max_lines: 5,
             theme: crate::feat::theme::default_theme(),

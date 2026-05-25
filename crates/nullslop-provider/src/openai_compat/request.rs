@@ -72,6 +72,7 @@ pub fn build_request(
     // consecutive messages with the same role.
     let openai_messages = coalesce_messages(&non_system);
 
+    #[expect(clippy::if_not_else, reason = "system message branch is the interesting one, keep it first")]
     let openai_messages = if !system_contents.is_empty() {
         let mut result = vec![serde_json::json!({
             "role": "system",
@@ -121,24 +122,24 @@ fn coalesce_messages(messages: &[&LlmMessage]) -> Vec<serde_json::Value> {
         let can_coalesce = matches!(msg, LlmMessage::User { .. })
             || matches!(msg, LlmMessage::Assistant { tool_calls: None, .. });
 
-        if can_coalesce {
-            if let Some(last) = result.last_mut() {
-                // Only merge if the previous message is also a plain user or
-                // assistant (no tool_calls, no tool_call_id) and has the same role.
-                let last_is_coalescable =
-                    (last["role"] == "user" || last["role"] == "assistant")
-                        && !last.get("tool_calls").is_some()
-                        && !last.get("tool_call_id").is_some();
+        if can_coalesce
+            && let Some(last) = result.last_mut()
+        {
+            // Only merge if the previous message is also a plain user or
+            // assistant (no tool_calls, no tool_call_id) and has the same role.
+            let last_is_coalescable =
+                (last["role"] == "user" || last["role"] == "assistant")
+                    && last.get("tool_calls").is_none()
+                    && last.get("tool_call_id").is_none();
 
-                if last_is_coalescable && last["role"] == json["role"] {
-                    // Append content to the previous message of the same role.
-                    let existing = last["content"].as_str().unwrap_or("");
-                    let incoming = json["content"].as_str().unwrap_or("");
-                    last["content"] = serde_json::Value::String(format!(
-                        "{existing}\n\n{incoming}"
-                    ));
-                    continue;
-                }
+            if last_is_coalescable && last["role"] == json["role"] {
+                // Append content to the previous message of the same role.
+                let existing = last["content"].as_str().unwrap_or("");
+                let incoming = json["content"].as_str().unwrap_or("");
+                last["content"] = serde_json::Value::String(format!(
+                    "{existing}\n\n{incoming}"
+                ));
+                continue;
             }
         }
 
