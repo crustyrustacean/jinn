@@ -992,6 +992,48 @@ mod tests {
         Box::new(PanicNode)
     }
 
+    /// Verifies that pre-set outputs on a source node are NOT overwritten
+    /// by the node's execute() closure during engine execution.
+    ///
+    /// This is the core guarantee for user-provided workflow input.
+    #[tokio::test]
+    async fn pre_set_source_output_preserved_through_execution() {
+        // Given A → B where A's closure returns "hardcoded".
+        let ctx = Arc::new(TestContext);
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node("a".to_owned(), source_node("hardcoded"))
+            .add_node("b".to_owned(), uppercase_node());
+        builder.connect("a", "out", "b", "in").expect("a→b");
+        let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
+
+        // Pre-set A's output to user-provided data (simulating workflow input).
+        let mut user_outputs = PortValues::new();
+        user_outputs.insert(
+            "out".to_owned(),
+            PortValue::Single(ScalarValue::Text("user_data".to_owned())),
+        );
+        execution.set_node_outputs("a", user_outputs);
+        execution.set_status("a", NodeStatus::Pending);
+
+        // When executing.
+        let result = execute(execution, ctx).await.expect("execute");
+
+        // Then A's output is "user_data", NOT "hardcoded".
+        assert_eq!(status(&result, "a"), NodeStatus::Completed);
+        assert_eq!(
+            outputs(&result, "a").get_text("out").unwrap(),
+            "user_data"
+        );
+        // And B received the user's data (uppercased).
+        assert_eq!(status(&result, "b"), NodeStatus::Completed);
+        assert_eq!(
+            outputs(&result, "b").get_text("out").unwrap(),
+            "USER_DATA"
+        );
+    }
+
     #[tokio::test]
     async fn linear_pipeline_flows_data_correctly() {
         // Given A → B → C where A outputs "hello", B uppercases, C adds "-world".

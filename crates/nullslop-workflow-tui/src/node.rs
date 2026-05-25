@@ -149,10 +149,10 @@ impl VisualNode {
         tick: u8,
         awaiting_input_color: Color,
     ) {
-        let border_color = if self.status == NodeStatus::AwaitingInput {
-            awaiting_input_color
-        } else if selected {
+        let border_color = if selected {
             Color::White
+        } else if self.status == NodeStatus::AwaitingInput {
+            awaiting_input_color
         } else {
             Color::DarkGray
         };
@@ -396,10 +396,10 @@ impl ShiftedNode<'_> {
         tick: u8,
         awaiting_input_color: Color,
     ) {
-        let border_color = if self.inner.status == NodeStatus::AwaitingInput {
-            awaiting_input_color
-        } else if selected {
+        let border_color = if selected {
             Color::White
+        } else if self.inner.status == NodeStatus::AwaitingInput {
+            awaiting_input_color
         } else {
             Color::DarkGray
         };
