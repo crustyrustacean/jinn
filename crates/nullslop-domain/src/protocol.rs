@@ -46,6 +46,8 @@ pub use crate::feat::session::protocol::session_id::SessionId;
 // Re-export domain types used by the picker and UI
 pub use crate::feat::provider::entries_to_messages::entries_to_messages;
 pub use crate::feat::provider::picker_entry::PickerEntry;
-pub use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition};
+pub use crate::feat::session::chat_entry::{
+    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition,
+};
 pub use crate::feat::session::picker_entry::SessionTreeEntry;
 pub use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};

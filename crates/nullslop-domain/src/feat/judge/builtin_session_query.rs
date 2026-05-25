@@ -17,8 +17,8 @@
 
 use std::fmt::Write;
 
-use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::feat::tools_actor::BoxedToolFuture;
+use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::ChatEntry;
 
 /// Returns the tool definition for `session_query`.
@@ -46,11 +46,9 @@ pub fn definition() -> ToolDefinition {
 /// Executes the `session_query` tool.
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
-        let args: serde_json::Value = serde_json::from_str(&call.arguments).unwrap_or(serde_json::Value::Null);
-        let query = args
-            .get("query")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let args: serde_json::Value =
+            serde_json::from_str(&call.arguments).unwrap_or(serde_json::Value::Null);
+        let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
 
         if query.is_empty() {
             return ToolResult {

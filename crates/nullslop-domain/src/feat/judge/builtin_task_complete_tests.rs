@@ -60,7 +60,11 @@ async fn task_complete_sets_is_attached_false() {
     let guard = state.read();
     let session = guard.session(&judge_id);
     assert!(
-        !session.judge().as_ref().expect("has judge meta").is_attached,
+        !session
+            .judge()
+            .as_ref()
+            .expect("has judge meta")
+            .is_attached,
         "is_attached should be false after task_complete"
     );
 }

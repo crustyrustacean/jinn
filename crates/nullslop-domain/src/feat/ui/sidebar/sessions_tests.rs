@@ -311,9 +311,21 @@ fn sorted_sessions_orders_by_created_at_descending() {
     // Then sessions are sorted by created_at descending (newest first).
     // Read created_at from live sessions, not from the tree entry.
     assert_eq!(sessions.len(), 3);
-    let a = state.session.get(&sessions[0].id).map(|s| *s.created_at()).unwrap_or_default();
-    let b = state.session.get(&sessions[1].id).map(|s| *s.created_at()).unwrap_or_default();
-    let c = state.session.get(&sessions[2].id).map(|s| *s.created_at()).unwrap_or_default();
+    let a = state
+        .session
+        .get(&sessions[0].id)
+        .map(|s| *s.created_at())
+        .unwrap_or_default();
+    let b = state
+        .session
+        .get(&sessions[1].id)
+        .map(|s| *s.created_at())
+        .unwrap_or_default();
+    let c = state
+        .session
+        .get(&sessions[2].id)
+        .map(|s| *s.created_at())
+        .unwrap_or_default();
     assert!(a >= b);
     assert!(b >= c);
 }
@@ -1296,7 +1308,9 @@ fn orphan_session_appears_as_root() {
     let sessions = sorted_open_sessions(&state);
 
     // Then the orphan appears as a root (depth 0).
-    let orphan_entry = sessions.iter().find(|s| entry_title(&state, &s.id).contains("orphan"));
+    let orphan_entry = sessions
+        .iter()
+        .find(|s| entry_title(&state, &s.id).contains("orphan"));
     assert!(orphan_entry.is_some(), "orphan should appear");
     assert_eq!(
         orphan_entry.unwrap().depth,
@@ -1412,7 +1426,10 @@ fn close_root_session_promotes_children_to_roots() {
     let remaining = sorted_open_sessions(&state);
     let former_children: Vec<_> = remaining
         .iter()
-        .filter(|s| entry_title(&state, &s.id).contains("child a") || entry_title(&state, &s.id).contains("grandchild"))
+        .filter(|s| {
+            entry_title(&state, &s.id).contains("child a")
+                || entry_title(&state, &s.id).contains("grandchild")
+        })
         .collect();
     assert!(
         !former_children.is_empty(),
@@ -1420,7 +1437,9 @@ fn close_root_session_promotes_children_to_roots() {
     );
     // All former children should now be roots or have adjusted depth.
     // The children of root_a become orphans → treated as roots.
-    let child_a1_entry = remaining.iter().find(|s| entry_title(&state, &s.id).contains("child a1"));
+    let child_a1_entry = remaining
+        .iter()
+        .find(|s| entry_title(&state, &s.id).contains("child a1"));
     assert!(child_a1_entry.is_some(), "child_a1 should still exist");
     assert_eq!(
         child_a1_entry.unwrap().depth,
@@ -1518,7 +1537,11 @@ fn archiving_intermediate_parent_reparents_grandchild_under_grandparent() {
     assert!(!state.session.contains(&child_a1_id));
     // And the visual_parents index maps grandchild -> root_a.
     assert_eq!(
-        state.frontend.sessions_section.visual_parents.get(&grandchild_id),
+        state
+            .frontend
+            .sessions_section
+            .visual_parents
+            .get(&grandchild_id),
         Some(&root_a_id),
         "grandchild should be reparented to root_a in visual_parents"
     );

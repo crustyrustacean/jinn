@@ -46,7 +46,10 @@ impl Subscriptions {
 /// `Command::Dynamic`. The `ps` bindings manage an internal
 /// subscription map for in-VM pub/sub.
 pub fn install(lua: &Lua, sender: &CommandSender) -> Result<(), mlua::Error> {
-    #[expect(clippy::arc_with_non_send_sync, reason = "mlua::Function is not Send but only used from the single Lua thread")]
+    #[expect(
+        clippy::arc_with_non_send_sync,
+        reason = "mlua::Function is not Send but only used from the single Lua thread"
+    )]
     let subs: SubscriptionMap = Arc::new(Mutex::new(HashMap::new()));
     lua.set_app_data(Subscriptions::new(subs.clone()));
 
@@ -56,12 +59,10 @@ pub fn install(lua: &Lua, sender: &CommandSender) -> Result<(), mlua::Error> {
         let sender = sender.clone();
         let ns_emit = lua.create_function(move |lua, (name, payload): (String, Value)| {
             let json_payload = value_to_json(lua, &payload)?;
-            let cmd = nullslop_domain::Command::Dynamic(
-                nullslop_domain::DynamicCommand {
-                    name,
-                    payload: json_payload,
-                },
-            );
+            let cmd = nullslop_domain::Command::Dynamic(nullslop_domain::DynamicCommand {
+                name,
+                payload: json_payload,
+            });
             sender.send(cmd);
             Ok(())
         })?;
@@ -110,7 +111,10 @@ pub fn install(lua: &Lua, sender: &CommandSender) -> Result<(), mlua::Error> {
 }
 
 /// Converts a Lua value to a `serde_json::Value`.
-#[expect(clippy::only_used_in_recursion, reason = "lua parameter needed for Table -> recursive value_to_json calls")]
+#[expect(
+    clippy::only_used_in_recursion,
+    reason = "lua parameter needed for Table -> recursive value_to_json calls"
+)]
 fn value_to_json(lua: &Lua, value: &Value) -> Result<serde_json::Value, mlua::Error> {
     match value {
         Value::Nil => Ok(serde_json::Value::Null),
@@ -171,7 +175,10 @@ fn value_to_json(lua: &Lua, value: &Value) -> Result<serde_json::Value, mlua::Er
 }
 
 /// Converts a `serde_json::Value` to a Lua value.
-pub(crate) fn json_to_lua_value(lua: &Lua, value: &serde_json::Value) -> Result<Value, mlua::Error> {
+pub(crate) fn json_to_lua_value(
+    lua: &Lua,
+    value: &serde_json::Value,
+) -> Result<Value, mlua::Error> {
     match value {
         serde_json::Value::Null => Ok(Value::Nil),
         serde_json::Value::Bool(b) => Ok(Value::Boolean(*b)),
@@ -179,9 +186,7 @@ pub(crate) fn json_to_lua_value(lua: &Lua, value: &serde_json::Value) -> Result<
             if let Some(i) = n.as_i64() {
                 Ok(Value::Integer(i))
             } else {
-                Ok(Value::Number(
-                    n.as_f64().unwrap_or(0.0),
-                ))
+                Ok(Value::Number(n.as_f64().unwrap_or(0.0)))
             }
         }
         serde_json::Value::String(s) => Ok(Value::String(lua.create_string(s)?)),

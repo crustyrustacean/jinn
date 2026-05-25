@@ -37,9 +37,9 @@ fn setup_judge_with_origin_history() -> (State, SessionId, SessionId) {
     state
         .active_session_mut()
         .push_entry(ChatEntry::user("implement the login page"));
-    state
-        .active_session_mut()
-        .push_entry(ChatEntry::assistant("I have implemented the login page with form validation."));
+    state.active_session_mut().push_entry(ChatEntry::assistant(
+        "I have implemented the login page with form validation.",
+    ));
 
     // Create a judge session targeting this origin.
     let mut judge_session = ChatSessionState::new();
@@ -83,7 +83,10 @@ async fn session_query_returns_no_matches_for_nonexistent_text() {
     let result = super::builtin_session_query::execute(make_call("nonexistent_xyzzy"), ctx).await;
 
     // Then no matches found.
-    assert!(result.success, "session_query should succeed even with no matches");
+    assert!(
+        result.success,
+        "session_query should succeed even with no matches"
+    );
     assert!(
         result.content.contains("No matching entries found"),
         "should report no matches: {}",

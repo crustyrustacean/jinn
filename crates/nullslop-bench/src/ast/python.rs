@@ -20,7 +20,10 @@ use tree_sitter::Parser;
 ///
 /// Panics if the Python language grammar fails to load (should never happen
 /// with a correctly compiled `tree-sitter-python` crate).
-#[expect(clippy::expect_used, reason = "language grammar is statically available")]
+#[expect(
+    clippy::expect_used,
+    reason = "language grammar is statically available"
+)]
 pub fn parse(source: &str) -> Option<tree_sitter::Tree> {
     let mut parser = Parser::new();
     parser
@@ -98,10 +101,7 @@ pub fn method_names(class_node: &tree_sitter::Node<'_>, source: &[u8]) -> Vec<St
 ///
 /// Only collects `function_definition` nodes that are direct children of the
 /// root module node.
-pub fn find_top_level_functions(
-    root: &tree_sitter::Node<'_>,
-    source: &[u8],
-) -> Vec<String> {
+pub fn find_top_level_functions(root: &tree_sitter::Node<'_>, source: &[u8]) -> Vec<String> {
     let mut cursor = root.walk();
     root.children(&mut cursor)
         .filter(|child| child.kind() == "function_definition")

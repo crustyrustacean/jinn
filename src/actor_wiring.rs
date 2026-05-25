@@ -171,18 +171,18 @@ pub fn create_core_with_actor_host(
     ));
 
     // Preferences: loads and persists user preferences.
-    actors.push(
-        spawn::<nullslop_domain::feat::preferences_actor::preferences_actor::PreferencesActor>(
-            "preferences",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            nullslop_domain::feat::preferences_actor::preferences_actor::PreferencesActorDeps {
-                storage: user_preferences_storage.clone(),
-            },
-        ),
-    );
+    actors.push(spawn::<
+        nullslop_domain::feat::preferences_actor::preferences_actor::PreferencesActor,
+    >(
+        "preferences",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        nullslop_domain::feat::preferences_actor::preferences_actor::PreferencesActorDeps {
+            storage: user_preferences_storage.clone(),
+        },
+    ));
 
     // Preferences state sync: updates AppState from PreferencesUpdated events.
     actors.push(spawn::<
@@ -211,7 +211,9 @@ pub fn create_core_with_actor_host(
     ));
 
     // Model discovery actor.
-    actors.push(spawn::<nullslop_domain::feat::provider::discover_actor::DiscoverActor>(
+    actors.push(spawn::<
+        nullslop_domain::feat::provider::discover_actor::DiscoverActor,
+    >(
         "llm-provider-listing",
         &sink,
         handle,
@@ -226,7 +228,9 @@ pub fn create_core_with_actor_host(
     ));
 
     // Tool orchestrator actor.
-    actors.push(spawn::<nullslop_domain::feat::tools_actor::ToolOrchestratorActor>(
+    actors.push(spawn::<
+        nullslop_domain::feat::tools_actor::ToolOrchestratorActor,
+    >(
         "tool-orchestrator",
         &sink,
         handle,
@@ -242,7 +246,9 @@ pub fn create_core_with_actor_host(
 
     // Session persistence actor.
     let token_counter = TiktokenCounter::o200k_base();
-    actors.push(spawn::<nullslop_domain::feat::session::session_actor::SessionPersistenceActor>(
+    actors.push(spawn::<
+        nullslop_domain::feat::session::session_actor::SessionPersistenceActor,
+    >(
         "session-persistence",
         &sink,
         handle,
@@ -267,7 +273,9 @@ pub fn create_core_with_actor_host(
     ));
 
     // Prompt scan actor.
-    actors.push(spawn::<nullslop_domain::feat::context::prompt_scan_actor::PromptScanActor>(
+    actors.push(spawn::<
+        nullslop_domain::feat::context::prompt_scan_actor::PromptScanActor,
+    >(
         "prompt-scan",
         &sink,
         handle,
@@ -279,7 +287,9 @@ pub fn create_core_with_actor_host(
     ));
 
     // Skills scan actor.
-    actors.push(spawn::<nullslop_domain::feat::skills::skills_scan_actor::SkillsScanActor>(
+    actors.push(spawn::<
+        nullslop_domain::feat::skills::skills_scan_actor::SkillsScanActor,
+    >(
         "skills-scan",
         &sink,
         handle,
@@ -292,49 +302,51 @@ pub fn create_core_with_actor_host(
     ));
 
     // Persona scan actor.
-    actors.push(
-        spawn::<nullslop_domain::feat::persona::persona_scan_actor::PersonaScanActor>(
-            "persona-scan",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            nullslop_domain::feat::persona::persona_scan_actor::PersonaScanActorDeps {
-                paths: services.paths.clone(),
-            },
-        ),
-    );
+    actors.push(spawn::<
+        nullslop_domain::feat::persona::persona_scan_actor::PersonaScanActor,
+    >(
+        "persona-scan",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        nullslop_domain::feat::persona::persona_scan_actor::PersonaScanActorDeps {
+            paths: services.paths.clone(),
+        },
+    ));
 
     // Judge scan actor.
-    actors.push(
-        spawn::<nullslop_domain::feat::judge::judge_scan_actor::JudgeScanActor>(
-            "judge-scan",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            nullslop_domain::feat::judge::judge_scan_actor::JudgeScanActorDeps {
-                paths: services.paths.clone(),
-            },
-        ),
-    );
+    actors.push(spawn::<
+        nullslop_domain::feat::judge::judge_scan_actor::JudgeScanActor,
+    >(
+        "judge-scan",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        nullslop_domain::feat::judge::judge_scan_actor::JudgeScanActorDeps {
+            paths: services.paths.clone(),
+        },
+    ));
 
     // Judge coordinator actor.
-    actors.push(
-        spawn::<nullslop_domain::feat::judge::judge_coordinator_actor::JudgeCoordinatorActor>(
-            "judge-coordinator",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            nullslop_domain::feat::judge::judge_coordinator_actor::JudgeCoordinatorActorDeps {
-                state: state.clone(),
-            },
-        ),
-    );
+    actors.push(spawn::<
+        nullslop_domain::feat::judge::judge_coordinator_actor::JudgeCoordinatorActor,
+    >(
+        "judge-coordinator",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        nullslop_domain::feat::judge::judge_coordinator_actor::JudgeCoordinatorActorDeps {
+            state: state.clone(),
+        },
+    ));
 
     // Provider actor.
-    actors.push(spawn::<nullslop_domain::feat::provider::provider_actor::ProviderActor>(
+    actors.push(spawn::<
+        nullslop_domain::feat::provider::provider_actor::ProviderActor,
+    >(
         "provider",
         &sink,
         handle,
@@ -347,7 +359,9 @@ pub fn create_core_with_actor_host(
     ));
 
     // Compaction actor.
-    actors.push(spawn::<nullslop_domain::feat::compaction_actor::CompactionActor>(
+    actors.push(spawn::<
+        nullslop_domain::feat::compaction_actor::CompactionActor,
+    >(
         "compaction",
         &sink,
         handle,
@@ -374,18 +388,18 @@ pub fn create_core_with_actor_host(
     ));
 
     // Sidebar state actor — keeps sidebar cursor in sync after session removal.
-    actors.push(
-        spawn::<nullslop_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor>(
-            "sidebar-state",
-            &sink,
-            handle,
-            &counter,
-            &shutdown_tracker,
-            nullslop_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActorDeps {
-                state: state.clone(),
-            },
-        ),
-    );
+    actors.push(spawn::<
+        nullslop_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor,
+    >(
+        "sidebar-state",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        nullslop_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActorDeps {
+            state: state.clone(),
+        },
+    ));
 
     // Build workflow registry and register built-in workflows.
     let workflow_registry = Arc::new({

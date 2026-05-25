@@ -10,7 +10,10 @@ use super::{
     edit,
 };
 
-use crate::feat::judge::{builtin_session_query, builtin_session_query_recent, builtin_task_complete, builtin_task_incomplete};
+use crate::feat::judge::{
+    builtin_session_query, builtin_session_query_recent, builtin_task_complete,
+    builtin_task_incomplete,
+};
 
 /// A built-in tool entry: its definition paired with its execute function.
 pub type BuiltinToolEntry = (ToolDefinition, fn(ToolCall, ToolContext) -> BoxedToolFuture);

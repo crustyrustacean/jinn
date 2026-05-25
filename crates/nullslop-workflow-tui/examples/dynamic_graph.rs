@@ -33,8 +33,10 @@ impl NodeFactory for SourceFactory {
     fn create(
         &self,
         config: serde_json::Value,
-    ) -> Result<Box<dyn WorkflowNode>, error_stack::Report<nullslop_workflow::registry::RegistryError>>
-    {
+    ) -> Result<
+        Box<dyn WorkflowNode>,
+        error_stack::Report<nullslop_workflow::registry::RegistryError>,
+    > {
         let output = config
             .get("output")
             .and_then(|v| v.as_str())
@@ -75,8 +77,10 @@ impl NodeFactory for PassthroughFactory {
     fn create(
         &self,
         _config: serde_json::Value,
-    ) -> Result<Box<dyn WorkflowNode>, error_stack::Report<nullslop_workflow::registry::RegistryError>>
-    {
+    ) -> Result<
+        Box<dyn WorkflowNode>,
+        error_stack::Report<nullslop_workflow::registry::RegistryError>,
+    > {
         Ok(Box::new(DynamicNode::new(
             "passthrough",
             vec![PortDef::text("in")],
@@ -88,10 +92,7 @@ impl NodeFactory for PassthroughFactory {
                         .take_text("in")
                         .map_err(|_e| error_stack::Report::new(NodeError))?;
                     let mut out = PortValues::new();
-                    out.insert(
-                        "out".to_owned(),
-                        PortValue::Single(ScalarValue::Text(val)),
-                    );
+                    out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text(val)));
                     Ok(out)
                 })
             }),
@@ -106,8 +107,10 @@ impl NodeFactory for SinkFactory {
     fn create(
         &self,
         _config: serde_json::Value,
-    ) -> Result<Box<dyn WorkflowNode>, error_stack::Report<nullslop_workflow::registry::RegistryError>>
-    {
+    ) -> Result<
+        Box<dyn WorkflowNode>,
+        error_stack::Report<nullslop_workflow::registry::RegistryError>,
+    > {
         Ok(Box::new(DynamicNode::new(
             "sink",
             vec![PortDef::text("in")],
@@ -152,12 +155,7 @@ fn main() {
             serde_json::json!({}),
         )
         .expect("add step2")
-        .add_node_from_registry(
-            "sink".to_owned(),
-            &registry,
-            "sink",
-            serde_json::json!({}),
-        )
+        .add_node_from_registry("sink".to_owned(), &registry, "sink", serde_json::json!({}))
         .expect("add sink");
 
         b.connect("source", "out", "step1", "in").expect("connect");

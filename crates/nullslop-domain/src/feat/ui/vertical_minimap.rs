@@ -17,7 +17,9 @@ use crate::feat::theme::contrast::darken;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
 
 #[cfg(test)]
-use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
+use crate::feat::ui::chat_log::visual_item::{
+    DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
+};
 
 /// Full block character for minimap entries.
 const FULL_BLOCK: &str = "\u{2588}";
@@ -339,8 +341,8 @@ mod tests {
     use super::*;
     use crate::common::app_state::AppState;
     use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
-    use crate::protocol::ChatEntryId;
     use crate::feat::theme::default_theme;
+    use crate::protocol::ChatEntryId;
 
     // --- find_block_index ---
 
@@ -792,7 +794,9 @@ mod tests {
         // Given 3 non-ignored + 5 ignored + 10 non-ignored entries (18 total).
         let mut state = AppState::default();
         for _ in 0..3 {
-            state.active_session_mut().push_entry(ChatEntry::user("visible"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("visible"));
         }
         for _ in 0..5 {
             state
@@ -800,7 +804,9 @@ mod tests {
                 .push_entry(ChatEntry::user("hidden").with_ignored(true));
         }
         for _ in 0..10 {
-            state.active_session_mut().push_entry(ChatEntry::user("visible"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("visible"));
         }
 
         // When rendering in a 20-row viewport.
@@ -827,7 +833,9 @@ mod tests {
         // Select the first entry after the collapsed region.
         let mut state = AppState::default();
         for _ in 0..3 {
-            state.active_session_mut().push_entry(ChatEntry::user("visible"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("visible"));
         }
         for _ in 0..5 {
             state
@@ -850,14 +858,19 @@ mod tests {
         let (arrow, _rows) = render_to_buffer(&state, 1, 20);
 
         // Then the arrow exists (selection resolved correctly).
-        assert!(arrow.is_some(), "arrow should resolve for entry after collapsed block");
+        assert!(
+            arrow.is_some(),
+            "arrow should resolve for entry after collapsed block"
+        );
     }
 
     #[rstest::rstest]
     fn compaction_with_ignored_entries_tracks_correctly() {
         // Given: user, assistant, compaction (marks prior as ignored), user, assistant.
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("msg1"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("msg1"));
         state
             .active_session_mut()
             .push_entry(ChatEntry::assistant("reply1"));
@@ -875,7 +888,9 @@ mod tests {
             context_override: ContextOverride::Default,
         };
         state.active_session_mut().push_entry(compaction);
-        state.active_session_mut().push_entry(ChatEntry::user("msg2"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("msg2"));
         state
             .active_session_mut()
             .push_entry(ChatEntry::assistant("reply2"));
@@ -890,7 +905,10 @@ mod tests {
         // (2 entries, below DEFAULT_MIN_COLLAPSE_COUNT of 3, so shown individually).
         // But key point: the arrow resolves correctly.
         let block_count = rows.iter().filter(|r| r.contains('\u{2588}')).count();
-        assert!(block_count >= 3, "expected at least 3 blocks, got {block_count}");
+        assert!(
+            block_count >= 3,
+            "expected at least 3 blocks, got {block_count}"
+        );
         assert!(arrow.is_some(), "arrow should exist after compaction");
     }
 }

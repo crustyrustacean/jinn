@@ -13,8 +13,7 @@ use crate::feat::context::strategy::token_estimator::TokenCounter;
 use crate::feat::context::tool_prompt::build_tool_context_block;
 use crate::feat::skills::format::format_skills_for_prompt;
 use crate::protocol::{
-    ChatEntry, LlmMessage, PinPosition, SessionId, ToolDefinition,
-    entries_to_messages,
+    ChatEntry, LlmMessage, PinPosition, SessionId, ToolDefinition, entries_to_messages,
 };
 
 /// Overrides for [`assemble_prompt`]. When provided, these replace the default
@@ -116,11 +115,13 @@ pub fn assemble_prompt(
 
     // Apply overrides: tool context block.
     let tool_block = if overrides.is_some_and(|o| o.tool_definitions.is_some()) {
-        let defs = overrides.expect("checked").tool_definitions.as_ref().expect("checked");
-        let map: HashMap<String, ToolDefinition> = defs
-            .iter()
-            .map(|d| (d.name.clone(), d.clone()))
-            .collect();
+        let defs = overrides
+            .expect("checked")
+            .tool_definitions
+            .as_ref()
+            .expect("checked");
+        let map: HashMap<String, ToolDefinition> =
+            defs.iter().map(|d| (d.name.clone(), d.clone())).collect();
         build_tool_context_block(&map)
     } else {
         build_tool_context_block(&state.context.tool_definitions)
@@ -678,7 +679,11 @@ mod tests {
         let result = assemble_prompt(&guard, &judge_id, &counter(), None);
 
         // Then the tool definitions include the judge tools.
-        let tool_names: Vec<&str> = result.tool_definitions.iter().map(|t| t.name.as_str()).collect();
+        let tool_names: Vec<&str> = result
+            .tool_definitions
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
         assert!(
             tool_names.contains(&"session_query"),
             "judge tools should include session_query, got: {tool_names:?}"
@@ -707,7 +712,11 @@ mod tests {
         let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
         // Then the tool definitions do NOT include judge tools.
-        let tool_names: Vec<&str> = result.tool_definitions.iter().map(|t| t.name.as_str()).collect();
+        let tool_names: Vec<&str> = result
+            .tool_definitions
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
         assert!(
             !tool_names.contains(&"session_query"),
             "regular sessions should not have session_query, got: {tool_names:?}"

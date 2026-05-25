@@ -8,8 +8,9 @@ use std::time::Duration;
 use crate::task::{BenchTask, BenchTools, CheckResult, VerificationReport};
 use include_dir::Dir;
 
-
-static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/redirect/redirect_refactor_function/fixtures");
+static FIXTURES: Dir<'_> = include_dir::include_dir!(
+    "$CARGO_MANIFEST_DIR/src/tasks/redirect/redirect_refactor_function/fixtures"
+);
 
 pub fn task() -> BenchTask {
     BenchTask {

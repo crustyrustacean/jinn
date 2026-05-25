@@ -18,11 +18,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
 use crate::feat::chat_input::ChatInputBoxState;
-use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::feat::context::strategy::types::StrategyState;
 use crate::feat::session::chat_history::ChatHistory;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::token_stats::TokenRecord;
+use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{
     ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId,
     SessionId,
@@ -418,7 +418,9 @@ impl Clone for SessionUi {
             scroll_offset: self.scroll_offset,
             selected_cursor_id: self.selected_cursor_id.clone(),
             last_max_offset: AtomicU16::new(self.last_max_offset.load(Ordering::Relaxed)),
-            rendered_scroll_offset: AtomicU16::new(self.rendered_scroll_offset.load(Ordering::Relaxed)),
+            rendered_scroll_offset: AtomicU16::new(
+                self.rendered_scroll_offset.load(Ordering::Relaxed),
+            ),
             entry_line_ranges: RwLock::new(
                 self.entry_line_ranges
                     .read()
@@ -495,9 +497,9 @@ impl ChatSessionState {
         Self {
             core: SessionCore {
                 profile: SessionProfile::from_config(
-                crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
+                    crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
                     strategy_id,
-                crate::feat::session::profile::DEFAULT_SLIDING_WINDOW_SIZE,
+                    crate::feat::session::profile::DEFAULT_SLIDING_WINDOW_SIZE,
                 ),
                 ..SessionCore::default()
             },
@@ -650,9 +652,11 @@ impl ChatSessionState {
     /// code to use the `PushChatEntry` command (which also triggers persistence).
     #[allow(clippy::missing_panics_doc)]
     pub fn push_entry(&mut self, entry: ChatEntry) -> usize {
-        let was_at_last = self.ui.selected_cursor_id.as_ref().is_none_or(|id| {
-            self.core.history.last().is_some_and(|e| &e.id == id)
-        });
+        let was_at_last = self
+            .ui
+            .selected_cursor_id
+            .as_ref()
+            .is_none_or(|id| self.core.history.last().is_some_and(|e| &e.id == id));
         let index = self.core.history.len();
         self.core.history.push(entry);
         if was_at_last {
@@ -1157,7 +1161,10 @@ impl ChatSessionState {
             .ephemeral
             .message_queue
             .remove_first_matching(|item| {
-                matches!(item, crate::feat::session::queue_item::QueueItem::CompactionNeeded { .. })
+                matches!(
+                    item,
+                    crate::feat::session::queue_item::QueueItem::CompactionNeeded { .. }
+                )
             })
             .is_some()
     }
@@ -1491,7 +1498,9 @@ impl ChatSessionState {
     /// Store the rendered scroll offset (actual viewport position after clamping
     /// and scroll-to-selected adjustment). Called by the render pipeline each frame.
     pub fn set_rendered_scroll_offset(&self, offset: u16) {
-        self.ui.rendered_scroll_offset.store(offset, Ordering::Relaxed);
+        self.ui
+            .rendered_scroll_offset
+            .store(offset, Ordering::Relaxed);
     }
 
     // --- Renderer viewport state ---
@@ -1719,7 +1728,9 @@ impl ChatSessionState {
         }
 
         // The forward sub-block's representative is its first entry.
-        self.ui.shown_ignored_blocks.insert(forward_entry.id.clone());
+        self.ui
+            .shown_ignored_blocks
+            .insert(forward_entry.id.clone());
     }
 
     /// Unpin an entry by ID, clearing its pin position.
@@ -1756,7 +1767,6 @@ impl ChatSessionState {
 
         let max = items.len() - 1;
         let start = self
-            
             .selected_entry_index()
             .map_or(0, |i| i.saturating_add(1).min(max));
         let mut idx = start;
@@ -1796,7 +1806,6 @@ impl ChatSessionState {
         }
 
         let start = self
-            
             .selected_entry_index()
             .map_or(items.len().saturating_sub(1), |i| i.saturating_sub(1));
         let mut idx = start;
@@ -1835,7 +1844,10 @@ impl ChatSessionState {
                 self.core.history.get(index).map(|e| e.id.clone())
             } else {
                 items.get(index).and_then(|item| {
-                    crate::feat::ui::chat_log::visual_item::entry_id_from_visual_item(item, &self.core.history)
+                    crate::feat::ui::chat_log::visual_item::entry_id_from_visual_item(
+                        item,
+                        &self.core.history,
+                    )
                 })
             }
         };
@@ -1852,7 +1864,6 @@ impl ChatSessionState {
         }
         let max = self.core.history.len() - 1;
         let start = self
-            
             .selected_entry_index()
             .map_or(0, |i| i.saturating_add(1).min(max));
         let mut idx = start;
@@ -1871,7 +1882,6 @@ impl ChatSessionState {
             return;
         }
         let start = self
-            
             .selected_entry_index()
             .map_or(self.core.history.len().saturating_sub(1), |i| {
                 i.saturating_sub(1)
@@ -1932,7 +1942,11 @@ impl ChatSessionState {
         if items.is_empty() {
             return self.core.history.iter().position(|e| &e.id == cursor_id);
         }
-        crate::feat::ui::chat_log::visual_item::resolve_entry_id_to_vi_index(cursor_id, &items, &self.core.history)
+        crate::feat::ui::chat_log::visual_item::resolve_entry_id_to_vi_index(
+            cursor_id,
+            &items,
+            &self.core.history,
+        )
     }
 
     /// The stored cursor ID (source of truth for selection).
@@ -2028,10 +2042,7 @@ impl ChatSessionState {
     }
 
     /// Store the visual items list computed during render.
-    pub fn set_visual_items(
-        &self,
-        items: Vec<crate::feat::ui::chat_log::visual_item::VisualItem>,
-    ) {
+    pub fn set_visual_items(&self, items: Vec<crate::feat::ui::chat_log::visual_item::VisualItem>) {
         if let Ok(mut guard) = self.ui.visual_items.write() {
             *guard = items;
         }
@@ -2040,8 +2051,12 @@ impl ChatSessionState {
     /// Read-only access to the visual items list.
     pub fn visual_items(
         &self,
-    ) -> std::sync::RwLockReadGuard<'_, Vec<crate::feat::ui::chat_log::visual_item::VisualItem>> {
-        self.ui.visual_items.read().unwrap_or_else(std::sync::PoisonError::into_inner)
+    ) -> std::sync::RwLockReadGuard<'_, Vec<crate::feat::ui::chat_log::visual_item::VisualItem>>
+    {
+        self.ui
+            .visual_items
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// The visual item at the currently selected position, if any.
@@ -2049,7 +2064,12 @@ impl ChatSessionState {
         &self,
     ) -> Option<crate::feat::ui::chat_log::visual_item::VisualItem> {
         let idx = self.selected_entry_index()?;
-        self.ui.visual_items.read().unwrap_or_else(std::sync::PoisonError::into_inner).get(idx).cloned()
+        self.ui
+            .visual_items
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(idx)
+            .cloned()
     }
 
     /// Resolve the selected visual-item index to a history index.
@@ -2058,7 +2078,11 @@ impl ChatSessionState {
     /// collapsed block (not a real entry).
     pub fn selected_history_index(&self) -> Option<usize> {
         let vi_idx = self.selected_entry_index()?;
-        let items = self.ui.visual_items.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let items = self
+            .ui
+            .visual_items
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if items.is_empty() {
             // Before first render, visual items haven't been computed yet.
             // Fall back: selected_entry_index IS a history index in this case.
@@ -2066,7 +2090,9 @@ impl ChatSessionState {
         }
         match items.get(vi_idx)? {
             crate::feat::ui::chat_log::visual_item::VisualItem::Entry(hist_idx) => Some(*hist_idx),
-            crate::feat::ui::chat_log::visual_item::VisualItem::CollapsedIgnoredBlock { .. } => None,
+            crate::feat::ui::chat_log::visual_item::VisualItem::CollapsedIgnoredBlock {
+                ..
+            } => None,
         }
     }
 

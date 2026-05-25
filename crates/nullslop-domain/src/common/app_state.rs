@@ -189,8 +189,9 @@ impl FocusScope {
             | Self::SidebarSessions
             | Self::SidebarResize
             | Self::Workflow => Mode::Normal,
-            Self::Input | Self::ArgInput | Self::RenameSessionInput
-            | Self::WorkflowInput => Mode::Input,
+            Self::Input | Self::ArgInput | Self::RenameSessionInput | Self::WorkflowInput => {
+                Mode::Input
+            }
             Self::Picker { .. } => Mode::Picker,
         }
     }
@@ -358,10 +359,10 @@ pub struct StatusNotification {
     pub created_at: std::time::Instant,
 }
 
+use nullslop_workflow::spatial_layout::SpatialRect;
 /// Workflow tab UI state — persisted across frames in `FrontendState`.
 ///
 use std::sync::atomic::{AtomicU16, Ordering};
-use nullslop_workflow::spatial_layout::SpatialRect;
 
 /// OWNER: IntentHandler (selection, inspector toggle, cancel prompt).
 #[derive(Debug, Default)]
@@ -506,15 +507,19 @@ pub struct FrontendState {
 
     /// Workflow picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (workflow picker navigation) + WorkflowActor (entry population).
-    pub workflow_picker: nullslop_selection_widget::SelectionState<crate::feat::workflow::picker_entry::WorkflowPickerEntry>,
+    pub workflow_picker: nullslop_selection_widget::SelectionState<
+        crate::feat::workflow::picker_entry::WorkflowPickerEntry,
+    >,
 
     /// Judge picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (judge picker navigation, confirm creates judge session).
-    pub judge_picker: nullslop_selection_widget::SelectionState<crate::feat::judge::JudgePickerEntry>,
+    pub judge_picker:
+        nullslop_selection_widget::SelectionState<crate::feat::judge::JudgePickerEntry>,
 
     /// Compaction model picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (compaction model picker navigation).
-    pub compaction_model_picker: nullslop_selection_widget::SelectionState<crate::protocol::PickerEntry>,
+    pub compaction_model_picker:
+        nullslop_selection_widget::SelectionState<crate::protocol::PickerEntry>,
 
     /// Arg input popup state — active when `FocusScope::ArgInput` is on the scope stack.
     /// OWNER: IntentHandler (arg input editing, confirmation).

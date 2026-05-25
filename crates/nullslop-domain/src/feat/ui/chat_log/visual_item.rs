@@ -124,10 +124,7 @@ pub fn resolve_entry_id_to_vi_index(
     for (vi_idx, item) in items.iter().enumerate() {
         match item {
             VisualItem::Entry(hist_idx) => {
-                if history
-                    .get(*hist_idx)
-                    .is_some_and(|e| &e.id == entry_id)
-                {
+                if history.get(*hist_idx).is_some_and(|e| &e.id == entry_id) {
                     return Some(vi_idx);
                 }
             }
@@ -151,10 +148,7 @@ pub fn resolve_entry_id_to_vi_index(
 ///
 /// [`Entry`]: VisualItem::Entry
 /// [`CollapsedIgnoredBlock`]: VisualItem::CollapsedIgnoredBlock
-pub fn entry_id_from_visual_item(
-    item: &VisualItem,
-    history: &[ChatEntry],
-) -> Option<ChatEntryId> {
+pub fn entry_id_from_visual_item(item: &VisualItem, history: &[ChatEntry]) -> Option<ChatEntryId> {
     match item {
         VisualItem::Entry(hist_idx) => history.get(*hist_idx).map(|e| e.id.clone()),
         VisualItem::CollapsedIgnoredBlock { start, .. } => {
@@ -165,7 +159,11 @@ pub fn entry_id_from_visual_item(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::needless_range_loop)]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::needless_range_loop
+    )]
 
     use super::*;
     use crate::protocol::{ChatEntry, PinPosition};
@@ -186,7 +184,12 @@ mod tests {
         let history = vec![];
 
         // When building visual items.
-        let items = build_visual_items(&history, &HashSet::new(), PROXIMITY_COUNT, DEFAULT_MIN_COLLAPSE_COUNT);
+        let items = build_visual_items(
+            &history,
+            &HashSet::new(),
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
 
         // Then the result is empty.
         assert!(items.is_empty());
@@ -198,7 +201,12 @@ mod tests {
         let history = make_entries(5, false);
 
         // When building visual items.
-        let items = build_visual_items(&history, &HashSet::new(), PROXIMITY_COUNT, DEFAULT_MIN_COLLAPSE_COUNT);
+        let items = build_visual_items(
+            &history,
+            &HashSet::new(),
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
 
         // Then all are Entry items.
         assert_eq!(items.len(), 5);
@@ -218,7 +226,12 @@ mod tests {
         history.extend(make_entries(7, false));
 
         // When building visual items.
-        let items = build_visual_items(&history, &HashSet::new(), PROXIMITY_COUNT, DEFAULT_MIN_COLLAPSE_COUNT);
+        let items = build_visual_items(
+            &history,
+            &HashSet::new(),
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
 
         // Then: 3 Entry, 1 CollapsedIgnoredBlock(3, 7), 3 Entry(10..12), 7 Entry(13..19).
         assert_eq!(items.len(), 3 + 1 + 3 + 7);
@@ -227,10 +240,7 @@ mod tests {
         }
         assert_eq!(
             items[3],
-            VisualItem::CollapsedIgnoredBlock {
-                start: 3,
-                count: 7
-            }
+            VisualItem::CollapsedIgnoredBlock { start: 3, count: 7 }
         );
         // Protected ignored entries 10..12 shown individually.
         for i in 0..3 {
@@ -283,14 +293,20 @@ mod tests {
     fn pinned_overrides_ignored() {
         // Given 1 non-ignored, 5 ignored+pinned, 14 non-ignored (total 20).
         let mut history = make_entries(1, false);
-        history.extend(
-            (0..5)
-                .map(|_| ChatEntry::user("msg").with_ignored(true).with_pin(PinPosition::Top)),
-        );
+        history.extend((0..5).map(|_| {
+            ChatEntry::user("msg")
+                .with_ignored(true)
+                .with_pin(PinPosition::Top)
+        }));
         history.extend(make_entries(14, false));
 
         // When building visual items.
-        let items = build_visual_items(&history, &HashSet::new(), PROXIMITY_COUNT, DEFAULT_MIN_COLLAPSE_COUNT);
+        let items = build_visual_items(
+            &history,
+            &HashSet::new(),
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
 
         // Then the pinned entries are shown individually.
         assert_eq!(items.len(), 1 + 5 + 14);
@@ -312,7 +328,12 @@ mod tests {
         history.extend(make_entries(14, false));
 
         // When building visual items.
-        let items = build_visual_items(&history, &HashSet::new(), PROXIMITY_COUNT, DEFAULT_MIN_COLLAPSE_COUNT);
+        let items = build_visual_items(
+            &history,
+            &HashSet::new(),
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
 
         // Then: 2 Entry, 1 Collapsed(2, 3), 2 Entry, 1 Collapsed(7, 4), 14 Entry.
         assert_eq!(items.len(), 2 + 1 + 2 + 1 + 14);
@@ -320,19 +341,13 @@ mod tests {
         assert_eq!(items[1], VisualItem::Entry(1));
         assert_eq!(
             items[2],
-            VisualItem::CollapsedIgnoredBlock {
-                start: 2,
-                count: 3
-            }
+            VisualItem::CollapsedIgnoredBlock { start: 2, count: 3 }
         );
         assert_eq!(items[3], VisualItem::Entry(5));
         assert_eq!(items[4], VisualItem::Entry(6));
         assert_eq!(
             items[5],
-            VisualItem::CollapsedIgnoredBlock {
-                start: 7,
-                count: 4
-            }
+            VisualItem::CollapsedIgnoredBlock { start: 7, count: 4 }
         );
         for i in 0..14 {
             assert_eq!(items[6 + i], VisualItem::Entry(11 + i));
@@ -350,7 +365,12 @@ mod tests {
 
         // When building visual items with the block's first entry shown.
         let shown = shown_set(&[&block_id]);
-        let items = build_visual_items(&history, &shown, PROXIMITY_COUNT, DEFAULT_MIN_COLLAPSE_COUNT);
+        let items = build_visual_items(
+            &history,
+            &shown,
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
 
         // Then the ignored entries are shown individually.
         assert_eq!(items.len(), 2 + 5 + 20);
@@ -376,11 +396,19 @@ mod tests {
 
         // When building with one block shown and one not.
         let shown = shown_set(&[&shown_block_id]);
-        let items = build_visual_items(&history, &shown, PROXIMITY_COUNT, DEFAULT_MIN_COLLAPSE_COUNT);
+        let items = build_visual_items(
+            &history,
+            &shown,
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
 
         // Then: 2 Entry, 1 Collapsed(2, 3), 2 Entry, 4 Entry(7..10), 20 Entry.
         assert_eq!(items.len(), 2 + 1 + 2 + 4 + 20);
-        assert_eq!(items[2], VisualItem::CollapsedIgnoredBlock { start: 2, count: 3 });
+        assert_eq!(
+            items[2],
+            VisualItem::CollapsedIgnoredBlock { start: 2, count: 3 }
+        );
         for i in 0..4 {
             assert_eq!(items[5 + i], VisualItem::Entry(7 + i));
         }
@@ -412,19 +440,34 @@ mod tests {
     fn pinned_entry_splits_ignored_block() {
         // Given: 5 ignored, 1 ignored+pinned, 5 ignored, 14 non-ignored (total 25).
         let mut history = make_entries(5, true);
-        history.push(ChatEntry::user("pinned").with_ignored(true).with_pin(PinPosition::Top));
+        history.push(
+            ChatEntry::user("pinned")
+                .with_ignored(true)
+                .with_pin(PinPosition::Top),
+        );
         history.extend(make_entries(5, true));
         history.extend(make_entries(14, false));
 
         // When building visual items.
-        let items = build_visual_items(&history, &HashSet::new(), PROXIMITY_COUNT, DEFAULT_MIN_COLLAPSE_COUNT);
+        let items = build_visual_items(
+            &history,
+            &HashSet::new(),
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
 
         // Then the pinned entry splits the block:
         // Collapsed(0, 5), Entry(5), Collapsed(6, 5), 14 Entry.
         assert_eq!(items.len(), 1 + 1 + 1 + 14);
-        assert_eq!(items[0], VisualItem::CollapsedIgnoredBlock { start: 0, count: 5 });
+        assert_eq!(
+            items[0],
+            VisualItem::CollapsedIgnoredBlock { start: 0, count: 5 }
+        );
         assert_eq!(items[1], VisualItem::Entry(5));
-        assert_eq!(items[2], VisualItem::CollapsedIgnoredBlock { start: 6, count: 5 });
+        assert_eq!(
+            items[2],
+            VisualItem::CollapsedIgnoredBlock { start: 6, count: 5 }
+        );
         for i in 0..14 {
             assert_eq!(items[3 + i], VisualItem::Entry(11 + i));
         }
@@ -456,7 +499,10 @@ mod tests {
         let items = build_visual_items(&history, &HashSet::new(), 10, 3);
 
         // Then the 3 excluded entries collapse into one block.
-        assert_eq!(items[2], VisualItem::CollapsedIgnoredBlock { start: 2, count: 3 });
+        assert_eq!(
+            items[2],
+            VisualItem::CollapsedIgnoredBlock { start: 2, count: 3 }
+        );
     }
 
     #[rstest::rstest]
@@ -488,7 +534,11 @@ mod tests {
         let items = build_visual_items(&history, &HashSet::new(), 10, 3);
 
         // Then no CollapsedIgnoredBlock exists — all sub-threshold.
-        assert!(items.iter().all(|item| matches!(item, VisualItem::Entry(_))));
+        assert!(
+            items
+                .iter()
+                .all(|item| matches!(item, VisualItem::Entry(_)))
+        );
     }
 
     #[rstest::rstest]
@@ -502,6 +552,9 @@ mod tests {
         let items = build_visual_items(&history, &HashSet::new(), 10, 1);
 
         // Then the 5 excluded entries collapse (threshold 1 restores old behavior).
-        assert_eq!(items[2], VisualItem::CollapsedIgnoredBlock { start: 2, count: 5 });
+        assert_eq!(
+            items[2],
+            VisualItem::CollapsedIgnoredBlock { start: 2, count: 5 }
+        );
     }
 }

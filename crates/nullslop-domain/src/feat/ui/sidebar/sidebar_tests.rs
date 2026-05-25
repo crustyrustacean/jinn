@@ -716,7 +716,9 @@ fn jump_to_pins_with_retained_cursor_syncs_chat_log_cursor() {
     state.active_session_mut().push_entry(ChatEntry::user("b")); // hist 1 — will be pinned
     state.active_session_mut().push_entry(ChatEntry::user("c")); // hist 2
     let pinned_id = state.active_session().history()[1].id.clone();
-    state.active_session_mut().pin_entry(&pinned_id, PinPosition::Top);
+    state
+        .active_session_mut()
+        .pin_entry(&pinned_id, PinPosition::Top);
 
     state.frontend.scope_stack.push(FocusScope::SidebarPins);
     state.frontend.pins.select_by_id(pinned_id.clone());

@@ -814,7 +814,13 @@ async fn judge_meta_update_round_trips() {
         .await
         .expect("load")
         .expect("should exist");
-    assert!(!loaded.judge().as_ref().expect("should have judge meta").is_attached);
+    assert!(
+        !loaded
+            .judge()
+            .as_ref()
+            .expect("should have judge meta")
+            .is_attached
+    );
 }
 
 #[rstest::rstest]

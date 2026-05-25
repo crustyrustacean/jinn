@@ -176,10 +176,7 @@ fn assembled_line_includes_tree_prefix_for_non_root() {
 
     // Then the line contains the └─ tree characters.
     let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-    assert!(
-        text.contains("└─ "),
-        "line should contain └─ , got: {text}"
-    );
+    assert!(text.contains("└─ "), "line should contain └─ , got: {text}");
 }
 
 #[rstest::rstest]

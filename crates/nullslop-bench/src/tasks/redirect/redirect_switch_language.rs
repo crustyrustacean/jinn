@@ -9,8 +9,9 @@ use crate::task::{BenchTask, BenchTools, VerificationReport};
 use crate::tasks::checks;
 use include_dir::Dir;
 
-
-static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/redirect/redirect_switch_language/fixtures");
+static FIXTURES: Dir<'_> = include_dir::include_dir!(
+    "$CARGO_MANIFEST_DIR/src/tasks/redirect/redirect_switch_language/fixtures"
+);
 
 pub fn task() -> BenchTask {
     BenchTask {

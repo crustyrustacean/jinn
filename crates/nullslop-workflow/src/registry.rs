@@ -41,7 +41,10 @@ pub trait NodeFactory: Send + Sync {
     /// # Errors
     ///
     /// Returns [`RegistryError::CreationFailed`] if the configuration is invalid.
-    fn create(&self, config: serde_json::Value) -> Result<Box<dyn WorkflowNode>, Report<RegistryError>>;
+    fn create(
+        &self,
+        config: serde_json::Value,
+    ) -> Result<Box<dyn WorkflowNode>, Report<RegistryError>>;
 }
 
 /// A registry of node factories, mapping type names to factories.
@@ -124,7 +127,10 @@ mod tests {
     struct PassthroughFactory;
 
     impl NodeFactory for PassthroughFactory {
-        fn create(&self, _config: serde_json::Value) -> Result<Box<dyn WorkflowNode>, Report<RegistryError>> {
+        fn create(
+            &self,
+            _config: serde_json::Value,
+        ) -> Result<Box<dyn WorkflowNode>, Report<RegistryError>> {
             Ok(Box::new(crate::node::delay::DelayNode::passthrough(
                 Duration::from_millis(1),
             )))
@@ -172,14 +178,19 @@ mod tests {
         // A factory that requires a "name" field.
         struct StrictFactory;
         impl NodeFactory for StrictFactory {
-            fn create(&self, config: serde_json::Value) -> Result<Box<dyn WorkflowNode>, Report<RegistryError>> {
+            fn create(
+                &self,
+                config: serde_json::Value,
+            ) -> Result<Box<dyn WorkflowNode>, Report<RegistryError>> {
                 let _name = config.get("name").and_then(|v| v.as_str()).ok_or_else(|| {
                     Report::new(RegistryError::CreationFailed {
                         type_name: "strict".to_owned(),
                         reason: "missing 'name' field".to_owned(),
                     })
                 })?;
-                Ok(Box::new(crate::node::delay::DelayNode::passthrough(Duration::from_millis(1))))
+                Ok(Box::new(crate::node::delay::DelayNode::passthrough(
+                    Duration::from_millis(1),
+                )))
             }
         }
 

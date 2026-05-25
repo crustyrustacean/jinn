@@ -95,11 +95,16 @@ impl StreamResponseParser {
                 .and_then(|m| m.as_str())
                 .unwrap_or("Unknown error")
                 .to_owned();
-            results.push(StreamEvent::Error { error_type, message });
+            results.push(StreamEvent::Error {
+                error_type,
+                message,
+            });
             return results;
         }
 
-        let choices = if let Some(c) = chunk.get("choices").and_then(|c| c.as_array()) { c } else {
+        let choices = if let Some(c) = chunk.get("choices").and_then(|c| c.as_array()) {
+            c
+        } else {
             // No choices — but we can still enrich pending_done with usage.
             self.try_enrich_pending_usage(&chunk);
             return results;
@@ -654,7 +659,8 @@ mod tests {
     #[rstest::rstest]
     fn top_level_error_object_produces_stream_error() {
         // Given an OpenRouter-style error response.
-        let json = r#"{"error":{"type":"invalid_request_error","message":"context_length_exceeded"}}"#;
+        let json =
+            r#"{"error":{"type":"invalid_request_error","message":"context_length_exceeded"}}"#;
 
         // When parsing.
         let events = parse_single(json);

@@ -11,8 +11,8 @@ use include_dir::Dir;
 
 const EXPECTED_INDEX_HTML: &str = include_str!("edit_html_table/expected/index.html");
 
-
-static FIXTURES: Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_html_table/fixtures");
+static FIXTURES: Dir<'_> =
+    include_dir::include_dir!("$CARGO_MANIFEST_DIR/src/tasks/edit/edit_html_table/fixtures");
 
 pub fn task() -> BenchTask {
     BenchTask {
@@ -34,6 +34,10 @@ pub fn task() -> BenchTask {
 }
 
 fn verify(dir: &Path) -> VerificationReport {
-    let checks = vec![checks::check_snapshot(dir, "index.html", EXPECTED_INDEX_HTML)];
+    let checks = vec![checks::check_snapshot(
+        dir,
+        "index.html",
+        EXPECTED_INDEX_HTML,
+    )];
     VerificationReport::new("edit-html-table", checks)
 }

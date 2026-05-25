@@ -113,11 +113,7 @@ impl JudgeCoordinatorActor {
     /// 2. If none found, do nothing.
     /// 3. Push a trigger user message to each attached judge session.
     /// 4. Record the expected count in the pending map.
-    fn handle_session_phase_changed(
-        &mut self,
-        payload: &SessionPhaseChanged,
-        ctx: &ActorContext,
-    ) {
+    fn handle_session_phase_changed(&mut self, payload: &SessionPhaseChanged, ctx: &ActorContext) {
         // Only care about Idle transitions.
         if payload.new_phase != SessionPhase::Idle {
             return;
@@ -185,9 +181,8 @@ impl JudgeCoordinatorActor {
 
         // Push trigger message to each attached judge session.
         for (judge_session_id, judge_name) in &attached_judges {
-            let mut trigger_text = String::from(
-                "The agent has completed its turn. Please evaluate using your tools.",
-            );
+            let mut trigger_text =
+                String::from("The agent has completed its turn. Please evaluate it's work.");
             if let Some(ref last_msg) = last_origin_message {
                 let _ = write!(
                     trigger_text,
@@ -204,6 +199,26 @@ impl JudgeCoordinatorActor {
                 session = %judge_session_id,
                 "triggered judge evaluation"
             );
+        }
+
+        // Push a system notification to the origin listing evaluating judges.
+        let judge_names: Vec<&str> = attached_judges
+            .iter()
+            .map(|(_, name)| name.as_str())
+            .collect();
+        let notification = format!("⚖ Evaluating: {}", judge_names.join(", "));
+        let notification_entry = ChatEntry::system(&notification);
+        let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            session_id: origin_id.clone(),
+            entry: notification_entry,
+        }));
+
+        // Mark the origin session as busy (spinner).
+        {
+            let mut guard = self.state.write();
+            if let Some(origin) = guard.session.get_mut(origin_id) {
+                origin.mark_busy();
+            }
         }
 
         // Record expected count.
@@ -297,6 +312,14 @@ impl JudgeCoordinatorActor {
         pending: PendingVerdicts,
         ctx: &ActorContext,
     ) {
+        // Clear the busy spinner on the origin session.
+        {
+            let mut guard = self.state.write();
+            if let Some(origin) = guard.session.get_mut(origin_id) {
+                origin.mark_busy_complete();
+            }
+        }
+
         let all_passed = pending
             .received
             .iter()
@@ -321,11 +344,7 @@ impl JudgeCoordinatorActor {
             let mut summary = String::from("Judge evaluation failed:\n\n");
             for verdict in &failures {
                 if let Verdict::Fail(ref reason) = verdict.verdict {
-                    let _ = write!(
-                        summary,
-                        "### {} (failed)\n{reason}\n\n",
-                        verdict.judge_name
-                    );
+                    let _ = write!(summary, "### {} (failed)\n{reason}\n\n", verdict.judge_name);
                 }
             }
 
@@ -352,7 +371,7 @@ mod tests {
     use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
     use crate::common::app_state::AppState;
     use crate::common::state::State;
-    use crate::feat::judge::{JudgeMeta, JudgeCoordinatorActorDeps};
+    use crate::feat::judge::{JudgeCoordinatorActorDeps, JudgeMeta};
     use crate::feat::session::chat_session::{ChatSessionState, SessionPhase};
     use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
     use crate::protocol::{Command, Event, SessionId};
@@ -361,7 +380,10 @@ mod tests {
 
     fn create_actor(state: State) -> (JudgeCoordinatorActor, Arc<RecordingSink>, ActorContext) {
         let sink = Arc::new(RecordingSink::new());
-        let mut ctx = ActorContext::new("judge-coordinator-test", sink.clone() as Arc<dyn MessageSink>);
+        let mut ctx = ActorContext::new(
+            "judge-coordinator-test",
+            sink.clone() as Arc<dyn MessageSink>,
+        );
         let deps = JudgeCoordinatorActorDeps { state };
         let actor = JudgeCoordinatorActor::activate(deps, &mut ctx);
         (actor, sink, ctx)
@@ -443,9 +465,10 @@ mod tests {
 
         // Then an EnqueueUserMessage is sent to the judge session.
         let commands = sink.commands();
-        let enqueue_commands = find_commands(&commands, |c| {
-            matches!(c, Command::EnqueueUserMessage(msg) if msg.session_id == judge_id)
-        });
+        let enqueue_commands = find_commands(
+            &commands,
+            |c| matches!(c, Command::EnqueueUserMessage(msg) if msg.session_id == judge_id),
+        );
         assert_eq!(enqueue_commands.len(), 1);
     }
 
@@ -513,14 +536,18 @@ mod tests {
         actor.handle(idle_event(origin_id.clone()), &ctx).await;
         sink.clear();
         actor
-            .handle(verdict_event(judge_id, origin_id.clone(), Verdict::Pass), &ctx)
+            .handle(
+                verdict_event(judge_id, origin_id.clone(), Verdict::Pass),
+                &ctx,
+            )
             .await;
 
         // Then a PushChatEntry system message is sent to the origin.
         let commands = sink.commands();
-        let push_commands = find_commands(&commands, |c| {
-            matches!(c, Command::PushChatEntry(msg) if msg.session_id == origin_id)
-        });
+        let push_commands = find_commands(
+            &commands,
+            |c| matches!(c, Command::PushChatEntry(msg) if msg.session_id == origin_id),
+        );
         assert_eq!(push_commands.len(), 1);
     }
 
@@ -541,16 +568,21 @@ mod tests {
         sink.clear();
         actor
             .handle(
-                verdict_event(judge_id, origin_id.clone(), Verdict::Fail("missing tests".into())),
+                verdict_event(
+                    judge_id,
+                    origin_id.clone(),
+                    Verdict::Fail("missing tests".into()),
+                ),
                 &ctx,
             )
             .await;
 
         // Then an EnqueueUserMessage is sent to the origin with the failure summary.
         let commands = sink.commands();
-        let enqueue_commands = find_commands(&commands, |c| {
-            matches!(c, Command::EnqueueUserMessage(msg) if msg.session_id == origin_id)
-        });
+        let enqueue_commands = find_commands(
+            &commands,
+            |c| matches!(c, Command::EnqueueUserMessage(msg) if msg.session_id == origin_id),
+        );
         assert_eq!(enqueue_commands.len(), 1);
     }
 
@@ -584,11 +616,7 @@ mod tests {
         // Judges 0 and 2 pass, judge 1 fails.
         actor
             .handle(
-                verdict_event(
-                    judge_sessions[0].clone(),
-                    origin_id.clone(),
-                    Verdict::Pass,
-                ),
+                verdict_event(judge_sessions[0].clone(), origin_id.clone(), Verdict::Pass),
                 &ctx,
             )
             .await;
@@ -608,20 +636,17 @@ mod tests {
         // Judge 2 passes — all verdicts in.
         actor
             .handle(
-                verdict_event(
-                    judge_sessions[2].clone(),
-                    origin_id.clone(),
-                    Verdict::Pass,
-                ),
+                verdict_event(judge_sessions[2].clone(), origin_id.clone(), Verdict::Pass),
                 &ctx,
             )
             .await;
 
         // Then an EnqueueUserMessage is sent with consolidated failure summary.
         let commands = sink.commands();
-        let enqueue_commands = find_commands(&commands, |c| {
-            matches!(c, Command::EnqueueUserMessage(msg) if msg.session_id == origin_id)
-        });
+        let enqueue_commands = find_commands(
+            &commands,
+            |c| matches!(c, Command::EnqueueUserMessage(msg) if msg.session_id == origin_id),
+        );
         assert_eq!(enqueue_commands.len(), 1);
     }
 
@@ -666,9 +691,10 @@ mod tests {
 
         // Then a PushChatEntry system message is sent to the origin.
         let commands = sink.commands();
-        let push_commands = find_commands(&commands, |c| {
-            matches!(c, Command::PushChatEntry(msg) if msg.session_id == origin_id)
-        });
+        let push_commands = find_commands(
+            &commands,
+            |c| matches!(c, Command::PushChatEntry(msg) if msg.session_id == origin_id),
+        );
         assert_eq!(push_commands.len(), 1);
     }
 
@@ -700,7 +726,10 @@ mod tests {
 
         // Judge verdict arrives — stale.
         actor
-            .handle(verdict_event(judge_id, origin_id.clone(), Verdict::Pass), &ctx)
+            .handle(
+                verdict_event(judge_id, origin_id.clone(), Verdict::Pass),
+                &ctx,
+            )
             .await;
 
         // Then no commands are emitted (stale verdict discarded).
@@ -817,5 +846,98 @@ mod tests {
                 "trigger should include context header"
             );
         }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn system_notification_pushed_to_origin_on_trigger() {
+        // Given an origin session with two attached judges.
+        let state = State::new(AppState::default());
+        let (origin_id, origin) = make_origin_session();
+        state.write().session.insert(origin);
+
+        for name in ["counter", "accuracy"] {
+            let mut session = ChatSessionState::new();
+            session.set_judge(JudgeMeta {
+                origin_session: origin_id.clone(),
+                is_attached: true,
+                judge_name: name.to_string(),
+            });
+            state.write().session.insert(session);
+        }
+
+        let (mut actor, sink, ctx) = create_actor(state);
+
+        // When origin goes Idle.
+        actor.handle(idle_event(origin_id.clone()), &ctx).await;
+
+        // Then a PushChatEntry with a system notification is sent to the origin.
+        let commands = sink.commands();
+        let push_commands: Vec<_> = commands
+            .iter()
+            .filter_map(|c| match c {
+                Command::PushChatEntry(msg) if msg.session_id == origin_id => Some(msg),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(push_commands.len(), 1);
+        let notification_text = push_commands[0].entry.text();
+        assert!(
+            notification_text.contains("counter"),
+            "notification should list 'counter' judge"
+        );
+        assert!(
+            notification_text.contains("accuracy"),
+            "notification should list 'accuracy' judge"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn origin_marked_busy_on_trigger() {
+        // Given an origin session with an attached judge.
+        let state = State::new(AppState::default());
+        let (origin_id, origin) = make_origin_session();
+        state.write().session.insert(origin);
+        let (_judge_id, judge) = make_judge_session(origin_id.clone(), true);
+        state.write().session.insert(judge);
+
+        let (mut actor, _sink, ctx) = create_actor(state.clone());
+
+        // When origin goes Idle.
+        actor.handle(idle_event(origin_id.clone()), &ctx).await;
+
+        // Then the origin session is marked busy.
+        let guard = state.read();
+        let origin = guard.session.get(&origin_id).expect("origin exists");
+        assert!(origin.is_busy(), "origin should be marked busy after triggering judges");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn origin_busy_cleared_on_consolidation() {
+        // Given an origin with an attached judge.
+        let state = State::new(AppState::default());
+        let (origin_id, origin) = make_origin_session();
+        state.write().session.insert(origin);
+        let (judge_id, judge) = make_judge_session(origin_id.clone(), true);
+        state.write().session.insert(judge);
+
+        let (mut actor, sink, ctx) = create_actor(state.clone());
+
+        // When origin goes Idle and judge passes.
+        actor.handle(idle_event(origin_id.clone()), &ctx).await;
+        sink.clear();
+        actor
+            .handle(
+                verdict_event(judge_id, origin_id.clone(), Verdict::Pass),
+                &ctx,
+            )
+            .await;
+
+        // Then the origin session is no longer busy.
+        let guard = state.read();
+        let origin = guard.session.get(&origin_id).expect("origin exists");
+        assert!(!origin.is_busy(), "origin should not be busy after consolidation");
     }
 }

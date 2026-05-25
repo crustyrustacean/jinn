@@ -116,7 +116,9 @@ impl SessionStoreService {
         &self,
         origin_session_id: &SessionId,
     ) -> Result<Vec<ChatSessionState>, Report<SessionStoreError>> {
-        self.svc.load_judge_sessions_for_origin(origin_session_id).await
+        self.svc
+            .load_judge_sessions_for_origin(origin_session_id)
+            .await
     }
 
     /// Shut down the store, performing any cleanup or flush operations.

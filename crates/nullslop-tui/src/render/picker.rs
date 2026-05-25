@@ -22,7 +22,9 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState)
             render_judge_picker(frame, area, state);
         }
         Some(PickerKind::CompactionModel) => {
-            nullslop_domain::feat::provider::render::render_compaction_model_picker(frame, area, state);
+            nullslop_domain::feat::provider::render::render_compaction_model_picker(
+                frame, area, state,
+            );
         }
         None => {}
     }

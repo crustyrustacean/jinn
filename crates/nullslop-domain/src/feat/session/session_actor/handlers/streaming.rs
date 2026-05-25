@@ -401,10 +401,13 @@ mod tests {
 
         // Then a HistoryAppended event was emitted.
         let events = sink.events();
-        let has_history = events
-            .iter()
-            .any(|e| matches!(e, Event::HistoryAppended(payload) if payload.session_id == session_id));
-        assert!(has_history, "expected HistoryAppended event after stream completed");
+        let has_history = events.iter().any(
+            |e| matches!(e, Event::HistoryAppended(payload) if payload.session_id == session_id),
+        );
+        assert!(
+            has_history,
+            "expected HistoryAppended event after stream completed"
+        );
     }
 
     #[tokio::test]
@@ -432,10 +435,13 @@ mod tests {
 
         // Then a HistoryAppended event was emitted.
         let events = sink.events();
-        let has_history = events
-            .iter()
-            .any(|e| matches!(e, Event::HistoryAppended(payload) if payload.session_id == session_id));
-        assert!(has_history, "expected HistoryAppended event after stream error");
+        let has_history = events.iter().any(
+            |e| matches!(e, Event::HistoryAppended(payload) if payload.session_id == session_id),
+        );
+        assert!(
+            has_history,
+            "expected HistoryAppended event after stream error"
+        );
     }
 
     #[tokio::test]
@@ -463,10 +469,13 @@ mod tests {
 
         // Then a HistoryAppended event was emitted.
         let events = sink.events();
-        let has_history = events
-            .iter()
-            .any(|e| matches!(e, Event::HistoryAppended(payload) if payload.session_id == session_id));
-        assert!(has_history, "expected HistoryAppended event after stream canceled");
+        let has_history = events.iter().any(
+            |e| matches!(e, Event::HistoryAppended(payload) if payload.session_id == session_id),
+        );
+        assert!(
+            has_history,
+            "expected HistoryAppended event after stream canceled"
+        );
     }
 
     #[tokio::test]
@@ -479,7 +488,11 @@ mod tests {
             let session = state.active_session_mut();
             session.begin_streaming();
             session.request_soft_cancel();
-            session.enqueue(crate::feat::session::queue_item::QueueItem::CompactionNeeded { compact_all: false });
+            session.enqueue(
+                crate::feat::session::queue_item::QueueItem::CompactionNeeded {
+                    compact_all: false,
+                },
+            );
             state.session.active_session_id().clone()
         };
 

@@ -91,13 +91,15 @@ impl PluginHost {
     pub fn load_plugin(&self, dir: &Path) -> Result<PluginInfo, Report<PluginError>> {
         let init_path = dir.join("init.lua");
         if !init_path.is_file() {
-            return Err(Report::new(PluginError)
-                .attach(format!("no init.lua in {}", dir.display())));
+            return Err(
+                Report::new(PluginError).attach(format!("no init.lua in {}", dir.display()))
+            );
         }
 
-        let name = dir
-            .file_name()
-            .map_or_else(|| String::from("unknown"), |n| n.to_string_lossy().into_owned());
+        let name = dir.file_name().map_or_else(
+            || String::from("unknown"),
+            |n| n.to_string_lossy().into_owned(),
+        );
 
         let source = std::fs::read_to_string(&init_path).map_err(|e| {
             tracing::error!(err = %e, path = %init_path.display(), "failed to read init.lua");
@@ -156,7 +158,11 @@ impl PluginHost {
     /// # Errors
     ///
     /// Returns an error if the Lua script fails to execute.
-    pub fn load_builtin(&self, name: &str, source: &str) -> Result<PluginInfo, Report<PluginError>> {
+    pub fn load_builtin(
+        &self,
+        name: &str,
+        source: &str,
+    ) -> Result<PluginInfo, Report<PluginError>> {
         self.lua
             .load(source)
             .set_name(format!("builtin/{name}/init.lua"))
@@ -398,12 +404,17 @@ mod tests {
         host.dispatch_event("app::started", &serde_json::Value::Null);
 
         // Then a dynamic command is emitted (with timeout).
-        let cmd = rx.recv_timeout(std::time::Duration::from_secs(2))
+        let cmd = rx
+            .recv_timeout(std::time::Duration::from_secs(2))
             .expect("should receive command within 2s");
         match cmd {
             Command::Dynamic(dc) => {
                 assert_eq!(dc.name, "welcome::show");
-                let msg = dc.payload.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                let msg = dc
+                    .payload
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 assert!(msg.contains("Welcome to nullslop"), "got: {msg}");
             }
             other => panic!("expected Dynamic command, got: {other:?}"),
@@ -429,12 +440,17 @@ mod tests {
         );
 
         // Then a welcome::session_tip dynamic command is emitted.
-        let cmd = rx.recv_timeout(std::time::Duration::from_secs(2))
+        let cmd = rx
+            .recv_timeout(std::time::Duration::from_secs(2))
             .expect("should receive command within 2s");
         match cmd {
             Command::Dynamic(dc) => {
                 assert_eq!(dc.name, "welcome::session_tip");
-                let msg = dc.payload.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                let msg = dc
+                    .payload
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 assert!(msg.contains("New session started"), "got: {msg}");
             }
             other => panic!("expected Dynamic command, got: {other:?}"),
@@ -453,7 +469,8 @@ mod tests {
             "session::created",
             &serde_json::json!({ "session_id": "session-1" }),
         );
-        let cmd1 = rx.recv_timeout(std::time::Duration::from_secs(2))
+        let cmd1 = rx
+            .recv_timeout(std::time::Duration::from_secs(2))
             .expect("should receive first command");
         assert!(
             matches!(cmd1, Command::Dynamic(ref dc) if dc.name == "welcome::session_tip"),
@@ -464,7 +481,8 @@ mod tests {
             "session::created",
             &serde_json::json!({ "session_id": "session-2" }),
         );
-        let cmd2 = rx.recv_timeout(std::time::Duration::from_secs(2))
+        let cmd2 = rx
+            .recv_timeout(std::time::Duration::from_secs(2))
             .expect("should receive second command");
         assert!(
             matches!(cmd2, Command::Dynamic(ref dc) if dc.name == "welcome::session_tip"),
