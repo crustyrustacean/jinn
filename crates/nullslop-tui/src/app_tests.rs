@@ -54,6 +54,7 @@ fn test_app() -> TuiApp {
         },
         preview_cache: crate::app::PreviewCache::new(),
         plugin_host: None,
+        welcome_subscriber: None,
     }
 }
 
@@ -247,6 +248,7 @@ fn mouse_events_not_handled_when_mouse_selection_disabled() {
         },
         preview_cache: crate::app::PreviewCache::new(),
         plugin_host: None,
+        welcome_subscriber: None,
     };
     let rect = Rect::new(5, 5, 20, 10);
     app.selectable_rects.rebuild(vec![rect]);

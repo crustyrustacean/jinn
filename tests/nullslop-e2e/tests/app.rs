@@ -189,6 +189,7 @@ impl AppWorld {
             },
             preview_cache: nullslop_tui::app::PreviewCache::new(),
             plugin_host: None,
+            welcome_subscriber: None,
         };
 
         (app, handle)
@@ -617,6 +618,7 @@ fn when_restart_app(world: &mut AppWorld) {
         },
         preview_cache: nullslop_tui::app::PreviewCache::new(),
         plugin_host: None,
+        welcome_subscriber: None,
     };
 
     world.app = app;
