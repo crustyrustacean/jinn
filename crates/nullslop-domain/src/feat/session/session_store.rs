@@ -121,6 +121,18 @@ pub trait SessionStore: Send + Sync + 'static {
         &self,
     ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>>;
 
+    /// Loads all non-archived judge sessions that belong to the given origin session.
+    ///
+    /// Queries by `json_extract(judge_meta, '$.origin_session')`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionStoreError`] if the database cannot be read.
+    async fn load_judge_sessions_for_origin(
+        &self,
+        origin_session_id: &SessionId,
+    ) -> Result<Vec<ChatSessionState>, Report<SessionStoreError>>;
+
     /// Shut down the store, performing any cleanup or flush operations.
     ///
     /// Called once during application shutdown. Implementations may use
