@@ -223,6 +223,10 @@ pub struct UserPreferences {
     /// `None` means use the built-in default (5 lines).
     #[serde(default)]
     pub tool_entry_max_lines: Option<u16>,
+    /// Minimum number of contiguous excluded entries required to collapse into
+    /// a summary line. `None` means use the built-in default (3).
+    #[serde(default)]
+    pub min_collapse_count: Option<usize>,
     /// The name of the active theme. `None` or `"default"` uses the built-in theme.
     /// Corresponds to a file in `~/.config/nullslop/themes/<name>.toml`.
     #[serde(default)]
@@ -356,10 +360,11 @@ mod tests {
         // Given default preferences.
         let prefs = UserPreferences::default();
 
-        // Then last_model, last_strategy, and tool_entry_max_lines are None.
+        // Then last_model, last_strategy, tool_entry_max_lines, and min_collapse_count are None.
         assert!(prefs.last_model.is_none());
         assert!(prefs.last_strategy.is_none());
         assert!(prefs.tool_entry_max_lines.is_none());
+        assert!(prefs.min_collapse_count.is_none());
     }
 
     #[rstest::rstest]
@@ -386,6 +391,7 @@ mod tests {
             last_model: Some("ollama/llama3".to_owned()),
             last_strategy: Some("sliding_window".to_owned()),
             tool_entry_max_lines: None,
+            min_collapse_count: None,
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![],
@@ -455,6 +461,7 @@ last_strategy = "sliding_window""#,
             last_model: Some("test/model".to_owned()),
             last_strategy: None,
             tool_entry_max_lines: None,
+            min_collapse_count: None,
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![],
@@ -483,6 +490,7 @@ last_strategy = "sliding_window""#,
             last_model: None,
             last_strategy: None,
             tool_entry_max_lines: Some(10),
+            min_collapse_count: None,
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![],
@@ -512,6 +520,7 @@ last_strategy = "sliding_window""#,
             last_model: None,
             last_strategy: None,
             tool_entry_max_lines: None,
+            min_collapse_count: None,
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![SessionLifecycle {
@@ -567,6 +576,7 @@ last_strategy = "sliding_window""#,
             last_model: None,
             last_strategy: None,
             tool_entry_max_lines: None,
+            min_collapse_count: None,
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![],
@@ -640,6 +650,7 @@ teardown_command = "~/.config/nullslop/scripts/fossil-cleanup.sh $1"
             last_model: None,
             last_strategy: None,
             tool_entry_max_lines: None,
+            min_collapse_count: None,
             theme_name: None,
             persona_name: None,
             session_lifecycles: vec![],
@@ -694,5 +705,23 @@ budget = 100_000
 
         // Then the default budget is used.
         assert_eq!(prefs.context_token_budget.budget, 150_000);
+    }
+
+    #[rstest::rstest]
+    fn save_then_load_round_trips_min_collapse_count() {
+        // Given preferences with a min_collapse_count override.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let prefs = UserPreferences {
+            min_collapse_count: Some(5),
+            ..UserPreferences::default()
+        };
+
+        // When saving and reloading.
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+
+        // Then the round-tripped value matches.
+        assert_eq!(reloaded.min_collapse_count, Some(5));
     }
 }
