@@ -600,3 +600,83 @@ fn cut_on_standalone_assistant_walks_to_next_user() {
     assert_eq!(result, 3);
 }
 
+// --- Cut-point algorithm tests for reserve and compact_all ---
+
+#[test]
+fn cut_index_defaults_to_start_when_tokens_within_reserve() {
+    use crate::feat::context::strategy::token_estimator::{
+        CharRatioEstimator, estimate_entry_tokens,
+    };
+
+    // Given history with total tokens well below the 20,000 reserve default.
+    let history = vec![
+        ChatEntry::user("hello"),
+        ChatEntry::assistant("hi there"),
+        ChatEntry::user("how are you?"),
+        ChatEntry::assistant("doing well"),
+    ];
+
+    // When calculating the cut point with compact_all=false (the default),
+    // walking backwards accumulating tokens never exceeds the reserve.
+    let start_index = 0;
+    let reserve_tokens = 20_000;
+    let compact_all = false;
+
+    let estimator = CharRatioEstimator;
+    let mut accumulated_tokens = 0usize;
+    let mut cut_index = if compact_all {
+        history.len()
+    } else {
+        start_index
+    };
+
+    if !compact_all {
+        for i in (start_index..history.len()).rev() {
+            let entry = &history[i];
+            let tokens = estimate_entry_tokens(&estimator, entry);
+            accumulated_tokens += tokens;
+            if accumulated_tokens > reserve_tokens {
+                cut_index = i + 1;
+                break;
+            }
+        }
+    }
+
+    let cut_index = super::adjust_cut_to_boundary(&history, cut_index);
+
+    // Then cut_index stays at start_index (0) — nothing to compact.
+    assert_eq!(
+        cut_index, start_index,
+        "cut_index should be start_index when all tokens fit within reserve"
+    );
+}
+
+#[test]
+fn cut_index_equals_history_len_when_compact_all() {
+    // Given history with tokens well below the reserve.
+    let history = vec![
+        ChatEntry::user("hello"),
+        ChatEntry::assistant("hi there"),
+        ChatEntry::user("how are you?"),
+        ChatEntry::assistant("doing well"),
+    ];
+
+    // When compact_all=true, cut_index starts at history.len() regardless of reserve.
+    let start_index = 0;
+    let compact_all = true;
+
+    let cut_index = if compact_all {
+        history.len()
+    } else {
+        start_index
+    };
+
+    let cut_index = super::adjust_cut_to_boundary(&history, cut_index);
+
+    // Then cut_index equals history.len() — everything gets compacted.
+    assert_eq!(
+        cut_index, history.len(),
+        "cut_index should be history.len() when compact_all=true"
+    );
+}
+
