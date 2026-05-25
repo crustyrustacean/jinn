@@ -3,7 +3,6 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::common::app_state::AppState;
-use crate::feat::session::chat_session::SessionPhase;
 use crate::protocol::SessionId;
 
 /// Sessions section cursor state — stored on `FrontendState`.
@@ -67,7 +66,7 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionTreeEntry> {
     let mut entry_map: HashMap<SessionId, SessionTreeEntry> = loaded_ids
         .iter()
         .map(|id| {
-            let parent_id = state.session.get(id).map(|s| s.parent_session().clone()).flatten();
+            let parent_id = state.session.get(id).and_then(|s| s.parent_session().clone());
             (
                 id.clone(),
                 SessionTreeEntry {

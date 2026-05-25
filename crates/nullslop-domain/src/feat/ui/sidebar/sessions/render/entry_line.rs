@@ -140,7 +140,7 @@ pub(crate) fn assemble_entry_line(
         let truncated = truncate_str(title, config.max_title_len.saturating_sub(tree_len + 2));
         format!("⚖ {truncated}")
     } else {
-        truncate_str(title, config.max_title_len.saturating_sub(tree_len)).to_string()
+        truncate_str(title, config.max_title_len.saturating_sub(tree_len))
     };
 
     // Overlay judge-specific colors.

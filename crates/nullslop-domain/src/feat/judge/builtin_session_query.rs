@@ -15,6 +15,8 @@
 
 //! `session_query` built-in tool — search the origin session's message history.
 
+use std::fmt::Write;
+
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::feat::tools_actor::BoxedToolFuture;
 use crate::protocol::ChatEntry;
@@ -136,7 +138,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             } else {
                 text.clone()
             };
-            output.push_str(&format!("[{role}] {display}\n\n"));
+            let _ = write!(output, "[{role}] {display}\n\n");
         }
 
         ToolResult {
