@@ -473,7 +473,7 @@ fn cut_on_user_entry_needs_no_adjustment() {
 }
 
 #[test]
-fn cut_on_tool_call_walks_to_next_user() {
+fn cut_on_tool_call_walks_to_next_assistant() {
     // Given history with a tool call chain.
     let history = vec![
         ChatEntry::user("msg1"),
@@ -487,12 +487,12 @@ fn cut_on_tool_call_walks_to_next_user() {
     // When cut lands on ToolCall entry.
     let result = super::adjust_cut_to_boundary(&history, 2);
 
-    // Then it walks forward to the next User entry.
-    assert_eq!(result, 5);
+    // Then it walks forward to the next non-tool entry (Assistant).
+    assert_eq!(result, 4);
 }
 
 #[test]
-fn cut_on_tool_result_walks_to_next_user() {
+fn cut_on_tool_result_walks_to_next_assistant() {
     // Given history with a tool call chain.
     let history = vec![
         ChatEntry::user("msg1"),
@@ -506,12 +506,12 @@ fn cut_on_tool_result_walks_to_next_user() {
     // When cut lands on ToolResult entry.
     let result = super::adjust_cut_to_boundary(&history, 3);
 
-    // Then it walks forward to the next User entry.
-    assert_eq!(result, 5);
+    // Then it walks forward to the next non-tool entry (Assistant).
+    assert_eq!(result, 4);
 }
 
 #[test]
-fn cut_on_assistant_after_tool_result_walks_to_next_user() {
+fn cut_on_assistant_after_tool_result_stays() {
     // Given history with a tool call chain.
     let history = vec![
         ChatEntry::user("msg1"),
@@ -525,12 +525,12 @@ fn cut_on_assistant_after_tool_result_walks_to_next_user() {
     // When cut lands on the responding Assistant entry.
     let result = super::adjust_cut_to_boundary(&history, 4);
 
-    // Then it walks forward to the next User entry.
-    assert_eq!(result, 5);
+    // Then it stays — Assistant is a valid cut point.
+    assert_eq!(result, 4);
 }
 
 #[test]
-fn multiple_tool_call_batches_walks_past_all() {
+fn multiple_tool_call_batches_walks_to_next_assistant() {
     // Given history with multiple consecutive tool call batches.
     let history = vec![
         ChatEntry::user("msg1"),
@@ -547,8 +547,8 @@ fn multiple_tool_call_batches_walks_past_all() {
     // When cut lands on the first ToolCall.
     let result = super::adjust_cut_to_boundary(&history, 2);
 
-    // Then it walks past the entire multi-batch chain to the next User.
-    assert_eq!(result, 8);
+    // Then it walks to the next non-tool entry (Assistant at cycle boundary).
+    assert_eq!(result, 4);
 }
 
 #[test]
@@ -584,7 +584,7 @@ fn cut_at_end_returns_end() {
 }
 
 #[test]
-fn cut_on_standalone_assistant_walks_to_next_user() {
+fn cut_on_standalone_assistant_stays() {
     // Given history where the cut lands on a standalone Assistant.
     let history = vec![
         ChatEntry::user("msg1"),
@@ -596,8 +596,8 @@ fn cut_on_standalone_assistant_walks_to_next_user() {
     // When cut lands on a standalone Assistant (not in a tool chain).
     let result = super::adjust_cut_to_boundary(&history, 1);
 
-    // Then it walks forward to the next User entry.
-    assert_eq!(result, 3);
+    // Then it stays — Assistant is a valid cut point.
+    assert_eq!(result, 1);
 }
 
 // --- Cut-point algorithm tests for reserve and compact_all ---
