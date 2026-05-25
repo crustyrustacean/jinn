@@ -199,14 +199,25 @@ impl CompactionActor {
                 return;
             }
 
-            let config = &state.frontend.preferences.compaction;
-            // TODO(compaction-reserve-tokens Phase 6): replace with provider-sourced context_length.
-            let token_budget = 150_000;
+            let config = state.frontend.preferences.compaction.clone();
+
+            // Resolve context window from the provider registry.
+            // Falls back to `fallback_context_window` when the provider
+            // doesn't report `context_length` (e.g., local models).
+            let model_name = session.profile().model.clone();
+            let provider_id = crate::feat::provider_infra::ProviderId::from(model_name);
+            let context_window = self
+                .services
+                .provider_registry
+                .get(&provider_id)
+                .and_then(|r| r.context_length)
+                .map(|c| c as usize)
+                .unwrap_or(config.fallback_context_window);
 
             let total_tokens = payload.total_estimated_tokens;
 
             #[allow(clippy::cast_precision_loss)]
-            let threshold_tokens = (config.threshold * token_budget as f64) as usize;
+            let threshold_tokens = (config.threshold * context_window as f64) as usize;
             let should = total_tokens > threshold_tokens;
 
             tracing::debug!(

@@ -328,8 +328,8 @@ fn test_actor_with_low_budget() -> (
     let sink = std::sync::Arc::new(RecordingSink::new());
     let ctx = ActorContext::new("test-compaction", sink.clone());
 
-    // Build state with a tiny token budget so threshold = 0.7 * 150_000 tokens.
-    // TODO(compaction-reserve-tokens Phase 6): use fallback_context_window config.
+    // Build state with default config. Auto-compaction threshold = 0.7 * 150,000 = 105,000 tokens.
+    // The provider registry is empty, so fallback_context_window (150,000) is used.
     let app_state = AppState::default();
     let state = State::new(app_state);
     let session_id = state.read().session.active_session_id().clone();
