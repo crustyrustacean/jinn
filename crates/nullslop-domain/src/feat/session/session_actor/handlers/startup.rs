@@ -95,7 +95,9 @@ impl SessionPersistenceActor {
                 if !loaded.is_empty() {
                     let mut state = self.state.write();
 
-                    for session in loaded {
+                    for mut session in loaded {
+                        // Mark startup-loaded sessions as interacted — they came from disk.
+                        session.mark_interacted();
                         state.session.insert(session);
                     }
 

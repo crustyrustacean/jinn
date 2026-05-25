@@ -33,6 +33,7 @@ use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::provider::protocol::event::{ModelsRefreshed, StreamCompleted, StreamToken};
 use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
+use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session_lifecycle::protocol::command::{
     PersistSession, RunSessionSetup, RunSessionTeardown,
@@ -110,6 +111,7 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<CloseSession>();
         ctx.subscribe_command::<crate::feat::session::protocol::archive_session::ArchiveSession>();
         ctx.subscribe_command::<crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn>();
+        ctx.subscribe_command::<MarkSessionInteracted>();
 
         // Context-related subscriptions (relocated from PromptAssemblyActor).
         ctx.subscribe_command::<crate::feat::context::protocol::command::PinChatEntry>();
@@ -135,6 +137,7 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_event::<crate::feat::context::protocol::event::ChatEntryPinChanged>();
         ctx.subscribe_event::<ModelsRefreshed>();
         ctx.subscribe_event::<EnvironmentLoaded>();
+        ctx.subscribe_event::<crate::feat::session::protocol::user_interacted::UserInteracted>();
 
         // Context-related subscriptions (relocated from PromptAssemblyActor).
         ctx.subscribe_event::<crate::feat::tools_actor::protocol::event::ToolsRegistered>();
@@ -270,6 +273,9 @@ impl SessionPersistenceActor {
 
             Command::FinishSessionTeardown(payload) => {
                 self.handle_finish_session_teardown(payload, ctx).await;
+            }
+            Command::MarkSessionInteracted(payload) => {
+                self.handle_mark_session_interacted(payload, ctx).await;
             }
             // Commands NOT subscribed to - these should not arrive.
             Command::SendToLlmProvider(..)
