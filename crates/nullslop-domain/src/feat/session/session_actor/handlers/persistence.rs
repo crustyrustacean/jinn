@@ -40,12 +40,41 @@ impl SessionPersistenceActor {
 
         let Some(session) = session else { return };
 
+        // Guard: don't persist sessions the user hasn't interacted with.
+        if !session.is_persistable() {
+            return;
+        }
+
         if let Err(e) = store.save(&session).await {
             tracing::warn!(
                 session_id = ?session_id_log,
                 err = ?e,
                 "failed to persist session"
             );
+        }
+    }
+
+    /// Marks a session as having been interacted with by the user.
+    ///
+    /// Sets `has_interacted = true` on the session and emits a `UserInteracted` event.
+    pub(in crate::feat::session::session_actor) fn handle_mark_session_interacted(
+        &mut self,
+        payload: &crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted,
+        ctx: &crate::common::actor::ActorContext,
+    ) {
+        {
+            let mut state = self.state.write();
+            if let Some(session) = state.session.get_mut(&payload.session_id) {
+                session.mark_interacted();
+            }
+        }
+
+        if let Err(e) = ctx.send_event(crate::protocol::Event::UserInteracted(
+            crate::feat::session::protocol::user_interacted::UserInteracted {
+                session_id: payload.session_id.clone(),
+            },
+        )) {
+            tracing::warn!(err = ?e, "session-actor failed to emit UserInteracted");
         }
     }
 

@@ -54,6 +54,8 @@ impl SessionPersistenceActor {
             let session = state.session.get_mut(&session_id).expect("just inserted");
             session.push_entry(ChatEntry::system(format!("Session restored: {title_text}")));
             session.set_model(model);
+            // Mark loaded session as interacted — it came from disk (already persisted).
+            session.mark_interacted();
 
             // Read cwd before releasing the lock (for async existence check).
             original_cwd = session.cwd().to_owned();
