@@ -446,10 +446,10 @@ impl ActorHost for InMemoryActorHost {
 
     fn send_event(&self, event: &Event, source: Option<&ActorName>) {
         // Look up subscribed actors by event type name.
-        let Some(event_type) = event.type_name() else {
+        let Some(event_key) = event.routing_key() else {
             return; // Not a routable event.
         };
-        if let Some(entries) = self.routing.event_routes.get(event_type) {
+        if let Some(entries) = self.routing.event_routes.get(&*event_key) {
             for entry in entries {
                 if source.is_some_and(|s| &**s == entry.name.as_str()) {
                     continue;
@@ -460,7 +460,7 @@ impl ActorHost for InMemoryActorHost {
         // Also route to actors that subscribe to ALL events.
         for entry in &self.routing.all_event_subscribers {
             // Skip if already routed via specific subscription.
-            if let Some(entries) = self.routing.event_routes.get(event_type)
+            if let Some(entries) = self.routing.event_routes.get(&*event_key)
                 && entries.iter().any(|e| e.name == entry.name)
             {
                 continue;
@@ -473,10 +473,10 @@ impl ActorHost for InMemoryActorHost {
     }
 
     fn send_command(&self, command: &Command, source: Option<&ActorName>) {
-        let Some(name) = command.command_name() else {
+        let Some(key) = command.routing_key() else {
             return;
         };
-        if let Some(entries) = self.routing.command_routes.get(name) {
+        if let Some(entries) = self.routing.command_routes.get(&*key) {
             for entry in entries {
                 if source.is_some_and(|s| &**s == entry.name.as_str()) {
                     continue;

@@ -4,6 +4,8 @@ pub mod command;
 pub mod event;
 
 pub use command::Command;
+pub use command::DynamicCommand;
+pub use event::DynamicEvent;
 pub use event::Event;
 
 use crate::protocol::ActorName;

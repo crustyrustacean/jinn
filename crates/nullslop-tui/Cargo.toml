@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 nullslop-domain = { workspace = true }
+nullslop-plugin = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
 ratatui = { workspace = true }

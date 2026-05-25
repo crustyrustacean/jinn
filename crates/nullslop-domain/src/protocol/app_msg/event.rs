@@ -13,9 +13,12 @@
 //! below. Creating the struct alone is not enough — the bus broadcasts based on
 //! enum variants, so a missing variant means the event is invisible to the system.
 
+use std::borrow::Cow;
+
 use serde::{Deserialize, Serialize};
 
 // Internal imports for enum definition, type_name(), and tests.
+pub use crate::common::actor::protocol::dynamic_event::DynamicEvent;
 use crate::common::actor::protocol::event::{
     ActorShutdownCompleted, ActorStarted, ActorStarting, AllActorsSpawned,
 };
@@ -129,6 +132,12 @@ pub enum Event {
     WorkflowNodeStatusChanged(crate::feat::workflow::protocol::event::WorkflowNodeStatusChanged),
     /// Judges have been scanned and loaded from disk.
     JudgesLoaded(crate::feat::judge::JudgesLoaded),
+    /// A dynamic event from a plugin, carrying an arbitrary JSON payload.
+    ///
+    /// Broadcast by the runtime [`name`](DynamicEvent::name) field, not the
+    /// static `EventMsg::TYPE_NAME`. If no actor subscribes to that name, the
+    /// event is silently dropped.
+    Dynamic(DynamicEvent),
 }
 
 impl Event {
@@ -197,6 +206,20 @@ impl Event {
             Self::JudgesLoaded(..) => {
                 Some(crate::feat::judge::JudgesLoaded::TYPE_NAME)
             }
+            Self::Dynamic(..) => Some(DynamicEvent::TYPE_NAME),
+        }
+    }
+
+    /// Returns the routing key for bus broadcast.
+    ///
+    /// Typed variants return their static type name as an owned `Cow`.
+    /// `Dynamic` returns the runtime `.name` field as a borrowed `Cow`,
+    /// allowing plugins to define arbitrary event names.
+    #[must_use]
+    pub fn routing_key(&self) -> Option<Cow<'_, str>> {
+        match self {
+            Self::Dynamic(d) => Some(Cow::Borrowed(&d.name)),
+            _ => self.type_name().map(|s| Cow::Owned(s.to_owned())),
         }
     }
 }
