@@ -134,6 +134,8 @@ pub enum Command {
     SoftCancelTurn(SoftCancelTurn),
     /// Finish an async teardown shell command (result from spawned task).
     FinishSessionTeardown(FinishSessionTeardown),
+    /// Request to load (initialize) a named workflow without executing it.
+    InitWorkflow(crate::feat::workflow::protocol::command::InitWorkflow),
     /// Request to start a named workflow.
     StartWorkflow(crate::feat::workflow::protocol::command::StartWorkflow),
     /// Request to cancel a running workflow.
@@ -200,6 +202,9 @@ impl Command {
             Self::PersistSession(..) => Some(PersistSession::NAME),
             Self::SoftCancelTurn(..) => Some(SoftCancelTurn::NAME),
             Self::FinishSessionTeardown(..) => Some(FinishSessionTeardown::NAME),
+            Self::InitWorkflow(..) => {
+                Some(crate::feat::workflow::protocol::command::InitWorkflow::NAME)
+            }
             Self::StartWorkflow(..) => {
                 Some(crate::feat::workflow::protocol::command::StartWorkflow::NAME)
             }
@@ -336,6 +341,13 @@ impl std::fmt::Display for Command {
             }
             Command::FinishSessionTeardown(payload) => {
                 write!(f, "finish session teardown for {}", payload.session_id)
+            }
+            Command::InitWorkflow(payload) => {
+                write!(
+                    f,
+                    "init workflow '{}' ({})",
+                    payload.name, payload.workflow_id
+                )
             }
             Command::StartWorkflow(payload) => {
                 write!(

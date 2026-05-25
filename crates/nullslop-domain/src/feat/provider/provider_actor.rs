@@ -127,6 +127,7 @@ impl ProviderActor {
             | Command::PersistSession(..)
             | Command::SoftCancelTurn(..)
             | Command::FinishSessionTeardown(..)
+            | Command::InitWorkflow(..)
             | Command::StartWorkflow(..)
             | Command::CancelWorkflow(..)
             | Command::RerunFromNode(..)
