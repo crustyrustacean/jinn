@@ -451,8 +451,8 @@ fn confirm_workflow(state: &mut AppState) -> IntentResult {
         .scope_stack
         .swap_base(crate::common::app_state::FocusScope::Workflow);
 
-    IntentResult::with_commands(vec![Command::StartWorkflow(
-        crate::feat::workflow::protocol::command::StartWorkflow {
+    IntentResult::with_commands(vec![Command::InitWorkflow(
+        crate::feat::workflow::protocol::command::InitWorkflow {
             name,
             workflow_id,
         },

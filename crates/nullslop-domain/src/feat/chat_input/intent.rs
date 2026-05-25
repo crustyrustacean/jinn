@@ -338,8 +338,8 @@ fn execute_slash_command(
                 .and_then(|s| s.split_whitespace().nth(1))
                 .unwrap_or("dynamic")
                 .to_owned();
-            IntentResult::with_commands(vec![Command::StartWorkflow(
-                crate::feat::workflow::protocol::command::StartWorkflow {
+            IntentResult::with_commands(vec![Command::InitWorkflow(
+                crate::feat::workflow::protocol::command::InitWorkflow {
                     name,
                     workflow_id,
                 },

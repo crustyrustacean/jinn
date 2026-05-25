@@ -5,6 +5,16 @@ use serde::{Deserialize, Serialize};
 use crate::feat::workflow::workflow_state::WorkflowId;
 use crate::protocol::EventMsg;
 
+/// A workflow has been loaded (initialized) but not yet started.
+#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
+#[event_msg("workflow")]
+pub struct WorkflowInitialized {
+    /// The workflow execution ID.
+    pub workflow_id: WorkflowId,
+    /// The registered name of the workflow.
+    pub name: String,
+}
+
 /// A workflow execution has started.
 #[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
 #[event_msg("workflow")]
