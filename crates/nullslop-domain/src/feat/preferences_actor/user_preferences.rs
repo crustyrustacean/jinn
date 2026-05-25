@@ -84,8 +84,8 @@ impl Default for ContextTokenBudgetConfig {
 /// Default token threshold for auto-compaction.
 const DEFAULT_COMPACTION_THRESHOLD: f64 = 0.7;
 
-/// Default number of recent tokens to keep during compaction.
-const DEFAULT_KEEP_RECENT_TOKENS: usize = 20_000;
+/// Default number of recent tokens to reserve from compaction.
+const DEFAULT_RESERVE_TOKENS: usize = 20_000;
 
 /// Compaction configuration.
 ///
@@ -101,18 +101,18 @@ pub struct CompactionConfig {
     /// Default: 0.7 (70% of budget).
     #[serde(default = "default_compaction_threshold")]
     pub threshold: f64,
-    /// Number of recent tokens to keep during compaction.
+    /// Number of recent tokens to reserve from compaction.
     /// Default: 20,000.
-    #[serde(default = "default_keep_recent_tokens")]
-    pub keep_recent_tokens: usize,
+    #[serde(default = "default_reserve_tokens")]
+    pub reserve_tokens: usize,
 }
 
 fn default_compaction_threshold() -> f64 {
     DEFAULT_COMPACTION_THRESHOLD
 }
 
-fn default_keep_recent_tokens() -> usize {
-    DEFAULT_KEEP_RECENT_TOKENS
+fn default_reserve_tokens() -> usize {
+    DEFAULT_RESERVE_TOKENS
 }
 
 impl Default for CompactionConfig {
@@ -120,7 +120,7 @@ impl Default for CompactionConfig {
         Self {
             model: None,
             threshold: DEFAULT_COMPACTION_THRESHOLD,
-            keep_recent_tokens: DEFAULT_KEEP_RECENT_TOKENS,
+            reserve_tokens: DEFAULT_RESERVE_TOKENS,
         }
     }
 }
