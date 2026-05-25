@@ -674,6 +674,7 @@ fn compaction_kind_is_included_by_default() {
     let kind = ChatEntryKind::Compaction {
         summary: "summary".to_owned(),
         tokens_before: 100,
+        tokens_after: 50,
         entries_compacted: 5,
         model_used: "gpt-4".to_owned(),
     };
