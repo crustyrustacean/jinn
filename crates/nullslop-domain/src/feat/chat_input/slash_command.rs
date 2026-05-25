@@ -12,6 +12,8 @@ pub enum SlashCommand {
     New,
     /// Summarize conversation history into a structured checkpoint.
     Compact,
+    /// Compact all messages, ignoring the token reserve.
+    CompactAll,
     /// Run a named workflow.
     Workflow,
 }
@@ -34,6 +36,10 @@ impl SlashCommand {
                 description: "Summarize conversation history".to_owned(),
             },
             SlashCommandEntry {
+                name: "compact-all".to_owned(),
+                description: "Compact all messages (ignores reserve)".to_owned(),
+            },
+            SlashCommandEntry {
                 name: "new".to_owned(),
                 description: "Create a new session".to_owned(),
             },
@@ -48,6 +54,7 @@ impl SlashCommand {
     pub fn lookup(name: &str) -> Option<Self> {
         match name {
             "compact" => Some(Self::Compact),
+            "compact-all" => Some(Self::CompactAll),
             "new" => Some(Self::New),
             "workflow" => Some(Self::Workflow),
             _ => None,

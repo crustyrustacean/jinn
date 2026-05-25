@@ -90,7 +90,6 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use std::sync::Arc;
 
-    use crate::ContextTokenBudgetConfig;
     use crate::common::actor::{
         Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink,
     };
@@ -136,7 +135,6 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -178,7 +176,6 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -204,7 +201,6 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
