@@ -393,6 +393,77 @@ impl IntentHandler {
             Intent::WorkflowPanDown => handle_workflow_pan(state, 0, -5),
             Intent::WorkflowPanUp => handle_workflow_pan(state, 0, 5),
             Intent::WorkflowPanRight => handle_workflow_pan(state, -5, 0),
+
+            // --- Workflow Input Editing ---
+            Intent::WorkflowEditNode => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_edit_node(state)
+            }
+            Intent::WorkflowInputSubmit => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_submit(state)
+            }
+            Intent::WorkflowInputCancel => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cancel(state)
+            }
+            Intent::WorkflowInputInsertChar { ch } => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_insert_char(
+                    *ch, state,
+                )
+            }
+            Intent::WorkflowInputDeleteGrapheme => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_delete_grapheme(
+                    state,
+                )
+            }
+            Intent::WorkflowInputDeleteGraphemeForward => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_delete_grapheme_forward(
+                    state,
+                )
+            }
+            Intent::WorkflowInputPasteText { text } => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_paste_text(
+                    &text, state,
+                )
+            }
+            Intent::WorkflowInputCursorLeft => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_left(
+                    state,
+                )
+            }
+            Intent::WorkflowInputCursorRight => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_right(
+                    state,
+                )
+            }
+            Intent::WorkflowInputCursorToStart => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_to_start(
+                    state,
+                )
+            }
+            Intent::WorkflowInputCursorToEnd => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_to_end(
+                    state,
+                )
+            }
+            Intent::WorkflowInputCursorWordLeft => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_word_left(
+                    state,
+                )
+            }
+            Intent::WorkflowInputCursorWordRight => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_word_right(
+                    state,
+                )
+            }
+            Intent::WorkflowInputCursorUp => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_up(
+                    state,
+                )
+            }
+            Intent::WorkflowInputCursorDown => {
+                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_down(
+                    state,
+                )
+            }
         }
     }
 }
