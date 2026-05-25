@@ -104,11 +104,6 @@ pub fn definition() -> ToolDefinition {
     }
 }
 
-/// Detects the user's shell from the SHELL env var, falling back to /bin/sh.
-fn shell_path() -> String {
-    std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned())
-}
-
 /// Parses the arguments from the tool call JSON.
 fn parse_args(raw: &str) -> Result<(String, Option<u64>), serde_json::Error> {
     let v: serde_json::Value = serde_json::from_str(raw)?;
@@ -445,7 +440,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             return error_tool_result(call.id, call.name, "command is empty".to_owned());
         }
 
-        let (shell, cwd) = (shell_path(), ctx.cwd.clone());
+        let (shell, cwd) = (ctx.shell.clone(), ctx.cwd.clone());
 
         // Emit ToolExecutionStarted if we have a sink and session_id.
         emit_stream_event(
@@ -556,6 +551,7 @@ mod tests {
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
             sink: None,
+            shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
         }
@@ -637,6 +633,7 @@ mod tests {
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
             sink: None,
+            shell: "/bin/sh".to_owned(),
             max_output_lines: None,
             max_output_bytes: None,
         };
@@ -730,7 +727,7 @@ mod tests {
         use std::process::Stdio;
 
         // Given a bash command that spawns a background child process.
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned());
+        let shell = "/bin/sh".to_owned();
         let guard = {
             let child = tokio::process::Command::new(&shell)
                 .arg("-c")

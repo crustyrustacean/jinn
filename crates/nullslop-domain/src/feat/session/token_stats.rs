@@ -108,10 +108,13 @@ impl AggregatedTokenStats {
 ///
 /// This function handles the general case (non-trivial session trees)
 /// even though `parent_session` is currently always `None`.
-pub fn aggregate_session_stats<S: std::hash::BuildHasher>(
+pub fn aggregate_session_stats<S>(
     sessions: &HashMap<SessionId, ChatSessionState, S>,
     session_id: &SessionId,
-) -> AggregatedTokenStats {
+) -> AggregatedTokenStats
+where
+    S: std::hash::BuildHasher,
+{
     let own_session = sessions.get(session_id);
     let own = own_session
         .map(|s| TokenStats::from_ledger(s.token_ledger()))
@@ -131,10 +134,13 @@ pub fn aggregate_session_stats<S: std::hash::BuildHasher>(
 }
 
 /// Recursively sum token stats for all descendants of a session.
-fn aggregate_children<S: std::hash::BuildHasher>(
+fn aggregate_children<S>(
     sessions: &HashMap<SessionId, ChatSessionState, S>,
     parent_id: &SessionId,
-) -> TokenStats {
+) -> TokenStats
+where
+    S: std::hash::BuildHasher,
+{
     let mut total = TokenStats::default();
     for (id, session) in sessions {
         if session.parent_session().as_ref() == Some(parent_id) {
@@ -149,10 +155,13 @@ fn aggregate_children<S: std::hash::BuildHasher>(
 }
 
 /// Recursively sum costs for all descendants of a session.
-fn aggregate_children_cost<S: std::hash::BuildHasher>(
+fn aggregate_children_cost<S>(
     sessions: &HashMap<SessionId, ChatSessionState, S>,
     parent_id: &SessionId,
-) -> f64 {
+) -> f64
+where
+    S: std::hash::BuildHasher,
+{
     let mut total = 0.0;
     for (id, session) in sessions {
         if session.parent_session().as_ref() == Some(parent_id) {

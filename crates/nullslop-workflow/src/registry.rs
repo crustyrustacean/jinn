@@ -63,7 +63,10 @@ impl NodeRegistry {
     }
 
     /// Registers a factory for a node type.
-    pub fn register<S: Into<String>>(&mut self, type_name: S, factory: Box<dyn NodeFactory>) {
+    pub fn register<S>(&mut self, type_name: S, factory: Box<dyn NodeFactory>)
+    where
+        S: Into<String>,
+    {
         self.factories.insert(type_name.into(), factory);
     }
 

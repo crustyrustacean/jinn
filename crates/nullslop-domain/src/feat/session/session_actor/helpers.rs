@@ -68,6 +68,7 @@ pub(super) fn test_actor() -> super::SessionPersistenceActor {
         store: None,
         counter: TiktokenCounter::o200k_base(),
         builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
+        shell: "/bin/sh".to_owned(),
     }
 }
 
@@ -231,6 +232,7 @@ pub(super) fn test_actor_with_store(
             store: Some(service_store),
             counter: crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
             builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
+            shell: "/bin/sh".to_owned(),
         },
         store,
     )
