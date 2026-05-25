@@ -200,7 +200,8 @@ impl CompactionActor {
             }
 
             let config = &state.frontend.preferences.compaction;
-            let token_budget = state.frontend.preferences.context_token_budget.budget;
+            // TODO(compaction-reserve-tokens Phase 6): replace with provider-sourced context_length.
+            let token_budget = 150_000;
 
             let total_tokens = payload.total_estimated_tokens;
 

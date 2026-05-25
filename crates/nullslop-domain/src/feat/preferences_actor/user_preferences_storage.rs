@@ -216,7 +216,6 @@ impl std::fmt::Debug for dyn UserPreferencesStorage {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::*;
-    use crate::ContextTokenBudgetConfig;
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::preferences_actor::RequestRetryConfig;
     use crate::feat::preferences_actor::user_preferences::{
@@ -248,7 +247,6 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -297,7 +295,6 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -329,7 +326,6 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -361,7 +357,6 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -380,7 +375,6 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
@@ -408,7 +402,6 @@ mod tests {
             persona_name: None,
             session_lifecycles: vec![],
             sidebar_width: None,
-            context_token_budget: ContextTokenBudgetConfig::default(),
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),

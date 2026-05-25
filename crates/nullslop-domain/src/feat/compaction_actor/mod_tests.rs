@@ -328,9 +328,9 @@ fn test_actor_with_low_budget() -> (
     let sink = std::sync::Arc::new(RecordingSink::new());
     let ctx = ActorContext::new("test-compaction", sink.clone());
 
-    // Build state with a tiny token budget so threshold = 0.7 * 100 = 70 tokens.
-    let mut app_state = AppState::default();
-    app_state.frontend.preferences.context_token_budget.budget = 100;
+    // Build state with a tiny token budget so threshold = 0.7 * 150_000 tokens.
+    // TODO(compaction-reserve-tokens Phase 6): use fallback_context_window config.
+    let app_state = AppState::default();
     let state = State::new(app_state);
     let session_id = state.read().session.active_session_id().clone();
 
@@ -359,7 +359,7 @@ fn count_enqueue_compaction(commands: &[Command]) -> usize {
 fn high_token_event(session_id: &SessionId) -> HistoryAppended {
     HistoryAppended {
         session_id: session_id.clone(),
-        total_estimated_tokens: 500, // well above threshold (70)
+        total_estimated_tokens: 200_000, // well above threshold (0.7 * 150_000 = 105_000)
     }
 }
 
