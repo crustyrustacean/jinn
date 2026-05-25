@@ -125,7 +125,7 @@ fn main() {
                     height: help_height,
                 };
 
-                let widget = WorkflowWidget::new(&snapshot, &viewport, tick);
+                let widget = WorkflowWidget::new(&snapshot, &viewport, tick, Color::Cyan);
                 widget.render(main_area, f.buffer_mut());
 
                 viewport_dims = (main_area.width, main_area.height);

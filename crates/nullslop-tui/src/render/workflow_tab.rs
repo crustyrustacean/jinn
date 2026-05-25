@@ -51,7 +51,7 @@ pub fn render_workflow_tab(frame: &mut Frame<'_>, area: Rect, state: &AppState, 
 
     let snapshot = workflow.execution.snapshot();
     let viewport = viewport_from_ui(&state.frontend.workflow_ui);
-    let widget = WorkflowWidget::new(&snapshot, &viewport, tick);
+    let widget = WorkflowWidget::new(&snapshot, &viewport, tick, state.frontend.theme.node_awaiting_input);
     frame.render_widget(widget, graph_area);
 
     // Status line at the bottom of the graph area.
