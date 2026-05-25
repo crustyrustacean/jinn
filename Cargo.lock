@@ -1570,9 +1570,9 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "jiff"
-version = "0.2.24"
+version = "0.2.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f00b5dbd620d61dfdcb6007c9c1f6054ebd75319f163d886a9055cec1155073d"
+checksum = "6835eea34fb6321b9b3aa7b685c2b433948c09447e389dc017fdf687d5d11e65"
 dependencies = [
  "jiff-static",
  "jiff-tzdb-platform",
@@ -1585,9 +1585,9 @@ dependencies = [
 
 [[package]]
 name = "jiff-static"
-version = "0.2.24"
+version = "0.2.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e000de030ff8022ea1da3f466fbb0f3a809f5e51ed31f6dd931c35181ad8e6d7"
+checksum = "3c22e04db9c58f5136eb1757f3d5c49a7b187f49e52185228cbd2f5acdfcc08c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1911,7 +1911,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "clap",
  "clap-verbosity-flag",
@@ -1939,7 +1939,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-bench"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "comfy-table",
  "csv",
@@ -1962,7 +1962,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-cli"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "clap",
  "clap-verbosity-flag",
@@ -1971,7 +1971,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-domain"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
@@ -2019,7 +2019,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-e2e"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "crossterm",
  "cucumber",
@@ -2036,7 +2036,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-protocol-derive"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2045,7 +2045,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-provider"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "async-trait",
  "error-stack",
@@ -2066,7 +2066,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-selection-widget"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "fuzzy-matcher",
  "nullslop-testutil",
@@ -2077,14 +2077,14 @@ dependencies = [
 
 [[package]]
 name = "nullslop-testutil"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "ratatui",
 ]
 
 [[package]]
 name = "nullslop-theme"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
@@ -2100,7 +2100,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-tui"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "arboard",
  "crossterm",
@@ -2128,7 +2128,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-workflow"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -2146,7 +2146,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-workflow-tui"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "async-trait",
  "crossterm",
