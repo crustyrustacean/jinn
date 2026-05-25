@@ -14,9 +14,9 @@ use crate::feat::session::chat_entry::ChatEntryKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::workflow::domain_node_context::DomainNodeContext;
 use crate::feat::workflow::protocol::command::{
-    CancelWorkflow, LoadWorkflowPickerEntries, RerunFromNode, StartWorkflow,
+    CancelWorkflow, InitWorkflow, LoadWorkflowPickerEntries, RerunFromNode, StartWorkflow,
 };
-use crate::feat::workflow::protocol::event::{WorkflowCompleted, WorkflowStarted};
+use crate::feat::workflow::protocol::event::{WorkflowCompleted, WorkflowInitialized, WorkflowStarted};
 use crate::feat::workflow::workflow_registry::WorkflowRegistry;
 use crate::feat::workflow::workflow_state::WorkflowState;
 use crate::protocol::{Command, Event};
@@ -49,6 +49,7 @@ impl Actor for WorkflowActor {
     type Deps = WorkflowActorDeps;
 
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
+        ctx.subscribe_command::<InitWorkflow>();
         ctx.subscribe_command::<StartWorkflow>();
         ctx.subscribe_command::<CancelWorkflow>();
         ctx.subscribe_command::<RerunFromNode>();
@@ -81,6 +82,9 @@ impl WorkflowActor {
     /// Dispatches a command to the appropriate handler.
     fn handle_command(&mut self, cmd: &Command, ctx: &ActorContext) {
         match cmd {
+            Command::InitWorkflow(payload) => {
+                self.handle_init_workflow(payload, ctx);
+            }
             Command::StartWorkflow(payload) => {
                 self.handle_start_workflow(payload, ctx);
             }
@@ -98,8 +102,11 @@ impl WorkflowActor {
         }
     }
 
-    /// Handle a `StartWorkflow` command.
-    fn handle_start_workflow(&mut self, payload: &StartWorkflow, ctx: &ActorContext) {
+    /// Handle an `InitWorkflow` command.
+    ///
+    /// Loads the workflow graph and creates the execution state, but does NOT
+    /// spawn the engine. The user must press Enter (WorkflowRun) to start execution.
+    fn handle_init_workflow(&mut self, payload: &InitWorkflow, ctx: &ActorContext) {
         let name = &payload.name;
         let workflow_id = payload.workflow_id.clone();
 
@@ -119,26 +126,44 @@ impl WorkflowActor {
         // Insert into app state.
         self.state.write().workflow.insert(workflow_state);
 
+        // Emit WorkflowInitialized event.
+        let _ = ctx.send_event(Event::WorkflowInitialized(WorkflowInitialized {
+            workflow_id: workflow_id.clone(),
+            name: name.clone(),
+        }));
+
+        // Do NOT spawn execute_with_cancel() here.
+        // The user must press Enter (WorkflowRun) to start execution.
+    }
+
+    /// Handle a `StartWorkflow` command.
+    ///
+    /// Runs the engine on an already-loaded workflow (initialized via `InitWorkflow`).
+    /// Looks up the `WorkflowExecution` from `WorkflowMap` and spawns execution.
+    fn handle_start_workflow(&mut self, payload: &StartWorkflow, ctx: &ActorContext) {
+        let workflow_id = &payload.workflow_id;
+
+        // Look up the already-loaded workflow.
+        let (execution, cancel) = {
+            let guard = self.state.read();
+            let Some(workflow) = guard.workflow.get(workflow_id) else {
+                tracing::warn!(id = %workflow_id, "workflow not found for start — was it initialized?");
+                return;
+            };
+            (workflow.execution.clone(), workflow.cancel.clone())
+        };
+
         // Emit WorkflowStarted event.
         let _ = ctx.send_event(Event::WorkflowStarted(WorkflowStarted {
             workflow_id: workflow_id.clone(),
-            name: name.clone(),
+            name: payload.name.clone(),
         }));
 
         // Spawn the engine execution as a background task.
         let domain_ctx = self.ctx.clone();
         let state = self.state.clone();
-        let cancel = {
-            let guard = state.read();
-            guard.workflow.get(&workflow_id).map(|w| w.cancel.clone())
-        };
-
-        let Some(cancel) = cancel else {
-            tracing::warn!(id = %workflow_id, "workflow not found after insert");
-            return;
-        };
-
         let ctx_sink = ctx.sink().clone();
+        let workflow_id_clone = workflow_id.clone();
 
         tokio::spawn(async move {
             let result = nullslop_workflow::engine::execute_with_cancel(
@@ -150,10 +175,10 @@ impl WorkflowActor {
 
             match result {
                 Ok(workflow_result) => {
-                    tracing::info!(id = %workflow_id, "workflow completed successfully");
+                    tracing::info!(id = %workflow_id_clone, "workflow completed successfully");
 
                     // Update workflow state with result.
-                    if let Some(guard) = state.write().workflow.get_mut(&workflow_id) {
+                    if let Some(guard) = state.write().workflow.get_mut(&workflow_id_clone) {
                         guard.result =
                             Some(crate::feat::workflow::workflow_state::WorkflowResult {
                                 outputs: workflow_result.outputs,
@@ -163,16 +188,16 @@ impl WorkflowActor {
 
                     // Emit WorkflowCompleted event.
                     let event = Event::WorkflowCompleted(WorkflowCompleted {
-                        workflow_id: workflow_id.clone(),
+                        workflow_id: workflow_id_clone.clone(),
                         success: true,
                     });
                     let _ = ctx_sink.send_event(event);
                 }
                 Err(report) => {
-                    tracing::error!(id = %workflow_id, error = %report, "workflow failed");
+                    tracing::error!(id = %workflow_id_clone, error = %report, "workflow failed");
 
                     // Update workflow state with failure.
-                    if let Some(guard) = state.write().workflow.get_mut(&workflow_id) {
+                    if let Some(guard) = state.write().workflow.get_mut(&workflow_id_clone) {
                         guard.result =
                             Some(crate::feat::workflow::workflow_state::WorkflowResult {
                                 outputs: HashMap::new(),
@@ -182,7 +207,7 @@ impl WorkflowActor {
 
                     // Emit WorkflowCompleted event (failure).
                     let event = Event::WorkflowCompleted(WorkflowCompleted {
-                        workflow_id: workflow_id.clone(),
+                        workflow_id: workflow_id_clone.clone(),
                         success: false,
                     });
                     let _ = ctx_sink.send_event(event);

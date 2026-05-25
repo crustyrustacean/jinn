@@ -314,7 +314,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("<up>", Intent::WorkflowInspectScrollUp, KeyCategory::Navigation)
         // Cancel
         .bind("<esc>", Intent::WorkflowEscape, KeyCategory::General)
-        // Re-run
+        // Run / re-run workflow
+        .bind("<enter>", Intent::WorkflowRun, KeyCategory::General)
+        // Re-run from node
         .bind("r", Intent::WorkflowRerunNode, KeyCategory::General);
     });
 
