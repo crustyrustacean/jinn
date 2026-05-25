@@ -237,6 +237,10 @@ impl FakeLlmService {
 
 #[async_trait::async_trait]
 impl LlmService for FakeLlmService {
+    fn name(&self) -> &'static str {
+        "fake"
+    }
+
     async fn chat_stream(
         &self,
         messages: Vec<LlmMessage>,

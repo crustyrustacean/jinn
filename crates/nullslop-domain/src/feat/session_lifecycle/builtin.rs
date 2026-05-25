@@ -165,6 +165,9 @@ pub struct BuiltinHandlerError;
 /// setup and teardown behavior. Setup returns a working directory path; teardown
 /// performs cleanup and verification.
 pub trait BuiltinHandler: Send + Sync {
+    /// Returns a human-readable name for this handler, for debugging.
+    fn name(&self) -> &'static str;
+
     /// Run setup for this builtin lifecycle.
     ///
     /// Returns the working directory path to set as the session's CWD.
