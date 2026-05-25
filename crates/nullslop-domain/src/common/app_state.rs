@@ -124,6 +124,9 @@ pub struct ContextAssemblyState {
     /// Cached project context files (AGENTS.md, CLAUDE.md).
     /// OWNER: populated on startup, refreshed on session/CWD change.
     pub context_files: Vec<ContextFile>,
+    /// Discovered judges from `~/.config/nullslop/judges/`.
+    /// OWNER: session-actor (replaces on JudgesLoaded event).
+    pub judges: Vec<crate::feat::judge::Judge>,
 }
 
 impl Default for ContextAssemblyState {
@@ -135,6 +138,7 @@ impl Default for ContextAssemblyState {
             active_persona: None,
             tool_definitions: HashMap::new(),
             context_files: Vec::new(),
+            judges: Vec::new(),
         }
     }
 }

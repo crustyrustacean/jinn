@@ -137,6 +137,8 @@ pub enum Command {
     LoadWorkflowPickerEntries(
         crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries,
     ),
+    /// Rescan the judges directory and reload judge definitions.
+    RescanJudges(crate::feat::judge::RescanJudges),
 }
 
 impl Command {
@@ -195,6 +197,9 @@ impl Command {
             }
             Self::LoadWorkflowPickerEntries(..) => {
                 Some(crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries::NAME)
+            }
+            Self::RescanJudges(..) => {
+                Some(crate::feat::judge::RescanJudges::NAME)
             }
         }
     }
@@ -324,6 +329,7 @@ impl std::fmt::Display for Command {
             Command::LoadWorkflowPickerEntries(..) => {
                 write!(f, "load workflow picker entries")
             }
+            Command::RescanJudges(..) => write!(f, "rescan judges"),
         }
     }
 }

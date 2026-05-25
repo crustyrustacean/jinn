@@ -202,6 +202,9 @@ impl SessionPersistenceActor {
             Event::PersonasLoaded(payload) => {
                 self.on_personas_loaded(payload);
             }
+            Event::JudgesLoaded(payload) => {
+                self.on_judges_loaded(payload);
+            }
 
             _ => {}
         }
@@ -287,7 +290,8 @@ impl SessionPersistenceActor {
             | Command::StartWorkflow(..)
             | Command::CancelWorkflow(..)
             | Command::RerunFromNode(..)
-            | Command::LoadWorkflowPickerEntries(..) => {}
+            | Command::LoadWorkflowPickerEntries(..)
+            | Command::RescanJudges(..) => {}
         }
     }
 }

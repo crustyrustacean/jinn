@@ -127,6 +127,8 @@ pub enum Event {
     WorkflowCompleted(crate::feat::workflow::protocol::event::WorkflowCompleted),
     /// A workflow node status changed.
     WorkflowNodeStatusChanged(crate::feat::workflow::protocol::event::WorkflowNodeStatusChanged),
+    /// Judges have been scanned and loaded from disk.
+    JudgesLoaded(crate::feat::judge::JudgesLoaded),
 }
 
 impl Event {
@@ -191,6 +193,9 @@ impl Event {
             }
             Self::WorkflowNodeStatusChanged(..) => {
                 Some(crate::feat::workflow::protocol::event::WorkflowNodeStatusChanged::TYPE_NAME)
+            }
+            Self::JudgesLoaded(..) => {
+                Some(crate::feat::judge::JudgesLoaded::TYPE_NAME)
             }
         }
     }
