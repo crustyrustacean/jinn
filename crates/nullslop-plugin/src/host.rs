@@ -16,6 +16,7 @@ use crate::loader;
 /// `AppMsg` and sends it through the kanal channel.
 #[derive(Clone)]
 pub struct CommandSender {
+    /// The inner callback.
     inner: Arc<dyn Fn(nullslop_domain::Command) + Send + Sync>,
 }
 
@@ -52,7 +53,9 @@ pub struct PluginError;
 
 /// The plugin host — owns the Lua VM, loads plugins, and dispatches events.
 pub struct PluginHost {
+    /// The Lua virtual machine.
     lua: Lua,
+    /// The command sender callback.
     #[expect(dead_code, reason = "needed for future wiring phases")]
     sender: CommandSender,
 }
@@ -62,10 +65,14 @@ impl PluginHost {
     ///
     /// Initializes the Lua VM, installs the `ns` and `ps` bindings, and
     /// prepares the preflight hook map.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Lua binding installation fails.
     pub fn new(sender: CommandSender) -> Result<Self, Report<PluginError>> {
         let lua = Lua::new();
 
-        bindings::install(&lua, sender.clone()).map_err(|e| {
+        bindings::install(&lua, &sender).map_err(|e| {
             tracing::error!(err = %e, "failed to install Lua bindings");
             Report::new(PluginError).attach("Lua binding installation failed")
         })?;
@@ -90,8 +97,7 @@ impl PluginHost {
 
         let name = dir
             .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "unknown".to_owned());
+            .map_or_else(|| String::from("unknown"), |n| n.to_string_lossy().into_owned());
 
         let source = std::fs::read_to_string(&init_path).map_err(|e| {
             tracing::error!(err = %e, path = %init_path.display(), "failed to read init.lua");
@@ -100,7 +106,7 @@ impl PluginHost {
 
         self.lua
             .load(&source)
-            .set_name(&format!("plugin/{name}/init.lua"))
+            .set_name(format!("plugin/{name}/init.lua"))
             .exec()
             .map_err(|e| {
                 tracing::error!(err = %e, plugin = %name, "plugin init.lua failed");
@@ -190,6 +196,7 @@ impl PluginHost {
     /// Returns a reference to the Lua VM.
     ///
     /// Useful for tests that need to inspect Lua state.
+    #[must_use]
     pub fn lua(&self) -> &Lua {
         &self.lua
     }

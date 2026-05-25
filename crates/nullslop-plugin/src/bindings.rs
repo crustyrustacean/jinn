@@ -23,7 +23,8 @@ pub(crate) type SubscriptionMap = Arc<Mutex<HashMap<String, Vec<Function>>>>;
 /// The `ns.emit` binding calls `sender` with a constructed
 /// `Command::Dynamic`. The `ps` bindings manage an internal
 /// subscription map for in-VM pub/sub.
-pub fn install(lua: &Lua, sender: CommandSender) -> Result<(), mlua::Error> {
+pub fn install(lua: &Lua, sender: &CommandSender) -> Result<(), mlua::Error> {
+    #[expect(clippy::arc_with_non_send_sync, reason = "mlua::Function is not Send but only used from the single Lua thread")]
     let subs: SubscriptionMap = Arc::new(Mutex::new(HashMap::new()));
     lua.set_app_data(subs.clone());
 
@@ -87,13 +88,14 @@ pub fn install(lua: &Lua, sender: CommandSender) -> Result<(), mlua::Error> {
 }
 
 /// Converts a Lua value to a `serde_json::Value`.
+#[expect(clippy::only_used_in_recursion, reason = "lua parameter needed for Table -> recursive value_to_json calls")]
 fn value_to_json(lua: &Lua, value: &Value) -> Result<serde_json::Value, mlua::Error> {
     match value {
         Value::Nil => Ok(serde_json::Value::Null),
         Value::Boolean(b) => Ok(serde_json::Value::Bool(*b)),
         Value::Integer(i) => Ok(serde_json::json!(*i)),
         Value::Number(n) => Ok(serde_json::json!(*n)),
-        Value::String(s) => Ok(serde_json::Value::String(s.to_string_lossy().to_string())),
+        Value::String(s) => Ok(serde_json::Value::String(s.to_string_lossy())),
         Value::Table(t) => {
             // Collect all key-value pairs.
             let pairs: Vec<(Value, Value)> = t.pairs().collect::<Result<Vec<_>, _>>()?;
@@ -102,27 +104,27 @@ fn value_to_json(lua: &Lua, value: &Value) -> Result<serde_json::Value, mlua::Er
             }
 
             // If all keys are integers 1..N, treat as array.
-            let mut all_int_keys = true;
             let mut int_keys = Vec::new();
+            let mut all_int_keys = true;
             for (k, _) in &pairs {
-                match k {
-                    Value::Integer(i) => int_keys.push(*i),
-                    _ => {
-                        all_int_keys = false;
-                        break;
-                    }
+                if let Value::Integer(i) = k {
+                    int_keys.push(*i);
+                } else {
+                    all_int_keys = false;
+                    break;
                 }
             }
 
             if all_int_keys && !int_keys.is_empty() {
-                int_keys.sort();
+                int_keys.sort_unstable();
                 let sequential = int_keys
                     .iter()
                     .enumerate()
-                    .all(|(i, k)| *k == (i as i64 + 1));
+                    .all(|(i, k)| *k == i64::try_from(i + 1).unwrap_or(0));
                 if sequential {
-                    let mut arr = Vec::new();
-                    for i in 1..=int_keys.len() as i64 {
+                    let count = int_keys.len();
+                    let mut arr = Vec::with_capacity(count);
+                    for i in 1..=count {
                         let v: Value = t.get(i)?;
                         arr.push(value_to_json(lua, &v)?);
                     }
@@ -134,7 +136,7 @@ fn value_to_json(lua: &Lua, value: &Value) -> Result<serde_json::Value, mlua::Er
             let mut map = serde_json::Map::new();
             for (k, v) in &pairs {
                 let key_str = match k {
-                    Value::String(s) => s.to_string_lossy().to_string(),
+                    Value::String(s) => s.to_string_lossy(),
                     Value::Integer(i) => i.to_string(),
                     other => format!("{other:?}"),
                 };
@@ -197,7 +199,7 @@ mod tests {
         let sender = CommandSender::new(move |cmd: Command| {
             let _ = tx.send(cmd);
         });
-        install(&lua, sender).expect("install bindings");
+        install(&lua, &sender).expect("install bindings");
         (lua, rx)
     }
 
