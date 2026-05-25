@@ -1,7 +1,7 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
 use crate::feat::session::tool_result_status::ToolResultStatus;
-use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
 use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId};
 use std::path::PathBuf;
 
@@ -1082,7 +1082,7 @@ fn pin_entry_at_block_end_no_forward_propagation() {
 /// would collapse because `shown_ignored_blocks` didn't cover it.
 #[rstest::rstest]
 fn regression_pin_in_expanded_block_keeps_all_visible() {
-    use crate::feat::ui::chat_log::visual_item::{build_visual_items, VisualItem, PROXIMITY_COUNT};
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, VisualItem, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
 
     // Layout: [user] [ignored-A] [ignored-B] [ignored-C] [ignored-D] [user]
     let mut session = ChatSessionState::new();
@@ -1107,6 +1107,7 @@ fn regression_pin_in_expanded_block_keeps_all_visible() {
         session.history(),
         &session.ui.shown_ignored_blocks,
         PROXIMITY_COUNT,
+        DEFAULT_MIN_COLLAPSE_COUNT,
     );
 
     // There should be no CollapsedIgnoredBlock — all entries are shown.
@@ -1158,7 +1159,7 @@ fn regression_toggle_h_after_pin_split_toggles_correct_sub_block() {
 /// one block controlled by the original representative.
 #[rstest::rstest]
 fn regression_unpin_remerges_block_correctly() {
-    use crate::feat::ui::chat_log::visual_item::{build_visual_items, VisualItem, PROXIMITY_COUNT};
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, VisualItem, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
 
     // Layout: [user] [ignored-A] [ignored-B] [ignored-C] [user]
     let mut session = ChatSessionState::new();
@@ -1184,6 +1185,7 @@ fn regression_unpin_remerges_block_correctly() {
         session.history(),
         &session.ui.shown_ignored_blocks,
         PROXIMITY_COUNT,
+        DEFAULT_MIN_COLLAPSE_COUNT,
     );
 
     // No collapsed block — all 5 entries visible.
@@ -2804,7 +2806,7 @@ fn toggle_ignored_block_visibility_stops_at_pinned_entry_in_first_sub_block() {
 #[rstest::rstest]
 fn select_next_walks_visual_items_with_collapsed_block() {
     // Given a session with visual items: [Entry, CollapsedBlock, Entry].
-    use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
 
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // index 0
@@ -2820,6 +2822,7 @@ fn select_next_walks_visual_items_with_collapsed_block() {
         session.history(),
         &session.ui.shown_ignored_blocks,
         PROXIMITY_COUNT,
+        DEFAULT_MIN_COLLAPSE_COUNT,
     );
     session.set_visual_items(items.clone());
 
@@ -2837,7 +2840,7 @@ fn select_next_walks_visual_items_with_collapsed_block() {
 #[rstest::rstest]
 fn select_prev_walks_visual_items_with_collapsed_block() {
     // Given a session with visual items: [Entry, CollapsedBlock, Entry, ...].
-    use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
 
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // index 0
@@ -2852,6 +2855,7 @@ fn select_prev_walks_visual_items_with_collapsed_block() {
         session.history(),
         &session.ui.shown_ignored_blocks,
         PROXIMITY_COUNT,
+        DEFAULT_MIN_COLLAPSE_COUNT,
     );
     session.set_visual_items(items.clone());
 
@@ -2869,7 +2873,7 @@ fn select_prev_walks_visual_items_with_collapsed_block() {
 #[rstest::rstest]
 fn selected_entry_returns_none_for_collapsed_block() {
     // Given a session with visual items where a collapsed block is selected.
-    use crate::feat::ui::chat_log::visual_item::{build_visual_items, PROXIMITY_COUNT};
+    use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
 
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
@@ -2884,6 +2888,7 @@ fn selected_entry_returns_none_for_collapsed_block() {
         session.history(),
         &session.ui.shown_ignored_blocks,
         PROXIMITY_COUNT,
+        DEFAULT_MIN_COLLAPSE_COUNT,
     );
     session.set_visual_items(items);
 
@@ -2918,6 +2923,7 @@ fn toggle_entry_ignored_flips_false_to_true() {
         session.history(),
         &session.ui.shown_ignored_blocks,
         PROXIMITY_COUNT,
+        DEFAULT_MIN_COLLAPSE_COUNT,
     );
     session.set_visual_items(items);
     // Select the entry.
@@ -2940,6 +2946,7 @@ fn toggle_entry_ignored_flips_true_to_false() {
         session.history(),
         &session.ui.shown_ignored_blocks,
         PROXIMITY_COUNT,
+        DEFAULT_MIN_COLLAPSE_COUNT,
     );
     session.set_visual_items(items);
     // Select the entry.

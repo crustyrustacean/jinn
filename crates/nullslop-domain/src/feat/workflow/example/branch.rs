@@ -144,5 +144,5 @@ pub fn build_branch() -> WorkflowGraph {
         .connect("llm", "response", "tag", "response")
         .expect("llm → tag");
 
-    builder.build().expect("branch graph should be valid")
+    builder.with_description("Branching workflow with conditional paths").build().expect("branch graph should be valid")
 }

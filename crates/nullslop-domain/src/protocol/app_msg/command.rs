@@ -136,6 +136,10 @@ pub enum Command {
     CancelWorkflow(crate::feat::workflow::protocol::command::CancelWorkflow),
     /// Request to re-run a workflow from a specific node.
     RerunFromNode(crate::feat::workflow::protocol::command::RerunFromNode),
+    /// Load entries for the workflow picker.
+    LoadWorkflowPickerEntries(
+        crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries,
+    ),
     /// A dynamic command from a plugin, carrying an arbitrary JSON payload.
     ///
     /// Routed by the runtime [`name`](DynamicCommand::name) field, not the
@@ -197,6 +201,9 @@ impl Command {
             }
             Self::RerunFromNode(..) => {
                 Some(crate::feat::workflow::protocol::command::RerunFromNode::NAME)
+            }
+            Self::LoadWorkflowPickerEntries(..) => {
+                Some(crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries::NAME)
             }
             Self::Dynamic(..) => Some(DynamicCommand::NAME),
         }
@@ -336,6 +343,9 @@ impl std::fmt::Display for Command {
                     "rerun workflow {} from node '{}'",
                     payload.workflow_id, payload.node_name
                 )
+            }
+            Command::LoadWorkflowPickerEntries(..) => {
+                write!(f, "load workflow picker entries")
             }
             Command::Dynamic(d) => {
                 write!(f, "dynamic command '{}'", d.name)

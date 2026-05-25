@@ -116,7 +116,7 @@ pub fn build_pipeline() -> WorkflowGraph {
         .connect("llm", "response", "transform", "response")
         .expect("llm.response → transform.response");
 
-    builder.build().expect("pipeline graph should be valid")
+    builder.with_description("4-node text processing pipeline with LLM step").build().expect("pipeline graph should be valid")
 }
 
 /// Upper-cases the first line of the input text.

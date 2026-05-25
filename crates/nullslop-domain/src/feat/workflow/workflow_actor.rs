@@ -13,7 +13,9 @@ use crate::common::state::State;
 use crate::feat::session::chat_entry::ChatEntryKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::workflow::domain_node_context::DomainNodeContext;
-use crate::feat::workflow::protocol::command::{CancelWorkflow, RerunFromNode, StartWorkflow};
+use crate::feat::workflow::protocol::command::{
+    CancelWorkflow, LoadWorkflowPickerEntries, RerunFromNode, StartWorkflow,
+};
 use crate::feat::workflow::protocol::event::{WorkflowCompleted, WorkflowStarted};
 use crate::feat::workflow::workflow_registry::WorkflowRegistry;
 use crate::feat::workflow::workflow_state::WorkflowState;
@@ -50,6 +52,7 @@ impl Actor for WorkflowActor {
         ctx.subscribe_command::<StartWorkflow>();
         ctx.subscribe_command::<CancelWorkflow>();
         ctx.subscribe_command::<RerunFromNode>();
+        ctx.subscribe_command::<LoadWorkflowPickerEntries>();
         ctx.subscribe_event::<SessionPhaseChanged>();
 
         ctx.set_description("Manages workflow execution lifecycle");
@@ -86,6 +89,9 @@ impl WorkflowActor {
             }
             Command::RerunFromNode(payload) => {
                 self.handle_rerun_from_node(payload, ctx);
+            }
+            Command::LoadWorkflowPickerEntries(_) => {
+                self.handle_load_workflow_picker_entries();
             }
             // Commands NOT subscribed to — these should not arrive.
             _ => {}
@@ -320,5 +326,39 @@ impl WorkflowActor {
                 }
             }
         });
+    }
+
+    /// Handle a `LoadWorkflowPickerEntries` command.
+    ///
+    /// Iterates all registered workflow names, builds each graph to read its
+    /// description, and populates the workflow picker in app state.
+    fn handle_load_workflow_picker_entries(&mut self) {
+        use crate::feat::workflow::picker_entry::WorkflowPickerEntry;
+
+        let theme = self.state.read().frontend.theme.clone();
+
+        let entries: Vec<WorkflowPickerEntry> = self
+            .registry
+            .names()
+            .into_iter()
+            .map(|name| {
+                let builder = self
+                    .registry
+                    .get(&name)
+                    .expect("names() returns registered builders");
+                let graph = builder();
+                WorkflowPickerEntry {
+                    name,
+                    description: graph.description().map(String::from),
+                    theme: theme.clone(),
+                }
+            })
+            .collect();
+
+        self.state
+            .write()
+            .frontend
+            .workflow_picker
+            .set_items(entries);
     }
 }

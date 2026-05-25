@@ -100,6 +100,7 @@ pub fn build_add_numbers() -> WorkflowGraph {
         .connect("add", "sum", "sink", "sum")
         .expect("add.sum -> sink.sum connection should be valid");
     builder
+        .with_description("Trivial 3-node pipeline that adds two numbers")
         .build()
         .expect("add-numbers graph should be valid")
 }
