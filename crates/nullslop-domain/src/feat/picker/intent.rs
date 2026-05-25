@@ -52,6 +52,9 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::Workflow => {
             state.frontend.workflow_picker.reset();
         }
+        PickerKind::Judge => {
+            state.frontend.judge_picker.reset();
+        }
     }
 
     match kind {
@@ -81,6 +84,11 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             IntentResult::with_commands(vec![Command::LoadWorkflowPickerEntries(
                 crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries,
             )])
+        }
+        PickerKind::Judge => {
+            // Populate from scanned judge definitions (already in state.context.judges).
+            load_judge_picker_entries(state);
+            IntentResult::empty()
         }
     }
 }
@@ -189,6 +197,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::Theme) => (confirm_theme(state), None),
         Some(PickerKind::SessionLifecycle) => (confirm_session_lifecycle(state), None),
         Some(PickerKind::Workflow) => (confirm_workflow(state), None),
+        Some(PickerKind::Judge) => (confirm_judge(state), None),
         None => (IntentResult::empty(), None),
     }
 }
@@ -437,6 +446,85 @@ fn confirm_workflow(state: &mut AppState) -> IntentResult {
         crate::feat::workflow::protocol::command::StartWorkflow {
             name,
             workflow_id,
+        },
+    )])
+}
+
+/// Populates the judge picker from scanned judge definitions.
+fn load_judge_picker_entries(state: &mut AppState) {
+    use crate::feat::judge::JudgePickerEntry;
+
+    let active_id = state.session.active_session_id().clone();
+    let theme = state.frontend.theme.clone();
+    let entries: Vec<JudgePickerEntry> = state
+        .context
+        .judges
+        .iter()
+        .map(|j| {
+            let already_attached = state
+                .session
+                .iter()
+                .any(|(_, s)| s.judge().as_ref().is_some_and(|m| m.judge_name == j.name && m.origin_session == active_id));
+            JudgePickerEntry::from_judge(j, already_attached, theme.clone())
+        })
+        .collect();
+    state.frontend.judge_picker.set_items(entries);
+}
+
+/// Confirms the selected judge and creates a judge session.
+fn confirm_judge(state: &mut AppState) -> IntentResult {
+    use crate::feat::session::chat_session::ChatSessionState;
+
+    let Some(entry) = state.frontend.judge_picker.selected_item().cloned() else {
+        return IntentResult::empty();
+    };
+
+    let active_id = state.session.active_session_id().clone();
+
+    let Some(judge_def) = state
+        .context
+        .judges
+        .iter()
+        .find(|j| j.name == entry.name)
+        .cloned()
+    else {
+        return IntentResult::empty();
+    };
+
+    // Create a new judge session.
+    let mut judge_session = ChatSessionState::new();
+    let judge_id = judge_session.session_id().clone();
+
+    // Set judge metadata — link to origin, mark as attached.
+    judge_session.set_judge(crate::feat::judge::JudgeMeta {
+        origin_session: active_id.clone(),
+        is_attached: true,
+        judge_name: entry.name.clone(),
+    });
+
+    // Set parent so it nests under the origin in the sidebar tree.
+    judge_session.set_parent_session(active_id.clone());
+
+    // Set model override if the judge definition specifies one.
+    if let Some(ref model) = judge_def.model {
+        judge_session.set_model(model.clone());
+    }
+
+    // Pin the judge's body as a system entry at TOP position
+    // so it survives compaction.
+    let system_entry = crate::protocol::ChatEntry::system(&judge_def.body)
+        .with_pin(crate::protocol::PinPosition::Top);
+    judge_session.push_entry(system_entry);
+
+    // Insert into session map and activate.
+    state.session.insert(judge_session);
+    state.session.set_active(judge_id.clone());
+    state.frontend.scope_stack.pop();
+    state.frontend.scope_stack.push(FocusScope::Input);
+
+    IntentResult::with_commands(vec![Command::PersistSession(
+        crate::feat::session_lifecycle::protocol::command::PersistSession {
+            session_id: judge_id,
         },
     )])
 }

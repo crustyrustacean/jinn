@@ -18,6 +18,9 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState)
         Some(PickerKind::Workflow) => {
             render_workflow_picker(frame, area, state);
         }
+        Some(PickerKind::Judge) => {
+            render_judge_picker(frame, area, state);
+        }
         None => {}
     }
 }
@@ -52,6 +55,11 @@ fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, state: &Ap
 /// Renders the workflow picker overlay (delegates to domain render).
 fn render_workflow_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     nullslop_domain::feat::picker::render::render_workflow_picker(frame, area, state);
+}
+
+/// Renders the judge picker overlay (delegates to domain render).
+fn render_judge_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    nullslop_domain::feat::picker::render::render_judge_picker(frame, area, state);
 }
 
 /// Renders the arg input popup (delegates to domain render).
