@@ -11,6 +11,7 @@ use crate::common::app_state::FocusScope;
 use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch};
+use crate::feat::provider::loader::SESSION_DEFAULT_PROVIDER_ID;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::protocol::{Command, Intent, IntentResult, PickerKind};
@@ -52,6 +53,9 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::Workflow => {
             state.frontend.workflow_picker.reset();
         }
+        PickerKind::CompactionModel => {
+            state.frontend.compaction_model_picker.reset();
+        }
     }
 
     match kind {
@@ -80,6 +84,12 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             // Entries will be populated by WorkflowActor via LoadWorkflowPickerEntries command.
             IntentResult::with_commands(vec![Command::LoadWorkflowPickerEntries(
                 crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries,
+            )])
+        }
+        PickerKind::CompactionModel => {
+            // Entries will be loaded by ProviderActor via LoadCompactionModelPickerEntries command.
+            IntentResult::with_commands(vec![Command::LoadCompactionModelPickerEntries(
+                crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
             )])
         }
     }
@@ -189,6 +199,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::Theme) => (confirm_theme(state), None),
         Some(PickerKind::SessionLifecycle) => (confirm_session_lifecycle(state), None),
         Some(PickerKind::Workflow) => (confirm_workflow(state), None),
+        Some(PickerKind::CompactionModel) => (confirm_compaction_model(state), None),
         None => (IntentResult::empty(), None),
     }
 }
@@ -439,4 +450,33 @@ fn confirm_workflow(state: &mut AppState) -> IntentResult {
             workflow_id,
         },
     )])
+}
+
+/// Confirms the selected compaction model and persists it to preferences.
+///
+/// If the sentinel "session default" entry is selected, emits
+/// `SetCompactionModel(None)` (fall back to session model).
+/// Otherwise emits `SetCompactionModel(Some(provider_id))`.
+fn confirm_compaction_model(state: &mut AppState) -> IntentResult {
+    let Some(entry) = state.frontend.compaction_model_picker.selected_item() else {
+        return IntentResult::empty();
+    };
+
+    // Determine the model value.
+    let model_value = if entry.provider_id == SESSION_DEFAULT_PROVIDER_ID {
+        // Sentinel selected — clear compaction model.
+        None
+    } else {
+        // Real entry selected — check availability.
+        if !entry.is_available {
+            return IntentResult::empty();
+        }
+        Some(entry.provider_id.clone())
+    };
+
+    state.frontend.scope_stack.pop();
+
+    IntentResult::with_commands(vec![Command::UpdatePreferences(UpdatePreferences {
+        updates: vec![PreferenceUpdate::SetCompactionModel(model_value)],
+    })])
 }

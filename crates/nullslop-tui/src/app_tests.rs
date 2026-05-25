@@ -62,6 +62,7 @@ fn test_app() -> TuiApp {
 #[case::input(nullslop_domain::FocusScope::Input, Scope::Input)]
 #[case::picker_provider(nullslop_domain::FocusScope::Picker { kind: nullslop_domain::PickerKind::Provider }, Scope::PickerProvider)]
 #[case::sidebar_resize(nullslop_domain::FocusScope::SidebarResize, Scope::SidebarResize)]
+#[case::picker_compaction_model(nullslop_domain::FocusScope::Picker { kind: nullslop_domain::PickerKind::CompactionModel }, Scope::PickerCompactionModel)]
 fn scope_for_focus_maps_correctly(
     #[case] focus: nullslop_domain::FocusScope,
     #[case] expected: Scope,
