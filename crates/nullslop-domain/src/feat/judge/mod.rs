@@ -22,8 +22,14 @@
 //! the origin session's work, and which tools to use for reporting verdicts.
 
 pub mod builtin_session_query;
+#[cfg(test)]
+mod builtin_session_query_tests;
 pub mod builtin_task_complete;
+#[cfg(test)]
+mod builtin_task_complete_tests;
 pub mod builtin_task_incomplete;
+#[cfg(test)]
+mod builtin_task_incomplete_tests;
 pub mod judge;
 pub mod judge_coordinator_actor;
 pub mod judge_scan_actor;

@@ -874,3 +874,97 @@ async fn fork_inherits_lifecycle_script_state() {
         crate::feat::session::chat_session::LifecycleScriptState::SetupRan
     );
 }
+
+// --- load_judge_sessions_for_origin ---
+
+#[rstest::rstest]
+#[tokio::test]
+async fn load_judge_sessions_for_origin_returns_children() {
+    use crate::feat::judge::JudgeMeta;
+
+    // Given a store with an origin and two judge sessions.
+    let (_dir, store) = make_store();
+    let origin_id = SessionId::new();
+    let origin = make_session(&origin_id, "origin");
+    store.save(&origin).await.expect("save origin");
+
+    let judge_a_id = SessionId::new();
+    let mut judge_a = make_session(&judge_a_id, "judge-a");
+    judge_a.set_judge(JudgeMeta {
+        origin_session: origin_id.clone(),
+        is_attached: true,
+        judge_name: "accuracy".to_owned(),
+    });
+    store.save(&judge_a).await.expect("save judge-a");
+
+    let judge_b_id = SessionId::new();
+    let mut judge_b = make_session(&judge_b_id, "judge-b");
+    judge_b.set_judge(JudgeMeta {
+        origin_session: origin_id.clone(),
+        is_attached: true,
+        judge_name: "completeness".to_owned(),
+    });
+    store.save(&judge_b).await.expect("save judge-b");
+
+    // When loading judge sessions for the origin.
+    let judges = store
+        .load_judge_sessions_for_origin(&origin_id)
+        .await
+        .expect("load judges");
+
+    // Then both judge sessions are returned.
+    assert_eq!(judges.len(), 2, "should return 2 judge sessions");
+    let judge_ids: Vec<_> = judges.iter().map(|j| j.session_id().clone()).collect();
+    assert!(judge_ids.contains(&judge_a_id), "should contain judge-a");
+    assert!(judge_ids.contains(&judge_b_id), "should contain judge-b");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn load_judge_sessions_for_origin_returns_empty_for_no_judges() {
+    // Given a store with an origin but no judge sessions.
+    let (_dir, store) = make_store();
+    let origin_id = SessionId::new();
+    let origin = make_session(&origin_id, "origin");
+    store.save(&origin).await.expect("save origin");
+
+    // When loading judge sessions for the origin.
+    let judges = store
+        .load_judge_sessions_for_origin(&origin_id)
+        .await
+        .expect("load judges");
+
+    // Then no sessions are returned.
+    assert!(judges.is_empty(), "should return empty vec");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn load_judge_sessions_for_origin_excludes_archived() {
+    use crate::feat::judge::JudgeMeta;
+
+    // Given a store with an origin and one archived judge.
+    let (_dir, store) = make_store();
+    let origin_id = SessionId::new();
+    let origin = make_session(&origin_id, "origin");
+    store.save(&origin).await.expect("save origin");
+
+    let judge_id = SessionId::new();
+    let mut judge = make_session(&judge_id, "judge");
+    judge.set_judge(JudgeMeta {
+        origin_session: origin_id.clone(),
+        is_attached: true,
+        judge_name: "accuracy".to_owned(),
+    });
+    store.save(&judge).await.expect("save judge");
+    store.set_archived(&judge_id, true).await.expect("archive");
+
+    // When loading judge sessions for the origin.
+    let judges = store
+        .load_judge_sessions_for_origin(&origin_id)
+        .await
+        .expect("load judges");
+
+    // Then the archived judge is not returned.
+    assert!(judges.is_empty(), "archived judge should not be returned");
+}
