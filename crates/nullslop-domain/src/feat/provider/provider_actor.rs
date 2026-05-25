@@ -108,6 +108,7 @@ impl ProviderActor {
             | Command::LoadSessionPickerEntries(..)
             | Command::ScanSkills
             | Command::RescanPersonas(..)
+            | Command::RescanJudges(..)
             | Command::LoadPersonaPickerEntries(..)
             | Command::UpdatePreferences(..)
             | Command::SessionForkRequested(..)
