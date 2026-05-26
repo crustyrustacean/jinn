@@ -2368,6 +2368,15 @@ impl ChatSessionState {
     pub fn take_soft_cancel(&mut self) -> bool {
         std::mem::take(&mut self.core.ephemeral.soft_cancel_requested)
     }
+
+    /// Check if soft cancel was requested without consuming the flag.
+    ///
+    /// Used by `on_stream_completed(ToolUse)` to decide whether to skip
+    /// the direct-to-Compacting optimization without consuming the flag
+    /// (which is consumed later by `on_tool_batch_completed`).
+    pub fn is_soft_cancelled(&self) -> bool {
+        self.core.ephemeral.soft_cancel_requested
+    }
 }
 
 impl Default for ChatSessionState {
