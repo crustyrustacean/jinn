@@ -2402,17 +2402,16 @@ impl ChatSessionState {
         // Find indices of dangling ToolCalls and their empty parent Assistants.
         let mut indices_to_exclude: Vec<usize> = Vec::new();
         for (i, entry) in self.core.history.iter().enumerate() {
-            if let ChatEntryKind::ToolCall { id, .. } = &entry.kind {
-                if !result_ids.iter().any(|rid| rid == id) {
-                    indices_to_exclude.push(i);
-                    // Check if preceding entry is an empty Assistant.
-                    if i > 0 {
-                        if let ChatEntryKind::Assistant(text) = &self.core.history[i - 1].kind {
-                            if text.is_empty() {
-                                indices_to_exclude.push(i - 1);
-                            }
-                        }
-                    }
+            if let ChatEntryKind::ToolCall { id, .. } = &entry.kind
+                && !result_ids.iter().any(|rid| rid == id)
+            {
+                indices_to_exclude.push(i);
+                // Check if preceding entry is an empty Assistant.
+                if i > 0
+                    && let ChatEntryKind::Assistant(text) = &self.core.history[i - 1].kind
+                    && text.is_empty()
+                {
+                    indices_to_exclude.push(i - 1);
                 }
             }
         }
