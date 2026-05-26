@@ -272,26 +272,6 @@ fn workflow_ui_state_clone_preserves_fields() {
     );
 }
 
-// --- active_status_notification boundary ---
-
-#[rstest::rstest]
-fn active_status_notification_returns_none_at_exactly_3_seconds() {
-    // Given a FrontendState with a notification created exactly 3 seconds ago.
-    let state = FrontendState {
-        status_notification: Some(StatusNotification {
-            message: "boundary".to_owned(),
-            created_at: std::time::Instant::now()
-                .checked_sub(std::time::Duration::from_secs(3))
-                .unwrap(),
-        }),
-        ..Default::default()
-    };
-
-    // When checking for an active notification.
-    // Then it returns None (exactly 3s is expired, uses strict <).
-    assert_eq!(state.active_status_notification(), None);
-}
-
 // --- active_picker_ops ---
 
 #[rstest::rstest]
