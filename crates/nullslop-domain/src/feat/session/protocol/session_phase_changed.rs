@@ -17,6 +17,8 @@ use crate::protocol::{EventMsg, SessionId};
 pub struct SessionPhaseChanged {
     /// The session whose phase changed.
     pub session_id: SessionId,
+    /// The phase before the transition.
+    pub old_phase: SessionPhase,
     /// The new phase after the transition.
     pub new_phase: SessionPhase,
 }

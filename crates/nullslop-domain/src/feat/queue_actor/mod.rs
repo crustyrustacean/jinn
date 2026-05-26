@@ -391,6 +391,7 @@ mod tests {
         // When handling SessionPhaseChanged with Idle phase.
         let payload = SessionPhaseChanged {
             session_id: session_id.clone(),
+            old_phase: SessionPhase::Sending,
             new_phase: SessionPhase::Idle,
         };
         actor.handle_session_phase_changed(&payload, &ctx).await;
@@ -429,6 +430,7 @@ mod tests {
         // When handling SessionPhaseChanged with Idle phase.
         let payload = SessionPhaseChanged {
             session_id: session_id.clone(),
+            old_phase: SessionPhase::Sending,
             new_phase: SessionPhase::Idle,
         };
         actor.handle_session_phase_changed(&payload, &ctx).await;
@@ -465,6 +467,7 @@ mod tests {
         // When handling SessionPhaseChanged with Sending phase.
         let payload = SessionPhaseChanged {
             session_id: session_id.clone(),
+            old_phase: SessionPhase::Streaming,
             new_phase: SessionPhase::Sending,
         };
         actor.handle_session_phase_changed(&payload, &ctx).await;
@@ -498,6 +501,7 @@ mod tests {
         // When handling SessionPhaseChanged with Idle phase.
         let payload = SessionPhaseChanged {
             session_id: session_id.clone(),
+            old_phase: SessionPhase::Streaming,
             new_phase: SessionPhase::Idle,
         };
         actor.handle_session_phase_changed(&payload, &ctx).await;
