@@ -142,6 +142,26 @@ impl SessionPersistenceActor {
             return;
         }
 
+        // Check tool loop disabled: if set, end the turn instead of continuing.
+        // This is used by judge verdict tools to prevent infinite tool-call loops.
+        let tool_loop_disabled = {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&event.session_id);
+            session.take_tool_loop_disabled()
+        };
+
+        if tool_loop_disabled {
+            let (old_phase, new_phase) = {
+                let mut state = self.state.write();
+                let session = state.session_mut_or_create(&event.session_id);
+                let old_phase = session.phase();
+                session.finish_sending();
+                (old_phase, session.phase())
+            };
+            super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
+            return;
+        }
+
         // Assemble the prompt directly and emit SendToLlmProvider.
         // Note: the session is already in sending state, set by on_stream_completed(ToolUse).
         let workflow_overrides: Option<crate::feat::context::assemble::AssemblyOverrides> = {
