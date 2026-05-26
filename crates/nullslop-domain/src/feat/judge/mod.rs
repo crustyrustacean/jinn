@@ -21,18 +21,7 @@
 //! Each judge defines a system prompt that instructs the LLM how to evaluate
 //! the origin session's work, and which tools to use for reporting verdicts.
 
-pub mod builtin_session_query;
-pub mod builtin_session_query_recent;
-#[cfg(test)]
-mod builtin_session_query_recent_tests;
-#[cfg(test)]
-mod builtin_session_query_tests;
-pub mod builtin_task_complete;
-#[cfg(test)]
-mod builtin_task_complete_tests;
-pub mod builtin_task_incomplete;
-#[cfg(test)]
-mod builtin_task_incomplete_tests;
+pub mod tools;
 pub mod judge;
 pub mod judge_coordinator_actor;
 pub mod judge_scan_actor;
@@ -55,10 +44,5 @@ use nullslop_provider::ToolDefinition;
 /// (when `session.judge().is_some()`).
 #[must_use]
 pub fn judge_tool_definitions() -> Vec<ToolDefinition> {
-    vec![
-        builtin_session_query::definition(),
-        builtin_session_query_recent::definition(),
-        builtin_task_complete::definition(),
-        builtin_task_incomplete::definition(),
-    ]
+    tools::tool_definitions()
 }

@@ -231,7 +231,7 @@ mod tests {
         let (actor, state) = create_actor();
 
         // Build a ToolsRegistered with all builtin tools (including judge tools).
-        let all_tools = crate::feat::tools_actor::builtin::builtin_tools();
+        let all_tools = crate::feat::tools_actor::registry::builtin_tools();
         let definitions: Vec<_> = all_tools.iter().map(|(def, _)| def.clone()).collect();
         let payload = ToolsRegistered {
             provider: "builtin".to_owned(),
@@ -270,7 +270,7 @@ mod tests {
         let (actor, state) = create_actor();
 
         // Build a ToolsRegistered with all builtin tools.
-        let all_tools = crate::feat::tools_actor::builtin::builtin_tools();
+        let all_tools = crate::feat::tools_actor::registry::builtin_tools();
         let definitions: Vec<_> = all_tools.iter().map(|(def, _)| def.clone()).collect();
         let payload = ToolsRegistered {
             provider: "builtin".to_owned(),
