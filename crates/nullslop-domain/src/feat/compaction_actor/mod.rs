@@ -288,28 +288,67 @@ fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize {
         return cut_index;
     }
 
-    // A safe cut point is any entry that is not ToolCall or ToolResult.
-    // ToolCall entries merge into the preceding Assistant message, and
-    // ToolResult entries reference a tool_call_id from a preceding Assistant's
-    // tool_calls. Cutting between them would produce orphaned messages that
-    // LLM providers reject (e.g. ZAI error 1214).
-    if !matches!(
+    // Pass 1: If cut lands on a ToolCall or ToolResult, walk forward past them.
+    let cut_index = if matches!(
         history[cut_index].kind,
         ChatEntryKind::ToolCall { .. } | ChatEntryKind::ToolResult { .. }
     ) {
+        history[cut_index..]
+            .iter()
+            .position(|entry| {
+                !matches!(
+                    entry.kind,
+                    ChatEntryKind::ToolCall { .. } | ChatEntryKind::ToolResult { .. }
+                )
+            })
+            .map_or(history.len(), |offset| cut_index + offset)
+    } else {
+        cut_index
+    };
+
+    if cut_index >= history.len() {
         return cut_index;
     }
 
-    // Walk forward past ToolCall and ToolResult entries.
-    history[cut_index..]
-        .iter()
-        .position(|entry| {
-            !matches!(
-                entry.kind,
-                ChatEntryKind::ToolCall { .. } | ChatEntryKind::ToolResult { .. }
-            )
-        })
-        .map_or(history.len(), |offset| cut_index + offset)
+    // Pass 2: If the cut lands on an Assistant, check for incomplete tool loops.
+    // An incomplete tool loop has ToolCall entries without matching ToolResult entries.
+    // Walking forward past them prevents dangling tool_calls in the kept entries.
+    if !matches!(history[cut_index].kind, ChatEntryKind::Assistant(..)) {
+        return cut_index;
+    }
+
+    // Scan the tool loop group starting from this Assistant.
+    // Collect tool_call IDs and tool_result IDs within the group.
+    let mut tool_call_ids: Vec<String> = Vec::new();
+    let mut tool_result_ids: Vec<String> = Vec::new();
+    let mut group_end = cut_index + 1;
+
+    for (offset, entry) in history[cut_index + 1..].iter().enumerate() {
+        match &entry.kind {
+            ChatEntryKind::ToolCall { id, .. } => {
+                tool_call_ids.push(id.clone());
+                group_end = cut_index + 1 + offset + 1;
+            }
+            ChatEntryKind::ToolResult { id, .. } => {
+                tool_result_ids.push(id.clone());
+                group_end = cut_index + 1 + offset + 1;
+            }
+            // Stop at any entry that isn't part of this tool loop group.
+            _ => break,
+        }
+    }
+
+    // If all tool calls have matching results, the loop is complete — safe to cut here.
+    if tool_call_ids.is_empty()
+        || tool_call_ids
+            .iter()
+            .all(|id| tool_result_ids.iter().any(|r| r == id))
+    {
+        return cut_index;
+    }
+
+    // Incomplete tool loop — walk forward past the entire group and re-check.
+    adjust_cut_to_boundary(history, group_end)
 }
 
 /// Perform the compaction algorithm as a free async function.
