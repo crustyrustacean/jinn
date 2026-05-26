@@ -18,6 +18,7 @@ pub(in crate::feat::session::session_actor) fn emit_phase_changed(
         && let Err(e) = ctx.send_event(Event::SessionPhaseChanged(
             crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged {
                 session_id: session_id.clone(),
+                old_phase,
                 new_phase,
             },
         ))
