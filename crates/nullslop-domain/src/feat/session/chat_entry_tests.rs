@@ -633,12 +633,12 @@ fn assistant_kind_is_included_by_default() {
 }
 
 #[rstest::rstest]
-fn error_kind_is_included_by_default() {
+fn error_kind_is_not_included_by_default() {
     // Given an Error entry.
     let entry = ChatEntry::error("something went wrong");
 
-    // Then the kind is included by default.
-    assert!(entry.kind.is_included_by_default());
+    // Then the kind is NOT included by default.
+    assert!(!entry.kind.is_included_by_default());
 }
 
 #[rstest::rstest]
@@ -821,7 +821,6 @@ fn all_include_default_kinds_are_in_context() {
     let entries = vec![
         ChatEntry::user("hello"),
         ChatEntry::assistant("response"),
-        ChatEntry::error("error"),
         ChatEntry::tool_call("id", "name", "{}"),
         ChatEntry::tool_result("id", "name", "content", ToolResultStatus::Success),
         ChatEntry::skill("name", "/path", "content"),
@@ -841,6 +840,7 @@ fn all_include_default_kinds_are_in_context() {
 fn all_exclude_default_kinds_are_not_in_context() {
     // Given entries of all exclude-by-default kinds.
     let entries = vec![
+        ChatEntry::error("error"),
         ChatEntry::thinking("reasoning"),
         ChatEntry::transient("hint"),
         ChatEntry::system("status"),
