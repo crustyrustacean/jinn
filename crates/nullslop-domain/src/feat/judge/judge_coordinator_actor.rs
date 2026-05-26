@@ -1496,4 +1496,139 @@ mod tests {
         let commands = sink.commands();
         assert!(commands.is_empty(), "should emit nothing for unknown origin");
     }
+
+    // --- Phase 4: Edge case tests ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn duplicate_verdict_after_retry_accepted_then_consolidated() {
+        // Given an origin with one attached judge.
+        let state = State::new(AppState::default());
+        let (origin_id, origin) = make_origin_session();
+        state.write().session.insert(origin);
+        let (judge_id, judge) = make_judge_session(origin_id.clone(), true);
+        state.write().session.insert(judge);
+
+        let (mut actor, sink, ctx) = create_actor(state.clone());
+
+        // When origin goes Idle (triggers judge, retry_count = 0).
+        actor.handle(idle_event(origin_id.clone()), &ctx).await;
+        sink.clear();
+
+        // Judge goes Idle without verdict (retry 1).
+        actor.handle(idle_event(judge_id.clone()), &ctx).await;
+
+        // Then a retry trigger was sent.
+        let commands = sink.commands();
+        assert_eq!(
+            commands
+                .iter()
+                .filter(|c| matches!(
+                    c,
+                    Command::EnqueueUserMessage(msg) if msg.session_id == judge_id
+                ))
+                .count(),
+            1,
+            "should have sent one retry trigger"
+        );
+        sink.clear();
+
+        // When the retried judge now produces a Pass verdict.
+        actor
+            .handle(verdict_event(judge_id.clone(), origin_id.clone(), Verdict::Pass), &ctx)
+            .await;
+
+        // Then consolidation happens — origin is no longer busy.
+        let guard = state.read();
+        let origin_session = guard.session.get(&origin_id).expect("origin exists");
+        assert!(
+            !origin_session.is_busy(),
+            "origin should not be busy after verdict after retry"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn origin_non_idle_during_retry_prevents_retry() {
+        // Given an origin with one attached judge.
+        let state = State::new(AppState::default());
+        let (origin_id, origin) = make_origin_session();
+        state.write().session.insert(origin);
+        let (judge_id, judge) = make_judge_session(origin_id.clone(), true);
+        state.write().session.insert(judge);
+
+        let (mut actor, sink, ctx) = create_actor(state.clone());
+
+        // When origin goes Idle (triggers judge).
+        actor.handle(idle_event(origin_id.clone()), &ctx).await;
+        sink.clear();
+
+        // Origin starts a new turn (leaves Idle).
+        state
+            .write()
+            .session
+            .get_mut(&origin_id)
+            .expect("origin exists")
+            .core
+            .ephemeral
+            .phase = SessionPhase::Sending;
+
+        // Judge goes Idle without verdict — but origin is no longer Idle.
+        actor.handle(idle_event(judge_id.clone()), &ctx).await;
+
+        // Then no retry trigger is emitted.
+        let commands = sink.commands();
+        assert!(
+            commands.is_empty(),
+            "should not retry judge when origin has left Idle"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn retry_count_resets_on_new_evaluation_cycle() {
+        // Given an origin with one attached judge.
+        let state = State::new(AppState::default());
+        let (origin_id, origin) = make_origin_session();
+        state.write().session.insert(origin);
+        let (judge_id, judge) = make_judge_session(origin_id.clone(), true);
+        state.write().session.insert(judge);
+
+        let (mut actor, sink, ctx) = create_actor(state.clone());
+
+        // First cycle: origin goes Idle, judge retries once, then passes.
+        actor.handle(idle_event(origin_id.clone()), &ctx).await;
+        actor.handle(idle_event(judge_id.clone()), &ctx).await; // retry 1
+        actor
+            .handle(verdict_event(judge_id.clone(), origin_id.clone(), Verdict::Pass), &ctx)
+            .await;
+
+        // Origin is no longer busy.
+        {
+            let guard = state.read();
+            let origin_session = guard.session.get(&origin_id).expect("origin exists");
+            assert!(!origin_session.is_busy());
+        }
+
+        sink.clear();
+
+        // Second cycle: origin goes Idle again (new evaluation cycle).
+        actor.handle(idle_event(origin_id.clone()), &ctx).await;
+        sink.clear();
+
+        // Judge goes Idle once without verdict — should be retry 1 (not retry 2).
+        actor.handle(idle_event(judge_id.clone()), &ctx).await;
+
+        // Then a retry trigger was sent (not exhausted).
+        let commands = sink.commands();
+        let retry_triggers = find_commands(
+            &commands,
+            |c| matches!(c, Command::EnqueueUserMessage(msg) if msg.session_id == judge_id),
+        );
+        assert_eq!(
+            retry_triggers.len(),
+            1,
+            "should retry on new cycle (retry count was reset)"
+        );
+    }
 }
