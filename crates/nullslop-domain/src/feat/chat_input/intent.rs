@@ -483,6 +483,9 @@ pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
     if !matches!(state.active_session().phase(), SessionPhase::Idle) {
         // Session is busy — show cancel confirmation prompt.
         state.frontend.cancel_stream_prompt = true;
+    } else if state.active_session().is_busy() {
+        // Session is Idle but busy (e.g., waiting for judge evaluation).
+        state.frontend.cancel_stream_prompt = true;
     }
 
     IntentResult::empty()

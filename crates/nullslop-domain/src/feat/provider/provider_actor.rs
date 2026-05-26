@@ -136,6 +136,7 @@ impl ProviderActor {
             | Command::RerunFromNode(..)
             | Command::LoadWorkflowPickerEntries(..)
             | Command::MarkSessionInteracted(..)
+            | Command::CancelPendingJudgeEvaluation(..)
             | Command::Dynamic(..) => {}
         }
     }

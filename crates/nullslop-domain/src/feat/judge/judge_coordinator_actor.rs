@@ -54,11 +54,23 @@ pub fn resolve_effective_auto_reset(meta: &JudgeMeta, judges: &[super::Judge]) -
     })
 }
 
+/// Maximum number of consecutive retries before force-cancelling a judge.
+const MAX_JUDGE_RETRIES: u32 = 3;
+
+/// Per-judge tracking within a pending evaluation cycle.
+#[derive(Debug)]
+struct PendingJudge {
+    /// The judge definition name.
+    judge_name: String,
+    /// Number of consecutive trigger attempts without a verdict.
+    retry_count: u32,
+}
+
 /// Pending verdicts for an origin session.
 #[derive(Debug, Default)]
 struct PendingVerdicts {
-    /// Total number of judges expected to report.
-    expected: usize,
+    /// Per-judge tracking: judge session ID → its state.
+    judges: HashMap<SessionId, PendingJudge>,
     /// Verdicts received so far.
     received: Vec<ReceivedVerdict>,
 }
@@ -100,6 +112,7 @@ impl Actor for JudgeCoordinatorActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.subscribe_event::<SessionPhaseChanged>();
         ctx.subscribe_event::<JudgeVerdict>();
+        ctx.subscribe_command::<crate::feat::judge::protocol::CancelPendingJudgeEvaluation>();
         ctx.set_description("Orchestrates judge evaluation cycles on origin Idle");
         Self {
             state: deps.state,
@@ -114,6 +127,9 @@ impl Actor for JudgeCoordinatorActor {
             }
             ActorEnvelope::Event(Event::JudgeVerdict(ref payload)) => {
                 self.handle_judge_verdict(payload, ctx);
+            }
+            ActorEnvelope::Command(Command::CancelPendingJudgeEvaluation(ref payload)) => {
+                self.handle_cancel_pending(payload, ctx);
             }
             _ => {}
         }
@@ -136,15 +152,17 @@ impl JudgeCoordinatorActor {
 
         let origin_id = &payload.session_id;
 
-        // Skip if this session is a judge session — judges are not origins.
-        {
+        // Check if this is a judge session going Idle.
+        let is_judge = {
             let guard = self.state.read();
             let Some(session) = guard.session.get(origin_id) else {
                 return;
             };
-            if session.is_judge() {
-                return;
-            }
+            session.is_judge()
+        };
+        if is_judge {
+            self.handle_judge_idle(origin_id, ctx);
+            return;
         }
 
         // Scan for attached judges.
@@ -176,48 +194,8 @@ impl JudgeCoordinatorActor {
         );
 
         // Push trigger message to each attached judge session.
-        for (judge_session_id, judge_name) in &attached_judges {
-            // Auto-reset: if the judge's effective auto-reset is true,
-            // reset its history (keeping pinned entries) before triggering.
-            {
-                // Resolve effective auto-reset under a read lock first.
-                let should_reset = {
-                    let guard = self.state.read();
-                    if let Some(judge_session) = guard.session.get(judge_session_id) {
-                        if let Some(meta) = judge_session.judge().as_ref() {
-                            resolve_effective_auto_reset(meta, &guard.context.judges)
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                };
-                if should_reset {
-                    let mut guard = self.state.write();
-                    if let Some(judge_session) = guard.session.get_mut(judge_session_id) {
-                        judge_session.reset_judge_history();
-                        tracing::debug!(
-                            judge = %judge_name,
-                            session = %judge_session_id,
-                            "auto-reset judge history before trigger"
-                        );
-                    }
-                }
-            }
-
-            let trigger_text =
-                String::from("The agent has completed its turn. Please evaluate it's work.");
-            let trigger_entry = ChatEntry::user(trigger_text);
-            let _ = ctx.send_command(Command::EnqueueUserMessage(EnqueueUserMessage {
-                session_id: judge_session_id.clone(),
-                entry: trigger_entry,
-            }));
-            tracing::debug!(
-                judge = %judge_name,
-                session = %judge_session_id,
-                "triggered judge evaluation"
-            );
+        for (judge_session_id, _judge_name) in &attached_judges {
+            self.trigger_judge(judge_session_id, ctx);
         }
 
         // Push a system notification to the origin listing evaluating judges.
@@ -240,14 +218,175 @@ impl JudgeCoordinatorActor {
             }
         }
 
-        // Record expected count.
-        self.pending.insert(
-            origin_id.clone(),
-            PendingVerdicts {
-                expected,
-                received: vec![],
-            },
+        // Record pending judges.
+        let mut pending_verdicts = PendingVerdicts::default();
+        for (judge_session_id, judge_name) in attached_judges {
+            pending_verdicts.judges.insert(
+                judge_session_id,
+                PendingJudge {
+                    judge_name,
+                    retry_count: 0,
+                },
+            );
+        }
+        self.pending.insert(origin_id.clone(), pending_verdicts);
+    }
+
+    /// Trigger (or re-trigger) a judge evaluation.
+    ///
+    /// Handles auto-reset if configured, then pushes the trigger user message.
+    fn trigger_judge(&self, judge_session_id: &SessionId, ctx: &ActorContext) {
+        let judge_name = {
+            let guard = self.state.read();
+            let Some(session) = guard.session.get(judge_session_id) else {
+                return;
+            };
+            let Some(meta) = session.judge() else {
+                return;
+            };
+            meta.judge_name.clone()
+        };
+
+        // Auto-reset: if the judge's effective auto-reset is true,
+        // reset its history (keeping pinned entries) before triggering.
+        let should_reset = {
+            let guard = self.state.read();
+            if let Some(judge_session) = guard.session.get(judge_session_id) {
+                if let Some(meta) = judge_session.judge().as_ref() {
+                    resolve_effective_auto_reset(meta, &guard.context.judges)
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        };
+        if should_reset {
+            let mut guard = self.state.write();
+            if let Some(judge_session) = guard.session.get_mut(judge_session_id) {
+                judge_session.reset_judge_history();
+                tracing::debug!(
+                    judge = %judge_name,
+                    session = %judge_session_id,
+                    "auto-reset judge history before trigger"
+                );
+            }
+        }
+
+        let trigger_text =
+            String::from("The agent has completed its turn. Please evaluate it's work.");
+        let trigger_entry = ChatEntry::user(trigger_text);
+        let _ = ctx.send_command(Command::EnqueueUserMessage(EnqueueUserMessage {
+            session_id: judge_session_id.clone(),
+            entry: trigger_entry,
+        }));
+        tracing::debug!(
+            judge = %judge_name,
+            session = %judge_session_id,
+            "triggered judge evaluation"
         );
+    }
+
+    /// Handle a judge session transitioning to Idle.
+    ///
+    /// If this judge has a pending evaluation (is in the pending map for its origin),
+    /// and has not yet submitted a verdict, increment its retry count and re-trigger.
+    /// If retry count exceeds MAX_JUDGE_RETRIES, force-cancel the origin evaluation.
+    fn handle_judge_idle(&mut self, judge_session_id: &SessionId, ctx: &ActorContext) {
+        // Find the origin for this judge.
+        let origin_id = {
+            let guard = self.state.read();
+            let Some(session) = guard.session.get(judge_session_id) else {
+                return;
+            };
+            let Some(meta) = session.judge() else {
+                return;
+            };
+            meta.origin_session.clone()
+        };
+
+        // Check if the origin has a pending entry and this judge is still expected.
+        let Some(pending) = self.pending.get_mut(&origin_id) else {
+            return;
+        };
+
+        // Check if this judge already submitted a verdict.
+        let already_responded = pending
+            .received
+            .iter()
+            .any(|v| v.judge_session_id == *judge_session_id);
+
+        if already_responded {
+            // Judge already responded — this Idle is from a re-trigger that resulted
+            // in a verdict being emitted. No action needed.
+            return;
+        }
+
+        // Check if the judge is still in the pending list.
+        let Some(judge_state) = pending.judges.get_mut(judge_session_id) else {
+            return;
+        };
+
+        // Safety check: don't retry if the origin has left Idle.
+        {
+            let guard = self.state.read();
+            if let Some(origin_session) = guard.session.get(&origin_id) {
+                if origin_session.phase() != SessionPhase::Idle {
+                    tracing::debug!(
+                        origin = %origin_id,
+                        "origin left idle during judge retry, skipping"
+                    );
+                    return;
+                }
+            } else {
+                return;
+            }
+        }
+
+        judge_state.retry_count += 1;
+
+        if judge_state.retry_count < MAX_JUDGE_RETRIES {
+            tracing::info!(
+                judge = %judge_state.judge_name,
+                session = %judge_session_id,
+                retry = judge_state.retry_count,
+                max = MAX_JUDGE_RETRIES,
+                "judge went idle without verdict, retrying"
+            );
+            // Re-trigger the judge.
+            self.trigger_judge(judge_session_id, ctx);
+        } else {
+            tracing::warn!(
+                judge = %judge_state.judge_name,
+                session = %judge_session_id,
+                max = MAX_JUDGE_RETRIES,
+                "judge exhausted retries, force-cancelling evaluation"
+            );
+            // Add a synthetic fail verdict (keep the judge in pending.judges so
+            // it still counts toward the total expected).
+            let judge_state = pending
+                .judges
+                .get(judge_session_id)
+                .expect("just checked");
+            let reason = format!(
+                "Judge '{}' failed to produce a verdict after {} attempts",
+                judge_state.judge_name, MAX_JUDGE_RETRIES
+            );
+            pending.received.push(ReceivedVerdict {
+                judge_session_id: judge_session_id.clone(),
+                judge_name: judge_state.judge_name.clone(),
+                verdict: Verdict::Fail(reason),
+            });
+
+            // Check if all remaining judges have reported.
+            if pending.received.len() >= pending.judges.len() {
+                let pending = self
+                    .pending
+                    .remove(&origin_id)
+                    .expect("just checked entry exists");
+                self.consolidate_and_dispatch(&origin_id, pending, ctx);
+            }
+        }
     }
 
     /// Handle a judge verdict.
@@ -291,6 +430,15 @@ impl JudgeCoordinatorActor {
             }
         }
 
+        // Guard: only accept verdicts from judges we're still expecting.
+        if !pending.judges.contains_key(&payload.judge_session_id) {
+            tracing::debug!(
+                judge = %payload.judge_session_id,
+                "verdict from judge not in pending list, ignoring"
+            );
+            return;
+        }
+
         // Append the verdict.
         pending.received.push(ReceivedVerdict {
             judge_session_id: payload.judge_session_id.clone(),
@@ -302,12 +450,12 @@ impl JudgeCoordinatorActor {
             origin = %origin_id,
             judge = %payload.judge_name,
             received = pending.received.len(),
-            expected = pending.expected,
+            expected = pending.judges.len(),
             "received judge verdict"
         );
 
         // Check if all verdicts are in.
-        if pending.received.len() < pending.expected {
+        if pending.received.len() < pending.judges.len() {
             return;
         }
 
@@ -379,6 +527,46 @@ impl JudgeCoordinatorActor {
                 entry: user_entry,
             }));
         }
+    }
+
+    /// Handle a request to cancel a pending judge evaluation.
+    ///
+    /// Clears pending state, cancels all remaining judge sessions,
+    /// clears busy on the origin, and pushes a system message.
+    fn handle_cancel_pending(
+        &mut self,
+        payload: &super::protocol::CancelPendingJudgeEvaluation,
+        ctx: &ActorContext,
+    ) {
+        let origin_id = &payload.origin_session_id;
+
+        let Some(pending) = self.pending.remove(origin_id) else {
+            return;
+        };
+
+        // Cancel all remaining judge sessions.
+        for judge_session_id in pending.judges.keys() {
+            let _ = ctx.send_command(Command::CancelStream(
+                crate::feat::provider::protocol::command::CancelStream {
+                    session_id: judge_session_id.clone(),
+                },
+            ));
+        }
+
+        // Clear busy on origin.
+        {
+            let mut guard = self.state.write();
+            if let Some(origin) = guard.session.get_mut(origin_id) {
+                origin.mark_busy_complete();
+            }
+        }
+
+        // Push system message.
+        let notification = ChatEntry::system("Judge evaluation cancelled.");
+        let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            session_id: origin_id.clone(),
+            entry: notification,
+        }));
     }
 }
 
@@ -938,7 +1126,183 @@ mod tests {
         );
     }
 
-    // --- Mutant-killing tests for resolve_effective_auto_reset ---
+    // --- Phase 2: Judge idle retry tests ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn judge_idle_without_verdict_retries_evaluation() {
+        // Given an origin with an attached judge, origin went Idle (triggering the judge).
+        let state = State::new(AppState::default());
+        let (origin_id, origin) = make_origin_session();
+        state.write().session.insert(origin);
+        let (judge_id, judge) = make_judge_session(origin_id.clone(), true);
+        state.write().session.insert(judge);
+
+        let (mut actor, sink, ctx) = create_actor(state);
+
+        // When origin goes Idle (triggers judge).
+        actor.handle(idle_event(origin_id.clone()), &ctx).await;
+        sink.clear();
+
+        // When the judge goes Idle WITHOUT producing a verdict.
+        actor.handle(idle_event(judge_id.clone()), &ctx).await;
+
+        // Then a new EnqueueUserMessage (retry trigger) is sent to the judge.
+        let commands = sink.commands();
+        let retry_triggers = find_commands(
+            &commands,
+            |c| matches!(c, Command::EnqueueUserMessage(msg) if msg.session_id == judge_id),
+        );
+        assert_eq!(
+            retry_triggers.len(),
+            1,
+            "judge idle without verdict should trigger exactly one retry"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn judge_idle_after_verdict_no_retry() {
+        // Given an origin with an attached judge, judge already submitted a verdict.
+        let state = State::new(AppState::default());
+        let (origin_id, origin) = make_origin_session();
+        state.write().session.insert(origin);
+        let (judge_id, judge) = make_judge_session(origin_id.clone(), true);
+        state.write().session.insert(judge);
+
+        let (mut actor, sink, ctx) = create_actor(state);
+
+        // When origin goes Idle and judge submits a Pass verdict.
+        actor.handle(idle_event(origin_id.clone()), &ctx).await;
+        actor
+            .handle(verdict_event(judge_id.clone(), origin_id.clone(), Verdict::Pass), &ctx)
+            .await;
+        sink.clear();
+
+        // When the judge goes Idle again (e.g., from a delayed phase change).
+        actor.handle(idle_event(judge_id.clone()), &ctx).await;
+
+        // Then no retry trigger is emitted — verdict was already received.
+        let commands = sink.commands();
+        let retry_triggers = find_commands(
+            &commands,
+            |c| matches!(c, Command::EnqueueUserMessage(msg) if msg.session_id == judge_id),
+        );
+        assert!(
+            retry_triggers.is_empty(),
+            "judge idle after verdict should not trigger retry"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn judge_retry_exhausted_force_cancels_origin() {
+        // Given an origin with an attached judge.
+        let state = State::new(AppState::default());
+        let (origin_id, origin) = make_origin_session();
+        state.write().session.insert(origin);
+        let (judge_id, judge) = make_judge_session(origin_id.clone(), true);
+        state.write().session.insert(judge);
+
+        let (mut actor, sink, ctx) = create_actor(state.clone());
+
+        // When origin goes Idle (trigger count = 0).
+        actor.handle(idle_event(origin_id.clone()), &ctx).await;
+
+        // When judge goes Idle 3 times (retry 1, retry 2, then exhausted at retry 3).
+        // retry_count increments before check: 1 < 3 = retry, 2 < 3 = retry, 3 >= 3 = exhaust.
+        for _ in 0..3 {
+            actor.handle(idle_event(judge_id.clone()), &ctx).await;
+        }
+
+        // Then the origin busy is cleared.
+        let guard = state.read();
+        let origin_session = guard.session.get(&origin_id).expect("origin exists");
+        assert!(
+            !origin_session.is_busy(),
+            "origin should not be busy after judge retries exhausted"
+        );
+        drop(guard);
+
+        // And a failure summary was dispatched to the origin.
+        let commands = sink.commands();
+        let failure_msgs = find_commands(
+            &commands,
+            |c| matches!(c, Command::EnqueueUserMessage(msg) if msg.session_id == origin_id),
+        );
+        assert_eq!(
+            failure_msgs.len(),
+            1,
+            "should dispatch one failure summary to origin"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn partial_judge_exhaust_waits_for_remaining() {
+        // Given an origin with two attached judges.
+        let state = State::new(AppState::default());
+        let (origin_id, origin) = make_origin_session();
+        state.write().session.insert(origin);
+
+        let mut judge_sessions = Vec::new();
+        for i in 0..2 {
+            let mut session = ChatSessionState::new();
+            let id = session.session_id().clone();
+            session.set_judge(JudgeMeta {
+                origin_session: origin_id.clone(),
+                is_attached: true,
+                judge_name: format!("j-{i}"),
+                auto_reset: None,
+            });
+            state.write().session.insert(session);
+            judge_sessions.push(id);
+        }
+
+        let (mut actor, sink, ctx) = create_actor(state.clone());
+
+        // When origin goes Idle.
+        actor.handle(idle_event(origin_id.clone()), &ctx).await;
+        sink.clear();
+
+        // When judge 0 exhausts all retries (3 idle cycles).
+        for _ in 0..3 {
+            actor.handle(idle_event(judge_sessions[0].clone()), &ctx).await;
+        }
+
+        // Then origin is still busy (judge 1 is still pending).
+        let guard = state.read();
+        let origin_session = guard.session.get(&origin_id).expect("origin exists");
+        assert!(
+            origin_session.is_busy(),
+            "origin should still be busy while other judge is pending"
+        );
+        drop(guard);
+
+        // And no consolidation message yet.
+        let commands = sink.commands();
+        let failure_msgs = find_commands(
+            &commands,
+            |c| matches!(c, Command::EnqueueUserMessage(msg) if msg.session_id == origin_id),
+        );
+        assert!(
+            failure_msgs.is_empty(),
+            "should not consolidate until all judges report"
+        );
+
+        // When judge 1 finally delivers a verdict.
+        actor
+            .handle(verdict_event(judge_sessions[1].clone(), origin_id.clone(), Verdict::Pass), &ctx)
+            .await;
+
+        // Then consolidation happens and origin is no longer busy.
+        let guard = state.read();
+        let origin_session = guard.session.get(&origin_id).expect("origin exists");
+        assert!(
+            !origin_session.is_busy(),
+            "origin should not be busy after all judges report"
+        );
+    }
 
     fn make_judge_meta(auto_reset: Option<bool>) -> JudgeMeta {
         JudgeMeta {
@@ -1023,5 +1387,248 @@ mod tests {
 
         // Then it returns false (judge not found).
         assert!(!result);
+    }
+
+    // --- Phase 3: Cancel pending judge evaluation tests ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn coordinator_handles_cancel_pending() {
+        // Given an origin with two attached judges, both pending.
+        let state = State::new(AppState::default());
+        let (origin_id, origin) = make_origin_session();
+        state.write().session.insert(origin);
+
+        let mut judge_ids = Vec::new();
+        for i in 0..2 {
+            let mut session = ChatSessionState::new();
+            let id = session.session_id().clone();
+            session.set_judge(JudgeMeta {
+                origin_session: origin_id.clone(),
+                is_attached: true,
+                judge_name: format!("j-{i}"),
+                auto_reset: None,
+            });
+            state.write().session.insert(session);
+            judge_ids.push(id);
+        }
+
+        let (mut actor, sink, ctx) = create_actor(state.clone());
+
+        // When origin goes Idle (triggers judges).
+        actor.handle(idle_event(origin_id.clone()), &ctx).await;
+        sink.clear();
+
+        // Verify origin is busy.
+        {
+            let guard = state.read();
+            let origin_session = guard.session.get(&origin_id).expect("origin exists");
+            assert!(origin_session.is_busy(), "origin should be busy before cancel");
+        }
+
+        // When cancelling the pending evaluation.
+        let cancel_cmd = Command::CancelPendingJudgeEvaluation(
+            super::super::protocol::CancelPendingJudgeEvaluation {
+                origin_session_id: origin_id.clone(),
+            },
+        );
+        actor
+            .handle(ActorEnvelope::Command(cancel_cmd), &ctx)
+            .await;
+
+        // Then the origin is no longer busy.
+        let guard = state.read();
+        let origin_session = guard.session.get(&origin_id).expect("origin exists");
+        assert!(
+            !origin_session.is_busy(),
+            "origin should not be busy after cancel"
+        );
+        drop(guard);
+
+        // And CancelStream is sent to both judges.
+        let commands = sink.commands();
+        let cancel_streams: Vec<_> = commands
+            .iter()
+            .filter(|c| {
+                matches!(
+                    c,
+                    Command::CancelStream(crate::feat::provider::protocol::command::CancelStream { session_id })
+                    if judge_ids.contains(session_id)
+                )
+            })
+            .collect();
+        assert_eq!(
+            cancel_streams.len(),
+            2,
+            "should cancel both judge sessions"
+        );
+
+        // And a system message is pushed to the origin.
+        let push_cmds: Vec<_> = commands
+            .iter()
+            .filter_map(|c| match c {
+                Command::PushChatEntry(msg) if msg.session_id == origin_id => Some(msg),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(push_cmds.len(), 1);
+        assert!(push_cmds[0].entry.text().contains("cancelled"));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn coordinator_cancel_pending_ignores_unknown_origin() {
+        // Given a coordinator with no pending entries.
+        let state = State::new(AppState::default());
+        let (mut actor, sink, ctx) = create_actor(state);
+
+        // When cancelling for an unknown origin.
+        let cancel_cmd = Command::CancelPendingJudgeEvaluation(
+            super::super::protocol::CancelPendingJudgeEvaluation {
+                origin_session_id: SessionId::new(),
+            },
+        );
+        actor
+            .handle(ActorEnvelope::Command(cancel_cmd), &ctx)
+            .await;
+
+        // Then no commands are emitted.
+        let commands = sink.commands();
+        assert!(commands.is_empty(), "should emit nothing for unknown origin");
+    }
+
+    // --- Phase 4: Edge case tests ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn duplicate_verdict_after_retry_accepted_then_consolidated() {
+        // Given an origin with one attached judge.
+        let state = State::new(AppState::default());
+        let (origin_id, origin) = make_origin_session();
+        state.write().session.insert(origin);
+        let (judge_id, judge) = make_judge_session(origin_id.clone(), true);
+        state.write().session.insert(judge);
+
+        let (mut actor, sink, ctx) = create_actor(state.clone());
+
+        // When origin goes Idle (triggers judge, retry_count = 0).
+        actor.handle(idle_event(origin_id.clone()), &ctx).await;
+        sink.clear();
+
+        // Judge goes Idle without verdict (retry 1).
+        actor.handle(idle_event(judge_id.clone()), &ctx).await;
+
+        // Then a retry trigger was sent.
+        let commands = sink.commands();
+        assert_eq!(
+            commands
+                .iter()
+                .filter(|c| matches!(
+                    c,
+                    Command::EnqueueUserMessage(msg) if msg.session_id == judge_id
+                ))
+                .count(),
+            1,
+            "should have sent one retry trigger"
+        );
+        sink.clear();
+
+        // When the retried judge now produces a Pass verdict.
+        actor
+            .handle(verdict_event(judge_id.clone(), origin_id.clone(), Verdict::Pass), &ctx)
+            .await;
+
+        // Then consolidation happens — origin is no longer busy.
+        let guard = state.read();
+        let origin_session = guard.session.get(&origin_id).expect("origin exists");
+        assert!(
+            !origin_session.is_busy(),
+            "origin should not be busy after verdict after retry"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn origin_non_idle_during_retry_prevents_retry() {
+        // Given an origin with one attached judge.
+        let state = State::new(AppState::default());
+        let (origin_id, origin) = make_origin_session();
+        state.write().session.insert(origin);
+        let (judge_id, judge) = make_judge_session(origin_id.clone(), true);
+        state.write().session.insert(judge);
+
+        let (mut actor, sink, ctx) = create_actor(state.clone());
+
+        // When origin goes Idle (triggers judge).
+        actor.handle(idle_event(origin_id.clone()), &ctx).await;
+        sink.clear();
+
+        // Origin starts a new turn (leaves Idle).
+        state
+            .write()
+            .session
+            .get_mut(&origin_id)
+            .expect("origin exists")
+            .core
+            .ephemeral
+            .phase = SessionPhase::Sending;
+
+        // Judge goes Idle without verdict — but origin is no longer Idle.
+        actor.handle(idle_event(judge_id.clone()), &ctx).await;
+
+        // Then no retry trigger is emitted.
+        let commands = sink.commands();
+        assert!(
+            commands.is_empty(),
+            "should not retry judge when origin has left Idle"
+        );
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn retry_count_resets_on_new_evaluation_cycle() {
+        // Given an origin with one attached judge.
+        let state = State::new(AppState::default());
+        let (origin_id, origin) = make_origin_session();
+        state.write().session.insert(origin);
+        let (judge_id, judge) = make_judge_session(origin_id.clone(), true);
+        state.write().session.insert(judge);
+
+        let (mut actor, sink, ctx) = create_actor(state.clone());
+
+        // First cycle: origin goes Idle, judge retries once, then passes.
+        actor.handle(idle_event(origin_id.clone()), &ctx).await;
+        actor.handle(idle_event(judge_id.clone()), &ctx).await; // retry 1
+        actor
+            .handle(verdict_event(judge_id.clone(), origin_id.clone(), Verdict::Pass), &ctx)
+            .await;
+
+        // Origin is no longer busy.
+        {
+            let guard = state.read();
+            let origin_session = guard.session.get(&origin_id).expect("origin exists");
+            assert!(!origin_session.is_busy());
+        }
+
+        sink.clear();
+
+        // Second cycle: origin goes Idle again (new evaluation cycle).
+        actor.handle(idle_event(origin_id.clone()), &ctx).await;
+        sink.clear();
+
+        // Judge goes Idle once without verdict — should be retry 1 (not retry 2).
+        actor.handle(idle_event(judge_id.clone()), &ctx).await;
+
+        // Then a retry trigger was sent (not exhausted).
+        let commands = sink.commands();
+        let retry_triggers = find_commands(
+            &commands,
+            |c| matches!(c, Command::EnqueueUserMessage(msg) if msg.session_id == judge_id),
+        );
+        assert_eq!(
+            retry_triggers.len(),
+            1,
+            "should retry on new cycle (retry count was reset)"
+        );
     }
 }
