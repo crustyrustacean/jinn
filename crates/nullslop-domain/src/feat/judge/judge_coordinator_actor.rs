@@ -153,25 +153,6 @@ impl JudgeCoordinatorActor {
             return;
         }
 
-        // Read the origin's last message to include in the trigger.
-        let last_origin_message: Option<String> = {
-            let guard = self.state.read();
-            guard.session.get(origin_id).and_then(|origin| {
-                origin
-                    .history()
-                    .iter()
-                    .rev()
-                    .find(|e| {
-                        matches!(
-                            &e.kind,
-                            crate::protocol::ChatEntryKind::User { .. }
-                                | crate::protocol::ChatEntryKind::Assistant { .. }
-                        ) && e.is_in_context()
-                    })
-                    .map(|e| e.text().clone())
-            })
-        };
-
         let expected = attached_judges.len();
         tracing::info!(
             origin = %origin_id,
@@ -181,14 +162,8 @@ impl JudgeCoordinatorActor {
 
         // Push trigger message to each attached judge session.
         for (judge_session_id, judge_name) in &attached_judges {
-            let mut trigger_text =
+            let trigger_text =
                 String::from("The agent has completed its turn. Please evaluate it's work.");
-            if let Some(ref last_msg) = last_origin_message {
-                let _ = write!(
-                    trigger_text,
-                    "\n\n---\n\nLast message from the agent:\n\n{last_msg}"
-                );
-            }
             let trigger_entry = ChatEntry::user(trigger_text);
             let _ = ctx.send_command(Command::EnqueueUserMessage(EnqueueUserMessage {
                 session_id: judge_session_id.clone(),
@@ -910,7 +885,10 @@ mod tests {
         // Then the origin session is marked busy.
         let guard = state.read();
         let origin = guard.session.get(&origin_id).expect("origin exists");
-        assert!(origin.is_busy(), "origin should be marked busy after triggering judges");
+        assert!(
+            origin.is_busy(),
+            "origin should be marked busy after triggering judges"
+        );
     }
 
     #[rstest::rstest]
@@ -938,6 +916,9 @@ mod tests {
         // Then the origin session is no longer busy.
         let guard = state.read();
         let origin = guard.session.get(&origin_id).expect("origin exists");
-        assert!(!origin.is_busy(), "origin should not be busy after consolidation");
+        assert!(
+            !origin.is_busy(),
+            "origin should not be busy after consolidation"
+        );
     }
 }
