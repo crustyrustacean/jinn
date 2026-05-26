@@ -6,6 +6,7 @@
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use throbber_widgets_tui::ThrobberState;
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::feat::theme::Theme;
 use crate::feat::ui::sidebar::sessions::state::SessionEntry;
@@ -113,7 +114,7 @@ pub(crate) fn assemble_entry_line(
     let indicator = indicator_span(entry.is_idle, throbber_state);
     let arrow = arrow_span(entry.is_active, theme);
     let tree = tree_prefix(entry);
-    let tree_len = tree.len();
+    let tree_len = tree.graphemes(true).count();
     let mut style = entry_title_style(
         is_selected,
         entry.is_active,
@@ -127,7 +128,7 @@ pub(crate) fn assemble_entry_line(
         } else {
             "\u{2696} "
         };
-        let prefix_len = prefix.len();
+        let prefix_len = prefix.graphemes(true).count();
         let truncated = truncate_str(&entry.title, max_title_len.saturating_sub(tree_len + prefix_len));
         format!("{prefix}{truncated}")
     } else {
