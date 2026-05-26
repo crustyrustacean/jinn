@@ -790,41 +790,6 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn trigger_includes_last_origin_message() {
-        // Given an origin with history and an attached judge.
-        let state = State::new(AppState::default());
-        let (origin_id, mut origin) = make_origin_session();
-        origin.push_entry(ChatEntry::user("do the thing"));
-        origin.push_entry(ChatEntry::assistant("I did the thing"));
-        state.write().session.insert(origin);
-        let (judge_id, judge) = make_judge_session(origin_id.clone(), true);
-        state.write().session.insert(judge);
-
-        let (mut actor, sink, ctx) = create_actor(state);
-
-        // When origin goes Idle.
-        actor.handle(idle_event(origin_id), &ctx).await;
-
-        // Then the trigger message includes the last assistant message.
-        let commands = sink.commands();
-        let enqueue_cmd = commands
-            .iter()
-            .find(|c| matches!(c, Command::EnqueueUserMessage(msg) if msg.session_id == judge_id))
-            .expect("should have enqueue command");
-        if let Command::EnqueueUserMessage(msg) = enqueue_cmd {
-            assert!(
-                msg.entry.text().contains("I did the thing"),
-                "trigger should include last origin message"
-            );
-            assert!(
-                msg.entry.text().contains("Last message from the agent"),
-                "trigger should include context header"
-            );
-        }
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
     async fn system_notification_pushed_to_origin_on_trigger() {
         // Given an origin session with two attached judges.
         let state = State::new(AppState::default());

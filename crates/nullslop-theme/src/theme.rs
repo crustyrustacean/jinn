@@ -193,6 +193,7 @@ impl ThemeFile {
     /// break the circular dependency between [`default_theme`] and
     /// [`ThemeFile::resolve`].
     #[must_use]
+    #[allow(clippy::too_many_lines)]
     pub fn resolve_with_fallback(&self, fallback: &Theme) -> Theme {
         Theme {
             focus_accent: self
