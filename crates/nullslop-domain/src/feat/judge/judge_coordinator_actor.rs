@@ -112,6 +112,7 @@ impl Actor for JudgeCoordinatorActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.subscribe_event::<SessionPhaseChanged>();
         ctx.subscribe_event::<JudgeVerdict>();
+        ctx.subscribe_command::<crate::feat::judge::protocol::CancelPendingJudgeEvaluation>();
         ctx.set_description("Orchestrates judge evaluation cycles on origin Idle");
         Self {
             state: deps.state,
@@ -126,6 +127,9 @@ impl Actor for JudgeCoordinatorActor {
             }
             ActorEnvelope::Event(Event::JudgeVerdict(ref payload)) => {
                 self.handle_judge_verdict(payload, ctx);
+            }
+            ActorEnvelope::Command(Command::CancelPendingJudgeEvaluation(ref payload)) => {
+                self.handle_cancel_pending(payload, ctx);
             }
             _ => {}
         }
@@ -523,6 +527,46 @@ impl JudgeCoordinatorActor {
                 entry: user_entry,
             }));
         }
+    }
+
+    /// Handle a request to cancel a pending judge evaluation.
+    ///
+    /// Clears pending state, cancels all remaining judge sessions,
+    /// clears busy on the origin, and pushes a system message.
+    fn handle_cancel_pending(
+        &mut self,
+        payload: &super::protocol::CancelPendingJudgeEvaluation,
+        ctx: &ActorContext,
+    ) {
+        let origin_id = &payload.origin_session_id;
+
+        let Some(pending) = self.pending.remove(origin_id) else {
+            return;
+        };
+
+        // Cancel all remaining judge sessions.
+        for judge_session_id in pending.judges.keys() {
+            let _ = ctx.send_command(Command::CancelStream(
+                crate::feat::provider::protocol::command::CancelStream {
+                    session_id: judge_session_id.clone(),
+                },
+            ));
+        }
+
+        // Clear busy on origin.
+        {
+            let mut guard = self.state.write();
+            if let Some(origin) = guard.session.get_mut(origin_id) {
+                origin.mark_busy_complete();
+            }
+        }
+
+        // Push system message.
+        let notification = ChatEntry::system("Judge evaluation cancelled.");
+        let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            session_id: origin_id.clone(),
+            entry: notification,
+        }));
     }
 }
 
@@ -1343,5 +1387,113 @@ mod tests {
 
         // Then it returns false (judge not found).
         assert!(!result);
+    }
+
+    // --- Phase 3: Cancel pending judge evaluation tests ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn coordinator_handles_cancel_pending() {
+        // Given an origin with two attached judges, both pending.
+        let state = State::new(AppState::default());
+        let (origin_id, origin) = make_origin_session();
+        state.write().session.insert(origin);
+
+        let mut judge_ids = Vec::new();
+        for i in 0..2 {
+            let mut session = ChatSessionState::new();
+            let id = session.session_id().clone();
+            session.set_judge(JudgeMeta {
+                origin_session: origin_id.clone(),
+                is_attached: true,
+                judge_name: format!("j-{i}"),
+                auto_reset: None,
+            });
+            state.write().session.insert(session);
+            judge_ids.push(id);
+        }
+
+        let (mut actor, sink, ctx) = create_actor(state.clone());
+
+        // When origin goes Idle (triggers judges).
+        actor.handle(idle_event(origin_id.clone()), &ctx).await;
+        sink.clear();
+
+        // Verify origin is busy.
+        {
+            let guard = state.read();
+            let origin_session = guard.session.get(&origin_id).expect("origin exists");
+            assert!(origin_session.is_busy(), "origin should be busy before cancel");
+        }
+
+        // When cancelling the pending evaluation.
+        let cancel_cmd = Command::CancelPendingJudgeEvaluation(
+            super::super::protocol::CancelPendingJudgeEvaluation {
+                origin_session_id: origin_id.clone(),
+            },
+        );
+        actor
+            .handle(ActorEnvelope::Command(cancel_cmd), &ctx)
+            .await;
+
+        // Then the origin is no longer busy.
+        let guard = state.read();
+        let origin_session = guard.session.get(&origin_id).expect("origin exists");
+        assert!(
+            !origin_session.is_busy(),
+            "origin should not be busy after cancel"
+        );
+        drop(guard);
+
+        // And CancelStream is sent to both judges.
+        let commands = sink.commands();
+        let cancel_streams: Vec<_> = commands
+            .iter()
+            .filter(|c| {
+                matches!(
+                    c,
+                    Command::CancelStream(crate::feat::provider::protocol::command::CancelStream { session_id })
+                    if judge_ids.contains(session_id)
+                )
+            })
+            .collect();
+        assert_eq!(
+            cancel_streams.len(),
+            2,
+            "should cancel both judge sessions"
+        );
+
+        // And a system message is pushed to the origin.
+        let push_cmds: Vec<_> = commands
+            .iter()
+            .filter_map(|c| match c {
+                Command::PushChatEntry(msg) if msg.session_id == origin_id => Some(msg),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(push_cmds.len(), 1);
+        assert!(push_cmds[0].entry.text().contains("cancelled"));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn coordinator_cancel_pending_ignores_unknown_origin() {
+        // Given a coordinator with no pending entries.
+        let state = State::new(AppState::default());
+        let (mut actor, sink, ctx) = create_actor(state);
+
+        // When cancelling for an unknown origin.
+        let cancel_cmd = Command::CancelPendingJudgeEvaluation(
+            super::super::protocol::CancelPendingJudgeEvaluation {
+                origin_session_id: SessionId::new(),
+            },
+        );
+        actor
+            .handle(ActorEnvelope::Command(cancel_cmd), &ctx)
+            .await;
+
+        // Then no commands are emitted.
+        let commands = sink.commands();
+        assert!(commands.is_empty(), "should emit nothing for unknown origin");
     }
 }

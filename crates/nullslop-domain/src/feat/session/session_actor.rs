@@ -310,6 +310,7 @@ impl SessionPersistenceActor {
             | Command::LoadWorkflowPickerEntries(..)
             | Command::RescanJudges(..)
             | Command::LoadCompactionModelPickerEntries(..)
+            | Command::CancelPendingJudgeEvaluation(..)
             | Command::Dynamic(..) => {}
         }
     }

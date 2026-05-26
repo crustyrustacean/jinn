@@ -149,6 +149,8 @@ pub enum Command {
     LoadWorkflowPickerEntries(crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries),
     /// Rescan the judges directory and reload judge definitions.
     RescanJudges(crate::feat::judge::RescanJudges),
+    /// Cancel a pending judge evaluation cycle (ESC on Idle+busy origin).
+    CancelPendingJudgeEvaluation(crate::feat::judge::CancelPendingJudgeEvaluation),
     /// A dynamic command from a plugin, carrying an arbitrary JSON payload.
     ///
     /// Routed by the runtime [`name`](DynamicCommand::name) field, not the
@@ -222,6 +224,9 @@ impl Command {
                 Some(crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries::NAME)
             }
             Self::RescanJudges(..) => Some(crate::feat::judge::RescanJudges::NAME),
+            Self::CancelPendingJudgeEvaluation(..) => {
+                Some(crate::feat::judge::CancelPendingJudgeEvaluation::NAME)
+            }
             Self::Dynamic(..) => Some(DynamicCommand::NAME),
         }
     }
@@ -382,6 +387,13 @@ impl std::fmt::Display for Command {
             }
             Command::RescanJudges(..) => {
                 write!(f, "rescan judges")
+            }
+            Command::CancelPendingJudgeEvaluation(payload) => {
+                write!(
+                    f,
+                    "cancel pending judge evaluation for {}",
+                    payload.origin_session_id
+                )
             }
             Command::Dynamic(d) => {
                 write!(f, "dynamic command '{}'", d.name)
