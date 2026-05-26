@@ -438,4 +438,105 @@ mod tests {
             "expected HistoryAppended event after tool execution completed"
         );
     }
+
+    #[tokio::test]
+    async fn on_tool_batch_completed_skips_send_when_tool_loop_disabled() {
+        // Given a session in sending state with tool_loop_disabled set.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.finish_streaming(true);
+            session.begin_sending();
+            session.set_tool_loop_disabled();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling ToolBatchCompleted.
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+            }],
+        };
+        actor.on_tool_batch_completed(&event, &ctx);
+
+        // Then the session transitions to Idle.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Idle),
+            "expected Idle after tool_loop_disabled, got {:?}",
+            session.phase()
+        );
+
+        // And no SendToLlmProvider was emitted.
+        let commands = sink.commands();
+        let has_send = commands
+            .iter()
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
+        assert!(
+            !has_send,
+            "expected no SendToLlmProvider when tool_loop_disabled"
+        );
+
+        // And the flag is cleared.
+        drop(state);
+        let mut state = actor.state.write();
+        let session = state.session_mut_or_create(&session_id);
+        assert!(
+            !session.take_tool_loop_disabled(),
+            "tool_loop_disabled should be cleared after on_tool_batch_completed"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_tool_batch_completed_unaffected_without_tool_loop_disabled() {
+        // Given a normal session (no flag set) in sending state with history.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("list files"));
+            session.push_entry(ChatEntry::assistant("checking"));
+            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+            session.push_entry(ChatEntry::assistant("here are the files"));
+            session.begin_streaming();
+            session.finish_streaming(true);
+            session.begin_sending();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling ToolBatchCompleted.
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+            }],
+        };
+        actor.on_tool_batch_completed(&event, &ctx);
+
+        // Then SendToLlmProvider IS emitted (normal behavior).
+        let commands = sink.commands();
+        let has_send = commands
+            .iter()
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
+        assert!(
+            has_send,
+            "expected SendToLlmProvider for normal session without tool_loop_disabled"
+        );
+    }
 }
