@@ -267,6 +267,121 @@ fn session_mut_or_create_sets_cwd_from_default_cwd() {
     assert_eq!(session.cwd(), std::path::Path::new("/custom/cwd"));
 }
 
+// --- ScopeStack::is_empty / len ---
+
+#[rstest::rstest]
+fn is_empty_returns_false_after_construction() {
+    // Given a default ScopeStack.
+    let stack = ScopeStack::default();
+
+    // When checking emptiness.
+    // Then it returns false (invariant: always has a base scope).
+    assert!(!stack.is_empty());
+}
+
+#[rstest::rstest]
+fn len_returns_one_after_construction() {
+    // Given a default ScopeStack.
+    let stack = ScopeStack::default();
+
+    // When checking length.
+    // Then it returns 1 (the base scope).
+    assert_eq!(stack.len(), 1);
+}
+
+#[rstest::rstest]
+fn len_increases_after_push() {
+    // Given a default ScopeStack.
+    let mut stack = ScopeStack::default();
+    stack.push(FocusScope::Input);
+
+    // When checking length after push.
+    // Then it returns 2.
+    assert_eq!(stack.len(), 2);
+}
+
+// --- WorkflowUiState::clone ---
+
+#[rstest::rstest]
+fn workflow_ui_state_clone_preserves_fields() {
+    use std::sync::atomic::Ordering;
+
+    // Given a WorkflowUiState with non-default values.
+    let original = WorkflowUiState {
+        selected_node: Some("node-42".to_owned()),
+        viewport_offset_x: 10,
+        viewport_offset_y: 20,
+        inspector_open: true,
+        inspector_scroll: 5,
+        cancel_prompt: true,
+        ..Default::default()
+    };
+
+    // When cloning.
+    let cloned = original.clone();
+
+    // Then all fields are preserved.
+    assert_eq!(cloned.selected_node, Some("node-42".to_owned()));
+    assert_eq!(cloned.viewport_offset_x, 10);
+    assert_eq!(cloned.viewport_offset_y, 20);
+    assert!(cloned.inspector_open);
+    assert_eq!(cloned.inspector_scroll, 5);
+    assert!(cloned.cancel_prompt);
+    assert_eq!(
+        cloned.inspector_scroll_rendered.load(Ordering::Relaxed),
+        original.inspector_scroll_rendered.load(Ordering::Relaxed)
+    );
+}
+
+// --- active_status_notification boundary ---
+
+#[rstest::rstest]
+fn active_status_notification_returns_none_at_exactly_3_seconds() {
+    // Given a FrontendState with a notification created exactly 3 seconds ago.
+    let state = FrontendState {
+        status_notification: Some(StatusNotification {
+            message: "boundary".to_owned(),
+            created_at: std::time::Instant::now()
+                .checked_sub(std::time::Duration::from_secs(3))
+                .unwrap(),
+        }),
+        ..Default::default()
+    };
+
+    // When checking for an active notification.
+    // Then it returns None (exactly 3s is expired, uses strict <).
+    assert_eq!(state.active_status_notification(), None);
+}
+
+// --- active_picker_ops ---
+
+#[rstest::rstest]
+fn active_picker_ops_returns_some_when_picker_active() {
+    // Given an AppState with a Picker scope pushed.
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::Picker {
+        kind: PickerKind::Provider,
+    });
+
+    // When getting active picker ops.
+    let ops = state.active_picker_ops();
+
+    // Then it returns Some (the provider picker).
+    assert!(ops.is_some());
+}
+
+#[rstest::rstest]
+fn active_picker_ops_returns_none_when_no_picker() {
+    // Given an AppState in Input mode (default, no picker).
+    let mut state = AppState::default();
+
+    // When getting active picker ops.
+    let ops = state.active_picker_ops();
+
+    // Then it returns None.
+    assert!(ops.is_none());
+}
+
 #[rstest::rstest]
 fn session_mut_or_create_does_not_overwrite_existing_session_cwd() {
     // Given an AppState with a session that has a specific CWD.

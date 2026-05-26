@@ -31,3 +31,20 @@ pub fn register_all_ui_elements(registry: &mut AppUiRegistry) {
     crate::feat::provider::register(registry);
     crate::feat::chat_input::register(registry);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[rstest::rstest]
+    fn register_all_ui_elements_populates_registry() {
+        // Given an empty registry.
+        let mut registry = AppUiRegistry::new();
+
+        // When registering all UI elements.
+        register_all_ui_elements(&mut registry);
+
+        // Then the registry is not empty (has at least one element).
+        assert!(registry.iter_mut().count() > 0);
+    }
+}

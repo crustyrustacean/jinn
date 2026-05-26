@@ -351,6 +351,62 @@ fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize {
     adjust_cut_to_boundary(history, group_end)
 }
 
+/// Compute the cut index by walking backwards accumulating tokens.
+///
+/// Returns the index where recent entries begin (those fitting within the reserve).
+/// If `compact_all` is true, returns `history.len()`.
+/// If all tokens fit within the reserve, returns `start_index`.
+fn compute_cut_index(
+    history: &[ChatEntry],
+    start_index: usize,
+    reserve_tokens: usize,
+    compact_all: bool,
+) -> usize {
+    let estimator = CharRatioEstimator;
+
+    if compact_all {
+        return history.len();
+    }
+
+    let mut accumulated_tokens = 0usize;
+    let mut cut_index = start_index;
+
+    for i in (start_index..history.len()).rev() {
+        let entry = &history[i];
+        let tokens = estimate_entry_tokens(&estimator, entry);
+        accumulated_tokens += tokens;
+        if accumulated_tokens > reserve_tokens {
+            cut_index = i + 1;
+            break;
+        }
+    }
+
+    cut_index
+}
+
+/// Gather compactable entries between `start_index` and `cut_index`,
+/// excluding System and Compaction entries.
+///
+/// Returns `(gathered_indices, tokens_before)` where `tokens_before` is
+/// the total estimated tokens of the gathered entries.
+fn gather_compactable_entries(
+    history: &[ChatEntry],
+    start_index: usize,
+    cut_index: usize,
+) -> (Vec<usize>, usize) {
+    let estimator = CharRatioEstimator;
+    let mut gathered_indices: Vec<usize> = Vec::new();
+    let mut tokens_before: usize = 0;
+    for (i, entry) in history.iter().enumerate().take(cut_index).skip(start_index) {
+        if matches!(entry.kind, ChatEntryKind::System(_)) || entry.is_compaction() {
+            continue;
+        }
+        tokens_before += estimate_entry_tokens(&estimator, entry);
+        gathered_indices.push(i);
+    }
+    (gathered_indices, tokens_before)
+}
+
 /// Perform the compaction algorithm as a free async function.
 ///
 /// This runs inside a spawned task so the actor is free to process
@@ -398,44 +454,17 @@ async fn perform_compaction(
             .map_or(0, |i| i + 1);
 
         // Find cut point: walk backwards accumulating tokens.
-        let estimator = CharRatioEstimator;
-        let mut accumulated_tokens = 0usize;
-        let mut cut_index = if compact_all {
-            history.len() // Compact everything after start boundary.
-        } else {
-            start_index // Compact nothing by default (reserve protects everything).
-        };
-
-        if !compact_all {
-            for i in (start_index..history.len()).rev() {
-                let entry = &history[i];
-                let tokens = estimate_entry_tokens(&estimator, entry);
-                accumulated_tokens += tokens;
-                if accumulated_tokens > config.reserve_tokens {
-                    cut_index = i + 1;
-                    break;
-                }
-            }
-        }
-
+        let cut_index = compute_cut_index(history, start_index, config.reserve_tokens, compact_all);
         let cut_index = adjust_cut_to_boundary(history, cut_index);
 
         // Gather entries from start to cut point, excluding System and Compaction.
-        let mut gathered_indices: Vec<usize> = Vec::new();
-        let mut tokens_before: usize = 0;
-        for (i, entry) in history.iter().enumerate().take(cut_index).skip(start_index) {
-            if matches!(entry.kind, ChatEntryKind::System(_)) || entry.is_compaction() {
-                continue;
-            }
-            tokens_before += estimate_entry_tokens(&estimator, entry);
-            gathered_indices.push(i);
-        }
+        let (gathered_indices, tokens_before) = gather_compactable_entries(history, start_index, cut_index);
 
         if gathered_indices.is_empty() {
             // Nothing to compact — all tokens fit within the reserve.
             let total_tokens: usize = history[start_index..]
                 .iter()
-                .map(|e| estimate_entry_tokens(&estimator, e))
+                .map(|e| estimate_entry_tokens(&CharRatioEstimator, e))
                 .sum();
 
             let skip_msg = format!(

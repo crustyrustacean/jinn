@@ -956,3 +956,389 @@ fn cut_index_equals_history_len_when_compact_all() {
         "cut_index should be history.len() when compact_all=true"
     );
 }
+
+// --- compute_cut_index pure function tests ---
+
+#[test]
+fn compute_cut_index_returns_start_when_tokens_within_reserve() {
+    // Given a history with total tokens below the reserve.
+    let history = vec![
+        ChatEntry::user("hi"),
+        ChatEntry::assistant("hello"),
+    ];
+
+    // When computing cut index with a very large reserve.
+    let cut_index = super::compute_cut_index(&history, 0, 100_000, false);
+
+    // Then cut_index stays at start_index (0) — nothing to compact.
+    assert_eq!(cut_index, 0);
+}
+
+#[test]
+fn compute_cut_index_returns_len_when_compact_all() {
+    // Given any history.
+    let history = vec![
+        ChatEntry::user("hi"),
+        ChatEntry::assistant("hello"),
+    ];
+
+    // When computing cut index with compact_all=true.
+    let cut_index = super::compute_cut_index(&history, 0, 100_000, true);
+
+    // Then cut_index equals history length.
+    assert_eq!(cut_index, history.len());
+}
+
+#[test]
+fn compute_cut_index_walks_backwards_past_reserve() {
+    use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, estimate_entry_tokens};
+
+    // Given a history with entries that have known token counts.
+    // CharRatioEstimator: graphemes / 4 + 1
+    // Each entry with 80 chars → 21 tokens. 10 entries = 210 tokens total.
+    let long_msg = "a".repeat(80);
+    let history: Vec<ChatEntry> = (0..10)
+        .map(|i| {
+            if i % 2 == 0 {
+                ChatEntry::user(long_msg.clone())
+            } else {
+                ChatEntry::assistant(long_msg.clone())
+            }
+        })
+        .collect();
+
+    // Calculate total tokens to find a good reserve value.
+    let estimator = CharRatioEstimator;
+    let total_tokens: usize = history.iter().map(|e| estimate_entry_tokens(&estimator, e)).sum();
+
+    // Reserve slightly less than half the tokens so the cut is unambiguous.
+    let reserve = total_tokens / 2 - 1;
+
+    // When computing cut index.
+    let cut_index = super::compute_cut_index(&history, 0, reserve, false);
+
+    // Then cut_index is somewhere in the middle (not 0, not len).
+    assert!(cut_index > 0, "cut_index should be > 0, got {cut_index}");
+    assert!(cut_index < history.len(), "cut_index should be < len, got {cut_index}");
+
+    // And the entries before the cut represent more than the reserve.
+    // Verify by checking that the "old" entries (before cut) are more than the reserve.
+    let tokens_before_cut: usize = history[..cut_index]
+        .iter()
+        .map(|e| estimate_entry_tokens(&estimator, e))
+        .sum();
+    let tokens_after_cut: usize = history[cut_index..]
+        .iter()
+        .map(|e| estimate_entry_tokens(&estimator, e))
+        .sum();
+    // The "old" side (before cut) should be strictly larger than the reserve.
+    assert!(
+        tokens_before_cut >= reserve,
+        "tokens before cut ({tokens_before_cut}) should be >= reserve ({reserve})"
+    );
+    // The "recent" side (after cut) should fit within the reserve.
+    assert!(
+        tokens_after_cut <= reserve + estimate_entry_tokens(&estimator, &history[0]),
+        "tokens after cut ({tokens_after_cut}) should be close to reserve ({reserve})"
+    );
+}
+
+#[test]
+fn compute_cut_index_with_nonzero_start_index() {
+    // Given a history where start_index > 0.
+    let history = vec![
+        ChatEntry::user("old1"),
+        ChatEntry::assistant("old2"),
+        ChatEntry::user("recent1"),
+        ChatEntry::assistant("recent2"),
+    ];
+
+    // When computing cut index starting from index 2 with a large reserve.
+    let cut_index = super::compute_cut_index(&history, 2, 100_000, false);
+
+    // Then cut_index stays at start_index — all recent tokens fit in reserve.
+    assert_eq!(cut_index, 2);
+}
+
+// --- gather_compactable_entries pure function tests ---
+
+#[test]
+fn gather_excludes_system_and_compaction_entries() {
+    // Given history with System and Compaction entries mixed in.
+    let history = vec![
+        ChatEntry::user("msg1"),
+        ChatEntry::system("system_msg"),
+        ChatEntry::assistant("resp1"),
+        ChatEntry {
+            id: crate::protocol::ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::Compaction {
+                summary: "summary".to_owned(),
+                tokens_before: 100,
+                tokens_after: 50,
+                entries_compacted: 2,
+                model_used: "test".to_owned(),
+            },
+            pin_position: None,
+            context_override: crate::protocol::ContextOverride::Default,
+        },
+        ChatEntry::user("msg2"),
+    ];
+
+    // When gathering from 0 to 5.
+    let (indices, tokens) = super::gather_compactable_entries(&history, 0, 5);
+
+    // Then only non-system, non-compaction entries are gathered.
+    assert_eq!(indices, vec![0, 2, 4]);
+    assert!(tokens > 0, "tokens_before should be positive, got {tokens}");
+}
+
+#[test]
+fn gather_returns_empty_when_all_exempt() {
+    // Given history with only System entries.
+    let history = vec![
+        ChatEntry::system("s1"),
+        ChatEntry::system("s2"),
+    ];
+
+    // When gathering.
+    let (indices, tokens) = super::gather_compactable_entries(&history, 0, 2);
+
+    // Then nothing is gathered.
+    assert!(indices.is_empty());
+    assert_eq!(tokens, 0);
+}
+
+#[test]
+fn gather_tokens_before_matches_expected_sum() {
+    use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, estimate_entry_tokens};
+
+    // Given history with 3 user entries.
+    let history = vec![
+        ChatEntry::user("hello"),
+        ChatEntry::assistant("world"),
+        ChatEntry::user("test"),
+    ];
+
+    // When gathering all.
+    let (indices, tokens_before) = super::gather_compactable_entries(&history, 0, 3);
+
+    // Then tokens_before matches the manually computed sum.
+    let estimator = CharRatioEstimator;
+    let expected: usize = history.iter().map(|e| estimate_entry_tokens(&estimator, e)).sum();
+    assert_eq!(indices, vec![0, 1, 2]);
+    assert_eq!(tokens_before, expected);
+}
+
+#[test]
+fn gather_respects_start_and_cut_bounds() {
+    // Given history with 5 entries.
+    let history = vec![
+        ChatEntry::user("a"),
+        ChatEntry::assistant("b"),
+        ChatEntry::user("c"),
+        ChatEntry::assistant("d"),
+        ChatEntry::user("e"),
+    ];
+
+    // When gathering from index 2 to 4.
+    let (indices, _tokens) = super::gather_compactable_entries(&history, 2, 4);
+
+    // Then only entries 2 and 3 are gathered (start..cut).
+    assert_eq!(indices, vec![2, 3]);
+}
+
+// --- handle_history_appended threshold boundary tests ---
+
+#[rstest::rstest]
+#[test]
+fn history_appended_does_not_trigger_at_exact_threshold() {
+    // Given an actor with default config.
+    // Default: threshold=0.7, fallback_context_window=150_000
+    // threshold_tokens = 0.7 * 150_000 = 105_000
+    let (sink, ctx, mut actor, session_id) = test_actor_with_low_budget();
+
+    // When sending HistoryAppended with tokens exactly at the threshold.
+    let event = HistoryAppended {
+        session_id: session_id.clone(),
+        total_estimated_tokens: 105_000, // exactly threshold * context_window
+    };
+    actor.handle_history_appended(&event, &ctx);
+
+    // Then NO EnqueueCompaction is emitted (uses strict >).
+    let count = count_enqueue_compaction(&sink.commands());
+    assert_eq!(count, 0, "should not trigger at exact threshold");
+}
+
+#[rstest::rstest]
+#[test]
+fn history_appended_triggers_above_threshold() {
+    // Given an actor with default config.
+    let (sink, ctx, mut actor, session_id) = test_actor_with_low_budget();
+
+    // When sending HistoryAppended with tokens one above the threshold.
+    let event = HistoryAppended {
+        session_id: session_id.clone(),
+        total_estimated_tokens: 105_001, // one above threshold
+    };
+    actor.handle_history_appended(&event, &ctx);
+
+    // Then one EnqueueCompaction is emitted.
+    let count = count_enqueue_compaction(&sink.commands());
+    assert_eq!(count, 1, "should trigger above threshold");
+}
+
+// --- perform_compaction end-to-end tests ---
+
+/// Helper: create a full test environment for perform_compaction.
+///
+/// Sets up state with many entries (exceeding the 20K reserve) and a fake LLM
+/// that returns a non-empty summary.
+fn test_compaction_env() -> (
+    std::sync::Arc<RecordingSink>,
+    ActorContext,
+    super::CompactionActor,
+    SessionId,
+) {
+    let sink = std::sync::Arc::new(RecordingSink::new());
+    let ctx = ActorContext::new("test-compaction-e2e", sink.clone());
+
+    // Build state with a session full of entries.
+    let app_state = AppState::default();
+    let state = State::new(app_state);
+    let session_id = state.read().session.active_session_id().clone();
+
+    // Set a compaction prompt.
+    state.write().context.compaction_prompt = "Summarize the conversation.".to_owned();
+
+    // Add enough entries to exceed the 20K reserve.
+    // CharRatioEstimator: each 80-char entry ≈ 21 tokens.
+    // 20_000 / 21 ≈ 953 entries needed. Use 1500 to be safe.
+    let long_msg = "x".repeat(80);
+    {
+        let mut state_guard = state.write();
+        let session = state_guard.session.active_session_mut();
+        for i in 0..1500 {
+            if i % 2 == 0 {
+                session.push_entry(ChatEntry::user(long_msg.clone()));
+            } else {
+                session.push_entry(ChatEntry::assistant(long_msg.clone()));
+            }
+        }
+    }
+
+    // Create services with a fake LLM that returns actual tokens.
+    use crate::feat::provider_infra::FakeLlmServiceFactory;
+    use crate::feat::provider_infra::LlmServiceFactoryService;
+    let fake_factory = FakeLlmServiceFactory::new(vec![
+        "Summary of the conversation so far.".to_owned(),
+    ]);
+    let mut services = Services::new();
+    services.llm_service = LlmServiceFactoryService::new(std::sync::Arc::new(fake_factory));
+    let handle = services.handle.clone();
+
+    let deps = super::CompactionActorDeps {
+        state,
+        services,
+        handle,
+    };
+    let mut ctx = ctx;
+    let actor = super::CompactionActor::activate(deps, &mut ctx);
+
+    (sink, ctx, actor, session_id)
+}
+
+/// Helper: find the first EndCompaction command in the recording sink.
+fn find_end_compaction(commands: &[Command]) -> Option<super::protocol::command::EndCompaction> {
+    for cmd in commands {
+        if let Command::EndCompaction(payload) = cmd {
+            return Some(payload.clone());
+        }
+    }
+    None
+}
+
+#[rstest::rstest]
+#[test]
+fn perform_compaction_compacts_entries_and_returns_nonzero() {
+    // Given a session with many entries and a fake LLM.
+    let (sink, _ctx, mut actor, session_id) = test_compaction_env();
+
+    // When triggering compaction.
+    let compact_cmd = super::protocol::command::CompactContext {
+        session_id: session_id.clone(),
+        compact_all: false,
+    };
+    actor.handle_compact_context(&compact_cmd, &_ctx);
+
+    // Then wait for the spawned task to complete (poll the sink).
+    let mut end_cmd = None;
+    for _ in 0..100 {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        end_cmd = find_end_compaction(&sink.commands());
+        if end_cmd.is_some() {
+            break;
+        }
+    }
+    let end_cmd = end_cmd.expect("EndCompaction should be emitted within 5 seconds");
+
+    // And entries_compacted is > 0 (kills Ok(0) mutant).
+    assert!(
+        end_cmd.result.is_some(),
+        "EndCompaction should have a result"
+    );
+    let result = end_cmd.result.unwrap();
+    assert!(
+        result.entries_compacted > 0,
+        "should compact at least 1 entry, got {}",
+        result.entries_compacted
+    );
+    // And the summary is non-empty and not "xyzzy" (kills Ok(String::new()) and Ok("xyzzy".into())).
+    assert!(
+        !result.summary.is_empty(),
+        "summary should not be empty"
+    );
+    assert_ne!(
+        result.summary, "xyzzy",
+        "summary should not be xyzzy"
+    );
+    // And tokens_before > tokens_after (summary is shorter than original).
+    assert!(
+        result.tokens_before > result.tokens_after,
+        "tokens_before ({}) should be > tokens_after ({})",
+        result.tokens_before, result.tokens_after
+    );
+}
+
+#[rstest::rstest]
+#[test]
+fn perform_compaction_compact_all_compacts_everything() {
+    // Given a session with many entries and a fake LLM.
+    let (sink, _ctx, mut actor, session_id) = test_compaction_env();
+
+    // When triggering compaction with compact_all=true.
+    let compact_cmd = super::protocol::command::CompactContext {
+        session_id: session_id.clone(),
+        compact_all: true,
+    };
+    actor.handle_compact_context(&compact_cmd, &_ctx);
+
+    // Then wait for completion.
+    let mut end_cmd = None;
+    for _ in 0..100 {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        end_cmd = find_end_compaction(&sink.commands());
+        if end_cmd.is_some() {
+            break;
+        }
+    }
+    let end_cmd = end_cmd.expect("EndCompaction should be emitted");
+
+    // And all entries are compacted (kills Ok(1) mutant — we have 1500 entries).
+    let result = end_cmd.result.expect("should have a result");
+    assert!(
+        result.entries_compacted > 1,
+        "compact_all should compact more than 1 entry, got {}",
+        result.entries_compacted
+    );
+}

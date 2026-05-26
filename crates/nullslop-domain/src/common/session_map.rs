@@ -578,6 +578,83 @@ mod tests {
         assert!(map.contains(&id.unwrap()));
     }
 
+    // --- session loading guard tests ---
+
+    #[rstest::rstest]
+    fn is_loading_returns_false_initially() {
+        // Given a default map.
+        let map = default_map();
+
+        // When checking loading state.
+        // Then it returns false.
+        assert!(!map.is_loading());
+    }
+
+    #[rstest::rstest]
+    fn begin_load_sets_is_loading_true() {
+        // Given a session map.
+        let mut map = default_map();
+        let session_id = SessionId::new();
+
+        // When beginning a load.
+        map.begin_load(session_id.clone());
+
+        // Then is_loading is true.
+        assert!(map.is_loading());
+    }
+
+    #[rstest::rstest]
+    fn clear_load_resets_is_loading() {
+        // Given a map with an active load.
+        let mut map = default_map();
+        map.begin_load(SessionId::new());
+        assert!(map.is_loading());
+
+        // When clearing the load.
+        map.clear_load();
+
+        // Then is_loading is false again.
+        assert!(!map.is_loading());
+    }
+
+    #[rstest::rstest]
+    fn session_load_guard_returns_none_initially() {
+        // Given a default map.
+        let map = default_map();
+
+        // When getting the load guard.
+        // Then it returns None.
+        assert!(map.session_load_guard().is_none());
+    }
+
+    #[rstest::rstest]
+    fn session_load_guard_returns_some_with_correct_session_id() {
+        // Given a session map.
+        let mut map = default_map();
+        let session_id = SessionId::new();
+
+        // When beginning a load.
+        map.begin_load(session_id.clone());
+
+        // Then the guard contains the correct session ID.
+        let guard = map.session_load_guard().expect("guard should exist");
+        assert_eq!(guard.session_id, session_id);
+    }
+
+    #[rstest::rstest]
+    fn clear_load_removes_guard() {
+        // Given a map with an active load guard.
+        let mut map = default_map();
+        map.begin_load(SessionId::new());
+        assert!(map.session_load_guard().is_some());
+
+        // When clearing the load.
+        map.clear_load();
+
+        // Then the guard is removed.
+        assert!(map.session_load_guard().is_none());
+    }
+
     #[rstest::rstest]
     fn any_session_id_returns_none_when_truly_empty() {
         // Given a map with one session.

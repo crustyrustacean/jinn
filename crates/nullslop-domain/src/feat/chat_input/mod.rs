@@ -50,4 +50,22 @@ pub fn register(registry: &mut AppUiRegistry) {
 }
 
 #[cfg(test)]
+mod register_tests {
+    use super::*;
+    use crate::common::AppUiRegistry;
+
+    #[test]
+    fn register_adds_element_to_registry() {
+        // Given an empty registry.
+        let mut registry = AppUiRegistry::new();
+
+        // When registering chat input elements.
+        register(&mut registry);
+
+        // Then the registry is not empty.
+        assert_eq!(registry.iter_mut().count(), 1);
+    }
+}
+
+#[cfg(test)]
 mod chat_input_tests;
