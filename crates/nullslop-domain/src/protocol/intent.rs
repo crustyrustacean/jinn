@@ -149,6 +149,9 @@ pub enum Intent {
     /// Queue a "Continue" user message to the session under the sidebar cursor.
     SidebarSessionContinue,
 
+    /// Toggle the attached/detached state of the judge session under the sidebar cursor.
+    ToggleJudgeAttached,
+
     // --- Chat Entry Selection ---
     /// Select the next chat entry.
     ChatEntrySelectNext,
@@ -346,6 +349,7 @@ impl std::fmt::Display for Intent {
             Intent::SidebarPersonaEdit => write!(f, "edit persona"),
             Intent::SessionNewWithLifecycle => write!(f, "new session with lifecycle"),
             Intent::SidebarSessionContinue => write!(f, "session continue"),
+            Intent::ToggleJudgeAttached => write!(f, "toggle judge attached"),
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),
             Intent::ChatEntryPinSelected => write!(f, "pin selected entry"),

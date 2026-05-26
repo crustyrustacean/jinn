@@ -29,6 +29,8 @@ pub enum KeyCategory {
     Input,
     /// Context strategy and prompt template management.
     Context,
+    /// Judge management: attach/detach judges.
+    Judge,
 }
 
 /// Builds and returns the full keymap with all scope bindings.
@@ -182,6 +184,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("r", Intent::SidebarRenameSession, KeyCategory::General)
             .bind("a", Intent::SidebarSessionArchive, KeyCategory::General)
             .bind("c", Intent::SidebarSessionContinue, KeyCategory::General)
+            // Judge management
+            .describe_group_with_category("<leader>j", "judge", KeyCategory::Judge)
+            .bind("<leader>jd", Intent::ToggleJudgeAttached, KeyCategory::Judge)
             // i activates session and enters insert mode (same as enter)
             .bind("i", Intent::SidebarConfirm, KeyCategory::Input);
         })
