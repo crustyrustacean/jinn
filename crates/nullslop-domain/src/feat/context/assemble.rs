@@ -109,6 +109,13 @@ pub fn assemble_prompt(
         .and_then(|o| o.tool_definitions.clone())
         .unwrap_or_else(|| state.context.tool_definitions.values().cloned().collect());
 
+    // Filter out disabled tools from the default tool list.
+    // Override tool_definitions are not filtered (user-provided takes priority).
+    let disabled = session.disabled_tools();
+    if overrides.is_none_or(|o| o.tool_definitions.is_none()) {
+        tool_defs.retain(|def| !disabled.contains(&def.name));
+    }
+
     // Inject judge-specific tools for judge sessions.
     if session.judge().is_some() {
         tool_defs.extend(crate::feat::judge::judge_tool_definitions());
@@ -125,7 +132,15 @@ pub fn assemble_prompt(
             defs.iter().map(|d| (d.name.clone(), d.clone())).collect();
         build_tool_context_block(&map)
     } else {
-        build_tool_context_block(&state.context.tool_definitions)
+        // Filter disabled tools from the tool context block.
+        let filtered_map: HashMap<String, ToolDefinition> = state
+            .context
+            .tool_definitions
+            .iter()
+            .filter(|(name, _)| !disabled.contains(*name))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        build_tool_context_block(&filtered_map)
     };
 
     // Apply overrides: skills block.
@@ -797,6 +812,209 @@ mod tests {
         assert!(
             !tool_names.contains(&"task_complete"),
             "regular sessions should not have task_complete, got: {tool_names:?}"
+        );
+    }
+
+    #[test]
+    fn assemble_prompt_excludes_disabled_tools_from_tool_definitions() {
+        // Given a session with tools and some disabled.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
+        {
+            let mut guard = state.write();
+            guard
+                .context
+                .tool_definitions
+                .insert("bash".to_owned(), make_tool("bash"));
+            guard
+                .context
+                .tool_definitions
+                .insert("read".to_owned(), make_tool("read"));
+            guard
+                .context
+                .tool_definitions
+                .insert("write".to_owned(), make_tool("write"));
+            // Disable bash and write.
+            let mut disabled = std::collections::HashSet::new();
+            disabled.insert("bash".to_owned());
+            disabled.insert("write".to_owned());
+            guard
+                .session
+                .get_mut(&session_id)
+                .expect("session exists")
+                .set_disabled_tools(disabled);
+        }
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then only enabled tools appear in tool definitions.
+        let tool_names: Vec<&str> = result.tool_definitions.iter().map(|t| t.name.as_str()).collect();
+        assert!(
+            !tool_names.contains(&"bash"),
+            "disabled bash should be excluded, got: {tool_names:?}"
+        );
+        assert!(
+            !tool_names.contains(&"write"),
+            "disabled write should be excluded, got: {tool_names:?}"
+        );
+        assert!(
+            tool_names.contains(&"read"),
+            "enabled read should be included, got: {tool_names:?}"
+        );
+    }
+
+    #[test]
+    fn assemble_prompt_excludes_disabled_tools_from_tool_context_block() {
+        // Given a session with tools and some disabled.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
+        {
+            let mut guard = state.write();
+            guard
+                .context
+                .tool_definitions
+                .insert("bash".to_owned(), make_tool("bash"));
+            guard
+                .context
+                .tool_definitions
+                .insert("read".to_owned(), make_tool("read"));
+            // Disable bash.
+            let mut disabled = std::collections::HashSet::new();
+            disabled.insert("bash".to_owned());
+            guard
+                .session
+                .get_mut(&session_id)
+                .expect("session exists")
+                .set_disabled_tools(disabled);
+        }
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then the system message tool block excludes disabled tools.
+        match &result.messages[0] {
+            LlmMessage::System { content } => {
+                assert!(
+                    content.contains("read does things"),
+                    "enabled tool should be in tool context block, got: {content}"
+                );
+                assert!(
+                    !content.contains("bash does things"),
+                    "disabled tool should be excluded from tool context block, got: {content}"
+                );
+            }
+            other => panic!("expected System message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_prompt_override_tool_definitions_not_filtered_by_disabled() {
+        // Given a session with disabled tools AND an override providing specific tools.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
+        {
+            let mut guard = state.write();
+            guard
+                .context
+                .tool_definitions
+                .insert("bash".to_owned(), make_tool("bash"));
+            // Disable bash.
+            let mut disabled = std::collections::HashSet::new();
+            disabled.insert("bash".to_owned());
+            guard
+                .session
+                .get_mut(&session_id)
+                .expect("session exists")
+                .set_disabled_tools(disabled);
+        }
+
+        // When assembling with tool_definitions override that includes bash.
+        let overrides = AssemblyOverrides {
+            tool_definitions: Some(vec![ToolDefinition {
+                name: "bash".to_owned(),
+                description: "A workflow tool".to_owned(),
+                parameters: serde_json::json!({"type": "object"}),
+                prompt_snippet: Some("workflow bash".to_owned()),
+                prompt_guidelines: vec![],
+            }]),
+            ..Default::default()
+        };
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), Some(&overrides));
+
+        // Then the override tools are used as-is (not filtered by disabled set).
+        assert_eq!(result.tool_definitions.len(), 1);
+        assert_eq!(result.tool_definitions[0].name, "bash");
+    }
+
+    #[test]
+    fn assemble_prompt_judge_session_filters_disabled_but_includes_judge_tools() {
+        use crate::feat::judge::JudgeMeta;
+
+        // Given a judge session with some regular tools disabled.
+        let (state, origin_id) = state_with_history(vec![ChatEntry::user("evaluate")]);
+        {
+            let mut guard = state.write();
+            guard
+                .context
+                .tool_definitions
+                .insert("bash".to_owned(), make_tool("bash"));
+            guard
+                .context
+                .tool_definitions
+                .insert("read".to_owned(), make_tool("read"));
+            // Create judge session with bash disabled.
+            let mut judge_session = crate::feat::session::chat_session::ChatSessionState::new();
+            let mut disabled = std::collections::HashSet::new();
+            disabled.insert("bash".to_owned());
+            judge_session.set_disabled_tools(disabled);
+            judge_session.set_judge(JudgeMeta {
+                origin_session: origin_id,
+                is_attached: true,
+                judge_name: "test-judge".to_owned(),
+                auto_reset: None,
+            });
+            let id = judge_session.session_id().clone();
+            guard.session.insert(judge_session);
+            id
+        };
+
+        // Get the judge session ID.
+        let judge_id = {
+            let guard = state.read();
+            guard
+                .session
+                .iter()
+                .find(|(_, s)| s.is_judge())
+                .map(|(id, _)| id.clone())
+                .expect("judge session exists")
+        };
+
+        // When assembling the prompt for the judge session.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &judge_id, &counter(), None);
+
+        // Then bash is filtered out but read and judge tools remain.
+        let tool_names: Vec<&str> = result
+            .tool_definitions
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
+        assert!(
+            !tool_names.contains(&"bash"),
+            "disabled bash should be excluded, got: {tool_names:?}"
+        );
+        assert!(
+            tool_names.contains(&"read"),
+            "enabled read should be included, got: {tool_names:?}"
+        );
+        assert!(
+            tool_names.contains(&"session_query"),
+            "judge tools should still be included, got: {tool_names:?}"
+        );
+        assert!(
+            tool_names.contains(&"task_complete"),
+            "judge tools should still be included, got: {tool_names:?}"
         );
     }
 

@@ -5,6 +5,8 @@
 //! picker selections update both the session profile and the global config,
 //! while session load/save only touches the session's own profile.
 
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 
 use crate::feat::provider_infra::NO_PROVIDER_ID;
@@ -44,6 +46,14 @@ pub struct SessionProfile {
     pub persona_name: String,
     #[serde(default = "default_sliding_window_size")]
     pub sliding_window_size: usize,
+    /// Tool names the user has explicitly disabled for this session.
+    ///
+    /// Opt-out model: empty set means all tools are enabled.
+    /// New tools added in future versions automatically appear.
+    /// Serialized as a JSON array; `#[serde(default)]` ensures legacy
+    /// sessions without this field deserialize to an empty set (all enabled).
+    #[serde(default)]
+    pub disabled_tools: HashSet<String>,
 }
 
 impl Default for SessionProfile {
@@ -53,6 +63,7 @@ impl Default for SessionProfile {
             strategy: PromptStrategyId::passthrough(),
             persona_name: DEFAULT_PERSONA_NAME.to_owned(),
             sliding_window_size: DEFAULT_SLIDING_WINDOW_SIZE,
+            disabled_tools: HashSet::new(),
         }
     }
 }
@@ -69,6 +80,7 @@ impl SessionProfile {
             strategy,
             persona_name: DEFAULT_PERSONA_NAME.to_owned(),
             sliding_window_size,
+            disabled_tools: HashSet::new(),
         }
     }
 
@@ -78,12 +90,14 @@ impl SessionProfile {
         strategy: PromptStrategyId,
         persona_name: String,
         sliding_window_size: usize,
+        disabled_tools: HashSet<String>,
     ) -> Self {
         Self {
             model,
             strategy,
             persona_name,
             sliding_window_size,
+            disabled_tools,
         }
     }
 }
@@ -116,5 +130,45 @@ mod tests {
         assert_eq!(profile.model, "ollama/llama3");
         assert_eq!(profile.strategy, PromptStrategyId::sliding_window());
         assert_eq!(profile.sliding_window_size, 10);
+    }
+
+    #[rstest::rstest]
+    fn disabled_tools_round_trips_through_serde() {
+        // Given a profile with disabled tools.
+        let mut disabled = HashSet::new();
+        disabled.insert("bash".to_owned());
+        disabled.insert("edit".to_owned());
+        let profile = SessionProfile::new(
+            "ollama/llama3".to_owned(),
+            PromptStrategyId::passthrough(),
+            "coding-assistant".to_owned(),
+            5,
+            disabled.clone(),
+        );
+
+        // When serialized and deserialized.
+        let json = serde_json::to_string(&profile).expect("serialize");
+        let restored: SessionProfile = serde_json::from_str(&json).expect("deserialize");
+
+        // Then disabled_tools is preserved.
+        assert_eq!(restored.disabled_tools, disabled);
+    }
+
+    #[rstest::rstest]
+    fn legacy_json_without_disabled_tools_deserializes_to_empty_set() {
+        // Given JSON from an older version that lacks disabled_tools.
+        let json = r#"{"model":"ollama/llama3","strategy":"passthrough","persona_name":"coding-assistant","sliding_window_size":5}"#;
+
+        // When deserialized.
+        let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");
+
+        // Then disabled_tools is empty (all tools enabled).
+        assert!(profile.disabled_tools.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn default_disabled_tools_is_empty() {
+        let profile = SessionProfile::default();
+        assert!(profile.disabled_tools.is_empty());
     }
 }

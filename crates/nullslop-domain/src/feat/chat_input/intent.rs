@@ -532,6 +532,13 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
         state.invalidate_theme_caches();
     }
 
+    // If leaving the tool picker without confirming, restore the original disabled_tools.
+    if state.frontend.scope_stack.picker_kind() == Some(&crate::protocol::PickerKind::Tool)
+        && let Some(snapshot) = state.frontend.tool_picker_snapshot.take()
+    {
+        state.active_session_mut().set_disabled_tools(snapshot);
+    }
+
     // Clear all overlay scopes — always returns to Normal.
     // Using clear_overlays() instead of pop() ensures that ESC from Input mode
     // always lands in Normal, even when a sidebar scope is stacked below Input
