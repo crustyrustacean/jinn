@@ -1013,3 +1013,99 @@ async fn build_tool_context_uses_session_default_cwd_when_not_overridden() {
     // Then the session cwd is used ("." from default).
     assert_eq!(tool_ctx.cwd, PathBuf::from("."));
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn handle_processes_register_tools_command() {
+    // Given an activated actor.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+    sink.clear();
+
+    let definition = ToolDefinition {
+        name: "test_tool".to_owned(),
+        description: "A test tool".to_owned(),
+        prompt_snippet: None,
+        prompt_guidelines: vec![],
+        parameters: serde_json::json!({"type": "object", "properties": {}}),
+    };
+
+    // When calling handle with ActorEnvelope::Command(RegisterTools).
+    let cmd = Command::RegisterTools(RegisterTools {
+        provider: "test-provider".to_owned(),
+        definitions: vec![definition],
+    });
+    actor
+        .handle(crate::common::actor::ActorEnvelope::Command(cmd), &ctx)
+        .await;
+
+    // Then the tool was registered (event emitted).
+    let events = sink.events();
+    let found = events.iter().any(|e| matches!(e, Event::ToolsRegistered(_)));
+    assert!(found, "handle should process RegisterTools command");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn handle_processes_tool_execution_completed_event() {
+    // Given an activated actor with a pending empty batch.
+    let (sink, mut ctx, deps) = default_test_ctx();
+    let mut actor = ToolOrchestratorActor::activate(deps, &mut ctx);
+    sink.clear();
+
+    // Execute a batch with an unknown tool (gets immediate error completion).
+    let session_id = SessionId::new();
+    let cmd = Command::ExecuteToolBatch(ExecuteToolBatch {
+        session_id: session_id.clone(),
+        tool_calls: vec![ToolCall {
+            id: "call_err".to_owned(),
+            name: "nonexistent".to_owned(),
+            arguments: "{}".to_owned(),
+        }],
+    });
+    actor.handle_command(&cmd, &ctx);
+    sink.take_events(); // Clear the error completion event.
+
+    // Feed the completion back via handle (Envelope::Event path).
+    let _events = sink.events();
+    let completed_evt = Event::ToolExecutionCompleted(ToolExecutionCompleted {
+        session_id: session_id.clone(),
+        result: ToolResult {
+            tool_call_id: "call_err".to_owned(),
+            name: "nonexistent".to_owned(),
+            content: "unknown tool".to_owned(),
+            success: false,
+            full_content: None,
+            truncation: None,
+        },
+    });
+    actor
+        .handle(crate::common::actor::ActorEnvelope::Event(completed_evt), &ctx)
+        .await;
+
+    // Then ToolBatchCompleted was emitted via the event path.
+    let events = sink.events();
+    let batch_completed = find_batch_completed(&events);
+    assert_eq!(batch_completed.len(), 1, "handle should process ToolExecutionCompleted event");
+}
+
+#[rstest::rstest]
+fn tool_registration_debug_shows_name() {
+    // Given a Builtin tool registration.
+    let reg = ToolRegistration::Builtin {
+        definition: ToolDefinition {
+            name: "my_tool".to_owned(),
+            description: "test".to_owned(),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            parameters: serde_json::json!({}),
+        },
+        execute: |_call, _ctx| Box::pin(async { unimplemented!() }),
+    };
+
+    // When formatting as Debug.
+    let debug_str = format!("{reg:?}");
+
+    // Then the output contains the tool name.
+    assert!(debug_str.contains("my_tool"), "Debug output should contain tool name: {debug_str}");
+}

@@ -172,4 +172,27 @@ mod tests {
 
         // Then name is correct.
     }
+
+    #[rstest::rstest]
+    fn is_shutdown_starts_false() {
+        // Given a new fake host (not yet shut down).
+        let host = FakeActorHost::new();
+
+        // When querying is_shutdown before calling shutdown.
+        // Then it returns false.
+        assert!(!host.is_shutdown(), "is_shutdown should start as false");
+    }
+
+    #[rstest::rstest]
+    fn begin_shutdown_fires_completion() {
+        // Given a fake host.
+        let host = FakeActorHost::new();
+
+        // When beginning shutdown with a completion channel.
+        let (tx, mut rx) = tokio::sync::oneshot::channel();
+        host.begin_shutdown(tx);
+
+        // Then the completion fires immediately.
+        assert!(rx.try_recv().is_ok(), "begin_shutdown should fire completion");
+    }
 }

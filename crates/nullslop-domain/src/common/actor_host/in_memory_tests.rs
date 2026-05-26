@@ -497,3 +497,120 @@ fn actor_to_actor_direct_message() {
         "actor-b should receive direct message: {msgs_b:?}"
     );
 }
+
+#[rstest::rstest]
+fn source_filtering_skips_originating_actor_for_commands() {
+    // Given one actor subscribed to PushChatEntry.
+    let runtime = rt();
+    let tracker = test_tracker();
+    let _guard = runtime.enter();
+    let sink = Arc::new(RecordingSink::new());
+    let (r1, received1) = spawn_recording_actor(
+        "actor-a",
+        sink.clone(),
+        &[],
+        &[crate::feat::chat_input::protocol::command::PushChatEntry::NAME],
+        runtime.handle(),
+        &tracker,
+    );
+    let host = InMemoryActorHost::from_actors_with_handle(
+        vec![r1],
+        runtime.handle().clone(),
+        tracker.clone(),
+    );
+
+    // When sending a command with source = the subscribing actor itself.
+    host.send_command(
+        &Command::PushChatEntry(crate::feat::chat_input::protocol::command::PushChatEntry {
+            session_id: crate::protocol::SessionId::new(),
+            entry: crate::protocol::ChatEntry::user("hello"),
+        }),
+        Some(&ActorName::new("actor-a")),
+    );
+    std::thread::sleep(Duration::from_millis(50));
+
+    // Then actor-a does NOT receive the command (source filtered out).
+    let msgs_a = received1.lock().clone();
+    assert!(
+        msgs_a.is_empty(),
+        "actor-a should not receive command when it is the source: {msgs_a:?}"
+    );
+
+    // When sending the same command with no source (None).
+    host.send_command(
+        &Command::PushChatEntry(crate::feat::chat_input::protocol::command::PushChatEntry {
+            session_id: crate::protocol::SessionId::new(),
+            entry: crate::protocol::ChatEntry::user("hello2"),
+        }),
+        None,
+    );
+    std::thread::sleep(Duration::from_millis(50));
+
+    // Then actor-a DOES receive the command.
+    let msgs_a = received1.lock().clone();
+    assert!(
+        !msgs_a.is_empty(),
+        "actor-a should receive command when no source is specified"
+    );
+
+    host.shutdown_with_timeout(Duration::from_millis(200))
+        .expect("shutdown");
+}
+
+#[rstest::rstest]
+fn shutdown_tracker_begin_populates_pending_set() {
+    // Given a new ShutdownTracker.
+    let tracker = ShutdownTracker::new();
+    let (tx, mut rx) = tokio::sync::oneshot::channel();
+
+    // When calling begin with actor names.
+    tracker.begin(["actor-a".to_owned(), "actor-b".to_owned()].into_iter(), tx);
+
+    // Then completing only one actor does not fire the oneshot.
+    tracker.complete("actor-a");
+    let result = rx.try_recv();
+    assert!(result.is_err(), "should not fire until all actors complete");
+
+    // And completing the second actor fires the oneshot.
+    tracker.complete("actor-b");
+    let result = rx.try_recv();
+    assert!(result.is_ok(), "should fire after all actors complete");
+}
+
+#[rstest::rstest]
+fn shutdown_tracker_complete_ignores_unknown_actor() {
+    // Given a tracker with one pending actor.
+    let tracker = ShutdownTracker::new();
+    let (tx, mut rx) = tokio::sync::oneshot::channel();
+    tracker.begin(["actor-a".to_owned()].into_iter(), tx);
+
+    // When completing an unknown actor name.
+    tracker.complete("unknown");
+
+    // Then the oneshot has not fired.
+    let result = rx.try_recv();
+    assert!(result.is_err(), "should not fire for unknown actor");
+
+    // And completing the correct actor fires it.
+    tracker.complete("actor-a");
+    let result = rx.try_recv();
+    assert!(result.is_ok(), "should fire after correct actor completes");
+}
+
+#[rstest::rstest]
+fn recording_sink_take_commands_returns_previously_sent_commands() {
+    // Given a RecordingSink with a command sent.
+    let sink = Arc::new(RecordingSink::new());
+    sink.send_command(Command::RefreshModels);
+    assert_eq!(sink.commands().len(), 1);
+
+    // When taking commands.
+    let taken = sink.take_commands();
+
+    // Then the taken commands contain what was sent.
+    assert_eq!(taken.len(), 1, "take_commands should return previously sent commands");
+    assert!(matches!(taken[0], Command::RefreshModels));
+
+    // And subsequent calls return empty (they were drained).
+    assert!(sink.take_commands().is_empty(), "take_commands should drain");
+}
