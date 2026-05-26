@@ -121,6 +121,11 @@ impl SessionPersistenceActor {
                 || event.reason == StreamCompletedReason::ToolUse;
             session.finish_streaming(preserve_assistant);
 
+            // Hard cancel: force-exclude dangling tool calls left by the interrupted stream.
+            if event.reason == StreamCompletedReason::Canceled {
+                session.force_exclude_dangling_tool_calls();
+            }
+
             // For ToolUse: do NOT consume soft-cancel here. The tool batch is still
             // executing. Let on_tool_batch_completed handle the soft-cancel after
             // tool results are in. Peek at the flag to know if compaction is pending.
@@ -666,5 +671,97 @@ mod tests {
             .iter()
             .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(!has_send, "expected no SendToLlmProvider during full flow");
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_canceled_force_excludes_dangling_tool_calls() {
+        // Given a session in streaming state with dangling tool calls in history.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("run it"));
+            session.push_entry(ChatEntry::assistant(""));
+            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with Canceled reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Canceled,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the dangling ToolCall and empty Assistant are ForcedExclude.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let history = session.history();
+        // User entry is not excluded.
+        assert_eq!(history[0].context_override, crate::protocol::ContextOverride::Default);
+        // Empty Assistant and ToolCall are excluded.
+        assert_eq!(history[1].context_override, crate::protocol::ContextOverride::ForcedExclude);
+        assert_eq!(history[2].context_override, crate::protocol::ContextOverride::ForcedExclude);
+        // Error entry ("Cancelled") is not excluded.
+        assert_eq!(history[3].context_override, crate::protocol::ContextOverride::Default);
+
+        // And a CompactContext was not emitted.
+        let commands = sink.commands();
+        let has_compact = commands
+            .iter()
+            .any(|c| matches!(c, Command::CompactContext(_)));
+        assert!(!has_compact, "expected no CompactContext after cancel");
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_canceled_with_complete_tool_loop_does_not_exclude() {
+        // Given a session in streaming state with a complete tool loop in history.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("run it"));
+            session.push_entry(ChatEntry::assistant(""));
+            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+            session.push_entry(
+                ChatEntry::tool_result(
+                    "tc-1",
+                    "bash",
+                    "file.txt",
+                    crate::feat::session::tool_result_status::ToolResultStatus::Success,
+                ),
+            );
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with Canceled reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Canceled,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then no entries are ForcedExclude.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let history = session.history();
+        for entry in history {
+            assert_eq!(
+                entry.context_override,
+                crate::protocol::ContextOverride::Default,
+                "expected Default for entry {:?}",
+                entry.kind
+            );
+        }
     }
 }

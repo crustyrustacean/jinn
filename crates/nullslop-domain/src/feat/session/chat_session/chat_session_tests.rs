@@ -3011,3 +3011,136 @@ fn forked_session_is_always_persistable() {
     assert!(session.is_persistable());
     assert!(!session.has_interacted());
 }
+
+// --- force_exclude_dangling_tool_calls tests ---
+
+#[test]
+fn force_exclude_excludes_dangling_tool_call_and_empty_assistant() {
+    // Given a history with an empty Assistant and a ToolCall with no matching ToolResult.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("run it"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+
+    // When force-excluding dangling tool calls.
+    session.force_exclude_dangling_tool_calls();
+
+    // Then both the ToolCall and empty Assistant are ForcedExclude.
+    let history = session.history();
+    assert_eq!(history[0].context_override, ContextOverride::Default);
+    assert_eq!(history[1].context_override, ContextOverride::ForcedExclude);
+    assert_eq!(history[2].context_override, ContextOverride::ForcedExclude);
+}
+
+#[test]
+fn force_exclude_preserves_complete_tool_loop() {
+    // Given a history with a complete tool loop (ToolCall + ToolResult).
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("run it"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+    session.push_entry(ChatEntry::tool_result(
+        "tc-1",
+        "bash",
+        "file.txt",
+        crate::feat::session::tool_result_status::ToolResultStatus::Success,
+    ));
+
+    // When force-excluding dangling tool calls.
+    session.force_exclude_dangling_tool_calls();
+
+    // Then no entries are ForcedExclude.
+    let history = session.history();
+    for entry in history {
+        assert_eq!(
+            entry.context_override,
+            ContextOverride::Default,
+            "expected Default for entry {:?}",
+            entry.kind
+        );
+    }
+}
+
+#[test]
+fn force_exclude_preserves_non_empty_assistant() {
+    // Given a history with a non-empty Assistant and a dangling ToolCall.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("run it"));
+    session.push_entry(ChatEntry::assistant("let me check"));
+    session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+
+    // When force-excluding dangling tool calls.
+    session.force_exclude_dangling_tool_calls();
+
+    // Then the ToolCall is ForcedExclude but the non-empty Assistant is not.
+    let history = session.history();
+    assert_eq!(history[0].context_override, ContextOverride::Default);
+    assert_eq!(history[1].context_override, ContextOverride::Default);
+    assert_eq!(history[2].context_override, ContextOverride::ForcedExclude);
+}
+
+#[test]
+fn force_exclude_handles_multiple_dangling_calls() {
+    // Given a history with multiple dangling ToolCalls.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("run it"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+    session.push_entry(ChatEntry::tool_call("tc-2", "read", r#"{"file":"a.rs"}"#));
+
+    // When force-excluding dangling tool calls.
+    session.force_exclude_dangling_tool_calls();
+
+    // Then all ToolCalls and the empty Assistant are ForcedExclude.
+    let history = session.history();
+    assert_eq!(history[0].context_override, ContextOverride::Default);
+    assert_eq!(history[1].context_override, ContextOverride::ForcedExclude);
+    assert_eq!(history[2].context_override, ContextOverride::ForcedExclude);
+    assert_eq!(history[3].context_override, ContextOverride::ForcedExclude);
+}
+
+#[test]
+fn force_exclude_mixed_complete_and_incomplete() {
+    // Given a history with a complete loop and an incomplete loop.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("run it"));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+    session.push_entry(ChatEntry::tool_result(
+        "tc-1",
+        "bash",
+        "file.txt",
+        crate::feat::session::tool_result_status::ToolResultStatus::Success,
+    ));
+    session.push_entry(ChatEntry::assistant(""));
+    session.push_entry(ChatEntry::tool_call("tc-2", "read", r#"{"file":"a.rs"}"#));
+
+    // When force-excluding dangling tool calls.
+    session.force_exclude_dangling_tool_calls();
+
+    // Then only tc-2 and its empty Assistant are excluded; tc-1 entries are untouched.
+    let history = session.history();
+    assert_eq!(history[0].context_override, ContextOverride::Default); // User
+    assert_eq!(history[1].context_override, ContextOverride::Default); // Assistant ""
+    assert_eq!(history[2].context_override, ContextOverride::Default); // ToolCall tc-1
+    assert_eq!(history[3].context_override, ContextOverride::Default); // ToolResult tc-1
+    assert_eq!(history[4].context_override, ContextOverride::ForcedExclude); // Assistant ""
+    assert_eq!(history[5].context_override, ContextOverride::ForcedExclude); // ToolCall tc-2
+}
+
+#[test]
+fn force_exclude_no_tool_calls_is_noop() {
+    // Given a history with no tool calls.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    session.push_entry(ChatEntry::assistant("hi"));
+
+    // When force-excluding dangling tool calls.
+    session.force_exclude_dangling_tool_calls();
+
+    // Then nothing is excluded.
+    let history = session.history();
+    for entry in history {
+        assert_eq!(entry.context_override, ContextOverride::Default);
+    }
+}
