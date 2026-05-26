@@ -5,9 +5,9 @@ use std::path::PathBuf;
 use crate::common::actor::{Actor, ActorContext, RecordingSink};
 use crate::common::app_state::AppState;
 use crate::common::state::State;
-use crate::feat::tools_actor::builtin_get_time;
-use crate::feat::tools_actor::builtin_read;
-use crate::feat::tools_actor::builtin_write;
+use crate::feat::tools_actor::get_time;
+use crate::feat::tools_actor::read;
+use crate::feat::tools_actor::write;
 use crate::feat::tools_actor::protocol::command::{
     CancelToolBatch, ExecuteToolBatch, RegisterTools,
 };
@@ -265,7 +265,7 @@ async fn execute_builtin_get_time_tool() {
     };
 
     // When executing the get_time tool.
-    let result = builtin_get_time::execute(call, ctx).await;
+    let result = get_time::execute(call, ctx).await;
 
     // Then the result has non-empty content.
     assert_eq!(result.tool_call_id, "call_3");
@@ -302,7 +302,7 @@ async fn execute_builtin_read_tool() {
     };
 
     // When executing the read tool.
-    let result = builtin_read::execute(call, tool_ctx).await;
+    let result = read::execute(call, tool_ctx).await;
     assert_eq!(result.tool_call_id, "call_4");
     assert!(result.success);
     assert_eq!(result.content, "file contents here");
@@ -333,7 +333,7 @@ async fn execute_builtin_read_tool_returns_error_on_missing_file() {
     };
 
     // When executing the read tool.
-    let result = builtin_read::execute(call, tool_ctx).await;
+    let result = read::execute(call, tool_ctx).await;
 
     // Then the result indicates failure.
     assert!(!result.success);
@@ -669,7 +669,7 @@ async fn write_tool_returns_success() {
     };
 
     // When executing the write tool.
-    let result = builtin_write::execute(call, tool_ctx).await;
+    let result = write::execute(call, tool_ctx).await;
 
     // Then the result indicates success.
     assert_eq!(result.tool_call_id, "call_w1");
@@ -706,7 +706,7 @@ async fn write_tool_creates_file_with_content() {
     };
 
     // When executing the write tool.
-    let _result = builtin_write::execute(call, tool_ctx).await;
+    let _result = write::execute(call, tool_ctx).await;
 
     // Then the file contains the written content.
     let content = std::fs::read_to_string(&file_path).expect("read written file");
@@ -742,7 +742,7 @@ async fn write_tool_creates_parent_dirs_and_file() {
     };
 
     // When executing the write tool.
-    let result = builtin_write::execute(call, tool_ctx).await;
+    let result = write::execute(call, tool_ctx).await;
 
     // Then the result indicates success.
     assert!(result.success, "expected success, got: {}", result.content);
@@ -782,7 +782,7 @@ async fn write_tool_overwrites_existing_file() {
     };
 
     // When executing the write tool.
-    let result = builtin_write::execute(call, tool_ctx).await;
+    let result = write::execute(call, tool_ctx).await;
 
     // Then the result indicates success.
     assert!(result.success);
@@ -812,7 +812,7 @@ async fn write_tool_returns_error_on_bad_json() {
     };
 
     // When executing the write tool.
-    let result = builtin_write::execute(call, tool_ctx).await;
+    let result = write::execute(call, tool_ctx).await;
 
     // Then the result indicates failure.
     assert_eq!(result.tool_call_id, "call_w4");
