@@ -142,22 +142,14 @@ impl UiElement<AppState> for StatusBarElement {
         };
 
         let left_side = {
-            let left = {
-                let pinned_count = state.active_session().pinned_entries().len();
-                if pinned_count > 0 {
-                    format!("\u{1f4cc}{pinned_count} {token_info}")
-                } else {
-                    token_info.clone()
-                }
-            };
-
             // Build left side: cost + turn count.
             let total_cost = agg.total_cost();
             let turn_count = turn_counter::compute_turn_count(state.active_session().history());
+            let turn_symbol = '\u{21BB}';
             let left_spans: Vec<Span> = vec![
-                Span::styled(left, style),
+                Span::styled(token_info, style),
                 Span::styled(format!(" ${total_cost:.5}"), style),
-                Span::styled(format!(" Turns: {turn_count}"), style),
+                Span::styled(format!(" {turn_symbol}{turn_count}"), style),
             ];
             Paragraph::new(Line::from(left_spans))
                 .style(style)
@@ -165,15 +157,7 @@ impl UiElement<AppState> for StatusBarElement {
         };
         frame.render_widget(left_side, info_area);
 
-        let notification = state.frontend.active_status_notification();
-        let right_spans = if let Some(msg) = notification {
-            vec![
-                Span::styled(msg, Style::default().fg(state.frontend.theme.success)),
-                Span::styled(format!("  {model}"), style),
-            ]
-        } else {
-            vec![Span::styled(model, style)]
-        };
+        let right_spans = vec![Span::styled(model, style)];
         let right_line = Line::from(right_spans);
         let model_widget = Paragraph::new(right_line).alignment(Alignment::Right);
         frame.render_widget(model_widget, info_area);
