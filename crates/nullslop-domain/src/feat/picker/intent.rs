@@ -540,6 +540,7 @@ fn confirm_judge(state: &mut AppState) -> IntentResult {
         origin_session: active_id.clone(),
         is_attached: true,
         judge_name: entry.name.clone(),
+        auto_reset: None,
     });
 
     // Inherit the origin session's CWD so judge tools run in the same directory.
@@ -602,6 +603,7 @@ mod tests {
             description: format!("{name} description"),
             body: body.to_owned(),
             model: model.map(std::borrow::ToOwned::to_owned),
+            auto_reset: false,
             file_path: PathBuf::new(),
         }
     }

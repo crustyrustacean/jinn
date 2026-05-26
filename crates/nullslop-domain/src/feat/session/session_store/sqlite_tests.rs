@@ -742,7 +742,8 @@ async fn judge_meta_round_trips() {
         origin_session: origin_id.clone(),
         is_attached: true,
         judge_name: "accuracy".to_owned(),
-    };
+    auto_reset: None,
+};
     session.set_judge(meta.clone());
 
     // When saving and loading.
@@ -797,7 +798,8 @@ async fn judge_meta_update_round_trips() {
         origin_session: origin_id.clone(),
         is_attached: true,
         judge_name: "accuracy".to_owned(),
-    });
+    auto_reset: None,
+});
     store.save(&session).await.expect("save v1");
 
     // When updating is_attached to false and saving again.
@@ -805,7 +807,8 @@ async fn judge_meta_update_round_trips() {
         origin_session: origin_id,
         is_attached: false,
         judge_name: "accuracy".to_owned(),
-    }));
+    auto_reset: None,
+}));
     store.save(&session).await.expect("save v2");
 
     // Then the updated value is preserved.
@@ -837,7 +840,8 @@ async fn fork_does_not_inherit_judge_meta() {
         origin_session: SessionId::new(),
         is_attached: true,
         judge_name: "accuracy".to_owned(),
-    });
+    auto_reset: None,
+});
     store.save(&source).await.expect("save source");
 
     // When forking.
@@ -900,7 +904,8 @@ async fn load_judge_sessions_for_origin_returns_children() {
         origin_session: origin_id.clone(),
         is_attached: true,
         judge_name: "accuracy".to_owned(),
-    });
+    auto_reset: None,
+});
     store.save(&judge_a).await.expect("save judge-a");
 
     let judge_b_id = SessionId::new();
@@ -909,7 +914,8 @@ async fn load_judge_sessions_for_origin_returns_children() {
         origin_session: origin_id.clone(),
         is_attached: true,
         judge_name: "completeness".to_owned(),
-    });
+    auto_reset: None,
+});
     store.save(&judge_b).await.expect("save judge-b");
 
     // When loading judge sessions for the origin.
@@ -961,7 +967,8 @@ async fn load_judge_sessions_for_origin_includes_archived() {
         origin_session: origin_id.clone(),
         is_attached: true,
         judge_name: "accuracy".to_owned(),
-    });
+    auto_reset: None,
+});
     store.save(&judge).await.expect("save judge");
     store.set_archived(&judge_id, true).await.expect("archive");
 
