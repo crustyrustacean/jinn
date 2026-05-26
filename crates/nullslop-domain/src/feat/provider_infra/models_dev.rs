@@ -326,4 +326,23 @@ mod tests {
         // Then None is returned.
         assert_eq!(result, None);
     }
+
+    // --- S-Tier: Kill mutant for is_empty ---
+
+    #[rstest::rstest]
+    fn is_empty_returns_false_when_data_present() {
+        // Kills: replace is_empty with true.
+        // If is_empty always returned true, data loading would appear to never work.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let user_path = write_json(
+            dir.path(),
+            "models.dev.json",
+            r#"{"openai":{"models":{"gpt-4o":{"limit":{"context":128000}}}}}"#,
+        );
+
+        let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
+
+        assert!(!data.is_empty(), "is_empty should return false when data is loaded");
+        assert_eq!(data.get("gpt-4o"), Some(128_000));
+    }
 }

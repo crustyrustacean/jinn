@@ -107,4 +107,35 @@ mod tests {
         assert_eq!(service.get("NEW_KEY"), Some("value".to_owned()));
         assert_eq!(clone.get("NEW_KEY"), Some("value".to_owned()));
     }
+
+    // --- S-Tier: Kill mutants for is_set / is_empty ---
+
+    #[rstest::rstest]
+    fn is_set_returns_true_when_key_present() {
+        // Kills: replace is_set with false.
+        let mut keys = crate::feat::provider_infra::api_keys::ApiKeys::new();
+        keys.insert("MY_KEY".to_owned(), "sk-secret".to_owned());
+        let service = ApiKeysService::new(keys);
+
+        assert!(service.is_set("MY_KEY"));
+    }
+
+    #[rstest::rstest]
+    fn is_set_returns_false_when_key_absent() {
+        // Kills: replace is_set with true.
+        let keys = crate::feat::provider_infra::api_keys::ApiKeys::new();
+        let service = ApiKeysService::new(keys);
+
+        assert!(!service.is_set("NONEXISTENT"));
+    }
+
+    #[rstest::rstest]
+    fn is_empty_returns_false_when_keys_present() {
+        // Kills: replace is_empty with true.
+        let mut keys = crate::feat::provider_infra::api_keys::ApiKeys::new();
+        keys.insert("KEY".to_owned(), "val".to_owned());
+        let service = ApiKeysService::new(keys);
+
+        assert!(!service.is_empty());
+    }
 }

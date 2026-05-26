@@ -278,4 +278,18 @@ mod tests {
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
     }
+
+    // --- S-Tier: Kill mutant for cache_path ---
+
+    #[rstest::rstest]
+    fn cache_path_returns_nonempty_path() {
+        // Kills: replace cache_path with Default::default().
+        // If cache_path returned an empty PathBuf, it wouldn't point to a valid cache location.
+        let path = cache_path();
+
+        // Then the path is non-empty and contains the expected filename.
+        assert!(!path.as_os_str().is_empty(), "cache_path should not be empty");
+        assert!(path.to_string_lossy().contains("nullslop"));
+        assert!(path.to_string_lossy().contains("model_cache.json"));
+    }
 }
