@@ -69,6 +69,14 @@ impl SessionPreviewCache {
     ) {
         self.entries.insert((session_id, history_len, width), lines);
     }
+
+    /// Clears all cached preview lines.
+    ///
+    /// Called when the active theme changes so preview popups re-render
+    /// with updated colors.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
 }
 
 /// Number of history entries to show in the preview.
@@ -108,7 +116,6 @@ pub fn render_session_preview_for_state(
     sidebar_rect: Rect,
     frame_area: Rect,
     state: &AppState,
-    cache: &mut SessionPreviewCache,
 ) {
     if !matches!(
         state.frontend.scope_stack.current(),
@@ -141,16 +148,17 @@ pub fn render_session_preview_for_state(
     let cursor_y = sessions_top_y + visual_row;
 
     // Compute content line count for height estimation.
+    let mut cache = state.frontend.caches.session_preview_cache.write();
     let inner_width = {
         let popup_width = preview_width(frame_area);
         popup_width.saturating_sub(2)
     };
-    let content_lines = build_preview_lines(session, inner_width.max(1), theme, tool_max, cache);
+    let content_lines = build_preview_lines(session, inner_width.max(1), theme, tool_max, &mut cache);
     let line_count = content_lines.len();
 
     let popup_rect = session_preview_popup_rect(frame_area, cursor_y, line_count);
 
-    render_session_preview(frame, popup_rect, session, theme, tool_max, cache);
+    render_session_preview(frame, popup_rect, session, theme, tool_max, &mut cache);
 }
 
 /// Computes the popup width: 60% of frame area, min 30, max frame width.
