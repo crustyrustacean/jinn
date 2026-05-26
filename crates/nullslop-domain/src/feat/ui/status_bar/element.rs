@@ -7,7 +7,7 @@
 use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
-use crate::feat::session::{aggregate_session_stats, aggregate_tree_stats};
+use crate::feat::session::{aggregate_tree_stats, TokenStats};
 use crate::feat::ui::status_bar::turn_counter;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
@@ -122,15 +122,16 @@ impl UiElement<AppState> for StatusBarElement {
         // --- Line 2: Existing info ---
         let active_model = state.active_session().profile().model.clone();
 
-        // Compute aggregated token stats for the active session.
-        let agg =
-            aggregate_session_stats(state.session.sessions(), state.session.active_session_id());
+        // Compute token stats for the active session only (no descendants).
+        let active_session = state.active_session();
+        let token_stats = TokenStats::from_ledger(active_session.token_ledger());
+        let total_cost = TokenStats::total_cost(active_session.token_ledger());
         let up_arrow = '\u{2191}';
         let down_arrow = '\u{2193}';
         let mut token_info = format!(
             "{up_arrow}{} {down_arrow}{}",
-            format_tokens(agg.total_sent()),
-            format_tokens(agg.total_received()),
+            format_tokens(token_stats.total_sent),
+            format_tokens(token_stats.total_received),
         );
 
         let ctx_size = state.active_session().context_size();
@@ -167,12 +168,11 @@ impl UiElement<AppState> for StatusBarElement {
 
         let left_side = {
             // Build left side: cost + turn count.
-            let total_cost = agg.total_cost();
             let turn_count = turn_counter::compute_turn_count(state.active_session().history());
             let turn_symbol = '\u{21BB}';
             let left_spans: Vec<Span> = vec![
                 Span::styled(token_info, style),
-                Span::styled(format!(" ${total_cost:.5}"), style),
+                Span::styled(format!(" ${:.5}", total_cost.abs()), style),
                 Span::styled(format!(" {turn_symbol}{turn_count}"), style),
             ];
             Paragraph::new(Line::from(left_spans))
