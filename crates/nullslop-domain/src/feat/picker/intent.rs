@@ -541,9 +541,17 @@ fn confirm_judge(state: &mut AppState) -> IntentResult {
     // Title the judge session after its definition name.
     judge_session.set_title(format!("judge/{}", &entry.name));
 
-    // Set model override if the judge definition specifies one.
+    // Set model: judge definition override takes priority, otherwise inherit from origin.
     if let Some(ref model) = judge_def.model {
         judge_session.set_model(model.clone());
+    } else {
+        let origin_model = state
+            .session
+            .get(&active_id)
+            .expect("origin session should exist")
+            .model()
+            .to_owned();
+        judge_session.set_model(origin_model);
     }
 
     // Pin the judge's body as a system entry at TOP position
@@ -711,5 +719,61 @@ mod tests {
             Some("judge/accuracy"),
             "title should be 'judge/<name>'"
         );
+    }
+
+    fn setup_state_with_judge_and_origin_model(
+        origin_model: &str,
+        judge_model: Option<&str>,
+    ) -> AppState {
+        let mut state = AppState::default();
+
+        // Create origin session with specific model.
+        let mut origin = ChatSessionState::new();
+        let origin_id = origin.session_id().clone();
+        origin.set_model(origin_model.to_owned());
+        state.session.insert(origin);
+        state.session.set_active(origin_id);
+
+        // Add judge definition.
+        state
+            .context
+            .judges
+            .push(make_judge("accuracy", "Check accuracy.", judge_model));
+
+        // Populate picker and select.
+        load_judge_picker_entries(&mut state);
+        state.frontend.judge_picker.move_down(1);
+
+        state
+    }
+
+    #[rstest::rstest]
+    fn confirm_judge_without_model_inherits_origin_model() {
+        // Given an origin session with a specific model and a judge without model override.
+        let mut state =
+            setup_state_with_judge_and_origin_model("anthropic/claude-sonnet", None);
+
+        // When confirming the judge picker.
+        let _ = confirm_judge(&mut state);
+
+        // Then the judge session inherits the origin's model.
+        let active = state.active_session();
+        assert_eq!(active.model(), "anthropic/claude-sonnet");
+    }
+
+    #[rstest::rstest]
+    fn confirm_judge_with_model_override_ignores_origin() {
+        // Given an origin session with a model and a judge with its own model override.
+        let mut state = setup_state_with_judge_and_origin_model(
+            "anthropic/claude-sonnet",
+            Some("anthropic/claude-haiku"),
+        );
+
+        // When confirming the judge picker.
+        let _ = confirm_judge(&mut state);
+
+        // Then the judge session uses its own model, not the origin's.
+        let active = state.active_session();
+        assert_eq!(active.model(), "anthropic/claude-haiku");
     }
 }
