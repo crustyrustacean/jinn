@@ -428,7 +428,8 @@ mod tests {
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "judge-a".to_owned(),
-        });
+auto_reset: None,
+});
         judge_a.set_session_state(SessionState::Archived);
         judge_a.mark_interacted();
         let judge_a_id = judge_a.session_id().clone();
@@ -438,7 +439,8 @@ mod tests {
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "judge-b".to_owned(),
-        });
+auto_reset: None,
+});
         judge_b.set_session_state(SessionState::Archived);
         judge_b.mark_interacted();
         let judge_b_id = judge_b.session_id().clone();
@@ -498,7 +500,8 @@ mod tests {
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "test-judge".to_owned(),
-        });
+auto_reset: None,
+});
         judge.set_session_state(SessionState::Archived);
         judge.mark_interacted();
         let judge_id = judge.session_id().clone();
@@ -574,7 +577,8 @@ mod tests {
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "test-judge".to_owned(),
-        });
+auto_reset: None,
+});
         judge.set_session_state(SessionState::Archived);
         judge.mark_interacted();
         let judge_id = judge.session_id().clone();
@@ -629,7 +633,8 @@ mod tests {
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "judge-a".to_owned(),
-        });
+auto_reset: None,
+});
         judge_a.set_session_state(SessionState::Archived);
         judge_a.mark_interacted();
         let judge_a_id = judge_a.session_id().clone();
@@ -639,7 +644,8 @@ mod tests {
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "judge-b".to_owned(),
-        });
+auto_reset: None,
+});
         judge_b.set_session_state(SessionState::Archived);
         judge_b.mark_interacted();
         let judge_b_id = judge_b.session_id().clone();
@@ -680,7 +686,8 @@ mod tests {
             origin_session: "nonexistent-session-id".to_string().into(),
             is_attached: true,
             judge_name: "orphan-judge".to_owned(),
-        });
+auto_reset: None,
+});
         judge.mark_interacted();
         let judge_id = judge.session_id().clone();
 
@@ -728,7 +735,8 @@ mod tests {
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "test-judge".to_owned(),
-        });
+auto_reset: None,
+});
         judge.set_session_state(SessionState::Archived);
         judge.mark_interacted();
         let judge_id = judge.session_id().clone();
@@ -775,7 +783,8 @@ mod tests {
             origin_session: session_id.clone(),
             is_attached: true,
             judge_name: "self-ref".to_owned(),
-        });
+auto_reset: None,
+});
 
         let (mut actor, _store) = test_actor_with_store(vec![session]);
         let (sink, ctx) = test_context();

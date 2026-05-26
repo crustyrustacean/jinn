@@ -37,6 +37,9 @@ pub struct Judge {
     pub body: String,
     /// Optional model override for the judge session.
     pub model: Option<String>,
+    /// Whether this judge automatically resets history before each evaluation cycle.
+    /// Set from the judge file's frontmatter. Per-session overrides live in [`JudgeMeta`].
+    pub auto_reset: bool,
     /// File path this judge was loaded from.
     pub file_path: PathBuf,
 }
@@ -57,4 +60,10 @@ pub struct JudgeMeta {
     pub is_attached: bool,
     /// The name of the judge definition file used to create this session.
     pub judge_name: String,
+    /// Per-session override for auto-reset behavior.
+    ///
+    /// `None` means use the judge file's default (`Judge::auto_reset`).
+    /// `Some(true/false)` means the user explicitly toggled it in the sidebar.
+    #[serde(default)]
+    pub auto_reset: Option<bool>,
 }

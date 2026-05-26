@@ -651,6 +651,15 @@ impl ChatSessionState {
         }
     }
 
+    /// Update the per-session `auto_reset` override on the judge metadata.
+    ///
+    /// No-op if this session is not a judge.
+    pub fn set_judge_auto_reset(&mut self, auto_reset: Option<bool>) {
+        if let Some(ref mut meta) = self.core.judge {
+            meta.auto_reset = auto_reset;
+        }
+    }
+
     /// Reset this session's history to only its pinned entries.
     ///
     /// Used by the judge reset feature to clear stale context while

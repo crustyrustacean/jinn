@@ -187,6 +187,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Judge management
             .describe_group_with_category("<leader>j", "judge", KeyCategory::Judge)
             .bind("<leader>jd", Intent::ToggleJudgeAttached, KeyCategory::Judge)
+            .bind("<leader>ja", Intent::ToggleJudgeAutoReset, KeyCategory::Judge)
             .bind("<leader>jr", Intent::ResetJudge, KeyCategory::Judge)
             // i activates session and enters insert mode (same as enter)
             .bind("i", Intent::SidebarConfirm, KeyCategory::Input);
