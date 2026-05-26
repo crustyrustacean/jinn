@@ -937,4 +937,91 @@ mod tests {
             "origin should not be busy after consolidation"
         );
     }
+
+    // --- Mutant-killing tests for resolve_effective_auto_reset ---
+
+    fn make_judge_meta(auto_reset: Option<bool>) -> JudgeMeta {
+        JudgeMeta {
+            origin_session: SessionId::new(),
+            is_attached: true,
+            judge_name: "test-judge".to_string(),
+            auto_reset,
+        }
+    }
+
+    fn make_judge_definition(name: &str, auto_reset: bool) -> super::super::Judge {
+        super::super::Judge {
+            name: name.to_string(),
+            description: format!("{name} judge"),
+            body: format!("{name} body"),
+            model: None,
+            auto_reset,
+            file_path: std::path::PathBuf::from(format!("/judges/{name}.md")),
+        }
+    }
+
+    #[rstest::rstest]
+    fn resolve_auto_reset_with_override_true() {
+        // Given a meta with auto_reset = Some(true).
+        let meta = make_judge_meta(Some(true));
+        let judges = vec![make_judge_definition("test-judge", false)];
+
+        // When resolving.
+        let result = resolve_effective_auto_reset(&meta, &judges);
+
+        // Then the override takes precedence (true, even though judge default is false).
+        assert!(result);
+    }
+
+    #[rstest::rstest]
+    fn resolve_auto_reset_with_override_false() {
+        // Given a meta with auto_reset = Some(false).
+        let meta = make_judge_meta(Some(false));
+        let judges = vec![make_judge_definition("test-judge", true)];
+
+        // When resolving.
+        let result = resolve_effective_auto_reset(&meta, &judges);
+
+        // Then the override takes precedence (false, even though judge default is true).
+        assert!(!result);
+    }
+
+    #[rstest::rstest]
+    fn resolve_auto_reset_falls_back_to_judge_true() {
+        // Given a meta with auto_reset = None and a judge with auto_reset = true.
+        let meta = make_judge_meta(None);
+        let judges = vec![make_judge_definition("test-judge", true)];
+
+        // When resolving.
+        let result = resolve_effective_auto_reset(&meta, &judges);
+
+        // Then it falls back to the judge's default (true).
+        assert!(result);
+    }
+
+    #[rstest::rstest]
+    fn resolve_auto_reset_falls_back_to_judge_false() {
+        // Given a meta with auto_reset = None and a judge with auto_reset = false.
+        let meta = make_judge_meta(None);
+        let judges = vec![make_judge_definition("test-judge", false)];
+
+        // When resolving.
+        let result = resolve_effective_auto_reset(&meta, &judges);
+
+        // Then it falls back to the judge's default (false).
+        assert!(!result);
+    }
+
+    #[rstest::rstest]
+    fn resolve_auto_reset_unknown_judge_returns_false() {
+        // Given a meta with auto_reset = None and no matching judge.
+        let meta = make_judge_meta(None);
+        let judges = vec![make_judge_definition("other-judge", true)];
+
+        // When resolving.
+        let result = resolve_effective_auto_reset(&meta, &judges);
+
+        // Then it returns false (judge not found).
+        assert!(!result);
+    }
 }
