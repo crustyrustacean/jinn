@@ -601,7 +601,7 @@ fn shutdown_tracker_complete_ignores_unknown_actor() {
 fn recording_sink_take_commands_returns_previously_sent_commands() {
     // Given a RecordingSink with a command sent.
     let sink = Arc::new(RecordingSink::new());
-    sink.send_command(Command::RefreshModels);
+    let _ = sink.send_command(Command::RefreshModels);
     assert_eq!(sink.commands().len(), 1);
 
     // When taking commands.
