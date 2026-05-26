@@ -1197,7 +1197,7 @@ fn load_judge_sessions_for_origin_blocking(
 ) -> Result<Vec<ChatSessionState>, Report<SessionStoreError>> {
     let origin_str = origin_session_id.to_string();
     let rows: Vec<SessionRow> = sql_query(
-        "SELECT * FROM sessions WHERE json_extract(judge_meta, '$.origin_session') = ? AND archived = FALSE",
+        "SELECT * FROM sessions WHERE json_extract(judge_meta, '$.origin_session') = ?",
     )
     .bind::<diesel::sql_types::Text, _>(&origin_str)
     .get_results(conn)
