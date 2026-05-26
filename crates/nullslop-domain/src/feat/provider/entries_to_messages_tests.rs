@@ -856,3 +856,50 @@ fn no_dangling_tool_calls_in_messages_after_hard_cancel() {
         );
     }
 }
+
+#[test]
+fn soft_cancel_with_complete_tool_batch_produces_valid_messages() {
+    // Given a history simulating soft-cancel during ToolUse where the tool batch
+    // completed normally (all tool calls have matching results).
+    // This represents the state after: stream completed with ToolUse -> tools execute ->
+    // soft-cancel consumed by on_tool_batch_completed -> session goes to Idle.
+    // The history has complete tool loops because the batch finished.
+    let entries = vec![
+        ChatEntry::user("fix this bug"),
+        ChatEntry::assistant(""),
+        ChatEntry::tool_call("tc-1", "bash", "ls"),
+        ChatEntry::tool_result("tc-1", "bash", "file.txt", ToolResultStatus::Success),
+        ChatEntry::assistant("checking"),
+        ChatEntry::tool_call("tc-2", "read", "file.rs"),
+        ChatEntry::tool_result("tc-2", "read", "contents", ToolResultStatus::Success),
+    ];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then every Assistant message with tool_calls has a matching Tool message for each.
+    let mut tool_call_ids: Vec<String> = Vec::new();
+    let mut tool_result_ids: Vec<String> = Vec::new();
+
+    for msg in &messages {
+        match msg {
+            LlmMessage::Assistant { tool_calls: Some(calls), .. } => {
+                for tc in calls {
+                    tool_call_ids.push(tc.id.clone());
+                }
+            }
+            LlmMessage::Tool { tool_call_id, .. } => {
+                tool_result_ids.push(tool_call_id.clone());
+            }
+            _ => {}
+        }
+    }
+
+    // Every tool_call_id must have a matching tool_result_id.
+    for tc_id in &tool_call_ids {
+        assert!(
+            tool_result_ids.iter().any(|r| r == tc_id),
+            "dangling tool_call {tc_id} found in messages after soft-cancel with complete batch"
+        );
+    }
+}
