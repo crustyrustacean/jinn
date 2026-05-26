@@ -1040,17 +1040,16 @@ impl ChatEntryKind {
     /// Whether this entry kind is included in LLM context by default
     /// (before considering pin or user override).
     ///
-    /// Kinds included by default: User, Assistant, Error, ToolCall, ToolResult,
+    /// Kinds included by default: User, Assistant, ToolCall, ToolResult,
     /// Skill, Compaction.
     ///
-    /// Kinds excluded by default: Thinking, Transient, System, Actor.
+    /// Kinds excluded by default: Error, Thinking, Transient, System, Actor.
     #[must_use]
     pub fn is_included_by_default(&self) -> bool {
         matches!(
             self,
             ChatEntryKind::User { .. }
                 | ChatEntryKind::Assistant(..)
-                | ChatEntryKind::Error(..)
                 | ChatEntryKind::ToolCall { .. }
                 | ChatEntryKind::ToolResult { .. }
                 | ChatEntryKind::Skill { .. }

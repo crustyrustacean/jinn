@@ -583,21 +583,15 @@ fn message_order_after_compaction() {
 // --- Error entry tests ---
 
 #[rstest::rstest]
-fn error_entry_produces_user_message() {
-    // Given an Error entry.
+fn error_entry_default_is_skipped() {
+    // Given an Error entry (default context override).
     let entries = vec![ChatEntry::error("something went wrong")];
 
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then a User message with [Error] prefix is produced.
-    assert_eq!(messages.len(), 1);
-    assert_eq!(
-        messages[0],
-        LlmMessage::User {
-            content: "[Error] something went wrong".into()
-        }
-    );
+    // Then no messages are produced (Error is excluded from context by default).
+    assert!(messages.is_empty());
 }
 
 #[rstest::rstest]
@@ -612,8 +606,8 @@ fn error_entry_between_user_and_assistant() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then all three produce messages (Error is included by default).
-    assert_eq!(messages.len(), 3);
+    // Then only User and Assistant produce messages (Error is excluded by default).
+    assert_eq!(messages.len(), 2);
     assert_eq!(
         messages[0],
         LlmMessage::User {
@@ -622,12 +616,6 @@ fn error_entry_between_user_and_assistant() {
     );
     assert_eq!(
         messages[1],
-        LlmMessage::User {
-            content: "[Error] connection lost".into()
-        }
-    );
-    assert_eq!(
-        messages[2],
         LlmMessage::Assistant {
             content: "hi".into(),
             tool_calls: None,
@@ -648,6 +636,27 @@ fn error_entry_forced_exclude_is_skipped() {
 
     // Then no messages are produced.
     assert!(messages.is_empty());
+}
+
+#[rstest::rstest]
+fn error_entry_forced_include_produces_user_message() {
+    // Given an Error entry with ForcedInclude (not pinned).
+    use crate::protocol::ContextOverride;
+    let entries = vec![
+        ChatEntry::error("important error").with_context_override(ContextOverride::ForcedInclude),
+    ];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then a User message with [Error] prefix is produced.
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        LlmMessage::User {
+            content: "[Error] important error".into()
+        }
+    );
 }
 
 #[rstest::rstest]
