@@ -758,3 +758,37 @@ fn merge_cache_ignores_unknown_provider() {
     // Then no new entries are added.
     assert_eq!(registry.providers().len(), 1);
 }
+
+// --- S-Tier: Kill mutants for unavailable_providers ---
+
+#[rstest::rstest]
+fn unavailable_providers_returns_correct_entries() {
+    // Kills: replace unavailable_providers with vec![] and delete ! in filter.
+    // Given a registry with one keyless and one key-required provider (no key).
+    let config = make_config(vec![ollama_entry(), openrouter_entry()], vec![], None);
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+    let api_keys = ApiKeys::new();
+
+    // When asking for unavailable providers.
+    let unavailable = registry.unavailable_providers(&api_keys);
+
+    // Then only the key-required provider is in the unavailable list.
+    assert_eq!(unavailable.len(), 1);
+    assert_eq!(unavailable[0].name, "openrouter");
+    assert_eq!(unavailable[0].model, "gpt-4");
+}
+
+#[rstest::rstest]
+fn unavailable_providers_returns_empty_when_all_available() {
+    // Kills: delete ! in filter (would return available instead).
+    // Given a registry with only keyless providers.
+    let config = make_config(vec![ollama_entry()], vec![], None);
+    let registry = ProviderRegistry::from_config(config).expect("registry");
+    let api_keys = ApiKeys::new();
+
+    // When asking for unavailable providers.
+    let unavailable = registry.unavailable_providers(&api_keys);
+
+    // Then the list is empty (all are available).
+    assert!(unavailable.is_empty());
+}
