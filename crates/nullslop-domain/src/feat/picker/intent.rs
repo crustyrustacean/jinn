@@ -508,9 +508,16 @@ fn confirm_judge(state: &mut AppState) -> IntentResult {
         })
         .map(|(id, _)| id.clone());
     if let Some(existing_id) = existing_id {
-        // Re-attach: set is_attached = true, activate the origin.
+        // Snapshot the origin's CWD before mutable borrow.
+        let origin_cwd = state
+            .session
+            .get(&active_id)
+            .map(|s| s.cwd().to_owned())
+            .unwrap_or_default();
+        // Re-attach: set is_attached = true, update CWD, activate the origin.
         if let Some(judge_session) = state.session.get_mut(&existing_id) {
             judge_session.set_judge_attached(true);
+            judge_session.set_cwd(origin_cwd);
         }
         state.session.set_active(active_id);
         state.frontend.scope_stack.push(FocusScope::Input);
@@ -534,6 +541,14 @@ fn confirm_judge(state: &mut AppState) -> IntentResult {
         is_attached: true,
         judge_name: entry.name.clone(),
     });
+
+    // Inherit the origin session's CWD so judge tools run in the same directory.
+    let origin_cwd = state
+        .session
+        .get(&active_id)
+        .map(|s| s.cwd().to_owned())
+        .unwrap_or_default();
+    judge_session.set_cwd(origin_cwd);
 
     // Set parent so it nests under the origin in the sidebar tree.
     judge_session.set_parent_session(active_id.clone());
