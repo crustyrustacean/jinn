@@ -125,8 +125,8 @@ Use the new Rust module system throughout:
 
 Actors are domain logic that spans the entire application, so they have specific naming conventions for discoverability:
 
-- **Actor-only features** are named with an `_actor` suffix: `echo_actor/`, `llm_actor/`, `tools_actor/`, `shutdown_actor/`.
-- **Within domain features**, each actor lives in its own `*_actor.rs` file (e.g., `provider_actor.rs`, `discover_actor.rs`, `context_actor.rs`, `session_actor.rs`, `prompt_scan_actor.rs`).
+- **Actor-only features** are named with an `_actor` suffix.
+- **Within domain features**, each actor lives in its own `*_actor.rs` file.
 - **One actor per file.** Never combine multiple actors in a single file.
 - **Spawn functions live with their actor.** Each `*_actor.rs` file contains both the actor struct/impl and the `spawn_*()` function that creates it. Feature `mod.rs` files do not contain spawn functions.
 
@@ -237,7 +237,7 @@ the renderer reads it on the next tick.
 
 **Actors handle all async operations.** They communicate through the actor host's pub/sub routing. Events are broadcast to all subscribers; commands route to exactly one. Actors may emit events or commands back onto the bus in response.
 
-**AppState is divided into owner-named sub-structs** (session, context, provider, frontend). Cross-boundary writes are a code review red flag.
+**AppState is divided into owner-named sub-structs** (frontend, domain, etc.). Cross-boundary writes are a code review red flag.
 
 ## 4. Tests
 
@@ -498,17 +498,17 @@ pub struct ChatInputBoxState {
 
 When implementing features, locate each concern by convention rather than hardcoded paths — the exact crate layout may shift as the domain grows. Use `grep`/`rg` to find the current location if unsure.
 
-1. **Add Intent variant** — find the `Intent` enum (currently `nullslop-domain/src/protocol/intent.rs`) and add a variant.
-2. **Add validator** — co-locate a `validator.rs` in the relevant feature directory under `nullslop-domain/src/feat/<feature>/`. Infallible intents don't need a validator. Fallible ones return `Result<(), SpecificError>`.
-3. **Add handler match arm** — find the `IntentHandler` (currently `nullslop-domain/src/feat/intent/handler.rs`): call validator (if any), mutate `AppState`, return commands.
-4. **Add keymap binding** — in `nullslop-tui/src/keymap.rs`: bind key to `Intent` variant in the appropriate `Scope`. See `nullslop-tui/src/scope.rs` for available scopes.
-5. **Add Command/Event if needed** — define domain structs alongside the relevant `Command` or `Event` enum (currently in `nullslop-domain/src/protocol/`). Forgetting the enum variant is the most common oversight — the struct alone is not enough.
-6. **Add domain actor logic if needed** — find the appropriate actor within `nullslop-domain/src/feat/` (e.g., `session/session_actor/`, `provider/provider_actor.rs`, `context/context_actor/`) and subscribe to the new command/event.
-7. **Add UI element if needed** — add a new module under `nullslop-domain/src/feat/ui/` and register it in the parent `ui.rs` module.
+1. **Add Intent variant** — find the `Intent` enum and add a variant.
+2. **Add validator** — co-locate a `validator.rs` in the relevant feature directory. Infallible intents don't need a validator. Fallible ones return `Result<(), SpecificError>`.
+3. **Add handler match arm** — find the `IntentHandler`: call validator (if any), mutate `AppState`, return commands.
+4. **Add keymap binding** — bind key to `Intent` variant in the appropriate `Scope`.
+5. **Add Command/Event if needed** — define domain structs alongside the relevant `Command` or `Event` enum. Forgetting the enum variant is the most common oversight — the struct alone is not enough.
+6. **Add domain actor logic if needed** — find the appropriate actor within the relevant feature directory and subscribe to the new command/event.
+7. **Add UI element if needed** — add a new module under the UI feature directory and register it.
 8. **Write tests** — Use Given/When/Then structure: test validator in isolation, test intent handler for state changes and commands, test domain actor for event→state mapping.
 9. **Add documentation** — Module docs, type docs, error docs. Describe behavior and purpose, not technical implementation.
 
-## 8. Tooling
+## 7. Tooling
 
 Read the `justfile` to determine what additional tooling is related to this project. Prioritize running commands from the `justfile` instead of manual invocation.
 
@@ -542,7 +542,7 @@ Task plans live in `.plans/<task>/` where `<task>` is a slugified task name. Eac
 - `high-level.md` — the phased plan with checkboxes
 - `phase-N.md` — execution plans and phase reviews for each phase
 
-## 9. Misc
+## 8. Misc
 
 - NEVER manually split a string using `.chars` or by indexing. Use the `unicode-segmentation` crate.
 - No trivial setters for struct methods. Prefer meaningful semantic actions. It's an anti-pattern to directly inspect and manipulate state.
