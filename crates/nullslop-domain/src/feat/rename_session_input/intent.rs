@@ -413,4 +413,106 @@ mod tests {
         // Then cursor moved to 1.
         assert_eq!(state.frontend.rename_session_input.cursor_pos, 1);
     }
+
+    // --- Boundary tests for off-by-one mutant killing ---
+
+    #[rstest::rstest]
+    fn handle_delete_noop_at_position_zero() {
+        // Given state with cursor at position 0 (boundary: > vs >=).
+        let mut state = AppState::default();
+        state.frontend.rename_session_input = RenameSessionInputState {
+            input: "Hello".to_owned(),
+            cursor_pos: 0,
+        };
+
+        // When deleting at position 0.
+        let _result = handle_delete(&mut state);
+
+        // Then nothing is deleted and cursor stays at 0.
+        assert_eq!(state.frontend.rename_session_input.input, "Hello");
+        assert_eq!(state.frontend.rename_session_input.cursor_pos, 0);
+    }
+
+    #[rstest::rstest]
+    fn handle_delete_forward_noop_at_end() {
+        // Given state with cursor at end (boundary: < vs <=).
+        let mut state = AppState::default();
+        state.frontend.rename_session_input = RenameSessionInputState {
+            input: "Hello".to_owned(),
+            cursor_pos: 5,
+        };
+
+        // When forward deleting at end.
+        let _result = handle_delete_forward(&mut state);
+
+        // Then nothing is deleted.
+        assert_eq!(state.frontend.rename_session_input.input, "Hello");
+        assert_eq!(state.frontend.rename_session_input.cursor_pos, 5);
+    }
+
+    #[rstest::rstest]
+    fn handle_cursor_left_noop_at_position_zero() {
+        // Given state with cursor at position 0 (boundary: > vs >=).
+        let mut state = AppState::default();
+        state.frontend.rename_session_input = RenameSessionInputState {
+            input: "Hello".to_owned(),
+            cursor_pos: 0,
+        };
+
+        // When moving cursor left at position 0.
+        let _result = handle_cursor_left(&mut state);
+
+        // Then cursor stays at 0.
+        assert_eq!(state.frontend.rename_session_input.cursor_pos, 0);
+    }
+
+    #[rstest::rstest]
+    fn handle_cursor_right_noop_at_end() {
+        // Given state with cursor at end (boundary: < vs <=).
+        let mut state = AppState::default();
+        state.frontend.rename_session_input = RenameSessionInputState {
+            input: "Hello".to_owned(),
+            cursor_pos: 5,
+        };
+
+        // When moving cursor right at end.
+        let _result = handle_cursor_right(&mut state);
+
+        // Then cursor stays at end.
+        assert_eq!(state.frontend.rename_session_input.cursor_pos, 5);
+    }
+
+    #[rstest::rstest]
+    fn handle_paste_inserts_text_and_advances_cursor() {
+        // Given state with cursor in the middle.
+        let mut state = AppState::default();
+        state.frontend.rename_session_input = RenameSessionInputState {
+            input: "Hello".to_owned(),
+            cursor_pos: 2,
+        };
+
+        // When pasting "XY".
+        let _result = handle_paste(&mut state, "XY");
+
+        // Then text is inserted and cursor advances by text.len().
+        assert_eq!(state.frontend.rename_session_input.input, "HeXYllo");
+        assert_eq!(state.frontend.rename_session_input.cursor_pos, 4);
+    }
+
+    #[rstest::rstest]
+    fn handle_paste_noop_when_empty() {
+        // Given state.
+        let mut state = AppState::default();
+        state.frontend.rename_session_input = RenameSessionInputState {
+            input: "Hello".to_owned(),
+            cursor_pos: 2,
+        };
+
+        // When pasting empty text.
+        let _result = handle_paste(&mut state, "");
+
+        // Then nothing changes.
+        assert_eq!(state.frontend.rename_session_input.input, "Hello");
+        assert_eq!(state.frontend.rename_session_input.cursor_pos, 2);
+    }
 }

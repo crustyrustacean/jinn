@@ -107,4 +107,28 @@ mod tests {
         // Then parent_session defaults to None.
         assert!(summary.parent_session.is_none());
     }
+
+    #[rstest::rstest]
+    fn session_summary_defaults_title_to_untitled() {
+        // Given JSON without a title field.
+        let json = r#"{"session_id":"abc","updated_at":"2024-01-01T00:00:00Z","created_at":"2024-01-01T00:00:00Z","session_state":"loaded"}"#;
+
+        // When deserializing.
+        let summary: SessionSummary = serde_json::from_str(json).expect("deserialize");
+
+        // Then title defaults to "Untitled Session".
+        assert_eq!(summary.title, "Untitled Session");
+    }
+
+    #[rstest::rstest]
+    fn session_summary_defaults_session_state_to_loaded() {
+        // Given JSON without a session_state field.
+        let json = r#"{"session_id":"abc","title":"test","updated_at":"2024-01-01T00:00:00Z","created_at":"2024-01-01T00:00:00Z"}"#;
+
+        // When deserializing.
+        let summary: SessionSummary = serde_json::from_str(json).expect("deserialize");
+
+        // Then session_state defaults to Loaded.
+        assert_eq!(summary.session_state, super::SessionState::Loaded);
+    }
 }
