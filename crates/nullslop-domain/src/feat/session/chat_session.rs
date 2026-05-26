@@ -201,6 +201,11 @@ pub struct SessionCoreEphemeral {
     /// Checked at `on_tool_batch_completed` and `on_stream_completed`.
     /// OWNER: session-actor.
     pub(crate) soft_cancel_requested: bool,
+    /// When true, `on_tool_batch_completed` skips `SendToLlmProvider` and
+    /// transitions to Idle instead of continuing the tool loop. Set by judge
+    /// verdict tools (`task_complete`, `task_incomplete`). Self-clearing on read.
+    /// OWNER: session-actor / verdict tools.
+    pub(crate) tool_loop_disabled: bool,
     /// Indices of entries marked as ignored during compaction.
     /// Used to un-ignore on cancel. Empty when not compacting.
     /// Not persisted — compaction is ephemeral.
@@ -2367,6 +2372,22 @@ impl ChatSessionState {
     /// Returns `false` if no cancel was requested.
     pub fn take_soft_cancel(&mut self) -> bool {
         std::mem::take(&mut self.core.ephemeral.soft_cancel_requested)
+    }
+
+    /// Disable the tool loop for this session's current turn.
+    ///
+    /// After the current tool batch completes, `on_tool_batch_completed`
+    /// will skip `SendToLlmProvider` and go to Idle instead of continuing.
+    /// The flag is consumed (cleared) by `take_tool_loop_disabled`.
+    pub fn set_tool_loop_disabled(&mut self) {
+        self.core.ephemeral.tool_loop_disabled = true;
+    }
+
+    /// Take the tool-loop-disabled flag, clearing it.
+    ///
+    /// Returns `true` if the tool loop was disabled, and clears the flag.
+    pub fn take_tool_loop_disabled(&mut self) -> bool {
+        std::mem::take(&mut self.core.ephemeral.tool_loop_disabled)
     }
 }
 
