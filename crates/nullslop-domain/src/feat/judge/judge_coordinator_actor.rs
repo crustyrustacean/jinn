@@ -54,11 +54,23 @@ pub fn resolve_effective_auto_reset(meta: &JudgeMeta, judges: &[super::Judge]) -
     })
 }
 
+/// Maximum number of consecutive retries before force-cancelling a judge.
+const MAX_JUDGE_RETRIES: u32 = 3;
+
+/// Per-judge tracking within a pending evaluation cycle.
+#[derive(Debug)]
+struct PendingJudge {
+    /// The judge definition name.
+    judge_name: String,
+    /// Number of consecutive trigger attempts without a verdict.
+    retry_count: u32,
+}
+
 /// Pending verdicts for an origin session.
 #[derive(Debug, Default)]
 struct PendingVerdicts {
-    /// Total number of judges expected to report.
-    expected: usize,
+    /// Per-judge tracking: judge session ID → its state.
+    judges: HashMap<SessionId, PendingJudge>,
     /// Verdicts received so far.
     received: Vec<ReceivedVerdict>,
 }
@@ -240,14 +252,18 @@ impl JudgeCoordinatorActor {
             }
         }
 
-        // Record expected count.
-        self.pending.insert(
-            origin_id.clone(),
-            PendingVerdicts {
-                expected,
-                received: vec![],
-            },
-        );
+        // Record pending judges.
+        let mut pending_verdicts = PendingVerdicts::default();
+        for (judge_session_id, judge_name) in attached_judges {
+            pending_verdicts.judges.insert(
+                judge_session_id,
+                PendingJudge {
+                    judge_name,
+                    retry_count: 0,
+                },
+            );
+        }
+        self.pending.insert(origin_id.clone(), pending_verdicts);
     }
 
     /// Handle a judge verdict.
@@ -291,6 +307,15 @@ impl JudgeCoordinatorActor {
             }
         }
 
+        // Guard: only accept verdicts from judges we're still expecting.
+        if !pending.judges.contains_key(&payload.judge_session_id) {
+            tracing::debug!(
+                judge = %payload.judge_session_id,
+                "verdict from judge not in pending list, ignoring"
+            );
+            return;
+        }
+
         // Append the verdict.
         pending.received.push(ReceivedVerdict {
             judge_session_id: payload.judge_session_id.clone(),
@@ -302,12 +327,12 @@ impl JudgeCoordinatorActor {
             origin = %origin_id,
             judge = %payload.judge_name,
             received = pending.received.len(),
-            expected = pending.expected,
+            expected = pending.judges.len(),
             "received judge verdict"
         );
 
         // Check if all verdicts are in.
-        if pending.received.len() < pending.expected {
+        if pending.received.len() < pending.judges.len() {
             return;
         }
 
