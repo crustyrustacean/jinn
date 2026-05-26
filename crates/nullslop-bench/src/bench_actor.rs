@@ -826,6 +826,7 @@ mod tests {
             .handle_session_phase_changed(
                 &SessionPhaseChanged {
                     session_id: session_id.clone(),
+                    old_phase: SessionPhase::Streaming,
                     new_phase: SessionPhase::Idle,
                 },
                 &ctx,
@@ -876,6 +877,7 @@ mod tests {
             .handle_session_phase_changed(
                 &SessionPhaseChanged {
                     session_id: session_id.clone(),
+                    old_phase: SessionPhase::Streaming,
                     new_phase: SessionPhase::Sending,
                 },
                 &ctx,
@@ -1023,6 +1025,7 @@ mod tests {
             .handle_session_phase_changed(
                 &SessionPhaseChanged {
                     session_id: session_id.clone(),
+                    old_phase: SessionPhase::Streaming,
                     new_phase: SessionPhase::Idle,
                 },
                 &ctx,
@@ -1044,6 +1047,7 @@ mod tests {
             .handle_session_phase_changed(
                 &SessionPhaseChanged {
                     session_id: session_id.clone(),
+                    old_phase: SessionPhase::Streaming,
                     new_phase: SessionPhase::Idle,
                 },
                 &ctx,
@@ -1138,6 +1142,7 @@ mod tests {
             .handle_session_phase_changed(
                 &SessionPhaseChanged {
                     session_id: session_id.clone(),
+                    old_phase: SessionPhase::Streaming,
                     new_phase: SessionPhase::Idle,
                 },
                 &ctx,
@@ -1200,6 +1205,7 @@ mod tests {
             .handle_session_phase_changed(
                 &SessionPhaseChanged {
                     session_id: session_id.clone(),
+                    old_phase: SessionPhase::Streaming,
                     new_phase: SessionPhase::Idle,
                 },
                 &ctx,
