@@ -727,4 +727,94 @@ mod tests {
             "title should be 'judge/<name>'"
         );
     }
+
+    #[rstest::rstest]
+    fn confirm_judge_inherits_origin_cwd() {
+        // Given an origin session with a custom CWD.
+        let mut state = AppState::default();
+        let mut origin = ChatSessionState::new();
+        let origin_id = origin.session_id().clone();
+        origin.set_cwd(std::path::PathBuf::from("/tmp/my-project"));
+        state.session.insert(origin);
+        state.session.set_active(origin_id);
+        state
+            .context
+            .judges
+            .push(make_judge("accuracy", "Check accuracy.", None));
+        load_judge_picker_entries(&mut state);
+        state.frontend.judge_picker.move_down(1);
+
+        // When confirming the judge.
+        let _ = confirm_judge(&mut state);
+
+        // Then the judge session has the same CWD as the origin.
+        let judge_session = state
+            .session
+            .iter()
+            .find(|(_, s)| s.is_judge())
+            .map(|(_, s)| s)
+            .expect("judge session should exist");
+        assert_eq!(
+            judge_session.cwd(),
+            std::path::Path::new("/tmp/my-project"),
+            "judge should inherit origin's CWD"
+        );
+    }
+
+    #[rstest::rstest]
+    fn confirm_judge_re_attach_updates_cwd() {
+        // Given an origin session with CWD /original/path.
+        let mut state = AppState::default();
+        let mut origin = ChatSessionState::new();
+        let origin_id = origin.session_id().clone();
+        origin.set_cwd(std::path::PathBuf::from("/original/path"));
+        state.session.insert(origin);
+        state.session.set_active(origin_id.clone());
+        state
+            .context
+            .judges
+            .push(make_judge("accuracy", "Check accuracy.", None));
+        load_judge_picker_entries(&mut state);
+        state.frontend.judge_picker.move_down(1);
+
+        // When creating the judge.
+        confirm_judge(&mut state);
+
+        // Find the judge session and detach it.
+        let (judge_id, _) = state
+            .session
+            .iter()
+            .find(|(_, s)| s.is_judge())
+            .expect("judge session exists");
+        let judge_id = judge_id.clone();
+        state
+            .session
+            .get_mut(&judge_id)
+            .expect("judge session")
+            .set_judge_attached(false);
+
+        // Change the origin's CWD to /new/path.
+        state
+            .session
+            .get_mut(&origin_id)
+            .expect("origin session")
+            .set_cwd(std::path::PathBuf::from("/new/path"));
+
+        // Re-populate picker and select the judge again.
+        state.session.set_active(origin_id.clone());
+        load_judge_picker_entries(&mut state);
+        state.frontend.judge_picker.move_down(1);
+        confirm_judge(&mut state);
+
+        // Then the judge session's CWD is updated to the origin's new CWD.
+        let judge_session = state
+            .session
+            .get(&judge_id)
+            .expect("judge session should exist");
+        assert_eq!(
+            judge_session.cwd(),
+            std::path::Path::new("/new/path"),
+            "re-attached judge should get updated CWD from origin"
+        );
+    }
 }
