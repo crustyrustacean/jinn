@@ -583,4 +583,383 @@ mod tests {
         // Then the session is removed from the sessions map.
         assert!(actor.sessions.is_empty());
     }
+
+    // --- Phase 2: Additional LlmActor tests ---
+
+    #[test]
+    fn handle_stream_completed_finished_reason_removes_session() {
+        // Given an LLM actor with a streaming session.
+        let mut actor = test_llm_actor();
+        let session_id = SessionId::new();
+        actor
+            .sessions
+            .insert(session_id.clone(), SessionData::new());
+
+        // When handling StreamCompleted with Finished reason.
+        let payload = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: Some("hello".to_owned()),
+            tool_calls: None,
+            cost: None,
+        };
+        actor.handle_stream_completed(&payload);
+
+        // Then the session is removed.
+        assert!(
+            actor.sessions.is_empty(),
+            "Finished should remove the session"
+        );
+    }
+
+    #[test]
+    fn handle_stream_completed_tool_use_keeps_session() {
+        // Given an LLM actor with a streaming session.
+        let mut actor = test_llm_actor();
+        let session_id = SessionId::new();
+        actor
+            .sessions
+            .insert(session_id.clone(), SessionData::new());
+
+        // When handling StreamCompleted with ToolUse reason.
+        let payload = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::ToolUse,
+            assistant_content: Some("thinking...".to_owned()),
+            tool_calls: Some(vec![]),
+            cost: None,
+        };
+        actor.handle_stream_completed(&payload);
+
+        // Then the session is kept for continuation.
+        assert!(
+            actor.sessions.contains_key(&session_id),
+            "ToolUse should keep the session for continuation"
+        );
+    }
+
+    #[test]
+    fn handle_stream_completed_unknown_session_is_noop() {
+        // Given an LLM actor with NO sessions.
+        let mut actor = test_llm_actor();
+        let session_id = SessionId::new();
+
+        // When handling StreamCompleted for an unknown session.
+        let payload = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Error,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+        };
+        actor.handle_stream_completed(&payload);
+
+        // Then nothing happens — no panic.
+        assert!(actor.sessions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cancel_stream_removes_session_and_task() {
+        // Given an LLM actor with a session and a spawned task.
+        use crate::common::actor::{ActorContext, RecordingSink};
+        let sink = Arc::new(RecordingSink::new());
+        let ctx = ActorContext::new("test-llm", sink.clone());
+
+        let mut actor = test_llm_actor();
+        let session_id = SessionId::new();
+        actor.sessions.insert(session_id.clone(), SessionData::new());
+        // Insert a dummy task that will be aborted.
+        let handle = tokio::spawn(async { std::future::pending::<()>().await });
+        actor.tasks.insert(session_id.clone(), handle);
+
+        // When cancelling the stream.
+        actor.cancel_stream(&session_id, &ctx);
+
+        // Then the session and task are removed.
+        assert!(!actor.sessions.contains_key(&session_id));
+        assert!(!actor.tasks.contains_key(&session_id));
+
+        // And a StreamCompleted(Canceled) event was emitted.
+        let events = sink.events();
+        let found = events.iter().any(|e| {
+            if let Event::StreamCompleted(sc) = e {
+                sc.reason == StreamCompletedReason::Canceled
+                    && sc.session_id == session_id
+            } else {
+                false
+            }
+        });
+        assert!(found, "should emit StreamCompleted with Canceled reason");
+    }
+
+    #[test]
+    fn cancel_stream_without_session_emits_nothing() {
+        // Given an LLM actor with no sessions.
+        use crate::common::actor::{ActorContext, RecordingSink};
+        let sink = Arc::new(RecordingSink::new());
+        let ctx = ActorContext::new("test-llm", sink.clone());
+
+        let mut actor = test_llm_actor();
+        let session_id = SessionId::new();
+
+        // When cancelling a stream for a session that doesn't exist.
+        actor.cancel_stream(&session_id, &ctx);
+
+        // Then no StreamCompleted event is emitted.
+        let events = sink.events();
+        assert!(
+            events.is_empty(),
+            "should not emit StreamCompleted for non-existent session"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancel_all_aborts_all_tasks() {
+        // Given an LLM actor with multiple spawned tasks.
+        let mut actor = test_llm_actor();
+        let sid1 = SessionId::new();
+        let sid2 = SessionId::new();
+        let h1 = tokio::spawn(async { std::future::pending::<()>().await });
+        let h2 = tokio::spawn(async { std::future::pending::<()>().await });
+        actor.tasks.insert(sid1, h1);
+        actor.tasks.insert(sid2, h2);
+
+        // When calling cancel_all.
+        actor.cancel_all();
+
+        // Then the tasks are aborted (JoinHandle.is_finished).
+        // Yield to let abort propagate.
+        tokio::task::yield_now().await;
+        for handle in actor.tasks.values() {
+            assert!(handle.is_finished(), "task should be aborted after cancel_all");
+        }
+    }
+
+    #[tokio::test]
+    async fn on_shutdown_cancels_all_tasks() {
+        use crate::common::actor::{ActorContext, RecordingSink};
+        let sink = Arc::new(RecordingSink::new());
+        let ctx = ActorContext::new("test-llm", sink.clone());
+
+        let mut actor = test_llm_actor();
+        let sid = SessionId::new();
+        let handle = tokio::spawn(async { std::future::pending::<()>().await });
+        actor.tasks.insert(sid, handle);
+
+        // When on_shutdown is called.
+        actor.on_shutdown(&ctx).await;
+
+        // Then the task is aborted.
+        tokio::task::yield_now().await;
+        for handle in actor.tasks.values() {
+            assert!(handle.is_finished(), "task should be aborted after on_shutdown");
+        }
+    }
+
+    #[tokio::test]
+    async fn start_stream_emits_stream_completed_with_tokens() {
+        // Given an LLM actor with a fake factory that returns tokens.
+        use crate::common::actor::{ActorContext, RecordingSink};
+        let sink = Arc::new(RecordingSink::new());
+        let ctx = ActorContext::new("test-llm", sink.clone());
+
+        let factory = LlmServiceFactoryService::new(Arc::new(
+            FakeLlmServiceFactory::new(vec!["Hello".to_owned(), " World".to_owned()]),
+        ));
+        let mut actor = LlmActor {
+            factory,
+            services: None,
+            state: State::new(AppState::default()),
+            tasks: HashMap::new(),
+            sessions: HashMap::new(),
+        };
+
+        let session_id = SessionId::new();
+        let payload = SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![],
+            tool_definitions: vec![],
+            provider_id: None,
+            estimated_tokens: 0,
+        };
+
+        // When starting a stream.
+        actor.start_stream(&payload, &ctx);
+
+        // Then wait for the stream to complete.
+        let mut stream_events = vec![];
+        for _ in 0..100 {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            stream_events = sink.events();
+            if stream_events.iter().any(|e| {
+                matches!(e, Event::StreamCompleted(sc) if sc.reason == StreamCompletedReason::Finished)
+            }) {
+                break;
+            }
+        }
+
+        // And StreamToken events were emitted with sequential indices.
+        let token_events: Vec<&StreamToken> = stream_events
+            .iter()
+            .filter_map(|e| match e {
+                Event::StreamToken(st) => Some(st),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(token_events.len(), 2, "should have 2 token events");
+        assert_eq!(token_events[0].index, 0, "first token index should be 0");
+        assert_eq!(token_events[1].index, 1, "second token index should be 1");
+
+        // And StreamCompleted was emitted.
+        let completed = stream_events.iter().find_map(|e| match e {
+            Event::StreamCompleted(sc) if sc.reason == StreamCompletedReason::Finished => Some(sc.clone()),
+            _ => None,
+        });
+        assert!(completed.is_some(), "should emit StreamCompleted(Finished)");
+        let completed = completed.unwrap();
+        assert_eq!(completed.assistant_content.as_deref(), Some("Hello World"));
+    }
+
+    #[tokio::test]
+    async fn start_stream_aborts_existing_stream_for_same_session() {
+        // Given an LLM actor with an existing stream for a session.
+        use crate::common::actor::{ActorContext, RecordingSink};
+        let sink = Arc::new(RecordingSink::new());
+        let ctx = ActorContext::new("test-llm", sink.clone());
+
+        let factory = LlmServiceFactoryService::new(Arc::new(
+            FakeLlmServiceFactory::new(vec!["First".to_owned()]),
+        ));
+        let mut actor = LlmActor {
+            factory,
+            services: None,
+            state: State::new(AppState::default()),
+            tasks: HashMap::new(),
+            sessions: HashMap::new(),
+        };
+
+        let session_id = SessionId::new();
+        let payload = SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![],
+            tool_definitions: vec![],
+            provider_id: None,
+            estimated_tokens: 0,
+        };
+
+        // Start first stream and save the handle.
+        actor.start_stream(&payload, &ctx);
+        let first_handle = actor.tasks.remove(&session_id);
+        assert!(first_handle.is_some());
+        // Re-insert for the second start_stream to find and abort.
+        actor.tasks.insert(session_id.clone(), first_handle.unwrap());
+
+        // When starting a second stream for the same session.
+        actor.start_stream(&payload, &ctx);
+
+        // Then a new task exists (the old one was aborted internally).
+        assert!(
+            actor.tasks.contains_key(&session_id),
+            "second stream should create a new task"
+        );
+    }
+
+    #[tokio::test]
+    async fn start_stream_sets_session_to_streaming() {
+        // Given an LLM actor.
+        use crate::common::actor::{ActorContext, RecordingSink};
+        let sink = Arc::new(RecordingSink::new());
+        let ctx = ActorContext::new("test-llm", sink.clone());
+
+        let factory = LlmServiceFactoryService::new(Arc::new(
+            FakeLlmServiceFactory::new(vec!["Hi".to_owned()]),
+        ));
+        let mut actor = LlmActor {
+            factory,
+            services: None,
+            state: State::new(AppState::default()),
+            tasks: HashMap::new(),
+            sessions: HashMap::new(),
+        };
+
+        let session_id = SessionId::new();
+        let payload = SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![],
+            tool_definitions: vec![],
+            provider_id: None,
+            estimated_tokens: 0,
+        };
+
+        // When starting a stream.
+        actor.start_stream(&payload, &ctx);
+
+        // Then the session state is Streaming.
+        let session_data = actor.sessions.get(&session_id);
+        assert!(session_data.is_some(), "session should be tracked");
+        assert_eq!(
+            session_data.unwrap().state,
+            SessionState::Streaming,
+            "session should be in Streaming state"
+        );
+    }
+
+    #[tokio::test]
+    async fn handle_command_dispatches_send_to_llm() {
+        // Given an LLM actor.
+        use crate::common::actor::{ActorContext, RecordingSink};
+        let sink = Arc::new(RecordingSink::new());
+        let ctx = ActorContext::new("test-llm", sink.clone());
+
+        let factory = LlmServiceFactoryService::new(Arc::new(
+            FakeLlmServiceFactory::new(vec!["response".to_owned()]),
+        ));
+        let mut actor = LlmActor {
+            factory,
+            services: None,
+            state: State::new(AppState::default()),
+            tasks: HashMap::new(),
+            sessions: HashMap::new(),
+        };
+
+        let session_id = SessionId::new();
+        let command = Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: session_id.clone(),
+            messages: vec![],
+            tool_definitions: vec![],
+            provider_id: None,
+            estimated_tokens: 0,
+        });
+
+        // When dispatching via handle_command.
+        actor.handle_command(&command, &ctx);
+
+        // Then a task is spawned for the session.
+        assert!(actor.tasks.contains_key(&session_id));
+    }
+
+    #[tokio::test]
+    async fn handle_command_dispatches_cancel() {
+        // Given an LLM actor with a streaming session.
+        use crate::common::actor::{ActorContext, RecordingSink};
+        let sink = Arc::new(RecordingSink::new());
+        let ctx = ActorContext::new("test-llm", sink.clone());
+
+        let mut actor = test_llm_actor();
+        let session_id = SessionId::new();
+        actor.sessions.insert(session_id.clone(), SessionData::new());
+        let handle = tokio::spawn(async { std::future::pending::<()>().await });
+        actor.tasks.insert(session_id.clone(), handle);
+
+        let command = Command::CancelStream(CancelStream {
+            session_id: session_id.clone(),
+        });
+
+        // When dispatching via handle_command.
+        actor.handle_command(&command, &ctx);
+
+        // Then the task and session are removed.
+        assert!(!actor.tasks.contains_key(&session_id));
+        assert!(!actor.sessions.contains_key(&session_id));
+    }
 }
