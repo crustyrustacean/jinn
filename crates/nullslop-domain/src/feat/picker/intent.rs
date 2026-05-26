@@ -83,7 +83,7 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
                 LoadPersonaPickerEntries,
             )])
         }
-        PickerKind::Theme => IntentResult::empty(),
+        PickerKind::Theme | PickerKind::Tool => IntentResult::empty(),
         PickerKind::SessionLifecycle => {
             // Populate from user preferences + implicit blank lifecycle.
             load_lifecycle_picker_entries(state);
@@ -105,7 +105,6 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
                 crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
             )])
         }
-        PickerKind::Tool => IntentResult::empty(),
     }
 }
 
