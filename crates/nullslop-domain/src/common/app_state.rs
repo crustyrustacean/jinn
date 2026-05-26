@@ -508,6 +508,14 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (set on theme picker open, consumed on confirm/cancel).
     pub theme_preview_original: Option<Theme>,
 
+    /// Tool picker state — shows all registered tools with toggle state.
+    /// OWNER: IntentHandler (populated on tool picker open).
+    pub tool_picker: nullslop_selection_widget::SelectionState<crate::feat::tools_actor::tool_entry::ToolEntry>,
+
+    /// Snapshot of disabled tools before picker opens — restored on ESC.
+    /// OWNER: IntentHandler (set on tool picker open, consumed on confirm/cancel).
+    pub tool_picker_snapshot: Option<std::collections::HashSet<String>>,
+
     /// Path to the themes directory (`~/.config/nullslop/themes/`).
     /// Set once during init from `AppPaths`. Used by the theme picker to discover themes.
     /// OWNER: Init code (set once at startup).
@@ -584,6 +592,8 @@ impl Default for FrontendState {
             close_session_prompt: false,
             theme_picker: nullslop_selection_widget::SelectionState::new(),
             theme_preview_original: None,
+            tool_picker: nullslop_selection_widget::SelectionState::new(),
+            tool_picker_snapshot: None,
             themes_dir: std::path::PathBuf::new(),
             system_themes_dir: std::path::PathBuf::new(),
             session_lifecycle_picker: nullslop_selection_widget::SelectionState::new(),
@@ -632,6 +642,7 @@ impl AppState {
             PickerKind::Workflow => Some(&mut self.frontend.workflow_picker),
             PickerKind::Judge => Some(&mut self.frontend.judge_picker),
             PickerKind::CompactionModel => Some(&mut self.frontend.compaction_model_picker),
+            PickerKind::Tool => Some(&mut self.frontend.tool_picker),
         }
     }
 

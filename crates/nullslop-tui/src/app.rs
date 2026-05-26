@@ -319,6 +319,7 @@ pub fn scope_for_focus(focus: &nullslop_domain::FocusScope) -> Scope {
             PickerKind::Workflow => Scope::PickerWorkflow,
             PickerKind::Judge => Scope::PickerJudge,
             PickerKind::CompactionModel => Scope::PickerCompactionModel,
+            PickerKind::Tool => Scope::PickerTool,
         },
         FocusScope::Input => Scope::Input,
         FocusScope::SidebarPersona => Scope::SidebarPersona,
