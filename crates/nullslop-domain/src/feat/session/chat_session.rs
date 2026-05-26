@@ -1314,6 +1314,29 @@ impl ChatSessionState {
         self.core.profile.model = model;
     }
 
+    /// Whether a tool is enabled for this session.
+    ///
+    /// Returns `true` if the tool name is not in the disabled set.
+    /// An empty disabled set means all tools are enabled.
+    #[must_use]
+    pub fn is_tool_enabled(&self, tool_name: &str) -> bool {
+        !self.core.profile.disabled_tools.contains(tool_name)
+    }
+
+    /// Read-only access to this session's disabled tool names.
+    ///
+    /// Opt-out model: tools not in this set are enabled.
+    pub fn disabled_tools(&self) -> &HashSet<String> {
+        &self.core.profile.disabled_tools
+    }
+
+    /// Replace the disabled tool set for this session.
+    ///
+    /// Used by the tool picker to commit toggle state.
+    pub fn set_disabled_tools(&mut self, tools: HashSet<String>) {
+        self.core.profile.disabled_tools = tools;
+    }
+
     /// The model for this session.
     pub fn model(&self) -> &str {
         &self.core.profile.model

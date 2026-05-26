@@ -3144,3 +3144,29 @@ fn force_exclude_no_tool_calls_is_noop() {
         assert_eq!(entry.context_override, ContextOverride::Default);
     }
 }
+
+// --- tool enable/disable tests ---
+
+#[test]
+fn is_tool_enabled_returns_true_when_not_disabled() {
+    // Given a session with no disabled tools.
+    let session = ChatSessionState::new();
+
+    // Then any tool name is enabled.
+    assert!(session.is_tool_enabled("bash"));
+    assert!(session.is_tool_enabled("edit"));
+    assert!(session.is_tool_enabled("unknown_tool"));
+}
+
+#[test]
+fn is_tool_enabled_returns_false_when_disabled() {
+    // Given a session with "bash" disabled.
+    let mut session = ChatSessionState::new();
+    let mut disabled = std::collections::HashSet::new();
+    disabled.insert("bash".to_owned());
+    session.set_disabled_tools(disabled);
+
+    // Then "bash" is disabled but other tools are still enabled.
+    assert!(!session.is_tool_enabled("bash"));
+    assert!(session.is_tool_enabled("edit"));
+}

@@ -26,6 +26,9 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState)
                 frame, area, state,
             );
         }
+        Some(PickerKind::Tool) => {
+            nullslop_domain::feat::picker::render::render_tool_picker(frame, area, state);
+        }
         None => {}
     }
 }

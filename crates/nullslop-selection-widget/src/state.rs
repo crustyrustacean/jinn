@@ -291,6 +291,26 @@ where
         self.items.get(i)
     }
 
+    /// Mutably accesses the currently selected item via a closure.
+    ///
+    /// Use this for in-place mutations (e.g., toggling a boolean field).
+    /// The filter and selection state are preserved.
+    ///
+    /// Returns `false` if no item is selected, `true` otherwise.
+    pub fn with_selected_mut<F>(&mut self, f: F) -> bool
+    where
+        F: FnOnce(&mut T),
+    {
+        let Some(&i) = self.filtered_indices.get(self.selection) else {
+            return false;
+        };
+        let Some(item) = self.items.get_mut(i) else {
+            return false;
+        };
+        f(item);
+        true
+    }
+
     /// Returns the number of items in the filtered list.
     #[must_use]
     pub fn filtered_count(&self) -> usize {

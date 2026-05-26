@@ -26,6 +26,8 @@ pub enum PickerKind {
     CompactionModel,
     /// Judge picker — select a judge definition to attach.
     Judge,
+    /// Tool picker — toggle which tools are enabled for the session.
+    Tool,
 }
 
 impl std::fmt::Display for PickerKind {
@@ -40,6 +42,7 @@ impl std::fmt::Display for PickerKind {
             Self::Workflow => write!(f, "workflows"),
             Self::CompactionModel => write!(f, "compaction model"),
             Self::Judge => write!(f, "judges"),
+            Self::Tool => write!(f, "tools"),
         }
     }
 }
