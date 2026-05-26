@@ -2368,6 +2368,59 @@ impl ChatSessionState {
     pub fn take_soft_cancel(&mut self) -> bool {
         std::mem::take(&mut self.core.ephemeral.soft_cancel_requested)
     }
+
+    /// Check if soft cancel was requested without consuming the flag.
+    ///
+    /// Used by `on_stream_completed(ToolUse)` to decide whether to skip
+    /// the direct-to-Compacting optimization without consuming the flag
+    /// (which is consumed later by `on_tool_batch_completed`).
+    pub fn is_soft_cancelled(&self) -> bool {
+        self.core.ephemeral.soft_cancel_requested
+    }
+
+    /// Force-exclude any `ToolCall` entries that lack matching `ToolResult` entries,
+    /// and their empty parent `Assistant` entry.
+    ///
+    /// Called after hard cancel (ESC) to ensure the assembled prompt doesn't
+    /// contain dangling `tool_calls` without corresponding `tool` results,
+    /// which causes LLM providers to reject the request (e.g., ZAI error 1214).
+    ///
+    /// Uses `ContextOverride::ForcedExclude` rather than removing entries,
+    /// preserving them for display in the UI.
+    pub fn force_exclude_dangling_tool_calls(&mut self) {
+        // Collect tool_call_ids that have matching ToolResult entries.
+        let result_ids: Vec<String> = self
+            .core
+            .history
+            .iter()
+            .filter_map(|entry| match &entry.kind {
+                ChatEntryKind::ToolResult { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect();
+
+        // Find indices of dangling ToolCalls and their empty parent Assistants.
+        let mut indices_to_exclude: Vec<usize> = Vec::new();
+        for (i, entry) in self.core.history.iter().enumerate() {
+            if let ChatEntryKind::ToolCall { id, .. } = &entry.kind
+                && !result_ids.iter().any(|rid| rid == id)
+            {
+                indices_to_exclude.push(i);
+                // Check if preceding entry is an empty Assistant.
+                if i > 0
+                    && let ChatEntryKind::Assistant(text) = &self.core.history[i - 1].kind
+                    && text.is_empty()
+                {
+                    indices_to_exclude.push(i - 1);
+                }
+            }
+        }
+
+        // Mark entries as ForcedExclude.
+        for idx in indices_to_exclude {
+            self.core.history[idx].context_override = ContextOverride::ForcedExclude;
+        }
+    }
 }
 
 impl Default for ChatSessionState {

@@ -768,6 +768,114 @@ fn long_tool_loop_finds_nearest_assistant() {
     assert_eq!(result, 7);
 }
 
+// --- Pass 2: Incomplete tool loop defense-in-depth ---
+
+#[test]
+fn adjust_cut_walks_past_incomplete_tool_loop() {
+    // Given history ending with Assistant + dangling ToolCall (no ToolResult).
+    let history = vec![
+        ChatEntry::user("run it"),
+        ChatEntry::assistant(""),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+    ];
+
+    // When cut lands on the empty Assistant at index 1.
+    let result = super::adjust_cut_to_boundary(&history, 1);
+
+    // Then it walks past the incomplete tool loop — returns history.len().
+    assert_eq!(result, 3);
+}
+
+#[test]
+fn adjust_cut_stays_at_complete_tool_loop() {
+    // Given history with a complete tool loop.
+    let history = vec![
+        ChatEntry::user("run it"),
+        ChatEntry::assistant(""),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::tool_result("tc1", "bash", "file.txt", ToolResultStatus::Success),
+    ];
+
+    // When cut lands on the Assistant at index 1.
+    let result = super::adjust_cut_to_boundary(&history, 1);
+
+    // Then it stays — the tool loop is complete.
+    assert_eq!(result, 1);
+}
+
+#[test]
+fn adjust_cut_walks_past_incomplete_then_lands_on_user() {
+    // Given history with incomplete loop then a User entry.
+    let history = vec![
+        ChatEntry::user("run it"),
+        ChatEntry::assistant(""),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::user("next"),
+    ];
+
+    // When cut lands on the Assistant at index 1.
+    let result = super::adjust_cut_to_boundary(&history, 1);
+
+    // Then it walks past the incomplete loop and lands on the User entry.
+    assert_eq!(result, 3);
+}
+
+#[test]
+fn adjust_cut_handles_multiple_incomplete_loops() {
+    // Given history with two consecutive incomplete tool loops then a User entry.
+    let history = vec![
+        ChatEntry::user("run it"),
+        ChatEntry::assistant(""),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::assistant(""),
+        ChatEntry::tool_call("tc2", "read", "a.rs"),
+        ChatEntry::user("next"),
+    ];
+
+    // When cut lands on the first Assistant at index 1.
+    let result = super::adjust_cut_to_boundary(&history, 1);
+
+    // Then it walks past both incomplete loops and lands on the User entry.
+    assert_eq!(result, 5);
+}
+
+#[test]
+fn adjust_cut_all_complete_tool_loops_no_change() {
+    // Given history with multiple complete tool loops.
+    let history = vec![
+        ChatEntry::user("run it"),
+        ChatEntry::assistant(""),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::tool_result("tc1", "bash", "file.txt", ToolResultStatus::Success),
+        ChatEntry::assistant("checking"),
+        ChatEntry::tool_call("tc2", "read", "a.rs"),
+        ChatEntry::tool_result("tc2", "read", "contents", ToolResultStatus::Success),
+    ];
+
+    // When cut lands on first Assistant at index 1.
+    let result = super::adjust_cut_to_boundary(&history, 1);
+
+    // Then it stays - the tool loop is complete.
+    assert_eq!(result, 1);
+}
+
+#[test]
+fn adjust_cut_non_empty_assistant_with_incomplete_loop_walks_forward() {
+    // Given history with a non-empty Assistant followed by a dangling ToolCall.
+    let history = vec![
+        ChatEntry::user("run it"),
+        ChatEntry::assistant("let me check"),
+        ChatEntry::tool_call("tc1", "bash", "ls"),
+        ChatEntry::user("next"),
+    ];
+
+    // When cut lands on the non-empty Assistant at index 1.
+    let result = super::adjust_cut_to_boundary(&history, 1);
+
+    // Then it walks past the incomplete loop to the User entry.
+    assert_eq!(result, 3);
+}
+
 // --- Cut-point algorithm tests for reserve and compact_all ---
 
 #[test]
