@@ -78,7 +78,8 @@ mod tests {
             origin_session: origin_id.clone(),
             is_attached,
             judge_name: "test-judge".to_string(),
-        });
+auto_reset: None,
+});
         // Set the parent so sorted_open_sessions places the judge as a child
         // of the origin: [origin, judge].
         judge_session.set_parent_session(origin_id);

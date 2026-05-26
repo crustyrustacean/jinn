@@ -224,7 +224,8 @@ mod tests {
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "test-judge".to_owned(),
-        });
+auto_reset: None,
+});
         state.session.insert(judge_session);
         (State::new(state), judge_id, origin_id)
     }

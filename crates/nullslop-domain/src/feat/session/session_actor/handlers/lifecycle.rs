@@ -2298,7 +2298,8 @@ mod tests {
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "judge-a".to_owned(),
-        });
+auto_reset: None,
+});
         judge_a.push_entry(ChatEntry::user("evaluate"));
 
         let mut judge_b = ChatSessionState::new();
@@ -2307,7 +2308,8 @@ mod tests {
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "judge-b".to_owned(),
-        });
+auto_reset: None,
+});
         judge_b.push_entry(ChatEntry::user("evaluate"));
 
         {
@@ -2357,7 +2359,8 @@ mod tests {
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "judge-a".to_owned(),
-        });
+auto_reset: None,
+});
         judge_a.push_entry(ChatEntry::user("evaluate"));
 
         let mut judge_b = ChatSessionState::new();
@@ -2366,7 +2369,8 @@ mod tests {
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "judge-b".to_owned(),
-        });
+auto_reset: None,
+});
         judge_b.push_entry(ChatEntry::user("evaluate"));
 
         {

@@ -58,6 +58,9 @@ struct Frontmatter {
     /// Optional model override for the judge session.
     #[serde(default)]
     model: Option<String>,
+    /// Whether this judge auto-resets history before each evaluation.
+    #[serde(default)]
+    auto_reset: bool,
 }
 
 /// Parses a single judge file from disk.
@@ -93,6 +96,7 @@ pub(crate) fn parse_judge_content(
         description: frontmatter.description,
         body,
         model: frontmatter.model,
+        auto_reset: frontmatter.auto_reset,
         file_path: path.to_path_buf(),
     })
 }

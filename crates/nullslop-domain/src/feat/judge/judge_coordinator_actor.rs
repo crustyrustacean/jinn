@@ -377,7 +377,8 @@ mod tests {
             origin_session: origin_id,
             is_attached: attached,
             judge_name: "test-judge".to_string(),
-        });
+auto_reset: None,
+});
         (id, session)
     }
 
@@ -577,7 +578,8 @@ mod tests {
                 origin_session: origin_id.clone(),
                 is_attached: true,
                 judge_name: format!("judge-{i}"),
-            });
+            auto_reset: None,
+});
             state.write().session.insert(session);
             judge_sessions.push(id);
         }
@@ -641,7 +643,8 @@ mod tests {
                 origin_session: origin_id.clone(),
                 is_attached: true,
                 judge_name: format!("judge-{i}"),
-            });
+            auto_reset: None,
+});
             state.write().session.insert(session);
             judge_sessions.push(id);
         }
@@ -802,7 +805,8 @@ mod tests {
                 origin_session: origin_id.clone(),
                 is_attached: true,
                 judge_name: name.to_string(),
-            });
+            auto_reset: None,
+});
             state.write().session.insert(session);
         }
 
