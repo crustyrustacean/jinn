@@ -37,18 +37,15 @@ use crate::feat::session::chat_session::SessionPhase;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::protocol::{Command, Event, SessionId};
 
-use super::protocol::{JudgeVerdict, Verdict};
 use super::JudgeMeta;
+use super::protocol::{JudgeVerdict, Verdict};
 
 /// Resolve the effective auto-reset value for a judge session.
 ///
 /// If the per-session override (`JudgeMeta::auto_reset`) is set, use that.
 /// Otherwise, fall back to the judge file's default (`Judge::auto_reset`)
 /// looked up by name from the loaded judge definitions.
-pub fn resolve_effective_auto_reset(
-    meta: &JudgeMeta,
-    judges: &[super::Judge],
-) -> bool {
+pub fn resolve_effective_auto_reset(meta: &JudgeMeta, judges: &[super::Judge]) -> bool {
     meta.auto_reset.unwrap_or_else(|| {
         judges
             .iter()
@@ -424,8 +421,8 @@ mod tests {
             origin_session: origin_id,
             is_attached: attached,
             judge_name: "test-judge".to_string(),
-auto_reset: None,
-});
+            auto_reset: None,
+        });
         (id, session)
     }
 
@@ -626,9 +623,9 @@ auto_reset: None,
             session.set_judge(JudgeMeta {
                 origin_session: origin_id.clone(),
                 is_attached: true,
-                judge_name: format!("judge-{i}"),
-            auto_reset: None,
-});
+                judge_name: format!("j-{i}"),
+                auto_reset: None,
+            });
             state.write().session.insert(session);
             judge_sessions.push(id);
         }
@@ -691,9 +688,9 @@ auto_reset: None,
             session.set_judge(JudgeMeta {
                 origin_session: origin_id.clone(),
                 is_attached: true,
-                judge_name: format!("judge-{i}"),
-            auto_reset: None,
-});
+                judge_name: format!("j-{i}"),
+                auto_reset: None,
+            });
             state.write().session.insert(session);
             judge_sessions.push(id);
         }
@@ -855,8 +852,8 @@ auto_reset: None,
                 origin_session: origin_id.clone(),
                 is_attached: true,
                 judge_name: name.to_string(),
-            auto_reset: None,
-});
+                auto_reset: None,
+            });
             state.write().session.insert(session);
         }
 
