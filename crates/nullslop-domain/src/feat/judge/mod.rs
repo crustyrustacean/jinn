@@ -34,7 +34,7 @@ pub use judge_coordinator_actor::{JudgeCoordinatorActor, JudgeCoordinatorActorDe
 pub use judge_scan_actor::{JudgeScanActor, JudgeScanActorDeps};
 pub use loader::{parse_judge_file, scan_judges_dir, scan_judges_merged};
 pub use picker_entry::JudgePickerEntry;
-pub use protocol::{JudgeVerdict, JudgesLoaded, RescanJudges, Verdict};
+pub use protocol::{CancelPendingJudgeEvaluation, JudgeVerdict, JudgesLoaded, RescanJudges, Verdict};
 
 use nullslop_provider::ToolDefinition;
 

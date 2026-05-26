@@ -503,6 +503,20 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
         return Some(handle_compaction_cancel(state, session_id));
     }
 
+    // Idle but busy → cancel pending judge evaluation.
+    if state.active_session().phase() == SessionPhase::Idle
+        && state.active_session().is_busy()
+    {
+        state.active_session_mut().cancel_stream_and_drain();
+        return Some(IntentResult::with_commands(vec![
+            Command::CancelPendingJudgeEvaluation(
+                crate::feat::judge::CancelPendingJudgeEvaluation {
+                    origin_session_id: session_id,
+                },
+            ),
+        ]));
+    }
+
     // Existing stream cancel behavior (Streaming, Sending, Assembling, Idle).
     state.active_session_mut().cancel_stream_and_drain();
     Some(IntentResult::with_commands(vec![Command::CancelStream(
