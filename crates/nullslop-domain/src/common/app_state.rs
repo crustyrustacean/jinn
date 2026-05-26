@@ -11,6 +11,8 @@
 
 use std::collections::HashMap;
 
+use parking_lot::RwLock;
+
 use crate::protocol::{ChatEntryId, Mode, PickerKind, PinPosition, SessionId, ToolDefinition};
 
 use crate::common::session_map::SessionMap;
@@ -407,6 +409,29 @@ impl Clone for WorkflowUiState {
     }
 }
 
+/// Theme-sensitive caches owned by the frontend.
+///
+/// All caches that store pre-rendered styled data (which embeds theme colors)
+/// live here so they can be invalidated in one call when the theme changes.
+///
+/// Each cache is wrapped in a `RwLock` so render code can borrow mutably
+/// while holding shared references to the rest of `AppState`.
+#[derive(Debug, Default)]
+pub struct FrontendCaches {
+    /// Cached wrapped line counts and rendered lines per chat entry.
+    pub entry_line_cache: RwLock<crate::feat::ui::chat_log::line_count_cache::EntryLineCache>,
+    /// Cached rendered lines for session preview popups.
+    pub session_preview_cache: RwLock<crate::feat::ui::sidebar::sessions::preview::SessionPreviewCache>,
+}
+
+impl FrontendCaches {
+    /// Invalidate all caches. Called when the active theme changes.
+    pub fn invalidate_all(&self) {
+        self.entry_line_cache.write().clear();
+        self.session_preview_cache.write().clear();
+    }
+}
+
 /// Frontend / UI state — owned by the IntentHandler (main thread).
 ///
 /// Written to by `IntentHandler` and various UI elements (read-only).
@@ -460,6 +485,10 @@ pub struct FrontendState {
     /// The current resolved theme (colors for the render pipeline).
     /// OWNER: IntentHandler (theme picker preview), PreferencesStateSyncActor (on prefs change).
     pub theme: Theme,
+
+    /// Theme-sensitive caches. Invalidated when `theme` changes.
+    /// OWNER: IntentHandler (cleared on theme change).
+    pub caches: FrontendCaches,
 
     /// Whether the "Press ESC again to cancel" prompt is showing.
     /// OWNER: IntentHandler (set on first ESC in Normal/Sidebar with active stream,
@@ -550,6 +579,7 @@ impl Default for FrontendState {
             persona_picker: nullslop_selection_widget::SelectionState::new(),
             scope_stack,
             theme: crate::feat::theme::default_theme(),
+            caches: FrontendCaches::default(),
             cancel_stream_prompt: false,
             close_session_prompt: false,
             theme_picker: nullslop_selection_widget::SelectionState::new(),
@@ -677,6 +707,11 @@ impl AppState {
         let mut pinned = self.active_session().pinned_entries();
         pinned.sort_by_key(|entry| pin_sort_key(entry.pin_position));
         pinned.iter().map(|e| e.id.clone()).collect()
+    }
+
+    /// Invalidate all theme-sensitive caches. Called when the active theme changes.
+    pub fn invalidate_theme_caches(&self) {
+        self.frontend.caches.invalidate_all();
     }
 }
 
