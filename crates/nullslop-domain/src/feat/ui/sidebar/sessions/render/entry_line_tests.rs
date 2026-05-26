@@ -12,6 +12,8 @@ use crate::feat::ui::sidebar::sessions::render::entry_line::{assemble_entry_line
 use crate::feat::ui::sidebar::sessions::state::SessionEntry;
 use crate::protocol::SessionId;
 
+use unicode_segmentation::UnicodeSegmentation;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -31,6 +33,30 @@ fn tree_entry(
         is_judge: false,
         judge_attached: None,
         judge_auto_reset: false,
+        parent_id: None,
+        depth,
+        ancestor_continuations,
+        is_last_child,
+    }
+}
+
+fn judge_entry(
+    title: &str,
+    depth: usize,
+    ancestor_continuations: Vec<bool>,
+    is_last_child: bool,
+    auto_reset: bool,
+) -> SessionEntry {
+    SessionEntry {
+        id: SessionId::new(),
+        title: title.to_owned(),
+        is_active: false,
+        created_at: Timestamp::now(),
+        is_idle: true,
+        last_entry_is_error: false,
+        is_judge: true,
+        judge_attached: Some(true),
+        judge_auto_reset: auto_reset,
         parent_id: None,
         depth,
         ancestor_continuations,
@@ -381,5 +407,82 @@ fn tree_prefix_uses_muted_text_color() {
         tree_span.style.fg,
         Some(theme.muted_text),
         "tree prefix should use muted_text color"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// assemble_entry_line — grapheme-level counting for judge and tree prefixes
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn judge_root_title_is_not_over_truncated() {
+    // Given a judge entry at depth 0 with a 10-char title.
+    // The judge prefix "⚖ " is 2 graphemes.
+    let entry = judge_entry("1234567890", 0, vec![], true, false);
+    let theme = default_theme();
+    // max_title_len = 12 → budget for title = 12 - 2 (judge prefix) = 10.
+    // The title "1234567890" is exactly 10 chars, so it should appear in full.
+    let max_title_len = 12;
+
+    // When assembling the entry line.
+    let line = assemble_entry_line(&entry, false, max_title_len, &idle_throbber(), &theme);
+
+    // Then the title span contains the full title with the judge prefix.
+    // Title span is the last span: "⚖ 1234567890" (no truncation).
+    let title_span = &line.spans[3].content;
+    assert_eq!(
+        title_span,
+        "\u{2696} 1234567890",
+        "judge root title should not be truncated, got: {title_span}"
+    );
+}
+
+#[rstest::rstest]
+fn judge_auto_reset_at_depth_1_uses_grapheme_count() {
+    // Given a judge entry with auto-reset at depth 1.
+    // Tree prefix "└─ " = 3 graphemes. Judge prefix "⚖ ↺ " = 4 graphemes.
+    let entry = judge_entry("ABCDEFGHIJ", 1, vec![true], true, true);
+    let theme = default_theme();
+    // max_title_len = 10 → budget = 10 - 3 (tree) - 4 (judge prefix) = 3 graphemes.
+    // Title "ABCDEFGHIJ" (10 chars) truncated to 2 + "…" = 3 graphemes.
+    let max_title_len = 10;
+
+    // When assembling the entry line.
+    let line = assemble_entry_line(&entry, false, max_title_len, &idle_throbber(), &theme);
+
+    // Then the title span has 3 graphemes of actual title content after the prefix.
+    let title_span = &line.spans[4].content;
+    let grapheme_count = title_span.graphemes(true).count();
+    // "⚖ ↺ AB…" = 4 (prefix) + 3 (truncated title) = 7 graphemes total.
+    assert_eq!(
+        grapheme_count, 7,
+        "title span should have 7 graphemes (4 prefix + 3 title), got {grapheme_count}: {title_span}"
+    );
+}
+
+#[rstest::rstest]
+fn non_judge_child_at_depth_1_uses_grapheme_count_for_tree() {
+    // Given a non-judge child at depth 1 with a long title.
+    // Tree prefix "├─ " = 3 graphemes (but 7 bytes).
+    let mut entry = tree_entry(1, vec![true], false);
+    entry.title = "ABCDEFGHIJ".to_owned();
+    let theme = default_theme();
+    // max_title_len = 7 → budget = 7 - 3 (tree prefix graphemes) = 4 graphemes for title.
+    // Title "ABCDEFGHIJ" truncated to 3 + "…" = 4 graphemes.
+    let max_title_len = 7;
+
+    // When assembling the entry line.
+    let line = assemble_entry_line(&entry, false, max_title_len, &idle_throbber(), &theme);
+
+    // Then the title span has exactly 4 graphemes.
+    let title_span = &line.spans[4].content;
+    let grapheme_count = title_span.graphemes(true).count();
+    assert_eq!(
+        grapheme_count, 4,
+        "title span should have 4 graphemes, got {grapheme_count}: {title_span}"
+    );
+    assert!(
+        title_span.ends_with('…'),
+        "truncated title should end with ellipsis, got: {title_span}"
     );
 }
