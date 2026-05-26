@@ -152,6 +152,9 @@ pub enum Intent {
     /// Toggle the attached/detached state of the judge session under the sidebar cursor.
     ToggleJudgeAttached,
 
+    /// Reset the judge session under the sidebar cursor — truncate history to pinned entries only.
+    ResetJudge,
+
     // --- Chat Entry Selection ---
     /// Select the next chat entry.
     ChatEntrySelectNext,
@@ -350,6 +353,7 @@ impl std::fmt::Display for Intent {
             Intent::SessionNewWithLifecycle => write!(f, "new session with lifecycle"),
             Intent::SidebarSessionContinue => write!(f, "session continue"),
             Intent::ToggleJudgeAttached => write!(f, "toggle judge attached"),
+            Intent::ResetJudge => write!(f, "reset judge"),
             Intent::ChatEntrySelectNext => write!(f, "select next entry"),
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),
             Intent::ChatEntryPinSelected => write!(f, "pin selected entry"),
