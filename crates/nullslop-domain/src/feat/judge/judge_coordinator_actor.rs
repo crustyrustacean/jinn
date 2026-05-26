@@ -53,7 +53,7 @@ pub fn resolve_effective_auto_reset(
         judges
             .iter()
             .find(|j| j.name == meta.judge_name)
-            .map_or(false, |j| j.auto_reset)
+            .is_some_and(|j| j.auto_reset)
     })
 }
 
