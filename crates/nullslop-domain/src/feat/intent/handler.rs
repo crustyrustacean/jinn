@@ -286,6 +286,9 @@ impl IntentHandler {
             Intent::ToggleJudgeAttached => {
                 feat::ui::sidebar::sessions::handle_toggle_judge_attached(state)
             }
+            Intent::ResetJudge => {
+                feat::ui::sidebar::sessions::reset_judge::handle_reset_judge(state)
+            }
             Intent::SidebarConfirm => {
                 feat::ui::sidebar::sessions::handle_session_activate(state);
                 IntentResult::empty()
