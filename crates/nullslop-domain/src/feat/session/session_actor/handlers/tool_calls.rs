@@ -6,6 +6,7 @@
 use crate::common::actor::ActorContext;
 use crate::feat::context::assemble::assemble_prompt;
 use crate::feat::provider::protocol::command::SendToLlmProvider;
+use crate::feat::session::chat_session::SessionPhase;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
@@ -126,16 +127,30 @@ impl SessionPersistenceActor {
         };
 
         if soft_cancelled {
-            // Soft cancel: don't assemble prompt. Session is already in
-            // Sending phase; it will return to Idle when the QueueActor sees
-            // the SessionPhaseChanged event. But we need to explicitly end the
-            // turn — finish sending and go to Idle.
+            // Soft cancel: don't assemble prompt. End the turn and return to Idle.
+            // Phase-aware: the session could be in Sending, Streaming, or Compacting.
             let (old_phase, new_phase) = {
                 let mut state = self.state.write();
                 let session = state.session_mut_or_create(&event.session_id);
                 let old_phase = session.phase();
-                // Finish the sending phase to return to Idle.
-                session.finish_sending();
+                match session.phase() {
+                    SessionPhase::Sending => {
+                        session.finish_sending();
+                    }
+                    SessionPhase::Streaming => {
+                        session.finish_streaming(false);
+                    }
+                    SessionPhase::Compacting => {
+                        // Compaction is running — don't change phase.
+                        // The compaction completion handler will transition to Idle.
+                    }
+                    _ => {
+                        tracing::warn!(
+                            phase = ?session.phase(),
+                            "unexpected phase in on_tool_batch_completed soft-cancel"
+                        );
+                    }
+                }
                 (old_phase, session.phase())
             };
             super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
