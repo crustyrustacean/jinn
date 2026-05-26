@@ -12,6 +12,7 @@ pub mod navigate;
 pub mod preview;
 pub mod reconcile;
 pub mod render;
+pub mod reset_judge;
 pub mod state;
 pub mod teardown;
 pub mod toggle_judge;
@@ -32,6 +33,7 @@ pub use close::{
     validate_session_close,
 };
 pub use r#continue::handle_session_continue;
+pub use reset_judge::handle_reset_judge;
 pub use toggle_judge::handle_toggle_judge_attached;
 pub use navigate::{navigate, receive_cursor, scroll_to_cursor};
 pub use preview::{
