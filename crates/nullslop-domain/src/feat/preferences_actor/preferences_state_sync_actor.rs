@@ -59,7 +59,10 @@ impl Actor for PreferencesStateSyncActor {
                     &self.themes_dir,
                     &self.system_themes_dir,
                 ) {
-                    Ok(t) => state.frontend.theme = t,
+                    Ok(t) => {
+                        state.frontend.theme = t;
+                        state.invalidate_theme_caches();
+                    }
                     Err(e) => {
                         tracing::warn!(err = ?e, "failed to reload theme, keeping current");
                     }
@@ -249,5 +252,69 @@ mod tests {
         let guard = state.read();
         assert!(guard.frontend.preferences.last_model.is_none());
         assert!(guard.frontend.preferences.last_strategy.is_none());
+    }
+
+    // --- S-Tier: Kill mutant for persona_name == condition ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn persona_name_sync_sets_correct_persona() {
+        // Kills: replace == with != in persona_name matching.
+        // If the condition were flipped, the wrong persona would be set.
+        use crate::feat::persona::Persona;
+
+        // Given a sync actor with two personas loaded.
+        let (mut actor, state, ctx) = create_actor();
+        {
+            let mut guard = state.write();
+            guard.context.personas = vec![
+                Persona {
+                    name: "coder".to_owned(),
+                    description: String::new(),
+                    body: String::new(),
+                    file_path: std::path::PathBuf::new(),
+                },
+                Persona {
+                    name: "writer".to_owned(),
+                    description: String::new(),
+                    body: String::new(),
+                    file_path: std::path::PathBuf::new(),
+                },
+            ];
+        }
+
+        // When receiving PreferencesUpdated with persona_name = "writer".
+        let prefs = UserPreferences {
+            last_model: None,
+            last_strategy: None,
+            tool_entry_max_lines: None,
+            min_collapse_count: None,
+            theme_name: None,
+            persona_name: Some("writer".to_owned()),
+            session_lifecycles: vec![],
+            sidebar_width: None,
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
+            compaction: CompactionConfig::default(),
+            context_sliding_window: ContextSlidingWindowConfig::default(),
+            request_retry: RequestRetryConfig::default(),
+        };
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::PreferencesUpdated(PreferencesUpdated {
+                    preferences: prefs,
+                })),
+                &ctx,
+            )
+            .await;
+
+        // Then the active persona is "writer", not "coder".
+        let guard = state.read();
+        let active = guard
+            .context
+            .active_persona
+            .as_ref()
+            .expect("should have active persona");
+        assert_eq!(active.name, "writer");
     }
 }

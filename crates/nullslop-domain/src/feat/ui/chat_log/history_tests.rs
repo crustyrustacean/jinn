@@ -888,7 +888,7 @@ fn virtualization_populates_cache_after_render() {
 
     // Then the cache has entries for all 30 entries.
     assert_eq!(
-        element.line_cache.len(),
+        state.frontend.caches.entry_line_cache.read().len(),
         30,
         "cache should have entries for all 30 entries after render"
     );
@@ -981,7 +981,7 @@ fn resize_clears_cache_and_rerenders() {
 
     // Then the cache is still populated (re-populated at new width).
     assert_eq!(
-        element.line_cache.len(),
+        state.frontend.caches.entry_line_cache.read().len(),
         5,
         "cache should be re-populated after resize"
     );
@@ -1020,7 +1020,7 @@ fn streaming_content_change_invalidates_cache() {
         })
         .unwrap();
 
-    assert_eq!(element.line_cache.len(), 1, "cache should have 1 entry");
+    assert_eq!(state.frontend.caches.entry_line_cache.read().len(), 1, "cache should have 1 entry");
 
     // When more tokens arrive (content changes, fingerprint changes).
     state
@@ -1036,7 +1036,7 @@ fn streaming_content_change_invalidates_cache() {
 
     // Then the cache still has 1 entry (re-computed with new fingerprint).
     assert_eq!(
-        element.line_cache.len(),
+        state.frontend.caches.entry_line_cache.read().len(),
         1,
         "cache should have 1 entry after streaming token append"
     );

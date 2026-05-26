@@ -63,6 +63,7 @@ pub fn create_core_with_actor_host(
     bench_csv_path: Option<std::path::PathBuf>,
     bench_plan: Option<nullslop_bench::orchestrator::BenchPlan>,
     bench_artifact_dir: Option<std::path::PathBuf>,
+    paths: nullslop_domain::AppPaths,
 ) -> (AppCore, Services, ActorHostService) {
     // Create channel first — actors need the sender, but AppCore needs services
     // which needs the actor host which needs actors. Break the cycle by creating
@@ -90,7 +91,6 @@ pub fn create_core_with_actor_host(
     }
 
     // Build services (needed early for infrastructure actors).
-    let paths = nullslop_domain::AppPaths::default();
 
     // Set themes directory from AppPaths (used by theme picker intent).
     {

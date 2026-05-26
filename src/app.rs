@@ -130,6 +130,7 @@ impl App {
                     None,
                     None,
                     None,
+                    nullslop_domain::AppPaths::default(),
                 );
                 let paths = &services.paths;
                 load_prompt_templates(
@@ -223,7 +224,6 @@ impl App {
                         nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                         s
                     },
-                    preview_cache: nullslop_tui::app::PreviewCache::new(),
                     plugin_host,
                     welcome_subscriber,
                 }));
@@ -243,6 +243,7 @@ impl App {
                     None,
                     None,
                     None,
+                    nullslop_domain::AppPaths::default(),
                 );
                 load_prompt_templates(
                     &core.state,
@@ -328,6 +329,7 @@ impl App {
                                 Some(csv),
                                 Some(plan),
                                 artifact_dir,
+                                nullslop_domain::AppPaths::default(),
                             );
                         let paths = &services.paths;
                         load_prompt_templates(
@@ -370,7 +372,6 @@ impl App {
                                 nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                                 s
                             },
-                            preview_cache: nullslop_tui::app::PreviewCache::new(),
                             plugin_host: None,
                             welcome_subscriber: None,
                         }));
@@ -405,6 +406,7 @@ impl App {
                                 None,
                                 None,
                                 None,
+                                nullslop_domain::AppPaths::default(),
                             );
                         let paths = &services.paths;
                         load_prompt_templates(
@@ -447,7 +449,6 @@ impl App {
                                 nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                                 s
                             },
-                            preview_cache: nullslop_tui::app::PreviewCache::new(),
                             plugin_host: None,
                             welcome_subscriber: None,
                         }));
@@ -539,15 +540,19 @@ fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
 /// Returns an error if the HTTP request fails, the response is not valid JSON,
 /// or the file cannot be written.
 async fn fetch_models() -> Result<(), Report<AppError>> {
-    fetch_models_from_url("https://models.dev/api.json").await
+    use nullslop_domain::common::app_info::APP_NAME;
+    let target_path = dirs::cache_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join(APP_NAME)
+        .join("models.dev.json");
+    fetch_models_from_url("https://models.dev/api.json", target_path).await
 }
 
 /// Fetches model metadata from a URL and saves it to the user's cache directory.
 ///
 /// This is the testable core of [`fetch_models`], separated so tests can
 /// pass a mockito URL.
-async fn fetch_models_from_url(url: &str) -> Result<(), Report<AppError>> {
-    use nullslop_domain::common::app_info::APP_NAME;
+async fn fetch_models_from_url(url: &str, output_path: std::path::PathBuf) -> Result<(), Report<AppError>> {
 
     tracing::info!(url = url, "fetching model metadata");
 
@@ -587,25 +592,20 @@ async fn fetch_models_from_url(url: &str) -> Result<(), Report<AppError>> {
         (provider_count, model_count)
     };
 
-    // Write to user cache directory.
-    let target_path = dirs::cache_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join(APP_NAME)
-        .join("models.dev.json");
-
-    if let Some(parent) = target_path.parent() {
+    // Write to the provided output path.
+    if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)
             .change_context(AppError)
             .attach("failed to create cache directory")?;
     }
 
-    std::fs::write(&target_path, &body)
+    std::fs::write(&output_path, &body)
         .change_context(AppError)
         .attach("failed to write models.dev.json")?;
 
     println!(
         "Fetched {model_count} models from {provider_count} providers to {}",
-        target_path.display()
+        output_path.display()
     );
 
     Ok(())
@@ -768,16 +768,18 @@ mod tests {
             .await;
 
         let url = format!("{}/api.json", server.url());
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let output_path = temp_dir.path().join("models.dev.json");
 
         // When fetching models.
-        let result = fetch_models_from_url(&url).await;
+        let result = fetch_models_from_url(&url, output_path.clone()).await;
 
         // Then it succeeds and the mock was called.
         assert!(result.is_ok(), "expected success, got: {:?}", result.err());
         mock.assert_async().await;
 
-        // Note: File write is verified indirectly — if reqwest succeeded and
-        // status was 200, the function writes the response body to disk.
+        // And the file was written to the temp directory (not real cache).
+        assert!(output_path.exists(), "output file should exist at temp path");
     }
 
     #[tokio::test]
@@ -791,9 +793,11 @@ mod tests {
             .await;
 
         let url = format!("{}/api.json", server.url());
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let output_path = temp_dir.path().join("models.dev.json");
 
         // When fetching models.
-        let result = fetch_models_from_url(&url).await;
+        let result = fetch_models_from_url(&url, output_path).await;
 
         // Then it returns an error (the ! in !is_success() is needed).
         // This kills: delete ! in fetch_models.
@@ -827,9 +831,11 @@ mod tests {
             .await;
 
         let url = format!("{}/api.json", server.url());
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let output_path = temp_dir.path().join("models.dev.json");
 
         // When fetching models.
-        let result = fetch_models_from_url(&url).await;
+        let result = fetch_models_from_url(&url, output_path).await;
 
         // Then it succeeds.
         // This kills: += with -= (would panic on u32 underflow in debug mode)

@@ -268,3 +268,48 @@ fn config_snapshot_returns_current_config() {
     assert_eq!(config.providers.len(), 2);
     assert_eq!(config.default_provider.as_deref(), Some("ollama/llama3"));
 }
+
+// --- S-Tier: Kill mutants for is_available / merge_cache ---
+
+#[rstest::rstest]
+fn is_available_returns_false_for_key_required_without_key() {
+    // Kills: replace is_available with true.
+    // If is_available always returned true, the key-required provider would appear available.
+    let service = service_with_providers();
+    let api_keys = crate::feat::provider_infra::api_keys::ApiKeys::new();
+    let id = crate::feat::provider_infra::provider_id::ProviderId::new(
+        "openrouter/gpt-4".to_owned(),
+    );
+
+    assert!(!service.is_available(&id, &api_keys));
+}
+
+#[rstest::rstest]
+fn merge_cache_actually_adds_entries_to_registry() {
+    // Kills: replace merge_cache with ().
+    // If merge_cache were a no-op, the new model would not be available.
+    let service = service_with_providers();
+
+    let mut cache_entries = std::collections::HashMap::new();
+    cache_entries.insert(
+        "ollama".to_owned(),
+        vec![crate::feat::provider_infra::ModelInfo {
+            id: "mistral".to_owned(),
+            context_length: None,
+        }],
+    );
+    let cache = crate::feat::provider_infra::ModelCache {
+        entries: cache_entries,
+        last_updated_at: None,
+    };
+
+    service.merge_cache(&cache);
+
+    // Then the merged model should be in the registry.
+    let merged_id = crate::feat::provider_infra::provider_id::ProviderId::new(
+        "ollama/mistral".to_owned(),
+    );
+    let entry = service.get(&merged_id);
+    assert!(entry.is_some(), "merge_cache should add the remote model");
+    assert!(entry.unwrap().is_remote);
+}
