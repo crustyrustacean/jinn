@@ -560,11 +560,10 @@ fn confirm_judge(state: &mut AppState) -> IntentResult {
         .with_pin(crate::protocol::PinPosition::Top);
     judge_session.push_entry(system_entry);
 
-    // Insert into session map and activate.
+    // Insert into session map and keep origin active.
     state.session.insert(judge_session);
-    state.session.set_active(judge_id.clone());
+    state.session.set_active(active_id.clone());
     state.frontend.scope_stack.pop();
-    state.frontend.scope_stack.push(FocusScope::Input);
 
     IntentResult::with_commands(vec![Command::PersistSession(
         crate::feat::session_lifecycle::protocol::command::PersistSession {
@@ -590,6 +589,15 @@ mod tests {
             model: model.map(std::borrow::ToOwned::to_owned),
             file_path: PathBuf::new(),
         }
+    }
+
+    fn find_judge_session(state: &AppState) -> &ChatSessionState {
+        state
+            .session
+            .iter()
+            .find(|(_, s)| s.judge().is_some())
+            .map(|(_, s)| s)
+            .expect("judge session should exist")
     }
 
     fn setup_state_with_judge() -> AppState {
@@ -625,9 +633,9 @@ mod tests {
         // Should have produced a PersistSession command.
         assert_eq!(result.commands.len(), 1);
 
-        // The new active session should be a judge session.
-        let active = state.active_session();
-        let meta = active.judge().as_ref().expect("should have judge meta");
+        // The judge session should have correct metadata.
+        let judge_session = find_judge_session(&state);
+        let meta = judge_session.judge().as_ref().expect("should have judge meta");
         assert_eq!(meta.judge_name, "accuracy");
         assert_eq!(meta.origin_session, origin_id);
         assert!(meta.is_attached);
@@ -640,8 +648,8 @@ mod tests {
 
         let _ = confirm_judge(&mut state);
 
-        let active = state.active_session();
-        assert_eq!(active.parent_session().as_ref(), Some(&origin_id));
+        let judge_session = find_judge_session(&state);
+        assert_eq!(judge_session.parent_session().as_ref(), Some(&origin_id));
     }
 
     #[rstest::rstest]
@@ -650,8 +658,8 @@ mod tests {
 
         let _ = confirm_judge(&mut state);
 
-        let active = state.active_session();
-        let pinned: Vec<_> = active.pinned_entries();
+        let judge_session = find_judge_session(&state);
+        let pinned: Vec<_> = judge_session.pinned_entries();
         assert_eq!(pinned.len(), 1, "should have exactly one pinned entry");
         assert_eq!(pinned[0].pin_position, Some(PinPosition::Top));
         assert!(pinned[0].text().contains("Check accuracy."));
@@ -713,9 +721,9 @@ mod tests {
         let _ = confirm_judge(&mut state);
 
         // Then the judge session title includes the judge name.
-        let active = state.active_session();
+        let judge_session = find_judge_session(&state);
         assert_eq!(
-            active.title().as_deref(),
+            judge_session.title(),
             Some("judge/accuracy"),
             "title should be 'judge/<name>'"
         );
@@ -757,8 +765,8 @@ mod tests {
         let _ = confirm_judge(&mut state);
 
         // Then the judge session inherits the origin's model.
-        let active = state.active_session();
-        assert_eq!(active.model(), "anthropic/claude-sonnet");
+        let judge_session = find_judge_session(&state);
+        assert_eq!(judge_session.model(), "anthropic/claude-sonnet");
     }
 
     #[rstest::rstest]
@@ -773,7 +781,39 @@ mod tests {
         let _ = confirm_judge(&mut state);
 
         // Then the judge session uses its own model, not the origin's.
-        let active = state.active_session();
-        assert_eq!(active.model(), "anthropic/claude-haiku");
+        let judge_session = find_judge_session(&state);
+        assert_eq!(judge_session.model(), "anthropic/claude-haiku");
+    }
+
+    #[rstest::rstest]
+    fn confirm_judge_keeps_origin_active() {
+        // Given state with a judge definition and an active origin session.
+        let mut state = setup_state_with_judge();
+        let origin_id = state.session.active_session_id().clone();
+
+        // When confirming the judge picker.
+        let _ = confirm_judge(&mut state);
+
+        // Then the active session is still the origin.
+        assert_eq!(
+            state.session.active_session_id(),
+            &origin_id,
+            "active session should remain the origin after adding a judge"
+        );
+    }
+
+    #[rstest::rstest]
+    fn confirm_judge_returns_to_normal_mode() {
+        // Given state with a judge definition (picker is open).
+        let mut state = setup_state_with_judge();
+
+        // When confirming the judge picker.
+        let _ = confirm_judge(&mut state);
+
+        // Then the scope stack returns to Normal mode.
+        assert!(
+            matches!(state.frontend.scope_stack.current(), FocusScope::Normal),
+            "scope should return to Normal after confirming judge picker"
+        );
     }
 }
