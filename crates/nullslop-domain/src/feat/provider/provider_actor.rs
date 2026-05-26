@@ -192,6 +192,8 @@ impl ProviderActor {
             &self.services.paths.models_dev_system_path(),
         );
         merge_context_lengths_from_models_dev(&mut cache, &models_dev);
+        // Merge remote models into the registry so create_factory() can find them.
+        self.services.provider_registry.merge_cache(&cache);
         let mut state = self.state.write();
         state.provider.model_cache = Some(cache);
         // Also reload provider picker entries from updated model cache.
@@ -210,6 +212,8 @@ impl ProviderActor {
             &self.services.paths.models_dev_system_path(),
         );
         merge_context_lengths_from_models_dev(&mut cache, &models_dev);
+        // Merge remote models into the registry so create_factory() can find them.
+        self.services.provider_registry.merge_cache(&cache);
         let mut state = self.state.write();
         state.provider.model_cache = Some(cache);
         load_provider_picker_items(&self.services, &mut state);
@@ -430,7 +434,7 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let (mut actor, _services, _sink, ctx, state) = create_actor_with_config(config);
+        let (mut actor, services, _sink, ctx, state) = create_actor_with_config(config);
 
         // When handling ModelsRefreshed with zai model that has context_length: None.
         let mut results = std::collections::HashMap::new();
@@ -458,6 +462,12 @@ mod tests {
             .as_ref()
             .expect("cache should be set");
         assert_eq!(cache.entries["zai"][0].context_length, Some(128_000));
+
+        // And the model is registered in the provider registry.
+        let resolved = services.provider_registry.get(
+            &crate::feat::provider_infra::ProviderId::new("zai/zai-1.5".to_owned()),
+        );
+        assert!(resolved.is_some(), "model should be in registry after ModelsRefreshed");
     }
 
     #[rstest::rstest]
@@ -594,7 +604,7 @@ mod tests {
             aliases: vec![],
             default_provider: None,
         };
-        let (mut actor, _services, _sink, ctx, state) = create_actor_with_config(config);
+        let (mut actor, services, _sink, ctx, state) = create_actor_with_config(config);
 
         // When handling ModelCacheLoaded with cache that has context_length: None.
         let mut cache = ModelCache::new();
@@ -622,6 +632,12 @@ mod tests {
             .as_ref()
             .expect("cache should be set");
         assert_eq!(loaded.entries["zai"][0].context_length, Some(128_000));
+
+        // And the model is registered in the provider registry.
+        let resolved = services.provider_registry.get(
+            &crate::feat::provider_infra::ProviderId::new("zai/zai-1.5".to_owned()),
+        );
+        assert!(resolved.is_some(), "model should be in registry after ModelCacheLoaded");
     }
 
     #[rstest::rstest]
