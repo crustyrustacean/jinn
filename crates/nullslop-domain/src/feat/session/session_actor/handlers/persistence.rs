@@ -80,6 +80,21 @@ impl SessionPersistenceActor {
         self.save_active_session(&payload.session_id).await;
     }
 
+    /// Creates an empty session with the given ID and emits a `SessionLoadCompleted` command.
+    ///
+    /// Used as a fallback when a session is not found or fails to load.
+    fn create_empty_session_response(
+        &self,
+        session_id: &crate::protocol::SessionId,
+        ctx: &crate::common::actor::ActorContext,
+    ) {
+        use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted as CompletedPayload;
+
+        let mut session = crate::feat::session::chat_session::ChatSessionState::new();
+        session.set_session_id(session_id.clone());
+        let _ = ctx.send_command(Command::SessionLoadCompleted(CompletedPayload { session }));
+    }
+
     /// Loads a full session from disk and sends back a `SessionLoadCompleted` command.
     ///
     /// If the requested session is a judge, redirects to loading its origin session
@@ -248,18 +263,11 @@ impl SessionPersistenceActor {
                     session_id = ?evt.session_id,
                     "session load returned None"
                 );
-                // Create an empty session with the requested ID.
-                let mut session = crate::feat::session::chat_session::ChatSessionState::new();
-                session.set_session_id(evt.session_id.clone());
-                let _ =
-                    ctx.send_command(Command::SessionLoadCompleted(CompletedPayload { session }));
+                self.create_empty_session_response(&evt.session_id, ctx);
             }
             Err(e) => {
                 tracing::warn!(err = ?e, "failed to load session");
-                let mut session = crate::feat::session::chat_session::ChatSessionState::new();
-                session.set_session_id(evt.session_id.clone());
-                let _ =
-                    ctx.send_command(Command::SessionLoadCompleted(CompletedPayload { session }));
+                self.create_empty_session_response(&evt.session_id, ctx);
             }
         }
     }
