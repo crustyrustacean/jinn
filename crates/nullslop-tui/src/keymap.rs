@@ -251,6 +251,10 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         })
         .scope(Scope::PickerCompactionModel, |b| {
             add_picker_base(b);
+        })
+        .scope(Scope::PickerTool, |b| {
+            add_picker_base(b);
+            b.bind("<Tab>", Intent::ToolToggleSelected, KeyCategory::General);
         });
 
     // ArgInput scope — typing positional args for a lifecycle command.
