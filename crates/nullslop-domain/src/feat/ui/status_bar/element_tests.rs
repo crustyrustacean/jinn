@@ -790,6 +790,8 @@ fn render_hides_tree_aggregate_for_single_session() {
 #[rstest::rstest]
 fn render_shows_tree_aggregate_when_parent_has_child() {
     // Given a parent session with a child session.
+    use crate::feat::session::token_stats::TokenRecord;
+
     let mut element = StatusBarElement;
     let mut state = AppState::default();
     state
@@ -797,7 +799,6 @@ fn render_shows_tree_aggregate_when_parent_has_child() {
         .set_model("ollama/llama3".to_owned());
 
     // Add token records to the active (parent) session.
-    use crate::feat::session::token_stats::TokenRecord;
     state.active_session_mut().push_token_record(TokenRecord {
         timestamp: jiff::Timestamp::now(),
         tokens_sent: 1000,
