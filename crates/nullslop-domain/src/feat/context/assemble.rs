@@ -660,7 +660,8 @@ mod tests {
                 origin_session: session_id,
                 is_attached: true,
                 judge_name: "test-judge".to_owned(),
-            });
+            auto_reset: None,
+});
             guard.session.insert(judge_session);
         }
 
@@ -729,7 +730,8 @@ mod tests {
                 origin_session: origin_id,
                 is_attached: true,
                 judge_name: "test-judge".to_owned(),
-            });
+            auto_reset: None,
+});
             let id = judge_session.session_id().clone();
             guard.session.insert(judge_session);
             id

@@ -111,7 +111,8 @@ mod tests {
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "test-judge".to_string(),
-        });
+auto_reset: None,
+});
         judge_session.set_parent_session(origin_id.clone());
 
         // Push a pinned system entry (judge body).

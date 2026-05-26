@@ -218,7 +218,8 @@ mod tests {
             origin_session: origin_id,
             is_attached: true,
             judge_name: "test-judge".to_owned(),
-        });
+auto_reset: None,
+});
         state.write().session.insert(judge_session);
 
         // When requesting 2 most recent entries.
@@ -252,7 +253,8 @@ mod tests {
             origin_session: origin_id,
             is_attached: true,
             judge_name: "test-judge".to_owned(),
-        });
+auto_reset: None,
+});
         state.write().session.insert(judge_session);
 
         // When calling without count parameter.
@@ -290,7 +292,8 @@ mod tests {
             origin_session: origin_id,
             is_attached: true,
             judge_name: "test-judge".to_owned(),
-        });
+auto_reset: None,
+});
         state.write().session.insert(judge_session);
 
         // When querying recent messages.

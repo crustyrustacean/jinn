@@ -122,8 +122,14 @@ pub(crate) fn assemble_entry_line(
     );
 
     let display_title = if entry.is_judge {
-        let truncated = truncate_str(&entry.title, max_title_len.saturating_sub(tree_len + 2));
-        format!("\u{2696} {truncated}")
+        let prefix = if entry.judge_auto_reset {
+            "\u{2696} \u{21BA} "
+        } else {
+            "\u{2696} "
+        };
+        let prefix_len = prefix.len();
+        let truncated = truncate_str(&entry.title, max_title_len.saturating_sub(tree_len + prefix_len));
+        format!("{prefix}{truncated}")
     } else {
         truncate_str(&entry.title, max_title_len.saturating_sub(tree_len))
     };
