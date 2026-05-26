@@ -39,7 +39,6 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
-use ratatui_markdown::theme::Generation;
 
 use super::line_count_cache::EntryLineCache;
 use super::shared::{GUTTER_WIDTH, RenderContext};
@@ -58,24 +57,14 @@ const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
 const GUTTER_STR: &str = "𜺏 ";
 
 /// Display element for the full conversation history.
-#[derive(Debug)]
-pub struct ChatLogElement {
-    pub(crate) line_cache: EntryLineCache,
-}
-
-impl Default for ChatLogElement {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+#[derive(Debug, Default)]
+pub struct ChatLogElement;
 
 impl ChatLogElement {
-    /// Create a new chat log element with a fresh line count cache.
+    /// Create a new chat log element.
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            line_cache: EntryLineCache::new(),
-        }
+        Self
     }
 }
 
@@ -97,7 +86,10 @@ impl UiElement<AppState> for ChatLogElement {
         let mut render = HistoryRender::new(state, area);
         render.compute_visual_items();
         render.build_tool_result_map();
-        render.compute_line_ranges(&mut self.line_cache, Generation(1));
+        {
+            let mut cache = state.frontend.caches.entry_line_cache.write();
+            render.compute_line_ranges(&mut cache);
+        }
         render.compute_scroll();
 
         {
@@ -260,7 +252,7 @@ impl<'a> HistoryRender<'a> {
     /// On a cache hit with rendered lines, the lines are stored in `cached_lines`
     /// for reuse in Pass 2. On a miss, lines are rendered, stored in both the cache
     /// (via `insert_with_lines`) and `miss_lines`.
-    fn compute_line_ranges(&mut self, cache: &mut EntryLineCache, theme_generation: Generation) {
+    fn compute_line_ranges(&mut self, cache: &mut EntryLineCache) {
         let mut wrapped_cursor: u16 = 0;
 
         for (vi_idx, item) in self.visual_items.iter().enumerate() {
@@ -270,7 +262,7 @@ impl<'a> HistoryRender<'a> {
                     let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
 
                     if let Some(hit) =
-                        cache.get(entry, is_expanded, self.content_width, theme_generation)
+                        cache.get(entry, is_expanded, self.content_width)
                     {
                         let start = wrapped_cursor;
                         let end = wrapped_cursor + hit.wrapped_count;
@@ -314,7 +306,6 @@ impl<'a> HistoryRender<'a> {
                             entry,
                             is_expanded,
                             self.content_width,
-                            theme_generation,
                             wrapped_count,
                             Arc::new(lines.clone()),
                         );

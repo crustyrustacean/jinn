@@ -156,6 +156,7 @@ fn preview_theme_if_active(state: &mut AppState) {
     }
     if let Some(entry) = state.frontend.theme_picker.selected_item() {
         state.frontend.theme = entry.theme.clone();
+        state.invalidate_theme_caches();
     }
 }
 

@@ -86,7 +86,6 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         layout.sidebar,
         area,
         &state,
-        &mut app.preview_cache,
     );
 
     // Status bar — always visible at bottom.
