@@ -55,12 +55,24 @@ impl SessionPersistenceActor {
     }
 
     /// Caches tool definitions from a [`ToolsRegistered`] event into shared state.
+    ///
+    /// Judge-specific tools are excluded — they are injected into judge sessions
+    /// during prompt assembly, not stored in the global tool map.
     pub(in crate::feat::session::session_actor) fn on_tools_registered(
         &self,
         evt: &ToolsRegistered,
     ) {
+        let judge_names: std::collections::HashSet<String> =
+            crate::feat::judge::judge_tool_definitions()
+                .into_iter()
+                .map(|d| d.name)
+                .collect();
+
         let mut state = self.state.write();
         for def in &evt.definitions {
+            if judge_names.contains(&def.name) {
+                continue;
+            }
             state
                 .context
                 .tool_definitions
@@ -211,6 +223,69 @@ mod tests {
         };
         let actor = SessionPersistenceActor::activate(deps, &mut ctx);
         (actor, state)
+    }
+
+    #[rstest::rstest]
+    fn on_tools_registered_excludes_judge_tools_from_global_map() {
+        // Given a session actor.
+        let (actor, state) = create_actor();
+
+        // Build a ToolsRegistered with all builtin tools (including judge tools).
+        let all_tools = crate::feat::tools_actor::builtin::builtin_tools();
+        let definitions: Vec<_> = all_tools.iter().map(|(def, _)| def.clone()).collect();
+        let payload = ToolsRegistered {
+            provider: "builtin".to_owned(),
+            definitions,
+        };
+
+        // When processing the event.
+        actor.on_tools_registered(&payload);
+
+        // Then no judge tool names are in the global map.
+        let guard = state.read();
+        assert!(
+            !guard.context.tool_definitions.contains_key("session_query"),
+            "session_query should not be in global tool map"
+        );
+        assert!(
+            !guard
+                .context
+                .tool_definitions
+                .contains_key("session_query_recent"),
+            "session_query_recent should not be in global tool map"
+        );
+        assert!(
+            !guard.context.tool_definitions.contains_key("task_complete"),
+            "task_complete should not be in global tool map"
+        );
+        assert!(
+            !guard.context.tool_definitions.contains_key("task_incomplete"),
+            "task_incomplete should not be in global tool map"
+        );
+    }
+
+    #[rstest::rstest]
+    fn on_tools_registered_keeps_regular_tools_in_global_map() {
+        // Given a session actor.
+        let (actor, state) = create_actor();
+
+        // Build a ToolsRegistered with all builtin tools.
+        let all_tools = crate::feat::tools_actor::builtin::builtin_tools();
+        let definitions: Vec<_> = all_tools.iter().map(|(def, _)| def.clone()).collect();
+        let payload = ToolsRegistered {
+            provider: "builtin".to_owned(),
+            definitions,
+        };
+
+        // When processing the event.
+        actor.on_tools_registered(&payload);
+
+        // Then regular tools are in the global map.
+        let guard = state.read();
+        assert!(
+            guard.context.tool_definitions.contains_key("bash"),
+            "bash should be in global tool map"
+        );
     }
 
     #[rstest::rstest]
