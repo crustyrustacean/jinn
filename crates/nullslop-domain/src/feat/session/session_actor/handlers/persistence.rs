@@ -81,6 +81,9 @@ impl SessionPersistenceActor {
     }
 
     /// Loads a full session from disk and sends back a `SessionLoadCompleted` command.
+    ///
+    /// If the requested session is a judge, redirects to loading its origin session
+    /// instead. The judge gets loaded as a side-effect of the origin's auto-load.
     pub(in crate::feat::session::session_actor) async fn on_load_requested(
         &mut self,
         evt: &SessionLoadRequested,
@@ -95,13 +98,111 @@ impl SessionPersistenceActor {
 
         match store.load_session(&evt.session_id).await {
             Ok(Some(mut session)) => {
+                // --- Judge-to-origin redirect ---
+                // If the loaded session is a judge, load its origin instead.
+                // The judge will be auto-loaded as a side-effect of loading the origin.
+                if let Some(meta) = session.judge() {
+                    let origin_id = meta.origin_session.clone();
+
+                    // Guard: self-referential judge — proceed as normal session.
+                    if origin_id == evt.session_id {
+                        tracing::warn!(
+                            session_id = %evt.session_id,
+                            "judge session references itself as origin, loading normally"
+                        );
+                    } else {
+                        tracing::info!(
+                            judge_session = %evt.session_id,
+                            origin_session = %origin_id,
+                            "requested session is a judge, redirecting to origin"
+                        );
+
+                        match store.load_session(&origin_id).await {
+                            Ok(Some(mut origin_session)) => {
+                                // Unarchive + reset the origin.
+                                if let Err(e) = store.set_archived(&origin_id, false).await {
+                                    tracing::warn!(err = ?e, "failed to unarchive origin session");
+                                }
+                                origin_session.set_session_state(
+                                    crate::feat::session::chat_session::SessionState::Loaded,
+                                );
+
+                                // Swap the load guard from judge to origin.
+                                {
+                                    let mut state = self.state.write();
+                                    state.session.clear_load();
+                                    state.session.begin_load(origin_id.clone());
+                                }
+
+                                // Auto-load judge sessions for the origin.
+                                let judge_sessions =
+                                    match store.load_judge_sessions_for_origin(&origin_id).await
+                                    {
+                                        Ok(sessions) => sessions,
+                                        Err(e) => {
+                                            tracing::warn!(
+                                                err = ?e,
+                                                "failed to load judge sessions for origin"
+                                            );
+                                            Vec::new()
+                                        }
+                                    };
+
+                                if !judge_sessions.is_empty() {
+                                    for js in &judge_sessions {
+                                        let jid = js.session_id().clone();
+                                        if let Err(e) = store.set_archived(&jid, false).await {
+                                            tracing::warn!(
+                                                err = ?e,
+                                                judge_session_id = %jid,
+                                                "failed to unarchive judge session"
+                                            );
+                                        }
+                                    }
+                                    let mut state = self.state.write();
+                                    for mut js in judge_sessions {
+                                        js.set_session_state(
+                                            crate::feat::session::chat_session::SessionState::Loaded,
+                                        );
+                                        state.session.insert(js);
+                                    }
+                                }
+
+                                let _ = ctx.send_command(Command::SessionLoadCompleted(
+                                    CompletedPayload {
+                                        session: origin_session,
+                                    },
+                                ));
+                                return;
+                            }
+                            Ok(None) => {
+                                tracing::warn!(
+                                    origin_session_id = %origin_id,
+                                    "origin session not found, falling back to judge"
+                                );
+                                // Fall through — load the judge as the active session.
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    err = ?e,
+                                    origin_session_id = %origin_id,
+                                    "failed to load origin session, falling back to judge"
+                                );
+                                // Fall through — load the judge as the active session.
+                            }
+                        }
+                    }
+                }
+
                 // Unarchive the session so it appears in the picker on next load.
                 if let Err(e) = store.set_archived(&evt.session_id, false).await {
                     tracing::warn!(err = ?e, "failed to unarchive session on load");
                 }
 
                 // Reset in-memory state so the sidebar filter includes this session.
-                session.set_session_state(crate::feat::session::chat_session::SessionState::Loaded);
+                session.set_session_state(
+                    crate::feat::session::chat_session::SessionState::Loaded,
+                );
 
                 // Load judge sessions that belong to this origin.
                 // They may have been cascade-archived alongside the origin.
@@ -123,7 +224,11 @@ impl SessionPersistenceActor {
                     for judge_session in &judge_sessions {
                         let judge_id = judge_session.session_id().clone();
                         if let Err(e) = store.set_archived(&judge_id, false).await {
-                            tracing::warn!(err = ?e, judge_session_id = %judge_id, "failed to unarchive judge session");
+                            tracing::warn!(
+                                err = ?e,
+                                judge_session_id = %judge_id,
+                                "failed to unarchive judge session"
+                            );
                         }
                     }
                     let mut state = self.state.write();
@@ -439,5 +544,252 @@ mod tests {
             })
             .expect("expected SessionLoadCompleted");
         assert_eq!(loaded.session_id(), &origin_id);
+    }
+
+    #[tokio::test]
+    async fn loading_judge_session_redirects_to_origin() {
+        use crate::feat::judge::JudgeMeta;
+
+        // Given an origin and a judge session.
+        let mut origin = ChatSessionState::new();
+        origin.set_title("Origin Chat".to_owned());
+        origin.mark_interacted();
+        let origin_id = origin.session_id().clone();
+
+        let mut judge = ChatSessionState::new();
+        judge.set_judge(JudgeMeta {
+            origin_session: origin_id.clone(),
+            is_attached: true,
+            judge_name: "test-judge".to_owned(),
+        });
+        judge.set_session_state(SessionState::Archived);
+        judge.mark_interacted();
+        let judge_id = judge.session_id().clone();
+
+        let (mut actor, _store) = test_actor_with_store(vec![origin, judge]);
+        let (sink, ctx) = test_context();
+
+        // When loading the judge session (by its ID).
+        actor
+            .on_load_requested(
+                &SessionLoadRequested {
+                    session_id: judge_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then SessionLoadCompleted emits the origin session, not the judge.
+        let loaded = sink
+            .commands()
+            .iter()
+            .find_map(|cmd| match cmd {
+                Command::SessionLoadCompleted(payload) => Some(payload.session.clone()),
+                _ => None,
+            })
+            .expect("expected SessionLoadCompleted");
+        assert_eq!(
+            loaded.session_id(),
+            &origin_id,
+            "should emit origin session, not the judge"
+        );
+
+        // And the judge is in the session map.
+        let state = actor.state.read();
+        assert!(
+            state.session.contains(&judge_id),
+            "judge should be in session map"
+        );
+    }
+
+    #[tokio::test]
+    async fn loading_judge_session_auto_loads_all_siblings() {
+        use crate::feat::judge::JudgeMeta;
+
+        // Given an origin and two judge sessions.
+        let mut origin = ChatSessionState::new();
+        origin.mark_interacted();
+        let origin_id = origin.session_id().clone();
+
+        let mut judge_a = ChatSessionState::new();
+        judge_a.set_judge(JudgeMeta {
+            origin_session: origin_id.clone(),
+            is_attached: true,
+            judge_name: "judge-a".to_owned(),
+        });
+        judge_a.set_session_state(SessionState::Archived);
+        judge_a.mark_interacted();
+        let judge_a_id = judge_a.session_id().clone();
+
+        let mut judge_b = ChatSessionState::new();
+        judge_b.set_judge(JudgeMeta {
+            origin_session: origin_id.clone(),
+            is_attached: true,
+            judge_name: "judge-b".to_owned(),
+        });
+        judge_b.set_session_state(SessionState::Archived);
+        judge_b.mark_interacted();
+        let judge_b_id = judge_b.session_id().clone();
+
+        let (mut actor, _store) =
+            test_actor_with_store(vec![origin, judge_a, judge_b]);
+        let (_sink, ctx) = test_context();
+
+        // When loading judge_a (not the origin).
+        actor
+            .on_load_requested(
+                &SessionLoadRequested {
+                    session_id: judge_a_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then both judges are in the session map.
+        let state = actor.state.read();
+        assert!(
+            state.session.contains(&judge_a_id),
+            "judge_a should be in session map"
+        );
+        assert!(
+            state.session.contains(&judge_b_id),
+            "judge_b should be in session map"
+        );
+    }
+
+    #[tokio::test]
+    async fn loading_judge_with_missing_origin_falls_back_to_judge() {
+        use crate::feat::judge::JudgeMeta;
+
+        // Given a judge session whose origin does not exist in the store.
+        let mut judge = ChatSessionState::new();
+        judge.set_judge(JudgeMeta {
+            origin_session: "nonexistent-session-id".to_string().into(),
+            is_attached: true,
+            judge_name: "orphan-judge".to_owned(),
+        });
+        judge.mark_interacted();
+        let judge_id = judge.session_id().clone();
+
+        let (mut actor, _store) = test_actor_with_store(vec![judge]);
+        let (sink, ctx) = test_context();
+
+        // When loading the judge session.
+        actor
+            .on_load_requested(
+                &SessionLoadRequested {
+                    session_id: judge_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then SessionLoadCompleted emits the judge (fallback).
+        let loaded = sink
+            .commands()
+            .iter()
+            .find_map(|cmd| match cmd {
+                Command::SessionLoadCompleted(payload) => Some(payload.session.clone()),
+                _ => None,
+            })
+            .expect("expected SessionLoadCompleted");
+        assert_eq!(
+            loaded.session_id(),
+            &judge_id,
+            "should fall back to judge when origin is missing"
+        );
+    }
+
+    #[tokio::test]
+    async fn loading_judge_whose_origin_already_in_memory() {
+        use crate::feat::judge::JudgeMeta;
+
+        // Given an origin already in the session map and a judge in the store.
+        let mut origin = ChatSessionState::new();
+        origin.set_title("In-Memory Origin".to_owned());
+        origin.mark_interacted();
+        let origin_id = origin.session_id().clone();
+
+        let mut judge = ChatSessionState::new();
+        judge.set_judge(JudgeMeta {
+            origin_session: origin_id.clone(),
+            is_attached: true,
+            judge_name: "test-judge".to_owned(),
+        });
+        judge.set_session_state(SessionState::Archived);
+        judge.mark_interacted();
+        let judge_id = judge.session_id().clone();
+
+        // The origin is loaded from the store (it's not in memory before this call).
+        let (mut actor, _store) = test_actor_with_store(vec![origin, judge]);
+        let (sink, ctx) = test_context();
+
+        // When loading the judge.
+        actor
+            .on_load_requested(
+                &SessionLoadRequested {
+                    session_id: judge_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the origin is the emitted session.
+        let loaded = sink
+            .commands()
+            .iter()
+            .find_map(|cmd| match cmd {
+                Command::SessionLoadCompleted(payload) => Some(payload.session.clone()),
+                _ => None,
+            })
+            .expect("expected SessionLoadCompleted");
+        assert_eq!(
+            loaded.session_id(),
+            &origin_id,
+            "should emit origin session"
+        );
+    }
+
+    #[tokio::test]
+    async fn self_referential_judge_loads_normally() {
+        use crate::feat::judge::JudgeMeta;
+
+        // Given a session that is a judge referencing itself.
+        let mut session = ChatSessionState::new();
+        session.mark_interacted();
+        let session_id = session.session_id().clone();
+        session.set_judge(JudgeMeta {
+            origin_session: session_id.clone(),
+            is_attached: true,
+            judge_name: "self-ref".to_owned(),
+        });
+
+        let (mut actor, _store) = test_actor_with_store(vec![session]);
+        let (sink, ctx) = test_context();
+
+        // When loading this session.
+        actor
+            .on_load_requested(
+                &SessionLoadRequested {
+                    session_id: session_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then SessionLoadCompleted emits it normally (no infinite loop).
+        let loaded = sink
+            .commands()
+            .iter()
+            .find_map(|cmd| match cmd {
+                Command::SessionLoadCompleted(payload) => Some(payload.session.clone()),
+                _ => None,
+            })
+            .expect("expected SessionLoadCompleted");
+        assert_eq!(
+            loaded.session_id(),
+            &session_id,
+            "self-referential judge should load normally"
+        );
     }
 }
