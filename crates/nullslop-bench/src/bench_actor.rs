@@ -1241,4 +1241,481 @@ mod tests {
             "expected PushChatEntry with • detail for failing session"
         );
     }
+
+    #[test]
+    fn setup_error_sets_should_quit_when_no_more_pairs() {
+        // Given a plan with exactly 1 task/model pair.
+        let plan =
+            build_plan(&["test-model".to_owned()], &["hello-world".to_owned()]).expect("plan");
+        let (state, session_id) = test_state_with_session();
+        let csv_dir = tempfile::TempDir::new().expect("temp dir");
+        let csv_path = csv_dir.path().join("results.csv");
+        let (sink, ctx) = test_context();
+        let mut actor = BenchActor::activate(
+            BenchActorDeps {
+                state,
+                csv_path: Some(csv_path),
+                plan: Some(plan),
+            },
+            &mut ActorContext::new("test", sink),
+        );
+        // Activate started the first pair — index is at 1, plan has 1 pair.
+        assert_eq!(actor.current_pair_index, 1);
+
+        // When SessionSetupCompleted fires with an error for the bench session.
+        actor.handle_session_setup_completed(
+            &SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: PathBuf::from("/tmp"),
+                error: Some("fixture not found".to_owned()),
+            },
+            &ctx,
+        );
+
+        // Then should_quit is true (index 1 == plan len 1, so no more pairs).
+        // This kills: < vs ==, < vs <=, < vs >, and delete ! on has_more.
+        let state = actor.state.read();
+        assert!(
+            state.frontend.should_quit,
+            "expected should_quit when all pairs are exhausted after setup error"
+        );
+    }
+
+    #[test]
+    fn setup_error_does_not_quit_when_more_pairs_remain() {
+        // Given a plan with 3 tasks.
+        let plan = build_plan(
+            &["test-model".to_owned()],
+            &["hello-world".to_owned(), "json-parser".to_owned(), "redirect-change-color".to_owned()],
+        )
+        .expect("plan");
+        let (state, session_id) = test_state_with_session();
+        let csv_dir = tempfile::TempDir::new().expect("temp dir");
+        let csv_path = csv_dir.path().join("results.csv");
+        let (sink, ctx) = test_context();
+        let mut actor = BenchActor::activate(
+            BenchActorDeps {
+                state,
+                csv_path: Some(csv_path),
+                plan: Some(plan),
+            },
+            &mut ActorContext::new("test", sink),
+        );
+        // Activate started pair 0 — index is at 1, plan has 3 pairs.
+        assert_eq!(actor.current_pair_index, 1);
+
+        // When SessionSetupCompleted fires with an error.
+        actor.handle_session_setup_completed(
+            &SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: PathBuf::from("/tmp"),
+                error: Some("fixture not found".to_owned()),
+            },
+            &ctx,
+        );
+
+        // Then should_quit is false (index 2 < plan len 3, more pairs remain).
+        // This kills: delete ! on has_more (if deleted, has_more=true would enter block incorrectly).
+        let state = actor.state.read();
+        assert!(
+            !state.frontend.should_quit,
+            "expected should_quit=false when more pairs remain after setup error"
+        );
+        assert_eq!(actor.current_pair_index, 2, "should have advanced to next pair");
+    }
+
+    #[test]
+    fn deadline_is_in_future_after_setup_completed() {
+        // Given a bench actor that tracks a session.
+        let (state, session_id) = test_state_with_session();
+        let (sink, ctx) = test_context();
+        let before = Instant::now();
+        let mut actor = BenchActor::activate(
+            BenchActorDeps {
+                state,
+                csv_path: None,
+                plan: None,
+            },
+            &mut ActorContext::new("test", sink),
+        );
+
+        actor.handle_session_setup_completed(
+            &SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: PathBuf::from("/tmp"),
+                error: None,
+            },
+            &ctx,
+        );
+
+        // Then the tracked session's deadline is in the future.
+        // This kills: replace + with - (deadline would be in the past).
+        let tracked = actor.pending.get(&session_id).expect("tracked");
+        assert!(
+            tracked.deadline > before,
+            "deadline should be in the future (now + timeout), got {:?}",
+            tracked.deadline
+        );
+    }
+
+    #[tokio::test]
+    async fn timeout_status_set_when_deadline_exceeded() {
+        // Given a tracked bench session whose deadline has already passed.
+        let work_dir = tempfile::TempDir::new().expect("temp dir");
+        std::fs::create_dir_all(work_dir.path().join("src")).expect("create src dir");
+        std::fs::write(
+            work_dir.path().join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .expect("write Cargo.toml");
+        std::fs::write(work_dir.path().join("src/main.rs"), "fn main() {}")
+            .expect("write src/main.rs");
+
+        let state = State::new(nullslop_domain::AppState::default());
+        let session_id = {
+            let mut s = state.write();
+            let session = s.active_session_mut();
+            session.set_lifecycle_name(Some("hello-world".to_owned()));
+            session.set_cwd(work_dir.path().to_owned());
+            s.session.active_session_id().clone()
+        };
+
+        let csv_dir = tempfile::TempDir::new().expect("temp dir");
+        let csv_path = csv_dir.path().join("results.csv");
+        let (sink, ctx) = test_context();
+        let mut actor = BenchActor::activate(
+            BenchActorDeps {
+                state,
+                csv_path: Some(csv_path.clone()),
+                plan: None,
+            },
+            &mut ActorContext::new("test", sink),
+        );
+
+        actor.handle_session_setup_completed(
+            &SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: work_dir.path().to_owned(),
+                error: None,
+            },
+            &ctx,
+        );
+
+        // Set deadline to the past to simulate timeout.
+        if let Some(tracked) = actor.pending.get_mut(&session_id) {
+            tracked.deadline = Instant::now()
+                .checked_sub(Duration::from_secs(1))
+                .unwrap_or(Instant::now());
+        }
+
+        // When SessionPhaseChanged fires with Idle.
+        actor
+            .handle_session_phase_changed(
+                &SessionPhaseChanged {
+                    session_id: session_id.clone(),
+                    old_phase: SessionPhase::Streaming,
+                    new_phase: SessionPhase::Idle,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the CSV row has status "timeout".
+        // This kills: > vs ==, > vs <, > vs >= on the Instant::now() > deadline check.
+        let content = std::fs::read_to_string(&csv_path).expect("read csv");
+        assert!(
+            content.contains("timeout"),
+            "expected 'timeout' status in CSV when deadline exceeded, got: {content}"
+        );
+    }
+
+    #[tokio::test]
+    async fn completed_status_set_when_before_deadline() {
+        // Given a tracked bench session whose deadline is far in the future.
+        let work_dir = tempfile::TempDir::new().expect("temp dir");
+        std::fs::create_dir_all(work_dir.path().join("src")).expect("create src dir");
+        std::fs::write(
+            work_dir.path().join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .expect("write Cargo.toml");
+        std::fs::write(work_dir.path().join("src/main.rs"), "fn main() {}")
+            .expect("write src/main.rs");
+
+        let state = State::new(nullslop_domain::AppState::default());
+        let session_id = {
+            let mut s = state.write();
+            let session = s.active_session_mut();
+            session.set_lifecycle_name(Some("hello-world".to_owned()));
+            session.set_cwd(work_dir.path().to_owned());
+            s.session.active_session_id().clone()
+        };
+
+        let csv_dir = tempfile::TempDir::new().expect("temp dir");
+        let csv_path = csv_dir.path().join("results.csv");
+        let (sink, ctx) = test_context();
+        let mut actor = BenchActor::activate(
+            BenchActorDeps {
+                state,
+                csv_path: Some(csv_path.clone()),
+                plan: None,
+            },
+            &mut ActorContext::new("test", sink),
+        );
+
+        actor.handle_session_setup_completed(
+            &SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: work_dir.path().to_owned(),
+                error: None,
+            },
+            &ctx,
+        );
+
+        // Set deadline to far future — should NOT be timeout.
+        if let Some(tracked) = actor.pending.get_mut(&session_id) {
+            tracked.deadline = Instant::now() + Duration::from_secs(3600);
+        }
+
+        // When SessionPhaseChanged fires with Idle.
+        actor
+            .handle_session_phase_changed(
+                &SessionPhaseChanged {
+                    session_id: session_id.clone(),
+                    old_phase: SessionPhase::Streaming,
+                    new_phase: SessionPhase::Idle,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the CSV row has status "completed", not "timeout".
+        // This kills: > vs >= (at exact boundary, >= would make everything timeout).
+        let content = std::fs::read_to_string(&csv_path).expect("read csv");
+        assert!(
+            content.contains("completed"),
+            "expected 'completed' status when before deadline, got: {content}"
+        );
+        assert!(
+            !content.contains("timeout"),
+            "should not have 'timeout' status when before deadline"
+        );
+    }
+
+    #[tokio::test]
+    async fn intermediate_idle_decrements_counters_correctly() {
+        // Given a tracked bench session for a multi-message task (redirect-change-color has 2 msgs).
+        let state = State::new(nullslop_domain::AppState::default());
+        let session_id = {
+            let mut s = state.write();
+            let session = s.active_session_mut();
+            session.set_lifecycle_name(Some("redirect-change-color".to_owned()));
+            s.session.active_session_id().clone()
+        };
+
+        let (sink, ctx) = test_context();
+        let mut actor = BenchActor::activate(
+            BenchActorDeps {
+                state,
+                csv_path: None,
+                plan: None,
+            },
+            &mut ActorContext::new("test", sink),
+        );
+
+        actor.handle_session_setup_completed(
+            &SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: PathBuf::from("/tmp"),
+                error: None,
+            },
+            &ctx,
+        );
+
+        // After setup, first message was sent. Verify initial counter state.
+        let tracked = actor.pending.get(&session_id).expect("tracked");
+        assert_eq!(tracked.messages_remaining, 1, "should have 1 remaining after first send");
+        assert_eq!(tracked.next_message_index, 1, "index should be 1 after first send");
+
+        // When SessionPhaseChanged fires with Idle (intermediate — more messages left).
+        actor
+            .handle_session_phase_changed(
+                &SessionPhaseChanged {
+                    session_id: session_id.clone(),
+                    old_phase: SessionPhase::Streaming,
+                    new_phase: SessionPhase::Idle,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then counters were correctly updated (not multiplied or negated).
+        // This kills: += with -=, += with *= on both messages_remaining and next_message_index.
+        let tracked = actor.pending.get(&session_id).expect("still tracked");
+        assert_eq!(
+            tracked.messages_remaining, 0,
+            "messages_remaining should be 0 (was 1, decremented by 1), not multiplied or incremented"
+        );
+        assert_eq!(
+            tracked.next_message_index, 2,
+            "next_message_index should be 2 (was 1, incremented by 1), not multiplied or decremented"
+        );
+    }
+
+    #[tokio::test]
+    async fn finalization_sets_should_quit_when_plan_exhausted() {
+        // Given a plan with exactly 1 task.
+        let plan =
+            build_plan(&["test-model".to_owned()], &["hello-world".to_owned()]).expect("plan");
+
+        let work_dir = tempfile::TempDir::new().expect("temp dir");
+        std::fs::create_dir_all(work_dir.path().join("src")).expect("create src dir");
+        std::fs::write(
+            work_dir.path().join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .expect("write Cargo.toml");
+        std::fs::write(work_dir.path().join("src/main.rs"), "fn main() {}")
+            .expect("write src/main.rs");
+
+        let state = State::new(nullslop_domain::AppState::default());
+        // We need to set the session lifecycle AFTER activate because activate
+        // creates a new session for the first pair. We'll track that session.
+        let (sink, ctx) = test_context();
+        let mut actor = BenchActor::activate(
+            BenchActorDeps {
+                state: state.clone(),
+                csv_path: None,
+                plan: Some(plan),
+            },
+            &mut ActorContext::new("test", sink.clone()),
+        );
+
+        // Find the session that was created by start_next_pair.
+        let session_id = {
+            let s = state.read();
+            s.session.active_session_id().clone()
+        };
+
+        // Set lifecycle and CWD so the actor tracks it and verification passes.
+        {
+            let mut s = state.write();
+            let session = s.session.active_session_mut();
+            session.set_lifecycle_name(Some("hello-world".to_owned()));
+            session.set_cwd(work_dir.path().to_owned());
+        }
+
+        // Fire setup completed to track the session.
+        actor.handle_session_setup_completed(
+            &SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: work_dir.path().to_owned(),
+                error: None,
+            },
+            &ctx,
+        );
+
+        // Set deadline to future so status is "completed".
+        if let Some(tracked) = actor.pending.get_mut(&session_id) {
+            tracked.deadline = Instant::now() + Duration::from_secs(3600);
+        }
+
+        // When SessionPhaseChanged fires with Idle (finalizes the session).
+        actor
+            .handle_session_phase_changed(
+                &SessionPhaseChanged {
+                    session_id: session_id.clone(),
+                    old_phase: SessionPhase::Streaming,
+                    new_phase: SessionPhase::Idle,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then should_quit is set because the plan is exhausted.
+        // This kills: < vs ==, < vs >, < vs <= on current_pair_index < plan len,
+        // and delete ! on has_more.
+        let s = state.read();
+        assert!(
+            s.frontend.should_quit,
+            "expected should_quit when all pairs finalized and plan exhausted"
+        );
+    }
+
+    #[tokio::test]
+    async fn finalization_does_not_quit_when_more_pairs_remain() {
+        // Given a plan with 3 tasks.
+        let plan = build_plan(
+            &["test-model".to_owned()],
+            &["hello-world".to_owned(), "json-parser".to_owned(), "redirect-change-color".to_owned()],
+        )
+        .expect("plan");
+
+        let work_dir = tempfile::TempDir::new().expect("temp dir");
+        std::fs::create_dir_all(work_dir.path().join("src")).expect("create src dir");
+        std::fs::write(
+            work_dir.path().join("Cargo.toml"),
+            "[package]\nname = \"test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .expect("write Cargo.toml");
+        std::fs::write(work_dir.path().join("src/main.rs"), "fn main() {}")
+            .expect("write src/main.rs");
+
+        let state = State::new(nullslop_domain::AppState::default());
+        let (sink, ctx) = test_context();
+        let mut actor = BenchActor::activate(
+            BenchActorDeps {
+                state: state.clone(),
+                csv_path: None,
+                plan: Some(plan),
+            },
+            &mut ActorContext::new("test", sink.clone()),
+        );
+
+        // Find the session created by start_next_pair.
+        let session_id = {
+            let s = state.read();
+            s.session.active_session_id().clone()
+        };
+
+        {
+            let mut s = state.write();
+            let session = s.session.active_session_mut();
+            session.set_lifecycle_name(Some("hello-world".to_owned()));
+            session.set_cwd(work_dir.path().to_owned());
+        }
+
+        actor.handle_session_setup_completed(
+            &SessionSetupCompleted {
+                session_id: session_id.clone(),
+                cwd: work_dir.path().to_owned(),
+                error: None,
+            },
+            &ctx,
+        );
+
+        if let Some(tracked) = actor.pending.get_mut(&session_id) {
+            tracked.deadline = Instant::now() + Duration::from_secs(3600);
+        }
+
+        // When SessionPhaseChanged fires with Idle.
+        actor
+            .handle_session_phase_changed(
+                &SessionPhaseChanged {
+                    session_id: session_id.clone(),
+                    old_phase: SessionPhase::Streaming,
+                    new_phase: SessionPhase::Idle,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then should_quit is NOT set because there's still 1 more pair.
+        // This kills: delete ! on has_more (if deleted, has_more=true would set should_quit incorrectly).
+        let s = state.read();
+        assert!(
+            !s.frontend.should_quit,
+            "expected should_quit=false when more pairs remain after finalization"
+        );
+    }
 }

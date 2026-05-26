@@ -262,4 +262,71 @@ mod tests {
             "dir name {dir_name} should start with hello-world-"
         );
     }
+
+    // --- Mutation-killing tests ---
+
+    #[test]
+    fn session_id_short_returns_first_10_graphemes() {
+        // Given a session ID like "s-01923abc-def4-7def-8901-234567890abc".
+        let id = SessionId::from("s-01923abc-def4-7def-8901-234567890abc".to_string());
+
+        // When shortening.
+        let short = session_id_short(&id);
+
+        // Then it returns the first 10 graphemes, not empty or "xyzzy".
+        assert!(!short.is_empty(), "should not be empty");
+        assert_ne!(short, "xyzzy", "should not be xyzzy");
+        assert_eq!(short, "s-01923abc");
+    }
+
+    #[test]
+    fn session_id_short_handles_short_ids() {
+        // Given a very short session ID.
+        let id = SessionId::from("s-short".to_string());
+
+        // When shortening.
+        let short = session_id_short(&id);
+
+        // Then it returns the full string (fewer than 10 graphemes).
+        assert_eq!(short, "s-short");
+    }
+
+    #[test]
+    fn handler_name_returns_bench_task() {
+        // Given any handler.
+        let handler = BenchTaskHandler {
+            name: "test-task".to_owned(),
+            fixture_dir: None,
+            verify: noop_verify,
+            artifact_dir: None,
+        };
+
+        // When getting the name.
+        let name = <BenchTaskHandler as BuiltinHandler>::name(&handler);
+
+        // Then it returns "bench_task", not "" or "xyzzy".
+        assert_eq!(name, "bench_task");
+        assert!(!name.is_empty());
+        assert_ne!(name, "xyzzy");
+    }
+
+    #[test]
+    fn debug_impl_outputs_name_field() {
+        // Given a handler with a known name.
+        let handler = BenchTaskHandler {
+            name: "my-cool-task".to_owned(),
+            fixture_dir: None,
+            verify: noop_verify,
+            artifact_dir: None,
+        };
+
+        // When formatting with Debug.
+        let output = format!("{handler:?}");
+
+        // Then it contains the struct name and the name field.
+        // This kills: replace Debug::fmt with Ok(Default::default()).
+        assert!(output.contains("BenchTaskHandler"), "should contain struct name: {output}");
+        assert!(output.contains("my-cool-task"), "should contain task name: {output}");
+        assert!(!output.is_empty(), "should not be empty");
+    }
 }

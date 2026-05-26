@@ -29,6 +29,7 @@ tree-sitter-python = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+rstest = { workspace = true }
 
 [lints]
 workspace = true

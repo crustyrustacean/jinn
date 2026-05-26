@@ -49,6 +49,8 @@ dotenvy = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
+mockito = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 
 [workspace.dependencies]
 # Internal
