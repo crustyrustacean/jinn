@@ -36,7 +36,7 @@ pub fn register_all_ui_elements(registry: &mut AppUiRegistry) {
 mod tests {
     use super::*;
 
-    #[rstest::rstest]
+    #[test]
     fn register_all_ui_elements_populates_registry() {
         // Given an empty registry.
         let mut registry = AppUiRegistry::new();
@@ -48,7 +48,7 @@ mod tests {
         assert!(registry.iter_mut().count() > 0);
     }
 
-    #[rstest::rstest]
+    #[test]
     fn provider_register_adds_two_elements() {
         // Given an empty registry.
         let mut registry = AppUiRegistry::new();
@@ -60,7 +60,7 @@ mod tests {
         assert_eq!(registry.iter_mut().count(), 2, "provider::register should add 2 elements");
     }
 
-    #[rstest::rstest]
+    #[test]
     fn chat_input_register_adds_elements() {
         // Given an empty registry.
         let mut registry = AppUiRegistry::new();
