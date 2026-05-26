@@ -20,6 +20,8 @@ mod element_tests;
 pub mod intent;
 #[cfg(test)]
 mod intent_tests;
+#[cfg(test)]
+mod intent_phase2_tests;
 pub mod protocol;
 pub mod slash_command;
 pub mod state;

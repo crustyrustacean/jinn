@@ -19,6 +19,10 @@ use crate::protocol::AppMsg;
 use tokio::runtime::Handle;
 
 pub mod actor_channel;
+
+#[cfg(test)]
+mod actor_channel_tests;
+
 pub mod test_services;
 
 pub use actor_channel::ActorChannelService;

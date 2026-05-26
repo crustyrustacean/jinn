@@ -149,6 +149,7 @@ impl AppWorld {
                 None,
                 None,
                 None,
+                paths,
             );
 
             // Intentionally leaked: each AppWorld restart gets a completely fresh tokio runtime.
@@ -581,6 +582,7 @@ fn when_restart_app(world: &mut AppWorld) {
             None,
             None,
             None,
+            paths,
         );
 
         // Intentionally leaked: each AppWorld restart gets a completely fresh tokio runtime.

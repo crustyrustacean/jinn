@@ -47,4 +47,29 @@ mod tests {
         // Then the registry is not empty (has at least one element).
         assert!(registry.iter_mut().count() > 0);
     }
+
+    #[rstest::rstest]
+    fn provider_register_adds_two_elements() {
+        // Given an empty registry.
+        let mut registry = AppUiRegistry::new();
+
+        // When registering provider UI elements.
+        crate::feat::provider::register(&mut registry);
+
+        // Then exactly 2 elements were added.
+        assert_eq!(registry.iter_mut().count(), 2, "provider::register should add 2 elements");
+    }
+
+    #[rstest::rstest]
+    fn chat_input_register_adds_elements() {
+        // Given an empty registry.
+        let mut registry = AppUiRegistry::new();
+
+        // When registering chat_input UI elements.
+        crate::feat::chat_input::register(&mut registry);
+
+        // Then at least 1 element was added.
+        let count = registry.iter_mut().count();
+        assert!(count > 0, "chat_input::register should add at least 1 element");
+    }
 }
