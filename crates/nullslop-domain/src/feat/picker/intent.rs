@@ -744,8 +744,8 @@ mod tests {
         let judge_session = find_judge_session(&state);
         assert_eq!(
             judge_session.title(),
-            Some("judge/accuracy"),
-            "title should be 'judge/<name>'"
+            Some("j/accuracy"),
+            "title should be 'j/<name>'"
         );
     }
     #[rstest::rstest]

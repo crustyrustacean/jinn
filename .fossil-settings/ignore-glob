@@ -16,3 +16,4 @@ pkg
 .opencode
 .git-fossil-marks
 bench-results.csv
+mutants.out
