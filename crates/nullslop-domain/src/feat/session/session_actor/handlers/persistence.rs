@@ -136,6 +136,89 @@ impl SessionPersistenceActor {
         }
     }
 
+    /// Attempts to redirect a judge session to its origin.
+    ///
+    /// If the session is a judge and the origin loads successfully, performs the
+    /// full redirect (unarchive origin, swap load guard, auto-load judges, emit
+    /// `SessionLoadCompleted`) and returns `true`.
+    ///
+    /// Returns `false` if the session is not a judge, is self-referential, or
+    /// the origin could not be loaded (falls back to normal loading).
+    async fn redirect_judge_to_origin(
+        &mut self,
+        session: &crate::feat::session::chat_session::ChatSessionState,
+        evt: &SessionLoadRequested,
+        store: &crate::feat::session::SessionStoreService,
+        ctx: &crate::common::actor::ActorContext,
+    ) -> bool {
+        use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted as CompletedPayload;
+
+        let Some(meta) = session.judge() else {
+            return false;
+        };
+
+        let origin_id = meta.origin_session.clone();
+
+        // Guard: self-referential judge — proceed as normal session.
+        if origin_id == evt.session_id {
+            tracing::warn!(
+                session_id = %evt.session_id,
+                "judge session references itself as origin, loading normally"
+            );
+            return false;
+        }
+
+        tracing::info!(
+            judge_session = %evt.session_id,
+            origin_session = %origin_id,
+            "requested session is a judge, redirecting to origin"
+        );
+
+        match store.load_session(&origin_id).await {
+            Ok(Some(mut origin_session)) => {
+                // Unarchive + reset the origin.
+                if let Err(e) = store.set_archived(&origin_id, false).await {
+                    tracing::warn!(err = ?e, "failed to unarchive origin session");
+                }
+                origin_session.set_session_state(
+                    crate::feat::session::chat_session::SessionState::Loaded,
+                );
+
+                // Swap the load guard from judge to origin.
+                {
+                    let mut state = self.state.write();
+                    state.session.clear_load();
+                    state.session.begin_load(origin_id.clone());
+                }
+
+                // Auto-load judge sessions for the origin.
+                self.load_and_insert_judge_sessions(store, &origin_id).await;
+
+                let _ = ctx.send_command(Command::SessionLoadCompleted(
+                    CompletedPayload {
+                        session: origin_session,
+                    },
+                ));
+                true
+            }
+            Ok(None) => {
+                tracing::warn!(
+                    origin_session_id = %origin_id,
+                    "origin session not found, falling back to judge"
+                );
+                false
+            }
+            Err(e) => {
+                tracing::warn!(
+                    err = ?e,
+                    origin_session_id = %origin_id,
+                    "failed to load origin session, falling back to judge"
+                );
+                false
+            }
+        }
+    }
+
     /// Loads a full session from disk and sends back a `SessionLoadCompleted` command.
     ///
     /// If the requested session is a judge, redirects to loading its origin session
@@ -147,7 +230,7 @@ impl SessionPersistenceActor {
     ) {
         use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted as CompletedPayload;
 
-        let Some(store) = &self.store else {
+        let Some(store) = self.store.clone() else {
             tracing::warn!("session-actor has no store — dropping load request");
             return;
         };
@@ -157,66 +240,8 @@ impl SessionPersistenceActor {
                 // --- Judge-to-origin redirect ---
                 // If the loaded session is a judge, load its origin instead.
                 // The judge will be auto-loaded as a side-effect of loading the origin.
-                if let Some(meta) = session.judge() {
-                    let origin_id = meta.origin_session.clone();
-
-                    // Guard: self-referential judge — proceed as normal session.
-                    if origin_id == evt.session_id {
-                        tracing::warn!(
-                            session_id = %evt.session_id,
-                            "judge session references itself as origin, loading normally"
-                        );
-                    } else {
-                        tracing::info!(
-                            judge_session = %evt.session_id,
-                            origin_session = %origin_id,
-                            "requested session is a judge, redirecting to origin"
-                        );
-
-                        match store.load_session(&origin_id).await {
-                            Ok(Some(mut origin_session)) => {
-                                // Unarchive + reset the origin.
-                                if let Err(e) = store.set_archived(&origin_id, false).await {
-                                    tracing::warn!(err = ?e, "failed to unarchive origin session");
-                                }
-                                origin_session.set_session_state(
-                                    crate::feat::session::chat_session::SessionState::Loaded,
-                                );
-
-                                // Swap the load guard from judge to origin.
-                                {
-                                    let mut state = self.state.write();
-                                    state.session.clear_load();
-                                    state.session.begin_load(origin_id.clone());
-                                }
-
-                                // Auto-load judge sessions for the origin.
-                                self.load_and_insert_judge_sessions(store, &origin_id).await;
-
-                                let _ = ctx.send_command(Command::SessionLoadCompleted(
-                                    CompletedPayload {
-                                        session: origin_session,
-                                    },
-                                ));
-                                return;
-                            }
-                            Ok(None) => {
-                                tracing::warn!(
-                                    origin_session_id = %origin_id,
-                                    "origin session not found, falling back to judge"
-                                );
-                                // Fall through — load the judge as the active session.
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    err = ?e,
-                                    origin_session_id = %origin_id,
-                                    "failed to load origin session, falling back to judge"
-                                );
-                                // Fall through — load the judge as the active session.
-                            }
-                        }
-                    }
+                if self.redirect_judge_to_origin(&session, evt, &store, ctx).await {
+                    return;
                 }
 
                 // Unarchive the session so it appears in the picker on next load.
@@ -233,7 +258,7 @@ impl SessionPersistenceActor {
                 // They may have been cascade-archived alongside the origin.
                 // We unarchive and insert them into memory so the coordinator
                 // can trigger them on the next IDLE transition.
-                self.load_and_insert_judge_sessions(store, &evt.session_id).await;
+                self.load_and_insert_judge_sessions(&store, &evt.session_id).await;
 
                 let _ =
                     ctx.send_command(Command::SessionLoadCompleted(CompletedPayload { session }));
