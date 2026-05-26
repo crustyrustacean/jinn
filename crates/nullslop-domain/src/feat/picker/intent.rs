@@ -893,4 +893,216 @@ mod tests {
             "re-attached judge should get updated CWD from origin"
         );
     }
+
+    // --- A-Tier: Kill mutants for picker confirm and validation ---
+
+    #[rstest::rstest]
+    fn confirm_provider_rejects_unavailable() {
+        // Kills: delete ! in confirm_provider.
+        // If the ! were deleted, unavailable providers could be confirmed.
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state.session.set_active(
+            state.session.active_session_id().clone(),
+        );
+
+        // Add an unavailable provider entry to the picker and select it.
+        let entry = crate::protocol::PickerEntry {
+            provider_id: "openrouter/gpt-4".to_owned(),
+            name: "openrouter".to_owned(),
+            provider_name: "openrouter".to_owned(),
+            backend: "openrouter".to_owned(),
+            model: "gpt-4".to_owned(),
+            search_text: "gpt-4 openrouter".to_owned(),
+            is_alias: false,
+            alias_target: None,
+            is_available: false, // Unavailable!
+            is_remote: false,
+            is_active: false,
+            theme: crate::feat::theme::default_theme(),
+        };
+        state.provider.provider_picker.set_items(vec![entry]);
+        state.provider.provider_picker.move_down(1); // Select first entry.
+
+        let result = confirm_provider(&mut state);
+
+        // Then no commands are emitted (the unavailable provider was rejected).
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn confirm_provider_accepts_available() {
+        // Counter-test: confirms that available providers ARE accepted.
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state.session.set_active(
+            state.session.active_session_id().clone(),
+        );
+
+        let entry = crate::protocol::PickerEntry {
+            provider_id: "ollama/llama3".to_owned(),
+            name: "ollama".to_owned(),
+            provider_name: "ollama".to_owned(),
+            backend: "ollama".to_owned(),
+            model: "llama3".to_owned(),
+            search_text: "llama3 ollama".to_owned(),
+            is_alias: false,
+            alias_target: None,
+            is_available: true, // Available!
+            is_remote: false,
+            is_active: false,
+            theme: crate::feat::theme::default_theme(),
+        };
+        state.provider.provider_picker.set_items(vec![entry]);
+        state.provider.provider_picker.move_down(1);
+
+        let result = confirm_provider(&mut state);
+
+        // Then commands are emitted.
+        assert!(!result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn confirm_persona_sets_correct_persona() {
+        // Kills: replace == with != in confirm_persona.
+        // If the match were inverted, the wrong persona would be set.
+        use crate::feat::persona::PersonaEntry;
+
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state.session.set_active(
+            state.session.active_session_id().clone(),
+        );
+
+        // Add two personas to context.
+        state.context.personas = vec![
+            crate::feat::persona::Persona {
+                name: "coder".to_owned(),
+                description: String::new(),
+                body: "You are a coder.".to_owned(),
+                file_path: PathBuf::new(),
+            },
+            crate::feat::persona::Persona {
+                name: "writer".to_owned(),
+                description: String::new(),
+                body: "You are a writer.".to_owned(),
+                file_path: PathBuf::new(),
+            },
+        ];
+
+        // Set picker entries with "writer" as the selected item.
+        let entries = vec![
+            PersonaEntry {
+                name: "coder".to_owned(),
+                description: String::new(),
+                is_active: false,
+                theme: crate::feat::theme::default_theme(),
+            },
+            PersonaEntry {
+                name: "writer".to_owned(),
+                description: String::new(),
+                is_active: false,
+                theme: crate::feat::theme::default_theme(),
+            },
+        ];
+        state.frontend.persona_picker.set_items(entries);
+        state.frontend.persona_picker.move_down(1); // coder
+        state.frontend.persona_picker.move_down(1); // writer
+
+        let result = confirm_persona(&mut state);
+
+        // Then the active persona is "writer", not "coder".
+        assert_eq!(
+            state.context.active_persona.as_ref().map(|p| p.name.as_str()),
+            Some("writer"),
+            "confirm_persona should set the correct persona"
+        );
+        assert!(!result.commands.is_empty());
+    }
+
+    // --- A-Tier: Kill mutant for == with != in confirm_session_lifecycle ---
+
+    #[rstest::rstest]
+    fn confirm_session_lifecycle_finds_correct_lifecycle_for_args() {
+        // Kills: replace == with != in confirm_session_lifecycle.
+        // If the match were inverted, find() would locate the WRONG lifecycle,
+        // producing the wrong template_display in the arg_input state.
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state.session.set_active(
+            state.session.active_session_id().clone(),
+        );
+
+        // Add two lifecycles with args ($1) to preferences.
+        state.frontend.preferences.session_lifecycles = vec![
+            crate::feat::preferences_actor::user_preferences::SessionLifecycle {
+                name: "project-a".to_owned(),
+                description: None,
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "cd /a/$1".to_owned(),
+                    ),
+                ),
+                teardown: None,
+            },
+            crate::feat::preferences_actor::user_preferences::SessionLifecycle {
+                name: "project-b".to_owned(),
+                description: None,
+                setup: Some(
+                    crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(
+                        "cd /b/$1".to_owned(),
+                    ),
+                ),
+                teardown: None,
+            },
+        ];
+
+        // Load entries and select "project-b".
+        load_lifecycle_picker_entries(&mut state);
+        state.frontend.session_lifecycle_picker.move_down(1); // blank
+        state.frontend.session_lifecycle_picker.move_down(1); // project-a
+        state.frontend.session_lifecycle_picker.move_down(1); // project-b
+
+        let _result = confirm_session_lifecycle(&mut state);
+
+        // Then the arg_input state references "project-b" and its template.
+        assert_eq!(state.frontend.arg_input.lifecycle_name, "project-b");
+        assert!(
+            state.frontend.arg_input.template_display.contains("/b/"),
+            "template_display should contain /b/ from project-b's setup command, got: {}",
+            state.frontend.arg_input.template_display,
+        );
+    }
+
+    // --- B-Tier: Kill mutant for replace load_lifecycle_picker_entries with () ---
+
+    #[rstest::rstest]
+    fn load_lifecycle_picker_entries_populates_picker() {
+        // Kills: replace load_lifecycle_picker_entries with ().
+        // If the function were a no-op, the picker would remain empty.
+        let mut state = AppState::default();
+
+        // Add lifecycle entries to preferences.
+        state.frontend.preferences.session_lifecycles = vec![
+            crate::feat::preferences_actor::user_preferences::SessionLifecycle {
+                name: "project-a".to_owned(),
+                description: Some("Project A setup".to_owned()),
+                setup: None,
+                teardown: None,
+            },
+        ];
+
+        // When loading lifecycle picker entries.
+        load_lifecycle_picker_entries(&mut state);
+
+        // Then the picker has entries (blank + project-a = 2).
+        let items = state.frontend.session_lifecycle_picker.items();
+        assert_eq!(items.len(), 2, "should have blank + 1 lifecycle = 2 entries");
+        assert_eq!(items[0].name, "blank");
+        assert_eq!(items[1].name, "project-a");
+    }
 }

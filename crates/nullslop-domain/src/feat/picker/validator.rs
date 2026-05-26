@@ -102,3 +102,47 @@ pub fn validate_open_picker(state: &AppState, _kind: &PickerKind) -> Result<(), 
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use super::*;
+    use crate::common::app_state::AppState;
+    use crate::common::app_state::FocusScope;
+
+    #[rstest::rstest]
+    fn validate_picker_confirm_rejects_no_active_picker() {
+        // Kills: replace validate_picker_confirm with Ok(()).
+        // If the validator always returned Ok, confirming with no picker would be allowed.
+        let state = AppState::default();
+
+        let result = validate_picker_confirm(&state);
+
+        assert!(result.is_err(), "should reject confirm when no picker is active");
+    }
+
+    #[rstest::rstest]
+    fn validate_open_picker_rejects_when_already_in_picker() {
+        // Kills: replace validate_open_picker with Ok(()).
+        // If the validator always returned Ok, nested pickers would be allowed.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::Picker { kind: PickerKind::Provider });
+
+        let result = validate_open_picker(&state, &PickerKind::Session);
+
+        assert!(result.is_err(), "should reject opening a second picker");
+    }
+
+    #[rstest::rstest]
+    fn validate_open_picker_allows_when_no_picker_active() {
+        // Verifies the positive case — opening a picker when none is active.
+        let state = AppState::default();
+
+        let result = validate_open_picker(&state, &PickerKind::Provider);
+
+        assert!(result.is_ok(), "should allow opening picker when none is active");
+    }
+}

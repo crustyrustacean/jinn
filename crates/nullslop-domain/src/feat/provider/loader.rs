@@ -76,3 +76,47 @@ pub fn load_compaction_model_picker_items(services: &Services, state: &mut AppSt
 
     state.frontend.compaction_model_picker.set_items(entries);
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use super::*;
+    use crate::common::app_state::AppState;
+    use crate::common::services::test_services::TestServices;
+    use crate::feat::provider_infra::{ProviderEntry, ProvidersConfig};
+
+    #[rstest::rstest]
+    fn load_compaction_model_picker_items_populates_picker() {
+        // Kills: replace load_compaction_model_picker_items with ().
+        // If the function were a no-op, the picker would remain empty.
+        let services = TestServices::builder()
+            .with_providers(ProvidersConfig {
+                providers: vec![ProviderEntry {
+                    name: "ollama".to_owned(),
+                    backend: "ollama".to_owned(),
+                    models: vec!["llama3".to_owned()],
+                    base_url: Some("http://localhost:11434".to_owned()),
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: None,
+                }],
+                aliases: vec![],
+                default_provider: None,
+            })
+            .build();
+
+        let mut state = AppState::default();
+
+        // When loading compaction model picker items.
+        load_compaction_model_picker_items(&services, &mut state);
+
+        // Then the picker has entries (sentinel + 1 provider = 2).
+        let items = state.frontend.compaction_model_picker.items();
+        assert!(!items.is_empty(), "picker should not be empty");
+        // First entry should be the sentinel "session default".
+        assert_eq!(items[0].model, "session default");
+        // Second entry should be the ollama/llama3 model.
+        assert_eq!(items[1].provider_id, "ollama/llama3");
+    }
+}

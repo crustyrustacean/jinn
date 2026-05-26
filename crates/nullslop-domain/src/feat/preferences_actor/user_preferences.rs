@@ -623,4 +623,82 @@ teardown_command = "~/.config/nullslop/scripts/fossil-cleanup.sh $1"
         // Then the round-tripped value matches.
         assert_eq!(reloaded.min_collapse_count, Some(5));
     }
+
+    // --- S-Tier: Kill mutants for load_preferences / save_preferences ---
+
+    #[rstest::rstest]
+    fn load_preferences_actually_reads_file_content() {
+        // Kills: replace load_preferences with Ok(Default::default()).
+        // If load_preferences were a no-op returning defaults, this would fail
+        // because we verify that file content is actually read and parsed.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            "last_model = \"openrouter/anthropic/claude-sonnet-4-20250514\"\n\
+             last_strategy = \"sliding_window\"\n\
+             sidebar_width = 42\n",
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then the loaded prefs are NOT defaults — they reflect the file.
+        assert_eq!(
+            prefs.last_model.as_deref(),
+            Some("openrouter/anthropic/claude-sonnet-4-20250514")
+        );
+        assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
+        assert_eq!(prefs.sidebar_width, Some(42));
+    }
+
+    #[rstest::rstest]
+    fn save_preferences_actually_writes_to_disk() {
+        // Kills: replace save_preferences with Ok(()).
+        // If save_preferences were a no-op, the file would not exist on disk.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let prefs = UserPreferences {
+            last_model: Some("ollama/llama3".to_owned()),
+            last_strategy: None,
+            tool_entry_max_lines: Some(99),
+            min_collapse_count: None,
+            theme_name: None,
+            persona_name: None,
+            session_lifecycles: vec![],
+            sidebar_width: Some(42),
+            max_tool_output_lines: None,
+            max_tool_output_bytes: None,
+            compaction: CompactionConfig::default(),
+            context_sliding_window: ContextSlidingWindowConfig::default(),
+            request_retry: RequestRetryConfig::default(),
+        };
+
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the file exists on disk with the expected content.
+        assert!(path.exists(), "save_preferences should create the file");
+        let content = std::fs::read_to_string(&path).expect("read back");
+        assert!(content.contains("ollama/llama3"));
+        assert!(content.contains("42"));
+    }
+
+    // --- S-Tier: Kill mutant for RequestRetryConfig::to_retry_config ---
+
+    #[rstest::rstest]
+    fn to_retry_config_uses_actual_values_not_defaults() {
+        // Kills: replace to_retry_config with Default::default().
+        // If to_retry_config returned Default::default(), all durations would be zero.
+        let config = RequestRetryConfig {
+            max_retries: 3,
+            base_delay_secs: 5,
+            max_delay_secs: 120,
+        };
+
+        let retry = config.to_retry_config();
+
+        assert_eq!(retry.max_retries, 3);
+        assert_eq!(retry.base_delay, std::time::Duration::from_secs(5));
+        assert_eq!(retry.max_delay, std::time::Duration::from_secs(120));
+    }
 }

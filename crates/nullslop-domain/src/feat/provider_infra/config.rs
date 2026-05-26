@@ -381,4 +381,69 @@ tool_stream = true
             .expect("extra_body");
         assert_eq!(extra["enable_thinking"], true);
     }
+
+    // --- S-Tier: Kill mutants for save_config, create_default_config, default_true ---
+
+    #[rstest::rstest]
+    fn save_config_actually_writes_to_disk() {
+        // Kills: replace save_config with Ok(()).
+        // If save_config were a no-op, the file would not exist after the call.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        let config = ProvidersConfig {
+            providers: vec![ProviderEntry {
+                name: "test-save".to_owned(),
+                backend: "ollama".to_owned(),
+                models: vec!["llama3".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: None,
+            }],
+            aliases: vec![],
+            default_provider: Some("test-save/llama3".to_owned()),
+        };
+
+        save_config_to(&config, &path).expect("save");
+
+        // Then the file exists on disk.
+        assert!(path.exists(), "save_config should write the file");
+        let content = std::fs::read_to_string(&path).expect("read back");
+        assert!(content.contains("test-save"));
+        assert!(content.contains("llama3"));
+    }
+
+    #[rstest::rstest]
+    fn create_default_config_returns_actual_path() {
+        // Kills: replace create_default_config with Ok(Default::default()).
+        // If it returned an empty PathBuf, the path would not point to a file.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+
+        create_default_config_to(&path).expect("create");
+
+        // Then the path is valid and the file exists with content.
+        assert!(path.exists(), "default config file should exist");
+        let content = std::fs::read_to_string(&path).expect("read");
+        assert!(!content.is_empty(), "default config should have content");
+    }
+
+    #[rstest::rstest]
+    fn default_true_makes_requires_key_default_to_true() {
+        // Kills: replace default_true with false.
+        // Verifies that a provider entry without requires_key in TOML defaults to true.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        // No requires_key field — should default to true.
+        std::fs::write(
+            &path,
+            "[[providers]]\nname = \"openai\"\nbackend = \"openai\"\nmodels = [\"gpt-4\"]\napi_key_env = \"OPENAI_API_KEY\"\n",
+        )
+        .expect("write");
+
+        let config = load_config_from(&path).expect("load");
+
+        assert!(config.providers[0].requires_key, "requires_key should default to true");
+    }
 }

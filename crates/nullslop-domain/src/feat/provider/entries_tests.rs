@@ -1007,3 +1007,49 @@ fn provider_name_match_appears_in_highlighted_row() {
         "highlighted row should contain 'o' from provider name"
     );
 }
+
+// --- A-Tier: Kill mutant for && with || in sorted_entries ---
+
+#[rstest::rstest]
+fn sorted_entries_does_not_promote_when_filter_is_nonempty() {
+    // Kills: replace && with || in sorted_entries.
+    // If && became ||, the condition `filter.is_empty() || active_provider != NO_PROVIDER_ID`
+    // would be true even with a non-empty filter, causing unwanted promotion.
+    let entries = vec![
+        PickerEntry {
+            provider_id: "a/model".into(),
+            name: "a".into(),
+            provider_name: "a".into(),
+            backend: "a".into(),
+            model: "model".into(),
+            search_text: "model a".into(),
+            is_alias: false,
+            alias_target: None,
+            is_available: true,
+            is_remote: false,
+            is_active: false,
+            theme: default_theme(),
+        },
+        PickerEntry {
+            provider_id: "b/model".into(),
+            name: "b".into(),
+            provider_name: "b".into(),
+            backend: "b".into(),
+            model: "model".into(),
+            search_text: "model b".into(),
+            is_alias: false,
+            alias_target: None,
+            is_available: true,
+            is_remote: false,
+            is_active: false,
+            theme: default_theme(),
+        },
+    ];
+
+    // When sorting with a non-empty filter and active_provider "b/model".
+    let result = sorted_entries(&entries, "x", "b/model");
+
+    // Then "b/model" is NOT promoted to first (filter is non-empty).
+    assert_eq!(result[0].provider_id, "a/model");
+    assert_eq!(result[1].provider_id, "b/model");
+}
