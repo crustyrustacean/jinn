@@ -31,3 +31,21 @@ pub use workflow_state::{WorkflowId, WorkflowMap, WorkflowState};
 pub fn register_all_workflows(registry: &mut WorkflowRegistry) {
     example::register(registry);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[rstest::rstest]
+    fn register_all_workflows_populates_registry() {
+        // Given an empty registry.
+        let mut registry = WorkflowRegistry::new();
+
+        // When registering all workflows.
+        register_all_workflows(&mut registry);
+
+        // Then the registry is not empty.
+        let names = registry.names();
+        assert!(!names.is_empty(), "register_all_workflows should add workflows");
+    }
+}

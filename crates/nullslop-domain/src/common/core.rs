@@ -10,6 +10,9 @@
 
 pub mod actor_sink;
 pub mod app_core;
+
+#[cfg(test)]
+mod app_core_tests;
 pub mod app_msg;
 
 // Re-export primary types owned by this crate

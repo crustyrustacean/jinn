@@ -144,6 +144,70 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn service_send_event_delegates_to_backend() {
+        // Given a FakeActorHost wrapped in a service.
+        let host = Arc::new(crate::common::actor_host::fake::FakeActorHost::new());
+        let backend = host.clone();
+        let service = ActorHostService::new(host);
+
+        // When sending an event.
+        service.send_event(
+            &Event::KeyDown(crate::protocol::system::KeyDown {
+                key: crate::protocol::KeyEvent {
+                    key: crate::protocol::Key::Enter,
+                    modifiers: crate::protocol::Modifiers::none(),
+                },
+            }),
+            None,
+        );
+
+        // Then the backend received the event.
+        assert_eq!(backend.events_sent().len(), 1, "send_event should delegate to backend");
+    }
+
+    #[rstest::rstest]
+    fn service_send_command_delegates_to_backend() {
+        // Given a FakeActorHost wrapped in a service.
+        let host = Arc::new(crate::common::actor_host::fake::FakeActorHost::new());
+        let backend = host.clone();
+        let service = ActorHostService::new(host);
+
+        // When sending a command.
+        service.send_command(&Command::RefreshModels, None);
+
+        // Then the backend received the command.
+        assert_eq!(backend.commands_sent().len(), 1, "send_command should delegate to backend");
+    }
+
+    #[rstest::rstest]
+    fn service_send_system_delegates_to_backend() {
+        // Given a FakeActorHost wrapped in a service.
+        let host = Arc::new(crate::common::actor_host::fake::FakeActorHost::new());
+        let backend = host.clone();
+        let service = ActorHostService::new(host);
+
+        // When sending a system message.
+        service.send_system(crate::common::actor::SystemMessage::ApplicationShuttingDown);
+
+        // Then the backend received the system message.
+        assert_eq!(backend.system_sent().len(), 1, "send_system should delegate to backend");
+    }
+
+    #[rstest::rstest]
+    fn service_begin_shutdown_delegates_to_backend() {
+        // Given a FakeActorHost wrapped in a service.
+        let host = Arc::new(crate::common::actor_host::fake::FakeActorHost::new());
+        let service = ActorHostService::new(host);
+
+        // When beginning shutdown.
+        let (tx, mut rx) = tokio::sync::oneshot::channel();
+        service.begin_shutdown(tx);
+
+        // Then the backend fires the completion immediately.
+        assert!(rx.try_recv().is_ok(), "begin_shutdown should delegate to FakeActorHost");
+    }
+
+    #[rstest::rstest]
     fn service_shutdown_ok() {
         // Given a FakeActorHost wrapped in a service.
         let host = Arc::new(crate::common::actor_host::fake::FakeActorHost::new());
