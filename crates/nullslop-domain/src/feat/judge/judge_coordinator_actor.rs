@@ -38,6 +38,24 @@ use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::protocol::{Command, Event, SessionId};
 
 use super::protocol::{JudgeVerdict, Verdict};
+use super::JudgeMeta;
+
+/// Resolve the effective auto-reset value for a judge session.
+///
+/// If the per-session override (`JudgeMeta::auto_reset`) is set, use that.
+/// Otherwise, fall back to the judge file's default (`Judge::auto_reset`)
+/// looked up by name from the loaded judge definitions.
+pub fn resolve_effective_auto_reset(
+    meta: &JudgeMeta,
+    judges: &[super::Judge],
+) -> bool {
+    meta.auto_reset.unwrap_or_else(|| {
+        judges
+            .iter()
+            .find(|j| j.name == meta.judge_name)
+            .map_or(false, |j| j.auto_reset)
+    })
+}
 
 /// Pending verdicts for an origin session.
 #[derive(Debug, Default)]
@@ -162,6 +180,35 @@ impl JudgeCoordinatorActor {
 
         // Push trigger message to each attached judge session.
         for (judge_session_id, judge_name) in &attached_judges {
+            // Auto-reset: if the judge's effective auto-reset is true,
+            // reset its history (keeping pinned entries) before triggering.
+            {
+                // Resolve effective auto-reset under a read lock first.
+                let should_reset = {
+                    let guard = self.state.read();
+                    if let Some(judge_session) = guard.session.get(judge_session_id) {
+                        if let Some(meta) = judge_session.judge().as_ref() {
+                            resolve_effective_auto_reset(meta, &guard.context.judges)
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                };
+                if should_reset {
+                    let mut guard = self.state.write();
+                    if let Some(judge_session) = guard.session.get_mut(judge_session_id) {
+                        judge_session.reset_judge_history();
+                        tracing::debug!(
+                            judge = %judge_name,
+                            session = %judge_session_id,
+                            "auto-reset judge history before trigger"
+                        );
+                    }
+                }
+            }
+
             let trigger_text =
                 String::from("The agent has completed its turn. Please evaluate it's work.");
             let trigger_entry = ChatEntry::user(trigger_text);
