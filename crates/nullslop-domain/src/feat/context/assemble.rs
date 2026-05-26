@@ -78,6 +78,7 @@ impl AssembledPrompt {
 ///
 /// Panics if the given `session_id` does not exist in the session map.
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn assemble_prompt(
     state: &AppState,
     session_id: &SessionId,
@@ -710,14 +711,14 @@ mod tests {
         let (state, origin_id) = state_with_history(vec![ChatEntry::user("evaluate")]);
         {
             let mut guard = state.write();
-            guard.context.tool_definitions.insert(
-                "bash".to_owned(),
-                make_tool("bash"),
-            );
-            guard.context.tool_definitions.insert(
-                "read".to_owned(),
-                make_tool("read"),
-            );
+            guard
+                .context
+                .tool_definitions
+                .insert("bash".to_owned(), make_tool("bash"));
+            guard
+                .context
+                .tool_definitions
+                .insert("read".to_owned(), make_tool("read"));
         }
 
         // And a judge session.
