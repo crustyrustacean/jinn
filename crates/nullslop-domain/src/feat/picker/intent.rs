@@ -555,7 +555,7 @@ fn confirm_judge(state: &mut AppState) -> IntentResult {
     judge_session.set_parent_session(active_id.clone());
 
     // Title the judge session after its definition name.
-    judge_session.set_title(format!("judge/{}", &entry.name));
+    judge_session.set_title(format!("j/{}", &entry.name));
 
     // Set model: judge definition override takes priority, otherwise inherit from origin.
     if let Some(ref model) = judge_def.model {
@@ -652,7 +652,10 @@ mod tests {
 
         // The judge session should have correct metadata.
         let judge_session = find_judge_session(&state);
-        let meta = judge_session.judge().as_ref().expect("should have judge meta");
+        let meta = judge_session
+            .judge()
+            .as_ref()
+            .expect("should have judge meta");
         assert_eq!(meta.judge_name, "accuracy");
         assert_eq!(meta.origin_session, origin_id);
         assert!(meta.is_attached);
