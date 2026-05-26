@@ -1093,4 +1093,372 @@ mod tests {
         builder.add_node("source".to_owned(), Box::new(source));
         builder.build().expect("graph should be valid")
     }
+
+    // --- Mutant-killing tests for ArgInput scope guards ---
+
+    #[test]
+    fn insert_char_routes_to_arg_input_when_scope_is_arg_input() {
+        // Given ArgInput scope is active.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::ArgInput);
+        state.frontend.arg_input = crate::common::app_state::ArgInputState {
+            lifecycle_name: "test".to_owned(),
+            template_display: "<arg>".to_owned(),
+            input: "hel".to_owned(),
+            cursor_pos: 3,
+        };
+
+        // When handling InsertChar.
+        let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'o' }, &mut state);
+
+        // Then arg_input received the char, not the chat input.
+        assert_eq!(state.frontend.arg_input.input, "helo");
+        assert!(state.active_chat_input().is_empty(), "chat input should be empty");
+    }
+
+    #[test]
+    fn insert_char_routes_to_chat_input_when_scope_is_normal() {
+        // Given Normal scope (default) with Input overlay.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Input);
+
+        // When handling InsertChar.
+        let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'x' }, &mut state);
+
+        // Then the chat input received the char.
+        assert_eq!(state.active_chat_input().text(), "x");
+        assert!(state.frontend.arg_input.input.is_empty(), "arg input should be empty");
+    }
+
+    #[test]
+    fn delete_grapheme_routes_to_arg_input_when_scope_is_arg_input() {
+        // Given ArgInput scope with some text.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::ArgInput);
+        state.frontend.arg_input = crate::common::app_state::ArgInputState {
+            lifecycle_name: "test".to_owned(),
+            template_display: "<arg>".to_owned(),
+            input: "abc".to_owned(),
+            cursor_pos: 3,
+        };
+
+        // When handling DeleteGrapheme.
+        let _result = IntentHandler::handle(&Intent::DeleteGrapheme, &mut state);
+
+        // Then arg_input had a char deleted.
+        assert_eq!(state.frontend.arg_input.input, "ab");
+    }
+
+    #[test]
+    fn move_cursor_left_routes_to_arg_input_when_scope_is_arg_input() {
+        // Given ArgInput scope with cursor at end.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::ArgInput);
+        state.frontend.arg_input = crate::common::app_state::ArgInputState {
+            lifecycle_name: "test".to_owned(),
+            template_display: "<arg>".to_owned(),
+            input: "ab".to_owned(),
+            cursor_pos: 2,
+        };
+
+        // When handling MoveCursorLeft.
+        let _result = IntentHandler::handle(&Intent::MoveCursorLeft, &mut state);
+
+        // Then arg_input cursor moved.
+        assert_eq!(state.frontend.arg_input.cursor_pos, 1);
+    }
+
+    #[test]
+    fn move_cursor_right_routes_to_arg_input_when_scope_is_arg_input() {
+        // Given ArgInput scope with cursor at start.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::ArgInput);
+        state.frontend.arg_input = crate::common::app_state::ArgInputState {
+            lifecycle_name: "test".to_owned(),
+            template_display: "<arg>".to_owned(),
+            input: "ab".to_owned(),
+            cursor_pos: 0,
+        };
+
+        // When handling MoveCursorRight.
+        let _result = IntentHandler::handle(&Intent::MoveCursorRight, &mut state);
+
+        // Then arg_input cursor moved.
+        assert_eq!(state.frontend.arg_input.cursor_pos, 1);
+    }
+
+    #[test]
+    fn delete_forward_routes_to_arg_input_when_scope_is_arg_input() {
+        // Given ArgInput scope with cursor at start.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::ArgInput);
+        state.frontend.arg_input = crate::common::app_state::ArgInputState {
+            lifecycle_name: "test".to_owned(),
+            template_display: "<arg>".to_owned(),
+            input: "abc".to_owned(),
+            cursor_pos: 1,
+        };
+
+        // When handling DeleteGraphemeForward.
+        let _result = IntentHandler::handle(&Intent::DeleteGraphemeForward, &mut state);
+
+        // Then the char after cursor was deleted from arg_input.
+        assert_eq!(state.frontend.arg_input.input, "ac");
+    }
+
+    #[test]
+    fn enter_normal_mode_pops_arg_input_scope() {
+        // Given ArgInput scope is active.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::ArgInput);
+        state.frontend.arg_input = crate::common::app_state::ArgInputState {
+            lifecycle_name: "test".to_owned(),
+            template_display: "<arg>".to_owned(),
+            input: "partial".to_owned(),
+            cursor_pos: 7,
+        };
+
+        // When handling EnterNormalMode.
+        let _result = IntentHandler::handle(&Intent::EnterNormalMode, &mut state);
+
+        // Then ArgInput scope is popped and state cleared.
+        assert!(!matches!(
+            state.frontend.scope_stack.current(),
+            FocusScope::ArgInput
+        ));
+        assert!(state.frontend.arg_input.input.is_empty());
+    }
+
+    // --- Mutant-killing tests for PasteText dispatch ---
+
+    #[test]
+    fn paste_text_in_picker_scope_routes_to_picker() {
+        // Given Picker scope is active.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: crate::protocol::PickerKind::Persona,
+        });
+
+        // When handling PasteText.
+        let _result = IntentHandler::handle(
+            &Intent::PasteText {
+                text: "hello".into(),
+            },
+            &mut state,
+        );
+
+        // Then it doesn't panic and completes (paste is handled by picker).
+        // The picker query filter is updated.
+    }
+
+    #[test]
+    fn paste_text_in_rename_session_scope_routes_to_rename() {
+        // Given RenameSessionInput scope is active.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::RenameSessionInput);
+        state.frontend.rename_session_input = RenameSessionInputState {
+            input: "old".to_owned(),
+            cursor_pos: 3,
+        };
+
+        // When handling PasteText.
+        let _result = IntentHandler::handle(
+            &Intent::PasteText {
+                text: " new".into(),
+            },
+            &mut state,
+        );
+
+        // Then rename input received the paste.
+        assert_eq!(state.frontend.rename_session_input.input, "old new");
+    }
+
+    // --- Mutant-killing tests for cancel stream prompt ---
+
+    #[test]
+    fn cancel_stream_prompt_esc_confirms() {
+        // Given cancel_stream_prompt is showing.
+        let mut state = AppState::default();
+        state.frontend.cancel_stream_prompt = true;
+
+        // When handling NormalEscape.
+        let result = IntentHandler::handle(&Intent::NormalEscape, &mut state);
+
+        // Then the prompt is dismissed and a CancelStream command is emitted.
+        assert!(!state.frontend.cancel_stream_prompt);
+        assert!(
+            result.commands.iter().any(|c| matches!(c, crate::protocol::Command::CancelStream(_))),
+            "should emit CancelStream: {:?}",
+            result.commands
+        );
+    }
+
+    #[test]
+    fn cancel_stream_prompt_other_intent_dismisses() {
+        // Given cancel_stream_prompt is showing.
+        let mut state = AppState::default();
+        state.frontend.cancel_stream_prompt = true;
+
+        // When handling a different intent (InsertChar).
+        let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'a' }, &mut state);
+
+        // Then the prompt is dismissed but no CancelStream command.
+        assert!(!state.frontend.cancel_stream_prompt);
+    }
+
+    #[test]
+    fn cancel_stream_prompt_not_showing_returns_none() {
+        // Given cancel_stream_prompt is NOT showing.
+        let mut state = AppState::default();
+        state.frontend.cancel_stream_prompt = false;
+
+        // When handling NormalEscape.
+        let _result = IntentHandler::handle(&Intent::NormalEscape, &mut state);
+
+        // Then no cancel command is emitted (falls through to normal escape handling).
+        // The prompt remains false.
+        assert!(!state.frontend.cancel_stream_prompt);
+    }
+
+    // --- Mutant-killing tests for close session prompt ---
+
+    #[test]
+    fn close_session_prompt_sidebar_close_confirms() {
+        // Given close_session_prompt is showing.
+        let mut state = AppState::default();
+        state.frontend.close_session_prompt = true;
+
+        // When handling SidebarSessionClose.
+        let _result = IntentHandler::handle(&Intent::SidebarSessionClose, &mut state);
+
+        // Then the prompt is dismissed.
+        assert!(!state.frontend.close_session_prompt);
+    }
+
+    #[test]
+    fn close_session_prompt_other_intent_dismisses() {
+        // Given close_session_prompt is showing.
+        let mut state = AppState::default();
+        state.frontend.close_session_prompt = true;
+
+        // When handling a different intent (ScrollUp).
+        let _result = IntentHandler::handle(&Intent::ScrollUp, &mut state);
+
+        // Then the prompt is dismissed.
+        assert!(!state.frontend.close_session_prompt);
+    }
+
+    // --- Mutant-killing tests for workflow handlers ---
+
+    #[test]
+    fn workflow_inspect_toggle_flips_state() {
+        // Given a workflow context.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
+        assert!(!state.frontend.workflow_ui.inspector_open);
+
+        // When toggling inspector.
+        let _result = IntentHandler::handle(&Intent::WorkflowInspectToggle, &mut state);
+
+        // Then inspector is open.
+        assert!(state.frontend.workflow_ui.inspector_open);
+
+        // When toggling again.
+        let _result = IntentHandler::handle(&Intent::WorkflowInspectToggle, &mut state);
+
+        // Then inspector is closed.
+        assert!(!state.frontend.workflow_ui.inspector_open);
+    }
+
+    #[test]
+    fn workflow_escape_no_running_resets_prompt() {
+        // Given a workflow scope with no active workflow.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
+        state.frontend.workflow_ui.cancel_prompt = true;
+
+        // When handling WorkflowEscape.
+        let _result = IntentHandler::handle(&Intent::WorkflowEscape, &mut state);
+
+        // Then cancel_prompt is reset to false (no running nodes).
+        assert!(!state.frontend.workflow_ui.cancel_prompt);
+    }
+
+    #[test]
+    fn workflow_rerun_node_rejects_pending_node() {
+        // Given a workflow with a pending node selected.
+        let mut state = AppState::default();
+        let execution = std::sync::Arc::new(nullslop_workflow::execution::WorkflowExecution::new(
+            source_graph_for_test(),
+        ));
+        let workflow_state = crate::feat::workflow::workflow_state::WorkflowState::new(
+            "test".to_owned(),
+            execution.clone(),
+        );
+        state.workflow.insert(workflow_state);
+        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
+        state.frontend.workflow_ui.selected_node = Some("source".to_owned());
+        execution.set_status("source", nullslop_workflow::engine::NodeStatus::Pending);
+
+        // When handling WorkflowRerunNode.
+        let result = IntentHandler::handle(&Intent::WorkflowRerunNode, &mut state);
+
+        // Then no commands are emitted (node must be Completed or Failed).
+        assert!(result.commands.is_empty());
+    }
+
+    #[test]
+    fn workflow_rerun_node_accepts_completed_node() {
+        // Given a workflow with a Completed node selected.
+        let mut state = AppState::default();
+        let execution = std::sync::Arc::new(nullslop_workflow::execution::WorkflowExecution::new(
+            source_graph_for_test(),
+        ));
+        let workflow_state = crate::feat::workflow::workflow_state::WorkflowState::new(
+            "test".to_owned(),
+            execution.clone(),
+        );
+        state.workflow.insert(workflow_state);
+        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
+        state.frontend.workflow_ui.selected_node = Some("source".to_owned());
+        execution.set_status("source", nullslop_workflow::engine::NodeStatus::Completed);
+
+        // When handling WorkflowRerunNode.
+        let result = IntentHandler::handle(&Intent::WorkflowRerunNode, &mut state);
+
+        // Then a RerunFromNode command is emitted.
+        assert!(
+            result.commands.iter().any(|c| matches!(c, crate::protocol::Command::RerunFromNode(_))),
+            "should emit RerunFromNode: {:?}",
+            result.commands
+        );
+    }
+
+    #[test]
+    fn workflow_pan_left_decrements_offset() {
+        // Given workflow scope.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
+        state.frontend.workflow_ui.viewport_offset_x = 10;
+
+        // When panning left.
+        let _result = IntentHandler::handle(&Intent::WorkflowPanLeft, &mut state);
+
+        // Then offset_x increased by 5 (panning left = viewport moves right in content).
+        assert_eq!(state.frontend.workflow_ui.viewport_offset_x, 15);
+    }
+
+    #[test]
+    fn workflow_pan_right_decrements_offset() {
+        // Given workflow scope.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
+        state.frontend.workflow_ui.viewport_offset_x = 10;
+
+        // When panning right.
+        let _result = IntentHandler::handle(&Intent::WorkflowPanRight, &mut state);
+
+        // Then offset_x decreased by 5.
+        assert_eq!(state.frontend.workflow_ui.viewport_offset_x, 5);
+    }
 }

@@ -61,3 +61,44 @@ impl SlashCommand {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use super::*;
+
+    #[rstest::rstest]
+    fn lookup_compact_returns_compact() {
+        assert_eq!(SlashCommand::lookup("compact"), Some(SlashCommand::Compact));
+    }
+
+    #[rstest::rstest]
+    fn lookup_compact_all_returns_compact_all() {
+        assert_eq!(SlashCommand::lookup("compact-all"), Some(SlashCommand::CompactAll));
+    }
+
+    #[rstest::rstest]
+    fn lookup_new_returns_new() {
+        assert_eq!(SlashCommand::lookup("new"), Some(SlashCommand::New));
+    }
+
+    #[rstest::rstest]
+    fn lookup_workflow_returns_workflow() {
+        assert_eq!(SlashCommand::lookup("workflow"), Some(SlashCommand::Workflow));
+    }
+
+    #[rstest::rstest]
+    fn lookup_unknown_returns_none() {
+        assert_eq!(SlashCommand::lookup("nonexistent"), None);
+    }
+
+    #[rstest::rstest]
+    fn all_entries_contains_all_commands() {
+        let entries = SlashCommand::all_entries();
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"compact"));
+        assert!(names.contains(&"compact-all"));
+        assert!(names.contains(&"new"));
+        assert!(names.contains(&"workflow"));
+    }
+}

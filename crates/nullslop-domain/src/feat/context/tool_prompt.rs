@@ -162,4 +162,25 @@ mod tests {
         assert!(block.contains("- edit: Edit files"));
         assert!(block.contains("- Use edit for changes"));
     }
+
+    #[rstest::rstest]
+    fn both_snippets_and_guidelines_have_separator() {
+        // Given a tool with both snippet and guidelines.
+        let tools = HashMap::from([(
+            "edit".to_owned(),
+            test_tool("edit", Some("Edit files"), vec!["Use edit for changes"]),
+        )]);
+
+        // When building the tool context block.
+        let block = build_tool_context_block(&tools);
+
+        // Then there's a blank line between the sections.
+        let block = block.expect("should produce a block");
+        // The snippets section ends with the last snippet line ending in \n,
+        // then there's an extra \n separator, then "Tool guidelines:".
+        assert!(
+            block.contains("\n\nTool guidelines:"),
+            "should have blank line between sections, got: {block:?}"
+        );
+    }
 }
