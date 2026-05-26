@@ -21,7 +21,7 @@ use crate::protocol::ChatEntryKind;
 /// | ToolResult | `LlmMessage::Tool` | |
 /// | System | `LlmMessage::System` | Only when in context (pinned or forced-include) |
 /// | Actor | `LlmMessage::User` with `[Actor: source]` prefix | Only when in context |
-/// | Error | `LlmMessage::User` with `[Error]` prefix | Always in context by default |
+/// | Error | `LlmMessage::User` with `[Error]` prefix | Only when in context (pinned or forced-include) |
 /// | Thinking | `LlmMessage::User` with `[Thinking]` prefix | Only when in context |
 /// | Transient | `LlmMessage::User` with `[Transient]` prefix | Only when in context |
 /// | Skill | `LlmMessage::System` with skill XML | Always in context by default |
@@ -96,8 +96,8 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                     content: format!("[Actor: {source}] {text}"),
                 });
             }
-            // Error entries produce a User message with [Error] prefix.
-            // Error is included in context by default.
+            // Error entries produce a User message with [Error] prefix
+            // when in context (pinned or forced-include).
             ChatEntryKind::Error(text) => {
                 messages.push(LlmMessage::User {
                     content: format!("[Error] {text}"),
