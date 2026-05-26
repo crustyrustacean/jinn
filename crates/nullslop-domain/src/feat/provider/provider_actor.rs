@@ -278,9 +278,11 @@ mod tests {
     use crate::common::services::Services;
     use crate::common::state::State;
     use crate::feat::provider_infra::{ModelCache, ModelInfo, ProviderEntry, ProvidersConfig};
-    use crate::protocol::Event;
+    use crate::protocol::{Command, Event};
 
     use super::{ModelsRefreshed, ProviderActor, ProviderActorDeps};
+    use crate::feat::provider::protocol::command::LoadProviderPickerEntries;
+    use crate::feat::provider::protocol::command::ProviderSwitch;
 
     fn create_actor() -> (
         ProviderActor,
@@ -853,5 +855,82 @@ mod tests {
         // Then both providers get filled.
         assert_eq!(cache.entries["zai"][0].context_length, Some(200_000));
         assert_eq!(cache.entries["anthropic"][0].context_length, Some(200_000));
+    }
+
+    // --- S-Tier: Kill mutants for provider_actor dispatch and handlers ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn handle_dispatches_provider_switch_command() {
+        // Kills: delete ActorEnvelope::Command(cmd) match arm in handle.
+        // Also kills: replace handle_command with ().
+        // Also kills: replace handle_provider_switch with ().
+        // Given a provider actor.
+        let (mut actor, _services, sink, ctx, state) = create_actor();
+        let session_id = state.read().session.active_session_id().clone();
+
+        // When sending a ProviderSwitch command.
+        let cmd = Command::ProviderSwitch(ProviderSwitch {
+            session_id: session_id.clone(),
+            provider_id: "ollama/llama3".to_owned(),
+        });
+        actor
+            .handle(ActorEnvelope::Command(cmd), &ctx)
+            .await;
+
+        // Then the session model is updated.
+        let s = state.read();
+        assert_eq!(s.session.active_session().profile().model, "ollama/llama3");
+
+        // And a ProviderSwitched event is emitted.
+        let events = sink.take_events();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], Event::ProviderSwitched(e) if e.provider_name == "ollama/llama3"));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn handle_dispatches_load_provider_picker_entries_command() {
+        // Kills: replace handle_load_provider_picker_entries with ().
+        // Given a provider actor with a registry.
+        let (mut actor, services, _sink, ctx, state) = create_actor();
+        let registry = crate::feat::provider_infra::ProviderRegistry::from_config(sample_config())
+            .expect("registry");
+        services.provider_registry.replace(registry);
+
+        // When sending LoadProviderPickerEntries.
+        let cmd = Command::LoadProviderPickerEntries(LoadProviderPickerEntries);
+        actor
+            .handle(ActorEnvelope::Command(cmd), &ctx)
+            .await;
+
+        // Then the provider picker has entries.
+        let s = state.read();
+        let items = s.provider.provider_picker.items();
+        assert!(!items.is_empty(), "picker should have entries after loading");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn handle_dispatches_load_compaction_model_picker_entries_command() {
+        // Kills: replace handle_load_compaction_model_picker_entries with ().
+        // Given a provider actor with a registry.
+        let (mut actor, services, _sink, ctx, state) = create_actor();
+        let registry = crate::feat::provider_infra::ProviderRegistry::from_config(sample_config())
+            .expect("registry");
+        services.provider_registry.replace(registry);
+
+        // When sending LoadCompactionModelPickerEntries.
+        let cmd = Command::LoadCompactionModelPickerEntries(
+            crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
+        );
+        actor
+            .handle(ActorEnvelope::Command(cmd), &ctx)
+            .await;
+
+        // Then the compaction model picker has entries (at least the sentinel).
+        let s = state.read();
+        let items = s.frontend.compaction_model_picker.items();
+        assert!(!items.is_empty(), "compaction picker should have entries after loading");
     }
 }
