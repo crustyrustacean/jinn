@@ -12,17 +12,13 @@
 //! (for resolving relative paths) and an optional timeout. The orchestrator
 //! reads CWD from shared [`State`] at dispatch time.
 
-pub mod builtin;
-pub mod builtin_bash;
-pub mod builtin_get_time;
-pub mod builtin_read;
-#[cfg(test)]
-mod builtin_read_tests;
-pub mod builtin_skill;
-pub mod builtin_write;
+pub mod registry;
+pub mod bash;
+pub mod get_time;
+pub mod read;
+pub mod skill;
+pub mod write;
 pub mod edit;
-#[cfg(test)]
-mod edit_tests;
 pub mod protocol;
 pub mod tool_types;
 pub(crate) mod truncation;
@@ -143,7 +139,7 @@ impl Actor for ToolOrchestratorActor {
             shell: deps.shell,
         };
 
-        let all_builtins = builtin::builtin_tools();
+        let all_builtins = registry::builtin_tools();
         let builtins: Vec<_> = if let Some(ref filter) = deps.builtin_filter {
             all_builtins
                 .into_iter()

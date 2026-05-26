@@ -32,15 +32,11 @@ fn entry_created_at(state: &AppState, id: &crate::protocol::SessionId) -> jiff::
 
 /// Helper: check if the session's last entry is an error.
 fn entry_last_is_error(state: &AppState, id: &crate::protocol::SessionId) -> bool {
-    state
-        .session
-        .get(id)
-        .map(|s| {
-            s.history()
-                .last()
-                .is_some_and(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::Error(..)))
-        })
-        .unwrap_or(false)
+    state.session.get(id).is_some_and(|s| {
+        s.history()
+            .last()
+            .is_some_and(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::Error(..)))
+    })
 }
 
 // Helper: create state with N sessions.
