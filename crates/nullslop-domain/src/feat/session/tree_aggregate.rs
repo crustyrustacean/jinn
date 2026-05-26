@@ -111,8 +111,10 @@ where
     }
 
     // Aggregate stats.
-    let mut stats = TreeAggregateStats::default();
-    stats.session_count = tree_sessions.len();
+    let mut stats = TreeAggregateStats {
+        session_count: tree_sessions.len(),
+        ..Default::default()
+    };
 
     for session in &tree_sessions {
         let token_stats = TokenStats::from_ledger(session.token_ledger());
