@@ -526,6 +526,7 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
         && let Some(original) = state.frontend.theme_preview_original.take()
     {
         state.frontend.theme = original;
+        state.invalidate_theme_caches();
     }
 
     // Clear all overlay scopes — always returns to Normal.

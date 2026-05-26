@@ -323,4 +323,36 @@ mod tests {
         assert_eq!(reloaded.providers[0].name, "ollama");
         assert_eq!(reloaded.default_provider.as_deref(), Some("ollama"));
     }
+
+    // --- S-Tier: Kill mutant for ConfigStorageService::save ---
+
+    #[rstest::rstest]
+    fn config_storage_service_save_actually_persists() {
+        // Kills: replace ConfigStorageService::save with Ok(()).
+        // If save were a no-op, the underlying storage would not be updated.
+        let storage = InMemoryConfigStorage::new();
+        let service = ConfigStorageService::new(Arc::new(storage) as Arc<dyn ConfigStorage>);
+
+        let config = ProvidersConfig {
+            providers: vec![ProviderEntry {
+                name: "test-persist".to_owned(),
+                backend: "ollama".to_owned(),
+                models: vec!["llama3".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: None,
+            }],
+            aliases: vec![],
+            default_provider: None,
+        };
+
+        service.save(&config).expect("save");
+        let reloaded = service.load().expect("load");
+
+        // Then the config was actually persisted and retrieved.
+        assert_eq!(reloaded.providers.len(), 1);
+        assert_eq!(reloaded.providers[0].name, "test-persist");
+    }
 }
