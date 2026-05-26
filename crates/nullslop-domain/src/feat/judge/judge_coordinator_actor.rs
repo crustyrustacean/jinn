@@ -384,6 +384,7 @@ mod tests {
     fn idle_event(session_id: SessionId) -> ActorEnvelope<NoDirectMsg> {
         ActorEnvelope::Event(Event::SessionPhaseChanged(SessionPhaseChanged {
             session_id,
+            old_phase: SessionPhase::Sending,
             new_phase: SessionPhase::Idle,
         }))
     }
@@ -484,6 +485,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Event(Event::SessionPhaseChanged(SessionPhaseChanged {
                     session_id: judge_id,
+                    old_phase: SessionPhase::Sending,
                     new_phase: SessionPhase::Idle,
                 })),
                 &ctx,
@@ -777,6 +779,7 @@ mod tests {
             .handle(
                 ActorEnvelope::Event(Event::SessionPhaseChanged(SessionPhaseChanged {
                     session_id: origin_id,
+                    old_phase: SessionPhase::Sending,
                     new_phase: SessionPhase::Streaming,
                 })),
                 &ctx,
