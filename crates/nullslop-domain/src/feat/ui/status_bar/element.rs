@@ -7,7 +7,7 @@
 use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
-use crate::feat::session::aggregate_session_stats;
+use crate::feat::session::{aggregate_session_stats, aggregate_tree_stats};
 use crate::feat::ui::status_bar::turn_counter;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
@@ -94,6 +94,30 @@ impl UiElement<AppState> for StatusBarElement {
             .style(style)
             .alignment(Alignment::Left);
         frame.render_widget(cwd_widget, cwd_area);
+
+        // --- Line 1 right: Tree aggregate (only when tree has >1 session) ---
+        let tree = aggregate_tree_stats(
+            state.session.sessions(),
+            state.session.active_session_id(),
+        );
+        if tree.session_count > 1 {
+            let up_arrow = '\u{2191}';
+            let down_arrow = '\u{2193}';
+            let turn_symbol = '\u{21BB}';
+            let session_symbol = '\u{29C9}';
+            let tree_prefix = '\u{1F333}';
+            let tree_display = format!(
+                "{tree_prefix} {up_arrow}{} {down_arrow}{} ${:.5} {turn_symbol}{turns} {session_symbol}{count}",
+                format_tokens(tree.total_sent),
+                format_tokens(tree.total_received),
+                tree.total_cost,
+                turns = tree.total_turns,
+                count = tree.session_count,
+            );
+            let tree_widget = Paragraph::new(Line::from(Span::styled(tree_display, style)))
+                .alignment(Alignment::Right);
+            frame.render_widget(tree_widget, cwd_area);
+        }
 
         // --- Line 2: Existing info ---
         let active_model = state.active_session().profile().model.clone();
