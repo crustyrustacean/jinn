@@ -84,7 +84,6 @@ impl TuiAppBuilder {
                 nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                 s
             },
-            preview_cache: super::PreviewCache::new(),
             plugin_host: None,
             welcome_subscriber: None,
         }

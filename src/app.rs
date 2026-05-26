@@ -223,7 +223,6 @@ impl App {
                         nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                         s
                     },
-                    preview_cache: nullslop_tui::app::PreviewCache::new(),
                     plugin_host,
                     welcome_subscriber,
                 }));
@@ -370,7 +369,6 @@ impl App {
                                 nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                                 s
                             },
-                            preview_cache: nullslop_tui::app::PreviewCache::new(),
                             plugin_host: None,
                             welcome_subscriber: None,
                         }));
@@ -447,7 +445,6 @@ impl App {
                                 nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                                 s
                             },
-                            preview_cache: nullslop_tui::app::PreviewCache::new(),
                             plugin_host: None,
                             welcome_subscriber: None,
                         }));
