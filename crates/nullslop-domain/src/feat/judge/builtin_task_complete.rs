@@ -83,11 +83,12 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             )
         };
 
-        // Set is_attached = false.
+        // Set is_attached = false and disable tool loop.
         {
             let mut state = state.write();
             let session = state.session_mut(&session_id);
             session.set_judge_attached(false);
+            session.set_tool_loop_disabled();
         }
 
         // Emit JudgeVerdict(Pass) event.
