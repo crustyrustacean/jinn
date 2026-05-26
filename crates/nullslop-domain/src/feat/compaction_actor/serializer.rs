@@ -218,4 +218,121 @@ mod tests {
         // Then it does not panic and contains the truncation marker.
         assert!(result.contains("... (truncated)"));
     }
+
+    // --- Mutant-killing tests for grapheme_safe_end ---
+
+    #[test]
+    fn grapheme_safe_end_returns_len_for_short_string() {
+        // Given a string shorter than max_bytes.
+        let text = "hello";
+
+        // When computing safe end.
+        let end = grapheme_safe_end(text, 100);
+
+        // Then it returns the full string length.
+        assert_eq!(end, 5);
+    }
+
+    #[test]
+    fn grapheme_safe_end_returns_len_for_exact_match() {
+        // Given a string exactly at max_bytes.
+        let text = "hello";
+
+        // When computing safe end.
+        let end = grapheme_safe_end(text, 5);
+
+        // Then it returns the full string length (text fits within max_bytes).
+        assert_eq!(end, 5);
+    }
+
+    #[test]
+    fn grapheme_safe_end_truncates_at_grapheme_boundary() {
+        // Given a string with multibyte chars exceeding max.
+        // "abcé" = a(1) + b(1) + c(1) + é(2) = 5 bytes.
+        let text = "abcéxyz";
+
+        // When max_bytes is 4 (falls in the middle of é).
+        let end = grapheme_safe_end(text, 4);
+
+        // Then it returns 3 ("abc" — the last full grapheme before byte 4).
+        assert_eq!(end, 3);
+    }
+
+    #[test]
+    fn grapheme_safe_end_stops_before_boundary() {
+        // Given "abcdefgh" (8 bytes) with max 6.
+        let text = "abcdefgh";
+
+        // When computing safe end.
+        let end = grapheme_safe_end(text, 6);
+
+        // Then it returns 6 ("abcdef").
+        assert_eq!(end, 6);
+    }
+
+    #[test]
+    fn grapheme_safe_end_zero_max_bytes() {
+        // Given a non-empty string with max 0.
+        let text = "hello";
+
+        // When computing safe end.
+        let end = grapheme_safe_end(text, 0);
+
+        // Then it returns 0 (no grapheme fits).
+        assert_eq!(end, 0);
+    }
+
+    #[test]
+    fn grapheme_safe_end_empty_string() {
+        // Given an empty string.
+        let text = "";
+
+        // When computing safe end with any max.
+        let end = grapheme_safe_end(text, 10);
+
+        // Then it returns 0.
+        assert_eq!(end, 0);
+    }
+
+    #[test]
+    fn grapheme_safe_end_single_multibyte_grapheme() {
+        // Given a single emoji (4 bytes) with max 3.
+        let text = "🎉";
+
+        // When computing safe end.
+        let end = grapheme_safe_end(text, 3);
+
+        // Then it returns 0 (the emoji doesn't fit).
+        assert_eq!(end, 0);
+    }
+
+    #[test]
+    fn grapheme_safe_end_single_multibyte_grapheme_fits() {
+        // Given a single emoji (4 bytes) with max 4.
+        let text = "🎉";
+
+        // When computing safe end.
+        let end = grapheme_safe_end(text, 4);
+
+        // Then it returns 4 (the emoji fits exactly).
+        assert_eq!(end, 4);
+    }
+
+    #[test]
+    fn serialize_tool_result_at_exact_boundary() {
+        // Given content exactly at TOOL_RESULT_MAX_BYTES (2000 bytes).
+        let content = "x".repeat(2000);
+        let entries = vec![ChatEntry::tool_result(
+            "id1",
+            "bash",
+            &content,
+            crate::feat::session::tool_result_status::ToolResultStatus::Success,
+        )];
+
+        // When serializing.
+        let result = serialize_entries_for_compaction(&entries);
+
+        // Then it is NOT truncated (content fits within limit).
+        assert!(!result.contains("truncated"));
+    }
 }

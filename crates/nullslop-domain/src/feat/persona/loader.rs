@@ -314,4 +314,76 @@ mod tests {
         // Then no personas are found.
         assert!(personas.is_empty());
     }
+
+    #[rstest::rstest]
+    fn scan_personas_merged_user_overrides_system() {
+        // Given system and user dirs with the same persona name.
+        let system_dir = tempfile::TempDir::new().expect("temp dir");
+        let user_dir = tempfile::TempDir::new().expect("temp dir");
+
+        std::fs::write(
+            system_dir.path().join("shared.md"),
+            "+++\nname = \"shared\"\ndescription = \"System version\"\n+++\n\nSystem body.",
+        )
+        .expect("write");
+        std::fs::write(
+            user_dir.path().join("shared.md"),
+            "+++\nname = \"shared\"\ndescription = \"User version\"\n+++\n\nUser body.",
+        )
+        .expect("write");
+
+        // When scanning merged.
+        let personas = scan_personas_merged(user_dir.path(), system_dir.path());
+
+        // Then the user version overrides the system version.
+        assert_eq!(personas.len(), 1);
+        assert_eq!(personas[0].description, "User version");
+        assert_eq!(personas[0].body, "User body.");
+    }
+
+    #[rstest::rstest]
+    fn scan_personas_merged_returns_both_when_different_names() {
+        // Given system dir with "alpha" and user dir with "beta".
+        let system_dir = tempfile::TempDir::new().expect("temp dir");
+        let user_dir = tempfile::TempDir::new().expect("temp dir");
+
+        std::fs::write(
+            system_dir.path().join("alpha.md"),
+            "+++\nname = \"alpha\"\ndescription = \"A\"\n+++\n\nAlpha body.",
+        )
+        .expect("write");
+        std::fs::write(
+            user_dir.path().join("beta.md"),
+            "+++\nname = \"beta\"\ndescription = \"B\"\n+++\n\nBeta body.",
+        )
+        .expect("write");
+
+        // When scanning merged.
+        let personas = scan_personas_merged(user_dir.path(), system_dir.path());
+
+        // Then both personas are returned (sorted by name).
+        assert_eq!(personas.len(), 2);
+        assert_eq!(personas[0].name, "alpha");
+        assert_eq!(personas[1].name, "beta");
+    }
+
+    #[rstest::rstest]
+    fn scan_personas_merged_returns_non_empty() {
+        // Given both dirs with one persona each (different names).
+        let system_dir = tempfile::TempDir::new().expect("temp dir");
+        let user_dir = tempfile::TempDir::new().expect("temp dir");
+
+        std::fs::write(
+            system_dir.path().join("sys.md"),
+            "+++\nname = \"sys\"\ndescription = \"S\"\n+++\n\nSys body.",
+        )
+        .expect("write");
+
+        // When scanning merged.
+        let personas = scan_personas_merged(user_dir.path(), system_dir.path());
+
+        // Then at least the system persona is returned.
+        assert!(!personas.is_empty());
+        assert_eq!(personas[0].name, "sys");
+    }
 }
