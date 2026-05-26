@@ -651,6 +651,44 @@ impl ChatSessionState {
         }
     }
 
+    /// Reset this session's history to only its pinned entries.
+    ///
+    /// Used by the judge reset feature to clear stale context while
+    /// preserving the judge definition (pinned system prompt).
+    /// Resets ephemeral streaming state and drains the turn queue.
+    ///
+    /// Does **not** reset: token ledger, strategy state, profile,
+    /// `has_interacted`, or `JudgeMeta`.
+    pub fn reset_judge_history(&mut self) {
+        // Collect pinned entries before clearing.
+        let pinned: Vec<ChatEntry> = self
+            .core
+            .history
+            .iter()
+            .filter(|e| e.is_pinned())
+            .cloned()
+            .collect();
+
+        // Replace history with empty, then re-push pinned entries.
+        self.core.history = ChatHistory::new();
+        for entry in pinned {
+            self.push_entry(entry);
+        }
+
+        // Reset ephemeral streaming state.
+        self.core.ephemeral.streaming_entry_index = None;
+        self.core.ephemeral.streaming_thinking_entry_index = None;
+        self.core.ephemeral.streaming_tool_call_indices.clear();
+        self.core.ephemeral.streaming_tool_result_indices.clear();
+        self.core.ephemeral.soft_cancel_requested = false;
+        self.core.ephemeral.tool_loop_disabled = false;
+        self.core.ephemeral.compaction_gathered_indices.clear();
+        self.core.ephemeral.busy_counter = BusyCounter::default();
+
+        // Drain the turn queue — discard any queued items.
+        self.drain_queue();
+    }
+
     /// Mark this session as having been meaningfully interacted with by the user.
     /// Once set, the session becomes eligible for persistence.
     pub fn mark_interacted(&mut self) {
