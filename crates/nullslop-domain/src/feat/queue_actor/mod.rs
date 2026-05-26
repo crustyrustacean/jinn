@@ -30,7 +30,6 @@ use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::compaction_actor::protocol::command::{CompactContext, EnqueueCompaction};
-use crate::feat::compaction_actor::protocol::event::CompactionCompleted;
 use crate::feat::context::assemble::assemble_prompt;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::feat::provider::protocol::command::SendToLlmProvider;
@@ -66,7 +65,6 @@ impl Actor for QueueActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.set_description("Dispatches queued turns when sessions become idle");
         ctx.subscribe_event::<SessionPhaseChanged>();
-        ctx.subscribe_event::<CompactionCompleted>();
         ctx.subscribe_command::<EnqueueCompaction>();
 
         Self {
@@ -80,9 +78,6 @@ impl Actor for QueueActor {
             ActorEnvelope::Event(Event::SessionPhaseChanged(payload)) => {
                 self.handle_session_phase_changed(&payload, ctx).await;
             }
-            ActorEnvelope::Event(Event::CompactionCompleted(payload)) => {
-                self.handle_compaction_completed(&payload, ctx).await;
-            }
             ActorEnvelope::Command(Command::EnqueueCompaction(payload)) => {
                 self.handle_enqueue_compaction(&payload, ctx).await;
             }
@@ -95,19 +90,36 @@ impl Actor for QueueActor {
 }
 
 impl QueueActor {
-    /// Handle `SessionPhaseChanged` — pop queue on Idle transition.
+    /// Handle `SessionPhaseChanged` — dispatch on phase transitions.
     async fn handle_session_phase_changed(
         &self,
         payload: &SessionPhaseChanged,
         ctx: &ActorContext,
     ) {
-        if payload.new_phase != SessionPhase::Idle {
-            return;
+        match (payload.old_phase, payload.new_phase) {
+            (_, SessionPhase::Idle) => {
+                self.handle_idle_transition(&payload.session_id, ctx).await;
+            }
+            (SessionPhase::Compacting, SessionPhase::Sending) => {
+                // Auto-compaction continuation: session has already transitioned
+                // to Sending by the session actor before emitting this event.
+                self.dispatch_compaction_continuation(&payload.session_id, ctx)
+                    .await;
+            }
+            _ => {}
         }
+    }
+
+    /// Handle Idle transition — pop and dispatch the next queued item.
+    async fn handle_idle_transition(
+        &self,
+        session_id: &crate::protocol::SessionId,
+        ctx: &ActorContext,
+    ) {
 
         let item = {
             let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
+            let session = state.session_mut_or_create(session_id);
             session.dequeue()
         };
 
@@ -115,16 +127,13 @@ impl QueueActor {
 
         match item {
             QueueItem::UserMessage(entry) => {
-                self.dispatch_user_message(&payload.session_id, &entry, ctx)
-                    .await;
+                self.dispatch_user_message(session_id, &entry, ctx).await;
             }
             QueueItem::ToolContinuation => {
-                self.dispatch_tool_continuation(&payload.session_id, ctx)
-                    .await;
+                self.dispatch_tool_continuation(session_id, ctx).await;
             }
             QueueItem::CompactionNeeded { compact_all } => {
-                self.dispatch_compaction(&payload.session_id, compact_all, ctx)
-                    .await;
+                self.dispatch_compaction(session_id, compact_all, ctx).await;
             }
         }
     }
@@ -254,19 +263,6 @@ impl QueueActor {
         }
     }
 
-    /// Handle `CompactionCompleted` — when auto-compaction succeeded, dispatch
-    /// the continuation (assemble prompt + send to LLM) from the Sending phase.
-    async fn handle_compaction_completed(&self, payload: &CompactionCompleted, ctx: &ActorContext) {
-        if !payload.auto || payload.entries_compacted == 0 {
-            return;
-        }
-
-        // The session should be in Sending phase (set by handle_end_compaction
-        // with auto=true). Assemble the prompt and send to the LLM provider.
-        self.dispatch_compaction_continuation(&payload.session_id, ctx)
-            .await;
-    }
-
     /// Dispatch a compaction continuation: assemble prompt and emit SendToLlmProvider.
     ///
     /// This is used after auto-compaction when the session has been transitioned
@@ -286,7 +282,7 @@ impl QueueActor {
             tracing::warn!(
                 session_id = ?session_id,
                 current_phase = ?phase,
-                "CompactionCompleted(auto) but session is not Sending — skipping continuation"
+                "SessionPhaseChanged(Compacting → Sending) but session is not Sending — skipping continuation"
             );
             return;
         }
@@ -690,7 +686,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn compaction_completed_auto_dispatches_continuation_when_sending() {
+    async fn session_phase_changed_compacting_to_sending_dispatches_continuation() {
         // Given a session in Sending phase with history (simulating auto-compaction
         // where handle_end_compaction pushed the continuation entry and set Sending).
         let actor = test_actor();
@@ -704,13 +700,13 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When handling CompactionCompleted with auto=true.
-        let payload = CompactionCompleted {
+        // When handling SessionPhaseChanged(Compacting → Sending).
+        let payload = SessionPhaseChanged {
             session_id: session_id.clone(),
-            entries_compacted: 5,
-            auto: true,
+            old_phase: SessionPhase::Compacting,
+            new_phase: SessionPhase::Sending,
         };
-        actor.handle_compaction_completed(&payload, &ctx).await;
+        actor.handle_session_phase_changed(&payload, &ctx).await;
 
         // Then SendToLlmProvider was emitted for the continuation.
         let commands = sink.commands();
@@ -719,12 +715,12 @@ mod tests {
             .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(
             has_send,
-            "expected SendToLlmProvider for auto-compaction continuation"
+            "expected SendToLlmProvider for Compacting → Sending continuation"
         );
     }
 
     #[tokio::test]
-    async fn compaction_completed_auto_skips_when_not_sending() {
+    async fn session_phase_changed_compacting_to_sending_skips_when_not_sending() {
         // Given a session in Idle phase (not Sending — should not happen in practice
         // but we guard against it).
         let actor = test_actor();
@@ -734,13 +730,13 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When handling CompactionCompleted with auto=true but session is Idle.
-        let payload = CompactionCompleted {
+        // When handling SessionPhaseChanged(Compacting → Sending) but session is Idle.
+        let payload = SessionPhaseChanged {
             session_id: session_id.clone(),
-            entries_compacted: 5,
-            auto: true,
+            old_phase: SessionPhase::Compacting,
+            new_phase: SessionPhase::Sending,
         };
-        actor.handle_compaction_completed(&payload, &ctx).await;
+        actor.handle_session_phase_changed(&payload, &ctx).await;
 
         // Then no SendToLlmProvider was emitted.
         let commands = sink.commands();
@@ -754,30 +750,32 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn compaction_completed_manual_is_noop() {
-        // Given a session in Sending phase (shouldn't matter for manual).
+    async fn session_phase_changed_idle_to_sending_does_not_dispatch_continuation() {
+        // Given a session in Idle phase.
         let actor = test_actor();
         let (sink, ctx) = test_context();
         let session_id = {
-            let mut state = actor.state.write();
-            state.active_session_mut().begin_sending();
+            let state = actor.state.read();
             state.session.active_session_id().clone()
         };
 
-        // When handling CompactionCompleted with auto=false (manual compaction).
-        let payload = CompactionCompleted {
+        // When handling SessionPhaseChanged(Idle → Sending).
+        let payload = SessionPhaseChanged {
             session_id: session_id.clone(),
-            entries_compacted: 5,
-            auto: false,
+            old_phase: SessionPhase::Idle,
+            new_phase: SessionPhase::Sending,
         };
-        actor.handle_compaction_completed(&payload, &ctx).await;
+        actor.handle_session_phase_changed(&payload, &ctx).await;
 
-        // Then no SendToLlmProvider was emitted (manual compaction doesn't
-        // trigger continuation).
+        // Then no SendToLlmProvider was emitted (this is a normal user message
+        // dispatch path, not a compaction continuation).
         let commands = sink.commands();
+        let has_send = commands
+            .iter()
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(
-            commands.is_empty(),
-            "expected no commands for manual compaction"
+            !has_send,
+            "expected no SendToLlmProvider for Idle → Sending transition"
         );
     }
 }
