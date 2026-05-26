@@ -212,12 +212,21 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
 
     async fn load_judge_sessions_for_origin(
         &self,
-        _origin_session_id: &crate::protocol::SessionId,
+        origin_session_id: &crate::protocol::SessionId,
     ) -> Result<
         Vec<crate::feat::session::chat_session::ChatSessionState>,
         error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
     > {
-        Ok(Vec::new())
+        Ok(self
+            .sessions
+            .iter()
+            .filter(|s| {
+                s.judge()
+                    .as_ref()
+                    .is_some_and(|m| m.origin_session == *origin_session_id)
+            })
+            .cloned()
+            .collect())
     }
 }
 

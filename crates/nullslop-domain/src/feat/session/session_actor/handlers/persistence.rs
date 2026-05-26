@@ -120,8 +120,17 @@ impl SessionPersistenceActor {
                     };
 
                 if !judge_sessions.is_empty() {
+                    for judge_session in &judge_sessions {
+                        let judge_id = judge_session.session_id().clone();
+                        if let Err(e) = store.set_archived(&judge_id, false).await {
+                            tracing::warn!(err = ?e, judge_session_id = %judge_id, "failed to unarchive judge session");
+                        }
+                    }
                     let mut state = self.state.write();
-                    for judge_session in judge_sessions {
+                    for mut judge_session in judge_sessions {
+                        judge_session.set_session_state(
+                            crate::feat::session::chat_session::SessionState::Loaded,
+                        );
                         state.session.insert(judge_session);
                     }
                 }
@@ -284,5 +293,151 @@ mod tests {
             store.last_saved_session(&session_id).is_some(),
             "interacted session should be persisted after MarkSessionInteracted"
         );
+    }
+
+    #[tokio::test]
+    async fn loading_origin_auto_loads_archived_judge_sessions() {
+        use crate::feat::judge::JudgeMeta;
+
+        // Given an origin session and two archived judge sessions in the store.
+        let mut origin = ChatSessionState::new();
+        origin.set_title("Origin Chat".to_owned());
+        origin.mark_interacted();
+        let origin_id = origin.session_id().clone();
+
+        let mut judge_a = ChatSessionState::new();
+        judge_a.set_judge(JudgeMeta {
+            origin_session: origin_id.clone(),
+            is_attached: true,
+            judge_name: "judge-a".to_owned(),
+        });
+        judge_a.set_session_state(SessionState::Archived);
+        judge_a.mark_interacted();
+        let judge_a_id = judge_a.session_id().clone();
+
+        let mut judge_b = ChatSessionState::new();
+        judge_b.set_judge(JudgeMeta {
+            origin_session: origin_id.clone(),
+            is_attached: true,
+            judge_name: "judge-b".to_owned(),
+        });
+        judge_b.set_session_state(SessionState::Archived);
+        judge_b.mark_interacted();
+        let judge_b_id = judge_b.session_id().clone();
+
+        let (mut actor, _store) =
+            test_actor_with_store(vec![origin, judge_a, judge_b]);
+        let (sink, ctx) = test_context();
+
+        // When loading the origin session.
+        actor
+            .on_load_requested(
+                &SessionLoadRequested {
+                    session_id: origin_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then SessionLoadCompleted is emitted with the origin session.
+        let loaded_session = sink
+            .commands()
+            .iter()
+            .find_map(|cmd| match cmd {
+                Command::SessionLoadCompleted(payload) => Some(payload.session.clone()),
+                _ => None,
+            })
+            .expect("expected SessionLoadCompleted command");
+        assert_eq!(
+            loaded_session.session_id(),
+            &origin_id,
+            "should emit origin session, not a judge"
+        );
+
+        // And both judge sessions are in the session map.
+        let state = actor.state.read();
+        assert!(
+            state.session.contains(&judge_a_id),
+            "judge_a should be in session map"
+        );
+        assert!(
+            state.session.contains(&judge_b_id),
+            "judge_b should be in session map"
+        );
+    }
+
+    #[tokio::test]
+    async fn judge_sessions_reset_to_loaded_state_on_origin_load() {
+        use crate::feat::judge::JudgeMeta;
+
+        // Given an origin and an archived judge session.
+        let mut origin = ChatSessionState::new();
+        origin.mark_interacted();
+        let origin_id = origin.session_id().clone();
+
+        let mut judge = ChatSessionState::new();
+        judge.set_judge(JudgeMeta {
+            origin_session: origin_id.clone(),
+            is_attached: true,
+            judge_name: "test-judge".to_owned(),
+        });
+        judge.set_session_state(SessionState::Archived);
+        judge.mark_interacted();
+        let judge_id = judge.session_id().clone();
+
+        let (mut actor, _store) = test_actor_with_store(vec![origin, judge]);
+        let (_sink, ctx) = test_context();
+
+        // When loading the origin.
+        actor
+            .on_load_requested(
+                &SessionLoadRequested {
+                    session_id: origin_id,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the judge session in the map has Loaded state.
+        let state = actor.state.read();
+        let loaded_judge = state.session.get(&judge_id).expect("judge in map");
+        assert_eq!(
+            loaded_judge.session_state(),
+            SessionState::Loaded,
+            "judge should be reset to Loaded state"
+        );
+    }
+
+    #[tokio::test]
+    async fn loading_origin_with_no_judges_works_normally() {
+        // Given an origin session with no judge sessions.
+        let mut origin = ChatSessionState::new();
+        origin.set_title("Lonely Chat".to_owned());
+        origin.mark_interacted();
+        let origin_id = origin.session_id().clone();
+
+        let (mut actor, _store) = test_actor_with_store(vec![origin]);
+        let (sink, ctx) = test_context();
+
+        // When loading the origin.
+        actor
+            .on_load_requested(
+                &SessionLoadRequested {
+                    session_id: origin_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then SessionLoadCompleted is emitted.
+        let loaded = sink
+            .commands()
+            .iter()
+            .find_map(|cmd| match cmd {
+                Command::SessionLoadCompleted(payload) => Some(payload.session.clone()),
+                _ => None,
+            })
+            .expect("expected SessionLoadCompleted");
+        assert_eq!(loaded.session_id(), &origin_id);
     }
 }
