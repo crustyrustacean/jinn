@@ -58,3 +58,16 @@ pub struct JudgeVerdict {
     /// The verdict (pass or fail with summary).
     pub verdict: Verdict,
 }
+
+/// Cancel a pending judge evaluation cycle.
+///
+/// Emitted when the user presses ESC on an origin session that is
+/// Idle but busy (waiting for judge evaluations). The coordinator
+/// clears its pending state, clears busy on the origin, cancels
+/// any still-running judge sessions, and pushes a system message.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("judge")]
+pub struct CancelPendingJudgeEvaluation {
+    /// The origin session whose pending evaluation should be cancelled.
+    pub origin_session_id: SessionId,
+}
