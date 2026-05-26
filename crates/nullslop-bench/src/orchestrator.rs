@@ -249,4 +249,28 @@ mod tests {
             sorted
         });
     }
+
+    #[test]
+    fn list_task_names_contains_known_tasks() {
+        // Given the list of task names.
+        let names = list_task_names();
+
+        // Then it contains specific known tasks, not just [""] or ["xyzzy"].
+        // This kills: replace list_task_names with vec![""], vec!["xyzzy"].
+        assert!(
+            names.iter().any(|n| *n == "hello-world"),
+            "expected 'hello-world' in task names, got: {names:?}"
+        );
+        // Also verify no empty or placeholder names.
+        assert!(
+            names.iter().all(|n| !n.is_empty()),
+            "task names should not contain empty strings: {names:?}"
+        );
+        assert!(
+            names.iter().all(|n| *n != "xyzzy"),
+            "task names should not contain 'xyzzy': {names:?}"
+        );
+        // Verify there are multiple distinct real tasks.
+        assert!(names.len() > 5, "expected multiple tasks, got {}", names.len());
+    }
 }
