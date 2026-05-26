@@ -121,22 +121,32 @@ impl SessionPersistenceActor {
                 || event.reason == StreamCompletedReason::ToolUse;
             session.finish_streaming(preserve_assistant);
 
-            // Always consume the soft-cancel flag regardless of completion reason.
-            // For ToolUse: prevents begin_sending when auto-compaction is pending.
-            // For Finished/Error/Canceled: cleans up the flag if it was set.
-            let was_soft_cancelled = session.take_soft_cancel();
+            // For ToolUse: do NOT consume soft-cancel here. The tool batch is still
+            // executing. Let on_tool_batch_completed handle the soft-cancel after
+            // tool results are in. Peek at the flag to know if compaction is pending.
+            // For Finished/Error/Canceled: consume the flag to clean up.
+            let was_soft_cancelled = if event.reason == StreamCompletedReason::ToolUse {
+                session.is_soft_cancelled()
+            } else {
+                session.take_soft_cancel()
+            };
 
-            // Tool use means the conversation continues — transition to sending
-            // so the indicator shows activity while awaiting the followup.
-            // Skip if soft-cancel was requested (auto-compaction or user cancel).
-            if event.reason == StreamCompletedReason::ToolUse && !was_soft_cancelled {
+            // Tool use means the conversation continues — always transition to sending
+            // so the tool loop runs. Soft-cancel is handled later in
+            // on_tool_batch_completed.
+            if event.reason == StreamCompletedReason::ToolUse {
                 session.begin_sending();
             }
 
-            // If soft-cancelled and auto-compaction is pending, skip Idle entirely.
-            // Transition directly to Compacting and flag to emit CompactContext.
+            // If soft-cancelled (non-ToolUse) and auto-compaction is pending,
+            // skip Idle entirely and transition directly to Compacting.
+            // For ToolUse, this is deferred — on_tool_batch_completed will handle
+            // the soft-cancel after tools finish.
             let mut should_emit_compact_context_local = false;
-            if was_soft_cancelled && session.dequeue_compaction_needed() {
+            if was_soft_cancelled
+                && event.reason != StreamCompletedReason::ToolUse
+                && session.dequeue_compaction_needed()
+            {
                 session.core.ephemeral.phase = SessionPhase::Compacting;
                 should_emit_compact_context_local = true;
             }
@@ -333,7 +343,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn on_stream_completed_tool_use_with_soft_cancel_goes_to_idle() {
+    async fn on_stream_completed_tool_use_with_soft_cancel_begins_sending() {
         // Given a session in streaming state with soft cancel requested.
         let actor = test_actor();
         let (sink, ctx) = test_context();
@@ -359,13 +369,19 @@ mod tests {
         };
         actor.on_stream_completed(&event, &ctx).await;
 
-        // Then the session is in Idle phase (not Sending).
+        // Then the session is in Sending phase (tools still execute).
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            matches!(session.phase(), SessionPhase::Idle),
-            "expected Idle after soft cancel, got {:?}",
+            matches!(session.phase(), SessionPhase::Sending),
+            "expected Sending after soft cancel during ToolUse, got {:?}",
             session.phase()
+        );
+
+        // And the soft-cancel flag is still set (not consumed yet).
+        assert!(
+            session.is_soft_cancelled(),
+            "expected soft-cancel flag to still be set"
         );
 
         // And no SendToLlmProvider was emitted.
@@ -479,7 +495,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn on_stream_completed_soft_cancel_with_compaction_needed_transitions_to_compacting() {
+    async fn on_stream_completed_tool_use_with_soft_cancel_defers_compaction() {
         // Given a session in streaming state with soft cancel and CompactionNeeded queued.
         let actor = test_actor();
         let (sink, ctx) = test_context();
@@ -510,12 +526,67 @@ mod tests {
         };
         actor.on_stream_completed(&event, &ctx).await;
 
-        // Then the session is in Compacting phase (not Idle, not Sending).
+        // Then the session is in Sending phase (tools execute before compaction).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Sending),
+            "expected Sending after ToolUse with soft cancel, got {:?}",
+            session.phase()
+        );
+
+        // And no CompactContext was emitted (compaction deferred).
+        let commands = sink.commands();
+        let has_compact = commands
+            .iter()
+            .any(|c| matches!(c, Command::CompactContext(_)));
+        assert!(
+            !has_compact,
+            "expected no CompactContext — compaction should be deferred"
+        );
+
+        // And no SendToLlmProvider was emitted.
+        let has_send = commands
+            .iter()
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
+        assert!(!has_send, "expected no SendToLlmProvider");
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_finished_with_soft_cancel_transitions_to_compacting() {
+        // Given a session in streaming state with soft cancel and CompactionNeeded queued.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.begin_streaming();
+            session.request_soft_cancel();
+            session.enqueue(
+                crate::feat::session::queue_item::QueueItem::CompactionNeeded {
+                    compact_all: false,
+                },
+            );
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with Finished reason and soft cancel.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: Some("response".to_owned()),
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the session transitions directly to Compacting.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
             matches!(session.phase(), SessionPhase::Compacting),
-            "expected Compacting after soft cancel with CompactionNeeded, got {:?}",
+            "expected Compacting after Finished with soft cancel, got {:?}",
             session.phase()
         );
 
@@ -526,13 +597,74 @@ mod tests {
             .any(|c| matches!(c, Command::CompactContext(_)));
         assert!(
             has_compact,
-            "expected CompactContext command after soft cancel with CompactionNeeded"
+            "expected CompactContext command after Finished with soft cancel"
         );
+    }
 
-        // And no SendToLlmProvider was emitted.
+    #[tokio::test]
+    async fn on_stream_completed_then_tool_batch_soft_cancel_full_flow() {
+        // Given a session streaming with soft cancel requested.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.request_soft_cancel();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted(ToolUse) then ToolBatchCompleted.
+        let stream_event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::ToolUse,
+            assistant_content: Some("response".to_owned()),
+            tool_calls: Some(vec![crate::feat::tools_actor::tool_types::ToolCall {
+                id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                arguments: "{}".to_owned(),
+            }]),
+            cost: None,
+        };
+        actor.on_stream_completed(&stream_event, &ctx).await;
+
+        // Then session is in Sending (tool loop continues).
+        {
+            let state = actor.state.read();
+            let session = state.session.get(&session_id).expect("session exists");
+            assert!(matches!(session.phase(), SessionPhase::Sending));
+        }
+
+        // When tool batch completes.
+        let batch_event = crate::feat::tools_actor::protocol::event::ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![crate::feat::tools_actor::tool_types::ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+            }],
+        };
+        actor.on_tool_batch_completed(&batch_event, &ctx);
+
+        // Then session is in Idle.
+        {
+            let state = actor.state.read();
+            let session = state.session.get(&session_id).expect("session exists");
+            assert!(
+                matches!(session.phase(), SessionPhase::Idle),
+                "expected Idle after tool batch soft cancel, got {:?}",
+                session.phase()
+            );
+        }
+
+        // And no SendToLlmProvider was emitted throughout.
+        let commands = sink.commands();
         let has_send = commands
             .iter()
             .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(!has_send, "expected no SendToLlmProvider after soft cancel");
+        assert!(!has_send, "expected no SendToLlmProvider during full flow");
     }
 }
