@@ -761,3 +761,122 @@ fn status_bar_shows_model_during_compacting() {
         "should not show static Compacting text, got: {row}"
     );
 }
+
+// --- Tree aggregate display tests ---
+
+#[rstest::rstest]
+fn render_hides_tree_aggregate_for_single_session() {
+    // Given a single session (no tree).
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+    let (mut terminal, area) = setup_term(120, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row0 = buffer_row(&buffer, 0, 120);
+    // Then line 1 should NOT contain the tree prefix.
+    assert!(
+        !row0.contains('\u{1F333}'),
+        "single session should not show tree aggregate, got: {row0}"
+    );
+}
+
+#[rstest::rstest]
+fn render_shows_tree_aggregate_when_parent_has_child() {
+    // Given a parent session with a child session.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+
+    // Add token records to the active (parent) session.
+    use crate::feat::session::token_stats::TokenRecord;
+    state.active_session_mut().push_token_record(TokenRecord {
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1000,
+        tokens_received: 500,
+        cost: Some(0.01),
+    });
+
+    // Create a child session.
+    let child_id = crate::protocol::SessionId::new();
+    let active_id = state.session.active_session_id().clone();
+    {
+        let child = state.session_mut_or_create(&child_id);
+        child.push_token_record(TokenRecord {
+            timestamp: jiff::Timestamp::now(),
+            tokens_sent: 500,
+            tokens_received: 250,
+            cost: Some(0.005),
+        });
+        child.set_parent_session(active_id);
+    }
+
+    let (mut terminal, area) = setup_term(120, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row0 = buffer_row(&buffer, 0, 120);
+    // Then line 1 right should show tree aggregate with \u{29C9}2.
+    assert!(
+        row0.contains("\u{29C9}2"),
+        "tree aggregate should show session count \u{29C9}2, got: {row0}"
+    );
+    // And the tree prefix \u{1F333} should be present.
+    assert!(
+        row0.contains('\u{1F333}'),
+        "tree prefix should be present, got: {row0}"
+    );
+}
+
+#[rstest::rstest]
+fn render_shows_tree_aggregate_from_child_viewpoint() {
+    // Given a parent with a child, viewing from the child.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+
+    // Create parent session first.
+    let parent_id = crate::protocol::SessionId::new();
+    {
+        let parent = state.session_mut_or_create(&parent_id);
+        parent.push_entry(crate::protocol::ChatEntry::user("parent msg"));
+    }
+
+    // Create child session.
+    let child_id = crate::protocol::SessionId::new();
+    {
+        let child = state.session_mut_or_create(&child_id);
+        child.push_entry(crate::protocol::ChatEntry::user("child msg"));
+        child.set_parent_session(parent_id.clone());
+    }
+
+    // Switch to child as active.
+    state.session.set_active(child_id);
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+
+    let (mut terminal, area) = setup_term(120, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row0 = buffer_row(&buffer, 0, 120);
+    // Then tree aggregate still shows \u{29C9}2 (both sessions in tree).
+    assert!(
+        row0.contains("\u{29C9}2"),
+        "tree aggregate from child should show \u{29C9}2, got: {row0}"
+    );
+}
