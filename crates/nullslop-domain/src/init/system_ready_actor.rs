@@ -115,7 +115,6 @@ mod tests {
         }
     }
 
-    #[expect(dead_code, reason = "test utility for future tests")]
     fn create_ctx() -> ActorContext {
         ActorContext::new("test", std::sync::Arc::new(TestSink))
     }
