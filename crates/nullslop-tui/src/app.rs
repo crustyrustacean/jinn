@@ -112,12 +112,6 @@ impl TuiApp {
                         source: None,
                     });
                 }
-                // Lazy cleanup of expired status notifications.
-                self.core
-                    .state
-                    .write()
-                    .frontend
-                    .clear_expired_notification();
             }
             Msg::Input(event) => {
                 // Sync scope from state before processing key.
@@ -288,11 +282,6 @@ impl TuiApp {
             });
         }
         if let Some(text) = signals.yank_text {
-            self.core
-                .state
-                .write()
-                .frontend
-                .set_status_notification("Copied to clipboard");
             std::thread::spawn(move || {
                 let mut cb = match arboard::Clipboard::new() {
                     Ok(cb) => cb,

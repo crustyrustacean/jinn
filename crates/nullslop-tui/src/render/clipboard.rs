@@ -31,13 +31,6 @@ pub(super) fn flush_pending_clipboard(app: &mut TuiApp, buf: &Buffer) {
     // Clear selection highlight immediately.
     app.selection = SelectionState::Idle;
 
-    // Set status notification.
-    app.core
-        .state
-        .write()
-        .frontend
-        .set_status_notification("Copied to clipboard");
-
     // Spawn a thread to hold the clipboard open for clipboard managers.
     std::thread::spawn(move || {
         let mut cb = match arboard::Clipboard::new() {
@@ -113,15 +106,6 @@ mod tests {
         assert!(!app.pending_clipboard);
         // And the selection is cleared to Idle (no highlight persists).
         assert_eq!(app.selection, SelectionState::Idle);
-        // And no notification is set.
-        assert!(
-            app.core
-                .state
-                .read()
-                .frontend
-                .active_status_notification()
-                .is_none()
-        );
     }
 
     #[rstest::rstest]
@@ -151,11 +135,6 @@ mod tests {
         assert!(!app.pending_clipboard);
         // And the selection is cleared to Idle.
         assert_eq!(app.selection, SelectionState::Idle);
-        // And a notification is set.
-        assert_eq!(
-            app.core.state.read().frontend.active_status_notification(),
-            Some("Copied to clipboard")
-        );
     }
 
     #[rstest::rstest]

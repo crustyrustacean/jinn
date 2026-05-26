@@ -7,7 +7,7 @@
 use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
-use crate::feat::session::aggregate_session_stats;
+use crate::feat::session::{aggregate_tree_stats, TokenStats};
 use crate::feat::ui::status_bar::turn_counter;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
@@ -95,18 +95,43 @@ impl UiElement<AppState> for StatusBarElement {
             .alignment(Alignment::Left);
         frame.render_widget(cwd_widget, cwd_area);
 
+        // --- Line 1 right: Tree aggregate (only when tree has >1 session) ---
+        let tree = aggregate_tree_stats(
+            state.session.sessions(),
+            state.session.active_session_id(),
+        );
+        if tree.session_count > 1 {
+            let up_arrow = '\u{2191}';
+            let down_arrow = '\u{2193}';
+            let turn_symbol = '\u{21BB}';
+            let session_symbol = '\u{29C9}';
+            let tree_prefix = '\u{1F333}';
+            let tree_display = format!(
+                "{tree_prefix} {up_arrow}{} {down_arrow}{} ${:.5} {turn_symbol}{turns} {session_symbol}{count}",
+                format_tokens(tree.total_sent),
+                format_tokens(tree.total_received),
+                tree.total_cost,
+                turns = tree.total_turns,
+                count = tree.session_count,
+            );
+            let tree_widget = Paragraph::new(Line::from(Span::styled(tree_display, style)))
+                .alignment(Alignment::Right);
+            frame.render_widget(tree_widget, cwd_area);
+        }
+
         // --- Line 2: Existing info ---
         let active_model = state.active_session().profile().model.clone();
 
-        // Compute aggregated token stats for the active session.
-        let agg =
-            aggregate_session_stats(state.session.sessions(), state.session.active_session_id());
+        // Compute token stats for the active session only (no descendants).
+        let active_session = state.active_session();
+        let token_stats = TokenStats::from_ledger(active_session.token_ledger());
+        let total_cost = TokenStats::total_cost(active_session.token_ledger());
         let up_arrow = '\u{2191}';
         let down_arrow = '\u{2193}';
         let mut token_info = format!(
             "{up_arrow}{} {down_arrow}{}",
-            format_tokens(agg.total_sent()),
-            format_tokens(agg.total_received()),
+            format_tokens(token_stats.total_sent),
+            format_tokens(token_stats.total_received),
         );
 
         let ctx_size = state.active_session().context_size();
@@ -142,22 +167,13 @@ impl UiElement<AppState> for StatusBarElement {
         };
 
         let left_side = {
-            let left = {
-                let pinned_count = state.active_session().pinned_entries().len();
-                if pinned_count > 0 {
-                    format!("\u{1f4cc}{pinned_count} {token_info}")
-                } else {
-                    token_info.clone()
-                }
-            };
-
             // Build left side: cost + turn count.
-            let total_cost = agg.total_cost();
             let turn_count = turn_counter::compute_turn_count(state.active_session().history());
+            let turn_symbol = '\u{21BB}';
             let left_spans: Vec<Span> = vec![
-                Span::styled(left, style),
-                Span::styled(format!(" ${total_cost:.5}"), style),
-                Span::styled(format!(" Turns: {turn_count}"), style),
+                Span::styled(token_info, style),
+                Span::styled(format!(" ${:.5}", total_cost.abs()), style),
+                Span::styled(format!(" {turn_symbol}{turn_count}"), style),
             ];
             Paragraph::new(Line::from(left_spans))
                 .style(style)
@@ -165,15 +181,7 @@ impl UiElement<AppState> for StatusBarElement {
         };
         frame.render_widget(left_side, info_area);
 
-        let notification = state.frontend.active_status_notification();
-        let right_spans = if let Some(msg) = notification {
-            vec![
-                Span::styled(msg, Style::default().fg(state.frontend.theme.success)),
-                Span::styled(format!("  {model}"), style),
-            ]
-        } else {
-            vec![Span::styled(model, style)]
-        };
+        let right_spans = vec![Span::styled(model, style)];
         let right_line = Line::from(right_spans);
         let model_widget = Paragraph::new(right_line).alignment(Alignment::Right);
         frame.render_widget(model_widget, info_area);

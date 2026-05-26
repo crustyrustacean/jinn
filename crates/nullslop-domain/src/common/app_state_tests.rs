@@ -17,67 +17,6 @@ fn push_entry_adds_to_history() {
     assert_eq!(data.active_session().history().len(), 1);
 }
 
-// --- StatusNotification tests ---
-
-#[rstest::rstest]
-fn set_status_notification_stores_message() {
-    // Given a default FrontendState.
-    let mut state = FrontendState::default();
-
-    // When setting a notification.
-    state.set_status_notification("Copied to clipboard");
-
-    // Then active_status_notification returns the message.
-    assert_eq!(
-        state.active_status_notification(),
-        Some("Copied to clipboard")
-    );
-}
-
-#[rstest::rstest]
-fn active_status_notification_returns_none_when_unset() {
-    // Given a default FrontendState.
-    let state = FrontendState::default();
-
-    // When checking for an active notification.
-    // Then it returns None.
-    assert_eq!(state.active_status_notification(), None);
-}
-
-#[rstest::rstest]
-fn clear_expired_notification_removes_when_old() {
-    // Given a FrontendState with a manually constructed expired notification.
-    let mut state = FrontendState {
-        status_notification: Some(StatusNotification {
-            message: "old".to_owned(),
-            // Created 10 seconds ago — expired.
-            created_at: std::time::Instant::now()
-                .checked_sub(std::time::Duration::from_secs(10))
-                .unwrap(),
-        }),
-        ..Default::default()
-    };
-
-    // When clearing expired notifications.
-    state.clear_expired_notification();
-
-    // Then the notification is removed.
-    assert!(state.status_notification.is_none());
-}
-
-#[rstest::rstest]
-fn clear_expired_notification_keeps_when_fresh() {
-    // Given a FrontendState with a fresh notification.
-    let mut state = FrontendState::default();
-    state.set_status_notification("fresh");
-
-    // When clearing expired notifications.
-    state.clear_expired_notification();
-
-    // Then the notification is still present.
-    assert!(state.status_notification.is_some());
-}
-
 // --- ScopeStack tests ---
 
 #[rstest::rstest]

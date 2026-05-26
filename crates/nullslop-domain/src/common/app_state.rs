@@ -351,18 +351,6 @@ impl ScopeStack {
     }
 }
 
-/// A transient status bar notification with auto-expiry.
-///
-/// Created with a timestamp and lazily checked for expiry during rendering.
-/// No background timer — the renderer checks elapsed time each frame.
-#[derive(Debug)]
-pub struct StatusNotification {
-    /// The notification message text.
-    pub message: String,
-    /// When this notification was created.
-    pub created_at: std::time::Instant,
-}
-
 use nullslop_workflow::spatial_layout::SpatialRect;
 /// Workflow tab UI state — persisted across frames in `FrontendState`.
 ///
@@ -465,10 +453,6 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (persona picker navigation).
     pub persona_picker: nullslop_selection_widget::SelectionState<PersonaEntry>,
 
-    /// Transient status bar notification (auto-dismisses after 3 seconds).
-    /// OWNER: TUI render loop (sets on clipboard copy), tick handler (clears expired).
-    pub status_notification: Option<StatusNotification>,
-
     /// Focus scope stack — single source of truth for what the user is focused on.
     /// OWNER: IntentHandler (push/pop on scope transitions).
     pub scope_stack: ScopeStack,
@@ -564,7 +548,6 @@ impl Default for FrontendState {
             preferences: UserPreferences::default(),
             session_picker: nullslop_selection_widget::TreePickerState::new(),
             persona_picker: nullslop_selection_widget::SelectionState::new(),
-            status_notification: None,
             scope_stack,
             theme: crate::feat::theme::default_theme(),
             cancel_stream_prompt: false,
@@ -582,33 +565,6 @@ impl Default for FrontendState {
             sidebar_width: 30,
             active_tab: crate::protocol::tab::ActiveTab::default(),
             workflow_ui: WorkflowUiState::default(),
-        }
-    }
-}
-
-impl FrontendState {
-    /// Sets a transient status bar notification.
-    pub fn set_status_notification(&mut self, message: impl Into<String>) {
-        self.status_notification = Some(StatusNotification {
-            message: message.into(),
-            created_at: std::time::Instant::now(),
-        });
-    }
-
-    /// Returns the active notification message if it hasn't expired (3 seconds).
-    pub fn active_status_notification(&self) -> Option<&str> {
-        self.status_notification
-            .as_ref()
-            .filter(|n| n.created_at.elapsed().as_secs() < 3)
-            .map(|n| n.message.as_str())
-    }
-
-    /// Clears the notification if it has expired (3 seconds).
-    pub fn clear_expired_notification(&mut self) {
-        if let Some(ref n) = self.status_notification
-            && n.created_at.elapsed().as_secs() >= 3
-        {
-            self.status_notification = None;
         }
     }
 }

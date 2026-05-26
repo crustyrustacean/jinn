@@ -25,8 +25,14 @@ pub mod queue_item;
 pub mod render;
 pub mod session_actor;
 pub mod token_stats;
+pub mod tree_aggregate;
+
 #[cfg(test)]
 mod token_stats_tests;
+#[cfg(test)]
+mod tree_aggregate_tests;
+
+pub use tree_aggregate::{TreeAggregateStats, aggregate_tree_stats, find_tree_root};
 pub(crate) mod tool_result_status;
 pub mod turn_queue;
 pub mod validator;

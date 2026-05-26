@@ -1,9 +1,8 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
 use nullslop_testutil::{buffer_row, setup_term};
-use ratatui::style::Color;
 
-use crate::common::app_state::{AppState, StatusNotification};
+use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
 use crate::feat::ui::status_bar::element::StatusBarElement;
 
@@ -107,151 +106,6 @@ fn render_shows_non_default_strategy() {
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 50);
     assert!(row.starts_with("\u{2191}"));
-    assert!(row.contains("(ollama)/llama3"));
-}
-
-#[rstest::rstest]
-fn render_shows_pinned_count_when_entries_pinned() {
-    let mut element = StatusBarElement;
-    let mut state = AppState::default();
-    state
-        .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
-    let idx = state
-        .active_session_mut()
-        .push_entry(crate::protocol::ChatEntry::user("hello"));
-    let entry_id = state.active_session().history()[idx].id.clone();
-    state
-        .active_session_mut()
-        .pin_entry(&entry_id, crate::protocol::PinPosition::Relative);
-    let (mut terminal, area) = setup_term(60, 2);
-    terminal
-        .draw(|frame| {
-            element.render(frame, area, &state);
-        })
-        .unwrap();
-    let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 1, 60);
-    assert!(row.contains("\u{1f4cc}"));
-    assert!(row.contains('1'));
-}
-
-#[rstest::rstest]
-fn render_hides_pinned_count_when_no_entries_pinned() {
-    let mut element = StatusBarElement;
-    let mut state = AppState::default();
-    state
-        .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
-    let (mut terminal, area) = setup_term(60, 2);
-    terminal
-        .draw(|frame| {
-            element.render(frame, area, &state);
-        })
-        .unwrap();
-    let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 1, 60);
-    assert!(row.starts_with("\u{2191}"));
-    assert!(row.contains("(ollama)/llama3"));
-    assert!(!row.contains("\u{1f4cc}"));
-}
-
-#[rstest::rstest]
-fn render_shows_notification_when_active() {
-    // Given a state with a notification and a model.
-    let mut element = StatusBarElement;
-    let mut state = AppState::default();
-    state
-        .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
-    state
-        .frontend
-        .set_status_notification("Copied to clipboard");
-    let (mut terminal, area) = setup_term(80, 2);
-    terminal
-        .draw(|frame| {
-            element.render(frame, area, &state);
-        })
-        .unwrap();
-    let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 1, 80);
-    // Then the notification text appears in the right portion.
-    assert!(row.contains("Copied to clipboard"));
-    // And the model is still shown.
-    assert!(row.contains("(ollama)/llama3"));
-}
-
-#[rstest::rstest]
-fn render_notification_uses_green_color() {
-    // Given a state with an active notification.
-    let mut element = StatusBarElement;
-    let mut state = AppState::default();
-    state
-        .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
-    state.frontend.set_status_notification("Copied!");
-    let (mut terminal, area) = setup_term(80, 2);
-    terminal
-        .draw(|frame| {
-            element.render(frame, area, &state);
-        })
-        .unwrap();
-    let buffer = terminal.backend().buffer().clone();
-
-    // Find a cell in the notification text ("Copied!") that has green fg.
-    // The notification is on row 1, right-aligned.
-    let green_cell = (0..80)
-        .filter_map(|x| buffer.cell((x, 1)))
-        .find(|c| c.symbol() == "C" && c.fg == Color::Green);
-    assert!(green_cell.is_some(), "notification text should be green");
-}
-
-#[rstest::rstest]
-fn render_no_notification_shows_model_only() {
-    // Given a state with no notification.
-    let mut element = StatusBarElement;
-    let mut state = AppState::default();
-    state
-        .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
-    let (mut terminal, area) = setup_term(80, 2);
-    terminal
-        .draw(|frame| {
-            element.render(frame, area, &state);
-        })
-        .unwrap();
-    let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 1, 80);
-    // Then only the model is shown on the right.
-    assert!(row.contains("(ollama)/llama3"));
-    assert!(!row.contains("Copied"));
-}
-
-#[rstest::rstest]
-fn render_expired_notification_not_shown() {
-    // Given a state with an expired notification.
-    let mut element = StatusBarElement;
-    let mut state = AppState::default();
-    state
-        .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
-    state.frontend.status_notification = Some(StatusNotification {
-        message: "old msg".to_owned(),
-        created_at: std::time::Instant::now()
-            .checked_sub(std::time::Duration::from_secs(5))
-            .unwrap(),
-    });
-    let (mut terminal, area) = setup_term(80, 2);
-    terminal
-        .draw(|frame| {
-            element.render(frame, area, &state);
-        })
-        .unwrap();
-    let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 1, 80);
-    // Then the notification is not shown.
-    assert!(!row.contains("old msg"));
-    // And the model is still shown normally.
     assert!(row.contains("(ollama)/llama3"));
 }
 
@@ -372,7 +226,7 @@ fn render_shows_zero_turns_when_no_history() {
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
     // Then the status bar shows "Turns: 0".
-    assert!(row.contains("Turns: 0"));
+    assert!(row.contains("\u{21BB}0"));
 }
 
 #[rstest::rstest]
@@ -404,7 +258,7 @@ fn render_shows_turn_count_with_history() {
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
     // Then the status bar shows "Turns: 4".
-    assert!(row.contains("Turns: 4"));
+    assert!(row.contains("\u{21BB}4"));
 }
 
 #[rstest::rstest]
@@ -440,7 +294,7 @@ fn render_turn_count_skips_tool_loop_intermediates() {
     let buffer = terminal.backend().buffer().clone();
     let row = buffer_row(&buffer, 1, 80);
     // Then only the user and final assistant count as turns.
-    assert!(row.contains("Turns: 2"));
+    assert!(row.contains("\u{21BB}2"));
 }
 
 // --- CWD display tests ---
@@ -873,10 +727,10 @@ fn render_shows_cost_before_turns_indicator() {
     let row = buffer_row(&buffer, 1, 80);
     // Then cost appears before Turns in the rendered row.
     let cost_pos = row.find("$0.00150").expect("cost should be present");
-    let turns_pos = row.find("Turns:").expect("Turns should be present");
+    let turns_pos = row.find("\u{21BB}").expect("turns symbol should be present");
     assert!(
         cost_pos < turns_pos,
-        "cost should appear before Turns, got: {row}"
+        "cost should appear before turns symbol, got: {row}"
     );
 }
 
@@ -905,5 +759,125 @@ fn status_bar_shows_model_during_compacting() {
     assert!(
         !row.contains("Compacting..."),
         "should not show static Compacting text, got: {row}"
+    );
+}
+
+// --- Tree aggregate display tests ---
+
+#[rstest::rstest]
+fn render_hides_tree_aggregate_for_single_session() {
+    // Given a single session (no tree).
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+    let (mut terminal, area) = setup_term(120, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row0 = buffer_row(&buffer, 0, 120);
+    // Then line 1 should NOT contain the tree prefix.
+    assert!(
+        !row0.contains('\u{1F333}'),
+        "single session should not show tree aggregate, got: {row0}"
+    );
+}
+
+#[rstest::rstest]
+fn render_shows_tree_aggregate_when_parent_has_child() {
+    // Given a parent session with a child session.
+    use crate::feat::session::token_stats::TokenRecord;
+
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+
+    // Add token records to the active (parent) session.
+    state.active_session_mut().push_token_record(TokenRecord {
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 1000,
+        tokens_received: 500,
+        cost: Some(0.01),
+    });
+
+    // Create a child session.
+    let child_id = crate::protocol::SessionId::new();
+    let active_id = state.session.active_session_id().clone();
+    {
+        let child = state.session_mut_or_create(&child_id);
+        child.push_token_record(TokenRecord {
+            timestamp: jiff::Timestamp::now(),
+            tokens_sent: 500,
+            tokens_received: 250,
+            cost: Some(0.005),
+        });
+        child.set_parent_session(active_id);
+    }
+
+    let (mut terminal, area) = setup_term(120, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row0 = buffer_row(&buffer, 0, 120);
+    // Then line 1 right should show tree aggregate with \u{29C9}2.
+    assert!(
+        row0.contains("\u{29C9}2"),
+        "tree aggregate should show session count \u{29C9}2, got: {row0}"
+    );
+    // And the tree prefix \u{1F333} should be present.
+    assert!(
+        row0.contains('\u{1F333}'),
+        "tree prefix should be present, got: {row0}"
+    );
+}
+
+#[rstest::rstest]
+fn render_shows_tree_aggregate_from_child_viewpoint() {
+    // Given a parent with a child, viewing from the child.
+    let mut element = StatusBarElement;
+    let mut state = AppState::default();
+
+    // Create parent session first.
+    let parent_id = crate::protocol::SessionId::new();
+    {
+        let parent = state.session_mut_or_create(&parent_id);
+        parent.push_entry(crate::protocol::ChatEntry::user("parent msg"));
+    }
+
+    // Create child session.
+    let child_id = crate::protocol::SessionId::new();
+    {
+        let child = state.session_mut_or_create(&child_id);
+        child.push_entry(crate::protocol::ChatEntry::user("child msg"));
+        child.set_parent_session(parent_id.clone());
+    }
+
+    // Switch to child as active.
+    state.session.set_active(child_id);
+    state
+        .active_session_mut()
+        .set_model("ollama/llama3".to_owned());
+
+    let (mut terminal, area) = setup_term(120, 2);
+    terminal
+        .draw(|frame| {
+            element.render(frame, area, &state);
+        })
+        .unwrap();
+    let buffer = terminal.backend().buffer().clone();
+    let row0 = buffer_row(&buffer, 0, 120);
+    // Then tree aggregate still shows \u{29C9}2 (both sessions in tree).
+    assert!(
+        row0.contains("\u{29C9}2"),
+        "tree aggregate from child should show \u{29C9}2, got: {row0}"
     );
 }
