@@ -508,9 +508,16 @@ fn confirm_judge(state: &mut AppState) -> IntentResult {
         })
         .map(|(id, _)| id.clone());
     if let Some(existing_id) = existing_id {
-        // Re-attach: set is_attached = true, activate the origin.
+        // Snapshot the origin's CWD before mutable borrow.
+        let origin_cwd = state
+            .session
+            .get(&active_id)
+            .map(|s| s.cwd().to_owned())
+            .unwrap_or_default();
+        // Re-attach: set is_attached = true, update CWD, activate the origin.
         if let Some(judge_session) = state.session.get_mut(&existing_id) {
             judge_session.set_judge_attached(true);
+            judge_session.set_cwd(origin_cwd);
         }
         state.session.set_active(active_id);
         state.frontend.scope_stack.push(FocusScope::Input);
@@ -535,15 +542,31 @@ fn confirm_judge(state: &mut AppState) -> IntentResult {
         judge_name: entry.name.clone(),
     });
 
+    // Inherit the origin session's CWD so judge tools run in the same directory.
+    let origin_cwd = state
+        .session
+        .get(&active_id)
+        .map(|s| s.cwd().to_owned())
+        .unwrap_or_default();
+    judge_session.set_cwd(origin_cwd);
+
     // Set parent so it nests under the origin in the sidebar tree.
     judge_session.set_parent_session(active_id.clone());
 
     // Title the judge session after its definition name.
     judge_session.set_title(format!("judge/{}", &entry.name));
 
-    // Set model override if the judge definition specifies one.
+    // Set model: judge definition override takes priority, otherwise inherit from origin.
     if let Some(ref model) = judge_def.model {
         judge_session.set_model(model.clone());
+    } else {
+        let origin_model = state
+            .session
+            .get(&active_id)
+            .expect("origin session should exist")
+            .model()
+            .to_owned();
+        judge_session.set_model(origin_model);
     }
 
     // Pin the judge's body as a system entry at TOP position
@@ -552,11 +575,10 @@ fn confirm_judge(state: &mut AppState) -> IntentResult {
         .with_pin(crate::protocol::PinPosition::Top);
     judge_session.push_entry(system_entry);
 
-    // Insert into session map and activate.
+    // Insert into session map and keep origin active.
     state.session.insert(judge_session);
-    state.session.set_active(judge_id.clone());
+    state.session.set_active(active_id.clone());
     state.frontend.scope_stack.pop();
-    state.frontend.scope_stack.push(FocusScope::Input);
 
     IntentResult::with_commands(vec![Command::PersistSession(
         crate::feat::session_lifecycle::protocol::command::PersistSession {
@@ -582,6 +604,15 @@ mod tests {
             model: model.map(std::borrow::ToOwned::to_owned),
             file_path: PathBuf::new(),
         }
+    }
+
+    fn find_judge_session(state: &AppState) -> &ChatSessionState {
+        state
+            .session
+            .iter()
+            .find(|(_, s)| s.judge().is_some())
+            .map(|(_, s)| s)
+            .expect("judge session should exist")
     }
 
     fn setup_state_with_judge() -> AppState {
@@ -617,9 +648,9 @@ mod tests {
         // Should have produced a PersistSession command.
         assert_eq!(result.commands.len(), 1);
 
-        // The new active session should be a judge session.
-        let active = state.active_session();
-        let meta = active.judge().as_ref().expect("should have judge meta");
+        // The judge session should have correct metadata.
+        let judge_session = find_judge_session(&state);
+        let meta = judge_session.judge().as_ref().expect("should have judge meta");
         assert_eq!(meta.judge_name, "accuracy");
         assert_eq!(meta.origin_session, origin_id);
         assert!(meta.is_attached);
@@ -632,8 +663,8 @@ mod tests {
 
         let _ = confirm_judge(&mut state);
 
-        let active = state.active_session();
-        assert_eq!(active.parent_session().as_ref(), Some(&origin_id));
+        let judge_session = find_judge_session(&state);
+        assert_eq!(judge_session.parent_session().as_ref(), Some(&origin_id));
     }
 
     #[rstest::rstest]
@@ -642,8 +673,8 @@ mod tests {
 
         let _ = confirm_judge(&mut state);
 
-        let active = state.active_session();
-        let pinned: Vec<_> = active.pinned_entries();
+        let judge_session = find_judge_session(&state);
+        let pinned: Vec<_> = judge_session.pinned_entries();
         assert_eq!(pinned.len(), 1, "should have exactly one pinned entry");
         assert_eq!(pinned[0].pin_position, Some(PinPosition::Top));
         assert!(pinned[0].text().contains("Check accuracy."));
@@ -705,11 +736,95 @@ mod tests {
         let _ = confirm_judge(&mut state);
 
         // Then the judge session title includes the judge name.
-        let active = state.active_session();
+        let judge_session = find_judge_session(&state);
         assert_eq!(
-            active.title().as_deref(),
+            judge_session.title(),
             Some("judge/accuracy"),
             "title should be 'judge/<name>'"
+        );
+    }
+    #[rstest::rstest]
+    fn confirm_judge_inherits_origin_cwd() {
+        // Given an origin session with a custom CWD.
+        let mut state = AppState::default();
+        let mut origin = ChatSessionState::new();
+        let origin_id = origin.session_id().clone();
+        origin.set_cwd(std::path::PathBuf::from("/tmp/my-project"));
+        state.session.insert(origin);
+        state.session.set_active(origin_id);
+        state
+            .context
+            .judges
+            .push(make_judge("accuracy", "Check accuracy.", None));
+        load_judge_picker_entries(&mut state);
+        state.frontend.judge_picker.move_down(1);
+
+        // When confirming the judge.
+        let _ = confirm_judge(&mut state);
+
+        // Then the judge session has the same CWD as the origin.
+        let judge_session = find_judge_session(&state);
+        assert_eq!(
+            judge_session.cwd(),
+            std::path::Path::new("/tmp/my-project"),
+            "judge should inherit origin's CWD"
+        );
+    }
+
+    #[rstest::rstest]
+    fn confirm_judge_re_attach_updates_cwd() {
+        // Given an origin session with CWD /original/path.
+        let mut state = AppState::default();
+        let mut origin = ChatSessionState::new();
+        let origin_id = origin.session_id().clone();
+        origin.set_cwd(std::path::PathBuf::from("/original/path"));
+        state.session.insert(origin);
+        state.session.set_active(origin_id.clone());
+        state
+            .context
+            .judges
+            .push(make_judge("accuracy", "Check accuracy.", None));
+        load_judge_picker_entries(&mut state);
+        state.frontend.judge_picker.move_down(1);
+
+        // When creating the judge.
+        confirm_judge(&mut state);
+
+        // Find the judge session and detach it.
+        let (judge_id, _) = state
+            .session
+            .iter()
+            .find(|(_, s)| s.is_judge())
+            .expect("judge session exists");
+        let judge_id = judge_id.clone();
+        state
+            .session
+            .get_mut(&judge_id)
+            .expect("judge session")
+            .set_judge_attached(false);
+
+        // Change the origin's CWD to /new/path.
+        state
+            .session
+            .get_mut(&origin_id)
+            .expect("origin session")
+            .set_cwd(std::path::PathBuf::from("/new/path"));
+
+        // Re-populate picker and select the judge again.
+        state.session.set_active(origin_id.clone());
+        load_judge_picker_entries(&mut state);
+        state.frontend.judge_picker.move_down(1);
+        confirm_judge(&mut state);
+
+        // Then the judge session's CWD is updated to the origin's new CWD.
+        let judge_session = state
+            .session
+            .get(&judge_id)
+            .expect("judge session should exist");
+        assert_eq!(
+            judge_session.cwd(),
+            std::path::Path::new("/new/path"),
+            "re-attached judge should get updated CWD from origin"
         );
     }
 }
