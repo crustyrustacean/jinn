@@ -95,6 +95,47 @@ impl SessionPersistenceActor {
         let _ = ctx.send_command(Command::SessionLoadCompleted(CompletedPayload { session }));
     }
 
+    /// Loads all judge sessions belonging to the given origin from the store,
+    /// unarchives them, sets their state to `Loaded`, and inserts them into
+    /// the in-memory session map.
+    async fn load_and_insert_judge_sessions(
+        &self,
+        store: &crate::feat::session::SessionStoreService,
+        origin_id: &crate::protocol::SessionId,
+    ) {
+        let judge_sessions =
+            match store.load_judge_sessions_for_origin(origin_id).await {
+                Ok(sessions) => sessions,
+                Err(e) => {
+                    tracing::warn!(
+                        err = ?e,
+                        "failed to load judge sessions for origin"
+                    );
+                    Vec::new()
+                }
+            };
+
+        if !judge_sessions.is_empty() {
+            for judge_session in &judge_sessions {
+                let judge_id = judge_session.session_id().clone();
+                if let Err(e) = store.set_archived(&judge_id, false).await {
+                    tracing::warn!(
+                        err = ?e,
+                        judge_session_id = %judge_id,
+                        "failed to unarchive judge session"
+                    );
+                }
+            }
+            let mut state = self.state.write();
+            for mut judge_session in judge_sessions {
+                judge_session.set_session_state(
+                    crate::feat::session::chat_session::SessionState::Loaded,
+                );
+                state.session.insert(judge_session);
+            }
+        }
+    }
+
     /// Loads a full session from disk and sends back a `SessionLoadCompleted` command.
     ///
     /// If the requested session is a judge, redirects to loading its origin session
@@ -150,38 +191,7 @@ impl SessionPersistenceActor {
                                 }
 
                                 // Auto-load judge sessions for the origin.
-                                let judge_sessions =
-                                    match store.load_judge_sessions_for_origin(&origin_id).await
-                                    {
-                                        Ok(sessions) => sessions,
-                                        Err(e) => {
-                                            tracing::warn!(
-                                                err = ?e,
-                                                "failed to load judge sessions for origin"
-                                            );
-                                            Vec::new()
-                                        }
-                                    };
-
-                                if !judge_sessions.is_empty() {
-                                    for js in &judge_sessions {
-                                        let jid = js.session_id().clone();
-                                        if let Err(e) = store.set_archived(&jid, false).await {
-                                            tracing::warn!(
-                                                err = ?e,
-                                                judge_session_id = %jid,
-                                                "failed to unarchive judge session"
-                                            );
-                                        }
-                                    }
-                                    let mut state = self.state.write();
-                                    for mut js in judge_sessions {
-                                        js.set_session_state(
-                                            crate::feat::session::chat_session::SessionState::Loaded,
-                                        );
-                                        state.session.insert(js);
-                                    }
-                                }
+                                self.load_and_insert_judge_sessions(store, &origin_id).await;
 
                                 let _ = ctx.send_command(Command::SessionLoadCompleted(
                                     CompletedPayload {
@@ -223,37 +233,7 @@ impl SessionPersistenceActor {
                 // They may have been cascade-archived alongside the origin.
                 // We unarchive and insert them into memory so the coordinator
                 // can trigger them on the next IDLE transition.
-                let judge_sessions =
-                    match store.load_judge_sessions_for_origin(&evt.session_id).await {
-                        Ok(sessions) => sessions,
-                        Err(e) => {
-                            tracing::warn!(
-                                err = ?e,
-                                "failed to load judge sessions for origin"
-                            );
-                            Vec::new()
-                        }
-                    };
-
-                if !judge_sessions.is_empty() {
-                    for judge_session in &judge_sessions {
-                        let judge_id = judge_session.session_id().clone();
-                        if let Err(e) = store.set_archived(&judge_id, false).await {
-                            tracing::warn!(
-                                err = ?e,
-                                judge_session_id = %judge_id,
-                                "failed to unarchive judge session"
-                            );
-                        }
-                    }
-                    let mut state = self.state.write();
-                    for mut judge_session in judge_sessions {
-                        judge_session.set_session_state(
-                            crate::feat::session::chat_session::SessionState::Loaded,
-                        );
-                        state.session.insert(judge_session);
-                    }
-                }
+                self.load_and_insert_judge_sessions(store, &evt.session_id).await;
 
                 let _ =
                     ctx.send_command(Command::SessionLoadCompleted(CompletedPayload { session }));
