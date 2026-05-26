@@ -212,6 +212,8 @@ impl ProviderActor {
             &self.services.paths.models_dev_system_path(),
         );
         merge_context_lengths_from_models_dev(&mut cache, &models_dev);
+        // Merge remote models into the registry so create_factory() can find them.
+        self.services.provider_registry.merge_cache(&cache);
         let mut state = self.state.write();
         state.provider.model_cache = Some(cache);
         load_provider_picker_items(&self.services, &mut state);
