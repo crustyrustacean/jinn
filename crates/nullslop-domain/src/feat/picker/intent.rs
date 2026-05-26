@@ -58,6 +58,13 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::CompactionModel => {
             state.frontend.compaction_model_picker.reset();
         }
+        PickerKind::Tool => {
+            state.frontend.tool_picker.reset();
+            // Snapshot current disabled tools for ESC revert.
+            state.frontend.tool_picker_snapshot =
+                Some(state.active_session().disabled_tools().clone());
+            load_tool_picker_entries(state);
+        }
     }
 
     match kind {
@@ -76,7 +83,7 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
                 LoadPersonaPickerEntries,
             )])
         }
-        PickerKind::Theme => IntentResult::empty(),
+        PickerKind::Theme | PickerKind::Tool => IntentResult::empty(),
         PickerKind::SessionLifecycle => {
             // Populate from user preferences + implicit blank lifecycle.
             load_lifecycle_picker_entries(state);
@@ -208,6 +215,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::Workflow) => (confirm_workflow(state), None),
         Some(PickerKind::Judge) => (confirm_judge(state), None),
         Some(PickerKind::CompactionModel) | None => (IntentResult::empty(), None),
+        Some(PickerKind::Tool) => (confirm_tool(state), None),
     }
 }
 
@@ -587,6 +595,57 @@ fn confirm_judge(state: &mut AppState) -> IntentResult {
             session_id: judge_id,
         },
     )])
+}
+
+/// Populates the tool picker entries from the global tool definitions.
+///
+/// Excludes judge tools (already filtered from `tool_definitions` by `on_tools_registered`).
+/// Marks each entry as enabled/disabled based on the session's `disabled_tools` set.
+fn load_tool_picker_entries(state: &mut AppState) {
+    use crate::feat::tools_actor::tool_entry::ToolEntry;
+
+    let disabled = state.active_session().disabled_tools();
+    let theme = state.frontend.theme.clone();
+
+    let entries: Vec<ToolEntry> = state
+        .context
+        .tool_definitions
+        .values()
+        .map(|def| ToolEntry {
+            name: def.name.clone(),
+            description: def.description.clone(),
+            enabled: !disabled.contains(&def.name),
+            theme: theme.clone(),
+        })
+        .collect();
+
+    state.frontend.tool_picker.set_items(entries);
+}
+
+/// Confirms the tool picker: collects disabled tool names from picker entries
+/// and writes them to the active session's profile.
+fn confirm_tool(state: &mut AppState) -> IntentResult {
+    let disabled: std::collections::HashSet<String> = state
+        .frontend
+        .tool_picker
+        .items()
+        .iter()
+        .filter(|entry| !entry.enabled)
+        .map(|entry| entry.name.clone())
+        .collect();
+
+    state.active_session_mut().set_disabled_tools(disabled);
+    state.frontend.tool_picker_snapshot = None;
+    state.frontend.scope_stack.pop();
+    IntentResult::empty()
+}
+
+/// Toggles the `enabled` state of the currently selected tool entry.
+pub fn handle_tool_toggle(state: &mut AppState) -> IntentResult {
+    state.frontend.tool_picker.with_selected_mut(|entry| {
+        entry.enabled = !entry.enabled;
+    });
+    IntentResult::empty()
 }
 
 #[cfg(test)]
