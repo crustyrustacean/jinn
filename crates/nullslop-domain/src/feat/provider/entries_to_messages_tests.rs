@@ -746,16 +746,15 @@ fn forced_exclude_dangling_tool_call_produces_valid_messages() {
     let messages = entries_to_messages(&entries);
 
     // Then only the User message is produced — no dangling tool_calls.
-    assert_eq!(messages.len(), 1, "expected only User message, got: {:?}", messages);
+    assert_eq!(messages.len(), 1, "expected only User message, got: {messages:?}");
     assert!(matches!(&messages[0], LlmMessage::User { .. }));
 
     // And no Assistant message with tool_calls exists.
     for msg in &messages {
         if let LlmMessage::Assistant { tool_calls, .. } = msg {
             assert!(
-                tool_calls.is_none() || tool_calls.as_ref().map_or(false, |v| v.is_empty()),
-                "expected no tool_calls in assistant message, got: {:?}",
-                tool_calls
+                tool_calls.as_ref().is_none_or(Vec::is_empty),
+                "expected no tool_calls in assistant message, got: {tool_calls:?}"
             );
         }
     }
@@ -787,7 +786,7 @@ fn forced_exclude_preserves_complete_tool_loop_in_messages() {
 
     // Then the complete tool loop is preserved and the dangling one is excluded.
     // Expected: User, Assistant(tc-1), Tool(tc-1).
-    assert_eq!(messages.len(), 3, "expected 3 messages, got: {:?}", messages);
+    assert_eq!(messages.len(), 3, "expected 3 messages, got: {messages:?}");
     assert!(matches!(&messages[0], LlmMessage::User { .. }));
     // Assistant with tc-1 tool_call.
     match &messages[1] {
@@ -837,11 +836,9 @@ fn no_dangling_tool_calls_in_messages_after_hard_cancel() {
 
     for msg in &messages {
         match msg {
-            LlmMessage::Assistant { tool_calls, .. } => {
-                if let Some(calls) = tool_calls {
-                    for tc in calls {
-                        tool_call_ids.push(tc.id.clone());
-                    }
+            LlmMessage::Assistant { tool_calls: Some(calls), .. } => {
+                for tc in calls {
+                    tool_call_ids.push(tc.id.clone());
                 }
             }
             LlmMessage::Tool { tool_call_id, .. } => {
@@ -855,8 +852,7 @@ fn no_dangling_tool_calls_in_messages_after_hard_cancel() {
     for tc_id in &tool_call_ids {
         assert!(
             tool_result_ids.iter().any(|r| r == tc_id),
-            "dangling tool_call {} found in messages — no matching Tool result",
-            tc_id
+            "dangling tool_call {tc_id} found in messages - no matching Tool result"
         );
     }
 }
