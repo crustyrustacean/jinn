@@ -140,3 +140,27 @@ async fn task_incomplete_errors_on_non_judge_session() {
     assert!(!result.success);
     assert!(result.content.contains("only be used in judge sessions"));
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn task_incomplete_sets_tool_loop_disabled() {
+    // Given a judge session.
+    let (state, judge_id, _origin_id) = setup_judge_session();
+    let ctx = make_context(judge_id.clone(), state.clone());
+
+    // When executing task_incomplete.
+    let _result = super::builtin_task_incomplete::execute(make_call("missing"), ctx).await;
+
+    // Then the tool loop is disabled.
+    let mut guard = state.write();
+    let session = guard.session_mut(&judge_id);
+    assert!(
+        session.take_tool_loop_disabled(),
+        "tool_loop_disabled should be true after task_incomplete"
+    );
+    // And it clears on read.
+    assert!(
+        !session.take_tool_loop_disabled(),
+        "tool_loop_disabled should be cleared after take"
+    );
+}
