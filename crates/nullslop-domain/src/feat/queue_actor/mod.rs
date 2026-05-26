@@ -778,4 +778,247 @@ mod tests {
             "expected no SendToLlmProvider for Idle → Sending transition"
         );
     }
+
+    #[tokio::test]
+    async fn dispatch_user_message_provider_id_is_none_when_no_provider() {
+        // Given a session with the default model (NO_PROVIDER_ID).
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session_id().clone()
+        };
+
+        // When dispatching a user message.
+        actor
+            .dispatch_user_message(&session_id, &ChatEntry::user("hello"), &ctx)
+            .await;
+
+        // Then SendToLlmProvider has provider_id = None.
+        let commands = sink.commands();
+        let provider_id: Option<String> = commands.iter().find_map(|c| match c {
+            Command::SendToLlmProvider(cmd) => cmd.provider_id.clone(),
+            _ => None,
+        });
+        assert_eq!(provider_id, None, "expected provider_id None for NO_PROVIDER_ID");
+    }
+
+    #[tokio::test]
+    async fn dispatch_user_message_provider_id_is_some_when_model_set() {
+        // Given a session with an explicit model.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            state.active_session_mut().set_model("my-model".to_owned());
+            state.session.active_session_id().clone()
+        };
+
+        // When dispatching a user message.
+        actor
+            .dispatch_user_message(&session_id, &ChatEntry::user("hello"), &ctx)
+            .await;
+
+        // Then SendToLlmProvider has provider_id = Some("my-model").
+        let commands = sink.commands();
+        let provider_id: Option<String> = commands.iter().find_map(|c| match c {
+            Command::SendToLlmProvider(cmd) => cmd.provider_id.clone(),
+            _ => None,
+        });
+        assert_eq!(
+            provider_id,
+            Some("my-model".to_owned()),
+            "expected provider_id Some(\"my-model\")"
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_tool_continuation_provider_id_is_none_when_no_provider() {
+        // Given a session with the default model (NO_PROVIDER_ID) and history.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("previous message"));
+            state.session.active_session_id().clone()
+        };
+
+        // When dispatching a tool continuation.
+        actor.dispatch_tool_continuation(&session_id, &ctx).await;
+
+        // Then SendToLlmProvider has provider_id = None.
+        let commands = sink.commands();
+        let provider_id: Option<String> = commands.iter().find_map(|c| match c {
+            Command::SendToLlmProvider(cmd) => cmd.provider_id.clone(),
+            _ => None,
+        });
+        assert_eq!(
+            provider_id, None,
+            "expected provider_id None for NO_PROVIDER_ID in tool continuation"
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_tool_continuation_provider_id_is_some_when_model_set() {
+        // Given a session with an explicit model and history.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("previous message"));
+            state.active_session_mut().set_model("tool-model".to_owned());
+            state.session.active_session_id().clone()
+        };
+
+        // When dispatching a tool continuation.
+        actor.dispatch_tool_continuation(&session_id, &ctx).await;
+
+        // Then SendToLlmProvider has provider_id = Some("tool-model").
+        let commands = sink.commands();
+        let provider_id: Option<String> = commands.iter().find_map(|c| match c {
+            Command::SendToLlmProvider(cmd) => cmd.provider_id.clone(),
+            _ => None,
+        });
+        assert_eq!(
+            provider_id,
+            Some("tool-model".to_owned()),
+            "expected provider_id Some(\"tool-model\") in tool continuation"
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_compaction_continuation_provider_id_is_none_when_no_provider() {
+        // Given a session in Sending phase with history and default model.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("previous message"));
+            session.push_entry(ChatEntry::user("A compaction has just occurred. Continue"));
+            session.begin_sending();
+            state.session.active_session_id().clone()
+        };
+
+        // When dispatching a compaction continuation.
+        actor
+            .dispatch_compaction_continuation(&session_id, &ctx)
+            .await;
+
+        // Then SendToLlmProvider has provider_id = None.
+        let commands = sink.commands();
+        let provider_id: Option<String> = commands.iter().find_map(|c| match c {
+            Command::SendToLlmProvider(cmd) => cmd.provider_id.clone(),
+            _ => None,
+        });
+        assert_eq!(
+            provider_id, None,
+            "expected provider_id None for NO_PROVIDER_ID in compaction continuation"
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_compaction_continuation_provider_id_is_some_when_model_set() {
+        // Given a session in Sending phase with history and explicit model.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("previous message"));
+            session.push_entry(ChatEntry::user("A compaction has just occurred. Continue"));
+            session.begin_sending();
+            state.active_session_mut().set_model("compact-model".to_owned());
+            state.session.active_session_id().clone()
+        };
+
+        // When dispatching a compaction continuation.
+        actor
+            .dispatch_compaction_continuation(&session_id, &ctx)
+            .await;
+
+        // Then SendToLlmProvider has provider_id = Some("compact-model").
+        let commands = sink.commands();
+        let provider_id: Option<String> = commands.iter().find_map(|c| match c {
+            Command::SendToLlmProvider(cmd) => cmd.provider_id.clone(),
+            _ => None,
+        });
+        assert_eq!(
+            provider_id,
+            Some("compact-model".to_owned()),
+            "expected provider_id Some(\"compact-model\") in compaction continuation"
+        );
+    }
+
+    #[tokio::test]
+    async fn handle_processes_session_phase_changed_event() {
+        // Given a session with a queued user message.
+        let mut actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            state
+                .active_session_mut()
+                .enqueue(QueueItem::UserMessage(ChatEntry::user("via handle")));
+            state.session.active_session_id().clone()
+        };
+
+        // When calling handle with an ActorEnvelope::Event(SessionPhaseChanged).
+        let payload = SessionPhaseChanged {
+            session_id: session_id.clone(),
+            old_phase: SessionPhase::Sending,
+            new_phase: SessionPhase::Idle,
+        };
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::SessionPhaseChanged(payload)),
+                &ctx,
+            )
+            .await;
+
+        // Then SendToLlmProvider was emitted (handle dispatched the queued item).
+        let commands = sink.commands();
+        let has_send = commands
+            .iter()
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
+        assert!(
+            has_send,
+            "expected SendToLlmProvider when handle processes SessionPhaseChanged"
+        );
+    }
+
+    #[tokio::test]
+    async fn handle_processes_enqueue_compaction_command() {
+        // Given a session in Idle phase.
+        let mut actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session_id().clone()
+        };
+
+        // When calling handle with an ActorEnvelope::Command(EnqueueCompaction).
+        let payload = EnqueueCompaction {
+            session_id: session_id.clone(),
+            compact_all: false,
+        };
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::EnqueueCompaction(payload)),
+                &ctx,
+            )
+            .await;
+
+        // Then CompactContext was emitted.
+        let commands = sink.commands();
+        let has_compact = commands
+            .iter()
+            .any(|c| matches!(c, Command::CompactContext(_)));
+        assert!(
+            has_compact,
+            "expected CompactContext when handle processes EnqueueCompaction"
+        );
+    }
 }

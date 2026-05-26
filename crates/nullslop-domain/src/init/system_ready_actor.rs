@@ -236,4 +236,36 @@ mod tests {
         assert!(actor.ready_tx.is_none(), "should have signaled");
         assert!(rx.try_recv().is_ok(), "oneshot should be sent");
     }
+
+    #[tokio::test]
+    async fn handle_processes_actor_started_event() {
+        // Given a SystemReadyActor with counter=1, 0 ActorStarted, and AllActorsSpawned already received.
+        let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
+        let counter = ActorCounter::new();
+        counter.increment();
+        let mut actor = SystemReadyActor {
+            ready_tx: Some(tx),
+            received: 0,
+            counter: counter.clone(),
+            all_spawned: true,
+        };
+        let ctx = create_ctx();
+
+        // When calling handle with ActorEnvelope::Event(ActorStarted).
+        actor
+            .handle(
+                ActorEnvelope::Event(Event::ActorStarted(
+                    crate::common::actor::protocol::event::ActorStarted {
+                        name: "test-actor".to_owned(),
+                        description: None,
+                    },
+                )),
+                &ctx,
+            )
+            .await;
+
+        // Then the oneshot is consumed (1 == 1, all_spawned already true).
+        assert!(actor.ready_tx.is_none(), "handle should have processed ActorStarted");
+        assert!(rx.try_recv().is_ok(), "oneshot should be sent via handle");
+    }
 }

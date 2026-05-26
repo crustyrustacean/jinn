@@ -269,3 +269,16 @@ fn announce_shutdown_completed_sends_actor_shutdown_completed_event() {
         other => panic!("expected ActorShutdownCompleted, got {other:?}"),
     }
 }
+
+#[rstest::rstest]
+fn subscribe_all_events_registers_wildcard() {
+    // Given a new context.
+    let mut ctx = ActorContext::new("test", test_sink());
+
+    // When subscribing to all events.
+    ctx.subscribe_all_events();
+
+    // Then take_registrations returns the all-events flag.
+    let (_, _, all_events) = ctx.take_registrations();
+    assert!(all_events, "subscribe_all_events should set the wildcard flag");
+}

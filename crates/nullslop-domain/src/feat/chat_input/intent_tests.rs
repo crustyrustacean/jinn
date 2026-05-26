@@ -1558,3 +1558,60 @@ fn enter_normal_mode_dismissing_autocomplete_emits_no_commands() {
     // Then no commands are emitted.
     assert!(result.commands.is_empty());
 }
+
+// --- compute_matches and compute_slash_matches mutants ---
+
+#[rstest::rstest]
+fn hash_autocomplete_populates_matches_from_template_store() {
+    // Given a state with a template in the store.
+    use crate::common::app_state::FocusScope;
+    use crate::feat::context::protocol::prompt_template::PromptTemplate;
+
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::Input);
+    state.context.prompt_templates =
+        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+            PromptTemplate {
+                name: "my_template".to_owned(),
+                description: "A test template".to_owned(),
+                body: "template body".to_owned(),
+            },
+        ]);
+
+    // When inserting '#' at position 0.
+    let _ = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
+
+    // Then autocomplete is active with non-empty matches.
+    let ac = state.active_chat_input().autocomplete();
+    assert!(ac.is_some(), "autocomplete should activate on '#' with templates");
+    let matches = ac.as_ref().unwrap().matches();
+    assert!(
+        !matches.is_empty(),
+        "compute_matches should return at least one match for a populated store"
+    );
+    assert!(
+        matches.iter().any(|m| m.name == "my_template"),
+        "expected 'my_template' in matches: {matches:?}"
+    );
+}
+
+#[rstest::rstest]
+fn slash_autocomplete_populates_matches_from_slash_commands() {
+    // Given a state in Input mode.
+    use crate::common::app_state::FocusScope;
+
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::Input);
+
+    // When inserting '/' at position 0.
+    let _ = crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
+
+    // Then autocomplete is active with non-empty matches.
+    let ac = state.active_chat_input().autocomplete();
+    assert!(ac.is_some(), "autocomplete should activate on '/'");
+    let matches = ac.as_ref().unwrap().matches();
+    assert!(
+        !matches.is_empty(),
+        "compute_slash_matches should return at least one slash command"
+    );
+}
