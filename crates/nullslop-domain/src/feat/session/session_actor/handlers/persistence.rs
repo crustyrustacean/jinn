@@ -83,6 +83,7 @@ impl SessionPersistenceActor {
     /// Creates an empty session with the given ID and emits a `SessionLoadCompleted` command.
     ///
     /// Used as a fallback when a session is not found or fails to load.
+    #[allow(clippy::unused_self)]
     fn create_empty_session_response(
         &self,
         session_id: &crate::protocol::SessionId,
@@ -103,17 +104,16 @@ impl SessionPersistenceActor {
         store: &crate::feat::session::SessionStoreService,
         origin_id: &crate::protocol::SessionId,
     ) {
-        let judge_sessions =
-            match store.load_judge_sessions_for_origin(origin_id).await {
-                Ok(sessions) => sessions,
-                Err(e) => {
-                    tracing::warn!(
-                        err = ?e,
-                        "failed to load judge sessions for origin"
-                    );
-                    Vec::new()
-                }
-            };
+        let judge_sessions = match store.load_judge_sessions_for_origin(origin_id).await {
+            Ok(sessions) => sessions,
+            Err(e) => {
+                tracing::warn!(
+                    err = ?e,
+                    "failed to load judge sessions for origin"
+                );
+                Vec::new()
+            }
+        };
 
         if !judge_sessions.is_empty() {
             for judge_session in &judge_sessions {
@@ -128,9 +128,8 @@ impl SessionPersistenceActor {
             }
             let mut state = self.state.write();
             for mut judge_session in judge_sessions {
-                judge_session.set_session_state(
-                    crate::feat::session::chat_session::SessionState::Loaded,
-                );
+                judge_session
+                    .set_session_state(crate::feat::session::chat_session::SessionState::Loaded);
                 state.session.insert(judge_session);
             }
         }
@@ -180,9 +179,8 @@ impl SessionPersistenceActor {
                 if let Err(e) = store.set_archived(&origin_id, false).await {
                     tracing::warn!(err = ?e, "failed to unarchive origin session");
                 }
-                origin_session.set_session_state(
-                    crate::feat::session::chat_session::SessionState::Loaded,
-                );
+                origin_session
+                    .set_session_state(crate::feat::session::chat_session::SessionState::Loaded);
 
                 // Swap the load guard from judge to origin.
                 {
@@ -194,11 +192,9 @@ impl SessionPersistenceActor {
                 // Auto-load judge sessions for the origin.
                 self.load_and_insert_judge_sessions(store, &origin_id).await;
 
-                let _ = ctx.send_command(Command::SessionLoadCompleted(
-                    CompletedPayload {
-                        session: origin_session,
-                    },
-                ));
+                let _ = ctx.send_command(Command::SessionLoadCompleted(CompletedPayload {
+                    session: origin_session,
+                }));
                 true
             }
             Ok(None) => {
@@ -240,7 +236,10 @@ impl SessionPersistenceActor {
                 // --- Judge-to-origin redirect ---
                 // If the loaded session is a judge, load its origin instead.
                 // The judge will be auto-loaded as a side-effect of loading the origin.
-                if self.redirect_judge_to_origin(&session, evt, &store, ctx).await {
+                if self
+                    .redirect_judge_to_origin(&session, evt, &store, ctx)
+                    .await
+                {
                     return;
                 }
 
@@ -250,15 +249,14 @@ impl SessionPersistenceActor {
                 }
 
                 // Reset in-memory state so the sidebar filter includes this session.
-                session.set_session_state(
-                    crate::feat::session::chat_session::SessionState::Loaded,
-                );
+                session.set_session_state(crate::feat::session::chat_session::SessionState::Loaded);
 
                 // Load judge sessions that belong to this origin.
                 // They may have been cascade-archived alongside the origin.
                 // We unarchive and insert them into memory so the coordinator
                 // can trigger them on the next IDLE transition.
-                self.load_and_insert_judge_sessions(&store, &evt.session_id).await;
+                self.load_and_insert_judge_sessions(&store, &evt.session_id)
+                    .await;
 
                 let _ =
                     ctx.send_command(Command::SessionLoadCompleted(CompletedPayload { session }));
@@ -280,7 +278,12 @@ impl SessionPersistenceActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::similar_names,
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
 
     use super::super::super::helpers::{test_actor_with_store, test_context};
     use crate::feat::session::chat_session::ChatSessionState;
@@ -387,12 +390,14 @@ mod tests {
         let (sink, ctx) = test_context();
 
         // When handling MarkSessionInteracted.
-        actor.handle_mark_session_interacted(
-            &MarkSessionInteracted {
-                session_id: session_id.clone(),
-            },
-            &ctx,
-        ).await;
+        actor
+            .handle_mark_session_interacted(
+                &MarkSessionInteracted {
+                    session_id: session_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
 
         // Then the session has_interacted flag is set.
         let state = actor.state.read();
@@ -401,9 +406,10 @@ mod tests {
         assert!(session.is_persistable());
 
         // And a UserInteracted event was emitted.
-        let has_event = sink.events().iter().any(|e| {
-            matches!(e, Event::UserInteracted(e) if e.session_id == session_id)
-        });
+        let has_event = sink
+            .events()
+            .iter()
+            .any(|e| matches!(e, Event::UserInteracted(e) if e.session_id == session_id));
         assert!(has_event, "UserInteracted event should be emitted");
 
         // And the session was persisted to the store.
@@ -428,8 +434,8 @@ mod tests {
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "judge-a".to_owned(),
-auto_reset: None,
-});
+            auto_reset: None,
+        });
         judge_a.set_session_state(SessionState::Archived);
         judge_a.mark_interacted();
         let judge_a_id = judge_a.session_id().clone();
@@ -439,14 +445,13 @@ auto_reset: None,
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "judge-b".to_owned(),
-auto_reset: None,
-});
+            auto_reset: None,
+        });
         judge_b.set_session_state(SessionState::Archived);
         judge_b.mark_interacted();
         let judge_b_id = judge_b.session_id().clone();
 
-        let (mut actor, _store) =
-            test_actor_with_store(vec![origin, judge_a, judge_b]);
+        let (mut actor, _store) = test_actor_with_store(vec![origin, judge_a, judge_b]);
         let (sink, ctx) = test_context();
 
         // When loading the origin session.
@@ -500,8 +505,8 @@ auto_reset: None,
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "test-judge".to_owned(),
-auto_reset: None,
-});
+            auto_reset: None,
+        });
         judge.set_session_state(SessionState::Archived);
         judge.mark_interacted();
         let judge_id = judge.session_id().clone();
@@ -577,8 +582,8 @@ auto_reset: None,
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "test-judge".to_owned(),
-auto_reset: None,
-});
+            auto_reset: None,
+        });
         judge.set_session_state(SessionState::Archived);
         judge.mark_interacted();
         let judge_id = judge.session_id().clone();
@@ -633,8 +638,8 @@ auto_reset: None,
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "judge-a".to_owned(),
-auto_reset: None,
-});
+            auto_reset: None,
+        });
         judge_a.set_session_state(SessionState::Archived);
         judge_a.mark_interacted();
         let judge_a_id = judge_a.session_id().clone();
@@ -644,14 +649,13 @@ auto_reset: None,
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "judge-b".to_owned(),
-auto_reset: None,
-});
+            auto_reset: None,
+        });
         judge_b.set_session_state(SessionState::Archived);
         judge_b.mark_interacted();
         let judge_b_id = judge_b.session_id().clone();
 
-        let (mut actor, _store) =
-            test_actor_with_store(vec![origin, judge_a, judge_b]);
+        let (mut actor, _store) = test_actor_with_store(vec![origin, judge_a, judge_b]);
         let (_sink, ctx) = test_context();
 
         // When loading judge_a (not the origin).
@@ -686,8 +690,8 @@ auto_reset: None,
             origin_session: "nonexistent-session-id".to_string().into(),
             is_attached: true,
             judge_name: "orphan-judge".to_owned(),
-auto_reset: None,
-});
+            auto_reset: None,
+        });
         judge.mark_interacted();
         let judge_id = judge.session_id().clone();
 
@@ -735,8 +739,8 @@ auto_reset: None,
             origin_session: origin_id.clone(),
             is_attached: true,
             judge_name: "test-judge".to_owned(),
-auto_reset: None,
-});
+            auto_reset: None,
+        });
         judge.set_session_state(SessionState::Archived);
         judge.mark_interacted();
         let judge_id = judge.session_id().clone();
@@ -783,8 +787,8 @@ auto_reset: None,
             origin_session: session_id.clone(),
             is_attached: true,
             judge_name: "self-ref".to_owned(),
-auto_reset: None,
-});
+            auto_reset: None,
+        });
 
         let (mut actor, _store) = test_actor_with_store(vec![session]);
         let (sink, ctx) = test_context();
