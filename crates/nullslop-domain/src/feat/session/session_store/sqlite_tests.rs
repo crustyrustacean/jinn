@@ -946,7 +946,7 @@ async fn load_judge_sessions_for_origin_returns_empty_for_no_judges() {
 
 #[rstest::rstest]
 #[tokio::test]
-async fn load_judge_sessions_for_origin_excludes_archived() {
+async fn load_judge_sessions_for_origin_includes_archived() {
     use crate::feat::judge::JudgeMeta;
 
     // Given a store with an origin and one archived judge.
@@ -971,6 +971,8 @@ async fn load_judge_sessions_for_origin_excludes_archived() {
         .await
         .expect("load judges");
 
-    // Then the archived judge is not returned.
-    assert!(judges.is_empty(), "archived judge should not be returned");
+    // Then the archived judge is returned (cascade-archived judges
+    // must be found so they can be unarchived on origin load).
+    assert_eq!(judges.len(), 1, "archived judge should be returned");
+    assert_eq!(judges[0].session_id(), &judge_id);
 }
