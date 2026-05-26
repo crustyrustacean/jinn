@@ -187,7 +187,6 @@ impl AppWorld {
                 nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                 s
             },
-            preview_cache: nullslop_tui::app::PreviewCache::new(),
             plugin_host: None,
             welcome_subscriber: None,
         };
@@ -616,7 +615,6 @@ fn when_restart_app(world: &mut AppWorld) {
             nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
             s
         },
-        preview_cache: nullslop_tui::app::PreviewCache::new(),
         plugin_host: None,
         welcome_subscriber: None,
     };
