@@ -725,3 +725,138 @@ fn forced_include_actor_entry_produces_user_message() {
         }
     );
 }
+
+// --- End-to-end: dangling tool calls after hard cancel ---
+
+#[test]
+fn forced_exclude_dangling_tool_call_produces_valid_messages() {
+    // Given a history with an empty Assistant and a dangling ToolCall (no ToolResult),
+    // simulating hard cancel during tool execution.
+    let mut entries = vec![
+        ChatEntry::user("run it"),
+        ChatEntry::assistant(""),
+        ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#),
+    ];
+
+    // Force-exclude the dangling entries (simulating force_exclude_dangling_tool_calls).
+    entries[1].context_override = crate::protocol::ContextOverride::ForcedExclude;
+    entries[2].context_override = crate::protocol::ContextOverride::ForcedExclude;
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then only the User message is produced — no dangling tool_calls.
+    assert_eq!(messages.len(), 1, "expected only User message, got: {:?}", messages);
+    assert!(matches!(&messages[0], LlmMessage::User { .. }));
+
+    // And no Assistant message with tool_calls exists.
+    for msg in &messages {
+        if let LlmMessage::Assistant { tool_calls, .. } = msg {
+            assert!(
+                tool_calls.is_none() || tool_calls.as_ref().map_or(false, |v| v.is_empty()),
+                "expected no tool_calls in assistant message, got: {:?}",
+                tool_calls
+            );
+        }
+    }
+}
+
+#[test]
+fn forced_exclude_preserves_complete_tool_loop_in_messages() {
+    // Given a history with a complete tool loop plus a dangling ToolCall.
+    let mut entries = vec![
+        ChatEntry::user("run it"),
+        ChatEntry::assistant(""),
+        ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#),
+        ChatEntry::tool_result(
+            "tc-1",
+            "bash",
+            "file.txt",
+            ToolResultStatus::Success,
+        ),
+        ChatEntry::assistant(""),
+        ChatEntry::tool_call("tc-2", "read", r#"{"file":"a.rs"}"#),
+    ];
+
+    // Force-exclude only the dangling entries (tc-2 and its empty Assistant).
+    entries[4].context_override = crate::protocol::ContextOverride::ForcedExclude;
+    entries[5].context_override = crate::protocol::ContextOverride::ForcedExclude;
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then the complete tool loop is preserved and the dangling one is excluded.
+    // Expected: User, Assistant(tc-1), Tool(tc-1).
+    assert_eq!(messages.len(), 3, "expected 3 messages, got: {:?}", messages);
+    assert!(matches!(&messages[0], LlmMessage::User { .. }));
+    // Assistant with tc-1 tool_call.
+    match &messages[1] {
+        LlmMessage::Assistant { tool_calls, .. } => {
+            let tc = tool_calls.as_ref().expect("expected tool_calls");
+            assert_eq!(tc.len(), 1);
+            assert_eq!(tc[0].id, "tc-1");
+        }
+        _ => panic!("expected Assistant message"),
+    }
+    // Tool result for tc-1.
+    match &messages[2] {
+        LlmMessage::Tool { tool_call_id, .. } => {
+            assert_eq!(tool_call_id, "tc-1");
+        }
+        _ => panic!("expected Tool message"),
+    }
+}
+
+#[test]
+fn no_dangling_tool_calls_in_messages_after_hard_cancel() {
+    // Given a complex history with multiple tool loops where some are dangling.
+    let mut entries = vec![
+        ChatEntry::user("do stuff"),
+        ChatEntry::assistant("step 1"),
+        ChatEntry::tool_call("tc-1", "bash", "ls"),
+        ChatEntry::tool_result("tc-1", "bash", "out", ToolResultStatus::Success),
+        ChatEntry::assistant("step 2"),
+        ChatEntry::tool_call("tc-2", "bash", "cat"),
+        ChatEntry::tool_result("tc-2", "bash", "contents", ToolResultStatus::Success),
+        ChatEntry::assistant(""),
+        ChatEntry::tool_call("tc-3", "read", "a.rs"),
+        ChatEntry::tool_call("tc-4", "bash", "pwd"),
+    ];
+
+    // Force-exclude the dangling entries (tc-3, tc-4, and their empty Assistant).
+    entries[7].context_override = crate::protocol::ContextOverride::ForcedExclude;
+    entries[8].context_override = crate::protocol::ContextOverride::ForcedExclude;
+    entries[9].context_override = crate::protocol::ContextOverride::ForcedExclude;
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then every Assistant message with tool_calls has a matching Tool message for each.
+    let mut tool_call_ids: Vec<String> = Vec::new();
+    let mut tool_result_ids: Vec<String> = Vec::new();
+
+    for msg in &messages {
+        match msg {
+            LlmMessage::Assistant { tool_calls, .. } => {
+                if let Some(calls) = tool_calls {
+                    for tc in calls {
+                        tool_call_ids.push(tc.id.clone());
+                    }
+                }
+            }
+            LlmMessage::Tool { tool_call_id, .. } => {
+                tool_result_ids.push(tool_call_id.clone());
+            }
+            _ => {}
+        }
+    }
+
+    // Every tool_call_id must have a matching tool_result_id.
+    for tc_id in &tool_call_ids {
+        assert!(
+            tool_result_ids.iter().any(|r| r == tc_id),
+            "dangling tool_call {} found in messages — no matching Tool result",
+            tc_id
+        );
+    }
+}
