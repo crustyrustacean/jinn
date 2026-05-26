@@ -1978,7 +1978,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "clap",
  "clap-verbosity-flag",
@@ -2008,7 +2008,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-bench"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "comfy-table",
  "csv",
@@ -2032,7 +2032,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-cli"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "clap",
  "clap-verbosity-flag",
@@ -2041,7 +2041,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-domain"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
@@ -2089,7 +2089,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-e2e"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "crossterm",
  "cucumber",
@@ -2106,7 +2106,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-plugin"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "error-stack",
  "kanal",
@@ -2122,7 +2122,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-protocol-derive"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2131,7 +2131,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-provider"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "async-trait",
  "error-stack",
@@ -2152,7 +2152,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-selection-widget"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "fuzzy-matcher",
  "nullslop-testutil",
@@ -2163,14 +2163,14 @@ dependencies = [
 
 [[package]]
 name = "nullslop-testutil"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "ratatui",
 ]
 
 [[package]]
 name = "nullslop-theme"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
@@ -2186,7 +2186,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-tui"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "arboard",
  "crossterm",
@@ -2215,7 +2215,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-workflow"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -2233,7 +2233,7 @@ dependencies = [
 
 [[package]]
 name = "nullslop-workflow-tui"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "async-trait",
  "crossterm",

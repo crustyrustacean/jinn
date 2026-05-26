@@ -106,6 +106,7 @@ impl HeadlessWorld {
                 None,
                 None,
                 None,
+                paths,
             );
 
             // Intentionally leaked: each world gets a fresh tokio runtime.
