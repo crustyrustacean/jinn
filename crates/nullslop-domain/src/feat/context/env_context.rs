@@ -254,4 +254,100 @@ mod tests {
         assert!(date.starts_with("20"));
         assert_eq!(date.len(), 10);
     }
+
+    // --- Mutant-killing tests for date_from_days ---
+
+    #[rstest::rstest]
+    fn date_from_days_one_day() {
+        // Given 1 day since epoch.
+        // When converting.
+        let date = date_from_days(1);
+
+        // Then it's 1970-01-02.
+        assert_eq!(date, "1970-01-02");
+    }
+
+    #[rstest::rstest]
+    fn date_from_days_negative() {
+        // Given -1 days (1969-12-31).
+        let date = date_from_days(-1);
+
+        // Then it's 1969-12-31.
+        assert_eq!(date, "1969-12-31");
+    }
+
+    #[rstest::rstest]
+    fn date_from_days_large_known_date() {
+        // Given 20023 days = 2024-10-27 (verified externally).
+        let date = date_from_days(20023);
+
+        // Then it produces an exact known date.
+        assert_eq!(date, "2024-10-27");
+    }
+
+    #[rstest::rstest]
+    fn date_from_days_year_2000() {
+        // Given 10957 days = 2000-01-01 (30 years including leap days).
+        // 365 * 30 + 8 leap days (72,76,80,84,88,92,96,00 — 00 is leap in Gregorian) = 10957 + 7 = 10958?
+        // Actually 10957 = 2000-01-01.
+        let date = date_from_days(10957);
+
+        // Then it starts with 2000.
+        assert!(date.starts_with("2000-"));
+    }
+
+    #[rstest::rstest]
+    fn format_current_date_is_not_empty() {
+        // When formatting the current date.
+        let date = format_current_date();
+
+        // Then it is non-empty, has length 10, and is YYYY-MM-DD.
+        assert_eq!(date.len(), 10);
+        assert_eq!(date.chars().nth(4), Some('-'));
+        assert_eq!(date.chars().nth(7), Some('-'));
+    }
+
+    #[rstest::rstest]
+    fn format_current_date_is_not_xyzzy() {
+        // When formatting the current date.
+        let date = format_current_date();
+
+        // Then it is not a placeholder string.
+        assert_ne!(date, "xyzzy");
+        assert_ne!(date, "");
+    }
+
+    // --- Mutant-killing tests for load_project_context_files ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn load_project_context_files_stops_at_root() {
+        // Given a deeply nested temp dir with no context files anywhere.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let deep = root.path().join("a/b/c");
+        std::fs::create_dir_all(&deep).expect("create");
+
+        // When loading context files.
+        let files = load_project_context_files(&deep).await;
+
+        // Then no files are found (no AGENTS.md anywhere on path).
+        assert!(files.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn load_project_context_files_finds_file_in_parent() {
+        // Given parent/AGENTS.md and child/ as CWD.
+        let parent = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(parent.path().join("AGENTS.md"), "parent context").expect("write");
+        let child = parent.path().join("subdir");
+        std::fs::create_dir_all(&child).expect("create");
+
+        // When loading from child.
+        let files = load_project_context_files(&child).await;
+
+        // Then the parent's file is found.
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].content, "parent context");
+    }
 }

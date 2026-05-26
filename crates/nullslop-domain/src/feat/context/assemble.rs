@@ -799,4 +799,215 @@ mod tests {
             "regular sessions should not have task_complete, got: {tool_names:?}"
         );
     }
+
+    // --- Mutant-killing tests ---
+
+    #[test]
+    fn assemble_prompt_uses_matching_persona() {
+        // Given a session with persona "custom" and a persona list containing "custom".
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
+        {
+            let mut guard = state.write();
+            guard.context.personas.push(crate::feat::persona::Persona {
+                name: "custom".to_owned(),
+                description: "Custom persona".to_owned(),
+                body: "You are a custom persona.".to_owned(),
+                file_path: std::path::PathBuf::from("/custom.md"),
+            });
+            guard
+                .session
+                .get_mut(&session_id)
+                .expect("session exists")
+                .set_persona_name("custom".to_owned());
+        }
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then the system message contains the custom persona body.
+        match &result.messages[0] {
+            LlmMessage::System { content } => {
+                assert!(
+                    content.contains("You are a custom persona."),
+                    "should contain custom persona body, got: {content}"
+                );
+            }
+            other => panic!("expected System message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_prompt_falls_back_to_coding_assistant_persona() {
+        // Given a session with persona name "nonexistent" but "coding-assistant" is available.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
+        {
+            let mut guard = state.write();
+            guard.context.personas.push(crate::feat::persona::Persona {
+                name: "coding-assistant".to_owned(),
+                description: "Default".to_owned(),
+                body: "You are a coding assistant.".to_owned(),
+                file_path: std::path::PathBuf::from("/coding.md"),
+            });
+            guard
+                .session
+                .get_mut(&session_id)
+                .expect("session exists")
+                .set_persona_name("nonexistent".to_owned());
+        }
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then the system message contains the coding-assistant fallback.
+        match &result.messages[0] {
+            LlmMessage::System { content } => {
+                assert!(
+                    content.contains("You are a coding assistant."),
+                    "should contain coding-assistant fallback, got: {content}"
+                );
+            }
+            other => panic!("expected System message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_prompt_includes_pinned_system_entry_in_system_message() {
+        // Given a session with a top-pinned System entry.
+        let mut sys_entry = ChatEntry::system("Custom system instructions");
+        sys_entry.pin_position = Some(PinPosition::Top);
+        let user = ChatEntry::user("hello");
+        let (state, session_id) = state_with_history(vec![sys_entry, user]);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then the system message contains the pinned system content.
+        match &result.messages[0] {
+            LlmMessage::System { content } => {
+                assert!(
+                    content.contains("Custom system instructions"),
+                    "should contain pinned system entry, got: {content}"
+                );
+            }
+            other => panic!("expected System message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_prompt_excludes_pinned_system_from_non_system_messages() {
+        // Given a session with a top-pinned System entry and a top-pinned User entry.
+        let mut sys_entry = ChatEntry::system("System stuff");
+        sys_entry.pin_position = Some(PinPosition::Top);
+        let mut user_pin = ChatEntry::user("pinned user");
+        user_pin.pin_position = Some(PinPosition::Top);
+        let (state, session_id) = state_with_history(vec![sys_entry, user_pin]);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then the system message contains the system entry content.
+        let system_msg = result
+            .messages
+            .iter()
+            .find(|m| matches!(m, LlmMessage::System { .. }));
+        assert!(
+            system_msg.is_some(),
+            "should have a system message"
+        );
+        if let LlmMessage::System { content } = system_msg.expect("checked") {
+            assert!(content.contains("System stuff"));
+        }
+
+        // And the pinned user message appears as a separate User message (not merged into system).
+        let user_msgs: Vec<_> = result
+            .messages
+            .iter()
+            .filter(|m| matches!(m, LlmMessage::User { .. }))
+            .collect();
+        assert!(
+            user_msgs.iter().any(|m| {
+                if let LlmMessage::User { content } = m {
+                    content == "pinned user"
+                } else {
+                    false
+                }
+            }),
+            "pinned user message should appear as User: {user_msgs:?}"
+        );
+    }
+
+    #[test]
+    fn assemble_prompt_bottom_pins_placed_before_last_message() {
+        // Given a session with multiple bottom-pinned entries and a user message.
+        let mut bottom1 = ChatEntry::assistant("bottom-1");
+        bottom1.pin_position = Some(PinPosition::Bottom);
+        let mut bottom2 = ChatEntry::assistant("bottom-2");
+        bottom2.pin_position = Some(PinPosition::Bottom);
+        let user = ChatEntry::user("the last msg");
+        let (state, session_id) = state_with_history(vec![bottom1, bottom2, user]);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then the last message is the user message (bottom pins are inserted before it).
+        let last = result.messages.last().expect("has messages");
+        if let LlmMessage::User { content } = last {
+            assert_eq!(content, "the last msg");
+        } else {
+            panic!("expected User as last message, got {last:?}");
+        }
+
+        // And both bottom pins appear before the last message.
+        let n = result.messages.len();
+        let assistant_contents: Vec<&str> = result.messages[..n - 1]
+            .iter()
+            .filter_map(|m| match m {
+                LlmMessage::Assistant { content, .. } => Some(content.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            assistant_contents.contains(&"bottom-1"),
+            "bottom-1 should appear before last msg"
+        );
+        assert!(
+            assistant_contents.contains(&"bottom-2"),
+            "bottom-2 should appear before last msg"
+        );
+    }
+
+    #[test]
+    fn assemble_prompt_top_pin_not_in_working_history() {
+        // Given a session with a top-pinned entry that is NOT a system entry.
+        let mut top_user = ChatEntry::user("top pinned user");
+        top_user.pin_position = Some(PinPosition::Top);
+        let working_user = ChatEntry::user("working user");
+        let (state, session_id) = state_with_history(vec![top_user, working_user]);
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then the top-pinned user message appears exactly once (not duplicated in working history).
+        let user_msg_count = result
+            .messages
+            .iter()
+            .filter(|m| {
+                if let LlmMessage::User { content } = m {
+                    content == "top pinned user"
+                } else {
+                    false
+                }
+            })
+            .count();
+        assert_eq!(
+            user_msg_count, 1,
+            "top pinned user should appear exactly once, appeared {user_msg_count}"
+        );
+    }
 }
