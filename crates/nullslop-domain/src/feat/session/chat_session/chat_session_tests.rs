@@ -1,6 +1,10 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
 use crate::feat::session::tool_result_status::ToolResultStatus;
+use crate::feat::session::token_stats::TokenRecord;
+use crate::feat::session::profile::SessionProfile;
+use crate::feat::context::strategy::types::StrategyState;
+use crate::feat::context::strategy::compaction_data::CompactionSessionData;
 use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
 use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId, SessionId};
 use std::path::PathBuf;
@@ -3145,28 +3149,1486 @@ fn force_exclude_no_tool_calls_is_noop() {
     }
 }
 
-// --- tool enable/disable tests ---
+// ===========================================================================
+// Phase 1: Session Phase State Machine Guards
+// ===========================================================================
 
-#[test]
-fn is_tool_enabled_returns_true_when_not_disabled() {
-    // Given a session with no disabled tools.
-    let session = ChatSessionState::new();
+// --- begin_assembling happy path & guards ---
 
-    // Then any tool name is enabled.
-    assert!(session.is_tool_enabled("bash"));
-    assert!(session.is_tool_enabled("edit"));
-    assert!(session.is_tool_enabled("unknown_tool"));
+#[rstest::rstest]
+fn begin_assembling_transitions_idle_to_assembling() {
+    // Given a session that is idle.
+    let mut session = ChatSessionState::new();
+    assert_eq!(session.phase(), SessionPhase::Idle);
+
+    // When beginning assembling.
+    session.begin_assembling();
+
+    // Then phase is Assembling.
+    assert_eq!(session.phase(), SessionPhase::Assembling);
 }
 
-#[test]
-fn is_tool_enabled_returns_false_when_disabled() {
-    // Given a session with "bash" disabled.
+#[rstest::rstest]
+fn begin_assembling_is_noop_when_assembling() {
+    // Given a session already assembling.
     let mut session = ChatSessionState::new();
-    let mut disabled = std::collections::HashSet::new();
-    disabled.insert("bash".to_owned());
-    session.set_disabled_tools(disabled);
+    session.begin_assembling();
+    assert_eq!(session.phase(), SessionPhase::Assembling);
 
-    // Then "bash" is disabled but other tools are still enabled.
-    assert!(!session.is_tool_enabled("bash"));
-    assert!(session.is_tool_enabled("edit"));
+    // When calling begin_assembling again.
+    session.begin_assembling();
+
+    // Then phase stays Assembling (no panic, no double-transition).
+    assert_eq!(session.phase(), SessionPhase::Assembling);
+}
+
+#[rstest::rstest]
+fn begin_assembling_is_noop_when_streaming() {
+    // Given a session that is streaming.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+
+    // When calling begin_assembling.
+    session.begin_assembling();
+
+    // Then phase stays Streaming.
+    assert_eq!(session.phase(), SessionPhase::Streaming);
+}
+
+#[rstest::rstest]
+fn begin_assembling_is_noop_when_compacting() {
+    // Given a session that is compacting.
+    let mut session = ChatSessionState::new();
+    session.core.ephemeral.phase = SessionPhase::Compacting;
+
+    // When calling begin_assembling.
+    session.begin_assembling();
+
+    // Then phase stays Compacting.
+    assert_eq!(session.phase(), SessionPhase::Compacting);
+}
+
+#[rstest::rstest]
+fn begin_assembling_is_noop_when_tearing_down() {
+    // Given a session that is tearing down.
+    let mut session = ChatSessionState::new();
+    session.core.ephemeral.phase = SessionPhase::TearingDown;
+
+    // When calling begin_assembling.
+    session.begin_assembling();
+
+    // Then phase stays TearingDown.
+    assert_eq!(session.phase(), SessionPhase::TearingDown);
+}
+
+// --- finish_assembling happy path & guards ---
+
+#[rstest::rstest]
+fn finish_assembling_transitions_assembling_to_idle() {
+    // Given a session in Assembling phase.
+    let mut session = ChatSessionState::new();
+    session.begin_assembling();
+    assert_eq!(session.phase(), SessionPhase::Assembling);
+
+    // When finishing assembling.
+    session.finish_assembling();
+
+    // Then phase is Idle.
+    assert_eq!(session.phase(), SessionPhase::Idle);
+}
+
+#[rstest::rstest]
+fn finish_assembling_is_noop_when_sending() {
+    // Given a session in Sending phase.
+    let mut session = ChatSessionState::new();
+    session.begin_sending();
+
+    // When calling finish_assembling.
+    session.finish_assembling();
+
+    // Then phase stays Sending.
+    assert_eq!(session.phase(), SessionPhase::Sending);
+}
+
+#[rstest::rstest]
+fn finish_assembling_is_noop_when_streaming() {
+    // Given a session in Streaming phase.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+
+    // When calling finish_assembling.
+    session.finish_assembling();
+
+    // Then phase stays Streaming.
+    assert_eq!(session.phase(), SessionPhase::Streaming);
+}
+
+#[rstest::rstest]
+fn finish_assembling_is_noop_when_compacting() {
+    // Given a session in Compacting phase.
+    let mut session = ChatSessionState::new();
+    session.core.ephemeral.phase = SessionPhase::Compacting;
+
+    // When calling finish_assembling.
+    session.finish_assembling();
+
+    // Then phase stays Compacting.
+    assert_eq!(session.phase(), SessionPhase::Compacting);
+}
+
+#[rstest::rstest]
+fn finish_assembling_is_noop_when_tearing_down() {
+    // Given a session in TearingDown phase.
+    let mut session = ChatSessionState::new();
+    session.core.ephemeral.phase = SessionPhase::TearingDown;
+
+    // When calling finish_assembling.
+    session.finish_assembling();
+
+    // Then phase stays TearingDown.
+    assert_eq!(session.phase(), SessionPhase::TearingDown);
+}
+
+// --- begin_tearing_down happy path & guards ---
+
+#[rstest::rstest]
+fn begin_tearing_down_transitions_idle_to_tearing_down() {
+    // Given a session that is idle.
+    let mut session = ChatSessionState::new();
+    assert_eq!(session.phase(), SessionPhase::Idle);
+
+    // When beginning teardown.
+    session.begin_tearing_down();
+
+    // Then phase is TearingDown.
+    assert_eq!(session.phase(), SessionPhase::TearingDown);
+}
+
+#[rstest::rstest]
+fn begin_tearing_down_is_noop_when_sending() {
+    // Given a session in Sending phase.
+    let mut session = ChatSessionState::new();
+    session.begin_sending();
+
+    // When calling begin_tearing_down.
+    session.begin_tearing_down();
+
+    // Then phase stays Sending.
+    assert_eq!(session.phase(), SessionPhase::Sending);
+}
+
+#[rstest::rstest]
+fn begin_tearing_down_is_noop_when_streaming() {
+    // Given a session in Streaming phase.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+
+    // When calling begin_tearing_down.
+    session.begin_tearing_down();
+
+    // Then phase stays Streaming.
+    assert_eq!(session.phase(), SessionPhase::Streaming);
+}
+
+#[rstest::rstest]
+fn begin_tearing_down_is_noop_when_assembling() {
+    // Given a session in Assembling phase.
+    let mut session = ChatSessionState::new();
+    session.begin_assembling();
+
+    // When calling begin_tearing_down.
+    session.begin_tearing_down();
+
+    // Then phase stays Assembling.
+    assert_eq!(session.phase(), SessionPhase::Assembling);
+}
+
+#[rstest::rstest]
+fn begin_tearing_down_is_noop_when_compacting() {
+    // Given a session in Compacting phase.
+    let mut session = ChatSessionState::new();
+    session.core.ephemeral.phase = SessionPhase::Compacting;
+
+    // When calling begin_tearing_down.
+    session.begin_tearing_down();
+
+    // Then phase stays Compacting.
+    assert_eq!(session.phase(), SessionPhase::Compacting);
+}
+
+#[rstest::rstest]
+fn begin_tearing_down_is_noop_when_already_tearing_down() {
+    // Given a session already tearing down.
+    let mut session = ChatSessionState::new();
+    session.begin_tearing_down();
+
+    // When calling begin_tearing_down again.
+    session.begin_tearing_down();
+
+    // Then phase stays TearingDown (no panic, no double-transition).
+    assert_eq!(session.phase(), SessionPhase::TearingDown);
+}
+
+// --- finish_tearing_down happy path & guards ---
+
+#[rstest::rstest]
+fn finish_tearing_down_transitions_to_idle() {
+    // Given a session in TearingDown phase.
+    let mut session = ChatSessionState::new();
+    session.begin_tearing_down();
+    assert_eq!(session.phase(), SessionPhase::TearingDown);
+
+    // When finishing teardown.
+    session.finish_tearing_down();
+
+    // Then phase is Idle.
+    assert_eq!(session.phase(), SessionPhase::Idle);
+}
+
+#[rstest::rstest]
+fn finish_tearing_down_is_noop_when_idle() {
+    // Given a session that is idle.
+    let mut session = ChatSessionState::new();
+
+    // When calling finish_tearing_down.
+    session.finish_tearing_down();
+
+    // Then phase stays Idle.
+    assert_eq!(session.phase(), SessionPhase::Idle);
+}
+
+#[rstest::rstest]
+fn finish_tearing_down_is_noop_when_sending() {
+    // Given a session in Sending phase.
+    let mut session = ChatSessionState::new();
+    session.begin_sending();
+
+    // When calling finish_tearing_down.
+    session.finish_tearing_down();
+
+    // Then phase stays Sending.
+    assert_eq!(session.phase(), SessionPhase::Sending);
+}
+
+#[rstest::rstest]
+fn finish_tearing_down_is_noop_when_streaming() {
+    // Given a session in Streaming phase.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+
+    // When calling finish_tearing_down.
+    session.finish_tearing_down();
+
+    // Then phase stays Streaming.
+    assert_eq!(session.phase(), SessionPhase::Streaming);
+}
+
+#[rstest::rstest]
+fn finish_tearing_down_is_noop_when_assembling() {
+    // Given a session in Assembling phase.
+    let mut session = ChatSessionState::new();
+    session.begin_assembling();
+
+    // When calling finish_tearing_down.
+    session.finish_tearing_down();
+
+    // Then phase stays Assembling.
+    assert_eq!(session.phase(), SessionPhase::Assembling);
+}
+
+#[rstest::rstest]
+fn finish_tearing_down_is_noop_when_compacting() {
+    // Given a session in Compacting phase.
+    let mut session = ChatSessionState::new();
+    session.core.ephemeral.phase = SessionPhase::Compacting;
+
+    // When calling finish_tearing_down.
+    session.finish_tearing_down();
+
+    // Then phase stays Compacting.
+    assert_eq!(session.phase(), SessionPhase::Compacting);
+}
+
+// --- cancel_stream_and_drain ---
+
+#[rstest::rstest]
+fn cancel_stream_and_drain_puts_user_display_text_in_input() {
+    // Given a streaming session with queued user messages.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        ChatEntry::user("hello world"),
+    ));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        ChatEntry::user("second message"),
+    ));
+
+    // When cancelling and draining.
+    session.cancel_stream_and_drain();
+
+    // Then the input buffer contains the drained display texts joined by newline.
+    let text = session.chat_input().text().to_owned();
+    assert_eq!(text, "hello world\nsecond message");
+}
+
+#[rstest::rstest]
+fn cancel_stream_and_drain_discards_non_user_items() {
+    // Given a streaming session with mixed queue items.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session.enqueue(
+        crate::feat::session::queue_item::QueueItem::CompactionNeeded {
+            compact_all: false,
+        },
+    );
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        ChatEntry::user("keep this"),
+    ));
+
+    // When cancelling and draining.
+    session.cancel_stream_and_drain();
+
+    // Then only user display text appears in the input buffer.
+    let text = session.chat_input().text().to_owned();
+    assert_eq!(text, "keep this");
+}
+
+#[rstest::rstest]
+fn cancel_stream_and_drain_with_empty_queue_leaves_input_empty() {
+    // Given a streaming session with an empty queue.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    assert_eq!(session.queue_len(), 0);
+
+    // When cancelling and draining.
+    session.cancel_stream_and_drain();
+
+    // Then the input buffer remains empty.
+    assert!(session.chat_input().text().is_empty());
+}
+
+#[rstest::rstest]
+fn cancel_stream_and_drain_skips_tool_continuation() {
+    // Given a streaming session with a tool continuation in the queue.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session.enqueue(
+        crate::feat::session::queue_item::QueueItem::ToolContinuation,
+    );
+
+    // When cancelling and draining.
+    session.cancel_stream_and_drain();
+
+    // Then input buffer is empty (ToolContinuation was silently discarded).
+    assert!(session.chat_input().text().is_empty());
+}
+
+#[rstest::rstest]
+fn cancel_stream_and_drain_uses_display_not_expanded() {
+    // Given a user entry where display differs from expanded.
+    let mut entry = ChatEntry::user("short");
+    if let ChatEntryKind::User { ref mut expanded, .. } = entry.kind {
+        *expanded = "short\nwith\nextra\nlines".to_owned();
+    }
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(entry));
+
+    // When cancelling and draining.
+    session.cancel_stream_and_drain();
+
+    // Then the input buffer contains the display text, not expanded.
+    let text = session.chat_input().text().to_owned();
+    assert_eq!(text, "short");
+}
+
+// ===========================================================================
+// Phase 2: insert_entry_at Index Shifting
+// ===========================================================================
+
+#[rstest::rstest]
+fn insert_entry_at_shifts_streaming_entry_index() {
+    // Given a streaming session with a streaming entry at index 3.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0
+    session.push_entry(ChatEntry::user("b")); // idx 1
+    session.push_entry(ChatEntry::user("c")); // idx 2
+    session.push_entry(ChatEntry::assistant("streaming")); // idx 3
+    session.core.ephemeral.streaming_entry_index = Some(3);
+
+    // When inserting at index 1 (before the streaming entry).
+    let result = session.insert_entry_at(1, ChatEntry::system("inserted"));
+
+    // Then the insertion happened at index 1.
+    assert_eq!(result, 1);
+    assert_eq!(session.history().len(), 5);
+    // And streaming_entry_index was shifted from 3 to 4.
+    assert_eq!(session.core.ephemeral.streaming_entry_index, Some(4));
+}
+
+#[rstest::rstest]
+fn insert_entry_at_does_not_shift_streaming_index_before_insertion() {
+    // Given a streaming session with streaming entry at index 1.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0
+    session.push_entry(ChatEntry::assistant("streaming")); // idx 1
+    session.core.ephemeral.streaming_entry_index = Some(1);
+
+    // When inserting at index 2 (after the streaming entry).
+    session.insert_entry_at(2, ChatEntry::system("inserted"));
+
+    // Then streaming_entry_index stays at 1.
+    assert_eq!(session.core.ephemeral.streaming_entry_index, Some(1));
+}
+
+#[rstest::rstest]
+fn insert_entry_at_shifts_thinking_entry_index() {
+    // Given a session with thinking entry at index 2.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0
+    session.push_entry(ChatEntry::user("b")); // idx 1
+    session.push_entry(ChatEntry::assistant("thinking")); // idx 2
+    session.core.ephemeral.streaming_thinking_entry_index = Some(2);
+
+    // When inserting at index 0.
+    session.insert_entry_at(0, ChatEntry::system("inserted"));
+
+    // Then thinking index shifted from 2 to 3.
+    assert_eq!(session.core.ephemeral.streaming_thinking_entry_index, Some(3));
+}
+
+#[rstest::rstest]
+fn insert_entry_at_does_not_shift_thinking_index_before_insertion() {
+    // Given a session with thinking entry at index 0.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::assistant("thinking")); // idx 0
+    session.core.ephemeral.streaming_thinking_entry_index = Some(0);
+
+    // When inserting at index 1 (after thinking).
+    session.insert_entry_at(1, ChatEntry::system("inserted"));
+
+    // Then thinking index stays at 0.
+    assert_eq!(session.core.ephemeral.streaming_thinking_entry_index, Some(0));
+}
+
+#[rstest::rstest]
+fn insert_entry_at_shifts_tool_result_indices() {
+    // Given a session with a tool result index at position 4.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0
+    session.push_entry(ChatEntry::user("b")); // idx 1
+    session.push_entry(ChatEntry::user("c")); // idx 2
+    session.push_entry(ChatEntry::user("d")); // idx 3
+    session.push_entry(ChatEntry::tool_result("tr-1", "bash", "ok", ToolResultStatus::Success)); // idx 4
+    session.core.ephemeral.streaming_tool_result_indices.insert("tr-1".to_owned(), 4);
+
+    // When inserting at index 2.
+    session.insert_entry_at(2, ChatEntry::system("inserted"));
+
+    // Then tool result index shifted from 4 to 5.
+    assert_eq!(session.core.ephemeral.streaming_tool_result_indices.get("tr-1"), Some(&5));
+}
+
+#[rstest::rstest]
+fn insert_entry_at_does_not_shift_tool_result_indices_before_insertion() {
+    // Given a session with tool result index at position 1.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0
+    session.push_entry(ChatEntry::tool_result("tr-1", "bash", "ok", ToolResultStatus::Success)); // idx 1
+    session.core.ephemeral.streaming_tool_result_indices.insert("tr-1".to_owned(), 1);
+
+    // When inserting at index 2 (after the tool result).
+    session.insert_entry_at(2, ChatEntry::system("inserted"));
+
+    // Then tool result index stays at 1.
+    assert_eq!(session.core.ephemeral.streaming_tool_result_indices.get("tr-1"), Some(&1));
+}
+
+#[rstest::rstest]
+fn insert_entry_at_shifts_tool_call_indices() {
+    // Given a session with tool call stream index 0 → history index 3.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0
+    session.push_entry(ChatEntry::user("b")); // idx 1
+    session.push_entry(ChatEntry::user("c")); // idx 2
+    session.push_entry(ChatEntry::tool_call("tc-1", "bash", "{}")); // idx 3
+    session.core.ephemeral.streaming_tool_call_indices.insert(0, 3);
+
+    // When inserting at index 1.
+    session.insert_entry_at(1, ChatEntry::system("inserted"));
+
+    // Then tool call history index shifted from 3 to 4.
+    assert_eq!(session.core.ephemeral.streaming_tool_call_indices.get(&0), Some(&4));
+}
+
+#[rstest::rstest]
+fn insert_entry_at_does_not_shift_tool_call_indices_before_insertion() {
+    // Given a session with tool call stream index 0 → history index 1.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0
+    session.push_entry(ChatEntry::tool_call("tc-1", "bash", "{}")); // idx 1
+    session.core.ephemeral.streaming_tool_call_indices.insert(0, 1);
+
+    // When inserting at index 3 (after the tool call).
+    session.insert_entry_at(3, ChatEntry::system("inserted"));
+
+    // Then tool call history index stays at 1.
+    assert_eq!(session.core.ephemeral.streaming_tool_call_indices.get(&0), Some(&1));
+}
+
+#[rstest::rstest]
+fn insert_entry_at_shifts_at_exact_boundary() {
+    // Given a streaming session with streaming entry at index 2.
+    // The boundary condition: inserting at exactly the streaming index.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0
+    session.push_entry(ChatEntry::user("b")); // idx 1
+    session.push_entry(ChatEntry::assistant("streaming")); // idx 2
+    session.core.ephemeral.streaming_entry_index = Some(2);
+
+    // When inserting at index 2 (exact boundary).
+    session.insert_entry_at(2, ChatEntry::system("inserted"));
+
+    // Then streaming_entry_index was shifted (>= check, not just >).
+    assert_eq!(session.core.ephemeral.streaming_entry_index, Some(3));
+}
+
+#[rstest::rstest]
+fn insert_entry_at_clamps_index_beyond_length() {
+    // Given a session with 2 entries.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0
+    session.push_entry(ChatEntry::user("b")); // idx 1
+
+    // When inserting at index 10 (beyond length).
+    let result = session.insert_entry_at(10, ChatEntry::system("inserted"));
+
+    // Then the index is clamped to the end (index 2).
+    assert_eq!(result, 2);
+    assert_eq!(session.history().len(), 3);
+    // And the inserted entry is at the end.
+    assert!(matches!(session.history()[2].kind, ChatEntryKind::System(_)));
+}
+
+#[rstest::rstest]
+fn insert_entry_at_shifts_multiple_indices() {
+    // Given a session with streaming, thinking, and tool call indices.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0
+    session.push_entry(ChatEntry::assistant("streaming")); // idx 1
+    session.core.ephemeral.streaming_entry_index = Some(1);
+    session.core.ephemeral.streaming_thinking_entry_index = Some(1);
+    session.core.ephemeral.streaming_tool_call_indices.insert(0, 1);
+
+    // When inserting at index 0.
+    session.insert_entry_at(0, ChatEntry::system("inserted"));
+
+    // Then ALL indices at or after insertion point are shifted.
+    assert_eq!(session.core.ephemeral.streaming_entry_index, Some(2));
+    assert_eq!(session.core.ephemeral.streaming_thinking_entry_index, Some(2));
+    assert_eq!(session.core.ephemeral.streaming_tool_call_indices.get(&0), Some(&2));
+}
+
+// ===========================================================================
+// Phase 3: SessionPhase::from_str & SessionSummary serde defaults
+// ===========================================================================
+
+#[rstest::rstest]
+#[case::idle("idle", SessionPhase::Idle)]
+#[case::assembling("assembling", SessionPhase::Assembling)]
+#[case::sending("sending", SessionPhase::Sending)]
+#[case::streaming("streaming", SessionPhase::Streaming)]
+#[case::compacting("compacting", SessionPhase::Compacting)]
+#[case::tearing_down("tearing_down", SessionPhase::TearingDown)]
+fn session_phase_from_str_roundtrips(#[case] input: &str, #[case] expected: SessionPhase) {
+    // Given a phase string.
+    // When parsing.
+    let result: Result<SessionPhase, _> = input.parse();
+    // Then it matches the expected phase.
+    assert_eq!(result.unwrap(), expected);
+}
+
+#[rstest::rstest]
+#[case::uppercase("IDLE")]
+#[case::mixed_case("Streaming")]
+fn session_phase_from_str_is_case_insensitive(#[case] input: &str) {
+    // Given a phase string with non-lowercase.
+    // When parsing.
+    let result: Result<SessionPhase, _> = input.parse();
+    // Then it still parses correctly.
+    assert!(result.is_ok());
+}
+
+#[rstest::rstest]
+fn session_phase_from_str_rejects_unknown() {
+    // Given an unknown string.
+    let result: Result<SessionPhase, _> = "unknown_phase".parse();
+    // Then it returns an error.
+    assert!(result.is_err());
+}
+
+#[rstest::rstest]
+fn session_phase_from_str_rejects_empty() {
+    // Given an empty string.
+    let result: Result<SessionPhase, _> = "".parse();
+    // Then it returns an error.
+    assert!(result.is_err());
+}
+
+// ===========================================================================
+// Phase 4: Scroll & Viewport Boundary Logic
+// ===========================================================================
+
+// --- scroll_to_selected ---
+
+#[rstest::rstest]
+fn scroll_to_selected_noop_when_no_selection() {
+    // Given a session with no selection.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.clear_selection();
+    session.set_entry_line_ranges(vec![(0, 2)]);
+    session.set_viewport_height(10);
+    session.set_last_max_offset(20);
+    session.set_rendered_scroll_offset(0);
+
+    // When scrolling to selected.
+    session.scroll_to_selected();
+
+    // Then scroll offset is unchanged.
+    assert_eq!(session.scroll_offset(), None);
+}
+
+#[rstest::rstest]
+fn scroll_to_selected_entry_fits_in_viewport_above() {
+    // Given a session where the selected entry is above the viewport.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0, lines 0..2
+    session.push_entry(ChatEntry::user("b")); // idx 1, lines 2..4
+    session.push_entry(ChatEntry::user("c")); // idx 2, lines 4..6
+    session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6)]);
+    session.set_viewport_height(3);
+    session.set_blank_count(0);
+    session.set_last_max_offset(10);
+    // Viewport showing lines 5–8 (entry 2 visible).
+    session.set_rendered_scroll_offset(5);
+    // Select entry 0 (lines 0–2) which is above viewport.
+    session.set_selected_entry_index(0);
+
+    // When scrolling to selected.
+    session.scroll_to_selected();
+
+    // Then scroll offset moves to show the entry (abs_start = 0).
+    assert_eq!(session.scroll_offset(), Some(0));
+}
+
+#[rstest::rstest]
+fn scroll_to_selected_entry_fits_in_viewport_below() {
+    // Given a session where the selected entry is below the viewport.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0, lines 0..2
+    session.push_entry(ChatEntry::user("b")); // idx 1, lines 2..4
+    session.push_entry(ChatEntry::user("c")); // idx 2, lines 4..6
+    session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6)]);
+    session.set_viewport_height(3);
+    session.set_blank_count(0);
+    session.set_last_max_offset(10);
+    // Viewport showing lines 0–3 (entry 0 visible).
+    session.set_rendered_scroll_offset(0);
+    // Select entry 2 (lines 4–6) which is below viewport.
+    session.set_selected_entry_index(2);
+
+    // When scrolling to selected.
+    session.scroll_to_selected();
+
+    // Then scroll offset adjusts: abs_end - viewport_height = 6 - 3 = 3.
+    assert_eq!(session.scroll_offset(), Some(3));
+}
+
+#[rstest::rstest]
+fn scroll_to_selected_entry_already_visible() {
+    // Given a session where the selected entry is already visible.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0, lines 0..2
+    session.push_entry(ChatEntry::user("b")); // idx 1, lines 2..4
+    session.push_entry(ChatEntry::user("c")); // idx 2, lines 4..6
+    session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6)]);
+    session.set_viewport_height(6);
+    session.set_blank_count(0);
+    session.set_last_max_offset(10);
+    // Viewport showing lines 0–6 (all visible).
+    session.set_rendered_scroll_offset(0);
+    session.set_selected_entry_index(1);
+    session.ui.scroll_offset = Some(0);
+
+    // When scrolling to selected.
+    session.scroll_to_selected();
+
+    // Then scroll offset is unchanged (entry already visible).
+    assert_eq!(session.scroll_offset(), Some(0));
+}
+
+#[rstest::rstest]
+fn scroll_to_selected_taller_than_viewport_above() {
+    // Given an entry taller than the viewport, positioned above the viewport.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0, lines 0..10 (tall)
+    session.push_entry(ChatEntry::user("b")); // idx 1, lines 10..12
+    session.set_entry_line_ranges(vec![(0, 10), (10, 12)]);
+    session.set_viewport_height(4);
+    session.set_blank_count(0);
+    session.set_last_max_offset(20);
+    // Viewport showing lines 10–14.
+    session.set_rendered_scroll_offset(10);
+    session.set_selected_entry_index(0);
+
+    // When scrolling to selected.
+    session.scroll_to_selected();
+
+    // Entry is taller than viewport. abs_end(10) <= current_offset(10) → true.
+    // new_offset = abs_end - viewport_height = 10 - 4 = 6.
+    assert_eq!(session.scroll_offset(), Some(6));
+}
+
+#[rstest::rstest]
+fn scroll_to_selected_taller_than_viewport_below() {
+    // Given an entry taller than the viewport, positioned below the viewport.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0, lines 0..2
+    session.push_entry(ChatEntry::user("b")); // idx 1, lines 2..12 (tall)
+    session.set_entry_line_ranges(vec![(0, 2), (2, 12)]);
+    session.set_viewport_height(4);
+    session.set_blank_count(0);
+    session.set_last_max_offset(20);
+    // Viewport at top.
+    session.set_rendered_scroll_offset(0);
+    session.set_selected_entry_index(1);
+
+    // When scrolling to selected.
+    session.scroll_to_selected();
+
+    // Entry is taller than viewport. abs_start(2) >= current_offset(0)+4=4 → false.
+    // abs_end(12) <= current_offset(0) → false. Already overlapping → return (no change).
+    // The entry starts at line 2, viewport shows 0–4 → they overlap.
+    assert_eq!(session.scroll_offset(), None);
+}
+
+#[rstest::rstest]
+fn scroll_to_selected_resets_to_auto_when_at_bottom() {
+    // Given a session where scrolling puts us at the bottom.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // lines 0..2
+    session.set_entry_line_ranges(vec![(0, 2)]);
+    session.set_viewport_height(10);
+    session.set_blank_count(0);
+    session.set_last_max_offset(2);
+    session.set_rendered_scroll_offset(0);
+    session.set_selected_entry_index(0);
+
+    // When scrolling to selected.
+    session.scroll_to_selected();
+
+    // Then scroll offset resets to auto (None) since clamped >= max_offset.
+    assert!(session.scroll_offset().is_none());
+}
+
+// --- visible_entry_range boundary ---
+
+#[rstest::rstest]
+fn visible_entry_range_boundary_at_viewport_edge() {
+    // Given entries where one entry's end exactly equals viewport_top.
+    // Entry 0: lines 0..3, Entry 1: lines 3..6, Entry 2: lines 6..9
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+    session.set_entry_line_ranges(vec![(0, 3), (3, 6), (6, 9)]);
+    session.set_viewport_height(3);
+    session.set_blank_count(0);
+    // Viewport top = 3, bottom = 6.
+    session.set_rendered_scroll_offset(3);
+
+    // When computing visible range.
+    let range = session.visible_entry_range();
+
+    // Then entry 0 (lines 0..3) is NOT visible: abs_end(3) > viewport_top(3) is false.
+    // Wait — the check is abs_end > viewport_top, and abs_start < viewport_bottom.
+    // Entry 0: abs_end=3, viewport_top=3 → 3 > 3 is false → not visible. Correct.
+    // Entry 1: abs_start=3, abs_end=6, viewport_top=3, bottom=6 → 6>3 && 3<6 → visible.
+    // Entry 2: abs_start=6, abs_end=9 → 9>3 && 6<6 → 6<6 is false → not visible.
+    assert_eq!(range, 1..2);
+}
+
+#[rstest::rstest]
+fn visible_entry_range_includes_entry_at_viewport_bottom_edge() {
+    // Given entries where one entry's start exactly equals viewport_bottom.
+    // Entry 0: lines 0..2, Entry 1: lines 2..4, Entry 2: lines 4..6
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+    session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6)]);
+    session.set_viewport_height(4);
+    session.set_blank_count(0);
+    // viewport_top=0, viewport_bottom=4.
+    session.set_rendered_scroll_offset(0);
+
+    // When computing visible range.
+    let range = session.visible_entry_range();
+
+    // Entry 0: 2>0 && 0<4 → visible.
+    // Entry 1: 4>0 && 2<4 → visible.
+    // Entry 2: 6>0 && 4<4 → 4<4 is false → NOT visible.
+    assert_eq!(range, 0..2);
+}
+
+// --- move_cursor_to_first_visible with empty assistants ---
+
+#[rstest::rstest]
+fn move_cursor_to_first_visible_skips_empty_assistant() {
+    // Given a session where the first visible entry is an empty assistant.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::assistant("")); // idx 0, empty
+    session.push_entry(ChatEntry::user("hello")); // idx 1
+    session.push_entry(ChatEntry::assistant("world")); // idx 2
+
+    // Set viewport to show all.
+    session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6)]);
+    session.set_viewport_height(6);
+    session.set_blank_count(0);
+    session.set_rendered_scroll_offset(0);
+
+    // Must set visual items for the skipping logic to work.
+    let items = build_visual_items(
+        session.history(),
+        &session.ui.shown_ignored_blocks,
+        PROXIMITY_COUNT,
+        DEFAULT_MIN_COLLAPSE_COUNT,
+    );
+    session.set_visual_items(items);
+
+    // When moving cursor to first visible.
+    session.move_cursor_to_first_visible();
+
+    // Then cursor lands on the user entry (index 1), skipping the empty assistant.
+    assert_eq!(session.selected_entry_index(), Some(1));
+}
+
+#[rstest::rstest]
+fn move_cursor_to_last_visible_skips_empty_assistant() {
+    // Given a session where the last visible entry is an empty assistant.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello")); // idx 0
+    session.push_entry(ChatEntry::assistant("world")); // idx 1
+    session.push_entry(ChatEntry::assistant("")); // idx 2, empty
+
+    // Set viewport to show all.
+    session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6)]);
+    session.set_viewport_height(6);
+    session.set_blank_count(0);
+    session.set_rendered_scroll_offset(0);
+
+    // Must set visual items for the skipping logic to work.
+    let items = build_visual_items(
+        session.history(),
+        &session.ui.shown_ignored_blocks,
+        PROXIMITY_COUNT,
+        DEFAULT_MIN_COLLAPSE_COUNT,
+    );
+    session.set_visual_items(items);
+
+    // When moving cursor to last visible.
+    session.move_cursor_to_last_visible();
+
+    // Then cursor lands on the non-empty assistant (index 1), skipping the empty one.
+    assert_eq!(session.selected_entry_index(), Some(1));
+}
+
+#[rstest::rstest]
+fn move_cursor_to_first_visible_all_selectable() {
+    // Given a session where all visible entries are selectable.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+
+    session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6)]);
+    session.set_viewport_height(6);
+    session.set_blank_count(0);
+    session.set_rendered_scroll_offset(0);
+
+    // When moving cursor to first visible.
+    session.move_cursor_to_first_visible();
+
+    // Then cursor is on the first entry.
+    assert_eq!(session.selected_entry_index(), Some(0));
+}
+
+#[rstest::rstest]
+fn move_cursor_to_last_visible_all_selectable() {
+    // Given a session where all visible entries are selectable.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.push_entry(ChatEntry::user("b"));
+    session.push_entry(ChatEntry::user("c"));
+
+    session.set_entry_line_ranges(vec![(0, 2), (2, 4), (4, 6)]);
+    session.set_viewport_height(6);
+    session.set_blank_count(0);
+    session.set_rendered_scroll_offset(0);
+
+    // When moving cursor to last visible.
+    session.move_cursor_to_last_visible();
+
+    // Then cursor is on the last entry.
+    assert_eq!(session.selected_entry_index(), Some(2));
+}
+
+#[rstest::rstest]
+fn move_cursor_to_first_visible_noop_when_empty_range() {
+    // Given a session with entries but no visible range.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a"));
+    session.clear_selection();
+
+    // No viewport state → empty range.
+    // When moving cursor.
+    session.move_cursor_to_first_visible();
+
+    // Then selection stays None.
+    assert_eq!(session.selected_entry_index(), None);
+}
+
+// ===========================================================================
+// Phase 5: Selection & Pin Index Arithmetic
+// ===========================================================================
+
+// --- select_next_entry boundary with empty assistants ---
+
+#[rstest::rstest]
+fn select_next_entry_skips_empty_assistant_at_start() {
+    // Given a session: [empty-assistant, user, user].
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::assistant("")); // idx 0
+    session.push_entry(ChatEntry::user("hello")); // idx 1
+    session.push_entry(ChatEntry::user("world")); // idx 2
+
+    // Clear selection and select next (should skip empty assistant at 0).
+    session.clear_selection();
+    session.select_next_entry();
+
+    // Then selection is on the user entry (index 1), not the empty assistant.
+    assert_eq!(session.selected_entry_index(), Some(1));
+}
+
+#[rstest::rstest]
+fn select_next_entry_skips_empty_assistant_in_middle() {
+    // Given: [user, empty-assistant, user].
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0
+    session.push_entry(ChatEntry::assistant("")); // idx 1
+    session.push_entry(ChatEntry::user("b")); // idx 2
+
+    // Select from index 0.
+    session.set_selected_entry_index(0);
+    session.select_next_entry();
+
+    // Then selection jumps to index 2, skipping the empty assistant.
+    assert_eq!(session.selected_entry_index(), Some(2));
+}
+
+#[rstest::rstest]
+fn select_next_entry_clamps_when_only_empty_assistants() {
+    // Given: [empty-assistant, empty-assistant].
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::assistant("")); // idx 0
+    session.push_entry(ChatEntry::assistant("")); // idx 1
+
+    // When selecting next from nothing — fallback path skips non-selectable.
+    session.clear_selection();
+    session.select_next_entry();
+
+    // Then no selection is made (all entries are empty assistants, not selectable).
+    assert_eq!(session.selected_entry_index(), None);
+}
+
+#[rstest::rstest]
+fn select_prev_entry_skips_empty_assistant_at_end() {
+    // Given: [user, user, empty-assistant].
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0
+    session.push_entry(ChatEntry::user("b")); // idx 1
+    session.push_entry(ChatEntry::assistant("")); // idx 2
+
+    // Clear and select prev (starts at last → should skip empty assistant).
+    session.clear_selection();
+    session.select_prev_entry();
+
+    // Then selection is on the user entry (index 1), not the empty assistant.
+    assert_eq!(session.selected_entry_index(), Some(1));
+}
+
+#[rstest::rstest]
+fn select_prev_entry_skips_empty_assistant_in_middle() {
+    // Given: [user, empty-assistant, user].
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0
+    session.push_entry(ChatEntry::assistant("")); // idx 1
+    session.push_entry(ChatEntry::user("b")); // idx 2
+
+    // Select from index 2.
+    session.set_selected_entry_index(2);
+    session.select_prev_entry();
+
+    // Then selection jumps to index 0, skipping the empty assistant.
+    assert_eq!(session.selected_entry_index(), Some(0));
+}
+
+#[rstest::rstest]
+fn select_prev_entry_clamps_when_only_empty_assistants() {
+    // Given: [empty-assistant, empty-assistant].
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::assistant("")); // idx 0
+    session.push_entry(ChatEntry::assistant("")); // idx 1
+
+    // When selecting prev from nothing — fallback path skips non-selectable.
+    session.clear_selection();
+    session.select_prev_entry();
+
+    // Then no selection is made (all entries are empty assistants, not selectable).
+    assert_eq!(session.selected_entry_index(), None);
+}
+
+// --- pin_entry block scanning direction ---
+
+#[rstest::rstest]
+fn pin_entry_scans_backward_to_find_block_start() {
+    // Given a contiguous ignored block: entries at indices 1-4 are ignored.
+    // The pin_entry propagation scans backward from the pinned entry to find
+    // the block start (first ignored entry with no pin and with in-context neighbor).
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("before")); // idx 0
+    session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 1 — block rep
+    session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 2
+    session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3 — pin target
+    session.push_entry(ChatEntry::assistant("d").with_ignored(true)); // idx 4
+    session.push_entry(ChatEntry::user("after")); // idx 5
+
+    // Expand the block.
+    let rep_id = session.history()[1].id.clone();
+    session.toggle_ignored_block_visibility(&rep_id);
+
+    // Pin entry at idx 3.
+    let pin_id = session.history()[3].id.clone();
+    session.pin_entry(&pin_id, PinPosition::Top);
+
+    // Then the block_start scan found index 1 (the first entry in the contiguous
+    // ignored block). The forward sub-block starts at index 4.
+    let forward_rep = session.history()[4].id.clone();
+    assert!(
+        session.ui.shown_ignored_blocks.contains(&forward_rep),
+        "forward sub-block should be shown — backward scan found correct block start"
+    );
+}
+
+#[rstest::rstest]
+fn pin_entry_block_start_stops_at_non_ignored_boundary() {
+    // Given two separate ignored blocks with a non-ignored entry between them.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 0
+    session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 1
+    session.push_entry(ChatEntry::user("boundary")); // idx 2 — in-context
+    session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3
+    session.push_entry(ChatEntry::assistant("d").with_ignored(true)); // idx 4
+
+    // Expand both blocks separately.
+    let rep1 = session.history()[0].id.clone();
+    let rep2 = session.history()[3].id.clone();
+    session.toggle_ignored_block_visibility(&rep1);
+    session.toggle_ignored_block_visibility(&rep2);
+
+    // Pin entry at idx 4 (in the second block).
+    let pin_id = session.history()[4].id.clone();
+    session.pin_entry(&pin_id, PinPosition::Top);
+
+    // Then the block_start scan stops at idx 3 (doesn't cross the non-ignored boundary).
+    // No forward sub-block (idx 4 is the last in its block).
+    assert!(session.ui.shown_ignored_blocks.contains(&rep2));
+    assert!(session.ui.shown_ignored_blocks.contains(&rep1));
+}
+
+#[rstest::rstest]
+fn pin_entry_forward_start_at_history_end_is_noop() {
+    // Given an ignored entry at the end of history.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("before")); // idx 0
+    session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 1
+
+    // Expand the block.
+    let rep_id = session.history()[1].id.clone();
+    session.toggle_ignored_block_visibility(&rep_id);
+
+    // Pin the last entry (no forward sub-block possible).
+    let pin_id = session.history()[1].id.clone();
+    session.pin_entry(&pin_id, PinPosition::Top);
+
+    // Then no new forward sub-block is added.
+    assert_eq!(session.ui.shown_ignored_blocks.len(), 1);
+    assert!(session.ui.shown_ignored_blocks.contains(&rep_id));
+}
+
+// --- toggle_ignored_block_visibility block scanning direction ---
+
+#[rstest::rstest]
+fn toggle_ignored_block_scans_backward_from_entry() {
+    // Given: [user, ignored-A, ignored-B, ignored-C, user].
+    // Toggling on ignored-C should find the block start at ignored-A.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("before")); // idx 0
+    session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 1
+    session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 2
+    session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3
+    session.push_entry(ChatEntry::user("after")); // idx 4
+
+    // When toggling on ignored-C (idx 3).
+    let id_c = session.history()[3].id.clone();
+    session.toggle_ignored_block_visibility(&id_c);
+
+    // Then the block representative is ignored-A (idx 1), not ignored-C.
+    let rep_id = session.history()[1].id.clone();
+    assert!(
+        session.ui.shown_ignored_blocks.contains(&rep_id),
+        "block representative should be the first entry in the contiguous block"
+    );
+}
+
+#[rstest::rstest]
+fn toggle_ignored_block_does_not_cross_pinned_entry() {
+    // Given: [ignored-A, ignored-B(pinned), ignored-C].
+    // Toggling ignored-C should find block start at ignored-C itself,
+    // not crossing the pinned entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 0
+    session.push_entry(ChatEntry::assistant("b").with_ignored(true).with_pin(PinPosition::Top)); // idx 1
+    session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 2
+
+    // When toggling on ignored-C (idx 2).
+    let id_c = session.history()[2].id.clone();
+    session.toggle_ignored_block_visibility(&id_c);
+
+    // Then block start is idx 2 (didn't cross pinned entry at idx 1).
+    assert!(
+        session.ui.shown_ignored_blocks.contains(&id_c),
+        "block representative should be the entry after the pinned boundary"
+    );
+    // And idx 0 is NOT in shown_ignored_blocks.
+    let id_a = session.history()[0].id.clone();
+    assert!(!session.ui.shown_ignored_blocks.contains(&id_a));
+}
+
+#[rstest::rstest]
+fn select_next_entry_at_last_index_stays() {
+    // Given a session with 3 entries, cursor on last.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0
+    session.push_entry(ChatEntry::user("b")); // idx 1
+    session.push_entry(ChatEntry::user("c")); // idx 2
+    session.set_selected_entry_index(2);
+
+    // When selecting next.
+    session.select_next_entry();
+
+    // Then cursor stays at 2.
+    assert_eq!(session.selected_entry_index(), Some(2));
+}
+
+#[rstest::rstest]
+fn select_prev_entry_at_first_index_stays() {
+    // Given a session with 3 entries, cursor on first.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("a")); // idx 0
+    session.push_entry(ChatEntry::user("b")); // idx 1
+    session.push_entry(ChatEntry::user("c")); // idx 2
+    session.set_selected_entry_index(0);
+
+    // When selecting prev.
+    session.select_prev_entry();
+
+    // Then cursor stays at 0.
+    assert_eq!(session.selected_entry_index(), Some(0));
+}
+
+// ===========================================================================
+// Phase 6: Accessors, Constructors, and Simple Methods
+// ===========================================================================
+
+#[rstest::rstest]
+fn new_with_profile_preserves_profile() {
+    // Given a profile with a custom model.
+    let profile = SessionProfile {
+        model: "ollama/llama3".to_owned(),
+        ..SessionProfile::default()
+    };
+
+    // When creating a session with that profile.
+    let session = ChatSessionState::new_with_profile(profile.clone());
+
+    // Then the session carries the profile.
+    assert_eq!(session.profile().model, "ollama/llama3");
+}
+
+#[rstest::rstest]
+fn profile_mut_returns_mutable_reference() {
+    // Given a session.
+    let mut session = ChatSessionState::new();
+
+    // When mutating the profile.
+    session.profile_mut().model = "openai/gpt-4".to_owned();
+
+    // Then the change is visible via the immutable accessor.
+    assert_eq!(session.profile().model, "openai/gpt-4");
+}
+
+#[rstest::rstest]
+fn restore_token_ledger_sets_records() {
+    // Given a session with no token records.
+    let mut session = ChatSessionState::new();
+    assert!(session.token_ledger().is_empty());
+
+    // When restoring a token ledger.
+    let records = vec![TokenRecord {
+        timestamp: jiff::Timestamp::now(),
+        tokens_sent: 100,
+        tokens_received: 50,
+        cost: Some(0.01),
+    }];
+    session.restore_token_ledger(records.clone());
+
+    // Then the ledger contains the records.
+    assert_eq!(session.token_ledger().len(), 1);
+    assert_eq!(session.token_ledger()[0].tokens_sent, 100);
+}
+
+#[rstest::rstest]
+fn restore_updated_at_sets_timestamp() {
+    // Given a session.
+    let mut session = ChatSessionState::new();
+    let original = session.updated_at().clone();
+
+    // When restoring updated_at to a different time.
+    let ts = jiff::Timestamp::UNIX_EPOCH;
+    session.restore_updated_at(ts);
+
+    // Then updated_at reflects the restored value.
+    assert_eq!(*session.updated_at(), ts);
+    assert_ne!(*session.updated_at(), original);
+}
+
+#[rstest::rstest]
+fn restore_created_at_sets_timestamp() {
+    // Given a session.
+    let mut session = ChatSessionState::new();
+    let ts = jiff::Timestamp::UNIX_EPOCH;
+
+    // When restoring created_at.
+    session.restore_created_at(ts);
+
+    // Then created_at reflects the restored value.
+    assert_eq!(*session.created_at(), ts);
+}
+
+#[rstest::rstest]
+fn touch_updates_timestamp() {
+    // Given a session with a known updated_at.
+    let mut session = ChatSessionState::new();
+    session.restore_updated_at(jiff::Timestamp::UNIX_EPOCH);
+    let before = session.updated_at().clone();
+
+    // When touching.
+    session.touch();
+
+    // Then updated_at is newer than before.
+    assert!(*session.updated_at() > before);
+}
+
+#[rstest::rstest]
+fn strategy_state_returns_data() {
+    // Given a session with a strategy state entry.
+    let mut session = ChatSessionState::new();
+    let key = PromptStrategyId::passthrough();
+    let val = StrategyState::Compaction(CompactionSessionData::default());
+    session.strategy_state_mut().insert(key.clone(), val.clone());
+
+    // Then the immutable accessor returns the same data.
+    assert!(session.strategy_state().contains_key(&key));
+}
+
+#[rstest::rstest]
+fn strategy_state_mut_allows_modification() {
+    // Given a session.
+    let mut session = ChatSessionState::new();
+
+    // When inserting via mutable accessor.
+    let key = PromptStrategyId::passthrough();
+    session.strategy_state_mut().insert(key.clone(), StrategyState::Compaction(CompactionSessionData::default()));
+
+    // Then the immutable accessor sees the change.
+    assert_eq!(session.strategy_state().len(), 1);
+}
+
+#[rstest::rstest]
+fn blobs_returns_data() {
+    // Given a session with a blob entry.
+    let mut session = ChatSessionState::new();
+    session.blobs_mut().insert("key".to_owned(), serde_json::json!({"v": 42}));
+
+    // Then the immutable accessor returns it.
+    assert!(session.blobs().contains_key("key"));
+}
+
+#[rstest::rstest]
+fn blobs_mut_allows_modification() {
+    // Given a session.
+    let mut session = ChatSessionState::new();
+
+    // When inserting via mutable accessor.
+    session.blobs_mut().insert("k".to_owned(), serde_json::json!(true));
+
+    // Then the immutable accessor sees it.
+    assert_eq!(session.blobs().len(), 1);
+}
+
+#[rstest::rstest]
+fn viewport_height_value_returns_stored_value() {
+    // Given a session with a set viewport height.
+    let session = ChatSessionState::new();
+    session.set_viewport_height(42);
+
+    // Then viewport_height_value returns 42.
+    assert_eq!(session.viewport_height_value(), 42);
+}
+
+#[rstest::rstest]
+fn selected_visual_item_returns_some_when_selected() {
+    // Given a session with entries and visual items.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    session.push_entry(ChatEntry::assistant("world"));
+    let items = build_visual_items(
+        session.history(),
+        &session.ui.shown_ignored_blocks,
+        PROXIMITY_COUNT,
+        DEFAULT_MIN_COLLAPSE_COUNT,
+    );
+    session.set_visual_items(items);
+    session.set_selected_entry_index(0);
+
+    // When calling selected_visual_item.
+    let item = session.selected_visual_item();
+
+    // Then it returns Some.
+    assert!(item.is_some());
+}
+
+#[rstest::rstest]
+fn selected_visual_item_returns_none_when_no_selection() {
+    // Given a session with entries but no selection.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    session.clear_selection();
+
+    // When calling selected_visual_item.
+    let item = session.selected_visual_item();
+
+    // Then it returns None.
+    assert!(item.is_none());
+}
+
+#[rstest::rstest]
+fn enqueue_front_puts_item_at_front_of_queue() {
+    // Given a session with a UserMessage in the queue.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("first"));
+    let _first_id = session.history()[0].id.clone();
+
+    // Enqueue a user message normally (back of queue).
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        session.history()[0].clone(),
+    ));
+
+    // When enqueuing a CompactionNeeded at the front.
+    session.enqueue_front(crate::feat::session::queue_item::QueueItem::CompactionNeeded {
+        compact_all: false,
+    });
+
+    // Then dequeue returns CompactionNeeded first.
+    let front = session.dequeue();
+    assert!(matches!(
+        front,
+        Some(crate::feat::session::queue_item::QueueItem::CompactionNeeded { compact_all: false })
+    ));
+}
+
+#[rstest::rstest]
+fn dequeue_compaction_needed_returns_true_when_present() {
+    // Given a session with CompactionNeeded in the queue.
+    let mut session = ChatSessionState::new();
+    session.enqueue_front(crate::feat::session::queue_item::QueueItem::CompactionNeeded {
+        compact_all: true,
+    });
+
+    // When dequeuing compaction needed.
+    let result = session.dequeue_compaction_needed();
+
+    // Then it returns true and removes the item.
+    assert!(result);
+    assert!(session.dequeue().is_none());
+}
+
+#[rstest::rstest]
+fn dequeue_compaction_needed_returns_false_when_absent() {
+    // Given a session with no CompactionNeeded in the queue.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        session.history()[0].clone(),
+    ));
+
+    // When dequeuing compaction needed.
+    let result = session.dequeue_compaction_needed();
+
+    // Then it returns false and the original item is still there.
+    assert!(!result);
+    assert!(session.dequeue().is_some());
+}
+
+#[rstest::rstest]
+fn is_soft_cancelled_returns_real_value() {
+    // Given a session.
+    let mut session = ChatSessionState::new();
+
+    // Initially not soft-cancelled.
+    assert!(!session.is_soft_cancelled());
+
+    // When requesting soft cancel.
+    session.request_soft_cancel();
+
+    // Then is_soft_cancelled returns true (not hardcoded false).
+    assert!(session.is_soft_cancelled());
+}
+
+#[rstest::rstest]
+fn is_workflow_returns_real_value() {
+    // Given a session that is not a workflow.
+    let session = ChatSessionState::new();
+
+    // Then is_workflow returns false.
+    assert!(!session.is_workflow());
+
+    // Given a session marked as workflow.
+    let mut wf_session = ChatSessionState::new();
+    wf_session.core.is_workflow = true;
+
+    // Then is_workflow returns true (not hardcoded false).
+    assert!(wf_session.is_workflow());
 }

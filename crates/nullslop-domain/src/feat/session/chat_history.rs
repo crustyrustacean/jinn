@@ -96,3 +96,64 @@ impl From<ChatHistory> for Vec<ChatEntry> {
         history.entries
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+
+    use super::*;
+
+    #[rstest::rstest]
+    fn from_vec_creates_history() {
+        // Given a vector of entries.
+        let entries = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi")];
+
+        // When converting to ChatHistory via From.
+        let history = ChatHistory::from(entries.clone());
+
+        // Then the history contains the same entries.
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].text(), "hello");
+        assert_eq!(history[1].text(), "hi");
+    }
+
+    #[rstest::rstest]
+    fn into_vec_roundtrips() {
+        // Given a ChatHistory with entries.
+        let mut history = ChatHistory::new();
+        history.push(ChatEntry::user("hello"));
+        history.push(ChatEntry::assistant("world"));
+
+        // When converting to Vec via Into.
+        let entries: Vec<ChatEntry> = history.into();
+
+        // Then the vector contains the same entries.
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].text(), "hello");
+        assert_eq!(entries[1].text(), "world");
+    }
+
+    #[rstest::rstest]
+    fn from_vec_empty_history() {
+        // Given an empty vector.
+        let entries: Vec<ChatEntry> = vec![];
+
+        // When converting to ChatHistory.
+        let history = ChatHistory::from(entries);
+
+        // Then it is empty.
+        assert!(history.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn into_vec_empty_history() {
+        // Given an empty ChatHistory.
+        let history = ChatHistory::new();
+
+        // When converting to Vec.
+        let entries: Vec<ChatEntry> = history.into();
+
+        // Then the vector is empty.
+        assert!(entries.is_empty());
+    }
+}

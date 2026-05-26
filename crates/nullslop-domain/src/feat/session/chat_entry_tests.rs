@@ -910,3 +910,31 @@ fn context_override_default_is_default_trait() {
     // Then it is Default.
     assert_eq!(value, ContextOverride::Default);
 }
+
+// --- ChatEntryId::as_uuid ---
+
+#[rstest::rstest]
+fn chat_entry_id_as_uuid_returns_inner_uuid() {
+    // Given a ChatEntryId.
+    let id = ChatEntryId::new();
+    let expected = id.to_string();
+
+    // When calling as_uuid.
+    let uuid = id.as_uuid();
+
+    // Then it returns the inner UUID (not a leaked default).
+    assert_eq!(uuid.to_string(), expected);
+}
+
+#[rstest::rstest]
+fn chat_entry_id_as_uuid_matches_to_string() {
+    // Given a ChatEntryId.
+    let id = ChatEntryId::new();
+
+    // When comparing as_uuid output to the string representation.
+    let uuid_str = id.as_uuid().to_string();
+    let display_str = id.to_string();
+
+    // Then they match.
+    assert_eq!(uuid_str, display_str);
+}
