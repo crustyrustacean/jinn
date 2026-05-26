@@ -715,7 +715,7 @@ mod tests {
         // Then the judge session title includes the judge name.
         let judge_session = find_judge_session(&state);
         assert_eq!(
-            judge_session.title().as_deref(),
+            judge_session.title(),
             Some("judge/accuracy"),
             "title should be 'judge/<name>'"
         );
