@@ -97,6 +97,13 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             )
         };
 
+        // Disable tool loop so the session stops after this tool batch.
+        {
+            let mut state = state.write();
+            let session = state.session_mut(&session_id);
+            session.set_tool_loop_disabled();
+        }
+
         // Emit JudgeVerdict(Fail) event.
         if let Some(sink) = &ctx.sink {
             let event = Event::JudgeVerdict(JudgeVerdict {
