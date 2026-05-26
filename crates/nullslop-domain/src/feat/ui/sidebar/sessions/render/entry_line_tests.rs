@@ -431,7 +431,7 @@ fn judge_root_title_is_not_over_truncated() {
     // Title span is the last span: "⚖ 1234567890" (no truncation).
     let title_span = &line.spans[3].content;
     assert_eq!(
-        &*title_span,
+        title_span,
         "\u{2696} 1234567890",
         "judge root title should not be truncated, got: {title_span}"
     );
