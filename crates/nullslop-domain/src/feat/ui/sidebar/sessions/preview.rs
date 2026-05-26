@@ -69,6 +69,14 @@ impl SessionPreviewCache {
     ) {
         self.entries.insert((session_id, history_len, width), lines);
     }
+
+    /// Clears all cached preview lines.
+    ///
+    /// Called when the active theme changes so preview popups re-render
+    /// with updated colors.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
 }
 
 /// Number of history entries to show in the preview.

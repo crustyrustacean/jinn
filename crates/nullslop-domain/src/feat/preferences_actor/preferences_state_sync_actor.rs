@@ -59,7 +59,10 @@ impl Actor for PreferencesStateSyncActor {
                     &self.themes_dir,
                     &self.system_themes_dir,
                 ) {
-                    Ok(t) => state.frontend.theme = t,
+                    Ok(t) => {
+                        state.frontend.theme = t;
+                        state.invalidate_theme_caches();
+                    }
                     Err(e) => {
                         tracing::warn!(err = ?e, "failed to reload theme, keeping current");
                     }
