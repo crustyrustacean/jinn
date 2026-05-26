@@ -16,6 +16,7 @@ pub mod reset_judge;
 pub mod state;
 pub mod teardown;
 pub mod toggle_judge;
+pub mod toggle_auto_reset;
 
 #[cfg(test)]
 mod preview_tests;

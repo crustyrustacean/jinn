@@ -286,6 +286,9 @@ impl IntentHandler {
             Intent::ToggleJudgeAttached => {
                 feat::ui::sidebar::sessions::handle_toggle_judge_attached(state)
             }
+            Intent::ToggleJudgeAutoReset => {
+                feat::ui::sidebar::sessions::toggle_auto_reset::handle_toggle_auto_reset(state)
+            }
             Intent::ResetJudge => {
                 feat::ui::sidebar::sessions::reset_judge::handle_reset_judge(state)
             }
