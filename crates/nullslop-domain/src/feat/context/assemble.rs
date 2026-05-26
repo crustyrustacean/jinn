@@ -704,6 +704,8 @@ mod tests {
 
     #[test]
     fn assemble_prompt_judge_session_includes_regular_and_judge_tools() {
+        use crate::feat::judge::JudgeMeta;
+
         // Given a state with regular tools in the global map (simulating post-filter state).
         let (state, origin_id) = state_with_history(vec![ChatEntry::user("evaluate")]);
         {
@@ -719,7 +721,6 @@ mod tests {
         }
 
         // And a judge session.
-        use crate::feat::judge::JudgeMeta;
         let judge_id = {
             let mut guard = state.write();
             let mut judge_session = crate::feat::session::chat_session::ChatSessionState::new();
