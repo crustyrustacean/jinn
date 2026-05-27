@@ -299,4 +299,34 @@ mod tests {
         // Then no entry is selected.
         assert!(state.selected_id().is_none());
     }
+
+    #[rstest::rstest]
+    fn clamp_to_nearest_clamps_old_index_to_last_when_id_removed() {
+        // Given 5 IDs [A, B, C, D, E] with E selected at old_index 4.
+        let ids = make_ids(5);
+        let mut state = PinsState::default();
+        state.select_by_id(ids[4].clone());
+
+        // When clamping on new list [A, B, C] (D and E removed) with old_index 4.
+        // old_index(4).min(sorted_ids.len() - 1) = 4.min(2) = 2.
+        let new_ids = vec![ids[0].clone(), ids[1].clone(), ids[2].clone()];
+        state.clamp_to_nearest(&new_ids, 4);
+
+        // Then C is selected (last element in new list, clamped from 4 to 2).
+        assert_eq!(state.selected_id(), Some(&ids[2]));
+    }
+
+    #[rstest::rstest]
+    fn clamp_to_nearest_preserves_existing_valid_id_on_shrink() {
+        // Given [A, B, C] with C selected, old_index 2.
+        let ids = make_ids(3);
+        let mut state = PinsState::default();
+        state.select_by_id(ids[2].clone());
+
+        // When clamping on new list [A, B, C] — C is still present.
+        state.clamp_to_nearest(&ids, 2);
+
+        // Then C remains selected (kept because it's still in the list).
+        assert_eq!(state.selected_id(), Some(&ids[2]));
+    }
 }
