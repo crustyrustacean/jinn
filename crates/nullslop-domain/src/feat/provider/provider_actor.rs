@@ -129,6 +129,7 @@ impl ProviderActor {
             | Command::ArchiveSession(..)
             | Command::PersistSession(..)
             | Command::SoftCancelTurn(..)
+            | Command::ScheduleAutoCompaction(..)
             | Command::FinishSessionTeardown(..)
             | Command::InitWorkflow(..)
             | Command::StartWorkflow(..)

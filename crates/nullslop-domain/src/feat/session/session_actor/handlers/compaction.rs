@@ -126,6 +126,21 @@ impl SessionPersistenceActor {
         let session = state.session_mut_or_create(&payload.session_id);
         session.request_soft_cancel();
     }
+
+    /// ScheduleAutoCompaction: request auto-compaction at the next turn boundary.
+    ///
+    /// Sets the `auto_compaction_requested` flag on the session. At the next
+    /// turn boundary (`on_tool_batch_completed` or `on_stream_completed`),
+    /// the session transitions directly to `Compacting` — never through `Idle`.
+    /// This prevents the JudgeCoordinatorActor from firing during auto-compaction.
+    pub(in crate::feat::session::session_actor) fn handle_schedule_auto_compaction(
+        &self,
+        payload: &crate::feat::session::protocol::schedule_auto_compaction::ScheduleAutoCompaction,
+    ) {
+        let mut state = self.state.write();
+        let session = state.session_mut_or_create(&payload.session_id);
+        session.request_auto_compaction();
+    }
 }
 
 #[cfg(test)]
@@ -634,6 +649,31 @@ mod tests {
         assert!(
             session.take_soft_cancel(),
             "expected soft cancel flag to be set"
+        );
+    }
+
+    #[tokio::test]
+    async fn schedule_auto_compaction_sets_flag_on_session() {
+        // Given a session actor with a session.
+        let actor = test_actor();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling ScheduleAutoCompaction.
+        actor.handle_schedule_auto_compaction(
+            &crate::feat::session::protocol::schedule_auto_compaction::ScheduleAutoCompaction {
+                session_id: session_id.clone(),
+            },
+        );
+
+        // Then the auto_compaction_requested flag is set.
+        let mut state = actor.state.write();
+        let session = state.session.get_mut(&session_id).expect("session exists");
+        assert!(
+            session.take_auto_compaction_requested(),
+            "expected auto_compaction_requested flag to be set"
         );
     }
 }
