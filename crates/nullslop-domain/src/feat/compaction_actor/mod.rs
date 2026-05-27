@@ -49,7 +49,7 @@ pub struct CompactionActor {
     /// `Some` while a compaction is in progress, `None` otherwise.
     compaction_task: Option<tokio::task::JoinHandle<()>>,
     /// Whether an auto-compaction request has already been dispatched
-    /// and is awaiting processing. Prevents duplicate `EnqueueCompaction`
+    /// and is awaiting processing. Prevents duplicate `ScheduleAutoCompaction`
     /// commands from multiple `HistoryAppended` events within the same cycle.
     auto_compaction_pending: bool,
 }
@@ -179,8 +179,8 @@ impl CompactionActor {
     /// Handle a `HistoryAppended` event for auto-compaction trigger.
     ///
     /// Compares the reported `total_estimated_tokens` against the configured
-    /// threshold. If exceeded, sends `EnqueueCompaction` (to queue compaction)
-    /// and `SoftCancelTurn` (to gracefully end the current turn if any).
+    /// threshold. If exceeded, sends `ScheduleAutoCompaction` to set a flag
+    /// on the session that triggers compaction at the next turn boundary.
     fn handle_history_appended(&mut self, payload: &HistoryAppended, ctx: &ActorContext) {
         if self.auto_compaction_pending {
             tracing::debug!(
@@ -246,12 +246,10 @@ impl CompactionActor {
 
         if should_compact {
             self.auto_compaction_pending = true;
-            let _ = ctx.send_command(Command::EnqueueCompaction(EnqueueCompaction {
-                session_id: session_id.clone(),
-                compact_all: false,
-            }));
-            let _ = ctx.send_command(Command::SoftCancelTurn(
-                crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn { session_id },
+            let _ = ctx.send_command(Command::ScheduleAutoCompaction(
+                crate::feat::session::protocol::schedule_auto_compaction::ScheduleAutoCompaction {
+                    session_id,
+                },
             ));
         }
     }
