@@ -19,6 +19,7 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use tracing;
 use headless_chrome::{Browser, LaunchOptions};
 
 use crate::{FetchError, FetchOptions, FetchOutput, OutputFormat, WebFetcher};
@@ -46,13 +47,19 @@ impl HeadlessChromeFetcher {
     fn ensure_browser(&self) -> Result<Browser, FetchError> {
         let mut guard = self.browser.lock().map_err(|_| FetchError::BrowserCrash)?;
         if let Some(ref browser) = *guard {
+            tracing::trace!("HeadlessChromeFetcher: reusing existing browser");
             return Ok(browser.clone());
         }
+        tracing::info!("HeadlessChromeFetcher: launching headless Chrome");
         let browser = Browser::new(LaunchOptions {
             headless: true,
             ..Default::default()
         })
-        .map_err(|_| FetchError::BrowserLaunch)?;
+        .map_err(|e| {
+            tracing::error!(err = %e, "HeadlessChromeFetcher: failed to launch browser");
+            FetchError::BrowserLaunch
+        })?;
+        tracing::info!("HeadlessChromeFetcher: browser launched successfully");
         *guard = Some(browser.clone());
         Ok(browser)
     }
@@ -107,6 +114,7 @@ fn strip_html_tags(html: &str) -> String {
 #[async_trait]
 impl WebFetcher for HeadlessChromeFetcher {
     async fn fetch(&self, url: &str, options: FetchOptions) -> Result<FetchOutput, FetchError> {
+        tracing::debug!(url = %url, format = ?options.format, "HeadlessChromeFetcher: starting fetch");
         // Validate URL.
         let parsed = url::Url::parse(url).map_err(|e| FetchError::InvalidUrl(e.to_string()))?;
         match parsed.scheme() {
@@ -127,18 +135,24 @@ impl WebFetcher for HeadlessChromeFetcher {
                 .map_err(|e| FetchError::Render(e.to_string()))?;
 
             // Navigate to the URL.
+            tracing::trace!(url = %url, "HeadlessChromeFetcher: navigating to URL");
             tab.navigate_to(url)
                 .map_err(|e| FetchError::Render(e.to_string()))?
                 .wait_until_navigated()
                 .map_err(|e| FetchError::Render(e.to_string()))?;
+            tracing::trace!("HeadlessChromeFetcher: navigation complete");
 
             // Extract content.
+            tracing::trace!(format = ?options.format, "HeadlessChromeFetcher: extracting content");
             let content = Self::extract_content(&tab, options.format)?;
+            tracing::debug!(content_len = content.len(), "HeadlessChromeFetcher: content extracted");
 
             // Try to get final URL (after redirects).
             let final_url = tab.get_url();
+            tracing::debug!(final_url = %final_url, "HeadlessChromeFetcher: final URL");
 
             // Close the tab.
+            tracing::trace!("HeadlessChromeFetcher: closing tab");
             let _ = tab.close(true);
 
             Ok(FetchOutput {
@@ -151,11 +165,13 @@ impl WebFetcher for HeadlessChromeFetcher {
 
         // On failure, clear the browser (crash recovery).
         if result.is_err() {
+            tracing::warn!(err = ?result.as_ref().unwrap_err(), "HeadlessChromeFetcher: fetch failed");
             // Check if the error suggests a browser crash.
             if matches!(
                 result,
                 Err(FetchError::BrowserCrash | FetchError::BrowserLaunch)
             ) {
+                tracing::info!("HeadlessChromeFetcher: clearing browser for crash recovery");
                 self.take_browser();
             }
         }
@@ -164,10 +180,13 @@ impl WebFetcher for HeadlessChromeFetcher {
     }
 
     async fn shutdown(&self) {
+        tracing::info!("HeadlessChromeFetcher: shutting down");
         if let Some(browser) = self.take_browser() {
+            tracing::debug!("HeadlessChromeFetcher: dropping browser (kills Chromium process)");
             // Drop the browser — this kills the Chromium process.
             drop(browser);
         }
+        tracing::info!("HeadlessChromeFetcher: shutdown complete");
     }
 }
 

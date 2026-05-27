@@ -2332,6 +2332,7 @@ dependencies = [
  "rstest",
  "serde",
  "tokio",
+ "tracing",
  "url",
  "wherror",
 ]
