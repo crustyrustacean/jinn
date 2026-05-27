@@ -88,10 +88,11 @@ impl PluginInstance {
     /// Installs the `ns` and `ps` globals into the VM. The subscription
     /// and hook maps are populated by the `ps.sub` and `ps.hook` bindings
     /// as the plugin loads.
+    #[expect(clippy::too_many_lines, reason = "VM setup is inherently sequential")]
     fn new(
-        name: String,
-        translator: TranslatorFn,
-        command_sender: CommandSender,
+        name: &str,
+        translator: &TranslatorFn,
+        command_sender: &CommandSender,
     ) -> Result<Self, Report<PluginError>> {
         let lua = Lua::new();
 
@@ -257,7 +258,7 @@ impl PluginInstance {
         })?;
 
         Ok(Self {
-            name,
+            name: name.to_owned(),
             lua,
             subscriptions,
             hooks,
@@ -331,9 +332,9 @@ impl PluginRegistry {
         }
 
         let instance = PluginInstance::new(
-            name.clone(),
-            self.translator.clone(),
-            self.command_sender.clone(),
+            &name,
+            &self.translator,
+            &self.command_sender,
         )?;
 
         let source = std::fs::read_to_string(&init_path).map_err(|e| {
