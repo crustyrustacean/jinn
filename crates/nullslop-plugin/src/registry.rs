@@ -395,7 +395,8 @@ impl PluginRegistry {
     /// Calls every `ps.sub` callback registered for `event_name` across
     /// all plugin instances. Individual callback errors are logged as
     /// warnings and do not stop dispatch to other VMs or callbacks.
-    pub fn emit(&self, event_name: &str, payload: &serde_json::Value) {
+    pub fn emit(&self, event_name: &str, ctx: &impl serde::Serialize) {
+        let payload = serde_json::to_value(ctx).unwrap_or_default();
         let instances = self.instances.borrow();
         for instance in instances.iter() {
             let callbacks: Vec<mlua::Function> = {
@@ -408,7 +409,7 @@ impl PluginRegistry {
             }
 
             let lua_payload =
-                match crate::bindings::json_to_lua_value(&instance.lua, payload) {
+                match crate::bindings::json_to_lua_value(&instance.lua, &payload) {
                     Ok(v) => v,
                     Err(e) => {
                         tracing::warn!(
@@ -439,10 +440,11 @@ impl PluginRegistry {
     /// all plugin instances. Each callback's return value is deserialized
     /// into `T`. Individual failures (Lua errors or deserialization errors)
     /// are logged as warnings and excluded from results.
-    pub fn for_hook<T>(&self, hook_name: &str, payload: &serde_json::Value) -> Vec<T>
+    pub fn for_hook<T>(&self, hook_name: &str, ctx: &impl serde::Serialize) -> Vec<T>
     where
         T: serde::de::DeserializeOwned,
     {
+        let payload = serde_json::to_value(ctx).unwrap_or_default();
         let mut results = Vec::new();
         let instances = self.instances.borrow();
 
@@ -457,7 +459,7 @@ impl PluginRegistry {
             }
 
             let lua_payload =
-                match crate::bindings::json_to_lua_value(&instance.lua, payload) {
+                match crate::bindings::json_to_lua_value(&instance.lua, &payload) {
                     Ok(v) => v,
                     Err(e) => {
                         tracing::warn!(

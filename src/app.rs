@@ -193,9 +193,10 @@ impl App {
                 let ctx = nullslop_plugin::ctx::AppStartedCtx {
                     session_id,
                 };
-                plugin_registry.emit(
+                nullslop_plugin::emit(
                     nullslop_plugin::hooks::APP_STARTED,
-                    &serde_json::to_value(&ctx).unwrap_or_default(),
+                    &plugin_registry,
+                    &ctx,
                 );
 
                 let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
