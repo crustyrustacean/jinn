@@ -3,6 +3,7 @@
 pub mod actor_wiring;
 pub mod app;
 pub mod headless;
+pub mod plugin_wiring;
 pub mod runner;
 pub mod tracing;
 
