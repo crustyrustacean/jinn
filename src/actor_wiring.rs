@@ -40,7 +40,7 @@ use nullslop_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyAct
 
 use nullslop_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
 use nullslop_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
-use nullslop_web_fetch::HttpFetcher;
+use nullslop_web_fetch::{HttpFetcher, MarkdownExtractor, OutputFormat};
 
 use nullslop_domain::{
     ActorCounter, ActorHostService, ActorMessageSink, AppCore, AppMsg, InMemoryActorHost,
@@ -250,14 +250,21 @@ pub fn create_core_with_actor_host(
         .map(|p| p.web_fetch.backend)
         .unwrap_or(WebFetchBackend::Http);
     tracing::info!(backend = ?web_fetch_backend, "constructing web fetcher");
+    let extractors = {
+        let markdown: std::sync::Arc<dyn nullslop_web_fetch::Extractor> = std::sync::Arc::new(MarkdownExtractor);
+        std::collections::HashMap::from([
+            (OutputFormat::Text, markdown.clone()),
+            (OutputFormat::Markdown, markdown),
+        ])
+    };
     let web_fetcher: std::sync::Arc<dyn nullslop_web_fetch::WebFetcher> = match web_fetch_backend {
         WebFetchBackend::Http => {
             tracing::debug!("web-fetch: using HttpFetcher backend");
-            std::sync::Arc::new(HttpFetcher::new())
+            std::sync::Arc::new(HttpFetcher::new(extractors.clone()))
         }
         WebFetchBackend::HeadlessChrome => {
             tracing::debug!("web-fetch: using HeadlessChromeFetcher backend");
-            std::sync::Arc::new(nullslop_web_fetch::HeadlessChromeFetcher::new())
+            std::sync::Arc::new(nullslop_web_fetch::HeadlessChromeFetcher::new(extractors.clone()))
         }
     };
     actors.push(spawn::<WebFetchActor>(
