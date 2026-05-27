@@ -98,7 +98,18 @@ impl WebFetchActor {
         payload: &ExecuteWebFetch,
         ctx: &ActorContext,
     ) {
+        tracing::trace!(
+            tool_call_id = %payload.tool_call.id,
+            url_args = %payload.tool_call.arguments,
+            "web-fetch: handling ExecuteWebFetch"
+        );
         let result = self.execute_fetch(&payload.tool_call).await;
+        tracing::info!(
+            tool_call_id = %result.tool_call_id,
+            success = result.success,
+            content_len = result.content.len(),
+            "web-fetch: fetch complete"
+        );
         if let Err(e) = ctx.send_event(Event::ToolExecutionCompleted(ToolExecutionCompleted {
             session_id: payload.session_id.clone(),
             result,
@@ -112,9 +123,11 @@ impl WebFetchActor {
 
     /// Parses arguments and executes the fetch.
     async fn execute_fetch(&self, tool_call: &ToolCall) -> ToolResult {
+        tracing::debug!(arguments = %tool_call.arguments, "web-fetch: parsing arguments");
         let args = match serde_json::from_str::<WebFetchArgs>(&tool_call.arguments) {
             Ok(a) => a,
             Err(e) => {
+                tracing::warn!(err = %e, "web-fetch: failed to parse arguments");
                 return ToolResult {
                     tool_call_id: tool_call.id.clone(),
                     name: tool_call.name.clone(),
@@ -128,24 +141,41 @@ impl WebFetchActor {
 
         let format = args.options.and_then(|o| o.format).unwrap_or_default();
         let options = FetchOptions { format };
+        tracing::info!(
+            url = %args.url,
+            format = ?options.format,
+            "web-fetch: calling fetcher"
+        );
 
         match self.web_fetcher.fetch(&args.url, options).await {
-            Ok(output) => ToolResult {
-                tool_call_id: tool_call.id.clone(),
-                name: tool_call.name.clone(),
-                content: output.content,
-                success: true,
-                full_content: None,
-                truncation: None,
-            },
-            Err(e) => ToolResult {
-                tool_call_id: tool_call.id.clone(),
-                name: tool_call.name.clone(),
-                content: format!("fetch failed: {e}"),
-                success: false,
-                full_content: None,
-                truncation: None,
-            },
+            Ok(output) => {
+                tracing::debug!(
+                    status = output.status,
+                    content_type = %output.content_type,
+                    final_url = %output.url,
+                    content_len = output.content.len(),
+                    "web-fetch: fetch succeeded"
+                );
+                ToolResult {
+                    tool_call_id: tool_call.id.clone(),
+                    name: tool_call.name.clone(),
+                    content: output.content,
+                    success: true,
+                    full_content: None,
+                    truncation: None,
+                }
+            }
+            Err(e) => {
+                tracing::warn!(err = %e, "web-fetch: fetch failed");
+                ToolResult {
+                    tool_call_id: tool_call.id.clone(),
+                    name: tool_call.name.clone(),
+                    content: format!("fetch failed: {e}"),
+                    success: false,
+                    full_content: None,
+                    truncation: None,
+                }
+            }
         }
     }
 }

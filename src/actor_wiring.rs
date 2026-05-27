@@ -249,17 +249,22 @@ pub fn create_core_with_actor_host(
         .load()
         .map(|p| p.web_fetch.backend)
         .unwrap_or(WebFetchBackend::Http);
+    tracing::info!(backend = ?web_fetch_backend, "constructing web fetcher");
     let web_fetcher: std::sync::Arc<dyn nullslop_web_fetch::WebFetcher> = match web_fetch_backend {
-        WebFetchBackend::Http => std::sync::Arc::new(HttpFetcher::new()),
+        WebFetchBackend::Http => {
+            tracing::debug!("web-fetch: using HttpFetcher backend");
+            std::sync::Arc::new(HttpFetcher::new())
+        }
         WebFetchBackend::HeadlessChrome => {
             #[cfg(feature = "headless-chrome")]
             {
+                tracing::debug!("web-fetch: using HeadlessChromeFetcher backend");
                 std::sync::Arc::new(nullslop_web_fetch::HeadlessChromeFetcher::new())
             }
             #[cfg(not(feature = "headless-chrome"))]
             {
                 tracing::warn!(
-                    "headless-chrome feature not enabled, falling back to http"
+                    "web-fetch: headless-chrome feature not enabled, falling back to http"
                 );
                 std::sync::Arc::new(HttpFetcher::new())
             }
