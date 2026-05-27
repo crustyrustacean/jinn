@@ -3,16 +3,18 @@
 
 local welcome_shown = false
 
-ps.sub("app::started", function(payload)
+ps.sub("app::started", function(ctx)
     if welcome_shown then return end
     welcome_shown = true
-    ns.emit("welcome::show", {
+    ns.emit("push_chat_entry", {
+        session_id = ctx.session_id or "",
         message = "Welcome to nullslop! Press ? for keybindings.",
     })
 end)
 
-ps.sub("session::created", function(payload)
-    ns.emit("welcome::session_tip", {
+ps.sub("session::created", function(ctx)
+    ns.emit("push_chat_entry_transient", {
+        session_id = ctx.session_id or "",
         message = "New session started. Type your message below.",
     })
 end)

@@ -154,37 +154,29 @@ impl App {
                 // intercept lives) instead of directly to the actor host.
                 let tui_events = nullslop_tui::MsgHandler::new();
                 let tui_event_sender = tui_events.sender();
-                let (plugin_host, welcome_subscriber) = {
+                let plugin_registry = {
                     let cmd_sender = nullslop_plugin::CommandSender::new(
                         move |cmd: nullslop_domain::Command| {
                             tui_event_sender.send(nullslop_tui::msg::Msg::Command(cmd));
                         },
                     );
-                    let welcome_sub = nullslop_plugin::WelcomeSubscriber::new(cmd_sender.clone());
-                    match nullslop_plugin::PluginHost::new(cmd_sender) {
-                        Ok(host) => (Some(host), Some(welcome_sub)),
-                        Err(e) => {
-                            tracing::error!(err = ?e, "failed to create plugin host");
-                            (None, None)
-                        }
-                    }
-                };
+                    let translator = crate::plugin_wiring::build_translator();
+                    let registry = nullslop_plugin::PluginRegistry::new(translator, cmd_sender);
 
-                // Load system plugins (/usr/share/nullslop/plugins).
-                if let Some(ref host) = plugin_host {
+                    // Load plugins.
                     let mut plugin_count = 0usize;
 
                     // System plugins (installed by package manager).
                     let system_dir = paths.system_plugins_dir();
                     if system_dir.is_dir() {
-                        let infos = host.load_all(&system_dir);
+                        let infos = registry.load_all(&system_dir);
                         plugin_count += infos.len();
                     }
 
                     // User plugins (~/.config/nullslop/plugins).
                     let user_dir = paths.plugins_dir();
                     if user_dir.is_dir() {
-                        let infos = host.load_all(&user_dir);
+                        let infos = registry.load_all(&user_dir);
                         plugin_count += infos.len();
                     }
 
@@ -192,10 +184,20 @@ impl App {
                         tracing::info!(count = plugin_count, "loaded plugins");
                     }
 
-                    // Fire app::started event.
-                    tracing::info!("dispatching app::started event");
-                    host.dispatch_event("app::started", &serde_json::Value::Null);
-                }
+                    registry
+                };
+
+                // Fire app::started event.
+                tracing::info!("dispatching app::started event");
+                let session_id = core.state.read().session.active_session_id().to_string();
+                let ctx = nullslop_plugin::ctx::AppStartedCtx {
+                    session_id,
+                };
+                nullslop_plugin::emit(
+                    nullslop_plugin::hooks::APP_STARTED,
+                    &plugin_registry,
+                    &ctx,
+                );
 
                 let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
                 let mut ui_registry = nullslop_domain::AppUiRegistry::new();
@@ -224,8 +226,7 @@ impl App {
                         nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                         s
                     },
-                    plugin_host,
-                    welcome_subscriber,
+                    plugin_registry,
                 }));
                 runner.run().change_context(AppError)?;
             }
@@ -372,8 +373,7 @@ impl App {
                                 nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                                 s
                             },
-                            plugin_host: None,
-                            welcome_subscriber: None,
+                            plugin_registry: nullslop_plugin::PluginRegistry::new_for_tests(),
                         }));
                         runner.run().change_context(AppError)?;
                     }
@@ -449,8 +449,7 @@ impl App {
                                 nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                                 s
                             },
-                            plugin_host: None,
-                            welcome_subscriber: None,
+                            plugin_registry: nullslop_plugin::PluginRegistry::new_for_tests(),
                         }));
                         runner.run().change_context(AppError)?;
                     }
