@@ -28,7 +28,7 @@ nullslop-tui = { workspace = true }
 nullslop-domain = { workspace = true }
 nullslop-bench = { workspace = true }
 nullslop-plugin = { workspace = true }
-nullslop-web-fetch = { workspace = true }
+nullslop-web-fetch = { workspace = true, features = ["headless-chrome"] }
 clap_complete = { workspace = true }
 tokio = { workspace = true }
 kanal = { workspace = true }

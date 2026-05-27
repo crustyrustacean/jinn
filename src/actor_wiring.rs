@@ -252,12 +252,17 @@ pub fn create_core_with_actor_host(
     let web_fetcher: std::sync::Arc<dyn nullslop_web_fetch::WebFetcher> = match web_fetch_backend {
         WebFetchBackend::Http => std::sync::Arc::new(HttpFetcher::new()),
         WebFetchBackend::HeadlessChrome => {
-            // Phase 8 will add HeadlessChromeFetcher.
-            // For now, fall back to HttpFetcher with a warning.
-            tracing::warn!(
-                "headless-chrome backend not yet implemented, falling back to http"
-            );
-            std::sync::Arc::new(HttpFetcher::new())
+            #[cfg(feature = "headless-chrome")]
+            {
+                std::sync::Arc::new(nullslop_web_fetch::HeadlessChromeFetcher::new())
+            }
+            #[cfg(not(feature = "headless-chrome"))]
+            {
+                tracing::warn!(
+                    "headless-chrome feature not enabled, falling back to http"
+                );
+                std::sync::Arc::new(HttpFetcher::new())
+            }
         }
     };
     actors.push(spawn::<WebFetchActor>(
