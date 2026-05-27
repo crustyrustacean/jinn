@@ -201,6 +201,14 @@ pub struct SessionCoreEphemeral {
     /// Checked at `on_tool_batch_completed` and `on_stream_completed`.
     /// OWNER: session-actor.
     pub(crate) soft_cancel_requested: bool,
+    /// Set to true by `ScheduleAutoCompaction` when token threshold is exceeded.
+    /// Checked at `on_tool_batch_completed` and `on_stream_completed`. When set,
+    /// the session transitions directly to Compacting instead of continuing the
+    /// turn or returning to Idle. Self-clearing on read via
+    /// `take_auto_compaction_requested`.
+    /// OWNER: session-actor.
+    #[serde(default)]
+    pub(crate) auto_compaction_requested: bool,
     /// When true, `on_tool_batch_completed` skips `SendToLlmProvider` and
     /// transitions to Idle instead of continuing the tool loop. Set by judge
     /// verdict tools (`task_complete`, `task_incomplete`). Self-clearing on read.
@@ -690,6 +698,7 @@ impl ChatSessionState {
         self.core.ephemeral.streaming_tool_call_indices.clear();
         self.core.ephemeral.streaming_tool_result_indices.clear();
         self.core.ephemeral.soft_cancel_requested = false;
+        self.core.ephemeral.auto_compaction_requested = false;
         self.core.ephemeral.tool_loop_disabled = false;
         self.core.ephemeral.compaction_gathered_indices.clear();
         self.core.ephemeral.busy_counter = BusyCounter::default();
@@ -2473,6 +2482,33 @@ impl ChatSessionState {
     /// (which is consumed later by `on_tool_batch_completed`).
     pub fn is_soft_cancelled(&self) -> bool {
         self.core.ephemeral.soft_cancel_requested
+    }
+
+    /// Request auto-compaction at the next turn boundary.
+    ///
+    /// Sets a flag that is checked by `on_tool_batch_completed` and
+    /// `on_stream_completed`. When set, the session transitions directly
+    /// to `Compacting` instead of continuing the turn or returning to `Idle`.
+    /// OWNER: `ScheduleAutoCompaction` command handler.
+    pub fn request_auto_compaction(&mut self) {
+        self.core.ephemeral.auto_compaction_requested = true;
+    }
+
+    /// Take the auto-compaction flag, clearing it.
+    ///
+    /// Returns `true` if auto-compaction was requested, and clears the flag.
+    /// Returns `false` if no auto-compaction was requested.
+    pub fn take_auto_compaction_requested(&mut self) -> bool {
+        std::mem::take(&mut self.core.ephemeral.auto_compaction_requested)
+    }
+
+    /// Check if auto-compaction was requested without consuming the flag.
+    ///
+    /// Used by `on_stream_completed(ToolUse)` to decide whether to skip
+    /// the direct-to-Compacting optimization without consuming the flag
+    /// (which is consumed later by `on_tool_batch_completed`).
+    pub fn is_auto_compaction_requested(&self) -> bool {
+        self.core.ephemeral.auto_compaction_requested
     }
 
     /// Force-exclude any `ToolCall` entries that lack matching `ToolResult` entries,
