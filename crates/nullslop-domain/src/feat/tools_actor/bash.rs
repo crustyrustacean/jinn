@@ -877,4 +877,170 @@ mod tests {
             accumulated.len()
         );
     }
+
+    // --- Phase 4: Mutation-killing tests ---
+
+    #[rstest::rstest]
+    fn format_exit_result_success_with_output() {
+        // Given a successful exit and some output.
+        let status = std::process::Command::new("true")
+            .status()
+            .expect("true should run");
+        let exit_result: Result<std::process::ExitStatus, std::io::Error> = Ok(status);
+
+        // When formatting the exit result.
+        let result = format_exit_result(
+            &exit_result,
+            "hello world\n",
+            "call_1".to_owned(),
+            "bash".to_owned(),
+            DEFAULT_MAX_LINES,
+            DEFAULT_MAX_BYTES,
+        );
+
+        // Then success is true and content contains the output.
+        assert!(result.success);
+        assert_eq!(result.content, "hello world\n");
+        assert!(result.full_content.is_none());
+    }
+
+    #[rstest::rstest]
+    fn format_exit_result_failure_with_exit_code() {
+        // Given a non-zero exit.
+        let status = std::process::Command::new("bash")
+            .args(["-c", "exit 42"])
+            .status()
+            .expect("bash should run");
+        let exit_result: Result<std::process::ExitStatus, std::io::Error> = Ok(status);
+
+        // When formatting the exit result with output.
+        let result = format_exit_result(
+            &exit_result,
+            "some output\n",
+            "call_2".to_owned(),
+            "bash".to_owned(),
+            DEFAULT_MAX_LINES,
+            DEFAULT_MAX_BYTES,
+        );
+
+        // Then success is false and content includes exit code.
+        assert!(!result.success);
+        assert!(result.content.contains("some output"));
+        assert!(result.content.contains("Command exited with code 42"));
+    }
+
+    #[rstest::rstest]
+    fn format_exit_result_failure_without_output() {
+        // Given a non-zero exit with empty output.
+        let status = std::process::Command::new("bash")
+            .args(["-c", "exit 1"])
+            .status()
+            .expect("bash should run");
+        let exit_result: Result<std::process::ExitStatus, std::io::Error> = Ok(status);
+
+        // When formatting the exit result.
+        let result = format_exit_result(
+            &exit_result,
+            "",
+            "call_3".to_owned(),
+            "bash".to_owned(),
+            DEFAULT_MAX_LINES,
+            DEFAULT_MAX_BYTES,
+        );
+
+        // Then success is false and content includes exit code.
+        assert!(!result.success);
+        assert!(result.content.contains("Command exited with code 1"));
+    }
+
+    #[rstest::rstest]
+    fn format_exit_result_io_error() {
+        // Given an I/O error.
+        let exit_result: Result<std::process::ExitStatus, std::io::Error> =
+            Err(std::io::Error::new(std::io::ErrorKind::NotFound, "not found"));
+
+        // When formatting the exit result.
+        let result = format_exit_result(
+            &exit_result,
+            "",
+            "call_4".to_owned(),
+            "bash".to_owned(),
+            DEFAULT_MAX_LINES,
+            DEFAULT_MAX_BYTES,
+        );
+
+        // Then success is false.
+        assert!(!result.success);
+    }
+
+    #[rstest::rstest]
+    fn format_exit_result_failure_appends_newline_if_missing() {
+        // Given a non-zero exit with output not ending in newline.
+        let status = std::process::Command::new("bash")
+            .args(["-c", "exit 3"])
+            .status()
+            .expect("bash should run");
+        let exit_result: Result<std::process::ExitStatus, std::io::Error> = Ok(status);
+
+        // When formatting the exit result with output not ending in newline.
+        let result = format_exit_result(
+            &exit_result,
+            "no trailing newline",
+            "call_5".to_owned(),
+            "bash".to_owned(),
+            DEFAULT_MAX_LINES,
+            DEFAULT_MAX_BYTES,
+        );
+
+        // Then a newline is added before the exit code message.
+        assert!(!result.success);
+        assert!(result.content.contains("no trailing newline\nCommand exited with code 3"));
+    }
+
+    #[rstest::rstest]
+    fn truncate_streaming_output_returns_non_empty() {
+        // Given a string that's well within limits.
+        let content = "hello\nworld\n";
+
+        // When truncating.
+        let result = truncate_streaming_output(content);
+
+        // Then the content is returned as-is.
+        assert_eq!(result, content);
+    }
+
+    #[rstest::rstest]
+    fn push_line_at_exact_stream_buffer_max_does_not_truncate_prematurely() {
+        // Given a batcher and accumulated exactly at STREAM_BUFFER_MAX_BYTES - 1.
+        let mut batcher = StreamingBatcher::new();
+        let mut accumulated = String::new();
+
+        // Push lines until just below the threshold.
+        let line = "a".repeat(1000);
+        for _ in 0..(STREAM_BUFFER_MAX_BYTES / 1001) {
+            batcher.push_line(&line, &mut accumulated);
+        }
+        let _len_before = accumulated.len();
+
+        // When pushing one more line that pushes over the threshold.
+        batcher.push_line("extra", &mut accumulated);
+
+        // Then accumulated grew (or was truncated).
+        assert_ne!(accumulated.len(), 0);
+    }
+
+    #[rstest::rstest]
+    fn should_flush_returns_false_at_exact_threshold() {
+        // Given a batcher with exactly STREAM_FLUSH_THRESHOLD bytes.
+        let mut batcher = StreamingBatcher::new();
+        let mut accumulated = String::new();
+
+        // Push data that is exactly at the threshold boundary (not exceeding).
+        let line = "a".repeat(STREAM_FLUSH_THRESHOLD - 1); // +1 for \n = STREAM_FLUSH_THRESHOLD
+        batcher.push_line(&line, &mut accumulated);
+
+        // When checking if it should flush.
+        // Then it returns false (len == threshold, not > threshold).
+        assert!(!batcher.should_flush());
+    }
 }

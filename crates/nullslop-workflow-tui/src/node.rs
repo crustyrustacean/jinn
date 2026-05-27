@@ -768,4 +768,182 @@ mod tests {
         let col = node.width.saturating_sub(2);
         assert_eq!(buf.cell(Position::new(col, 0)).unwrap().symbol(), "●");
     }
+
+    // --- Mutant-killing tests for node.rs ---
+
+    // Kills: truncate_str -> String::new(), truncate_str -> "xyzzy"
+    #[test]
+    fn truncate_str_returns_actual_content() {
+        let result = truncate_str("hello world", 5);
+        assert_eq!(result, "hello", "must return actual truncated content, not empty or xyzzy");
+    }
+
+    #[test]
+    fn truncate_str_returns_full_string_when_short_enough() {
+        let result = truncate_str("hi", 10);
+        assert_eq!(result, "hi", "short strings pass through unchanged");
+    }
+
+    // Kills: ShiftedNode::is_visible -> true
+    #[test]
+    fn shifted_node_invisible_when_scrolled_left() {
+        let node = VisualNode::compute(
+            "test".to_owned(),
+            &[string_port("in")],
+            &[string_port("out")],
+            NodeStatus::Pending,
+        );
+        // Shift the node so it's entirely off-screen to the left.
+        // Node width is ~18. With dx = 100, shifted x = 0 - 100 = -100.
+        let shifted = node.shifted_i32(100, 0);
+        assert!(!shifted.is_visible(), "node scrolled off-screen left must be invisible");
+    }
+
+    // Kills: ShiftedNode::is_visible -> true
+    #[test]
+    fn shifted_node_invisible_when_scrolled_up() {
+        let node = VisualNode::compute(
+            "test".to_owned(),
+            &[string_port("in")],
+            &[string_port("out")],
+            NodeStatus::Pending,
+        );
+        let shifted = node.shifted_i32(0, 100);
+        assert!(!shifted.is_visible(), "node scrolled off-screen up must be invisible");
+    }
+
+    // Kills: ShiftedNode::is_visible && -> ||
+    #[test]
+    fn shifted_node_visible_when_in_viewport() {
+        let node = VisualNode::compute(
+            "test".to_owned(),
+            &[string_port("in")],
+            &[string_port("out")],
+            NodeStatus::Pending,
+        );
+        let shifted = node.shifted_i32(0, 0);
+        assert!(shifted.is_visible(), "node at origin must be visible");
+    }
+
+    // Kills: VisualNode::rect() returning default
+    #[test]
+    fn visual_node_rect_returns_actual_dimensions() {
+        let node = VisualNode::compute(
+            "my_node".to_owned(),
+            &[string_port("a")],
+            &[string_port("b")],
+            NodeStatus::Pending,
+        );
+        let rect = node.rect();
+        assert_eq!(rect.x, 0);
+        assert_eq!(rect.y, 0);
+        assert_eq!(rect.width, node.width);
+        assert_eq!(rect.height, node.height);
+        assert!(rect.width > 0, "width must be non-zero");
+        assert!(rect.height > 0, "height must be non-zero");
+    }
+
+    // Kills: input_port_pos uses saturating_sub correctly
+    #[test]
+    fn input_port_pos_is_left_of_node() {
+        let mut node = VisualNode::compute(
+            "test".to_owned(),
+            &[string_port("in")],
+            &[string_port("out")],
+            NodeStatus::Pending,
+        );
+        node.x = 5;
+        node.y = 10;
+        let (px, py) = node.input_port_pos(0);
+        assert_eq!(px, 4, "input port x must be node.x - 1");
+        assert_eq!(py, 10 + node.input_ports[0].row_offset, "input port y must be node.y + row_offset");
+    }
+
+    // Kills: output_port_pos uses + correctly (not * or -)
+    #[test]
+    fn output_port_pos_is_right_of_node() {
+        let mut node = VisualNode::compute(
+            "test".to_owned(),
+            &[string_port("in")],
+            &[string_port("out")],
+            NodeStatus::Pending,
+        );
+        node.x = 5;
+        node.y = 10;
+        let (px, py) = node.output_port_pos(0);
+        assert_eq!(px, 5 + node.width, "output port x must be node.x + width");
+        assert_eq!(py, 10 + node.output_ports[0].row_offset, "output port y must be node.y + row_offset");
+    }
+
+    // Kills: set_cell_abs skipping negative coords
+    #[test]
+    fn set_cell_abs_skips_negative_coords() {
+        let area = Rect::new(0, 0, 20, 20);
+        let mut buf = Buffer::empty(area);
+        set_cell_abs(&mut buf, -1, 5, "X", Style::default());
+        set_cell_abs(&mut buf, 5, -1, "Y", Style::default());
+        // Both should be skipped — check that cell at (5,5) is still default.
+        let cell = buf.cell(Position::new(5, 5)).unwrap();
+        assert_eq!(cell.symbol(), " ", "negative coords must be skipped");
+    }
+
+    // Kills: set_cell_abs writes valid coords
+    #[test]
+    fn set_cell_abs_writes_to_valid_position() {
+        let area = Rect::new(0, 0, 20, 20);
+        let mut buf = Buffer::empty(area);
+        set_cell_abs(&mut buf, 5, 5, "X", Style::default().fg(Color::Red));
+        let cell = buf.cell(Position::new(5, 5)).unwrap();
+        assert_eq!(cell.symbol(), "X");
+        assert_eq!(cell.fg, Color::Red);
+    }
+
+    // Kills: node.render with selected=true uses white border
+    #[test]
+    fn render_selected_node_has_white_border() {
+        let node = VisualNode::compute(
+            "test".to_owned(),
+            &[string_port("in")],
+            &[string_port("out")],
+            NodeStatus::Pending,
+        );
+        let area = Rect::new(0, 0, 30, 15);
+        let mut buf = Buffer::empty(area);
+        node.render(&mut buf, true, 0, Color::Cyan);
+        let cell = buf.cell(Position::new(0, 0)).unwrap();
+        assert_eq!(cell.fg, Color::White, "selected node border must be white");
+    }
+
+    // Kills: node.render with selected=false and non-awaiting uses DarkGray border
+    #[test]
+    fn render_unselected_node_has_dark_gray_border() {
+        let node = VisualNode::compute(
+            "test".to_owned(),
+            &[string_port("in")],
+            &[string_port("out")],
+            NodeStatus::Pending,
+        );
+        let area = Rect::new(0, 0, 30, 15);
+        let mut buf = Buffer::empty(area);
+        node.render(&mut buf, false, 0, Color::Cyan);
+        let cell = buf.cell(Position::new(0, 0)).unwrap();
+        assert_eq!(cell.fg, Color::DarkGray, "unselected node border must be dark gray");
+    }
+
+    // Kills: render_title writes actual title content
+    #[test]
+    fn render_title_writes_name_to_buffer() {
+        let node = VisualNode::compute(
+            "my_node".to_owned(),
+            &[string_port("in")],
+            &[string_port("out")],
+            NodeStatus::Pending,
+        );
+        let area = Rect::new(0, 0, 30, 15);
+        let mut buf = Buffer::empty(area);
+        node.render(&mut buf, false, 0, Color::Cyan);
+        // Title starts at col 2.
+        let cell = buf.cell(Position::new(2, 0)).unwrap();
+        assert_eq!(cell.symbol(), "m", "title must render actual name text");
+    }
 }

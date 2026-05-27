@@ -452,4 +452,110 @@ mod tests {
         // Line 2: "文测试" = 3 graphemes (6 display cols).
         assert_eq!(lines[1].grapheme_end - lines[1].grapheme_start, 3);
     }
+
+    // --- Boundary tests for wrap_logical_line mutants ---
+
+    #[rstest::rstest]
+    fn exact_width_no_wrap_boundary() {
+        // Given text exactly at width (col == width, NOT > width).
+        let text = "hello"; // 5 cols
+
+        // When wrapping at width 5.
+        let lines = wrap_text(text, 5);
+
+        // Then there is exactly 1 line (no wrap at boundary).
+        // Kills: col > width → col >= width (would incorrectly wrap).
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].grapheme_start, 0);
+        assert_eq!(lines[0].grapheme_end, 5);
+    }
+
+    #[rstest::rstest]
+    fn one_over_width_forces_wrap() {
+        // Given text one col over width.
+        let text = "abcdef"; // 6 cols
+
+        // When wrapping at width 5.
+        let lines = wrap_text(text, 5);
+
+        // Then it wraps into 2 lines.
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].grapheme_end - lines[0].grapheme_start, 5);
+        assert_eq!(lines[1].grapheme_end - lines[1].grapheme_start, 1);
+    }
+
+    #[rstest::rstest]
+    fn whitespace_at_end_of_line_is_not_break_point() {
+        // Given "hello " (6 cols) at width 6 — the space is the last grapheme.
+        let text = "hello ";
+
+        // When wrapping at width 6.
+        let lines = wrap_text(text, 6);
+
+        // Then no wrap (no break point recorded because space is at end).
+        // Kills: i + 1 < graphemes.len() → i + 1 <= graphemes.len()
+        assert_eq!(lines.len(), 1);
+    }
+
+    #[rstest::rstest]
+    fn whitespace_mid_line_records_break() {
+        // Given "hello world" at width 6 — break should happen after space.
+        let text = "hello world";
+
+        // When wrapping at width 6.
+        let lines = wrap_text(text, 6);
+
+        // Then line 1 is "hello " (6 cols), line 2 is "world".
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].grapheme_end - lines[0].grapheme_start, 6); // "hello "
+        assert_eq!(lines[1].grapheme_end - lines[1].grapheme_start, 5); // "world"
+    }
+
+    #[rstest::rstest]
+    fn continuation_lines_are_marked() {
+        // Given text that wraps.
+        let text = "abcdefghij"; // 10 cols
+
+        // When wrapping at width 5.
+        let lines = wrap_text(text, 5);
+
+        // Then first line is NOT a continuation, rest ARE.
+        // Kills: delete ! in !first_line (would mark first as continuation).
+        assert!(!lines[0].is_continuation);
+        for line in &lines[1..] {
+            assert!(line.is_continuation);
+        }
+    }
+
+    #[rstest::rstest]
+    fn grapheme_ranges_are_correct() {
+        // Given "hello world and more" at width 10.
+        let text = "hello world and more";
+        let lines = wrap_text(text, 10);
+
+        // Then ranges are contiguous and correct.
+        // Kills: replace + with * or - in grapheme_offset arithmetic.
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0].grapheme_start, 0);
+        assert_eq!(lines[0].grapheme_end, 6); // "hello "
+        assert_eq!(lines[1].grapheme_start, 6);
+        assert_eq!(lines[1].grapheme_end, 16); // "world and "
+        assert_eq!(lines[2].grapheme_start, 16);
+        assert_eq!(lines[2].grapheme_end, 20); // "more"
+    }
+
+    #[rstest::rstest]
+    fn non_whitespace_is_not_detected_as_whitespace() {
+        // Given a long word with no spaces.
+        let text = "abcdefghij";
+
+        // When wrapping at width 5.
+        let lines = wrap_text(text, 5);
+
+        // Then it breaks at exact width (forced break, no word boundary).
+        // This verifies that whitespace detection is correct.
+        // Kills: replace == with != in whitespace check.
+        assert_eq!(lines.len(), 2);
+        assert!(lines[1].is_continuation);
+    }
 }

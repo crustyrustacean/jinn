@@ -1359,4 +1359,128 @@ mod tests {
         assert_eq!(text_val.port_type(), PortType::Single(ScalarType::Text));
         assert_eq!(number_val.port_type(), PortType::Single(ScalarType::Number));
     }
+
+    // --- Mutant-killing tests for port.rs ---
+
+    // Kills: get_number -> Ok(0.0), Ok(1.0), Ok(-1.0)
+    #[test]
+    fn get_number_returns_actual_stored_value() {
+        let mut values = PortValues::new();
+        values.insert(
+            "ratio".to_owned(),
+            PortValue::Single(ScalarValue::Number(3.7)),
+        );
+        let result = values.get_number("ratio");
+        let n = result.expect("should find number");
+        assert!(
+            (n - 3.7).abs() < f64::EPSILON,
+            "expected 3.7, got {n}"
+        );
+        assert!(n != 0.0, "must not be 0.0");
+        assert!(n != 1.0, "must not be 1.0");
+        assert!(n != -1.0, "must not be -1.0");
+    }
+
+    // Kills: get_boolean -> Ok(true), Ok(false)
+    #[test]
+    fn get_boolean_returns_actual_false_value() {
+        let mut values = PortValues::new();
+        values.insert(
+            "flag".to_owned(),
+            PortValue::Single(ScalarValue::Boolean(false)),
+        );
+        let result = values.get_boolean("flag");
+        assert_eq!(result.unwrap(), false, "must return the stored false, not true");
+    }
+
+    #[test]
+    fn get_boolean_returns_actual_true_value() {
+        let mut values = PortValues::new();
+        values.insert(
+            "flag".to_owned(),
+            PortValue::Single(ScalarValue::Boolean(true)),
+        );
+        let result = values.get_boolean("flag");
+        assert_eq!(result.unwrap(), true, "must return the stored true, not false");
+    }
+
+    // Kills: get_vector -> Ok(Box::leak(Box::new(vec![])))
+    #[test]
+    fn get_vector_returns_actual_vector_contents() {
+        let mut values = PortValues::new();
+        let items = vec![ScalarValue::Number(10.0), ScalarValue::Number(20.0), ScalarValue::Number(30.0)];
+        values.insert("data".to_owned(), PortValue::Vector(items));
+        let result = values.get_vector("data");
+        let v = result.expect("should find vector");
+        assert_eq!(v.len(), 3, "must return actual vector, not empty");
+        assert!((v[0].clone().into_number().unwrap() - 10.0).abs() < f64::EPSILON);
+        assert!((v[2].clone().into_number().unwrap() - 30.0).abs() < f64::EPSILON);
+    }
+
+    // Kills: get_map -> Ok(Box::leak(Box::new(HashMap::new())))
+    #[test]
+    fn get_map_returns_actual_map_contents() {
+        let mut values = PortValues::new();
+        let mut entries = HashMap::new();
+        entries.insert("x".to_owned(), ScalarValue::Number(1.0));
+        entries.insert("y".to_owned(), ScalarValue::Number(2.0));
+        values.insert("coords".to_owned(), PortValue::Map(entries));
+        let result = values.get_map("coords");
+        let m = result.expect("should find map");
+        assert_eq!(m.len(), 2, "must return actual map, not empty");
+        assert!(m.contains_key("x"));
+        assert!(m.contains_key("y"));
+    }
+
+    // Kills: take_boolean -> Ok(true)
+    #[test]
+    fn take_boolean_returns_actual_false_value() {
+        let mut values = PortValues::new();
+        values.insert(
+            "flag".to_owned(),
+            PortValue::Single(ScalarValue::Boolean(false)),
+        );
+        let result = values.take_boolean("flag");
+        assert_eq!(result.unwrap(), false, "must return the stored false, not true");
+    }
+
+    // Kills: is_empty -> true, is_empty -> false
+    #[test]
+    fn is_empty_returns_true_for_empty_port_values() {
+        let values = PortValues::new();
+        assert!(values.is_empty(), "empty PortValues must report is_empty=true");
+    }
+
+    #[test]
+    fn is_empty_returns_false_for_non_empty_port_values() {
+        let mut values = PortValues::new();
+        values.insert(
+            "a".to_owned(),
+            PortValue::Single(ScalarValue::Text("x".to_owned())),
+        );
+        assert!(!values.is_empty(), "non-empty PortValues must report is_empty=false");
+    }
+
+    // Kills: From<HashMap<String, PortValue>> for PortValues -> Default::default()
+    #[test]
+    fn from_hashmap_preserves_all_entries() {
+        let mut map = HashMap::new();
+        map.insert(
+            "a".to_owned(),
+            PortValue::Single(ScalarValue::Text("hello".to_owned())),
+        );
+        map.insert(
+            "b".to_owned(),
+            PortValue::Single(ScalarValue::Number(42.0)),
+        );
+        map.insert(
+            "c".to_owned(),
+            PortValue::Single(ScalarValue::Boolean(true)),
+        );
+        let values: PortValues = map.into();
+        assert_eq!(values.len(), 3, "From<HashMap> must preserve all 3 entries");
+        assert_eq!(values.get_text("a").unwrap(), "hello");
+        assert!((values.get_number("b").unwrap() - 42.0).abs() < f64::EPSILON);
+        assert!(values.get_boolean("c").unwrap());
+    }
 }

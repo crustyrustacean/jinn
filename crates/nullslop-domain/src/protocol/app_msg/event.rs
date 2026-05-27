@@ -318,4 +318,33 @@ mod tests {
         // Then it returns Some of the payload's TYPE_NAME.
         assert_eq!(event.type_name(), Some(expected));
     }
+
+    #[rstest::rstest]
+    fn dynamic_event_routing_key_uses_runtime_name() {
+        // Given a Dynamic event with a custom name.
+        let event = Event::Dynamic(DynamicEvent {
+            name: "plugin::custom_event".to_owned(),
+            payload: serde_json::Value::Null,
+        });
+
+        // When calling routing_key.
+        let key = event.routing_key();
+
+        // Then it returns the runtime name, not the static TYPE_NAME.
+        assert_eq!(key.as_deref(), Some("plugin::custom_event"));
+        assert_ne!(key.as_deref(), Some(DynamicEvent::TYPE_NAME));
+    }
+
+    #[rstest::rstest]
+    fn dynamic_event_type_name_returns_static() {
+        // Given a Dynamic event.
+        let event = Event::Dynamic(DynamicEvent {
+            name: "plugin::custom".to_owned(),
+            payload: serde_json::Value::Null,
+        });
+
+        // When calling type_name.
+        // Then it returns the static TYPE_NAME.
+        assert_eq!(event.type_name(), Some(DynamicEvent::TYPE_NAME));
+    }
 }

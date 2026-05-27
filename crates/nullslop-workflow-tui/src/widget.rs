@@ -376,4 +376,30 @@ mod tests {
             "diamond graph should have at least one tee junction"
         );
     }
+
+    // --- Mutant-killing tests for widget.rs ---
+
+    // Kills: render_connections == -> != for port matching
+    #[test]
+    fn widget_renders_connections_for_correct_ports() {
+        // Build a graph with specific port names so we can verify the right ports are connected.
+        let graph = build_two_node_graph();
+        let execution = WorkflowExecution::new(graph);
+        let snapshot = execution.snapshot();
+        let viewport = ViewportState::new();
+        let widget = WorkflowWidget::new(&snapshot, &viewport, 0, Color::Cyan);
+
+        let area = Rect { x: 0, y: 0, width: 120, height: 30 };
+        let mut buf = Buffer::empty(area);
+        widget.render(area, &mut buf);
+
+        // Verify at least one connection character appears (─ or │ or corner).
+        let has_connection = (0..area.height).any(|row| {
+            (0..area.width).any(|col| {
+                let sym = buf.cell(ratatui::layout::Position::new(col, row)).unwrap().symbol();
+                matches!(sym, "─" | "│" | "╭" | "╮" | "╰" | "╯")
+            })
+        });
+        assert!(has_connection, "two-node graph must render connection lines");
+    }
 }

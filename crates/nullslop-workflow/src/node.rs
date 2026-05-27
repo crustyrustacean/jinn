@@ -228,4 +228,14 @@ mod tests {
         // Then it produces a non-empty string.
         assert!(!format!("{err:?}").is_empty());
     }
+
+    // --- Mutant-killing tests for node.rs ---
+
+    // Kills: WorkflowNode::config -> Some(Default::default())
+    // The default impl returns None, not Some(default).
+    #[test]
+    fn echo_node_config_returns_none_by_default() {
+        let node = EchoNode;
+        assert_eq!(node.config(), None, "default config() must return None, not Some(default)");
+    }
 }

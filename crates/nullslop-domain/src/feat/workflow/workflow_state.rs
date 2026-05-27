@@ -138,3 +138,222 @@ impl WorkflowMap {
         self.workflows.get_mut(id)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+
+    use super::*;
+    use crate::feat::workflow::example::add_numbers;
+    use std::sync::Arc;
+
+    fn make_state(name: &str) -> WorkflowState {
+        let graph = add_numbers::build_add_numbers();
+        let execution = Arc::new(nullslop_workflow::execution::WorkflowExecution::new(graph));
+        WorkflowState::new(name.to_owned(), execution)
+    }
+
+    // --- WorkflowMap ---
+
+    #[rstest::rstest]
+    fn active_returns_none_when_empty() {
+        // Given an empty map.
+        let map = WorkflowMap::default();
+
+        // Then active returns None.
+        assert!(map.active().is_none());
+    }
+
+    #[rstest::rstest]
+    fn active_mut_returns_none_when_empty() {
+        // Given an empty map.
+        let mut map = WorkflowMap::default();
+
+        // Then active_mut returns None.
+        assert!(map.active_mut().is_none());
+    }
+
+    #[rstest::rstest]
+    fn insert_sets_active_and_stores_workflow() {
+        // Given an empty map.
+        let mut map = WorkflowMap::default();
+        let state = make_state("test");
+        let id = state.id.clone();
+
+        // When inserting.
+        map.insert(state);
+
+        // Then it is active and retrievable.
+        assert!(map.active().is_some());
+        assert_eq!(map.active().unwrap().name, "test");
+        assert!(map.get(&id).is_some());
+        assert_eq!(map.get(&id).unwrap().name, "test");
+    }
+
+    #[rstest::rstest]
+    fn active_mut_returns_inserted_workflow() {
+        // Given a map with one workflow.
+        let mut map = WorkflowMap::default();
+        let state = make_state("test");
+        let id = state.id.clone();
+        map.insert(state);
+
+        // When calling active_mut.
+        let active = map.active_mut().expect("should have active");
+
+        // Then it is mutable and correct.
+        assert_eq!(active.id, id);
+        active.name = "modified".to_owned();
+        assert_eq!(map.active().unwrap().name, "modified");
+    }
+
+    #[rstest::rstest]
+    fn insert_replaces_active() {
+        // Given a map with one workflow.
+        let mut map = WorkflowMap::default();
+        let state1 = make_state("first");
+        map.insert(state1);
+
+        // When inserting a second.
+        let state2 = make_state("second");
+        map.insert(state2);
+
+        // Then the second is active.
+        assert_eq!(map.active().unwrap().name, "second");
+    }
+
+    #[rstest::rstest]
+    fn remove_deletes_workflow() {
+        // Given a map with one workflow.
+        let mut map = WorkflowMap::default();
+        let state = make_state("test");
+        let id = state.id.clone();
+        map.insert(state);
+
+        // When removing.
+        map.remove(&id);
+
+        // Then it is gone and active moves to nothing.
+        assert!(map.get(&id).is_none());
+        assert!(map.active().is_none());
+    }
+
+    #[rstest::rstest]
+    fn remove_active_shifts_to_remaining() {
+        // Given a map with two workflows.
+        let mut map = WorkflowMap::default();
+        let state1 = make_state("first");
+        let id1 = state1.id.clone();
+        map.insert(state1);
+        let state2 = make_state("second");
+        let id2 = state2.id.clone();
+        map.insert(state2);
+
+        // Active is id2. When removing id2.
+        map.remove(&id2);
+
+        // Then id1 is still there.
+        assert!(map.get(&id1).is_some());
+        assert!(map.get(&id2).is_none());
+    }
+
+    #[rstest::rstest]
+    fn remove_nonexistent_is_noop() {
+        // Given a map with one workflow.
+        let mut map = WorkflowMap::default();
+        let state = make_state("test");
+        let id = state.id.clone();
+        map.insert(state);
+
+        // When removing a different ID.
+        let other_id = WorkflowId::new();
+        map.remove(&other_id);
+
+        // Then the original is unchanged.
+        assert!(map.get(&id).is_some());
+        assert_eq!(map.active().unwrap().id, id);
+    }
+
+    #[rstest::rstest]
+    fn set_active_switches_focus() {
+        // Given a map with two workflows.
+        let mut map = WorkflowMap::default();
+        let state1 = make_state("first");
+        let id1 = state1.id.clone();
+        map.insert(state1);
+        let state2 = make_state("second");
+        let _id2 = state2.id.clone();
+        map.insert(state2);
+
+        // Active is id2. When setting active to id1.
+        map.set_active(&id1);
+
+        // Then id1 is active.
+        assert_eq!(map.active().unwrap().id, id1);
+    }
+
+    #[rstest::rstest]
+    fn set_active_ignores_unknown_id() {
+        // Given a map with one workflow.
+        let mut map = WorkflowMap::default();
+        let state = make_state("test");
+        let id = state.id.clone();
+        map.insert(state);
+
+        // When setting active to unknown ID.
+        let unknown = WorkflowId::new();
+        map.set_active(&unknown);
+
+        // Then active is unchanged.
+        assert_eq!(map.active().unwrap().id, id);
+    }
+
+    #[rstest::rstest]
+    fn get_mut_returns_mutable_reference() {
+        // Given a map with one workflow.
+        let mut map = WorkflowMap::default();
+        let state = make_state("test");
+        let id = state.id.clone();
+        map.insert(state);
+
+        // When getting mutable reference.
+        let wf = map.get_mut(&id).expect("should exist");
+
+        // Then it can be mutated.
+        wf.name = "renamed".to_owned();
+        assert_eq!(map.get(&id).unwrap().name, "renamed");
+    }
+
+    #[rstest::rstest]
+    fn get_mut_returns_none_for_missing() {
+        // Given an empty map.
+        let mut map = WorkflowMap::default();
+
+        // When getting mutable reference for any ID.
+        let id = WorkflowId::new();
+
+        // Then it returns None.
+        assert!(map.get_mut(&id).is_none());
+    }
+
+    #[rstest::rstest]
+    fn get_returns_none_for_missing() {
+        // Given an empty map.
+        let map = WorkflowMap::default();
+
+        // When getting any ID.
+        assert!(map.get(&WorkflowId::new()).is_none());
+    }
+
+    // --- WorkflowId ---
+
+    #[rstest::rstest]
+    fn workflow_id_default_creates_unique() {
+        // Given two default IDs.
+        let id1 = WorkflowId::default();
+        let id2 = WorkflowId::default();
+
+        // Then they differ.
+        assert_ne!(id1, id2);
+    }
+}

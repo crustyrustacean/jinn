@@ -46,18 +46,22 @@ pub struct VisibleEntry {
 /// Items appear in tree DFS order — NOT sorted by fuzzy score. Score is only
 /// used to determine which items match, not for ordering.
 #[derive(Debug)]
+#[expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "fields need pub(crate) for cross-module test access within the crate"
+)]
 pub struct TreePickerState<I>
 where
     I: TreeItem,
 {
     /// Current filter text typed by the user.
-    filter: String,
+    pub(crate) filter: String,
     /// Cursor position as a grapheme-cluster index within `filter`.
-    cursor_pos: usize,
+    pub(crate) cursor_pos: usize,
     /// Index of the currently highlighted item in the visible list.
-    selection: usize,
+    pub(crate) selection: usize,
     /// Index of the first visible result row (scroll window top).
-    scroll_offset: usize,
+    pub(crate) scroll_offset: usize,
     /// The full item list provided by the consumer.
     items: Vec<I>,
     /// Filtered + ancestor-expanded results with recomputed tree metadata.

@@ -152,6 +152,14 @@ impl DomainNodeContext {
             let _ = tx.send(response);
         }
     }
+
+    /// Inserts a pending oneshot sender for the given session ID.
+    ///
+    /// Test-only helper for setting up workflow resolution scenarios.
+    #[cfg(test)]
+    pub fn insert_pending(&self, session_id: SessionId, tx: oneshot::Sender<String>) {
+        self.pending.lock().insert(session_id, tx);
+    }
 }
 
 impl NodeContext for DomainNodeContext {
@@ -176,5 +184,127 @@ impl NodeContext for DomainNodeContext {
             tool_schemas,
             provider_id.map(std::borrow::ToOwned::to_owned),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+
+    use super::*;
+    use crate::common::app_state::AppState;
+    use crate::common::services::test_services::TestServices;
+    use crate::common::state::State;
+
+    fn make_ctx() -> DomainNodeContext {
+        let services = TestServices::builder().build();
+        let state = State::new(AppState::default());
+        DomainNodeContext::new(services, state)
+    }
+
+    #[rstest::rstest]
+    fn has_pending_returns_false_when_empty() {
+        // Given a new context.
+        let ctx = make_ctx();
+
+        // Then has_pending returns false for any session.
+        assert!(!ctx.has_pending(&SessionId::new()));
+    }
+
+    #[rstest::rstest]
+    fn has_pending_returns_true_after_resolve_setup() {
+        // Given a context and a pending session.
+        let ctx = make_ctx();
+        let session_id = SessionId::new();
+
+        // When we manually insert a pending entry.
+        let (tx, rx) = oneshot::channel();
+        ctx.pending.lock().insert(session_id.clone(), tx);
+
+        // Then has_pending returns true.
+        assert!(ctx.has_pending(&session_id));
+
+        // And the receiver is still pending.
+        // Drop tx without sending to avoid leak.
+        drop(rx);
+    }
+
+    #[rstest::rstest]
+    fn resolve_completed_sends_response() {
+        // Given a context with a pending oneshot.
+        let ctx = make_ctx();
+        let session_id = SessionId::new();
+        let (tx, mut rx) = oneshot::channel();
+        ctx.pending.lock().insert(session_id.clone(), tx);
+
+        // When resolving with a response.
+        ctx.resolve_completed(&session_id, "hello world".to_owned());
+
+        // Then the receiver gets the response.
+        let result = rx.try_recv().expect("should have a value");
+        assert_eq!(result, "hello world");
+    }
+
+    #[rstest::rstest]
+    fn resolve_completed_removes_pending() {
+        // Given a context with a pending oneshot.
+        let ctx = make_ctx();
+        let session_id = SessionId::new();
+        let (tx, _rx) = oneshot::channel();
+        ctx.pending.lock().insert(session_id.clone(), tx);
+
+        // When resolving.
+        ctx.resolve_completed(&session_id, "response".to_owned());
+
+        // Then has_pending returns false.
+        assert!(!ctx.has_pending(&session_id));
+    }
+
+    #[rstest::rstest]
+    fn resolve_completed_ignores_unknown_session() {
+        // Given a context with no pending entries.
+        let ctx = make_ctx();
+        let session_id = SessionId::new();
+
+        // When resolving an unknown session.
+        // Then it does not panic.
+        ctx.resolve_completed(&session_id, "response".to_owned());
+    }
+
+    #[rstest::rstest]
+    fn set_node_name_stores_name() {
+        // Given a new context.
+        let ctx = make_ctx();
+
+        // When setting the node name.
+        ctx.set_node_name("my-node");
+
+        // Then it is stored.
+        assert_eq!(*ctx.current_node_name.lock(), Some("my-node".to_owned()));
+    }
+
+    #[rstest::rstest]
+    fn clear_node_name_clears() {
+        // Given a context with a node name set.
+        let ctx = make_ctx();
+        ctx.set_node_name("my-node");
+
+        // When clearing.
+        ctx.clear_node_name();
+
+        // Then it is None.
+        assert_eq!(*ctx.current_node_name.lock(), None);
+    }
+
+    #[rstest::rstest]
+    fn clear_node_name_when_already_none_is_noop() {
+        // Given a new context (name is None).
+        let ctx = make_ctx();
+
+        // When clearing.
+        ctx.clear_node_name();
+
+        // Then it is still None.
+        assert_eq!(*ctx.current_node_name.lock(), None);
     }
 }

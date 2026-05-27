@@ -341,4 +341,182 @@ mod tests {
         let flag: bool = lua.globals().get("flag").expect("get flag");
         assert!(!flag, "callback should not have been invoked after unsub");
     }
+
+    // --- value_to_json: array detection ---
+
+    #[rstest::rstest]
+    fn ns_emit_converts_sequential_array_to_json_array() {
+        // Given a Lua VM with bindings.
+        let (lua, rx) = test_setup();
+
+        // When calling ns.emit with a sequential integer-keyed table.
+        lua.load(r#"ns.emit("array::test", { "a", "b", "c" })"#)
+            .exec()
+            .expect("lua exec");
+
+        // Then the payload is a JSON array.
+        let cmd = rx.recv().expect("receive command");
+        match cmd {
+            Command::Dynamic(dc) => {
+                assert_eq!(dc.name, "array::test");
+                assert!(dc.payload.is_array(), "should be a JSON array, got: {:?}", dc.payload);
+                let arr = dc.payload.as_array().expect("array");
+                assert_eq!(arr.len(), 3);
+                assert_eq!(arr[0], serde_json::Value::String("a".to_owned()));
+                assert_eq!(arr[1], serde_json::Value::String("b".to_owned()));
+                assert_eq!(arr[2], serde_json::Value::String("c".to_owned()));
+                // kills: == -> != in sequential key check
+                // kills: + -> -/* in i + 1
+            }
+            other => panic!("expected Dynamic, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    fn ns_emit_converts_mixed_keys_to_json_object() {
+        // Given a Lua VM with bindings.
+        let (lua, rx) = test_setup();
+
+        // When calling ns.emit with a table that has both string and integer keys.
+        lua.load(r#"
+            local t = { "first", foo = "bar", [5] = "fifth" }
+            ns.emit("mixed::test", t)
+        "#)
+            .exec()
+            .expect("lua exec");
+
+        // Then the payload is a JSON object (not an array) because keys are not sequential 1..N.
+        let cmd = rx.recv().expect("receive command");
+        match cmd {
+            Command::Dynamic(dc) => {
+                assert_eq!(dc.name, "mixed::test");
+                assert!(
+                    dc.payload.is_object(),
+                    "mixed-key table should be an object, got: {:?}",
+                    dc.payload
+                );
+                // kills: && -> || in all_int_keys && !int_keys.is_empty()
+                // kills: delete ! in !int_keys.is_empty()
+            }
+            other => panic!("expected Dynamic, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    fn ns_emit_converts_empty_table_to_empty_object() {
+        // Given a Lua VM with bindings.
+        let (lua, rx) = test_setup();
+
+        // When calling ns.emit with an empty table.
+        lua.load(r#"ns.emit("empty::test", {})"#)
+            .exec()
+            .expect("lua exec");
+
+        // Then the payload is an empty JSON object.
+        let cmd = rx.recv().expect("receive command");
+        match cmd {
+            Command::Dynamic(dc) => {
+                assert_eq!(dc.name, "empty::test");
+                assert!(
+                    dc.payload.is_object(),
+                    "empty table should be an object, got: {:?}",
+                    dc.payload
+                );
+            }
+            other => panic!("expected Dynamic, got {other:?}"),
+        }
+    }
+
+    // --- json_to_lua_value ---
+
+    #[rstest::rstest]
+    fn json_to_lua_value_converts_array_to_table_with_correct_indices() {
+        // Given a JSON array.
+        let lua = Lua::new();
+        let json = serde_json::json!([10, 20, 30]);
+
+        // When converting to Lua.
+        let value = json_to_lua_value(&lua, &json).expect("convert");
+
+        // Then it's a Lua table with values at indices 1, 2, 3.
+        // kills: json_to_lua_value -> Ok(Default::default()) which would return Nil
+        // kills: + -> -/* in i + 1 which would set wrong indices
+        match value {
+            Value::Table(t) => {
+                assert_eq!(t.get::<i64>(1).unwrap(), 10);
+                assert_eq!(t.get::<i64>(2).unwrap(), 20);
+                assert_eq!(t.get::<i64>(3).unwrap(), 30);
+            }
+            other => panic!("expected Table, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    fn json_to_lua_value_converts_object_to_table_with_string_keys() {
+        // Given a JSON object.
+        let lua = Lua::new();
+        let json = serde_json::json!({ "name": "test", "count": 42 });
+
+        // When converting to Lua.
+        let value = json_to_lua_value(&lua, &json).expect("convert");
+
+        // Then it's a Lua table with string keys.
+        match value {
+            Value::Table(t) => {
+                assert_eq!(t.get::<String>("name").unwrap(), "test");
+                assert_eq!(t.get::<i64>("count").unwrap(), 42);
+            }
+            other => panic!("expected Table, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    fn json_to_lua_value_converts_null_to_nil() {
+        // Given a JSON null.
+        let lua = Lua::new();
+        let json = serde_json::Value::Null;
+
+        // When converting to Lua.
+        let value = json_to_lua_value(&lua, &json).expect("convert");
+
+        // Then it's Nil.
+        assert!(matches!(value, Value::Nil));
+    }
+
+    #[rstest::rstest]
+    fn json_to_lua_value_converts_nested_structure() {
+        // Given a nested JSON structure.
+        let lua = Lua::new();
+        let json = serde_json::json!({
+            "items": [1, 2, 3],
+            "nested": { "key": "value" }
+        });
+
+        // When converting to Lua.
+        let value = json_to_lua_value(&lua, &json).expect("convert");
+
+        // Then the nested structure is preserved.
+        match value {
+            Value::Table(t) => {
+                let items: Value = t.get("items").unwrap();
+                match items {
+                    Value::Table(arr) => {
+                        assert_eq!(arr.raw_len(), 3);
+                        assert_eq!(arr.get::<i64>(1).unwrap(), 1);
+                        assert_eq!(arr.get::<i64>(2).unwrap(), 2);
+                        assert_eq!(arr.get::<i64>(3).unwrap(), 3);
+                    }
+                    other => panic!("expected items to be Table, got {other:?}"),
+                }
+                let nested: Value = t.get("nested").unwrap();
+                match nested {
+                    Value::Table(obj) => {
+                        assert_eq!(obj.get::<String>("key").unwrap(), "value");
+                    }
+                    other => panic!("expected nested to be Table, got {other:?}"),
+                }
+            }
+            other => panic!("expected Table, got {other:?}"),
+        }
+    }
 }

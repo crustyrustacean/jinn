@@ -659,3 +659,232 @@ fn multi_term_filter_with_multiple_spaces_splits_on_whitespace() {
     // Then the item matches (double space treated as single separator).
     assert_eq!(state.filtered_count(), 1);
 }
+
+// =========================================================================
+// Phase 1: HIGH severity — core state mutation tests
+// =========================================================================
+
+// --- insert_text newline stripping and cursor advancement ---
+
+#[rstest::rstest]
+fn insert_text_strips_newlines_and_carriage_returns() {
+    // Given a fresh selection state.
+    let mut state = SelectionState::<TestItem>::new();
+
+    // When inserting text with newlines and carriage returns.
+    state.insert_text("he\nl\rl\no");
+
+    // Then newlines and carriage returns are stripped, filter is "hello".
+    assert_eq!(state.filter(), "hello");
+}
+
+#[rstest::rstest]
+fn insert_text_advances_cursor_by_grapheme_count() {
+    // Given a fresh selection state.
+    let mut state = SelectionState::<TestItem>::new();
+
+    // When inserting "abc".
+    state.insert_text("abc");
+
+    // Then cursor is at position 3 (after all 3 graphemes).
+    assert_eq!(state.cursor_pos(), 3);
+}
+
+#[rstest::rstest]
+fn insert_text_with_only_newlines_is_noop() {
+    // Given a selection state with existing filter.
+    let mut state = SelectionState::<TestItem>::new();
+    state.filter = "existing".to_owned();
+    state.cursor_pos = 3;
+
+    // When inserting only newlines.
+    state.insert_text("\n\r\n");
+
+    // Then filter and cursor are unchanged.
+    assert_eq!(state.filter(), "existing");
+    assert_eq!(state.cursor_pos(), 3);
+}
+
+#[rstest::rstest]
+fn insert_text_resets_selection_and_scroll() {
+    // Given a selection state with selection and scroll offset.
+    let mut state = SelectionState::with_items(make_items(&["apple", "banana"]));
+    state.selection = 1;
+    state.scroll_offset = 1;
+
+    // When inserting text.
+    state.insert_text("x");
+
+    // Then selection and scroll_offset reset to 0.
+    assert_eq!(state.selection(), 0);
+    assert_eq!(state.scroll_offset(), 0);
+}
+
+#[rstest::rstest]
+fn insert_text_at_cursor_middle() {
+    // Given a selection state with filter "ace" and cursor at position 1.
+    let mut state = SelectionState::<TestItem>::new();
+    state.filter = "ace".to_owned();
+    state.cursor_pos = 1;
+
+    // When inserting "bd" at the cursor.
+    state.insert_text("bd");
+
+    // Then filter is "abdce" and cursor advanced to 3.
+    assert_eq!(state.filter(), "abdce");
+    assert_eq!(state.cursor_pos(), 3);
+}
+
+// --- set_selection clamping ---
+
+#[rstest::rstest]
+fn set_selection_clamps_to_last_item() {
+    // Given a selection state with 3 items.
+    let mut state = SelectionState::with_items(make_items(&["a", "b", "c"]));
+
+    // When setting selection to 10 (out of bounds).
+    state.set_selection(10);
+
+    // Then selection is clamped to 2 (last valid index).
+    assert_eq!(state.selection(), 2);
+}
+
+#[rstest::rstest]
+fn set_selection_clamps_to_zero_when_empty() {
+    // Given a selection state with no items.
+    let mut state = SelectionState::<TestItem>::new();
+
+    // When setting selection to 5.
+    state.set_selection(5);
+
+    // Then selection is clamped to 0 (no items available).
+    assert_eq!(state.selection(), 0);
+}
+
+#[rstest::rstest]
+fn set_selection_keeps_valid_index() {
+    // Given a selection state with 5 items.
+    let mut state = SelectionState::with_items(make_items(&["a", "b", "c", "d", "e"]));
+
+    // When setting selection to 2 (valid index).
+    state.set_selection(2);
+
+    // Then selection is exactly 2.
+    assert_eq!(state.selection(), 2);
+}
+
+#[rstest::rstest]
+fn set_selection_clamps_to_zero_for_single_item() {
+    // Given a selection state with 1 item.
+    let mut state = SelectionState::with_items(make_items(&["solo"]));
+
+    // When setting selection to 100.
+    state.set_selection(100);
+
+    // Then selection is clamped to 0 (only valid index for 1 item is 0).
+    assert_eq!(state.selection(), 0);
+}
+
+// --- ensure_visible boundary conditions ---
+
+#[rstest::rstest]
+fn ensure_visible_selection_equal_to_scroll_offset() {
+    // Given selection equal to scroll_offset (selection at top of view).
+    let mut state = SelectionState::<TestItem>::new();
+    state.scroll_offset = 5;
+    state.selection = 5;
+
+    // When ensuring visible with max_visible=5.
+    state.ensure_visible(5);
+
+    // Then scroll_offset stays at 5 (selection is within [5, 10)).
+    assert_eq!(state.scroll_offset(), 5);
+}
+
+#[rstest::rstest]
+fn ensure_visible_selection_at_view_bottom_minus_one() {
+    // Given selection at scroll_offset + max_visible - 1 (last visible row).
+    let mut state = SelectionState::<TestItem>::new();
+    state.scroll_offset = 3;
+    state.selection = 7; // 3 + 5 - 1 = 7
+
+    // When ensuring visible with max_visible=5.
+    state.ensure_visible(5);
+
+    // Then scroll_offset stays at 3 (selection is within [3, 8)).
+    assert_eq!(state.scroll_offset(), 3);
+}
+
+#[rstest::rstest]
+fn ensure_visible_selection_exactly_at_view_end_scrolls_down() {
+    // Given selection at scroll_offset + max_visible (just past visible window).
+    let mut state = SelectionState::<TestItem>::new();
+    state.scroll_offset = 0;
+    state.selection = 5; // exactly scroll_offset + max_visible
+
+    // When ensuring visible with max_visible=5.
+    state.ensure_visible(5);
+
+    // Then scroll_offset moves to 1 (selection - max_visible + 1).
+    assert_eq!(state.scroll_offset(), 1);
+}
+
+#[rstest::rstest]
+fn ensure_visible_with_zero_max_visible_does_not_scroll() {
+    // Given selection above scroll_offset.
+    let mut state = SelectionState::<TestItem>::new();
+    state.scroll_offset = 5;
+    state.selection = 3;
+
+    // When ensuring visible with max_visible=0.
+    state.ensure_visible(0);
+
+    // Then the first branch catches it (selection < scroll_offset).
+    assert_eq!(state.scroll_offset(), 3);
+}
+
+#[rstest::rstest]
+fn ensure_visible_with_zero_max_visible_below_does_not_scroll() {
+    // Given selection below scroll_offset + 0 and max_visible=0.
+    let mut state = SelectionState::<TestItem>::new();
+    state.scroll_offset = 2;
+    state.selection = 10;
+
+    // When ensuring visible with max_visible=0.
+    state.ensure_visible(0);
+
+    // Then the second branch is guarded by max_visible > 0, so no scroll.
+    assert_eq!(state.scroll_offset(), 2);
+}
+
+// --- filtered_match_indices exact values ---
+
+#[rstest::rstest]
+fn filtered_match_indices_returns_exact_byte_positions() {
+    // Given a selection state with item "hello".
+    let mut state = SelectionState::with_items(make_items(&["hello"]));
+
+    // When filtering with "hl" (matches h at byte 0, l at byte 3).
+    state.insert_char('h');
+    state.insert_char('l');
+
+    // Then match indices contain the exact byte positions.
+    assert_eq!(state.filtered_count(), 1);
+    let indices = state.filtered_match_indices(0).unwrap();
+    assert!(!indices.is_empty());
+    // 'h' is at byte 0, 'l' is at byte 2 or 3 depending on matcher.
+    assert!(indices.contains(&0)); // 'h' is always at position 0
+    assert!(indices.iter().any(|&i| (2..=3).contains(&i))); // 'l' at position 2 or 3
+}
+
+#[rstest::rstest]
+fn filtered_match_indices_returns_none_for_out_of_bounds() {
+    // Given a selection state with 1 item.
+    let state = SelectionState::with_items(make_items(&["hello"]));
+
+    // When requesting match indices for index 1 (out of bounds).
+    let result = state.filtered_match_indices(1);
+
+    // Then result is None.
+    assert!(result.is_none());
+}

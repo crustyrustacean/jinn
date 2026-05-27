@@ -146,4 +146,112 @@ mod tests {
         // Then it returns NoSelection error.
         assert!(matches!(result, Err(PinsActionError::NoSelection)));
     }
+
+    #[rstest::rstest]
+    fn validate_pin_top_returns_empty_error_when_no_pinned_entries() {
+        // Given a state with no pinned entries.
+        let state = AppState::default();
+
+        // When validating pin top.
+        let result = validate_pin_top(&state);
+
+        // Then it returns Empty error.
+        assert!(matches!(result, Err(PinsActionError::Empty)));
+    }
+
+    #[rstest::rstest]
+    fn validate_pin_top_returns_no_selection_error_when_nothing_selected() {
+        // Given a state with pinned entries but nothing selected.
+        let state = state_with_unselected_pin("hello", PinPosition::Top);
+
+        // When validating pin top.
+        let result = validate_pin_top(&state);
+
+        // Then it returns NoSelection error.
+        assert!(matches!(result, Err(PinsActionError::NoSelection)));
+    }
+
+    #[rstest::rstest]
+    fn validate_pin_top_succeeds_with_selected_pinned_entry() {
+        // Given a state with a pinned entry that is selected.
+        let state = state_with_selected_pin("hello", PinPosition::Top);
+
+        // When validating pin top.
+        let result = validate_pin_top(&state);
+
+        // Then it succeeds.
+        assert!(result.is_ok());
+    }
+
+    #[rstest::rstest]
+    fn validate_pin_bottom_returns_empty_error_when_no_pinned_entries() {
+        // Given a state with no pinned entries.
+        let state = AppState::default();
+
+        // When validating pin bottom.
+        let result = validate_pin_bottom(&state);
+
+        // Then it returns Empty error.
+        assert!(matches!(result, Err(PinsActionError::Empty)));
+    }
+
+    #[rstest::rstest]
+    fn validate_pin_bottom_returns_no_selection_error_when_nothing_selected() {
+        // Given a state with pinned entries but nothing selected.
+        let state = state_with_unselected_pin("hello", PinPosition::Top);
+
+        // When validating pin bottom.
+        let result = validate_pin_bottom(&state);
+
+        // Then it returns NoSelection error.
+        assert!(matches!(result, Err(PinsActionError::NoSelection)));
+    }
+
+    #[rstest::rstest]
+    fn validate_pin_relative_returns_empty_error_when_no_pinned_entries() {
+        // Given a state with no pinned entries.
+        let state = AppState::default();
+
+        // When validating pin relative.
+        let result = validate_pin_relative(&state);
+
+        // Then it returns Empty error.
+        assert!(matches!(result, Err(PinsActionError::Empty)));
+    }
+
+    #[rstest::rstest]
+    fn validate_pin_relative_returns_no_selection_error_when_nothing_selected() {
+        // Given a state with pinned entries but nothing selected.
+        let state = state_with_unselected_pin("hello", PinPosition::Top);
+
+        // When validating pin relative.
+        let result = validate_pin_relative(&state);
+
+        // Then it returns NoSelection error.
+        assert!(matches!(result, Err(PinsActionError::NoSelection)));
+    }
+
+    #[rstest::rstest]
+    fn validate_pin_cycle_returns_empty_error_when_no_pinned_entries() {
+        // Given a state with no pinned entries.
+        let state = AppState::default();
+
+        // When validating pin cycle.
+        let result = validate_pin_cycle(&state);
+
+        // Then it returns Empty error.
+        assert!(matches!(result, Err(PinsActionError::Empty)));
+    }
+
+    #[rstest::rstest]
+    fn validate_pin_cycle_returns_no_selection_error_when_nothing_selected() {
+        // Given a state with pinned entries but nothing selected.
+        let state = state_with_unselected_pin("hello", PinPosition::Top);
+
+        // When validating pin cycle.
+        let result = validate_pin_cycle(&state);
+
+        // Then it returns NoSelection error.
+        assert!(matches!(result, Err(PinsActionError::NoSelection)));
+    }
 }
