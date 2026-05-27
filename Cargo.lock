@@ -2379,7 +2379,6 @@ dependencies = [
  "headless_chrome",
  "htmd",
  "mockito",
- "regex",
  "reqwest",
  "rstest",
  "serde",
