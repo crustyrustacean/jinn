@@ -33,7 +33,7 @@ impl TurnQueue {
         self.inner.push_back(item);
     }
 
-    /// Push an item onto the front of the queue (for priority items like `CompactionNeeded`).
+    /// Push an item onto the front of the queue (for priority items).
     pub fn enqueue_front(&mut self, item: QueueItem) {
         self.inner.push_front(item);
     }
@@ -71,17 +71,6 @@ impl TurnQueue {
         std::mem::take(&mut self.inner)
     }
 
-    /// Remove the first item matching a predicate, if any.
-    ///
-    /// Restricted to the session feature module during migration.
-    /// Will be tightened to `queue_actor` once the queue actor is introduced.
-    pub(in crate::feat::session) fn remove_first_matching(
-        &mut self,
-        predicate: impl Fn(&QueueItem) -> bool,
-    ) -> Option<QueueItem> {
-        let idx = self.inner.iter().position(predicate)?;
-        Some(self.inner.remove(idx).expect("index was just found"))
-    }
 }
 
 #[cfg(test)]

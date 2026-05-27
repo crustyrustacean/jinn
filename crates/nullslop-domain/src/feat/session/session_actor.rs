@@ -110,7 +110,6 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<PersistSession>();
         ctx.subscribe_command::<CloseSession>();
         ctx.subscribe_command::<crate::feat::session::protocol::archive_session::ArchiveSession>();
-        ctx.subscribe_command::<crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn>();
         ctx.subscribe_command::<crate::feat::session::protocol::schedule_auto_compaction::ScheduleAutoCompaction>();
         ctx.subscribe_command::<MarkSessionInteracted>();
 
@@ -265,9 +264,6 @@ impl SessionPersistenceActor {
             }
             Command::EndCompaction(payload) => {
                 self.handle_end_compaction(payload, ctx).await;
-            }
-            Command::SoftCancelTurn(payload) => {
-                self.handle_soft_cancel_turn(payload);
             }
             Command::ScheduleAutoCompaction(payload) => {
                 self.handle_schedule_auto_compaction(payload);
