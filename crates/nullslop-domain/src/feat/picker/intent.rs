@@ -653,6 +653,7 @@ pub fn handle_tool_toggle(state: &mut AppState) -> IntentResult {
     state.frontend.tool_picker.with_selected_mut(|entry| {
         entry.enabled = !entry.enabled;
     });
+    state.frontend.tool_picker.move_down(1);
     IntentResult::empty()
 }
 
@@ -703,6 +704,7 @@ pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
     state.frontend.skill_picker.with_selected_mut(|entry| {
         entry.enabled = !entry.enabled;
     });
+    state.frontend.skill_picker.move_down(1);
     IntentResult::empty()
 }
 
@@ -1273,8 +1275,26 @@ mod tests {
         // Then the first entry is now disabled.
         assert!(!state.frontend.skill_picker.items()[0].enabled);
 
-        // And toggling again re-enables it.
+        // And toggling again re-enables it (cursor moved to entry 1,
+        // so we go back up first).
+        state.frontend.skill_picker.move_up(1);
         handle_skill_toggle(&mut state);
         assert!(state.frontend.skill_picker.items()[0].enabled);
+    }
+
+    #[rstest::rstest]
+    fn handle_skill_toggle_moves_cursor_down() {
+        // Given an open skill picker with two entries.
+        let mut state = setup_state_with_skills();
+        load_skill_picker_entries(&mut state);
+
+        // Selection starts at 0.
+        assert_eq!(state.frontend.skill_picker.selection(), 0);
+
+        // When toggling.
+        handle_skill_toggle(&mut state);
+
+        // Then the cursor has moved down to 1.
+        assert_eq!(state.frontend.skill_picker.selection(), 1);
     }
 }
