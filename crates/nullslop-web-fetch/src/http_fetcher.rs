@@ -1,38 +1,49 @@
 //! HTTP-based web fetcher using `reqwest`.
 //!
 //! Fetches web pages via plain HTTP requests without JavaScript rendering.
-//! Supports HTML, text, and markdown output formats.
+//! Supports HTML, text, and markdown output formats via pluggable extractors.
+
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use tracing;
 
-use crate::{FetchError, FetchOptions, FetchOutput, OutputFormat, WebFetcher};
+use crate::{Extractor, FetchError, FetchOptions, FetchOutput, OutputFormat, WebFetcher};
 
 /// A web fetcher that uses plain HTTP requests via `reqwest`.
 ///
 /// Does not execute JavaScript. Suitable for static pages, APIs, and
 /// content that does not require browser rendering.
+///
+/// Content extraction is delegated to [`Extractor`] implementations looked
+/// up by [`OutputFormat`]. Formats without a registered extractor (e.g.,
+/// [`OutputFormat::Html`]) return the raw response body unchanged.
 pub struct HttpFetcher {
     /// The HTTP client used for requests.
     client: reqwest::Client,
+    /// Extractor implementations keyed by output format.
+    /// Formats not in the map (e.g., `Html`) pass through raw content.
+    extractors: HashMap<OutputFormat, Arc<dyn Extractor>>,
 }
 
 impl HttpFetcher {
-    /// Creates a new HTTP fetcher with default client settings.
+    /// Creates a new HTTP fetcher with the given extractor map and default client settings.
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new(extractors: HashMap<OutputFormat, Arc<dyn Extractor>>) -> Self {
         Self {
             client: reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::limited(10))
                 .build()
                 .unwrap_or_default(),
+            extractors,
         }
     }
 }
 
 impl Default for HttpFetcher {
     fn default() -> Self {
-        Self::new()
+        Self::new(HashMap::new())
     }
 }
 
@@ -70,20 +81,6 @@ fn is_binary_content_type(content_type: &str) -> bool {
         || ct.starts_with("application/octet-stream")
         || ct.starts_with("application/pdf")
         || ct.starts_with("application/zip")
-}
-
-/// Strips HTML tags from content, producing plain text.
-#[expect(clippy::panic, reason = "regex patterns are compile-time verified constants that cannot fail")]
-fn strip_html_tags(html: &str) -> String {
-    // Simple approach: remove tags, decode common entities.
-    // For a production system, consider using a proper HTML parser.
-    static TAG_RE: std::sync::LazyLock<regex::Regex> =
-        std::sync::LazyLock::new(|| regex::Regex::new("<[^>]*>").unwrap_or_else(|e| panic!("invalid tag regex: {e}")));
-    static WHITESPACE_RE: std::sync::LazyLock<regex::Regex> =
-        std::sync::LazyLock::new(|| regex::Regex::new("\\s+").unwrap_or_else(|e| panic!("invalid whitespace regex: {e}")));
-
-    let text = TAG_RE.replace_all(html, "").to_string();
-    WHITESPACE_RE.replace_all(&text, " ").trim().to_owned()
 }
 
 #[async_trait]
@@ -142,14 +139,9 @@ impl WebFetcher for HttpFetcher {
 
         tracing::debug!(body_len = body.len(), "HttpFetcher: body received");
 
-        let content = match options.format {
-            OutputFormat::Html => body,
-            OutputFormat::Text => strip_html_tags(&body),
-            OutputFormat::Markdown => {
-                // For now, strip tags as text. A proper HTML→Markdown
-                // converter can be added in a future iteration.
-                strip_html_tags(&body)
-            }
+        let content = match self.extractors.get(&options.format) {
+            Some(extractor) => extractor.extract(&body),
+            None => body,
         };
 
         Ok(FetchOutput {
@@ -186,22 +178,6 @@ mod tests {
     fn validate_url_rejects_malformed() {
         let result = validate_url("not a url");
         assert!(matches!(result, Err(FetchError::InvalidUrl(_))));
-    }
-
-    #[rstest::rstest]
-    fn strip_html_tags_removes_tags() {
-        let html = "<html><body><h1>Hello</h1><p>World</p></body></html>";
-        let text = strip_html_tags(html);
-        assert!(text.contains("Hello"));
-        assert!(text.contains("World"));
-        assert!(!text.contains('<'));
-    }
-
-    #[rstest::rstest]
-    fn strip_html_tags_collapses_whitespace() {
-        let html = "<p>Hello</p>\n\n<p>World</p>";
-        let text = strip_html_tags(html);
-        assert!(!text.contains("\n\n"));
     }
 
     #[rstest::rstest]
@@ -242,7 +218,7 @@ mod tests {
             .create_async()
             .await;
 
-        let fetcher = HttpFetcher::new();
+        let fetcher = HttpFetcher::new(HashMap::new());
         let result = fetcher
             .fetch(
                 &server.url(),
@@ -261,8 +237,8 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
-    async fn fetch_returns_text_format() {
-        // Given a mock HTTP server.
+    async fn fetch_uses_extractor_for_registered_format() {
+        // Given a mock HTTP server and a fetcher with a registered extractor.
         let mut server = mockito::Server::new_async().await;
         let mock = server
             .mock("GET", "/")
@@ -272,7 +248,10 @@ mod tests {
             .create_async()
             .await;
 
-        let fetcher = HttpFetcher::new();
+        let fetcher = HttpFetcher::new(HashMap::from([(
+            OutputFormat::Text,
+            Arc::new(crate::MarkdownExtractor) as Arc<dyn crate::Extractor>,
+        )]));
         let result = fetcher
             .fetch(
                 &server.url(),
@@ -291,8 +270,37 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
+    async fn fetch_returns_raw_body_for_unregistered_format() {
+        // Given a mock HTTP server and a fetcher with no extractors.
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/")
+            .with_status(200)
+            .with_header("content-type", "text/html")
+            .with_body("<html><body><h1>Hello</h1></body></html>")
+            .create_async()
+            .await;
+
+        let fetcher = HttpFetcher::new(HashMap::new());
+        let result = fetcher
+            .fetch(
+                &server.url(),
+                FetchOptions {
+                    format: OutputFormat::Text,
+                },
+            )
+            .await;
+
+        mock.assert_async().await;
+
+        let output = result.expect("fetch should succeed");
+        assert!(output.content.contains("<h1>Hello</h1>"));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
     async fn fetch_returns_error_for_invalid_url() {
-        let fetcher = HttpFetcher::new();
+        let fetcher = HttpFetcher::new(HashMap::new());
         let result = fetcher
             .fetch("not-a-url", FetchOptions::default())
             .await;
@@ -310,7 +318,7 @@ mod tests {
             .create_async()
             .await;
 
-        let fetcher = HttpFetcher::new();
+        let fetcher = HttpFetcher::new(HashMap::new());
         let result = fetcher.fetch(&server.url(), FetchOptions::default()).await;
 
         mock.assert_async().await;
@@ -333,7 +341,7 @@ mod tests {
             .create_async()
             .await;
 
-        let fetcher = HttpFetcher::new();
+        let fetcher = HttpFetcher::new(HashMap::new());
         let result = fetcher.fetch(&server.url(), FetchOptions::default()).await;
 
         mock.assert_async().await;
@@ -360,7 +368,7 @@ mod tests {
             .create_async()
             .await;
 
-        let fetcher = HttpFetcher::new();
+        let fetcher = HttpFetcher::new(HashMap::new());
         let result = fetcher
             .fetch(
                 &format!("{}/redirect", server.url()),
