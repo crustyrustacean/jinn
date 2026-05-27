@@ -1518,4 +1518,40 @@ mod tests {
             "hello+world"
         );
     }
+
+    // --- Mutant-killing tests for engine.rs ---
+
+    // Kills: initialize_tracking += replaced with *=
+    // If *= were used, pending_count for b would be 0*0=0 instead of 1-1=0
+    // only because b starts with pending_count=1 (one incoming edge) and
+    // subtracting 1 gives 0. With *=, the multiplication would still give 0
+    // for the satisfied case. The real danger is when a node has 2+ incoming
+    // edges and some are satisfied: e.g., 2 incoming, 1 satisfied => should be 1 remaining,
+    // but *= would give 2*0=0 (prematurely ready). We test via a diamond graph.
+    #[tokio::test]
+    async fn diamond_graph_fan_in_waits_for_all_inputs() {
+        // Given a diamond: src → left → merge, src → right → merge.
+        // merge has 2 incoming edges. It must wait for both.
+        // If *= were used instead of -= in tracking, merge might spawn prematurely.
+        let ctx = Arc::new(TestContext);
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node("src".to_owned(), source_node("data"))
+            .add_node("left".to_owned(), uppercase_node())
+            .add_node("right".to_owned(), suffix_node("!"))
+            .add_node("merge".to_owned(), concat_node());
+        builder.connect("src", "out", "left", "in").expect("src→left");
+        builder.connect("src", "out", "right", "in").expect("src→right");
+        builder.connect("left", "out", "merge", "left").expect("left→merge");
+        builder.connect("right", "out", "merge", "right").expect("right→merge");
+        let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
+
+        let result = execute(execution, ctx).await.expect("execute");
+
+        // merge must receive both inputs — concatenated result proves both arrived.
+        assert_eq!(status(&result, "merge"), NodeStatus::Completed);
+        let merge_out = outputs(&result, "merge").get_text("out").unwrap();
+        assert_eq!(merge_out, "DATA+data!", "merge must have both inputs");
+    }
 }

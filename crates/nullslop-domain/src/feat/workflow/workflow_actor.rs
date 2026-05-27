@@ -396,3 +396,297 @@ impl WorkflowActor {
             .set_items(entries);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+
+    use super::*;
+    use crate::common::actor::message_sink::RecordingSink;
+    use crate::common::app_state::AppState;
+    use crate::common::services::test_services::TestServices;
+    use crate::common::state::State;
+    use crate::feat::session::chat_entry::ChatEntry;
+    use crate::feat::session::chat_session::{ChatSessionState, SessionPhase};
+    use crate::feat::workflow::example::add_numbers;
+    use crate::protocol::SessionId;
+    use crate::feat::workflow::WorkflowId;
+    use std::sync::Arc;
+
+    fn make_registry() -> Arc<WorkflowRegistry> {
+        let mut registry = WorkflowRegistry::new();
+        registry.register("add-numbers", add_numbers::build_add_numbers);
+        Arc::new(registry)
+    }
+
+    struct TestHarness {
+        actor: WorkflowActor,
+        state: State,
+        sink: Arc<RecordingSink>,
+        registry: Arc<WorkflowRegistry>,
+    }
+
+    impl TestHarness {
+        fn new() -> Self {
+            let services = TestServices::builder().build();
+            let state = State::new(AppState::default());
+            let registry = make_registry();
+            let sink = Arc::new(RecordingSink::new());
+            let ctx = Arc::new(DomainNodeContext::new(services, state.clone()));
+
+            let actor = WorkflowActor {
+                ctx,
+                state: state.clone(),
+                registry: registry.clone(),
+            };
+
+            Self {
+                actor,
+                state,
+                sink,
+                registry,
+            }
+        }
+
+        fn context(&self) -> &ActorContext {
+            // We don't use the real ActorContext for most tests,
+            // but we can construct one for event-sending tests.
+            unimplemented!("use actor methods directly")
+        }
+
+        fn actor_ctx(&self) -> &ActorContext {
+            unimplemented!("use actor methods directly")
+        }
+    }
+
+    fn make_actor_context(sink: &Arc<RecordingSink>) -> ActorContext {
+        ActorContext::new("test-workflow-actor", sink.clone() as Arc<dyn crate::common::actor::MessageSink>)
+    }
+
+    // --- handle_init_workflow ---
+
+    #[rstest::rstest]
+    fn handle_init_workflow_creates_state() {
+        // Given a fresh harness.
+        let mut h = TestHarness::new();
+        let sink = h.sink.clone();
+        let ctx = make_actor_context(&sink);
+        let workflow_id = WorkflowId::new();
+
+        // When initializing a workflow.
+        h.actor.handle_init_workflow(
+            &InitWorkflow {
+                name: "add-numbers".to_owned(),
+                workflow_id: workflow_id.clone(),
+            },
+            &ctx,
+        );
+
+        // Then the workflow is in state.
+        let guard = h.state.read();
+        let wf = guard.workflow.get(&workflow_id).expect("should exist");
+        assert_eq!(wf.name, "add-numbers");
+        assert!(wf.result.is_none());
+    }
+
+    #[rstest::rstest]
+    fn handle_init_workflow_emits_initialized_event() {
+        // Given a fresh harness.
+        let mut h = TestHarness::new();
+        let sink = h.sink.clone();
+        let ctx = make_actor_context(&sink);
+        let workflow_id = WorkflowId::new();
+
+        // When initializing a workflow.
+        h.actor.handle_init_workflow(
+            &InitWorkflow {
+                name: "add-numbers".to_owned(),
+                workflow_id: workflow_id.clone(),
+            },
+            &ctx,
+        );
+
+        // Then a WorkflowInitialized event was emitted.
+        let events = h.sink.take_events();
+        let init_event = events.iter().find_map(|e| match e {
+            Event::WorkflowInitialized(e) => Some(e),
+            _ => None,
+        });
+        assert!(init_event.is_some(), "should emit WorkflowInitialized");
+        assert_eq!(init_event.unwrap().name, "add-numbers");
+    }
+
+    #[rstest::rstest]
+    fn handle_init_workflow_unknown_name_is_noop() {
+        // Given a fresh harness.
+        let mut h = TestHarness::new();
+        let sink = h.sink.clone();
+        let ctx = make_actor_context(&sink);
+        let workflow_id = WorkflowId::new();
+
+        // When initializing with an unknown name.
+        h.actor.handle_init_workflow(
+            &InitWorkflow {
+                name: "nonexistent".to_owned(),
+                workflow_id: workflow_id.clone(),
+            },
+            &ctx,
+        );
+
+        // Then no workflow is in state.
+        let guard = h.state.read();
+        assert!(guard.workflow.get(&workflow_id).is_none());
+    }
+
+    // --- handle_cancel_workflow ---
+
+    #[rstest::rstest]
+    fn handle_cancel_workflow_cancels_token() {
+        // Given a harness with an initialized workflow.
+        let mut h = TestHarness::new();
+        let sink = h.sink.clone();
+        let ctx = make_actor_context(&sink);
+        let workflow_id = WorkflowId::new();
+        h.actor.handle_init_workflow(
+            &InitWorkflow {
+                name: "add-numbers".to_owned(),
+                workflow_id: workflow_id.clone(),
+            },
+            &ctx,
+        );
+
+        // When canceling.
+        h.actor.handle_cancel_workflow(&CancelWorkflow {
+            workflow_id: workflow_id.clone(),
+        });
+
+        // Then the cancellation token is cancelled.
+        let guard = h.state.read();
+        let wf = guard.workflow.get(&workflow_id).expect("should exist");
+        assert!(wf.cancel.is_cancelled());
+    }
+
+    // --- handle_session_phase_changed ---
+
+    #[rstest::rstest]
+    fn handle_session_phase_ignores_non_idle() {
+        // Given a harness with a pending session.
+        let mut h = TestHarness::new();
+        let session_id = SessionId::new();
+
+        // Insert a fake pending entry.
+        let (tx, _rx) = tokio::sync::oneshot::channel();
+        h.actor.ctx.insert_pending(session_id.clone(), tx);
+
+        // When receiving a Streaming phase change.
+        h.actor.handle_session_phase_changed(&SessionPhaseChanged {
+            session_id: session_id.clone(),
+            old_phase: SessionPhase::Idle,
+            new_phase: SessionPhase::Streaming,
+        });
+
+        // Then the pending entry is still there (not resolved).
+        assert!(h.actor.ctx.has_pending(&session_id));
+    }
+
+    #[rstest::rstest]
+    fn handle_session_phase_resolves_idle_with_response() {
+        // Given a harness with a workflow session that has a pending oneshot.
+        let mut h = TestHarness::new();
+
+        // Create a session with an assistant message.
+        let mut session = ChatSessionState::new();
+        session.core.is_workflow = true;
+        session.push_entry(ChatEntry::assistant("expected response"));
+        let session_id = session.session_id().clone();
+
+        {
+            let mut state = h.state.write();
+            state.session.insert(session);
+            state.session.set_active(session_id.clone());
+        }
+
+        // Insert a pending oneshot.
+        let (tx, mut rx) = tokio::sync::oneshot::channel();
+        h.actor.ctx.insert_pending(session_id.clone(), tx);
+
+        // When receiving an Idle phase change.
+        h.actor.handle_session_phase_changed(&SessionPhaseChanged {
+            session_id: session_id.clone(),
+            old_phase: SessionPhase::Streaming,
+            new_phase: SessionPhase::Idle,
+        });
+
+        // Then the oneshot is resolved with the assistant message.
+        let response = rx.try_recv().expect("should have response");
+        assert_eq!(response, "expected response");
+    }
+
+    #[rstest::rstest]
+    fn handle_session_phase_ignores_idle_without_pending() {
+        // Given a harness with a session but no pending oneshot.
+        let mut h = TestHarness::new();
+        let session_id = SessionId::new();
+
+        let mut session = ChatSessionState::new();
+        session.core.is_workflow = true;
+        {
+            let mut state = h.state.write();
+            state.session.insert(session);
+            state.session.set_active(session_id.clone());
+        }
+
+        // When receiving an Idle phase change (no pending oneshot).
+        h.actor.handle_session_phase_changed(&SessionPhaseChanged {
+            session_id: session_id.clone(),
+            old_phase: SessionPhase::Streaming,
+            new_phase: SessionPhase::Idle,
+        });
+
+        // Then nothing panicked and no response was sent.
+    }
+
+    // --- handle_load_workflow_picker_entries ---
+
+    #[rstest::rstest]
+    fn handle_load_workflow_picker_entries_populates_picker() {
+        // Given a harness with a registered workflow.
+        let mut h = TestHarness::new();
+
+        // When loading picker entries.
+        h.actor.handle_load_workflow_picker_entries();
+
+        // Then the picker has entries.
+        let guard = h.state.read();
+        let items = guard.frontend.workflow_picker.items();
+        assert!(!items.is_empty());
+        assert_eq!(items[0].name, "add-numbers");
+    }
+
+    // --- handle_rerun_from_node ---
+
+    #[rstest::rstest]
+    fn handle_rerun_from_node_unknown_workflow_is_noop() {
+        // Given a harness without the target workflow.
+        let mut h = TestHarness::new();
+        let sink = h.sink.clone();
+        let ctx = make_actor_context(&sink);
+
+        // When rerunning from a node on a nonexistent workflow.
+        h.actor.handle_rerun_from_node(
+            &RerunFromNode {
+                workflow_id: WorkflowId::new(),
+                node_name: "source".to_owned(),
+            },
+            &ctx,
+        );
+
+        // Then no events were emitted.
+        let events = h.sink.take_events();
+        let completed: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, Event::WorkflowCompleted(_)))
+            .collect();
+        assert!(completed.is_empty());
+    }
+}

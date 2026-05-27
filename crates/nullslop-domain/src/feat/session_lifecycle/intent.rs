@@ -1038,4 +1038,124 @@ mod tests {
         assert!(matches!(&result.commands[1], Command::PushChatEntry(..)));
         assert!(matches!(&result.commands[2], Command::RunSessionSetup(..)));
     }
+
+    // --- Phase 3: Mutation-killing tests for arg input editing ---
+
+    #[rstest::rstest]
+    fn arg_input_delete_multi_byte_grapheme_at_boundary() {
+        // Given input with a multi-byte emoji at the start and cursor at end.
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "ab\u{1F600}".to_owned(); // "ab😀"
+        state.frontend.arg_input.cursor_pos = state.frontend.arg_input.input.len();
+
+        // When deleting backward.
+        let _result = handle_arg_input_delete(&mut state);
+
+        // Then the emoji (4 bytes) is removed and cursor moves back by 4.
+        assert_eq!(state.frontend.arg_input.input, "ab");
+        assert_eq!(state.frontend.arg_input.cursor_pos, 2);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_delete_at_position_zero_does_nothing() {
+        // Given input with cursor at position 0.
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "abc".to_owned();
+        state.frontend.arg_input.cursor_pos = 0;
+
+        // When deleting backward.
+        let _result = handle_arg_input_delete(&mut state);
+
+        // Then nothing changes.
+        assert_eq!(state.frontend.arg_input.input, "abc");
+        assert_eq!(state.frontend.arg_input.cursor_pos, 0);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_delete_forward_multi_byte_grapheme() {
+        // Given input with a multi-byte emoji after cursor.
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "\u{1F600}bc".to_owned(); // "😀bc"
+        state.frontend.arg_input.cursor_pos = 0;
+
+        // When forward deleting.
+        let _result = handle_arg_input_delete_forward(&mut state);
+
+        // Then the emoji (4 bytes) is removed.
+        assert_eq!(state.frontend.arg_input.input, "bc");
+        assert_eq!(state.frontend.arg_input.cursor_pos, 0);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_cursor_left_multi_byte_grapheme() {
+        // Given input with a multi-byte emoji at the end and cursor at end.
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "a\u{1F600}".to_owned(); // "a😀"
+        state.frontend.arg_input.cursor_pos = state.frontend.arg_input.input.len(); // 5
+
+        // When moving left.
+        let _result = handle_arg_input_cursor_left(&mut state);
+
+        // Then cursor moves to the start of the emoji (position 1).
+        assert_eq!(state.frontend.arg_input.cursor_pos, 1);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_cursor_right_multi_byte_grapheme() {
+        // Given input with a multi-byte emoji at position 1 and cursor at 1.
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "a\u{1F600}b".to_owned(); // "a😀b"
+        state.frontend.arg_input.cursor_pos = 1;
+
+        // When moving right.
+        let _result = handle_arg_input_cursor_right(&mut state);
+
+        // Then cursor moves past the emoji (4 bytes) to position 5.
+        assert_eq!(state.frontend.arg_input.cursor_pos, 5);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_paste_updates_cursor_position() {
+        // Given input with existing text and cursor at position 2.
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "abcd".to_owned();
+        state.frontend.arg_input.cursor_pos = 2;
+
+        // When pasting text at cursor.
+        let _result = handle_arg_input_paste(&mut state, "XY");
+
+        // Then text is inserted at cursor and cursor advances by pasted length.
+        assert_eq!(state.frontend.arg_input.input, "abXYcd");
+        assert_eq!(state.frontend.arg_input.cursor_pos, 4); // 2 + 2
+    }
+
+    #[rstest::rstest]
+    fn arg_input_paste_at_end_appends() {
+        // Given input with cursor at end.
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "abc".to_owned();
+        state.frontend.arg_input.cursor_pos = 3;
+
+        // When pasting.
+        let _result = handle_arg_input_paste(&mut state, "XYZ");
+
+        // Then text is appended.
+        assert_eq!(state.frontend.arg_input.input, "abcXYZ");
+        assert_eq!(state.frontend.arg_input.cursor_pos, 6);
+    }
+
+    #[rstest::rstest]
+    fn arg_input_paste_empty_does_nothing() {
+        // Given input with cursor at position 2.
+        let mut state = AppState::default();
+        state.frontend.arg_input.input = "abcd".to_owned();
+        state.frontend.arg_input.cursor_pos = 2;
+
+        // When pasting empty text.
+        let _result = handle_arg_input_paste(&mut state, "");
+
+        // Then nothing changes.
+        assert_eq!(state.frontend.arg_input.input, "abcd");
+        assert_eq!(state.frontend.arg_input.cursor_pos, 2);
+    }
 }

@@ -429,4 +429,187 @@ mod tests {
     fn format_size_formats_correctly(#[case] bytes: usize, #[case] expected: &str) {
         assert_eq!(format_size(bytes), expected);
     }
+
+    #[rstest::rstest]
+    fn format_size_boundary_at_exactly_1024_bytes() {
+        // Given exactly 1024 bytes (the boundary between B and KB).
+        // When formatting.
+        // Then it shows KB, not B.
+        assert_eq!(format_size(1024), "1.0KB");
+    }
+
+    #[rstest::rstest]
+    fn format_size_boundary_at_exactly_1mb() {
+        // Given exactly 1024*1024 bytes (the boundary between KB and MB).
+        // When formatting.
+        // Then it shows MB.
+        assert_eq!(format_size(1024 * 1024), "1.0MB");
+    }
+
+    #[rstest::rstest]
+    fn format_size_just_below_1024() {
+        // Given 1023 bytes (just below KB boundary).
+        // When formatting.
+        // Then it shows B.
+        assert_eq!(format_size(1023), "1023B");
+    }
+
+    // --- DEFAULT_MAX_BYTES ---
+
+    #[rstest::rstest]
+    fn default_max_bytes_is_50kb() {
+        // Given the DEFAULT_MAX_BYTES constant.
+        // Then it equals 50 * 1024 (not 50 + 1024).
+        assert_eq!(DEFAULT_MAX_BYTES, 50 * 1024);
+        assert_eq!(DEFAULT_MAX_BYTES, 51200);
+    }
+
+    // --- truncate_string_from_end ---
+
+    #[rstest::rstest]
+    fn truncate_string_from_end_short_string_unchanged() {
+        // Given a string shorter than max_bytes.
+        // When truncating.
+        let result = truncate_string_from_end("hello", 100);
+
+        // Then it is unchanged.
+        assert_eq!(result, "hello");
+    }
+
+    #[rstest::rstest]
+    fn truncate_string_from_end_exactly_at_limit() {
+        // Given a string exactly at max_bytes.
+        let s = "a".repeat(100);
+
+        // When truncating at exactly its length.
+        let result = truncate_string_from_end(&s, 100);
+
+        // Then it is unchanged.
+        assert_eq!(result, s);
+    }
+
+    #[rstest::rstest]
+    fn truncate_string_from_end_truncates_long_string() {
+        // Given a string longer than max_bytes.
+        let s = "a".repeat(200);
+
+        // When truncating.
+        let result = truncate_string_from_end(&s, 100);
+
+        // Then the result is shorter and is a tail of the original.
+        assert_eq!(result.len(), 100);
+        assert!(s.ends_with(&result));
+        assert_ne!(result, "xyzzy");
+    }
+
+    #[rstest::rstest]
+    fn truncate_string_from_end_handles_multibyte_utf8() {
+        // Given a string with multi-byte UTF-8 characters.
+        let s = "\u{3042}\u{3044}\u{3046}\u{3048}\u{304A}".repeat(10); // 5 chars * 3 bytes = 15 bytes, * 10 = 150
+        let max = 30;
+
+        // When truncating.
+        let result = truncate_string_from_end(&s, max);
+
+        // Then the result is a valid UTF-8 tail of the original.
+        assert!(result.len() < s.len()); // Something was truncated
+        assert!(std::str::from_utf8(result.as_bytes()).is_ok());
+        assert_ne!(result, "xyzzy");
+        assert!(!result.is_empty());
+    }
+
+    // --- truncate_head boundary tests ---
+
+    #[rstest::rstest]
+    fn head_first_line_exactly_at_byte_limit() {
+        // Given a first line exactly at max_bytes.
+        let content = "a".repeat(100);
+
+        // When truncating.
+        let result = truncate_head(&content, 100, 100);
+
+        // Then it is NOT truncated (first line fits exactly).
+        assert!(!result.truncated);
+        assert_eq!(result.content, content);
+    }
+
+    #[rstest::rstest]
+    fn head_first_line_one_over_byte_limit() {
+        // Given a first line one byte over max_bytes.
+        let content = "a".repeat(101);
+
+        // When truncating with 100-byte limit.
+        let result = truncate_head(&content, 100, 100);
+
+        // Then it IS truncated to empty.
+        assert!(result.truncated);
+        assert!(result.content.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn head_content_exactly_at_line_limit() {
+        // Given 3 lines and a 3-line limit.
+        let content = "line1\nline2\nline3";
+
+        // When truncating.
+        let result = truncate_head(content, 3, 1024);
+
+        // Then no truncation needed.
+        assert!(!result.truncated);
+        assert_eq!(result.content, content);
+    }
+
+    #[rstest::rstest]
+    fn head_content_exactly_at_byte_limit_with_newlines() {
+        // Given content that fits exactly in the byte limit.
+        // "ab\ncd" = 5 bytes.
+        let content = "ab\ncd";
+
+        // When truncating with exact byte limit.
+        let result = truncate_head(content, 100, 5);
+
+        // Then no truncation needed.
+        assert!(!result.truncated);
+        assert_eq!(result.content, content);
+    }
+
+    // --- truncate_tail boundary tests ---
+
+    #[rstest::rstest]
+    fn tail_first_line_exactly_at_byte_limit_keeps_it() {
+        // Given a single line exactly at max_bytes.
+        let content = "a".repeat(100);
+
+        // When truncating.
+        let result = truncate_tail(&content, 100, 100);
+
+        // Then it is NOT truncated.
+        assert!(!result.truncated);
+    }
+
+    #[rstest::rstest]
+    fn tail_content_exactly_at_line_limit() {
+        // Given 3 lines and a 3-line limit.
+        let content = "line1\nline2\nline3";
+
+        // When truncating.
+        let result = truncate_tail(content, 3, 1024);
+
+        // Then no truncation needed.
+        assert!(!result.truncated);
+        assert_eq!(result.content, content);
+    }
+
+    #[rstest::rstest]
+    fn tail_truncation_keeps_last_lines() {
+        // Given 5 lines and a 2-line limit.
+        let content = "line1\nline2\nline3\nline4\nline5";
+
+        // When truncating.
+        let result = truncate_tail(content, 2, 1024);
+
+        // Then the last 2 lines are kept.
+        assert!(result.truncated);
+        assert_eq!(result.content, "line4\nline5");
+    }
 }

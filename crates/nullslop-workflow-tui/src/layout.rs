@@ -433,4 +433,81 @@ mod tests {
         assert!(h > 0, "diamond graph should have non-zero height");
         assert!(h > 5, "diamond graph should be taller than a single node");
     }
+
+    // --- Mutant-killing tests for layout.rs ---
+
+    // Kills: content_size + -> *, + -> -
+    #[test]
+    fn content_size_uses_addition() {
+        let mut node = VisualNode::compute(
+            "a".to_owned(),
+            &[],
+            &[PortDef::text("out")],
+            NodeStatus::Pending,
+        );
+        node.x = 10;
+        node.y = 20;
+        let layout = GraphLayout { nodes: vec![node] };
+        let (w, h) = layout.content_size();
+        assert_eq!(w, 10 + layout.nodes[0].width, "width = x + node_width, not x*node_width");
+        assert_eq!(h, 20 + layout.nodes[0].height, "height = y + node_height, not y*node_height");
+    }
+
+    // Kills: compute_y_offset + -> *, + -> -
+    #[test]
+    fn layout_nodes_in_same_column_are_stacked_vertically() {
+        let graph = build_fan_out();
+        let execution = WorkflowExecution::new(graph);
+        let layout = compute(&execution.snapshot());
+
+        // b and c are in the same column (1) and must not overlap.
+        let b = layout.nodes.iter().find(|n| n.name == "b").expect("b");
+        let c = layout.nodes.iter().find(|n| n.name == "c").expect("c");
+
+        // They must have different y positions.
+        assert_ne!(b.y, c.y, "nodes in same column must be at different y positions");
+
+        // The lower node must start after the upper node ends (with spacing).
+        let (upper, lower) = if b.y < c.y { (b, c) } else { (c, b) };
+        assert!(
+            lower.y >= upper.y + upper.height + V_SPACING,
+            "lower node must start after upper node + spacing: lower.y={}, upper.y+height+spacing={}",
+            lower.y, upper.y + upper.height + V_SPACING,
+        );
+    }
+
+    // Kills: compute_columns > -> ==, > -> <, > -> >=
+    #[test]
+    fn linear_graph_columns_are_strictly_increasing() {
+        let graph = build_linear();
+        let execution = WorkflowExecution::new(graph);
+        let snapshot = execution.snapshot();
+        let columns = compute_columns(snapshot.structure());
+        assert!(columns["b"] > columns["a"], "b must be strictly after a");
+        assert!(columns["c"] > columns["b"], "c must be strictly after b");
+    }
+
+    // Kills: compute_x_offset + -> *, + -> -
+    #[test]
+    fn compute_x_offset_uses_addition_not_multiplication() {
+        let graph = build_linear();
+        let execution = WorkflowExecution::new(graph);
+        let layout = compute(&execution.snapshot());
+
+        let a = layout.nodes.iter().find(|n| n.name == "a").expect("a");
+        let b = layout.nodes.iter().find(|n| n.name == "b").expect("b");
+        let c = layout.nodes.iter().find(|n| n.name == "c").expect("c");
+
+        // b.x must be >= a.x + a.width + H_SPACING (additive, not multiplicative).
+        assert!(
+            b.x >= a.x + a.width + H_SPACING,
+            "b.x ({}) must be >= a.x ({}) + a.width ({}) + H_SPACING ({})",
+            b.x, a.x, a.width, H_SPACING,
+        );
+        assert!(
+            c.x >= b.x + b.width + H_SPACING,
+            "c.x ({}) must be >= b.x ({}) + b.width ({}) + H_SPACING ({})",
+            c.x, b.x, b.width, H_SPACING,
+        );
+    }
 }

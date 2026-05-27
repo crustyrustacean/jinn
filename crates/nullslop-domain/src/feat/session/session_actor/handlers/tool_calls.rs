@@ -249,9 +249,9 @@ mod tests {
     use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
     use crate::feat::session::chat_session::SessionPhase;
     use crate::feat::session::token_stats::TokenRecord;
-    use crate::feat::tools_actor::protocol::event::ToolBatchCompleted;
+    use crate::feat::tools_actor::protocol::event::{ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionStarted, ToolExecutionOutput, ToolUseStarted};
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
-    use crate::protocol::{ChatEntry, Command, Event};
+    use crate::protocol::{ChatEntry, ChatEntryKind, Command, Event};
 
     #[tokio::test]
     async fn on_tool_batch_completed_emits_send_to_llm_provider() {
@@ -554,5 +554,180 @@ mod tests {
             has_send,
             "expected SendToLlmProvider for normal session without tool_loop_disabled"
         );
+    }
+
+    // --- on_tool_use_started ---
+
+    #[test]
+    fn on_tool_use_started_creates_tool_call_entry() {
+        // Given a session in streaming state.
+        let actor = test_actor();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When a tool use starts.
+        actor.on_tool_use_started(&ToolUseStarted {
+            session_id: session_id.clone(),
+            index: 0,
+            id: "tc-1".to_owned(),
+            name: "bash".to_owned(),
+        });
+
+        // Then a ToolCall entry is in history with empty arguments.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        let tc = session
+            .history()
+            .iter()
+            .find(|e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc-1"));
+        assert!(tc.is_some(), "expected ToolCall entry with id tc-1");
+    }
+
+    // --- on_tool_call_received ---
+
+    #[test]
+    fn on_tool_call_received_finalizes_arguments() {
+        // Given a session with a started tool call.
+        let actor = test_actor();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.begin_tool_call(0, "tc-1", "bash");
+            state.session.active_session_id().clone()
+        };
+
+        // When the complete tool call is received.
+        actor.on_tool_call_received(&ToolCallReceived {
+            session_id: session_id.clone(),
+            tool_call: ToolCall {
+                id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                arguments: r#"{"command":"ls"}
+"#.to_owned(),
+            },
+        });
+
+        // Then the tool call entry has the complete arguments.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        let tc = session
+            .history()
+            .iter()
+            .find(|e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc-1"))
+            .expect("tool call entry");
+        if let ChatEntryKind::ToolCall { arguments, .. } = &tc.kind {
+            assert!(arguments.contains("ls"), "expected arguments to contain 'ls', got: {arguments}");
+        }
+    }
+
+    // --- on_tool_call_streaming ---
+
+    #[test]
+    fn on_tool_call_streaming_appends_delta() {
+        // Given a session with a started tool call.
+        let actor = test_actor();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.begin_tool_call(0, "tc-1", "bash");
+            state.session.active_session_id().clone()
+        };
+
+        // When streaming a delta.
+        actor.on_tool_call_streaming(&ToolCallStreaming {
+            session_id: session_id.clone(),
+            index: 0,
+            partial_json: "{\"co".to_owned(),
+        });
+        actor.on_tool_call_streaming(&ToolCallStreaming {
+            session_id: session_id.clone(),
+            index: 0,
+            partial_json: "mmand\":\"ls\"}".to_owned(),
+        });
+
+        // Then the arguments are accumulated.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        let tc = session
+            .history()
+            .iter()
+            .find(|e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc-1"))
+            .expect("tool call entry");
+        if let ChatEntryKind::ToolCall { arguments, .. } = &tc.kind {
+            assert_eq!(arguments, "{\"command\":\"ls\"}");
+        }
+    }
+
+    // --- on_tool_execution_started ---
+
+    #[test]
+    fn on_tool_execution_started_creates_pending_result() {
+        // Given a session.
+        let actor = test_actor();
+        let session_id = {
+            let mut state = actor.state.write();
+            let _ = state.active_session_mut();
+            state.session.active_session_id().clone()
+        };
+
+        // When a tool execution starts.
+        actor.on_tool_execution_started(&ToolExecutionStarted {
+            session_id: session_id.clone(),
+            tool_call_id: "tc-1".to_owned(),
+            name: "bash".to_owned(),
+        });
+
+        // Then a ToolResult entry with Pending status is in history.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        let tr = session
+            .history()
+            .iter()
+            .find(|e| matches!(&e.kind, ChatEntryKind::ToolResult { id, .. } if id == "tc-1"));
+        assert!(tr.is_some(), "expected ToolResult entry with id tc-1");
+    }
+
+    // --- on_tool_execution_output ---
+
+    #[test]
+    fn on_tool_execution_output_appends_to_pending_result() {
+        // Given a session with a pending tool result.
+        let actor = test_actor();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_tool_result("tc-1", "bash");
+            state.session.active_session_id().clone()
+        };
+
+        // When incremental output arrives.
+        actor.on_tool_execution_output(&ToolExecutionOutput {
+            session_id: session_id.clone(),
+            tool_call_id: "tc-1".to_owned(),
+            output: "file1.txt\n".to_owned(),
+        });
+        actor.on_tool_execution_output(&ToolExecutionOutput {
+            session_id: session_id.clone(),
+            tool_call_id: "tc-1".to_owned(),
+            output: "file2.txt\n".to_owned(),
+        });
+
+        // Then the accumulated content is in the pending result.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        let tr = session
+            .history()
+            .iter()
+            .find(|e| matches!(&e.kind, ChatEntryKind::ToolResult { id, .. } if id == "tc-1"))
+            .expect("tool result");
+        if let ChatEntryKind::ToolResult { content, .. } = &tr.kind {
+            assert_eq!(content, "file1.txt\nfile2.txt\n");
+        }
     }
 }

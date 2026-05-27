@@ -196,8 +196,12 @@ pub async fn load_session_picker_items_from_store(
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use crate::feat::session::chat_session::SessionState;
+    use crate::feat::session::chat_session::ChatSessionState;
     use crate::feat::session::picker_entry::SessionTreeEntry;
     use crate::feat::theme::default_theme;
+    use crate::feat::session::session_summary::SessionSummary;
+    use crate::common::app_state::AppState;
+    use crate::common::services::test_services::TestServices;
     use crate::protocol::SessionId;
     use nullslop_selection_widget::TreeItem;
 
@@ -250,5 +254,125 @@ mod tests {
 
         // Then an empty list is returned (fake store has no sessions).
         assert!(entries.is_empty());
+    }
+
+    /// A minimal fake store that returns one pre-built session summary.
+    struct OneSummaryStore {
+        summary: SessionSummary,
+    }
+
+    #[async_trait::async_trait]
+    impl super::super::SessionStore for OneSummaryStore {
+        fn name(&self) -> &'static str { "one-summary" }
+        async fn save(&self, _session: &ChatSessionState) -> Result<(), error_stack::Report<super::super::SessionStoreError>> { Ok(()) }
+        async fn load_summaries(&self) -> Result<Vec<SessionSummary>, error_stack::Report<super::super::SessionStoreError>> { Ok(vec![self.summary.clone()]) }
+        async fn load_session(&self, _session_id: &SessionId) -> Result<Option<ChatSessionState>, error_stack::Report<super::super::SessionStoreError>> { Ok(None) }
+        async fn delete(&self, _session_id: &SessionId) -> Result<(), error_stack::Report<super::super::SessionStoreError>> { Ok(()) }
+        async fn fork(&self, _source_session_id: &SessionId, _at_ordinal: usize) -> Result<SessionId, error_stack::Report<super::super::SessionStoreError>> { Ok(SessionId::new()) }
+        async fn set_archived(&self, _session_id: &SessionId, _archived: bool) -> Result<(), error_stack::Report<super::super::SessionStoreError>> { Ok(()) }
+        async fn load_unarchived_summaries(&self) -> Result<Vec<SessionSummary>, error_stack::Report<super::super::SessionStoreError>> { Ok(vec![self.summary.clone()]) }
+        async fn load_judge_sessions_for_origin(&self, _origin_session_id: &SessionId) -> Result<Vec<ChatSessionState>, error_stack::Report<super::super::SessionStoreError>> { Ok(vec![]) }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn load_session_entries_returns_entries_from_store() {
+        // Given a Services with a fake store that returns one summary.
+        let session_id = SessionId::new();
+        let summary = SessionSummary {
+            session_id: session_id.clone(),
+            title: "Test Session".to_owned(),
+            updated_at: jiff::Timestamp::now(),
+            created_at: jiff::Timestamp::now(),
+            session_state: SessionState::Loaded,
+            parent_session: None,
+        };
+        let store = crate::feat::session::SessionStoreService::new(
+            std::sync::Arc::new(OneSummaryStore { summary }),
+        );
+        let services = TestServices::builder()
+            .session_store(store)
+            .build();
+
+        // When loading session entries.
+        let entries = load_session_entries(&services, &default_theme()).await;
+
+        // Then entries are returned (not an empty vec).
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].display_label(), "Test Session");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn load_session_entries_from_store_returns_entries() {
+        // Given a populated store service.
+        let summary = SessionSummary {
+            session_id: SessionId::new(),
+            title: "From Store".to_owned(),
+            updated_at: jiff::Timestamp::now(),
+            created_at: jiff::Timestamp::now(),
+            session_state: SessionState::Loaded,
+            parent_session: None,
+        };
+        let store = crate::feat::session::SessionStoreService::new(
+            std::sync::Arc::new(OneSummaryStore { summary }),
+        );
+
+        // When loading session entries from store.
+        let entries = load_session_entries_from_store(&store, &default_theme()).await;
+
+        // Then entries are returned.
+        assert_eq!(entries.len(), 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn load_session_picker_items_sets_items_in_state() {
+        // Given a Services with a fake store and an AppState.
+        let summary = SessionSummary {
+            session_id: SessionId::new(),
+            title: "Picker Test".to_owned(),
+            updated_at: jiff::Timestamp::now(),
+            created_at: jiff::Timestamp::now(),
+            session_state: SessionState::Loaded,
+            parent_session: None,
+        };
+        let store = crate::feat::session::SessionStoreService::new(
+            std::sync::Arc::new(OneSummaryStore { summary }),
+        );
+        let services = TestServices::builder()
+            .session_store(store)
+            .build();
+        let mut state = AppState::default();
+
+        // When loading picker items.
+        load_session_picker_items(&services, &mut state).await;
+
+        // Then items are set in the picker state.
+        assert!(!state.frontend.session_picker.items().is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn load_session_picker_items_from_store_sets_items() {
+        // Given a store service and an AppState.
+        let summary = SessionSummary {
+            session_id: SessionId::new(),
+            title: "Picker From Store".to_owned(),
+            updated_at: jiff::Timestamp::now(),
+            created_at: jiff::Timestamp::now(),
+            session_state: SessionState::Loaded,
+            parent_session: None,
+        };
+        let store = crate::feat::session::SessionStoreService::new(
+            std::sync::Arc::new(OneSummaryStore { summary }),
+        );
+        let mut state = AppState::default();
+
+        // When loading picker items from store.
+        load_session_picker_items_from_store(&store, &mut state).await;
+
+        // Then items are set in the picker state.
+        assert!(!state.frontend.session_picker.items().is_empty());
     }
 }

@@ -85,3 +85,145 @@ impl AutocompleteState {
         self.matches = matches;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+
+    use super::*;
+    use crate::feat::chat_input::AutocompleteMatch;
+
+    fn make_match(name: &str) -> AutocompleteMatch {
+        AutocompleteMatch {
+            name: name.to_owned(),
+            description: String::new(),
+        }
+    }
+
+    fn make_state_with_3_matches() -> AutocompleteState {
+        AutocompleteState {
+            trigger: AutocompleteTrigger::Hash,
+            token_start: 0,
+            selected_index: 2, // last item (most relevant)
+            matches: vec![make_match("a"), make_match("b"), make_match("c")],
+        }
+    }
+
+    #[rstest::rstest]
+    fn selected_index_returns_current_value() {
+        // Given a state with selected_index = 2.
+        let state = make_state_with_3_matches();
+
+        // When reading selected_index.
+        // Then it returns 2, not 0.
+        assert_eq!(state.selected_index(), 2);
+        assert_ne!(state.selected_index(), 0);
+    }
+
+    #[rstest::rstest]
+    fn move_up_decrements_selected_index() {
+        // Given a state with selected_index = 2.
+        let mut state = make_state_with_3_matches();
+
+        // When moving up.
+        state.move_up();
+
+        // Then selected_index decrements.
+        assert_eq!(state.selected_index(), 1);
+    }
+
+    #[rstest::rstest]
+    fn move_up_clamps_at_zero() {
+        // Given a state with selected_index = 0.
+        let mut state = AutocompleteState {
+            trigger: AutocompleteTrigger::Hash,
+            token_start: 0,
+            selected_index: 0,
+            matches: vec![make_match("a")],
+        };
+
+        // When moving up.
+        state.move_up();
+
+        // Then selected_index stays at 0.
+        assert_eq!(state.selected_index(), 0);
+    }
+
+    #[rstest::rstest]
+    fn move_down_increments_selected_index() {
+        // Given a state with selected_index = 0.
+        let mut state = AutocompleteState {
+            trigger: AutocompleteTrigger::Hash,
+            token_start: 0,
+            selected_index: 0,
+            matches: vec![make_match("a"), make_match("b"), make_match("c")],
+        };
+
+        // When moving down.
+        state.move_down();
+
+        // Then selected_index increments.
+        assert_eq!(state.selected_index(), 1);
+    }
+
+    #[rstest::rstest]
+    fn move_down_clamps_at_last() {
+        // Given a state with selected_index at last item.
+        let mut state = make_state_with_3_matches();
+
+        // When moving down (already at last).
+        state.move_down();
+
+        // Then selected_index stays at last.
+        assert_eq!(state.selected_index(), 2);
+    }
+
+    #[rstest::rstest]
+    fn set_matches_updates_list() {
+        // Given a state with 3 matches.
+        let mut state = make_state_with_3_matches();
+
+        // When setting new matches.
+        let new_matches = vec![make_match("x"), make_match("y")];
+        state.set_matches(new_matches);
+
+        // Then the matches are updated.
+        assert_eq!(state.matches.len(), 2);
+        assert_eq!(state.matches[0].name, "x");
+    }
+
+    #[rstest::rstest]
+    fn set_matches_clamps_selected_index() {
+        // Given a state with selected_index = 2.
+        let mut state = make_state_with_3_matches();
+
+        // When setting fewer matches (selected_index would be out of bounds).
+        state.set_matches(vec![make_match("only")]);
+
+        // Then selected_index is clamped to 0.
+        assert_eq!(state.selected_index(), 0);
+    }
+
+    #[rstest::rstest]
+    fn set_matches_with_empty_list() {
+        // Given a state.
+        let mut state = make_state_with_3_matches();
+
+        // When setting empty matches.
+        state.set_matches(vec![]);
+
+        // Then selected_index is clamped to 0.
+        assert_eq!(state.selected_index(), 0);
+        assert!(state.matches.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn selected_match_returns_correct_item() {
+        // Given a state with 3 matches.
+        let state = make_state_with_3_matches();
+
+        // When reading selected_match.
+        // Then it returns the item at selected_index.
+        assert_eq!(state.selected_match().unwrap().name, "c");
+    }
+}

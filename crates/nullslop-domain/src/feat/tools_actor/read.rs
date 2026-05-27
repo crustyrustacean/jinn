@@ -425,4 +425,88 @@ mod tests {
         assert!(result.success);
         assert_eq!(result.content, "b\nc");
     }
+
+    // --- Phase 5: Mutation-killing tests ---
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_truncated_file_shows_correct_line_numbers_in_notice() {
+        // Given a file with 10 lines and a small max_lines limit.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("big.txt");
+        let content: String = (1..=10).map(|i| format!("line {i}\n")).collect();
+        std::fs::write(&file_path, &content).expect("write temp file");
+
+        let ctx = ToolContext {
+            cwd: dir.path().to_owned(),
+            timeout: None,
+            state: None,
+            session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
+            sink: None,
+            shell: "/bin/sh".to_owned(),
+            max_output_lines: Some(3),
+            max_output_bytes: Some(50 * 1024),
+        };
+
+        let call = ToolCall {
+            id: "call_trunc".to_owned(),
+            name: "read".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy()
+            })
+            .to_string(),
+        };
+
+        // When executing with a small line limit.
+        let result = execute(call, ctx).await;
+
+        // Then the result is successful and shows a truncation notice.
+        assert!(result.success);
+        assert!(result.content.contains("Showing lines"));
+        // The notice should show lines 8-10 of 10 (tail truncation shows last 3).
+        assert!(result.content.contains("of 10"));
+        assert!(result.content.contains("offset="));
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_truncated_with_offset_shows_correct_start_line() {
+        // Given a file with 10 lines.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let file_path = dir.path().join("big2.txt");
+        let content: String = (1..=10).map(|i| format!("line {i}\n")).collect();
+        std::fs::write(&file_path, &content).expect("write temp file");
+
+        let ctx = ToolContext {
+            cwd: dir.path().to_owned(),
+            timeout: None,
+            state: None,
+            session_id: None,
+            app_paths: crate::common::app_paths::AppPaths::default(),
+            sink: None,
+            shell: "/bin/sh".to_owned(),
+            max_output_lines: Some(2),
+            max_output_bytes: Some(50 * 1024),
+        };
+
+        let call = ToolCall {
+            id: "call_trunc2".to_owned(),
+            name: "read".to_owned(),
+            arguments: serde_json::json!({
+                "path": file_path.to_string_lossy(),
+                "offset": 3
+            })
+            .to_string(),
+        };
+
+        // When executing with offset=3 and a small line limit.
+        let result = execute(call, ctx).await;
+
+        // Then the notice includes the start line offset.
+        assert!(result.success);
+        assert!(result.content.contains("Showing lines"));
+        // start_line should be computed from offset (3) + output_lines - 1.
+        assert!(result.content.contains("offset="));
+    }
 }

@@ -199,6 +199,7 @@ mod tests {
 
     use super::super::super::SessionPersistenceActorDeps;
     use super::*;
+    use crate::protocol::PinPosition;
 
     fn make_persona(name: &str) -> Persona {
         Persona {
@@ -421,5 +422,172 @@ mod tests {
         // Then active_persona is None.
         let guard = state.read();
         assert!(guard.context.active_persona.is_none());
+    }
+
+    // --- handle_pin_chat_entry ---
+
+    #[rstest::rstest]
+    fn handle_pin_chat_entry_pins_and_emits() {
+        // Given a session with a user entry.
+        let (actor, state) = create_actor();
+        let (sink, ctx) = {
+            let sink = Arc::new(RecordingSink::new());
+            let ctx = ActorContext::new("test", sink.clone());
+            (sink, ctx)
+        };
+        let entry_id = {
+            let mut guard = state.write();
+            let session = guard.active_session_mut();
+            let entry = crate::protocol::ChatEntry::user("hello");
+            let id = entry.id.clone();
+            session.push_entry(entry);
+            id
+        };
+        let session_id = state.read().session.active_session_id().clone();
+
+        // When pinning the entry.
+        actor.handle_pin_chat_entry(
+            &PinChatEntry {
+                session_id: session_id.clone(),
+                entry_id: entry_id.clone(),
+                position: PinPosition::Top,
+            },
+            &ctx,
+        );
+
+        // Then the entry is pinned.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        let entry = session.history().iter().find(|e| e.id == entry_id).expect("entry");
+        assert!(entry.is_pinned(), "expected entry to be pinned");
+
+        // And ChatEntryPinChanged event was emitted.
+        let has_event = sink.events().iter().any(|e| {
+            matches!(e, Event::ChatEntryPinChanged(e) if e.session_id == session_id)
+        });
+        assert!(has_event, "expected ChatEntryPinChanged event");
+    }
+
+    // --- handle_unpin_chat_entry ---
+
+    #[rstest::rstest]
+    fn handle_unpin_chat_entry_unpins_and_emits() {
+        // Given a session with a pinned entry.
+        let (actor, state) = create_actor();
+        let (sink, ctx) = {
+            let sink = Arc::new(RecordingSink::new());
+            let ctx = ActorContext::new("test", sink.clone());
+            (sink, ctx)
+        };
+        let entry_id = {
+            let mut guard = state.write();
+            let session = guard.active_session_mut();
+            let mut entry = crate::protocol::ChatEntry::user("hello");
+            entry.pin_position = Some(PinPosition::Top);
+            let id = entry.id.clone();
+            session.push_entry(entry);
+            id
+        };
+        let session_id = state.read().session.active_session_id().clone();
+
+        // When unpinning the entry.
+        actor.handle_unpin_chat_entry(
+            &UnpinChatEntry {
+                session_id: session_id.clone(),
+                entry_id: entry_id.clone(),
+            },
+            &ctx,
+        );
+
+        // Then the entry is no longer pinned.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        let entry = session.history().iter().find(|e| e.id == entry_id).expect("entry");
+        assert!(!entry.is_pinned(), "expected entry to be unpinned");
+
+        // And ChatEntryPinChanged event was emitted.
+        let has_event = sink.events().iter().any(|e| {
+            matches!(e, Event::ChatEntryPinChanged(e) if e.session_id == session_id)
+        });
+        assert!(has_event, "expected ChatEntryPinChanged event");
+    }
+
+    // --- on_prompt_templates_loaded ---
+
+    #[rstest::rstest]
+    fn on_prompt_templates_loaded_caches_templates() {
+        // Given a session actor.
+        let (actor, state) = create_actor();
+        let templates = vec![
+            crate::feat::context::protocol::prompt_template::PromptTemplate {
+                name: "test-template".to_owned(),
+                description: "A test".to_owned(),
+                body: "Hello {{name}}".to_owned(),
+            },
+        ];
+
+        // When loading prompt templates.
+        actor.on_prompt_templates_loaded(&PromptTemplatesLoaded {
+            templates: templates.clone(),
+            error: None,
+        });
+
+        // Then the templates are stored in state.
+        let guard = state.read();
+        assert_eq!(guard.context.prompt_templates.len(), 1);
+        assert_eq!(guard.context.prompt_templates.templates()[0].name, "test-template");
+    }
+
+    // --- on_judges_loaded ---
+
+    #[rstest::rstest]
+    fn on_judges_loaded_caches_judges() {
+        // Given a session actor.
+        let (actor, state) = create_actor();
+        let judges = vec![crate::feat::judge::Judge {
+            name: "test-judge".to_owned(),
+            description: "A test judge".to_owned(),
+            body: "Evaluate the output".to_owned(),
+            model: None,
+            auto_reset: false,
+            file_path: std::path::PathBuf::from("/judges/test.md"),
+        }];
+
+        // When loading judges.
+        actor.on_judges_loaded(&crate::feat::judge::JudgesLoaded {
+            judges: judges.clone(),
+            error: None,
+        });
+
+        // Then the judges are stored in state.
+        let guard = state.read();
+        assert_eq!(guard.context.judges.len(), 1);
+        assert_eq!(guard.context.judges[0].name, "test-judge");
+    }
+
+    // --- handle_load_persona_picker_entries ---
+
+    #[rstest::rstest]
+    fn handle_load_persona_picker_entries_populates_picker() {
+        // Given a session actor with personas loaded.
+        let (actor, state) = create_actor();
+        {
+            let mut guard = state.write();
+            guard.context.personas = vec![
+                make_persona("coding-assistant"),
+                make_persona("learning-tutor"),
+            ];
+            guard.context.active_persona = Some(make_persona("learning-tutor"));
+        }
+
+        // When loading persona picker entries.
+        actor.handle_load_persona_picker_entries(&LoadPersonaPickerEntries);
+
+        // Then the picker has entries with correct active state.
+        let guard = state.read();
+        let items = guard.frontend.persona_picker.items();
+        assert_eq!(items.len(), 2, "expected 2 persona entries");
+        let active = items.iter().find(|e| e.is_active).expect("an active entry");
+        assert_eq!(active.name, "learning-tutor");
     }
 }

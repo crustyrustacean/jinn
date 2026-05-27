@@ -489,3 +489,79 @@ fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
         "sync_chat_log_cursor should set cursor to pinned entry by ID"
     );
 }
+
+#[rstest::rstest]
+fn sync_chat_log_cursor_sets_correct_entry_when_multiple_entries_exist() {
+    // Given a session with 3 entries and the middle one pinned.
+    let mut state = AppState::default();
+    let entry_a = ChatEntry::user("entry a");
+    let id_a = entry_a.id.clone();
+    state.active_session_mut().push_entry(entry_a);
+
+    let entry_b = ChatEntry::user("entry b");
+    let id_b = entry_b.id.clone();
+    state.active_session_mut().push_entry(entry_b);
+
+    let entry_c = ChatEntry::user("entry c");
+    let id_c = entry_c.id.clone();
+    state.active_session_mut().push_entry(entry_c);
+
+    // Pin entry_b and select it in the pins section.
+    state.active_session_mut().pin_entry(&id_b, PinPosition::Top);
+    state.frontend.pins.select_by_id(id_b.clone());
+
+    // Set cursor to entry_a first.
+    state.active_session_mut().set_selected_cursor_id(id_a.clone());
+
+    // When sync_chat_log_cursor is called.
+    sync_chat_log_cursor(&mut state);
+
+    // Then the cursor is set to entry_b (not entry_a or entry_c).
+    // This kills the == -> != mutant which would match the wrong entry.
+    assert_eq!(
+        state.active_session().selected_cursor_id(),
+        Some(&id_b),
+        "sync_chat_log_cursor should set cursor to the pinned entry, not others"
+    );
+    assert_ne!(
+        state.active_session().selected_cursor_id(),
+        Some(&id_a),
+        "cursor should not be on entry a"
+    );
+    assert_ne!(
+        state.active_session().selected_cursor_id(),
+        Some(&id_c),
+        "cursor should not be on entry c"
+    );
+}
+
+#[rstest::rstest]
+fn resolve_selected_entry_id_returns_real_session_and_entry_ids() {
+    // Given a state with a pinned entry.
+    let mut state = AppState::default();
+    let entry = ChatEntry::user("pinned entry");
+    let entry_id = entry.id.clone();
+    state.active_session_mut().push_entry(entry);
+    state.active_session_mut().pin_entry(&entry_id, PinPosition::Top);
+    state.frontend.pins.select_by_id(entry_id.clone());
+
+    // When handling pins unpin (which uses resolve_selected_entry_id internally).
+    let result = handle_pins_unpin(&mut state);
+
+    // Then the command contains the real session ID and the real entry ID
+    // (not default/placeholder values).
+    let cmd = result.commands.iter().find_map(|c| match c {
+        Command::UnpinChatEntry(payload) => Some(payload.clone()),
+        _ => None,
+    });
+    assert!(cmd.is_some(), "should return an UnpinChatEntry command");
+    let payload = cmd.unwrap();
+    assert_eq!(
+        payload.session_id, *state.session.active_session_id(),
+        "session_id should be the real active session ID, not a default"
+    );
+    assert_eq!(
+        payload.entry_id, entry_id,
+        "entry_id should be the real pinned entry ID, not a default"
+    );
+}

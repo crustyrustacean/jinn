@@ -1697,3 +1697,178 @@ fn multi_level_intermediate_hiding_reparents_to_nearest_loaded_ancestor() {
         leaf_entry.depth
     );
 }
+
+// --- sorted_open_sessions: is_last_child for roots (kills == -> != and - -> +// mutants on line 165) ---
+
+#[rstest::rstest]
+fn sorted_sessions_last_root_is_marked_as_last_child() {
+    // Given 3 root sessions (no parent-child relationships).
+    let state = state_with_sessions(3);
+
+    // When collecting sorted sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then the last root is marked as is_last_child, others are not.
+    assert_eq!(sessions.len(), 3, "should have 3 sessions");
+    assert!(!sessions[0].is_last_child, "first root should not be last child");
+    assert!(!sessions[1].is_last_child, "second root should not be last child");
+    assert!(sessions[2].is_last_child, "last root should be last child");
+}
+
+#[rstest::rstest]
+fn sorted_sessions_single_root_is_marked_as_last_child() {
+    // Given a single root session.
+    let state = state_with_sessions(1);
+
+    // When collecting sorted sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then it is marked as last child.
+    assert_eq!(sessions.len(), 1);
+    assert!(sessions[0].is_last_child, "single root should be last child");
+}
+
+// --- dfs_children: is_last_child for non-root entries (kills == -> !=
+// and - -> +/- // mutants on line 308) ---
+
+#[rstest::rstest]
+fn tree_children_last_child_flag_is_correct() {
+    // Given state with root_a having two children.
+    let state = state_with_tree();
+
+    // When collecting sorted sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Find root_a's children.
+    let root_a_id = sessions
+        .iter()
+        .find(|s| entry_title(&state, &s.id).contains("root a"))
+        .map(|s| s.id.clone())
+        .expect("root a should exist");
+    let children: Vec<_> = sessions
+        .iter()
+        .filter(|s| s.parent_id.as_ref() == Some(&root_a_id))
+        .collect();
+
+    assert_eq!(children.len(), 2, "root_a should have 2 children");
+    assert!(!children[0].is_last_child, "first child should not be last child");
+    assert!(children[1].is_last_child, "second child should be last child");
+}
+
+// --- update_visual_parents_on_removal: kills == -> != mutant on line 250 ---
+
+#[rstest::rstest]
+fn update_visual_parents_on_removal_reparents_only_children_of_removed_session() {
+    // Given a chain: root -> A -> B.
+    use crate::feat::ui::sidebar::sessions::update_visual_parents_on_removal;
+
+    let mut state = AppState::default();
+
+    let mut root = ChatSessionState::new();
+    root.set_title("root".to_owned());
+    let root_id = root.session_id().clone();
+    state.session.insert(root);
+
+    let mut a = ChatSessionState::new();
+    a.set_title("session A".to_owned());
+    a.set_parent_session(root_id.clone());
+    let a_id = a.session_id().clone();
+    state.session.insert(a);
+
+    let mut b = ChatSessionState::new();
+    b.set_title("session B".to_owned());
+    b.set_parent_session(a_id.clone());
+    let b_id = b.session_id().clone();
+    state.session.insert(b);
+
+    // Also add an unrelated session with its own visual parent.
+    let mut unrelated_parent = ChatSessionState::new();
+    unrelated_parent.set_title("unrelated parent".to_owned());
+    let unrelated_parent_id = unrelated_parent.session_id().clone();
+    state.session.insert(unrelated_parent);
+
+    let mut unrelated_child = ChatSessionState::new();
+    unrelated_child.set_title("unrelated child".to_owned());
+    unrelated_child.set_parent_session(unrelated_parent_id.clone());
+    let unrelated_child_id = unrelated_child.session_id().clone();
+    state.session.insert(unrelated_child);
+
+    // Remove default session.
+    let default_id = state.session.active_session_id().clone();
+    state.session.remove(&default_id);
+    state.session.set_active(root_id.clone());
+
+    // When removing A.
+    update_visual_parents_on_removal(&mut state, &a_id);
+
+    // Then B is reparented to root.
+    assert_eq!(
+        state.frontend.sessions_section.visual_parents.get(&b_id),
+        Some(&root_id),
+        "B should be reparented to root"
+    );
+    // And the unrelated child is NOT reparented (it has a different parent).
+    assert_eq!(
+        state.frontend.sessions_section.visual_parents.get(&unrelated_child_id),
+        None,
+        "unrelated child should not be reparented — its parent is not being removed"
+    );
+}
+
+// --- clear_visual_parents_on_load: kills != -> == mutant on line 279 ---
+
+#[rstest::rstest]
+fn clear_visual_parents_on_load_removes_only_entries_pointing_to_loaded_session() {
+    // Given a state with visual_parents entries.
+    use crate::feat::ui::sidebar::sessions::clear_visual_parents_on_load;
+
+    let mut state = AppState::default();
+    let id_x = crate::protocol::SessionId::new();
+    let id_y = crate::protocol::SessionId::new();
+    let loaded_id = crate::protocol::SessionId::new();
+    let other_id = crate::protocol::SessionId::new();
+
+    // entry_x -> loaded_id (should be removed after load)
+    state.frontend.sessions_section.visual_parents.insert(id_x.clone(), loaded_id.clone());
+    // entry_y -> other_id (should be kept)
+    state.frontend.sessions_section.visual_parents.insert(id_y.clone(), other_id.clone());
+
+    // When clearing on load for loaded_id.
+    clear_visual_parents_on_load(&mut state, &loaded_id);
+
+    // Then only entry_x is removed (pointed to loaded_id).
+    assert_eq!(
+        state.frontend.sessions_section.visual_parents.get(&id_x),
+        None,
+        "entry pointing to loaded session should be removed"
+    );
+    assert_eq!(
+        state.frontend.sessions_section.visual_parents.get(&id_y),
+        Some(&other_id),
+        "entry pointing to other session should be kept"
+    );
+}
+
+// --- clear_visual_parents_on_load: kills replace fn with () mutant ---
+
+#[rstest::rstest]
+fn clear_visual_parents_on_load_actually_removes_entries() {
+    // Given a state with a visual_parents entry that should be cleared.
+    use crate::feat::ui::sidebar::sessions::clear_visual_parents_on_load;
+
+    let mut state = AppState::default();
+    let child_id = crate::protocol::SessionId::new();
+    let loaded_id = crate::protocol::SessionId::new();
+
+    state.frontend.sessions_section.visual_parents.insert(child_id, loaded_id.clone());
+    assert_eq!(state.frontend.sessions_section.visual_parents.len(), 1);
+
+    // When clearing on load.
+    clear_visual_parents_on_load(&mut state, &loaded_id);
+
+    // Then the entry is removed.
+    assert!(
+        state.frontend.sessions_section.visual_parents.is_empty(),
+        "visual_parents should be empty after clearing the loaded session's entries"
+    );
+}

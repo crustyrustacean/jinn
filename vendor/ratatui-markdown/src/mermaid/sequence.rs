@@ -219,10 +219,7 @@ pub fn render_sequence(
 
             for (pos, ch) in chars {
                 if pos < label_spans.len() {
-                    let existing = &label_spans[pos];
-                    if existing.content == " " {
-                        label_spans[pos] = Span::styled(ch.to_string(), label_style);
-                    }
+                    label_spans[pos] = Span::styled(ch.to_string(), label_style);
                 }
             }
 
