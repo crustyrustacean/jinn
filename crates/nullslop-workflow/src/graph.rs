@@ -1180,4 +1180,54 @@ mod tests {
         // Then the description is None.
         assert_eq!(graph.description(), None);
     }
+
+    // --- Mutant-killing tests for graph.rs ---
+
+    // Kills: node_config -> None (always)
+    // TestNode doesn't override config(), so node_config returns None for it.
+    // We need a node that overrides config() to test that node_config returns actual values.
+    struct ConfigNode {
+        config_val: serde_json::Value,
+    }
+
+    #[async_trait::async_trait]
+    impl WorkflowNode for ConfigNode {
+        fn name(&self) -> &str { "config_node" }
+        fn input_ports(&self) -> Vec<PortDef> { vec![] }
+        fn output_ports(&self) -> Vec<PortDef> { vec![PortDef::text("out")] }
+        async fn execute(
+            &self, _inputs: PortValues, _ctx: &dyn NodeContext,
+        ) -> Result<PortValues, Report<crate::node::NodeError>> { Ok(PortValues::new()) }
+        fn clone_box(&self) -> Box<dyn WorkflowNode> {
+            Box::new(ConfigNode { config_val: self.config_val.clone() })
+        }
+        fn config(&self) -> Option<serde_json::Value> {
+            Some(self.config_val.clone())
+        }
+    }
+
+    #[test]
+    fn node_config_returns_none_for_node_without_config() {
+        // Kills: node_config -> Some(Default::default())
+        let mut builder = WorkflowGraphBuilder::new();
+        builder.add_node("a".to_owned(), Box::new(TestNode::source("a")));
+        builder.add_node("b".to_owned(), Box::new(TestNode::sink("b")));
+        builder.connect("a", "out", "b", "in").expect("a→b");
+        let graph = builder.build().expect("build");
+        // TestNode doesn't override config(), so this returns None.
+        assert_eq!(graph.node_config("a"), None, "node without config must return None, not Some(default)");
+    }
+
+    #[test]
+    fn node_config_returns_actual_config_value() {
+        // Kills: node_config -> None (always)
+        let config = serde_json::json!({"prompt": "test", "temperature": 0.7});
+        let mut builder = WorkflowGraphBuilder::new();
+        builder.add_node("cfg".to_owned(), Box::new(ConfigNode { config_val: config.clone() }));
+        builder.add_node("b".to_owned(), Box::new(TestNode::sink("b")));
+        builder.connect("cfg", "out", "b", "in").expect("cfg→b");
+        let graph = builder.build().expect("build");
+        let result = graph.node_config("cfg");
+        assert_eq!(result, Some(config), "must return actual config, not None or Some(default)");
+    }
 }

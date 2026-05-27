@@ -222,4 +222,18 @@ mod tests {
         let outputs = result.expect("cloned code node should succeed");
         assert_eq!(outputs.get_text("out").unwrap(), "test");
     }
+
+    // --- Mutant-killing tests for code.rs ---
+
+    // Kills: CodeNode::name -> "", CodeNode::name -> "xyzzy"
+    #[test]
+    fn code_node_name_returns_actual_name() {
+        let node = CodeNode::new(
+            "my_custom_node".to_owned(),
+            vec![PortDef::text("in")],
+            vec![PortDef::text("out")],
+            |_inputs, _ctx| Box::pin(async { Ok(PortValues::new()) }),
+        );
+        assert_eq!(node.name(), "my_custom_node", "must return actual name, not empty or xyzzy");
+    }
 }

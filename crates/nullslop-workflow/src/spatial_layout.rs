@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 
 use crate::execution::WorkflowStructure;
-use crate::port::PortDef;
+use crate::port::{PortDef, PortType, ScalarType};
 
 /// A bounding rectangle in content-space coordinates.
 ///
@@ -662,6 +662,254 @@ mod tests {
 
         // From a, Down should find b, not a itself.
         let result = spatial_nearest(&a.1, SpatialDirection::Down, &candidates, "a");
+        assert_eq!(result.as_deref(), Some("b"));
+    }
+
+    // --- Mutant-killing tests for spatial_layout.rs ---
+
+    // Kills: overlaps_x < -> <=
+    #[test]
+    fn overlaps_x_touching_not_overlapping() {
+        let a = SpatialRect { x: 0, y: 0, width: 10, height: 5 };
+        let b = SpatialRect { x: 10, y: 0, width: 10, height: 5 };
+        // a.right()=10, b.x=10 => a.x(0) < b.right()(20) is true but b.x(10) < a.right()(10) is false.
+        // With < changed to <=, b.x(10) <= a.right()(10) would be true -> incorrectly reports overlap.
+        assert!(!a.overlaps_x(&b), "touching rects must NOT overlap");
+    }
+
+    // Kills: overlaps_y -> true
+    #[test]
+    fn overlaps_y_non_overlapping_returns_false() {
+        let a = SpatialRect { x: 0, y: 0, width: 10, height: 5 }; // bottom=5
+        let b = SpatialRect { x: 0, y: 10, width: 10, height: 5 }; // top=10
+        assert!(!a.overlaps_y(&b), "non-overlapping rects must return false");
+    }
+
+    // Kills: overlaps_y && -> ||
+    #[test]
+    fn overlaps_y_does_not_use_or() {
+        let a = SpatialRect { x: 0, y: 0, width: 10, height: 5 }; // bottom=5
+        let b = SpatialRect { x: 0, y: 10, width: 10, height: 5 }; // top=10
+        // With ||: (a.y(0) < b.bottom()(15)) = true, so whole expression true. Must be false.
+        assert!(!a.overlaps_y(&b), "must be AND, not OR");
+    }
+
+    // Kills: overlaps_y < -> <=
+    #[test]
+    fn overlaps_y_touching_not_overlapping() {
+        let a = SpatialRect { x: 0, y: 0, width: 10, height: 5 }; // bottom=5
+        let b = SpatialRect { x: 0, y: 5, width: 10, height: 5 }; // top=5
+        // b.y(5) < a.bottom()(5) is false. With <= it would be true.
+        assert!(!a.overlaps_y(&b), "touching rects must NOT overlap vertically");
+    }
+
+    // Kills: compute_node_size + -> -, + -> *
+    #[test]
+    fn compute_node_size_width_uses_addition() {
+        // Title "abcd" -> title_width=5. Ports: ["Text in"] -> port_width=7.
+        // content_width = max(5, 7, 4) = 7. width = 7 + 2 + 2 = 11.
+        let (w, _h) = compute_node_size("abcd", &[PortDef::text("in")], &[PortDef::text("out")]);
+        assert_eq!(w, 12, "width must be content_width + 2 + 2*H_PAD = 8+2+2=12");
+    }
+
+    // Kills: compute_node_size height uses + not *
+    #[test]
+    fn compute_node_size_height_uses_addition() {
+        // 2 inputs, 2 outputs: height = 1 + 2 + 1 + 2 + 1 = 7
+        let (_w, h) = compute_node_size("x", &[PortDef::text("a"), PortDef::text("b")], &[PortDef::text("c"), PortDef::text("d")]);
+        assert_eq!(h, 7, "height = 1 + inputs + 1 + outputs + 1 = 7");
+    }
+
+    // Kills: compute_spatial_layout -> HashMap::new()
+    #[test]
+    fn compute_spatial_layout_returns_all_nodes() {
+        let structure = crate::execution::WorkflowStructure::new(
+            {
+                let mut m = HashMap::new();
+                m.insert("a".to_owned(), crate::execution::NodePorts {
+                    input_ports: vec![],
+                    output_ports: vec![PortDef::text("out")],
+                });
+                m.insert("b".to_owned(), crate::execution::NodePorts {
+                    input_ports: vec![PortDef::text("in")],
+                    output_ports: vec![],
+                });
+                m
+            },
+            vec![crate::execution::OwnedEdgeInfo {
+                source_node: "a".to_owned(),
+                source_port: "out".to_owned(),
+                target_node: "b".to_owned(),
+                target_port: "in".to_owned(),
+                port_type: PortType::Single(ScalarType::Text),
+            }],
+            vec!["a".to_owned()],
+            vec!["b".to_owned()],
+        );
+        let layout = compute_spatial_layout(&structure);
+        assert_eq!(layout.len(), 2, "must return all 2 nodes, not empty");
+        assert!(layout.contains_key("a"));
+        assert!(layout.contains_key("b"));
+    }
+
+    // Kills: compute_columns -> HashMap::new() and variants
+    #[test]
+    fn compute_columns_linear_graph_assigns_increasing_columns() {
+        let structure = crate::execution::WorkflowStructure::new(
+            {
+                let mut m = HashMap::new();
+                m.insert("a".to_owned(), crate::execution::NodePorts {
+                    input_ports: vec![],
+                    output_ports: vec![PortDef::text("out")],
+                });
+                m.insert("b".to_owned(), crate::execution::NodePorts {
+                    input_ports: vec![PortDef::text("in")],
+                    output_ports: vec![PortDef::text("out")],
+                });
+                m.insert("c".to_owned(), crate::execution::NodePorts {
+                    input_ports: vec![PortDef::text("in")],
+                    output_ports: vec![],
+                });
+                m
+            },
+            vec![
+                crate::execution::OwnedEdgeInfo {
+                    source_node: "a".to_owned(), source_port: "out".to_owned(),
+                    target_node: "b".to_owned(), target_port: "in".to_owned(),
+                    port_type: PortType::Single(ScalarType::Text),
+                },
+                crate::execution::OwnedEdgeInfo {
+                    source_node: "b".to_owned(), source_port: "out".to_owned(),
+                    target_node: "c".to_owned(), target_port: "in".to_owned(),
+                    port_type: PortType::Single(ScalarType::Text),
+                },
+            ],
+            vec!["a".to_owned()],
+            vec!["c".to_owned()],
+        );
+        let columns = compute_columns(&structure);
+        assert_eq!(columns.len(), 3, "must have 3 columns, not 0 or 1");
+        assert_eq!(columns["a"], 0);
+        assert_eq!(columns["b"], 1);
+        assert_eq!(columns["c"], 2);
+    }
+
+    // Kills: compute_columns delete ! (lines 214, 215)
+    #[test]
+    fn compute_columns_source_nodes_get_column_zero() {
+        let structure = crate::execution::WorkflowStructure::new(
+            {
+                let mut m = HashMap::new();
+                m.insert("src".to_owned(), crate::execution::NodePorts {
+                    input_ports: vec![],
+                    output_ports: vec![PortDef::text("out")],
+                });
+                m.insert("sink".to_owned(), crate::execution::NodePorts {
+                    input_ports: vec![PortDef::text("in")],
+                    output_ports: vec![],
+                });
+                m
+            },
+            vec![crate::execution::OwnedEdgeInfo {
+                source_node: "src".to_owned(), source_port: "out".to_owned(),
+                target_node: "sink".to_owned(), target_port: "in".to_owned(),
+                port_type: PortType::Single(ScalarType::Text),
+            }],
+            vec!["src".to_owned()],
+            vec!["sink".to_owned()],
+        );
+        let columns = compute_columns(&structure);
+        assert_eq!(columns["src"], 0, "source with empty input ports must be column 0");
+        assert_eq!(columns["sink"], 1, "sink must be column 1");
+    }
+
+    // Kills: compute_columns + -> *, + -> - and > -> ==, > -> <, > -> >=
+    #[test]
+    fn compute_columns_fan_out_assigns_same_column() {
+        let structure = crate::execution::WorkflowStructure::new(
+            {
+                let mut m = HashMap::new();
+                m.insert("src".to_owned(), crate::execution::NodePorts {
+                    input_ports: vec![],
+                    output_ports: vec![PortDef::text("out")],
+                });
+                m.insert("b".to_owned(), crate::execution::NodePorts {
+                    input_ports: vec![PortDef::text("in")],
+                    output_ports: vec![],
+                });
+                m.insert("c".to_owned(), crate::execution::NodePorts {
+                    input_ports: vec![PortDef::text("in")],
+                    output_ports: vec![],
+                });
+                m
+            },
+            vec![
+                crate::execution::OwnedEdgeInfo {
+                    source_node: "src".to_owned(), source_port: "out".to_owned(),
+                    target_node: "b".to_owned(), target_port: "in".to_owned(),
+                    port_type: PortType::Single(ScalarType::Text),
+                },
+                crate::execution::OwnedEdgeInfo {
+                    source_node: "src".to_owned(), source_port: "out".to_owned(),
+                    target_node: "c".to_owned(), target_port: "in".to_owned(),
+                    port_type: PortType::Single(ScalarType::Text),
+                },
+            ],
+            vec!["src".to_owned()],
+            vec!["b".to_owned(), "c".to_owned()],
+        );
+        let columns = compute_columns(&structure);
+        assert_eq!(columns["src"], 0);
+        assert_eq!(columns["b"], 1, "fan-out targets must share column 1");
+        assert_eq!(columns["c"], 1, "fan-out targets must share column 1");
+    }
+
+    // Kills: compute_x_offset -> 0, compute_x_offset -> 1
+    #[test]
+    fn compute_x_offset_column_1_is_non_zero() {
+        let node_sizes: HashMap<&str, (u16, u16)> = [
+            ("a", (10u16, 5u16)),
+            ("b", (8u16, 4u16)),
+        ].into_iter().collect();
+        let column_nodes: HashMap<usize, Vec<&str>> = [
+            (0usize, vec!["a"]),
+            (1usize, vec!["b"]),
+        ].into_iter().collect();
+        let offset = compute_x_offset(&node_sizes, &column_nodes, 1);
+        // offset = 0 + max_width(10) + H_SPACING(5) = 15
+        assert_eq!(offset, 15, "x_offset for col 1 must be 10+5=15, not 0 or 1");
+    }
+
+    // Kills: compute_x_offset + -> *, + -> -
+    #[test]
+    fn compute_x_offset_accumulates_across_columns() {
+        let node_sizes: HashMap<&str, (u16, u16)> = [
+            ("a", (10u16, 5u16)),
+            ("b", (8u16, 4u16)),
+            ("c", (12u16, 6u16)),
+        ].into_iter().collect();
+        let column_nodes: HashMap<usize, Vec<&str>> = [
+            (0usize, vec!["a"]),
+            (1usize, vec!["b"]),
+            (2usize, vec!["c"]),
+        ].into_iter().collect();
+        let offset = compute_x_offset(&node_sizes, &column_nodes, 2);
+        // col 0: max_width=10, col 1: max_width=8
+        // offset = 0 + 10 + 5 + 8 + 5 = 28
+        assert_eq!(offset, 28, "x_offset for col 2 must be 10+5+8+5=28");
+    }
+
+    // Kills: spatial_nearest - -> +
+    #[test]
+    fn spatial_nearest_uses_subtraction_for_delta() {
+        // Two nodes side by side.
+        let a = make_rect("a", 0, 0, 10, 5);   // center: (5, 2)
+        let b = make_rect("b", 20, 0, 10, 5);  // center: (25, 2)
+        let mut candidates = HashMap::new();
+        candidates.insert(a.0.clone(), a.1);
+        candidates.insert(b.0.clone(), b.1);
+        // Right from a: delta_x = 25-5 = 20. With + instead of -, it would be 25+5=30 or wrong sign.
+        let result = spatial_nearest(&a.1, SpatialDirection::Right, &candidates, "a");
         assert_eq!(result.as_deref(), Some("b"));
     }
 }

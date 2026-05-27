@@ -147,4 +147,24 @@ mod tests {
     fn test_ctx() -> TestContext {
         TestContext
     }
+
+    // --- Mutant-killing tests for delay.rs ---
+
+    // Kills: DelayNode::input_ports -> vec![]
+    #[test]
+    fn delay_node_input_ports_returns_actual_ports() {
+        let node = DelayNode::passthrough(Duration::from_millis(10));
+        let ports = node.input_ports();
+        assert_eq!(ports.len(), 1, "must return 1 port, not empty");
+        assert_eq!(ports[0].name, "in");
+    }
+
+    // Kills: DelayNode::output_ports -> vec![]
+    #[test]
+    fn delay_node_output_ports_returns_actual_ports() {
+        let node = DelayNode::passthrough(Duration::from_millis(10));
+        let ports = node.output_ports();
+        assert_eq!(ports.len(), 1, "must return 1 port, not empty");
+        assert_eq!(ports[0].name, "in");
+    }
 }
