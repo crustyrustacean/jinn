@@ -49,3 +49,92 @@ impl WorkflowRegistry {
         names
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+
+    use super::*;
+    use crate::feat::workflow::example::add_numbers;
+
+    fn trivial_graph() -> WorkflowGraph {
+        add_numbers::build_add_numbers()
+    }
+
+    #[rstest::rstest]
+    fn new_registry_is_empty() {
+        // Given a new registry.
+        let registry = WorkflowRegistry::new();
+
+        // Then it has no entries.
+        assert!(registry.names().is_empty());
+        assert!(registry.get("anything").is_none());
+    }
+
+    #[rstest::rstest]
+    fn register_adds_builder() {
+        // Given an empty registry.
+        let mut registry = WorkflowRegistry::new();
+
+        // When registering a workflow.
+        registry.register("test-workflow", trivial_graph);
+
+        // Then get returns the builder.
+        assert!(registry.get("test-workflow").is_some());
+    }
+
+    #[rstest::rstest]
+    fn register_overwrites_previous() {
+        // Given a registry with one entry.
+        let mut registry = WorkflowRegistry::new();
+        registry.register("dup", trivial_graph);
+
+        // When registering again under the same name.
+        registry.register("dup", trivial_graph);
+
+        // Then get still returns a builder.
+        assert!(registry.get("dup").is_some());
+    }
+
+    #[rstest::rstest]
+    fn get_returns_none_for_unknown() {
+        // Given a registry with one entry.
+        let mut registry = WorkflowRegistry::new();
+        registry.register("known", trivial_graph);
+
+        // Then unknown names return None.
+        assert!(registry.get("unknown").is_none());
+        assert!(registry.get("").is_none());
+    }
+
+    #[rstest::rstest]
+    fn names_returns_sorted_unique_names() {
+        // Given a registry with multiple entries.
+        let mut registry = WorkflowRegistry::new();
+        registry.register("charlie", trivial_graph);
+        registry.register("alpha", trivial_graph);
+        registry.register("bravo", trivial_graph);
+
+        // When reading names.
+        let names = registry.names();
+
+        // Then they are sorted.
+        assert_eq!(names, vec!["alpha", "bravo", "charlie"]);
+    }
+
+    #[rstest::rstest]
+    fn names_returns_real_strings() {
+        // Given a registry with a real entry.
+        let mut registry = WorkflowRegistry::new();
+        registry.register("real-workflow", trivial_graph);
+
+        // When reading names.
+        let names = registry.names();
+
+        // Then each name is the actual registered name.
+        assert_eq!(names.len(), 1);
+        assert_eq!(names[0], "real-workflow");
+        assert!(!names[0].is_empty());
+        assert_ne!(names[0], "xyzzy");
+    }
+}
