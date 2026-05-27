@@ -221,4 +221,48 @@ mod tests {
             }
         ));
     }
+
+    #[rstest::rstest]
+    fn exactly_one_done_event_for_multiple_chunks_with_stop() {
+        // Given two chunks both with finishReason STOP.
+        // Changing `&&` to `||` on the guard would emit duplicate Done events.
+        let mut parser = GeminiStreamParser::new();
+
+        let chunk = serde_json::json!({
+            "candidates": [{
+                "content": {"parts": [{"text": "hi"}]},
+                "finishReason": "STOP"
+            }]
+        }).to_string();
+        let events1 = parser.parse_data(&chunk);
+        let done_count_1 = events1.iter().filter(|e| matches!(e, StreamEvent::Done { .. })).count();
+        assert_eq!(done_count_1, 1, "first chunk should emit exactly one Done");
+
+        let events2 = parser.parse_data(&chunk);
+        let done_count_2 = events2.iter().filter(|e| matches!(e, StreamEvent::Done { .. })).count();
+        assert_eq!(done_count_2, 0, "second chunk should not emit another Done");
+    }
+
+    #[rstest::rstest]
+    fn stop_finish_reason_maps_to_end_turn() {
+        // Given a chunk with finishReason STOP.
+        // Deleting the "STOP" match arm would produce Other("STOP") instead.
+        let mut parser = GeminiStreamParser::new();
+        let json = serde_json::json!({
+            "candidates": [{
+                "content": {"parts": [{"text": "done"}]},
+                "finishReason": "STOP"
+            }]
+        }).to_string();
+        let events = parser.parse_data(&json);
+
+        let done = events
+            .iter()
+            .find(|e| matches!(e, StreamEvent::Done { .. }))
+            .expect("should have a Done event");
+        match done {
+            StreamEvent::Done { stop_reason: StopReason::EndTurn, .. } => {}
+            other => panic!("expected EndTurn, got {other:?}"),
+        }
+    }
 }

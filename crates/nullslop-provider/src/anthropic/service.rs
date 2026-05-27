@@ -87,7 +87,13 @@ impl AnthropicService {
     ///
     /// Returns [`LlmServiceError::Provider`] on HTTP or parse errors.
     pub async fn list_models(&self) -> Result<Vec<ModelInfo>, Report<LlmServiceError>> {
-        models::list_models(&self.client, &self.api_key).await
+        // Derive the base URL from the messages endpoint URL.
+        let base_url = self
+            .base_url
+            .strip_suffix("/v1/messages")
+            .unwrap_or("https://api.anthropic.com")
+            .to_owned();
+        models::list_models_with_base_url(&self.client, &self.api_key, &base_url).await
     }
 
     /// Send a streaming request to Anthropic's Messages API.
@@ -236,5 +242,83 @@ impl std::fmt::Debug for AnthropicService {
             .field("system_prompt", &self.system_prompt)
             .field("base_url", &self.base_url)
             .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::unwrap_in_result,
+        reason = "test code, panics are acceptable"
+    )]
+    use crate::ModelInfo;
+
+    use super::*;
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn service_list_models_returns_models_via_mock() {
+        // Given a mock server and an AnthropicService pointed at it.
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .match_header("x-api-key", "test-key")
+            .with_status(200)
+            .with_body(
+                serde_json::json!({"data": [{"id": "claude-3", "context_window": 200000}]}).to_string(),
+            )
+            .create_async()
+            .await;
+
+        let base_url = format!("{}/v1/messages", server.url());
+        let svc = AnthropicService::with_base_url(
+            "claude-3".to_owned(),
+            "test-key".to_owned(),
+            None,
+            base_url,
+        );
+
+        // When listing models.
+        let result = svc.list_models().await;
+
+        // Then models are returned.
+        let models = result.expect("should succeed");
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0], ModelInfo {
+            id: "claude-3".to_owned(),
+            context_length: Some(200_000),
+        });
+        mock.assert_async().await;
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn service_list_models_returns_error_on_http_failure() {
+        // Given a mock server returning 500.
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1/models")
+            .with_status(500)
+            .with_body("internal error")
+            .create_async()
+            .await;
+
+        let base_url = format!("{}/v1/messages", server.url());
+        let svc = AnthropicService::with_base_url(
+            "claude-3".to_owned(),
+            "test-key".to_owned(),
+            None,
+            base_url,
+        );
+
+        // When listing models.
+        let result = svc.list_models().await;
+
+        // Then it returns an error (not Ok(vec![])).
+        assert!(result.is_err(), "should return Err on HTTP failure");
+        mock.assert_async().await;
     }
 }

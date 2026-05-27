@@ -412,4 +412,99 @@ mod tests {
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].name, "beta");
     }
+
+    #[rstest::rstest]
+    fn dispatch_event_fires_subscriber_callback() {
+        // Given a host with a Lua plugin that subscribes to an event.
+        let (sender, rx) = test_sender();
+        let host = PluginHost::new(sender).expect("host creation");
+
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let plugin_dir = dir.path().join("sub-plugin");
+        fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+        // Plugin subscribes to "test::event" and emits a command when it fires.
+        fs::write(
+            plugin_dir.join("init.lua"),
+            r#"
+                ps.sub("test::event", function(payload)
+                    ns.emit("received", { fired = true })
+                end)
+            "#,
+        )
+        .expect("write init.lua");
+        host.load_plugin(&plugin_dir).expect("load plugin");
+
+        // When dispatching the event.
+        host.dispatch_event("test::event", &serde_json::json!({}));
+
+        // Then the subscriber callback fired (a command was sent).
+        let cmd = rx.recv_timeout(std::time::Duration::from_millis(100));
+        assert!(cmd.is_ok(), "dispatch_event should have triggered the subscriber");
+    }
+
+    #[rstest::rstest]
+    fn dispatch_event_to_unsubscribed_event_does_nothing() {
+        // Given a host with no subscribers for "other::event".
+        let (sender, rx) = test_sender();
+        let host = PluginHost::new(sender).expect("host creation");
+
+        // When dispatching an event nobody subscribes to.
+        host.dispatch_event("other::event", &serde_json::json!({}));
+
+        // Then no command is sent.
+        let cmd = rx.recv_timeout(std::time::Duration::from_millis(50));
+        assert!(cmd.is_err(), "no subscriber should mean no command");
+    }
+
+    #[rstest::rstest]
+    fn dispatch_preflight_returns_true_when_no_hooks() {
+        // Given a host with no preflight hooks.
+        let (sender, _) = test_sender();
+        let host = PluginHost::new(sender).expect("host creation");
+
+        // When dispatching preflight.
+        let result = host.dispatch_preflight("any::command", &serde_json::json!({}));
+
+        // Then it returns true.
+        assert!(result, "should approve when no hooks registered");
+    }
+
+    #[rstest::rstest]
+    fn dispatch_preflight_returns_false_when_hook_vetoes() {
+        // Given a host with a vetoing preflight hook.
+        let (sender, _) = test_sender();
+        let host = PluginHost::new(sender).expect("host creation");
+
+        // Register a veto hook directly via the preflight module.
+        let lua = host.lua();
+        let callback = lua
+            .create_function(|_, _args: (String, mlua::Value)| Ok(false))
+            .expect("create callback");
+        crate::preflight::register(lua, "test::cmd".to_owned(), callback);
+
+        // When dispatching preflight for that command.
+        let result = host.dispatch_preflight("test::cmd", &serde_json::json!({}));
+
+        // Then it returns false.
+        assert!(!result, "should veto when hook returns false");
+    }
+
+    #[rstest::rstest]
+    fn dispatch_preflight_returns_true_when_hook_approves() {
+        // Given a host with an approving preflight hook.
+        let (sender, _) = test_sender();
+        let host = PluginHost::new(sender).expect("host creation");
+
+        let lua = host.lua();
+        let callback = lua
+            .create_function(|_, _args: (String, mlua::Value)| Ok(true))
+            .expect("create callback");
+        crate::preflight::register(lua, "approve::cmd".to_owned(), callback);
+
+        // When dispatching preflight.
+        let result = host.dispatch_preflight("approve::cmd", &serde_json::json!({}));
+
+        // Then it returns true.
+        assert!(result, "should approve when hook returns true");
+    }
 }

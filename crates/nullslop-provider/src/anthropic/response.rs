@@ -372,4 +372,58 @@ mod tests {
             if error_type == "unknown_error" && message == "Unknown streaming error"
         ));
     }
+
+    #[rstest::rstest]
+    fn message_start_captures_input_tokens_for_usage() {
+        // Given a message_start event with input_tokens, followed by
+        // a message_delta with stop_reason and output_tokens.
+        // Deleting the message_start match arm or returning None from
+        // handle_message_start would lose input_tokens.
+        let mut parser = AnthropicStreamParser::new();
+
+        // message_start with usage.input_tokens.
+        parser.parse_data(
+            r#"{"type":"message_start","message":{"usage":{"input_tokens":42}}}"#,
+        );
+
+        // message_delta with stop_reason and output_tokens.
+        let event = parser.parse_data(
+            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7}}"#,
+        );
+
+        // Then the Done event has usage with both token counts.
+        match event {
+            Some(StreamEvent::Done { usage: Some(u), .. }) => {
+                assert_eq!(u.prompt_tokens, Some(42));
+                assert_eq!(u.completion_tokens, Some(7));
+            }
+            other => panic!("expected Done with usage, got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    fn usage_present_with_only_input_tokens() {
+        // Given message_start with input_tokens but message_delta with no
+        // output_tokens. The usage condition uses `||` so either field being
+        // present should yield usage. Changing `||` to `&&` would break this.
+        let mut parser = AnthropicStreamParser::new();
+
+        parser.parse_data(
+            r#"{"type":"message_start","message":{"usage":{"input_tokens":99}}}"#,
+        );
+
+        // message_delta with stop_reason but NO usage/output_tokens.
+        let event = parser.parse_data(
+            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"}}"#,
+        );
+
+        // Then usage is still Some because input_tokens was set.
+        match event {
+            Some(StreamEvent::Done { usage: Some(u), .. }) => {
+                assert_eq!(u.prompt_tokens, Some(99));
+                assert_eq!(u.completion_tokens, None);
+            }
+            other => panic!("expected Done with usage, got {other:?}"),
+        }
+    }
 }
