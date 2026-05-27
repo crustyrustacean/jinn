@@ -257,9 +257,10 @@ impl TuiApp {
             let ctx = nullslop_plugin::ctx::SessionCreatedCtx {
                 session_id: session_id.to_string(),
             };
-            self.plugin_registry.emit(
+            nullslop_plugin::emit(
                 nullslop_plugin::hooks::SESSION_CREATED,
-                &serde_json::to_value(&ctx).unwrap_or_default(),
+                &self.plugin_registry,
+                &ctx,
             );
         }
 
