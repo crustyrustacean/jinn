@@ -2061,6 +2061,7 @@ dependencies = [
  "nullslop-selection-widget",
  "nullslop-testutil",
  "nullslop-theme",
+ "nullslop-web-fetch",
  "nullslop-workflow",
  "parking_lot",
  "rand 0.9.4",
