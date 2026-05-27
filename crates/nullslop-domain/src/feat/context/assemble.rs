@@ -917,6 +917,51 @@ mod tests {
     }
 
     #[test]
+    fn assemble_prompt_excludes_disabled_skills_from_skills_block() {
+        // Given a session with skills and some disabled.
+        let (state, session_id) = state_with_history(vec![ChatEntry::user("use skills")]);
+        {
+            let mut guard = state.write();
+            guard.context.skills = vec![
+                make_skill("phased-task-loop"),
+                make_skill("web-coder"),
+                make_skill("scream"),
+            ];
+            // Disable web-coder.
+            guard
+                .session
+                .get_mut(&session_id)
+                .expect("session exists")
+                .set_disabled_skills(
+                    std::collections::HashSet::from(["web-coder".to_owned()]),
+                );
+        }
+
+        // When assembling the prompt.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then the system message skills block excludes disabled skills.
+        match &result.messages[0] {
+            LlmMessage::System { content } => {
+                assert!(
+                    content.contains("<name>phased-task-loop</name>"),
+                    "enabled skill should be in skills block, got: {content}"
+                );
+                assert!(
+                    content.contains("<name>scream</name>"),
+                    "enabled skill should be in skills block, got: {content}"
+                );
+                assert!(
+                    !content.contains("<name>web-coder</name>"),
+                    "disabled skill should be excluded from skills block, got: {content}"
+                );
+            }
+            other => panic!("expected System message, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn assemble_prompt_override_tool_definitions_not_filtered_by_disabled() {
         // Given a session with disabled tools AND an override providing specific tools.
         let (state, session_id) = state_with_history(vec![ChatEntry::user("use tools")]);
