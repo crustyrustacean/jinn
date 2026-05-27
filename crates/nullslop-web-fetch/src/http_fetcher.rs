@@ -270,6 +270,43 @@ mod tests {
 
     #[rstest::rstest]
     #[tokio::test]
+    async fn fetch_produces_markdown_from_structured_html() {
+        // Given a mock HTTP server serving a page with rich HTML structure.
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/")
+            .with_status(200)
+            .with_header("content-type", "text/html")
+            .with_body("<html><body><h1>Title</h1><h2>Subtitle</h2><p>Some paragraph text.</p><ul><li>first item</li><li>second item</li></ul><a href=\"https://example.com\">click here</a></body></html>")
+            .create_async()
+            .await;
+
+        let fetcher = HttpFetcher::new(HashMap::from([
+            (OutputFormat::Markdown, Arc::new(crate::MarkdownExtractor) as Arc<dyn crate::Extractor>),
+        ]));
+        let result = fetcher
+            .fetch(
+                &server.url(),
+                FetchOptions {
+                    format: OutputFormat::Markdown,
+                },
+            )
+            .await;
+
+        mock.assert_async().await;
+
+        // Then the output contains proper markdown equivalents.
+        let output = result.expect("fetch should succeed");
+        assert!(output.content.contains("# Title"), "h1 should become # Title");
+        assert!(output.content.contains("## Subtitle"), "h2 should become ## Subtitle");
+        assert!(output.content.contains("Some paragraph text"), "paragraph text should be preserved");
+        assert!(output.content.contains("first item"), "list items should be preserved");
+        assert!(output.content.contains("[click here](https://example.com)"), "link should become markdown link");
+        assert!(!output.content.contains('<'), "no raw HTML tags should remain");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
     async fn fetch_returns_raw_body_for_unregistered_format() {
         // Given a mock HTTP server and a fetcher with no extractors.
         let mut server = mockito::Server::new_async().await;
