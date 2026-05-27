@@ -2220,6 +2220,7 @@ dependencies = [
  "nullslop-domain",
  "parking_lot",
  "rstest",
+ "serde",
  "serde_json",
  "tempfile",
  "tracing",
