@@ -750,4 +750,132 @@ mod tests {
             assert_eq!(content, "file1.txt\nfile2.txt\n");
         }
     }
+
+    // --- Phase 7: Comprehensive tool batch transition tests ---
+
+    #[tokio::test]
+    async fn on_tool_batch_completed_auto_compaction_flag_is_consumed() {
+        // Given a session in sending state with auto-compaction requested.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.finish_streaming(true);
+            session.begin_sending();
+            session.request_auto_compaction();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling ToolBatchCompleted.
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+            }],
+        };
+        actor.on_tool_batch_completed(&event, &ctx);
+
+        // Then the auto-compaction flag is consumed (cleared).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            !session.is_auto_compaction_requested(),
+            "expected auto-compaction flag to be consumed after tool batch completed"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_tool_batch_completed_auto_compaction_no_idle_event_emitted() {
+        // Given a session in sending state with auto-compaction requested.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.finish_streaming(true);
+            session.begin_sending();
+            session.request_auto_compaction();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling ToolBatchCompleted.
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+            }],
+        };
+        actor.on_tool_batch_completed(&event, &ctx);
+
+        // Then no SessionPhaseChanged(Idle) event was emitted.
+        let events = sink.events();
+        let has_idle_event = events.iter().any(|e| {
+            matches!(
+                e,
+                Event::SessionPhaseChanged(p) if matches!(p.new_phase, SessionPhase::Idle)
+            )
+        });
+        assert!(
+            !has_idle_event,
+            "expected no SessionPhaseChanged(Idle) during auto-compaction"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_tool_batch_completed_normal_flow_does_not_affect_auto_compaction_flag() {
+        // Given a session in sending state WITHOUT auto-compaction requested.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.finish_streaming(true);
+            session.begin_sending();
+            // Do NOT request auto-compaction.
+            state.session.active_session_id().clone()
+        };
+
+        // When handling ToolBatchCompleted.
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+            }],
+        };
+        actor.on_tool_batch_completed(&event, &ctx);
+
+        // Then the session transitions to Streaming (normal tool loop: Sending → Streaming for next LLM call).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Streaming),
+            "expected Streaming after normal tool batch, got {:?}",
+            session.phase()
+        );
+
+        // And auto-compaction flag stays false.
+        assert!(
+            !session.is_auto_compaction_requested(),
+            "expected auto-compaction flag to stay false in normal flow"
+        );
+    }
 }

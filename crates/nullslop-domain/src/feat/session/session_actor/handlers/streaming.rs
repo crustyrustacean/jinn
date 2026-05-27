@@ -1141,4 +1141,174 @@ mod tests {
             );
         }
     }
+
+    // --- Phase 7: Comprehensive transition tests ---
+
+    #[tokio::test]
+    async fn on_stream_completed_finished_without_auto_compaction_goes_to_idle() {
+        // Given a session in streaming state WITHOUT auto-compaction requested.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.begin_streaming();
+            // Do NOT request auto-compaction.
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with Finished reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: Some("response".to_owned()),
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the session is in Idle (normal path).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Idle),
+            "expected Idle after Finished without auto-compaction, got {:?}",
+            session.phase()
+        );
+
+        // And no CompactContext was emitted.
+        let commands = sink.commands();
+        let has_compact = commands
+            .iter()
+            .any(|c| matches!(c, Command::CompactContext(_)));
+        assert!(!has_compact, "expected no CompactContext");
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_error_with_auto_compaction_goes_to_compacting() {
+        // Given a session in streaming state with auto-compaction requested.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.request_auto_compaction();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with Error reason and auto-compaction.
+        // Error is a turn boundary, so auto-compaction is honored.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Error,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the session transitions to Compacting (auto-compaction honored even on Error).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Compacting),
+            "expected Compacting after Error with auto-compaction, got {:?}",
+            session.phase()
+        );
+
+        // And the auto-compaction flag is consumed (cleared).
+        assert!(
+            !session.is_auto_compaction_requested(),
+            "expected auto-compaction flag to be consumed after Error"
+        );
+
+        // And CompactContext was emitted.
+        let commands = sink.commands();
+        let has_compact = commands
+            .iter()
+            .any(|c| matches!(c, Command::CompactContext(_)));
+        assert!(
+            has_compact,
+            "expected CompactContext after Error with auto-compaction"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_canceled_with_auto_compaction_goes_to_compacting() {
+        // Given a session in streaming state with auto-compaction requested.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.begin_streaming();
+            session.request_auto_compaction();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with Canceled reason and auto-compaction.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Canceled,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the session transitions to Compacting (NOT Idle).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Compacting),
+            "expected Compacting after Canceled with auto-compaction, got {:?}",
+            session.phase()
+        );
+
+        // And CompactContext was emitted.
+        let commands = sink.commands();
+        let has_compact = commands
+            .iter()
+            .any(|c| matches!(c, Command::CompactContext(_)));
+        assert!(
+            has_compact,
+            "expected CompactContext after Canceled with auto-compaction"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_auto_compaction_flag_consumed_on_finished() {
+        // Given a session in streaming state with auto-compaction requested.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.begin_streaming();
+            session.request_auto_compaction();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with Finished reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: Some("response".to_owned()),
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the auto-compaction flag is consumed (cleared).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            !session.is_auto_compaction_requested(),
+            "expected auto-compaction flag to be consumed after Finished"
+        );
+    }
 }

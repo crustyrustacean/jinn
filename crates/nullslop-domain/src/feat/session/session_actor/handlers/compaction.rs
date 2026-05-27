@@ -647,4 +647,107 @@ mod tests {
             "expected auto_compaction_requested flag to be set"
         );
     }
+
+    // --- Phase 7: Additional compaction tests ---
+
+    #[tokio::test]
+    async fn end_compaction_manual_success_goes_to_idle() {
+        // Given a session in Compacting phase (simulating manual /compact).
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("old message"));
+            session.begin_compacting(vec![]);
+            state.session.active_session_id().clone()
+        };
+
+        // When handling EndCompaction with auto=false (manual compaction).
+        actor
+            .handle_end_compaction(
+                &crate::feat::compaction_actor::protocol::command::EndCompaction {
+                    session_id: session_id.clone(),
+                    result: Some(
+                        crate::feat::compaction_actor::protocol::command::CompactionResult {
+                            summary: "summarized".to_owned(),
+                            entries_compacted: 1,
+                            tokens_before: 100,
+                            tokens_after: 50,
+                            model_used: "test/model".to_owned(),
+                            boundary_index: 1,
+                        },
+                    ),
+                    error: None,
+                    auto: false,
+                    skipped: false,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the session is in Idle (manual compaction returns to Idle).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Idle),
+            "expected Idle after manual compaction, got {:?}",
+            session.phase()
+        );
+    }
+
+    #[tokio::test]
+    async fn end_compaction_auto_success_exhaustive_no_synthetic_user_message() {
+        // Given a session in Compacting phase with prior history.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("user message 1"));
+            session.push_entry(ChatEntry::assistant("assistant response"));
+            session.push_entry(ChatEntry::user("user message 2"));
+            session.begin_compacting(vec![]);
+            state.session.active_session_id().clone()
+        };
+
+        // When handling EndCompaction with auto=true and success.
+        actor
+            .handle_end_compaction(
+                &crate::feat::compaction_actor::protocol::command::EndCompaction {
+                    session_id: session_id.clone(),
+                    result: Some(
+                        crate::feat::compaction_actor::protocol::command::CompactionResult {
+                            summary: "summarized".to_owned(),
+                            entries_compacted: 3,
+                            tokens_before: 1000,
+                            tokens_after: 50,
+                            model_used: "test/model".to_owned(),
+                            boundary_index: 0,
+                        },
+                    ),
+                    error: None,
+                    auto: true,
+                    skipped: false,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then NO entry in the entire history contains "Continue".
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        for (i, entry) in session.history().iter().enumerate() {
+            if let ChatEntryKind::User { display, .. } = &entry.kind {
+                assert!(
+                    !display.contains("Continue"),
+                    "entry {i}: found synthetic 'Continue' message: {display}"
+                );
+                assert!(
+                    !display.contains("compaction has just occurred"),
+                    "entry {i}: found synthetic compaction message: {display}"
+                );
+            }
+        }
+    }
 }
