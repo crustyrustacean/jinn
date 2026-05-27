@@ -524,7 +524,7 @@ This project uses **Fossil** for version control.
 
 ### Build & Test Commands
 
-These are the commands used by the `phased-task-loop` skill. Always prefer these over raw `cargo` invocations.
+These are the commands used by the project. Always prefer these over raw `cargo` invocations.
 
 | Purpose         | Command        | Notes                                                                                       |
 | --------------- | -------------- | ------------------------------------------------------------------------------------------- |

@@ -54,6 +54,14 @@ pub struct SessionProfile {
     /// sessions without this field deserialize to an empty set (all enabled).
     #[serde(default)]
     pub disabled_tools: HashSet<String>,
+    /// Skill names the user has explicitly disabled for this session.
+    ///
+    /// Opt-out model: empty set means all skills are enabled.
+    /// New skills added in future versions automatically appear.
+    /// `#[serde(default)]` ensures legacy sessions without this field
+    /// deserialize to an empty set (all enabled).
+    #[serde(default)]
+    pub disabled_skills: HashSet<String>,
 }
 
 impl Default for SessionProfile {
@@ -64,6 +72,7 @@ impl Default for SessionProfile {
             persona_name: DEFAULT_PERSONA_NAME.to_owned(),
             sliding_window_size: DEFAULT_SLIDING_WINDOW_SIZE,
             disabled_tools: HashSet::new(),
+            disabled_skills: HashSet::new(),
         }
     }
 }
@@ -81,6 +90,7 @@ impl SessionProfile {
             persona_name: DEFAULT_PERSONA_NAME.to_owned(),
             sliding_window_size,
             disabled_tools: HashSet::new(),
+            disabled_skills: HashSet::new(),
         }
     }
 
@@ -91,6 +101,7 @@ impl SessionProfile {
         persona_name: String,
         sliding_window_size: usize,
         disabled_tools: HashSet<String>,
+        disabled_skills: HashSet<String>,
     ) -> Self {
         Self {
             model,
@@ -98,6 +109,7 @@ impl SessionProfile {
             persona_name,
             sliding_window_size,
             disabled_tools,
+            disabled_skills,
         }
     }
 }
@@ -144,6 +156,7 @@ mod tests {
             "coding-assistant".to_owned(),
             5,
             disabled.clone(),
+            HashSet::new(),
         );
 
         // When serialized and deserialized.
@@ -152,6 +165,47 @@ mod tests {
 
         // Then disabled_tools is preserved.
         assert_eq!(restored.disabled_tools, disabled);
+    }
+
+    #[rstest::rstest]
+    fn disabled_skills_round_trips_through_serde() {
+        // Given a profile with disabled skills.
+        let mut disabled = HashSet::new();
+        disabled.insert("phased-task-loop".to_owned());
+        disabled.insert("web-coder".to_owned());
+        let profile = SessionProfile::new(
+            "ollama/llama3".to_owned(),
+            PromptStrategyId::passthrough(),
+            "coding-assistant".to_owned(),
+            5,
+            HashSet::new(),
+            disabled.clone(),
+        );
+
+        // When serialized and deserialized.
+        let json = serde_json::to_string(&profile).expect("serialize");
+        let restored: SessionProfile = serde_json::from_str(&json).expect("deserialize");
+
+        // Then disabled_skills is preserved.
+        assert_eq!(restored.disabled_skills, disabled);
+    }
+
+    #[rstest::rstest]
+    fn legacy_json_without_disabled_skills_deserializes_to_empty_set() {
+        // Given JSON from an older version that lacks disabled_skills.
+        let json = r#"{"model":"ollama/llama3","strategy":"passthrough","persona_name":"coding-assistant","sliding_window_size":5,"disabled_tools":[]}"#;
+
+        // When deserialized.
+        let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");
+
+        // Then disabled_skills is empty (all skills enabled).
+        assert!(profile.disabled_skills.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn default_disabled_skills_is_empty() {
+        let profile = SessionProfile::default();
+        assert!(profile.disabled_skills.is_empty());
     }
 
     #[rstest::rstest]

@@ -28,6 +28,8 @@ pub enum PickerKind {
     Judge,
     /// Tool picker — toggle which tools are enabled for the session.
     Tool,
+    /// Skill picker — toggle which skills are enabled for the session.
+    Skill,
 }
 
 impl std::fmt::Display for PickerKind {
@@ -43,6 +45,7 @@ impl std::fmt::Display for PickerKind {
             Self::CompactionModel => write!(f, "compaction model"),
             Self::Judge => write!(f, "judges"),
             Self::Tool => write!(f, "tools"),
+            Self::Skill => write!(f, "skills"),
         }
     }
 }

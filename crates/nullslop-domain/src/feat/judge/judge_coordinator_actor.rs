@@ -79,7 +79,6 @@ struct PendingVerdicts {
 #[derive(Debug)]
 struct ReceivedVerdict {
     /// The judge session that rendered the verdict.
-    #[expect(dead_code, reason = "kept for future diagnostics")]
     judge_session_id: SessionId,
     /// The judge name.
     judge_name: String,

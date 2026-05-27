@@ -184,6 +184,7 @@ impl BenchActor {
                 persona_name,
                 sliding_window_size,
                 std::collections::HashSet::new(),
+                std::collections::HashSet::new(),
             ));
             new_session.set_lifecycle_name(Some(task_name.clone()));
 

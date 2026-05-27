@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 
 use crate::execution::WorkflowStructure;
-use crate::port::{PortDef, PortType, ScalarType};
+use crate::port::PortDef;
 
 /// A bounding rectangle in content-space coordinates.
 ///
