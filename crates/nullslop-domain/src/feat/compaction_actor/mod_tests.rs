@@ -353,11 +353,11 @@ fn test_actor_with_low_budget() -> (
     (sink, ctx, actor, session_id)
 }
 
-/// Helper: count `EnqueueCompaction` commands in the recording sink.
-fn count_enqueue_compaction(commands: &[Command]) -> usize {
+/// Helper: count `ScheduleAutoCompaction` commands in the recording sink.
+fn count_schedule_auto_compaction(commands: &[Command]) -> usize {
     commands
         .iter()
-        .filter(|c| matches!(c, Command::EnqueueCompaction(_)))
+        .filter(|c| matches!(c, Command::ScheduleAutoCompaction(_)))
         .count()
 }
 
@@ -371,7 +371,7 @@ fn high_token_event(session_id: &SessionId) -> HistoryAppended {
 
 #[rstest::rstest]
 #[test]
-fn double_history_appended_emits_single_enqueue_compaction() {
+fn double_history_appended_emits_single_schedule_auto_compaction() {
     // Given an actor with a low token budget.
     let (sink, ctx, mut actor, session_id) = test_actor_with_low_budget();
 
@@ -381,12 +381,12 @@ fn double_history_appended_emits_single_enqueue_compaction() {
     actor.handle_history_appended(&event, &ctx);
     actor.handle_history_appended(&event, &ctx);
 
-    // Then exactly one EnqueueCompaction was emitted.
+    // Then exactly one ScheduleAutoCompaction was emitted.
     let commands = sink.commands();
-    let count = count_enqueue_compaction(&commands);
+    let count = count_schedule_auto_compaction(&commands);
     assert_eq!(
         count, 1,
-        "expected exactly 1 EnqueueCompaction, got {count}"
+        "expected exactly 1 ScheduleAutoCompaction, got {count}"
     );
 }
 
@@ -401,9 +401,9 @@ fn flag_resets_after_compact_context_allows_retrigger() {
     // When triggering auto-compaction.
     actor.handle_history_appended(&event, &ctx);
     assert_eq!(
-        count_enqueue_compaction(&sink.commands()),
+        count_schedule_auto_compaction(&sink.commands()),
         1,
-        "first trigger should emit one EnqueueCompaction"
+        "first trigger should emit one ScheduleAutoCompaction"
     );
 
     // And then receiving CompactContext (simulates queue dispatching it).
@@ -417,11 +417,11 @@ fn flag_resets_after_compact_context_allows_retrigger() {
     sink.clear();
     actor.handle_history_appended(&event, &ctx);
 
-    // Then a new EnqueueCompaction is emitted (flag was reset).
-    let count = count_enqueue_compaction(&sink.commands());
+    // Then a new ScheduleAutoCompaction is emitted (flag was reset).
+    let count = count_schedule_auto_compaction(&sink.commands());
     assert_eq!(
         count, 1,
-        "expected 1 EnqueueCompaction after reset, got {count}"
+        "expected 1 ScheduleAutoCompaction after reset, got {count}"
     );
 }
 
@@ -436,9 +436,9 @@ fn flag_resets_after_cancel_compaction_allows_retrigger() {
     // When triggering auto-compaction.
     actor.handle_history_appended(&event, &ctx);
     assert_eq!(
-        count_enqueue_compaction(&sink.commands()),
+        count_schedule_auto_compaction(&sink.commands()),
         1,
-        "first trigger should emit one EnqueueCompaction"
+        "first trigger should emit one ScheduleAutoCompaction"
     );
 
     // And then cancelling compaction.
@@ -451,11 +451,11 @@ fn flag_resets_after_cancel_compaction_allows_retrigger() {
     sink.clear();
     actor.handle_history_appended(&event, &ctx);
 
-    // Then a new EnqueueCompaction is emitted (flag was reset).
-    let count = count_enqueue_compaction(&sink.commands());
+    // Then a new ScheduleAutoCompaction is emitted (flag was reset).
+    let count = count_schedule_auto_compaction(&sink.commands());
     assert_eq!(
         count, 1,
-        "expected 1 EnqueueCompaction after cancel reset, got {count}"
+        "expected 1 ScheduleAutoCompaction after cancel reset, got {count}"
     );
 }
 
@@ -1165,8 +1165,8 @@ fn history_appended_does_not_trigger_at_exact_threshold() {
     };
     actor.handle_history_appended(&event, &ctx);
 
-    // Then NO EnqueueCompaction is emitted (uses strict >).
-    let count = count_enqueue_compaction(&sink.commands());
+    // Then NO ScheduleAutoCompaction is emitted (uses strict >).
+    let count = count_schedule_auto_compaction(&sink.commands());
     assert_eq!(count, 0, "should not trigger at exact threshold");
 }
 
@@ -1183,8 +1183,8 @@ fn history_appended_triggers_above_threshold() {
     };
     actor.handle_history_appended(&event, &ctx);
 
-    // Then one EnqueueCompaction is emitted.
-    let count = count_enqueue_compaction(&sink.commands());
+    // Then one ScheduleAutoCompaction is emitted.
+    let count = count_schedule_auto_compaction(&sink.commands());
     assert_eq!(count, 1, "should trigger above threshold");
 }
 
