@@ -43,7 +43,7 @@ use crate::feat::session_lifecycle::protocol::command::{
 };
 use crate::feat::skills::skills_scan_actor::ScanSkills;
 use crate::feat::tools_actor::protocol::command::{
-    CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools,
+    CancelToolBatch, ExecuteTool, ExecuteToolBatch, ExecuteWebFetch, RegisterTools,
 };
 
 /// Every domain command the actor system can receive.
@@ -87,6 +87,8 @@ pub enum Command {
     ExecuteTool(ExecuteTool),
     /// Cancel all pending tool executions for a session.
     CancelToolBatch(CancelToolBatch),
+    /// Execute a web-fetch tool call.
+    ExecuteWebFetch(ExecuteWebFetch),
     /// Proceed with shutdown after actor coordination.
     ProceedWithShutdown(ProceedWithShutdown),
     /// Session data loaded from disk by the persistence actor.
@@ -180,6 +182,7 @@ impl Command {
             Self::ExecuteToolBatch(..) => Some(ExecuteToolBatch::NAME),
             Self::ExecuteTool(..) => Some(ExecuteTool::NAME),
             Self::CancelToolBatch(..) => Some(CancelToolBatch::NAME),
+            Self::ExecuteWebFetch(..) => Some(ExecuteWebFetch::NAME),
             Self::ProceedWithShutdown(..) => Some(ProceedWithShutdown::NAME),
             Self::SessionLoadCompleted(..) => Some(SessionLoadCompleted::NAME),
             Self::LoadProviderPickerEntries(..) => Some(LoadProviderPickerEntries::NAME),
@@ -293,6 +296,13 @@ impl std::fmt::Display for Command {
                 )
             }
             Command::CancelToolBatch(..) => write!(f, "cancel tool batch"),
+            Command::ExecuteWebFetch(payload) => {
+                write!(
+                    f,
+                    "execute web-fetch '{}' ({})",
+                    payload.tool_call.name, payload.tool_call.id
+                )
+            }
             Command::ProceedWithShutdown(payload) => {
                 write!(
                     f,

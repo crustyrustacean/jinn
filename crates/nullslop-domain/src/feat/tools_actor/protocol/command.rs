@@ -55,3 +55,16 @@ pub struct CancelToolBatch {
     /// The session whose tool executions should be cancelled.
     pub session_id: SessionId,
 }
+
+/// Execute a web-fetch tool call.
+///
+/// Sent by the tool orchestrator to the `WebFetchActor`.
+/// Carries the session ID and the tool call with URL + options.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("tool")]
+pub struct ExecuteWebFetch {
+    /// The session this execution belongs to.
+    pub session_id: SessionId,
+    /// The tool call containing URL and options.
+    pub tool_call: ToolCall,
+}
