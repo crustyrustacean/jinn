@@ -22,5 +22,5 @@ tokio = { workspace = true, features = ["full"] }
 workspace = true
 
 [features]
-default = []
+default = ["headless-chrome"]
 headless-chrome = ["dep:headless_chrome"]

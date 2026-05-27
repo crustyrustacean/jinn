@@ -5,6 +5,7 @@ edition.workspace = true
 resolver = "3"
 default-run = "nullslop"
 [features]
+default = ["headless-chrome"]
 headless-chrome = ["nullslop-web-fetch/headless-chrome"]
 
 [workspace]
