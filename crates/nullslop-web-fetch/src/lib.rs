@@ -4,6 +4,7 @@
 //! multiple output formats. Implementations are provided by separate modules
 //! (e.g., [`HttpFetcher`], `HeadlessChromeFetcher`).
 
+pub mod extractor;
 pub mod http_fetcher;
 
 #[cfg(feature = "headless-chrome")]
@@ -13,13 +14,14 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use wherror::Error;
 
+pub use extractor::{Extractor, MarkdownExtractor};
 pub use http_fetcher::HttpFetcher;
 
 #[cfg(feature = "headless-chrome")]
 pub use headless_chrome_fetcher::HeadlessChromeFetcher;
 
 /// Output format for fetched web page content.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum OutputFormat {
     /// Raw HTML source.
