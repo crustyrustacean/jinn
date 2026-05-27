@@ -533,6 +533,108 @@ mod tests {
         assert_eq!(rows[0].count, 14);
     }
 
+    /// Applies migrations up to (and including) `target` version.
+    ///
+    /// Calls individual migration functions in order, recording each.
+    /// This creates a database at exactly version `target` without
+    /// applying later migrations.
+    fn apply_migrations_up_to(conn: &mut SqliteConnection, target: i32) {
+        bootstrap_tracking_table(conn).expect("bootstrap");
+        if target >= 0 {
+            migrate_v0(conn).expect("v0");
+            record_version(conn, 0, "create_initial_schema").expect("record v0");
+        }
+        if target >= 1 {
+            migrate_v1(conn).expect("v1");
+            record_version(conn, 1, "add_cwd_column").expect("record v1");
+        }
+        if target >= 2 {
+            migrate_v2(conn).expect("v2");
+            record_version(conn, 2, "add_created_at_column").expect("record v2");
+        }
+        if target >= 3 {
+            migrate_v3(conn).expect("v3");
+            record_version(conn, 3, "add_ignored_to_session_entries").expect("record v3");
+        }
+        if target >= 4 {
+            migrate_v4(conn).expect("v4");
+            record_version(conn, 4, "add_cost_to_token_ledger").expect("record v4");
+        }
+        if target >= 5 {
+            migrate_v5(conn).expect("v5");
+            record_version(conn, 5, "add_lifecycle_columns_to_sessions").expect("record v5");
+        }
+        if target >= 6 {
+            migrate_v6(conn);
+            record_version(conn, 6, "add_archived_column").expect("record v6");
+        }
+        if target >= 7 {
+            migrate_v7(conn).expect("v7");
+            record_version(conn, 7, "add_lifecycle_script_state_column").expect("record v7");
+        }
+        if target >= 8 {
+            migrate_v8(conn).expect("v8");
+            record_version(conn, 8, "add_metadata_column").expect("record v8");
+        }
+        if target >= 9 {
+            migrate_v9(conn).expect("v9");
+            record_version(conn, 9, "rename_session_entries_to_session_history").expect("record v9");
+        }
+        if target >= 10 {
+            migrate_v10(conn).expect("v10");
+            record_version(conn, 10, "consolidate_to_compaction_strategy").expect("record v10");
+        }
+        if target >= 11 {
+            migrate_v11(conn).expect("v11");
+            record_version(conn, 11, "add_is_workflow_column").expect("record v11");
+        }
+        if target >= 12 {
+            migrate_v12(conn).expect("v12");
+            record_version(conn, 12, "replace_ignored_with_context_override").expect("record v12");
+        }
+    }
+
+    /// Verifies that each migration guard uses `<` not `<=`.
+    ///
+    /// For each version N (0..=12), we build a database at exactly version N
+    /// by calling individual migration functions, then re-run `run_migrations`.
+    /// It must succeed (applying only v(N+1) through v13) and produce exactly
+    /// 14 migration rows.
+    ///
+    /// If `current < N` were mutated to `current <= N`, vN would re-run when
+    /// current == N. Most migrations would fail (duplicate table/column),
+    /// and those that don't fail would produce a duplicate _migrations row,
+    /// causing the count assertion to fail.
+    #[test]
+    fn migration_guards_do_not_reapply_completed_version() {
+        #[derive(QueryableByName)]
+        struct CountRow {
+            #[diesel(sql_type = diesel::sql_types::BigInt)]
+            count: i64,
+        }
+
+        // Versions whose guards have mutants (v0 through v12).
+        for target_version in 0..=12_i32 {
+            let (_dir, mut conn) = make_conn();
+
+            // Build the database at exactly `target_version`.
+            apply_migrations_up_to(&mut conn, target_version);
+
+            // Re-running should succeed — applying only versions > target_version.
+            run_migrations(&mut conn)
+                .unwrap_or_else(|e| panic!("re-run at target_version={target_version} should succeed: {e:?}"));
+
+            // Verify no duplicate rows: exactly 14 migration rows total.
+            let rows: Vec<CountRow> = sql_query("SELECT COUNT(*) AS count FROM _migrations")
+                .load(&mut conn)
+                .expect("query count");
+            assert_eq!(
+                rows[0].count, 14,
+                "at target_version={target_version}: expected 14 migration rows, no duplicates"
+            );
+        }
+    }
+
     #[test]
     fn fresh_database_has_all_tables() {
         #[derive(QueryableByName)]

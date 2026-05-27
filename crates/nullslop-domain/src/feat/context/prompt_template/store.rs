@@ -274,3 +274,79 @@ impl PromptTemplateStore {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use super::*;
+
+    /// Writes a minimal .md template file to `dir`.
+    fn write_template(dir: &Path, filename: &str, name: &str, description: &str) {
+        let content = format!(
+            "+++\nname = \"{name}\"\ndescription = \"{description}\"\n+++\nBody for {name}"
+        );
+        std::fs::write(dir.join(filename), content).expect("write template");
+    }
+
+    #[test]
+    fn scan_dir_override_replaces_existing_template() {
+        // Given a system directory with a template "greeting".
+        let sys_dir = tempfile::tempdir().expect("sys dir");
+        write_template(sys_dir.path(), "greeting.md", "greeting", "System version");
+
+        let mut templates = Vec::new();
+        let mut seen_names = std::collections::HashSet::new();
+        PromptTemplateStore::scan_dir(sys_dir.path(), &mut templates, &mut seen_names)
+            .expect("scan system");
+        assert_eq!(templates.len(), 1);
+        assert_eq!(templates[0].description, "System version");
+
+        // When the user directory has an override for "greeting".
+        let user_dir = tempfile::tempdir().expect("user dir");
+        write_template(user_dir.path(), "greeting.md", "greeting", "User override");
+        PromptTemplateStore::scan_dir_override(user_dir.path(), &mut templates, &mut seen_names)
+            .expect("scan override");
+
+        // Then the user version replaces the system version.
+        assert_eq!(templates.len(), 1, "should still have 1 template");
+        assert_eq!(
+            templates[0].description, "User override",
+            "user template should override system template"
+        );
+    }
+
+    #[test]
+    fn scan_dir_only_loads_md_files() {
+        // Given a directory with .md and .txt files.
+        let dir = tempfile::tempdir().expect("dir");
+        write_template(dir.path(), "valid.md", "valid", "Valid template");
+        std::fs::write(dir.path().join("notes.txt"), "not a template").expect("write txt");
+        std::fs::write(dir.path().join("data.json"), "{}").expect("write json");
+
+        let mut templates = Vec::new();
+        let mut seen_names = std::collections::HashSet::new();
+        PromptTemplateStore::scan_dir(dir.path(), &mut templates, &mut seen_names)
+            .expect("scan");
+
+        // Then only the .md file is loaded.
+        assert_eq!(templates.len(), 1);
+        assert_eq!(templates[0].name, "valid");
+    }
+
+    #[test]
+    fn scan_dir_skips_underscore_prefixed_files() {
+        // Given a directory with a normal and an underscore-prefixed template.
+        let dir = tempfile::tempdir().expect("dir");
+        write_template(dir.path(), "visible.md", "visible", "Should load");
+        write_template(dir.path(), "_hidden.md", "_hidden", "Should skip");
+
+        let mut templates = Vec::new();
+        let mut seen_names = std::collections::HashSet::new();
+        PromptTemplateStore::scan_dir(dir.path(), &mut templates, &mut seen_names)
+            .expect("scan");
+
+        // Then only the non-underscore file is loaded.
+        assert_eq!(templates.len(), 1);
+        assert_eq!(templates[0].name, "visible");
+    }
+}

@@ -154,3 +154,67 @@ impl TokenCounter for TiktokenCounter {
         self.encoding_name
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use super::*;
+    use crate::protocol::ChatEntry;
+
+    /// A simple estimator that returns the byte length of text.
+    struct ByteLenEstimator;
+
+    impl TokenEstimator for ByteLenEstimator {
+        fn estimate(&self, text: &str) -> usize {
+            text.len()
+        }
+        fn name(&self) -> &'static str {
+            "byte_len"
+        }
+    }
+
+    #[test]
+    fn estimate_entry_tokens_sums_name_and_content_for_tool_call() {
+        // Given a ToolCall entry.
+        let estimator = ByteLenEstimator;
+        let entry = ChatEntry::tool_call("id-1", "read_file", "{\"path\": \"/tmp\"}");
+
+        // When estimating tokens.
+        let tokens = estimate_entry_tokens(&estimator, &entry);
+
+        // Then the estimate is the SUM of name + arguments lengths.
+        let name_len = estimator.estimate("read_file");
+        let args_len = estimator.estimate("{\"path\": \"/tmp\"}");
+        assert_eq!(
+            tokens,
+            name_len + args_len,
+            "ToolCall tokens should be sum of name + arguments, not product"
+        );
+        assert!(tokens > 0, "should have non-zero token estimate");
+    }
+
+    #[test]
+    fn estimate_entry_tokens_sums_name_and_content_for_tool_result() {
+        // Given a ToolResult entry.
+        let estimator = ByteLenEstimator;
+        let entry = ChatEntry::tool_result(
+            "id-1",
+            "read_file",
+            "file contents here",
+            crate::feat::session::tool_result_status::ToolResultStatus::Success,
+        );
+
+        // When estimating tokens.
+        let tokens = estimate_entry_tokens(&estimator, &entry);
+
+        // Then the estimate is the SUM of name + content lengths.
+        let name_len = estimator.estimate("read_file");
+        let content_len = estimator.estimate("file contents here");
+        assert_eq!(
+            tokens,
+            name_len + content_len,
+            "ToolResult tokens should be sum of name + content, not product"
+        );
+        assert!(tokens > 0, "should have non-zero token estimate");
+    }
+}

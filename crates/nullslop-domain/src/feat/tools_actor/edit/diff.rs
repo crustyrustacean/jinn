@@ -406,4 +406,42 @@ mod tests {
         assert!(diff.contains("-line2"));
         assert!(diff.contains("+modified"));
     }
+
+    #[rstest::rstest]
+    fn overlapping_edits_are_rejected() {
+        // Given content with two overlapping regions.
+        let original = "abcdefghij";
+
+        // When finding edits that overlap ("cde" covers positions 2-5, "def" covers 3-6).
+        let edits = vec![
+            Edit { old_text: "cde".to_owned(), new_text: "XXX".to_owned() },
+            Edit { old_text: "def".to_owned(), new_text: "YYY".to_owned() },
+        ];
+        let result = find_and_validate_edits(original, &edits);
+
+        // Then it fails with Overlapping error with correct indices.
+        assert_eq!(
+            result,
+            Err(EditError::Overlapping { first: 0, second: 1 }),
+            "overlapping edits should be rejected with correct indices: {result:?}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn adjacent_non_overlapping_edits_are_accepted() {
+        // Given content where two edits are exactly adjacent.
+        let original = "abcdefghij";
+
+        // When finding adjacent edits ("abc" ends at 3, "def" starts at 3 — not overlapping).
+        let edits = vec![
+            Edit { old_text: "abc".to_owned(), new_text: "XXX".to_owned() },
+            Edit { old_text: "def".to_owned(), new_text: "YYY".to_owned() },
+        ];
+        let result = find_and_validate_edits(original, &edits);
+
+        // Then both edits are accepted (end == start is not an overlap, only end > start is).
+        assert!(result.is_ok(), "adjacent edits should be accepted: {result:?}");
+        let matched = result.expect("ok");
+        assert_eq!(matched.len(), 2);
+    }
 }

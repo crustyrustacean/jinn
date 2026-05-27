@@ -257,3 +257,27 @@ pub(super) fn test_actor_with_store(
         store,
     )
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use super::*;
+    use crate::protocol::ChatEntry;
+
+    #[test]
+    fn estimate_total_tokens_returns_nonzero_for_session_with_entries() {
+        // Given a session with multiple entries.
+        let mut session = ChatSessionState::new();
+        session.push_entry(ChatEntry::user("hello world from user"));
+        session.push_entry(ChatEntry::assistant("hello from assistant"));
+
+        // When estimating total tokens.
+        let tokens = estimate_total_tokens(&session);
+
+        // Then the result is a meaningful sum (not 0 or 1).
+        assert!(
+            tokens > 1,
+            "estimate_total_tokens should return a sum > 1 for a session with entries, got {tokens}"
+        );
+    }
+}
