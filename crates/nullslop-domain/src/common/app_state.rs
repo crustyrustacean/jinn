@@ -516,6 +516,14 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (set on tool picker open, consumed on confirm/cancel).
     pub tool_picker_snapshot: Option<std::collections::HashSet<String>>,
 
+    /// Skill picker state — shows all discovered skills with toggle state.
+    /// OWNER: IntentHandler (populated on skill picker open).
+    pub skill_picker: nullslop_selection_widget::SelectionState<crate::feat::skills::skill_entry::SkillEntry>,
+
+    /// Snapshot of disabled skills before picker opens — restored on ESC.
+    /// OWNER: IntentHandler (set on skill picker open, consumed on confirm/cancel).
+    pub skill_picker_snapshot: Option<std::collections::HashSet<String>>,
+
     /// Path to the themes directory (`~/.config/nullslop/themes/`).
     /// Set once during init from `AppPaths`. Used by the theme picker to discover themes.
     /// OWNER: Init code (set once at startup).
@@ -594,6 +602,8 @@ impl Default for FrontendState {
             theme_preview_original: None,
             tool_picker: nullslop_selection_widget::SelectionState::new(),
             tool_picker_snapshot: None,
+            skill_picker: nullslop_selection_widget::SelectionState::new(),
+            skill_picker_snapshot: None,
             themes_dir: std::path::PathBuf::new(),
             system_themes_dir: std::path::PathBuf::new(),
             session_lifecycle_picker: nullslop_selection_widget::SelectionState::new(),
@@ -643,6 +653,7 @@ impl AppState {
             PickerKind::Judge => Some(&mut self.frontend.judge_picker),
             PickerKind::CompactionModel => Some(&mut self.frontend.compaction_model_picker),
             PickerKind::Tool => Some(&mut self.frontend.tool_picker),
+            PickerKind::Skill => Some(&mut self.frontend.skill_picker),
         }
     }
 

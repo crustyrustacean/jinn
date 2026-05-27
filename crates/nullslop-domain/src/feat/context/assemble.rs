@@ -147,7 +147,15 @@ pub fn assemble_prompt(
     let skills_block = if overrides.is_some_and(|o| o.skip_skills) {
         String::new()
     } else {
-        format_skills_for_prompt(&state.context.skills)
+        let disabled_skills = session.disabled_skills();
+        let filtered: Vec<_> = state
+            .context
+            .skills
+            .iter()
+            .filter(|s| !disabled_skills.contains(&s.name))
+            .cloned()
+            .collect();
+        format_skills_for_prompt(&filtered)
     };
 
     // Apply overrides: env context.

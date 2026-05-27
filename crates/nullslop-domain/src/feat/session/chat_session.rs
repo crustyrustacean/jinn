@@ -1337,6 +1337,28 @@ impl ChatSessionState {
         self.core.profile.disabled_tools = tools;
     }
 
+    /// Returns `true` if the skill is enabled for this session.
+    ///
+    /// An empty disabled set means all skills are enabled.
+    #[must_use]
+    pub fn is_skill_enabled(&self, skill_name: &str) -> bool {
+        !self.core.profile.disabled_skills.contains(skill_name)
+    }
+
+    /// Read-only access to this session's disabled skill names.
+    ///
+    /// Opt-out model: skills not in this set are enabled.
+    pub fn disabled_skills(&self) -> &HashSet<String> {
+        &self.core.profile.disabled_skills
+    }
+
+    /// Replace the disabled skill set for this session.
+    ///
+    /// Used by the skill picker to commit toggle state.
+    pub fn set_disabled_skills(&mut self, skills: HashSet<String>) {
+        self.core.profile.disabled_skills = skills;
+    }
+
     /// The model for this session.
     pub fn model(&self) -> &str {
         &self.core.profile.model

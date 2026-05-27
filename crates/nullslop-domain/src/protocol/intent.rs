@@ -104,6 +104,8 @@ pub enum Intent {
     PickerMoveCursorRight,
     /// Toggle the selected tool's enabled/disabled state in the tool picker.
     ToolToggleSelected,
+    /// Toggle the selected skill's enabled/disabled state in the skill picker.
+    SkillToggleSelected,
     /// Create a new session.
     SessionNew,
     /// Refresh the model list from all providers.
@@ -335,6 +337,7 @@ impl std::fmt::Display for Intent {
             Intent::PickerMoveCursorLeft => write!(f, "picker cursor left"),
             Intent::PickerMoveCursorRight => write!(f, "picker cursor right"),
             Intent::ToolToggleSelected => write!(f, "toggle tool"),
+            Intent::SkillToggleSelected => write!(f, "toggle skill"),
             Intent::SessionNew => write!(f, "session new"),
             Intent::RefreshModels => write!(f, "refresh models"),
             Intent::RescanPromptTemplates => write!(f, "rescan prompt templates"),

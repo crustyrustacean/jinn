@@ -65,6 +65,13 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
                 Some(state.active_session().disabled_tools().clone());
             load_tool_picker_entries(state);
         }
+        PickerKind::Skill => {
+            state.frontend.skill_picker.reset();
+            // Snapshot current disabled skills for ESC revert.
+            state.frontend.skill_picker_snapshot =
+                Some(state.active_session().disabled_skills().clone());
+            load_skill_picker_entries(state);
+        }
     }
 
     match kind {
@@ -83,7 +90,7 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
                 LoadPersonaPickerEntries,
             )])
         }
-        PickerKind::Theme | PickerKind::Tool => IntentResult::empty(),
+        PickerKind::Theme | PickerKind::Tool | PickerKind::Skill => IntentResult::empty(),
         PickerKind::SessionLifecycle => {
             // Populate from user preferences + implicit blank lifecycle.
             load_lifecycle_picker_entries(state);
@@ -216,6 +223,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::Judge) => (confirm_judge(state), None),
         Some(PickerKind::CompactionModel) | None => (IntentResult::empty(), None),
         Some(PickerKind::Tool) => (confirm_tool(state), None),
+        Some(PickerKind::Skill) => (confirm_skill(state), None),
     }
 }
 
@@ -643,6 +651,56 @@ fn confirm_tool(state: &mut AppState) -> IntentResult {
 /// Toggles the `enabled` state of the currently selected tool entry.
 pub fn handle_tool_toggle(state: &mut AppState) -> IntentResult {
     state.frontend.tool_picker.with_selected_mut(|entry| {
+        entry.enabled = !entry.enabled;
+    });
+    IntentResult::empty()
+}
+
+/// Populates the skill picker entries from discovered skills.
+///
+/// Marks each entry as enabled/disabled based on the session's `disabled_skills` set.
+fn load_skill_picker_entries(state: &mut AppState) {
+    use crate::feat::skills::skill_entry::SkillEntry;
+
+    let disabled = state.active_session().disabled_skills();
+    let theme = state.frontend.theme.clone();
+
+    let entries: Vec<SkillEntry> = state
+        .context
+        .skills
+        .iter()
+        .map(|skill| SkillEntry {
+            name: skill.name.clone(),
+            description: skill.description.clone(),
+            enabled: !disabled.contains(&skill.name),
+            theme: theme.clone(),
+        })
+        .collect();
+
+    state.frontend.skill_picker.set_items(entries);
+}
+
+/// Confirms the skill picker: collects disabled skill names from picker entries
+/// and writes them to the active session's profile.
+fn confirm_skill(state: &mut AppState) -> IntentResult {
+    let disabled: std::collections::HashSet<String> = state
+        .frontend
+        .skill_picker
+        .items()
+        .iter()
+        .filter(|entry| !entry.enabled)
+        .map(|entry| entry.name.clone())
+        .collect();
+
+    state.active_session_mut().set_disabled_skills(disabled);
+    state.frontend.skill_picker_snapshot = None;
+    state.frontend.scope_stack.pop();
+    IntentResult::empty()
+}
+
+/// Toggles the `enabled` state of the currently selected skill entry.
+pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
+    state.frontend.skill_picker.with_selected_mut(|entry| {
         entry.enabled = !entry.enabled;
     });
     IntentResult::empty()
@@ -1103,5 +1161,120 @@ mod tests {
         assert_eq!(items.len(), 2, "should have blank + 1 lifecycle = 2 entries");
         assert_eq!(items[0].name, "blank");
         assert_eq!(items[1].name, "project-a");
+    }
+
+    // --- Skill picker tests ---
+
+    fn setup_state_with_skills() -> AppState {
+        use crate::feat::skills::Skill;
+        use std::path::PathBuf;
+
+        let mut state = AppState::default();
+        let origin = ChatSessionState::new();
+        state.session.insert(origin);
+        state.session.set_active(
+            state.session.active_session_id().clone(),
+        );
+
+        state.context.skills = vec![
+            Skill {
+                name: "phased-task-loop".to_owned(),
+                description: "Structured phased implementation workflow".to_owned(),
+                file_path: PathBuf::from("/tmp/skills/phased-task-loop/SKILL.md"),
+                base_dir: PathBuf::from("/tmp/skills/phased-task-loop"),
+            },
+            Skill {
+                name: "web-coder".to_owned(),
+                description: "Expert web development".to_owned(),
+                file_path: PathBuf::from("/tmp/skills/web-coder/SKILL.md"),
+                base_dir: PathBuf::from("/tmp/skills/web-coder"),
+            },
+        ];
+
+        state
+    }
+
+    #[rstest::rstest]
+    fn load_skill_picker_entries_populates_picker() {
+        // Given state with two skills.
+        let mut state = setup_state_with_skills();
+
+        // When loading skill picker entries.
+        load_skill_picker_entries(&mut state);
+
+        // Then the picker has two entries.
+        let items = state.frontend.skill_picker.items();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].name, "phased-task-loop");
+        assert_eq!(items[1].name, "web-coder");
+    }
+
+    #[rstest::rstest]
+    fn load_skill_picker_entries_marks_disabled() {
+        // Given state with "web-coder" disabled.
+        let mut state = setup_state_with_skills();
+        state.active_session_mut().set_disabled_skills(
+            std::collections::HashSet::from(["web-coder".to_owned()]),
+        );
+
+        // When loading skill picker entries.
+        load_skill_picker_entries(&mut state);
+
+        // Then "web-coder" is marked disabled.
+        let items = state.frontend.skill_picker.items();
+        assert!(items[0].enabled, "phased-task-loop should be enabled");
+        assert!(!items[1].enabled, "web-coder should be disabled");
+    }
+
+    #[rstest::rstest]
+    fn confirm_skill_writes_disabled_set() {
+        // Given an open skill picker with "web-coder" toggled off.
+        let mut state = setup_state_with_skills();
+        load_skill_picker_entries(&mut state);
+
+        // Select "web-coder" (second entry) and toggle it off.
+        state.frontend.skill_picker.move_down(1); // move from 0 → 1
+        handle_skill_toggle(&mut state);
+
+        // When confirming.
+        let _ = confirm_skill(&mut state);
+
+        // Then the session's disabled_skills contains "web-coder".
+        let disabled = state.active_session().disabled_skills().clone();
+        assert_eq!(disabled, std::collections::HashSet::from(["web-coder".to_owned()]));
+    }
+
+    #[rstest::rstest]
+    fn confirm_skill_clears_snapshot() {
+        // Given an open skill picker with a snapshot.
+        let mut state = setup_state_with_skills();
+        state.frontend.skill_picker_snapshot = Some(std::collections::HashSet::new());
+        load_skill_picker_entries(&mut state);
+
+        // When confirming.
+        let _ = confirm_skill(&mut state);
+
+        // Then the snapshot is cleared.
+        assert!(state.frontend.skill_picker_snapshot.is_none());
+    }
+
+    #[rstest::rstest]
+    fn handle_skill_toggle_flips_enabled() {
+        // Given an open skill picker.
+        let mut state = setup_state_with_skills();
+        load_skill_picker_entries(&mut state);
+
+        // The first entry (phased-task-loop) is selected by default (selection=0).
+        assert!(state.frontend.skill_picker.items()[0].enabled);
+
+        // When toggling.
+        handle_skill_toggle(&mut state);
+
+        // Then the first entry is now disabled.
+        assert!(!state.frontend.skill_picker.items()[0].enabled);
+
+        // And toggling again re-enables it.
+        handle_skill_toggle(&mut state);
+        assert!(state.frontend.skill_picker.items()[0].enabled);
     }
 }

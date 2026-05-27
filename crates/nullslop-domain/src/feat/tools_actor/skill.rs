@@ -58,6 +58,26 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             };
         }
 
+        // Reject disabled skills.
+        if let (Some(state), Some(session_id)) = (ctx.state.as_ref(), &ctx.session_id) {
+            let guard = state.read();
+            if let Some(session) = guard.session.get(session_id)
+                && !session.is_skill_enabled(&name)
+            {
+                return ToolResult {
+                    tool_call_id: call.id,
+                    name: call.name,
+                    content: format!(
+                        "skill '{name}' is disabled for this session. \
+                         Use <leader>sk to re-enable it."
+                    ),
+                    success: false,
+                    full_content: None,
+                    truncation: None,
+                };
+            }
+        }
+
         let skill_path = ctx.app_paths.skills_dir().join(&name).join("SKILL.md");
 
         let content = match tokio::fs::read_to_string(&skill_path).await {
@@ -302,5 +322,50 @@ mod tests {
                 "tool result should contain confirmation, not the full body"
             );
         }
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_returns_error_for_disabled_skill() {
+        use crate::common::app_state::AppState;
+        use crate::common::state::State;
+        use crate::protocol::SessionId;
+        use std::collections::HashSet;
+
+        // Given a session with "web-coder" disabled.
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        {
+            let mut guard = state.write();
+            let session = guard.session_mut_or_create(&session_id);
+            session.set_disabled_skills(
+                HashSet::from(["web-coder".to_owned()]),
+            );
+        }
+
+        let call = ToolCall {
+            id: "call_1".to_owned(),
+            name: "skill".to_owned(),
+            arguments: serde_json::json!({"name": "web-coder"}).to_string(),
+        };
+
+        let ctx = ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            timeout: None,
+            state: Some(state),
+            session_id: Some(session_id),
+            app_paths: crate::common::app_paths::AppPaths::default(),
+            sink: None,
+            shell: "/bin/sh".to_owned(),
+            max_output_lines: None,
+            max_output_bytes: None,
+        };
+
+        // When executing.
+        let result = execute(call, ctx).await;
+
+        // Then the result indicates failure due to disabled skill.
+        assert!(!result.success);
+        assert!(result.content.contains("disabled for this session"));
     }
 }
