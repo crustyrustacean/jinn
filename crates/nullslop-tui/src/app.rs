@@ -320,6 +320,7 @@ pub fn scope_for_focus(focus: &nullslop_domain::FocusScope) -> Scope {
             PickerKind::Judge => Scope::PickerJudge,
             PickerKind::CompactionModel => Scope::PickerCompactionModel,
             PickerKind::Tool => Scope::PickerTool,
+            PickerKind::Skill => Scope::PickerSkill,
         },
         FocusScope::Input => Scope::Input,
         FocusScope::SidebarPersona => Scope::SidebarPersona,

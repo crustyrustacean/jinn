@@ -108,6 +108,7 @@ pub fn handle_session_lifecycle_setup(
         persona_name,
         sliding_window_size,
         std::collections::HashSet::new(),
+        std::collections::HashSet::new(),
     ));
     let new_id = new_session.session_id().clone();
 
