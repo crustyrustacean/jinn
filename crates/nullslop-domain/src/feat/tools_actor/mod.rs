@@ -32,7 +32,7 @@ use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, NoDi
 use crate::common::state::State;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::tools_actor::protocol::command::{
-    CancelToolBatch, ExecuteTool, ExecuteToolBatch, RegisterTools,
+    CancelToolBatch, ExecuteToolBatch, ExecuteWebFetch, RegisterTools,
 };
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
@@ -395,14 +395,24 @@ impl ToolOrchestratorActor {
                 Some(handle)
             }
             Some(ToolRegistration::Actor { provider, .. }) => {
-                if let Err(e) = ctx.send_command(Command::ExecuteTool(ExecuteTool {
-                    session_id,
-                    tool_call,
-                })) {
+                let cmd = match tool_call.name.as_str() {
+                    "web-fetch" => Command::ExecuteWebFetch(ExecuteWebFetch {
+                        session_id,
+                        tool_call,
+                    }),
+                    other => {
+                        tracing::warn!(
+                            tool = %other,
+                            "unknown actor tool \u{2014} no command mapping"
+                        );
+                        return None;
+                    }
+                };
+                if let Err(e) = ctx.send_command(cmd) {
                     tracing::warn!(
                         err = ?e,
                         provider = %provider,
-                        "failed to send ExecuteTool command"
+                        "failed to send actor tool command"
                     );
                 }
                 None

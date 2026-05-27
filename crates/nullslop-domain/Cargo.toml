@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 # Internal deps
 nullslop-provider = { workspace = true }
+nullslop-web-fetch = { workspace = true }
 nullslop-selection-widget = { workspace = true }
 nullslop-protocol-derive = { workspace = true }
 nullslop-workflow = { workspace = true }

@@ -102,7 +102,7 @@ mod tests {
     use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::feat::preferences_actor::user_preferences::{
-        CompactionConfig, ContextSlidingWindowConfig,
+        CompactionConfig, ContextSlidingWindowConfig, WebFetchConfig,
     };
     use crate::protocol::Event;
 
@@ -143,6 +143,7 @@ mod tests {
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
+            web_fetch: WebFetchConfig::default(),
         };
         actor
             .handle(
@@ -184,6 +185,7 @@ mod tests {
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
+            web_fetch: WebFetchConfig::default(),
         };
         actor
             .handle(
@@ -209,6 +211,7 @@ mod tests {
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
+            web_fetch: WebFetchConfig::default(),
         };
         actor
             .handle(
@@ -298,6 +301,7 @@ mod tests {
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
+            web_fetch: WebFetchConfig::default(),
         };
         actor
             .handle(
