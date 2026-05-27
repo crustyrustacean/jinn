@@ -6,11 +6,17 @@
 
 pub mod http_fetcher;
 
+#[cfg(feature = "headless-chrome")]
+pub mod headless_chrome_fetcher;
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use wherror::Error;
 
 pub use http_fetcher::HttpFetcher;
+
+#[cfg(feature = "headless-chrome")]
+pub use headless_chrome_fetcher::HeadlessChromeFetcher;
 
 /// Output format for fetched web page content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
