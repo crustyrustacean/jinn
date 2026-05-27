@@ -137,7 +137,8 @@ impl ProviderActor {
             | Command::LoadWorkflowPickerEntries(..)
             | Command::MarkSessionInteracted(..)
             | Command::CancelPendingJudgeEvaluation(..)
-            | Command::Dynamic(..) => {}
+            | Command::Dynamic(..)
+            | Command::ExecuteWebFetch(..) => {}
         }
     }
 
