@@ -1,9 +1,7 @@
 //! Centralized plugin registry — owns one sandboxed Lua VM per plugin.
 //!
 //! [`PluginRegistry`] is the single entry point for all plugin operations.
-//! It replaces the old shared-VM [`PluginHost`](crate::host::PluginHost)
-//! with per-plugin isolation. Each plugin gets its own Lua VM so global
-//! state never leaks between plugins.
+//! Each plugin gets its own Lua VM so global state never leaks between plugins.
 //!
 //! The registry is `!Send` (because `mlua::Lua` is `!Send`) and must live
 //! on the main TUI thread.

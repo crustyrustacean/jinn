@@ -64,12 +64,9 @@ pub struct TuiApp {
     pub config: TuiConfig,
     /// Sidebar container with registered sections.
     pub sidebar: Sidebar,
-    /// Plugin host for dynamic commands/events.
+    /// Plugin registry for per-VM plugin dispatch.
     #[debug(skip)]
-    pub plugin_host: Option<nullslop_plugin::PluginHost>,
-    /// Welcome subscriber for plugin welcome events.
-    #[debug(skip)]
-    pub welcome_subscriber: Option<nullslop_plugin::WelcomeSubscriber>,
+    pub plugin_registry: nullslop_plugin::PluginRegistry,
 }
 
 impl TuiApp {
@@ -254,14 +251,15 @@ impl TuiApp {
             });
         }
 
-        // Step 4b: Dispatch Lua events for session creation.
-        if matches!(intent, Intent::SessionNew | Intent::SessionNewWithLifecycle)
-            && let Some(ref host) = self.plugin_host
-        {
+        // Step 4b: Dispatch plugin events for session creation.
+        if matches!(intent, Intent::SessionNew | Intent::SessionNewWithLifecycle) {
             let session_id = self.core.state.read().session.active_session_id().clone();
-            host.dispatch_event(
-                "session::created",
-                &serde_json::json!({ "session_id": session_id.to_string() }),
+            let ctx = nullslop_plugin::ctx::SessionCreatedCtx {
+                session_id: session_id.to_string(),
+            };
+            self.plugin_registry.emit(
+                nullslop_plugin::hooks::SESSION_CREATED,
+                &serde_json::to_value(&ctx).unwrap_or_default(),
             );
         }
 
