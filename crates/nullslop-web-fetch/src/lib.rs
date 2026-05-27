@@ -9,21 +9,16 @@ use serde::{Deserialize, Serialize};
 use wherror::Error;
 
 /// Output format for fetched web page content.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum OutputFormat {
     /// Raw HTML source.
     Html,
     /// Visible text content with HTML tags stripped.
+    #[default]
     Text,
     /// HTML converted to Markdown.
     Markdown,
-}
-
-impl Default for OutputFormat {
-    fn default() -> Self {
-        Self::Text
-    }
 }
 
 /// Options for a web fetch request.
