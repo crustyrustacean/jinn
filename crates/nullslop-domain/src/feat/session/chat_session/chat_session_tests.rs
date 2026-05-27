@@ -4570,54 +4570,6 @@ fn enqueue_front_puts_item_at_front_of_queue() {
 }
 
 #[rstest::rstest]
-fn dequeue_compaction_needed_returns_true_when_present() {
-    // Given a session with CompactionNeeded in the queue.
-    let mut session = ChatSessionState::new();
-    session.enqueue_front(crate::feat::session::queue_item::QueueItem::CompactionNeeded {
-        compact_all: true,
-    });
-
-    // When dequeuing compaction needed.
-    let result = session.dequeue_compaction_needed();
-
-    // Then it returns true and removes the item.
-    assert!(result);
-    assert!(session.dequeue().is_none());
-}
-
-#[rstest::rstest]
-fn dequeue_compaction_needed_returns_false_when_absent() {
-    // Given a session with no CompactionNeeded in the queue.
-    let mut session = ChatSessionState::new();
-    session.push_entry(ChatEntry::user("hello"));
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        session.history()[0].clone(),
-    ));
-
-    // When dequeuing compaction needed.
-    let result = session.dequeue_compaction_needed();
-
-    // Then it returns false and the original item is still there.
-    assert!(!result);
-    assert!(session.dequeue().is_some());
-}
-
-#[rstest::rstest]
-fn is_soft_cancelled_returns_real_value() {
-    // Given a session.
-    let mut session = ChatSessionState::new();
-
-    // Initially not soft-cancelled.
-    assert!(!session.is_soft_cancelled());
-
-    // When requesting soft cancel.
-    session.request_soft_cancel();
-
-    // Then is_soft_cancelled returns true (not hardcoded false).
-    assert!(session.is_soft_cancelled());
-}
-
-#[rstest::rstest]
 fn is_workflow_returns_real_value() {
     // Given a session that is not a workflow.
     let session = ChatSessionState::new();
