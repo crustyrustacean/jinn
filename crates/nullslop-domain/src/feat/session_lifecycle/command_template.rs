@@ -1548,4 +1548,208 @@ mod tests {
         // Then it's treated as static text.
         assert_eq!(segments[0], DisplaySegment::static_text("<unknown>"));
     }
+
+    // --- Phase 2: Mutation-killing tests ---
+
+    // try_parse_dollar edge cases
+    #[rstest::rstest]
+    fn try_parse_dollar_at_end_of_string_returns_none() {
+        // Given "$" as the last grapheme.
+        let graphemes: Vec<&str> = vec!["$"];
+
+        // When trying to parse at position 0.
+        let result = try_parse_dollar(&graphemes, 0);
+
+        // Then None is returned (no next grapheme to read).
+        assert!(result.is_none());
+    }
+
+    #[rstest::rstest]
+    fn try_parse_dollar_zero_returns_none() {
+        // Given "$0" graphemes.
+        let graphemes: Vec<&str> = vec!["$", "0"];
+
+        // When trying to parse.
+        let result = try_parse_dollar(&graphemes, 0);
+
+        // Then None is returned ($0 is excluded).
+        assert!(result.is_none());
+    }
+
+    #[rstest::rstest]
+    fn try_parse_dollar_digit_returns_positional() {
+        // Given "$5" graphemes.
+        let graphemes: Vec<&str> = vec!["$", "5"];
+
+        // When trying to parse.
+        let result = try_parse_dollar(&graphemes, 0);
+
+        // Then Positional(5) is returned, consuming 2 graphemes.
+        let (param, consumed) = result.expect("should parse");
+        assert_eq!(param, Param::Positional(5));
+        assert_eq!(consumed, 2);
+    }
+
+    #[rstest::rstest]
+    fn try_parse_dollar_at_returns_splat() {
+        // Given "$@" graphemes.
+        let graphemes: Vec<&str> = vec!["$", "@"];
+
+        // When trying to parse.
+        let result = try_parse_dollar(&graphemes, 0);
+
+        // Then Splat is returned.
+        let (param, consumed) = result.expect("should parse");
+        assert_eq!(param, Param::Splat);
+        assert_eq!(consumed, 2);
+    }
+
+    #[rstest::rstest]
+    fn try_parse_dollar_star_returns_splat() {
+        // Given "$*" graphemes.
+        let graphemes: Vec<&str> = vec!["$", "*"];
+
+        // When trying to parse.
+        let result = try_parse_dollar(&graphemes, 0);
+
+        // Then Splat is returned.
+        let (param, consumed) = result.expect("should parse");
+        assert_eq!(param, Param::Splat);
+        assert_eq!(consumed, 2);
+    }
+
+    #[rstest::rstest]
+    fn try_parse_dollar_non_digit_letter_returns_none() {
+        // Given "$a" graphemes.
+        let graphemes: Vec<&str> = vec!["$", "a"];
+
+        // When trying to parse.
+        let result = try_parse_dollar(&graphemes, 0);
+
+        // Then None is returned.
+        assert!(result.is_none());
+    }
+
+    #[rstest::rstest]
+    fn try_parse_dollar_at_non_dollar_position_returns_none() {
+        // Given graphemes where position 1 is not "$".
+        let graphemes: Vec<&str> = vec!["a", "$"];
+
+        // When trying to parse at position 0.
+        let result = try_parse_dollar(&graphemes, 0);
+
+        // Then None is returned.
+        assert!(result.is_none());
+    }
+
+    // try_parse_named edge cases
+    #[rstest::rstest]
+    fn try_parse_named_unclosed_angle_returns_none() {
+        // Given "<unclosed" (no closing ">".
+        let graphemes: Vec<&str> = "<unclosed".graphemes(true).collect();
+
+        // When trying to parse at position 0.
+        let result = try_parse_named(&graphemes, 0);
+
+        // Then None is returned.
+        assert!(result.is_none());
+    }
+
+    #[rstest::rstest]
+    fn try_parse_named_empty_angles_returns_none() {
+        // Given "<>" graphemes.
+        let graphemes: Vec<&str> = "<>".graphemes(true).collect();
+
+        // When trying to parse at position 0.
+        let result = try_parse_named(&graphemes, 0);
+
+        // Then None is returned (empty name).
+        assert!(result.is_none());
+    }
+
+    #[rstest::rstest]
+    fn try_parse_named_valid_returns_named_param() {
+        // Given "<branch>" graphemes.
+        let graphemes: Vec<&str> = "<branch>".graphemes(true).collect();
+
+        // When trying to parse at position 0.
+        let result = try_parse_named(&graphemes, 0);
+
+        // Then Named("branch") is returned, consuming all 8 graphemes.
+        let (param, consumed) = result.expect("should parse");
+        assert_eq!(param, Param::Named("branch".to_owned()));
+        assert_eq!(consumed, 8);
+    }
+
+    #[rstest::rstest]
+    fn try_parse_named_at_non_angle_position_returns_none() {
+        // Given "a<b>" graphemes.
+        let graphemes: Vec<&str> = "a<b>".graphemes(true).collect();
+
+        // When trying to parse at position 0.
+        let result = try_parse_named(&graphemes, 0);
+
+        // Then None is returned.
+        assert!(result.is_none());
+    }
+
+    #[rstest::rstest]
+    fn try_parse_named_adjacent_names() {
+        // Given "<a><b>" graphemes.
+        let graphemes: Vec<&str> = "<a><b>".graphemes(true).collect();
+
+        // When parsing both.
+        let first = try_parse_named(&graphemes, 0).expect("first");
+        let second = try_parse_named(&graphemes, first.1).expect("second");
+
+        // Then both are named params with correct consumed counts.
+        assert_eq!(first.0, Param::Named("a".to_owned()));
+        assert_eq!(second.0, Param::Named("b".to_owned()));
+    }
+
+    // split_preserving_quotes boundary cases
+    #[rstest::rstest]
+    fn split_preserving_quotes_backslash_at_end_inside_quotes() {
+        // Given a quoted string ending in backslash.
+        let result = split_preserving_quotes("\"foo\\");
+
+        // Then the backslash is preserved in the output.
+        assert_eq!(result, vec!["\"foo\\".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_backslash_escape_outside_quotes() {
+        // Given a backslash-escaped space outside quotes.
+        let result = split_preserving_quotes("foo\\ bar");
+
+        // Then it produces a single token with the backslash.
+        assert_eq!(result, vec!["foo\\ bar".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_adjacent_quotes() {
+        // Given two adjacent quoted sections.
+        let result = split_preserving_quotes("\"a\"\"b\"");
+
+        // Then they are merged into a single token with quotes preserved.
+        assert_eq!(result, vec!["\"a\"\"b\"".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_whitespace_separates_tokens() {
+        // Given multiple whitespace-separated tokens.
+        let result = split_preserving_quotes("a b c");
+
+        // Then three separate tokens are returned.
+        assert_eq!(result, vec!["a".to_owned(), "b".to_owned(), "c".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_command_template_adjacent_dollar_params() {
+        // Given "$1$2" — adjacent positional params.
+        let tmpl = CommandTemplate::parse("$1$2");
+
+        // Then both are extracted.
+        assert_eq!(tmpl.params(), &[Param::Positional(1), Param::Positional(2)]);
+    }
 }

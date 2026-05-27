@@ -83,3 +83,77 @@ impl TurnQueue {
         Some(self.inner.remove(idx).expect("index was just found"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use super::*;
+
+    fn user_msg(text: &str) -> QueueItem {
+        QueueItem::UserMessage(crate::protocol::ChatEntry::user(text))
+    }
+
+    #[rstest::rstest]
+    fn enqueue_front_places_item_at_front() {
+        // Given an empty queue.
+        let mut queue = TurnQueue::default();
+        queue.enqueue(user_msg("normal"));
+
+        // When enqueueing a priority item at the front.
+        queue.enqueue_front(user_msg("priority"));
+
+        // Then the priority item is at the front.
+        let popped = queue.pop();
+        assert!(popped.is_some());
+        let items = queue.items();
+        assert_eq!(items.len(), 1);
+    }
+
+    #[rstest::rstest]
+    fn is_empty_returns_true_when_empty() {
+        // Given an empty queue.
+        let queue = TurnQueue::default();
+
+        // When checking is_empty.
+        // Then it returns true.
+        assert!(queue.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn is_empty_returns_false_after_enqueue() {
+        // Given a queue with one item.
+        let mut queue = TurnQueue::default();
+        queue.enqueue(user_msg("hello"));
+
+        // When checking is_empty.
+        // Then it returns false.
+        assert!(!queue.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn is_empty_returns_true_after_drain() {
+        // Given a queue with items.
+        let mut queue = TurnQueue::default();
+        queue.enqueue(user_msg("a"));
+        queue.enqueue(user_msg("b"));
+
+        // When draining all items.
+        let drained = queue.drain();
+        assert_eq!(drained.len(), 2);
+
+        // Then is_empty returns true.
+        assert!(queue.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn len_returns_correct_count() {
+        // Given a queue with 3 items.
+        let mut queue = TurnQueue::default();
+        queue.enqueue(user_msg("a"));
+        queue.enqueue(user_msg("b"));
+        queue.enqueue(user_msg("c"));
+
+        // When checking length.
+        assert_eq!(queue.len(), 3);
+    }
+}

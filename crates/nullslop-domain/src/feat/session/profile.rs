@@ -171,4 +171,48 @@ mod tests {
         let profile = SessionProfile::default();
         assert!(profile.disabled_tools.is_empty());
     }
+
+    // --- Mutation-killing tests ---
+
+    #[rstest::rstest]
+    fn default_persona_name_is_coding_assistant() {
+        // Given a default SessionProfile.
+        let profile = SessionProfile::default();
+
+        // Then persona_name is "coding-assistant" (not empty, not "xyzzy").
+        assert_eq!(profile.persona_name, "coding-assistant");
+    }
+
+    #[rstest::rstest]
+    fn default_sliding_window_size_is_5() {
+        // Given a default SessionProfile.
+        let profile = SessionProfile::default();
+
+        // Then sliding_window_size is 5 (not 0, not 1).
+        assert_eq!(profile.sliding_window_size, 5);
+    }
+
+    #[rstest::rstest]
+    fn legacy_json_without_persona_uses_default() {
+        // Given JSON from an older version that lacks persona_name.
+        let json = r#"{"model":"ollama/llama3","strategy":"passthrough","sliding_window_size":5}"#;
+
+        // When deserialized.
+        let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");
+
+        // Then persona_name defaults to "coding-assistant".
+        assert_eq!(profile.persona_name, "coding-assistant");
+    }
+
+    #[rstest::rstest]
+    fn legacy_json_without_sliding_window_uses_default() {
+        // Given JSON from an older version that lacks sliding_window_size.
+        let json = r#"{"model":"ollama/llama3","strategy":"passthrough","persona_name":"custom"}"#;
+
+        // When deserialized.
+        let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");
+
+        // Then sliding_window_size defaults to 5.
+        assert_eq!(profile.sliding_window_size, 5);
+    }
 }

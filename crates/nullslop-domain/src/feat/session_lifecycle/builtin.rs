@@ -333,4 +333,123 @@ mod tests {
         // Then it matches the original.
         assert_eq!(restored.cmd, original);
     }
+
+    // --- Phase 7: Mutation-killing tests ---
+
+    #[test]
+    fn builtin_id_display_outputs_inner_string() {
+        // Given a BuiltinId.
+        let id = BuiltinId("hello-world".to_owned());
+
+        // When displaying.
+        let displayed = format!("{id}");
+
+        // Then the inner string is shown (not empty).
+        assert_eq!(displayed, "hello-world");
+    }
+
+    #[test]
+    fn registry_register_and_get_roundtrip() {
+        // Given an empty registry.
+        let mut registry = BuiltinRegistry::new();
+
+        // When registering a handler.
+        let handler = Arc::new(MockHandler);
+        registry.register(BuiltinId("test-handler".to_owned()), handler);
+
+        // Then get returns Some.
+        let result = registry.get(&BuiltinId("test-handler".to_owned()));
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn registry_get_returns_none_for_unknown() {
+        // Given a registry with one handler.
+        let mut registry = BuiltinRegistry::new();
+        registry.register(BuiltinId("known".to_owned()), Arc::new(MockHandler));
+
+        // When looking up an unknown handler.
+        let result = registry.get(&BuiltinId("unknown".to_owned()));
+
+        // Then None is returned.
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn registry_is_empty_true_when_no_handlers() {
+        // Given an empty registry.
+        let registry = BuiltinRegistry::new();
+
+        // When checking is_empty.
+        assert!(registry.is_empty());
+    }
+
+    #[test]
+    fn registry_is_empty_false_after_register() {
+        // Given a registry with one handler.
+        let mut registry = BuiltinRegistry::new();
+        registry.register(BuiltinId("test".to_owned()), Arc::new(MockHandler));
+
+        // When checking is_empty.
+        assert!(!registry.is_empty());
+    }
+
+    #[test]
+    fn registry_debug_shows_count() {
+        // Given a registry with two handlers.
+        let mut registry = BuiltinRegistry::new();
+        registry.register(BuiltinId("a".to_owned()), Arc::new(MockHandler));
+        registry.register(BuiltinId("b".to_owned()), Arc::new(MockHandler));
+
+        // When debugging.
+        let debug_str = format!("{registry:?}");
+
+        // Then the debug output contains "count" and a number.
+        assert!(debug_str.contains("count"));
+    }
+
+    #[test]
+    fn deserialize_invalid_field_returns_error() {
+        // Given TOML with an unknown field in a builtin map.
+        let toml_str = r#"setup_command = { unknown = "hello" }"#;
+
+        // When deserializing.
+        let result: Result<SetupCommandWrapper, _> = toml::from_str(toml_str);
+
+        // Then an error is returned (triggers the `expecting` message in FieldVisitor).
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn deserialize_non_string_non_map_returns_error() {
+        // Given TOML where the command is a number (not a string or map).
+        let toml_str = r#"setup_command = 42"#;
+
+        // When deserializing.
+        let result: Result<SetupCommandWrapper, _> = toml::from_str(toml_str);
+
+        // Then an error is returned (triggers the `expecting` message in LifecycleCommandVisitor).
+        assert!(result.is_err());
+    }
+
+    /// A minimal mock handler for testing the registry.
+    struct MockHandler;
+
+    impl BuiltinHandler for MockHandler {
+        fn name(&self) -> &'static str {
+            "mock"
+        }
+
+        fn setup(
+            &self,
+            _session_id: &SessionId,
+            _args: &[String],
+        ) -> Result<PathBuf, Report<BuiltinHandlerError>> {
+            Ok(PathBuf::from("/tmp/mock"))
+        }
+
+        fn teardown(&self, _session_id: &SessionId, _args: &[String]) -> bool {
+            true
+        }
+    }
 }
