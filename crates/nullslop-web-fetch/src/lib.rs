@@ -2,11 +2,15 @@
 //!
 //! Defines the [`WebFetcher`] trait for fetching web page content with
 //! multiple output formats. Implementations are provided by separate modules
-//! (e.g., `HttpFetcher`, `HeadlessChromeFetcher`).
+//! (e.g., [`HttpFetcher`], `HeadlessChromeFetcher`).
+
+pub mod http_fetcher;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use wherror::Error;
+
+pub use http_fetcher::HttpFetcher;
 
 /// Output format for fetched web page content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

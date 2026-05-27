@@ -7,6 +7,14 @@ edition.workspace = true
 async-trait = { workspace = true }
 wherror = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+reqwest = { workspace = true }
+url = "2"
+regex = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+mockito = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 
 [lints]
 workspace = true
