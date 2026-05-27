@@ -326,9 +326,9 @@ impl PluginRegistry {
             .map_or_else(|| String::from("unknown"), |n| n.to_string_lossy().into_owned());
 
         if self.loaded.borrow().contains(&name) {
-            tracing::warn!(plugin = %name, "skipping plugin: already loaded");
-            return Err(Report::new(PluginError)
-                .attach(format!("plugin '{name}' is already loaded")));
+            tracing::info!(plugin = %name, "overriding plugin with newer version");
+            self.loaded.borrow_mut().remove(&name);
+            self.instances.borrow_mut().retain(|i| i.name != name);
         }
 
         let instance = PluginInstance::new(
@@ -663,47 +663,73 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn load_plugin_skips_duplicate_name() {
+    fn load_plugin_overrides_duplicate_name() {
         // Given two temp directories with the same plugin directory name.
         let registry = test_registry();
 
         let dir1 = tempfile::tempdir().expect("create temp dir 1");
         let plugin_dir1 = dir1.path().join("dup");
         fs::create_dir_all(&plugin_dir1).expect("create plugin dir 1");
-        fs::write(plugin_dir1.join("init.lua"), "-- first").expect("write init.lua 1");
+        fs::write(
+            plugin_dir1.join("init.lua"),
+            r#"version = "v1" ps.sub("evt", function() end)"#,
+        )
+        .expect("write init.lua 1");
 
         let dir2 = tempfile::tempdir().expect("create temp dir 2");
         let plugin_dir2 = dir2.path().join("dup");
         fs::create_dir_all(&plugin_dir2).expect("create plugin dir 2");
-        fs::write(plugin_dir2.join("init.lua"), "-- second").expect("write init.lua 2");
+        fs::write(
+            plugin_dir2.join("init.lua"),
+            r#"version = "v2" ps.sub("evt", function() end)"#,
+        )
+        .expect("write init.lua 2");
 
         // When loading both.
         let first = registry.load_plugin(&plugin_dir1);
         let second = registry.load_plugin(&plugin_dir2);
 
-        // Then the first succeeds and the second is rejected.
+        // Then both succeed (second overrides first).
         assert!(first.is_ok(), "first load should succeed");
-        assert!(second.is_err(), "duplicate should be rejected");
+        assert!(second.is_ok(), "second load should override");
+
+        // And the running plugin is the second version.
+        let instances = registry.instances.borrow();
+        assert_eq!(instances.len(), 1);
+        let v: String = instances[0]
+            .lua
+            .globals()
+            .get("version")
+            .expect("get version");
+        assert_eq!(v, "v2");
     }
 
     #[rstest::rstest]
-    fn load_all_skips_already_loaded_plugin() {
+    fn load_all_overrides_already_loaded_plugin() {
         // Given a registry with one plugin already loaded.
         let registry = test_registry();
 
         let dir1 = tempfile::tempdir().expect("create temp dir 1");
         let plugin_dir1 = dir1.path().join("alpha");
         fs::create_dir_all(&plugin_dir1).expect("create plugin dir 1");
-        fs::write(plugin_dir1.join("init.lua"), "-- first").expect("write init.lua 1");
+        fs::write(
+            plugin_dir1.join("init.lua"),
+            r#"version = "v1""#,
+        )
+        .expect("write init.lua 1");
 
         let result = registry.load_plugin(&plugin_dir1);
         assert!(result.is_ok(), "initial load should succeed");
 
-        // And a second directory also containing "alpha".
+        // And a second directory also containing "alpha" (newer version) and "beta".
         let dir2 = tempfile::tempdir().expect("create temp dir 2");
         let plugin_dir2 = dir2.path().join("alpha");
         fs::create_dir_all(&plugin_dir2).expect("create plugin dir 2");
-        fs::write(plugin_dir2.join("init.lua"), "-- second").expect("write init.lua 2");
+        fs::write(
+            plugin_dir2.join("init.lua"),
+            r#"version = "v2""#,
+        )
+        .expect("write init.lua 2");
         // Also add a new plugin "beta".
         let plugin_dir3 = dir2.path().join("beta");
         fs::create_dir_all(&plugin_dir3).expect("create plugin dir 3");
@@ -712,9 +738,17 @@ mod tests {
         // When loading all from the second directory.
         let loaded = registry.load_all(dir2.path());
 
-        // Then only beta is loaded (alpha was skipped as duplicate).
-        assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].name, "beta");
+        // Then both are loaded (alpha was overridden, beta is new).
+        assert_eq!(loaded.len(), 2);
+        let names: Vec<&str> = loaded.iter().map(|i| i.name.as_str()).collect();
+        assert!(names.contains(&"alpha"), "alpha should be in loaded list");
+        assert!(names.contains(&"beta"), "beta should be in loaded list");
+
+        // And the running alpha plugin is v2.
+        let instances = registry.instances.borrow();
+        let alpha = instances.iter().find(|i| i.name == "alpha").expect("find alpha");
+        let v: String = alpha.lua.globals().get("version").expect("get version");
+        assert_eq!(v, "v2");
     }
 
     // ── Per-VM isolation ───────────────────────────────────────────────
