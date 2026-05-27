@@ -90,9 +90,10 @@ impl SessionPersistenceActor {
                 )));
 
                 if payload.auto {
-                    // Auto-compaction succeeded — push continuation message and
-                    // transition to Sending so the QueueActor dispatches the prompt.
-                    session.push_entry(ChatEntry::user("A compaction has just occurred. Continue"));
+                    // Auto-compaction succeeded — transition to Sending so the
+                    // QueueActor dispatches the continuation prompt from current history.
+                    // No synthetic message needed: the prompt assembled from current history
+                    // (ending at ToolResult) is a valid LLM message sequence.
                     session.finish_compacting_into_sending();
                 } else {
                     // Manual compaction — return to Idle.
@@ -527,11 +528,20 @@ mod tests {
             session.phase()
         );
 
-        // And the continuation user entry was pushed.
-        let last_entry = session.history().last().expect("has continuation entry");
+        // And NO synthetic "Continue" user entry was pushed.
+        let has_continue = session.history().iter().any(
+            |e| matches!(&e.kind, ChatEntryKind::User { display, .. } if display == "A compaction has just occurred. Continue"),
+        );
         assert!(
-            matches!(&last_entry.kind, ChatEntryKind::User { display, .. } if display == "A compaction has just occurred. Continue"),
-            "expected continuation user entry, got {:?}",
+            !has_continue,
+            "expected NO synthetic continuation user entry after auto-compaction"
+        );
+
+        // And the last entry is the "Context was compacted" system message.
+        let last_entry = session.history().last().expect("has entry");
+        assert!(
+            matches!(&last_entry.kind, ChatEntryKind::System(t) if t.contains("Context was compacted")),
+            "expected compaction summary system message, got {:?}",
             last_entry.kind
         );
 
