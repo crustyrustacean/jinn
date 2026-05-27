@@ -4570,54 +4570,6 @@ fn enqueue_front_puts_item_at_front_of_queue() {
 }
 
 #[rstest::rstest]
-fn dequeue_compaction_needed_returns_true_when_present() {
-    // Given a session with CompactionNeeded in the queue.
-    let mut session = ChatSessionState::new();
-    session.enqueue_front(crate::feat::session::queue_item::QueueItem::CompactionNeeded {
-        compact_all: true,
-    });
-
-    // When dequeuing compaction needed.
-    let result = session.dequeue_compaction_needed();
-
-    // Then it returns true and removes the item.
-    assert!(result);
-    assert!(session.dequeue().is_none());
-}
-
-#[rstest::rstest]
-fn dequeue_compaction_needed_returns_false_when_absent() {
-    // Given a session with no CompactionNeeded in the queue.
-    let mut session = ChatSessionState::new();
-    session.push_entry(ChatEntry::user("hello"));
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        session.history()[0].clone(),
-    ));
-
-    // When dequeuing compaction needed.
-    let result = session.dequeue_compaction_needed();
-
-    // Then it returns false and the original item is still there.
-    assert!(!result);
-    assert!(session.dequeue().is_some());
-}
-
-#[rstest::rstest]
-fn is_soft_cancelled_returns_real_value() {
-    // Given a session.
-    let mut session = ChatSessionState::new();
-
-    // Initially not soft-cancelled.
-    assert!(!session.is_soft_cancelled());
-
-    // When requesting soft cancel.
-    session.request_soft_cancel();
-
-    // Then is_soft_cancelled returns true (not hardcoded false).
-    assert!(session.is_soft_cancelled());
-}
-
-#[rstest::rstest]
 fn is_workflow_returns_real_value() {
     // Given a session that is not a workflow.
     let session = ChatSessionState::new();
@@ -4631,4 +4583,84 @@ fn is_workflow_returns_real_value() {
 
     // Then is_workflow returns true (not hardcoded false).
     assert!(wf_session.is_workflow());
+}
+
+// --- Auto-compaction flag tests ---
+
+#[rstest::rstest]
+fn request_auto_compaction_sets_flag() {
+    // Given a new session.
+    let mut session = ChatSessionState::new();
+
+    // When requesting auto-compaction.
+    session.request_auto_compaction();
+
+    // Then the flag is set.
+    assert!(session.is_auto_compaction_requested());
+}
+
+#[rstest::rstest]
+fn take_auto_compaction_requested_clears_flag() {
+    // Given a session with auto-compaction requested.
+    let mut session = ChatSessionState::new();
+    session.request_auto_compaction();
+    assert!(session.is_auto_compaction_requested());
+
+    // When taking the flag.
+    let result = session.take_auto_compaction_requested();
+
+    // Then it returns true and the flag is cleared.
+    assert!(result);
+    assert!(!session.is_auto_compaction_requested());
+}
+
+#[rstest::rstest]
+fn take_auto_compaction_returns_false_when_not_set() {
+    // Given a session without auto-compaction requested.
+    let mut session = ChatSessionState::new();
+
+    // When taking the flag.
+    let result = session.take_auto_compaction_requested();
+
+    // Then it returns false.
+    assert!(!result);
+}
+
+#[rstest::rstest]
+fn is_auto_compaction_requested_peek_does_not_clear() {
+    // Given a session with auto-compaction requested.
+    let mut session = ChatSessionState::new();
+    session.request_auto_compaction();
+
+    // When peeking at the flag.
+    let first = session.is_auto_compaction_requested();
+    let second = session.is_auto_compaction_requested();
+
+    // Then both calls return true (flag was not consumed).
+    assert!(first);
+    assert!(second);
+}
+
+#[rstest::rstest]
+fn reset_judge_history_clears_auto_compaction_flag() {
+    // Given a session with auto-compaction requested and a pinned system entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::system("judge prompt").with_pin(PinPosition::Top));
+    session.request_auto_compaction();
+    assert!(session.is_auto_compaction_requested());
+
+    // When resetting judge history.
+    session.reset_judge_history();
+
+    // Then the flag is cleared.
+    assert!(!session.is_auto_compaction_requested());
+}
+
+#[rstest::rstest]
+fn auto_compaction_flag_default_is_false() {
+    // Given a new session.
+    let session = ChatSessionState::new();
+
+    // Then the flag defaults to false.
+    assert!(!session.is_auto_compaction_requested());
 }

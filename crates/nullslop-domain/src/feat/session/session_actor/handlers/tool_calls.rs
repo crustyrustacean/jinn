@@ -6,6 +6,7 @@
 use crate::common::actor::ActorContext;
 use crate::feat::context::assemble::assemble_prompt;
 use crate::feat::provider::protocol::command::SendToLlmProvider;
+use crate::feat::compaction_actor::protocol::command::CompactContext;
 use crate::feat::session::chat_session::SessionPhase;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::tools_actor::protocol::event::{
@@ -120,15 +121,17 @@ impl SessionPersistenceActor {
             "on_tool_batch_completed"
         );
 
-        // Check soft cancel: if requested, end the turn instead of continuing.
-        let soft_cancelled = {
+        // Check auto-compaction: if requested, transition directly to Compacting
+        // instead of continuing the tool loop. This bypasses Idle entirely,
+        // preventing judges from firing during auto-compaction.
+        let auto_compaction_requested = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
-            session.take_soft_cancel()
+            session.take_auto_compaction_requested()
         };
 
-        if soft_cancelled {
-            // Soft cancel: don't assemble prompt. End the turn and return to Idle.
+        if auto_compaction_requested {
+            // Auto-compaction requested: transition directly to Compacting.
             // Phase-aware: the session could be in Sending, Streaming, or Compacting.
             let (old_phase, new_phase) = {
                 let mut state = self.state.write();
@@ -136,25 +139,33 @@ impl SessionPersistenceActor {
                 let old_phase = session.phase();
                 match session.phase() {
                     SessionPhase::Sending => {
-                        session.finish_sending();
+                        session.core.ephemeral.phase = SessionPhase::Compacting;
                     }
                     SessionPhase::Streaming => {
                         session.finish_streaming(false);
+                        session.core.ephemeral.phase = SessionPhase::Compacting;
                     }
                     SessionPhase::Compacting => {
-                        // Compaction is running — don't change phase.
-                        // The compaction completion handler will transition to Idle.
+                        // Compaction is already running — don't change phase.
                     }
                     _ => {
                         tracing::warn!(
                             phase = ?session.phase(),
-                            "unexpected phase in on_tool_batch_completed soft-cancel"
+                            "unexpected phase in on_tool_batch_completed auto-compaction"
                         );
                     }
                 }
                 (old_phase, session.phase())
             };
             super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
+
+            // Emit CompactContext to kick off the compaction actor.
+            if let Err(e) = ctx.send_command(Command::CompactContext(CompactContext {
+                session_id: event.session_id.clone(),
+                compact_all: false,
+            })) {
+                tracing::warn!(err = ?e, "failed to emit CompactContext after auto-compaction flag");
+            }
             return;
         }
 
@@ -367,8 +378,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn on_tool_batch_completed_with_soft_cancel_goes_to_idle() {
-        // Given a session in sending state with soft cancel requested.
+    async fn on_tool_batch_completed_with_auto_compaction_goes_to_compacting() {
+        // Given a session in sending state with auto-compaction requested.
         let actor = test_actor();
         let (sink, ctx) = test_context();
         let session_id = {
@@ -377,7 +388,7 @@ mod tests {
             session.begin_streaming();
             session.finish_streaming(true);
             session.begin_sending();
-            session.request_soft_cancel();
+            session.request_auto_compaction();
             state.session.active_session_id().clone()
         };
 
@@ -395,21 +406,30 @@ mod tests {
         };
         actor.on_tool_batch_completed(&event, &ctx);
 
-        // Then the session is in Idle phase.
+        // Then the session is in Compacting phase (NOT Idle).
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            matches!(session.phase(), SessionPhase::Idle),
-            "expected Idle after soft cancel, got {:?}",
+            matches!(session.phase(), SessionPhase::Compacting),
+            "expected Compacting after auto-compaction, got {:?}",
             session.phase()
         );
 
-        // And no SendToLlmProvider was emitted.
+        // And a CompactContext command was emitted.
         let commands = sink.commands();
+        let has_compact = commands
+            .iter()
+            .any(|c| matches!(c, Command::CompactContext(_)));
+        assert!(
+            has_compact,
+            "expected CompactContext after auto-compaction"
+        );
+
+        // And no SendToLlmProvider was emitted.
         let has_send = commands
             .iter()
             .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(!has_send, "expected no SendToLlmProvider after soft cancel");
+        assert!(!has_send, "expected no SendToLlmProvider after auto-compaction");
     }
 
     #[tokio::test]
@@ -729,5 +749,133 @@ mod tests {
         if let ChatEntryKind::ToolResult { content, .. } = &tr.kind {
             assert_eq!(content, "file1.txt\nfile2.txt\n");
         }
+    }
+
+    // --- Phase 7: Comprehensive tool batch transition tests ---
+
+    #[tokio::test]
+    async fn on_tool_batch_completed_auto_compaction_flag_is_consumed() {
+        // Given a session in sending state with auto-compaction requested.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.finish_streaming(true);
+            session.begin_sending();
+            session.request_auto_compaction();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling ToolBatchCompleted.
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+            }],
+        };
+        actor.on_tool_batch_completed(&event, &ctx);
+
+        // Then the auto-compaction flag is consumed (cleared).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            !session.is_auto_compaction_requested(),
+            "expected auto-compaction flag to be consumed after tool batch completed"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_tool_batch_completed_auto_compaction_no_idle_event_emitted() {
+        // Given a session in sending state with auto-compaction requested.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.finish_streaming(true);
+            session.begin_sending();
+            session.request_auto_compaction();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling ToolBatchCompleted.
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+            }],
+        };
+        actor.on_tool_batch_completed(&event, &ctx);
+
+        // Then no SessionPhaseChanged(Idle) event was emitted.
+        let events = sink.events();
+        let has_idle_event = events.iter().any(|e| {
+            matches!(
+                e,
+                Event::SessionPhaseChanged(p) if matches!(p.new_phase, SessionPhase::Idle)
+            )
+        });
+        assert!(
+            !has_idle_event,
+            "expected no SessionPhaseChanged(Idle) during auto-compaction"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_tool_batch_completed_normal_flow_does_not_affect_auto_compaction_flag() {
+        // Given a session in sending state WITHOUT auto-compaction requested.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            session.finish_streaming(true);
+            session.begin_sending();
+            // Do NOT request auto-compaction.
+            state.session.active_session_id().clone()
+        };
+
+        // When handling ToolBatchCompleted.
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+            }],
+        };
+        actor.on_tool_batch_completed(&event, &ctx);
+
+        // Then the session transitions to Streaming (normal tool loop: Sending → Streaming for next LLM call).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Streaming),
+            "expected Streaming after normal tool batch, got {:?}",
+            session.phase()
+        );
+
+        // And auto-compaction flag stays false.
+        assert!(
+            !session.is_auto_compaction_requested(),
+            "expected auto-compaction flag to stay false in normal flow"
+        );
     }
 }

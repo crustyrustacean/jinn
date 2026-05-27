@@ -10,7 +10,6 @@ use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
 use super::super::SessionPersistenceActor;
 use crate::feat::compaction_actor::protocol::command::{BeginCompaction, EndCompaction};
 use crate::feat::session::chat_session::SessionPhase;
-use crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn;
 
 impl SessionPersistenceActor {
     /// BeginCompaction: set phase to Compacting, push "Starting..." system entry,
@@ -90,9 +89,10 @@ impl SessionPersistenceActor {
                 )));
 
                 if payload.auto {
-                    // Auto-compaction succeeded — push continuation message and
-                    // transition to Sending so the QueueActor dispatches the prompt.
-                    session.push_entry(ChatEntry::user("A compaction has just occurred. Continue"));
+                    // Auto-compaction succeeded — transition to Sending so the
+                    // QueueActor dispatches the continuation prompt from current history.
+                    // No synthetic message needed: the prompt assembled from current history
+                    // (ending at ToolResult) is a valid LLM message sequence.
                     session.finish_compacting_into_sending();
                 } else {
                     // Manual compaction — return to Idle.
@@ -113,18 +113,19 @@ impl SessionPersistenceActor {
         self.save_active_session(&payload.session_id).await;
     }
 
-    /// SoftCancelTurn: request graceful turn termination at the next pause point.
+    /// ScheduleAutoCompaction: request auto-compaction at the next turn boundary.
     ///
-    /// Sets a flag on the session that is checked at `on_tool_batch_completed`
-    /// and `on_stream_completed`. When the flag is set, the turn ends (→ Idle)
-    /// instead of continuing, allowing auto-compaction to trigger mid-turn.
-    pub(in crate::feat::session::session_actor) fn handle_soft_cancel_turn(
+    /// Sets the `auto_compaction_requested` flag on the session. At the next
+    /// turn boundary (`on_tool_batch_completed` or `on_stream_completed`),
+    /// the session transitions directly to `Compacting` — never through `Idle`.
+    /// This prevents the JudgeCoordinatorActor from firing during auto-compaction.
+    pub(in crate::feat::session::session_actor) fn handle_schedule_auto_compaction(
         &self,
-        payload: &SoftCancelTurn,
+        payload: &crate::feat::session::protocol::schedule_auto_compaction::ScheduleAutoCompaction,
     ) {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&payload.session_id);
-        session.request_soft_cancel();
+        session.request_auto_compaction();
     }
 }
 
@@ -133,7 +134,6 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::super::super::helpers::{test_actor, test_context};
     use crate::feat::session::chat_session::SessionPhase;
-    use crate::feat::session::protocol::soft_cancel_turn::SoftCancelTurn;
     use crate::protocol::{ChatEntry, ChatEntryKind, Command};
 
     #[tokio::test]
@@ -512,11 +512,20 @@ mod tests {
             session.phase()
         );
 
-        // And the continuation user entry was pushed.
-        let last_entry = session.history().last().expect("has continuation entry");
+        // And NO synthetic "Continue" user entry was pushed.
+        let has_continue = session.history().iter().any(
+            |e| matches!(&e.kind, ChatEntryKind::User { display, .. } if display == "A compaction has just occurred. Continue"),
+        );
         assert!(
-            matches!(&last_entry.kind, ChatEntryKind::User { display, .. } if display == "A compaction has just occurred. Continue"),
-            "expected continuation user entry, got {:?}",
+            !has_continue,
+            "expected NO synthetic continuation user entry after auto-compaction"
+        );
+
+        // And the last entry is the "Context was compacted" system message.
+        let last_entry = session.history().last().expect("has entry");
+        assert!(
+            matches!(&last_entry.kind, ChatEntryKind::System(t) if t.contains("Context was compacted")),
+            "expected compaction summary system message, got {:?}",
             last_entry.kind
         );
 
@@ -615,7 +624,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn soft_cancel_turn_sets_flag_on_session() {
+    async fn schedule_auto_compaction_sets_flag_on_session() {
         // Given a session actor with a session.
         let actor = test_actor();
         let session_id = {
@@ -623,17 +632,122 @@ mod tests {
             state.session.active_session_id().clone()
         };
 
-        // When handling SoftCancelTurn.
-        actor.handle_soft_cancel_turn(&SoftCancelTurn {
-            session_id: session_id.clone(),
-        });
+        // When handling ScheduleAutoCompaction.
+        actor.handle_schedule_auto_compaction(
+            &crate::feat::session::protocol::schedule_auto_compaction::ScheduleAutoCompaction {
+                session_id: session_id.clone(),
+            },
+        );
 
-        // Then the soft cancel flag is set.
+        // Then the auto_compaction_requested flag is set.
         let mut state = actor.state.write();
         let session = state.session.get_mut(&session_id).expect("session exists");
         assert!(
-            session.take_soft_cancel(),
-            "expected soft cancel flag to be set"
+            session.take_auto_compaction_requested(),
+            "expected auto_compaction_requested flag to be set"
         );
+    }
+
+    // --- Phase 7: Additional compaction tests ---
+
+    #[tokio::test]
+    async fn end_compaction_manual_success_goes_to_idle() {
+        // Given a session in Compacting phase (simulating manual /compact).
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("old message"));
+            session.begin_compacting(vec![]);
+            state.session.active_session_id().clone()
+        };
+
+        // When handling EndCompaction with auto=false (manual compaction).
+        actor
+            .handle_end_compaction(
+                &crate::feat::compaction_actor::protocol::command::EndCompaction {
+                    session_id: session_id.clone(),
+                    result: Some(
+                        crate::feat::compaction_actor::protocol::command::CompactionResult {
+                            summary: "summarized".to_owned(),
+                            entries_compacted: 1,
+                            tokens_before: 100,
+                            tokens_after: 50,
+                            model_used: "test/model".to_owned(),
+                            boundary_index: 1,
+                        },
+                    ),
+                    error: None,
+                    auto: false,
+                    skipped: false,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the session is in Idle (manual compaction returns to Idle).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Idle),
+            "expected Idle after manual compaction, got {:?}",
+            session.phase()
+        );
+    }
+
+    #[tokio::test]
+    async fn end_compaction_auto_success_exhaustive_no_synthetic_user_message() {
+        // Given a session in Compacting phase with prior history.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("user message 1"));
+            session.push_entry(ChatEntry::assistant("assistant response"));
+            session.push_entry(ChatEntry::user("user message 2"));
+            session.begin_compacting(vec![]);
+            state.session.active_session_id().clone()
+        };
+
+        // When handling EndCompaction with auto=true and success.
+        actor
+            .handle_end_compaction(
+                &crate::feat::compaction_actor::protocol::command::EndCompaction {
+                    session_id: session_id.clone(),
+                    result: Some(
+                        crate::feat::compaction_actor::protocol::command::CompactionResult {
+                            summary: "summarized".to_owned(),
+                            entries_compacted: 3,
+                            tokens_before: 1000,
+                            tokens_after: 50,
+                            model_used: "test/model".to_owned(),
+                            boundary_index: 0,
+                        },
+                    ),
+                    error: None,
+                    auto: true,
+                    skipped: false,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then NO entry in the entire history contains "Continue".
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        for (i, entry) in session.history().iter().enumerate() {
+            if let ChatEntryKind::User { display, .. } = &entry.kind {
+                assert!(
+                    !display.contains("Continue"),
+                    "entry {i}: found synthetic 'Continue' message: {display}"
+                );
+                assert!(
+                    !display.contains("compaction has just occurred"),
+                    "entry {i}: found synthetic compaction message: {display}"
+                );
+            }
+        }
     }
 }

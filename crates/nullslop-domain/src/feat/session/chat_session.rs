@@ -197,10 +197,14 @@ pub struct SessionCoreEphemeral {
     /// Maps tool_call_id to history index for pending streaming ToolResult entries.
     /// OWNER: session-actor.
     pub(crate) streaming_tool_result_indices: HashMap<String, usize>,
-    /// Set to true to request graceful turn termination at the next pause point.
-    /// Checked at `on_tool_batch_completed` and `on_stream_completed`.
+    /// Set to true by `ScheduleAutoCompaction` when token threshold is exceeded.
+    /// Checked at `on_tool_batch_completed` and `on_stream_completed`. When set,
+    /// the session transitions directly to Compacting instead of continuing the
+    /// turn or returning to Idle. Self-clearing on read via
+    /// `take_auto_compaction_requested`.
     /// OWNER: session-actor.
-    pub(crate) soft_cancel_requested: bool,
+    #[serde(default)]
+    pub(crate) auto_compaction_requested: bool,
     /// When true, `on_tool_batch_completed` skips `SendToLlmProvider` and
     /// transitions to Idle instead of continuing the tool loop. Set by judge
     /// verdict tools (`task_complete`, `task_incomplete`). Self-clearing on read.
@@ -689,7 +693,7 @@ impl ChatSessionState {
         self.core.ephemeral.streaming_thinking_entry_index = None;
         self.core.ephemeral.streaming_tool_call_indices.clear();
         self.core.ephemeral.streaming_tool_result_indices.clear();
-        self.core.ephemeral.soft_cancel_requested = false;
+        self.core.ephemeral.auto_compaction_requested = false;
         self.core.ephemeral.tool_loop_disabled = false;
         self.core.ephemeral.compaction_gathered_indices.clear();
         self.core.ephemeral.busy_counter = BusyCounter::default();
@@ -1224,7 +1228,7 @@ impl ChatSessionState {
         self.core.ephemeral.message_queue.enqueue(item);
     }
 
-    /// Push an item onto the front of the queue (for priority items like `CompactionNeeded`).
+    /// Push an item onto the front of the queue (for priority items).
     pub fn enqueue_front(&mut self, item: crate::feat::session::queue_item::QueueItem) {
         self.core.ephemeral.message_queue.enqueue_front(item);
     }
@@ -1243,21 +1247,7 @@ impl ChatSessionState {
         self.core.ephemeral.message_queue.drain()
     }
 
-    /// Pop the first `CompactionNeeded` from the queue, if present.
-    ///
-    /// Returns `true` if one was found and removed.
-    pub(in crate::feat::session) fn dequeue_compaction_needed(&mut self) -> bool {
-        self.core
-            .ephemeral
-            .message_queue
-            .remove_first_matching(|item| {
-                matches!(
-                    item,
-                    crate::feat::session::queue_item::QueueItem::CompactionNeeded { .. }
-                )
-            })
-            .is_some()
-    }
+
 
     // --- Assembling ---
 
@@ -2449,30 +2439,31 @@ impl ChatSessionState {
         self.core.ephemeral.busy_counter.busy_complete();
     }
 
-    /// Request graceful turn termination at the next pause point.
+    /// Request auto-compaction at the next turn boundary.
     ///
-    /// The session actor checks this flag at `on_tool_batch_completed` and
-    /// `on_stream_completed`. When set, the turn ends (\u2192 Idle) instead of
-    /// continuing, allowing auto-compaction to trigger mid-turn.
-    pub fn request_soft_cancel(&mut self) {
-        self.core.ephemeral.soft_cancel_requested = true;
+    /// Sets a flag that is checked by `on_tool_batch_completed` and
+    /// `on_stream_completed`. When set, the session transitions directly
+    /// to `Compacting` instead of continuing the turn or returning to `Idle`.
+    /// OWNER: `ScheduleAutoCompaction` command handler.
+    pub fn request_auto_compaction(&mut self) {
+        self.core.ephemeral.auto_compaction_requested = true;
     }
 
-    /// Take the soft cancel flag, clearing it.
+    /// Take the auto-compaction flag, clearing it.
     ///
-    /// Returns `true` if a soft cancel was requested, and clears the flag.
-    /// Returns `false` if no cancel was requested.
-    pub fn take_soft_cancel(&mut self) -> bool {
-        std::mem::take(&mut self.core.ephemeral.soft_cancel_requested)
+    /// Returns `true` if auto-compaction was requested, and clears the flag.
+    /// Returns `false` if no auto-compaction was requested.
+    pub fn take_auto_compaction_requested(&mut self) -> bool {
+        std::mem::take(&mut self.core.ephemeral.auto_compaction_requested)
     }
 
-    /// Check if soft cancel was requested without consuming the flag.
+    /// Check if auto-compaction was requested without consuming the flag.
     ///
     /// Used by `on_stream_completed(ToolUse)` to decide whether to skip
     /// the direct-to-Compacting optimization without consuming the flag
     /// (which is consumed later by `on_tool_batch_completed`).
-    pub fn is_soft_cancelled(&self) -> bool {
-        self.core.ephemeral.soft_cancel_requested
+    pub fn is_auto_compaction_requested(&self) -> bool {
+        self.core.ephemeral.auto_compaction_requested
     }
 
     /// Force-exclude any `ToolCall` entries that lack matching `ToolResult` entries,

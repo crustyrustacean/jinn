@@ -13,27 +13,27 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! Soft cancel turn command.
+//! Schedule auto-compaction command.
 //!
-//! Requests graceful termination of the current agentic turn. The turn ends
-//! at the next natural pause point (tool batch completed or stream completed)
-//! rather than immediately. This enables mid-turn auto-compaction: the
-//! compaction actor enqueues `CompactionNeeded` and emits `SoftCancelTurn`,
-//! causing the turn to stop gracefully so compaction can run.
+//! Sent by the CompactionActor when token threshold is exceeded.
+//! Sets a flag on the session that is checked at the next turn boundary
+//! (stream completed or tool batch completed). When the flag is set,
+//! the session transitions directly to Compacting instead of continuing
+//! the turn or returning to Idle.
 
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::{CommandMsg, SessionId};
 
-/// Request graceful termination of the current turn.
+/// Request auto-compaction at the next turn boundary.
 ///
-/// The session actor sets a flag. At the next natural pause point
-/// (`ToolBatchCompleted` or `StreamCompleted`), the actor checks the flag
-/// and ends the turn (→ Idle) instead of continuing. The `SessionPhaseChanged(Idle)`
-/// event fires, allowing the QueueActor to pop the already-enqueued `CompactionNeeded`.
+/// Unlike `SoftCancelTurn` (which terminates the turn → Idle), this command
+/// sets a flag that causes the session to transition **directly** to
+/// `Compacting` at the next pause point — never passing through `Idle`.
+/// This prevents the JudgeCoordinatorActor from firing during auto-compaction.
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("session")]
-pub struct SoftCancelTurn {
-    /// The session whose turn should be cancelled.
+pub struct ScheduleAutoCompaction {
+    /// The session that should auto-compact at the next turn boundary.
     pub session_id: SessionId,
 }
