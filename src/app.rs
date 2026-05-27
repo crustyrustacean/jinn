@@ -189,8 +189,9 @@ impl App {
 
                 // Fire app::started event.
                 tracing::info!("dispatching app::started event");
+                let session_id = core.state.read().session.active_session_id().to_string();
                 let ctx = nullslop_plugin::ctx::AppStartedCtx {
-                    session_id: String::new(),
+                    session_id,
                 };
                 plugin_registry.emit(
                     nullslop_plugin::hooks::APP_STARTED,
