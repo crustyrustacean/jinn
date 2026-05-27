@@ -34,6 +34,7 @@ use crate::{Extractor, FetchError, FetchOptions, FetchOutput, OutputFormat, WebF
 /// up by [`OutputFormat`]. Formats without a registered extractor (e.g.,
 /// [`OutputFormat::Html`]) return the raw page HTML unchanged.
 pub struct HeadlessChromeFetcher {
+    /// The lazily-launched browser instance.
     browser: Arc<Mutex<Option<Browser>>>,
     /// Extractor implementations keyed by output format.
     /// Formats not in the map (e.g., `Html`) pass through raw content.
@@ -54,7 +55,7 @@ impl HeadlessChromeFetcher {
 
     /// Ensures a browser is running, launching one if necessary.
     fn ensure_browser(&self) -> Result<Browser, FetchError> {
-        let mut guard = self.browser.lock().map_err(|_| FetchError::BrowserCrash)?;
+        let mut guard = self.browser.lock().map_err(|_lock_err| FetchError::BrowserCrash)?;
         if let Some(ref browser) = *guard {
             tracing::trace!("HeadlessChromeFetcher: reusing existing browser");
             return Ok(browser.clone());
@@ -75,7 +76,8 @@ impl HeadlessChromeFetcher {
 
     /// Clears the stored browser (for crash recovery).
     fn take_browser(&self) -> Option<Browser> {
-        self.browser.lock().ok().and_then(|mut guard| guard.take())
+        let mut guard = self.browser.lock().ok()?;
+        guard.take()
     }
 }
 
@@ -142,8 +144,8 @@ impl WebFetcher for HeadlessChromeFetcher {
         })();
 
         // On failure, clear the browser (crash recovery).
-        if result.is_err() {
-            tracing::warn!(err = ?result.as_ref().unwrap_err(), "HeadlessChromeFetcher: fetch failed");
+        if let Err(err) = &result {
+            tracing::warn!(err = ?err, "HeadlessChromeFetcher: fetch failed");
             // Check if the error suggests a browser crash.
             if matches!(
                 result,
