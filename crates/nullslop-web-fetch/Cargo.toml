@@ -1,0 +1,12 @@
+[package]
+name = "nullslop-web-fetch"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+wherror = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+
+[lints]
+workspace = true
