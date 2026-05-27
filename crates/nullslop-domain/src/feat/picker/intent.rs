@@ -653,7 +653,7 @@ pub fn handle_tool_toggle(state: &mut AppState) -> IntentResult {
     state.frontend.tool_picker.with_selected_mut(|entry| {
         entry.enabled = !entry.enabled;
     });
-    state.frontend.tool_picker.move_down(1);
+    state.frontend.tool_picker.move_down(PICKER_MAX_VISIBLE);
     IntentResult::empty()
 }
 
@@ -704,7 +704,7 @@ pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
     state.frontend.skill_picker.with_selected_mut(|entry| {
         entry.enabled = !entry.enabled;
     });
-    state.frontend.skill_picker.move_down(1);
+    state.frontend.skill_picker.move_down(PICKER_MAX_VISIBLE);
     IntentResult::empty()
 }
 
