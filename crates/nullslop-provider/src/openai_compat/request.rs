@@ -724,4 +724,26 @@ mod tests {
         assert!(content.contains("[Actor: bash]"));
         assert!(content.contains("[Error]"));
     }
+
+    #[rstest::rstest]
+    fn tool_definition_to_json_produces_valid_schema() {
+        // Given a tool definition.
+        let def = ToolDefinition {
+            name: "get_weather".into(),
+            description: "Get weather".into(),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            parameters: serde_json::json!({"type": "object"}),
+        };
+
+        // When converting to JSON.
+        let json = tool_definition_to_json(&def);
+
+        // Then it has the required OpenAI structure.
+        assert_eq!(json["type"], "function");
+        let func = &json["function"];
+        assert_eq!(func["name"], "get_weather");
+        assert_eq!(func["description"], "Get weather");
+        assert_eq!(func["parameters"]["type"], "object");
+    }
 }

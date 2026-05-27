@@ -184,3 +184,41 @@ pub fn derive_command_msg(input: TokenStream) -> TokenStream {
 
     expanded.into()
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::unwrap_in_result,
+        reason = "test code, panics are acceptable"
+    )]
+    use super::*;
+
+    fn parse_single_attr(attr_str: &str) -> Vec<syn::Attribute> {
+        let parsed: syn::DeriveInput = syn::parse_str(attr_str).expect("parse");
+        parsed.attrs
+    }
+
+    #[rstest::rstest]
+    fn extract_module_returns_correct_value() {
+        let attrs = parse_single_attr(r##"#[event_msg("chat_input")] struct Test;"##);
+        let result = extract_module(EVENT_MSG_ATTR, &attrs).expect("should succeed");
+        assert_eq!(result, "chat_input");
+    }
+
+    #[rstest::rstest]
+    fn extract_module_returns_non_empty_string() {
+        let attrs = parse_single_attr(r##"#[event_msg("chat_input")] struct Test;"##);
+        let result = extract_module(EVENT_MSG_ATTR, &attrs).expect("should succeed");
+        assert!(!result.is_empty(), "module string should not be empty");
+    }
+
+    #[rstest::rstest]
+    fn extract_module_errors_on_missing_attribute() {
+        let attrs = parse_single_attr("struct Test;");
+        let result = extract_module(EVENT_MSG_ATTR, &attrs);
+        assert!(result.is_err(), "missing attribute should return error");
+    }
+}

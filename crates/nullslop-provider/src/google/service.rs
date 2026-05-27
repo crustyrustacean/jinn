@@ -68,7 +68,8 @@ impl GoogleService {
     ///
     /// Returns [`LlmServiceError::Provider`] on HTTP or parse errors.
     pub async fn list_models(&self) -> Result<Vec<ModelInfo>, Report<LlmServiceError>> {
-        models::list_models(&self.client, &self.api_key).await
+        let base_url = self.base_url.as_deref().unwrap_or("https://generativelanguage.googleapis.com");
+        models::list_models_with_base_url(&self.client, &self.api_key, base_url).await
     }
 
     /// Build the streaming URL.
@@ -235,5 +236,70 @@ impl std::fmt::Debug for GoogleService {
             .field("api_key", &self.api_key)
             .field("base_url", &self.base_url)
             .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::unwrap_in_result,
+        reason = "test code, panics are acceptable"
+    )]
+    use crate::ModelInfo;
+
+    use super::*;
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn service_list_models_returns_models_via_mock() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1beta/models?key=test-key")
+            .with_status(200)
+            .with_body(
+                serde_json::json!({"models": [{"name": "gemini-pro", "input_token_limit": 32000}]}).to_string(),
+            )
+            .create_async()
+            .await;
+
+        let svc = GoogleService::with_base_url(
+            "gemini-pro".to_owned(),
+            "test-key".to_owned(),
+            server.url(),
+        );
+
+        let result = svc.list_models().await;
+        let models = result.expect("should succeed");
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0], ModelInfo {
+            id: "gemini-pro".to_owned(),
+            context_length: Some(32_000),
+        });
+        mock.assert_async().await;
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn service_list_models_returns_error_on_http_failure() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v1beta/models?key=test-key")
+            .with_status(500)
+            .with_body("internal error")
+            .create_async()
+            .await;
+
+        let svc = GoogleService::with_base_url(
+            "gemini-pro".to_owned(),
+            "test-key".to_owned(),
+            server.url(),
+        );
+
+        let result = svc.list_models().await;
+        assert!(result.is_err(), "should return Err on HTTP failure");
+        mock.assert_async().await;
     }
 }

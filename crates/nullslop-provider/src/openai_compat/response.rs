@@ -690,4 +690,34 @@ mod tests {
             if error_type == "unknown_error" && message == "Unknown error"
         ));
     }
+
+    #[rstest::rstest]
+    fn only_one_done_event_emitted_for_repeated_finish_reasons() {
+        // Given a stream that sends finish_reason in two consecutive chunks
+        // (OpenRouter does this). The guard `!finish_reason.is_empty() &&
+        // self.pending_done.is_none() && !self.done_finalized` must prevent
+        // duplicates.
+        let mut parser = StreamResponseParser::new();
+
+        // First chunk with finish_reason.
+        let chunk1 = serde_json::json!({
+            "id": "x",
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+        }).to_string();
+        let events1 = parser.parse_data(&chunk1);
+        // Done is deferred — no events from parse_data.
+        assert!(events1.is_empty());
+
+        // Second chunk also has finish_reason (should be ignored).
+        let chunk2 = serde_json::json!({
+            "id": "x",
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+        }).to_string();
+        let events2 = parser.parse_data(&chunk2);
+        assert!(events2.is_empty(), "duplicate finish_reason should not emit events");
+
+        // [DONE] sentinel flushes exactly one Done.
+        let done_events = parser.handle_done();
+        assert_eq!(done_events.len(), 1, "should emit exactly one Done event");
+    }
 }
