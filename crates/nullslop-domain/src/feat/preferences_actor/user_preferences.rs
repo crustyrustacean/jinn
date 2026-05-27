@@ -133,6 +133,39 @@ impl Default for ContextSlidingWindowConfig {
     }
 }
 
+/// Web fetch backend selection.
+///
+/// Determines which fetching strategy is used for the `web-fetch` tool.
+/// Selected once at startup from `nullslop.toml` and never changes at runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum WebFetchBackend {
+    /// Plain HTTP requests via `reqwest`. No JavaScript rendering.
+    #[default]
+    Http,
+    /// Headless Chrome browser via `headless_chrome` crate. Renders JavaScript.
+    HeadlessChrome,
+}
+
+/// Web fetch tool configuration.
+///
+/// Serialized as `[web_fetch]` in `nullslop.toml`.
+/// Controls which backend the `web-fetch` tool uses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebFetchConfig {
+    /// The backend to use for web fetching. Default: `"http"`.
+    #[serde(default)]
+    pub backend: WebFetchBackend,
+}
+
+impl Default for WebFetchConfig {
+    fn default() -> Self {
+        Self {
+            backend: WebFetchBackend::Http,
+        }
+    }
+}
+
 /// Default retry configuration values.
 const DEFAULT_RETRY_MAX_RETRIES: u32 = 5;
 const DEFAULT_RETRY_BASE_DELAY_SECS: u64 = 2;
@@ -245,6 +278,9 @@ pub struct UserPreferences {
     /// Retry configuration for LLM provider requests.
     #[serde(default)]
     pub request_retry: RequestRetryConfig,
+    /// Web fetch tool configuration.
+    #[serde(default)]
+    pub web_fetch: WebFetchConfig,
 }
 
 /// Returns the path to the user preferences file.
@@ -380,6 +416,7 @@ mod tests {
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
+            web_fetch: WebFetchConfig::default(),
         };
 
         // When saving and reloading.
@@ -449,6 +486,7 @@ last_strategy = "sliding_window""#,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
+            web_fetch: WebFetchConfig::default(),
         };
 
         // When saving.
@@ -477,6 +515,7 @@ last_strategy = "sliding_window""#,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
+            web_fetch: WebFetchConfig::default(),
         };
 
         // When saving and reloading.
@@ -519,6 +558,7 @@ last_strategy = "sliding_window""#,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
+            web_fetch: WebFetchConfig::default(),
         };
 
         // When saving and reloading.
@@ -561,6 +601,7 @@ last_strategy = "sliding_window""#,
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
+            web_fetch: WebFetchConfig::default(),
         };
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
@@ -672,6 +713,7 @@ teardown_command = "~/.config/nullslop/scripts/fossil-cleanup.sh $1"
             compaction: CompactionConfig::default(),
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
+            web_fetch: WebFetchConfig::default(),
         };
 
         save_preferences_to(&prefs, &path).expect("save");
@@ -700,5 +742,67 @@ teardown_command = "~/.config/nullslop/scripts/fossil-cleanup.sh $1"
         assert_eq!(retry.max_retries, 3);
         assert_eq!(retry.base_delay, std::time::Duration::from_secs(5));
         assert_eq!(retry.max_delay, std::time::Duration::from_secs(120));
+    }
+
+    // --- WebFetchConfig tests ---
+
+    #[rstest::rstest]
+    fn default_web_fetch_config_uses_http_backend() {
+        let config = WebFetchConfig::default();
+        assert_eq!(config.backend, WebFetchBackend::Http);
+    }
+
+    #[rstest::rstest]
+    fn default_preferences_has_http_web_fetch() {
+        let prefs = UserPreferences::default();
+        assert_eq!(prefs.web_fetch.backend, WebFetchBackend::Http);
+    }
+
+    #[rstest::rstest]
+    fn load_parses_web_fetch_headless_chrome() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[web_fetch]
+backend = "headless-chrome"
+"#,
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+        assert_eq!(prefs.web_fetch.backend, WebFetchBackend::HeadlessChrome);
+    }
+
+    #[rstest::rstest]
+    fn load_rejects_invalid_web_fetch_backend() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[web_fetch]
+backend = "socks"
+"#,
+        )
+        .expect("write");
+
+        let result = load_preferences_from(&path);
+        assert!(result.is_err());
+    }
+
+    #[rstest::rstest]
+    fn save_then_load_round_trips_web_fetch_config() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let prefs = UserPreferences {
+            web_fetch: WebFetchConfig {
+                backend: WebFetchBackend::HeadlessChrome,
+            },
+            ..UserPreferences::default()
+        };
+
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+        assert_eq!(reloaded.web_fetch.backend, WebFetchBackend::HeadlessChrome);
     }
 }
