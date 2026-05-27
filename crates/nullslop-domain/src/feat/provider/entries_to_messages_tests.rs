@@ -867,11 +867,11 @@ fn no_dangling_tool_calls_in_messages_after_hard_cancel() {
 }
 
 #[test]
-fn soft_cancel_with_complete_tool_batch_produces_valid_messages() {
-    // Given a history simulating soft-cancel during ToolUse where the tool batch
+fn complete_tool_batch_produces_valid_messages() {
+    // Given a history simulating auto-compaction during ToolUse where the tool batch
     // completed normally (all tool calls have matching results).
     // This represents the state after: stream completed with ToolUse -> tools execute ->
-    // soft-cancel consumed by on_tool_batch_completed -> session goes to Idle.
+    // auto-compaction consumed by on_tool_batch_completed -> session goes to Compacting.
     // The history has complete tool loops because the batch finished.
     let entries = vec![
         ChatEntry::user("fix this bug"),
@@ -908,7 +908,7 @@ fn soft_cancel_with_complete_tool_batch_produces_valid_messages() {
     for tc_id in &tool_call_ids {
         assert!(
             tool_result_ids.iter().any(|r| r == tc_id),
-            "dangling tool_call {tc_id} found in messages after soft-cancel with complete batch"
+            "dangling tool_call {tc_id} found in messages after auto-compaction with complete batch"
         );
     }
 }
