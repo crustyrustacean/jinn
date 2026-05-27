@@ -2,56 +2,15 @@
 
 use std::cell::RefCell;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::path::Path;
 
 use error_stack::Report;
 use mlua::Lua;
-use wherror::Error;
 
 use crate::bindings;
 use crate::loader;
 
-/// Callback for sending commands from Lua into the application.
-///
-/// The TUI wiring provides an implementation that wraps the command in
-/// `AppMsg` and sends it through the kanal channel.
-#[derive(Clone)]
-pub struct CommandSender {
-    /// The inner callback.
-    inner: Arc<dyn Fn(nullslop_domain::Command) + Send + Sync>,
-}
-
-impl CommandSender {
-    /// Creates a new command sender from a callback.
-    pub fn new<F>(sender: F) -> Self
-    where
-        F: Fn(nullslop_domain::Command) + Send + Sync + 'static,
-    {
-        Self {
-            inner: Arc::new(sender),
-        }
-    }
-
-    /// Sends a command through the callback.
-    pub fn send(&self, cmd: nullslop_domain::Command) {
-        (self.inner)(cmd);
-    }
-}
-
-/// Metadata about a loaded plugin.
-#[derive(Debug, Clone)]
-pub struct PluginInfo {
-    /// The plugin directory name (e.g., `"welcome"`).
-    pub name: String,
-    /// The path to the plugin directory.
-    pub path: PathBuf,
-}
-
-/// Errors from plugin loading.
-#[derive(Debug, Error)]
-#[error(debug)]
-pub struct PluginError;
+pub use crate::registry::{CommandSender, PluginError, PluginInfo};
 
 /// The plugin host — owns the Lua VM, loads plugins, and dispatches events.
 pub struct PluginHost {
