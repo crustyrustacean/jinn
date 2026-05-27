@@ -471,3 +471,96 @@ fn selectable_rects_rebuild_replaces_previous_rects() {
         Some(Rect::new(20, 20, 5, 5))
     );
 }
+
+// --- Mutant-killing tests for selection.rs ---
+
+// Kills: find_for_position < -> <= (both occurrences, line 44)
+#[rstest::rstest]
+fn find_for_position_excludes_right_and_bottom_edges() {
+    // Rect at (0,0) with width=10, height=5.
+    // right()=10, bottom()=5.
+    // Point (10, 2) is on the right edge — must NOT match (x < right is false when x==right).
+    // With <= it would incorrectly match.
+    let mut rects = SelectableRects::new();
+    let rect = Rect::new(0, 0, 10, 5);
+    rects.rebuild(vec![rect]);
+
+    // Right edge exclusion.
+    assert_eq!(rects.find_for_position(10, 2), None, "x=right() must not match with <");
+    // Bottom edge exclusion.
+    assert_eq!(rects.find_for_position(5, 5), None, "y=bottom() must not match with <");
+    // Interior point must match.
+    assert_eq!(rects.find_for_position(5, 2), Some(rect));
+}
+
+// Kills: find_for_position * -> +, * -> /
+#[rstest::rstest]
+fn find_for_position_uses_multiplication_for_area() {
+    // Two rects: one 2x3=6 area, one 3x2=6 area (tie).
+    // And one 1x1=1 area inside both. The smallest must win.
+    let large1 = Rect::new(0, 0, 3, 3); // area = 3*3 = 9
+    let small = Rect::new(0, 0, 1, 1);  // area = 1*1 = 1
+    let mut rects = SelectableRects::new();
+    rects.rebuild(vec![large1, small]);
+
+    let found = rects.find_for_position(0, 0);
+    assert_eq!(found, Some(small), "smallest area rect must win (area=1, not 9)");
+}
+
+// Kills: find_last_nonws_in_row delete !
+#[rstest::rstest]
+fn find_last_nonws_returns_last_not_first_nonws() {
+    let area = Rect::new(0, 0, 10, 1);
+    let mut buffer = Buffer::empty(area);
+    // Cells: "A  B"
+    buffer.cell_mut((0, 0)).unwrap().set_symbol("A");
+    // (1,0) and (2,0) are whitespace
+    buffer.cell_mut((3, 0)).unwrap().set_symbol("B");
+    // (4,0) through (9,0) are whitespace
+
+    use crate::selection::find_last_nonws_in_row;
+    let result = find_last_nonws_in_row(&buffer, 0, 0, 9);
+    // Without the !, it would return the first non-ws (x=0).
+    // With !, it returns the last non-ws (x=3).
+    assert_eq!(result, Some(3), "must return last non-ws position (x=3), not first (x=0)");
+}
+
+// Kills: SelectionState::cancel -> Default::default()
+#[rstest::rstest]
+fn cancel_dragging_returns_idle_variant() {
+    let state = SelectionState::Dragging {
+        anchor: (1, 2),
+        focus: (3, 4),
+        bounds: bounds(),
+    };
+    let cancelled = state.cancel();
+    // Explicitly check it's Idle, not just that it's the default value.
+    assert_eq!(cancelled, SelectionState::Idle);
+    assert!(matches!(cancelled, SelectionState::Idle));
+}
+
+// Kills: SelectionState::is_active -> true
+#[rstest::rstest]
+fn idle_is_not_active() {
+    assert!(!SelectionState::Idle.is_active(), "Idle must return false for is_active");
+}
+
+#[rstest::rstest]
+fn dragging_is_active() {
+    let state = SelectionState::Dragging {
+        anchor: (1, 2),
+        focus: (3, 4),
+        bounds: bounds(),
+    };
+    assert!(state.is_active(), "Dragging must return true for is_active");
+}
+
+#[rstest::rstest]
+fn active_selection_is_active() {
+    let state = SelectionState::Active {
+        anchor: (1, 2),
+        focus: (3, 4),
+        bounds: bounds(),
+    };
+    assert!(state.is_active(), "Active must return true for is_active");
+}

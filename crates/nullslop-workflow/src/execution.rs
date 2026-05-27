@@ -579,6 +579,46 @@ mod tests {
         );
     }
 
+    // --- Mutant-killing tests for execution.rs ---
+
+    #[rstest::rstest]
+    fn node_count_returns_actual_node_count() {
+        let graph = linear_graph();
+        let structure = extract_structure(&graph);
+        // linear_graph has 3 nodes. Kills: node_count -> 0, node_count -> 1
+        assert_eq!(structure.node_count(), 3, "must return 3, not 0 or 1");
+    }
+
+    #[rstest::rstest]
+    fn statuses_returns_non_empty_iterator() {
+        let graph = linear_graph();
+        let execution = WorkflowExecution::new(graph);
+        let snapshot = execution.snapshot();
+        let count = snapshot.statuses().count();
+        // Kills: statuses -> iter::empty()
+        assert_eq!(count, 3, "statuses() must yield all 3 nodes, not be empty");
+    }
+
+    #[rstest::rstest]
+    fn node_states_returns_non_empty_iterator() {
+        let graph = linear_graph();
+        let execution = WorkflowExecution::new(graph);
+        let snapshot = execution.snapshot();
+        let count = snapshot.node_states().count();
+        // Kills: node_states -> iter::empty()
+        assert_eq!(count, 3, "node_states() must yield all 3 nodes, not be empty");
+    }
+
+    #[rstest::rstest]
+    fn debug_impl_produces_non_empty_output() {
+        let graph = linear_graph();
+        let execution = WorkflowExecution::new(graph);
+        // Kills: Debug fmt -> Ok(Default::default())
+        let debug_str = format!("{execution:?}");
+        assert!(!debug_str.is_empty(), "Debug output must not be empty");
+        assert!(debug_str.contains("node_count"), "Debug must contain node_count");
+    }
+
     #[rstest::rstest]
     fn structure_is_cloneable() {
         // Given a structure from a linear graph.
