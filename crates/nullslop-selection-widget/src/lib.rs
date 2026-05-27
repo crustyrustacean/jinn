@@ -10,6 +10,8 @@
 pub mod highlight;
 pub mod item;
 pub mod picker_ops;
+#[cfg(test)]
+mod picker_ops_tests;
 pub mod state;
 #[cfg(test)]
 mod state_tests;
