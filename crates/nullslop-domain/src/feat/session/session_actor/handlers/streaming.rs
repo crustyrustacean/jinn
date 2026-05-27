@@ -213,8 +213,9 @@ impl SessionPersistenceActor {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::super::super::helpers::{test_actor, test_context};
-    use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
+    use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
     use crate::feat::session::chat_session::SessionPhase;
+    use crate::feat::session::token_stats::TokenRecord;
     use crate::protocol::{ChatEntry, Command, Event};
 
     #[tokio::test]
@@ -717,6 +718,380 @@ mod tests {
             .any(|c| matches!(c, Command::CompactContext(_)));
         assert!(!has_compact, "expected no CompactContext after cancel");
     }
+
+    // --- Mutant killers: on_stream_token ---
+
+    #[tokio::test]
+    async fn on_stream_token_appends_text_to_assistant_entry() {
+        // Given a session in streaming state.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When receiving two stream tokens.
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "Hello".to_owned(),
+            is_thinking: false,
+        });
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 1,
+            token: " world".to_owned(),
+            is_thinking: false,
+        });
+
+        // Then the assistant entry contains the concatenated text.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let assistant_text = session
+            .history()
+            .iter()
+            .find_map(|e| match &e.kind {
+                crate::protocol::ChatEntryKind::Assistant(t) => Some(t.clone()),
+                _ => None,
+            })
+            .expect("should have an assistant entry");
+        assert_eq!(assistant_text, "Hello world");
+    }
+
+    #[tokio::test]
+    async fn on_stream_token_keeps_phase_as_streaming() {
+        // Given a session in streaming state.
+        let actor = test_actor();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session_id().clone()
+        };
+
+        // When receiving a token while in Streaming phase.
+        {
+            let mut state = actor.state.write();
+            state.active_session_mut().begin_streaming();
+        }
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "hi".to_owned(),
+            is_thinking: false,
+        });
+
+        // Then the phase is still Streaming (not changed).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Streaming),
+            "expected Streaming phase, got {:?}",
+            session.phase()
+        );
+    }
+
+    #[tokio::test]
+    async fn on_stream_token_corrects_sending_phase_to_streaming() {
+        // Given a session in Sending state (stream token arrived before phase transition).
+        let actor = test_actor();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("go"));
+            session.begin_sending();
+            state.session.active_session_id().clone()
+        };
+
+        // When receiving a stream token while in Sending phase.
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "response".to_owned(),
+            is_thinking: false,
+        });
+
+        // Then the phase is corrected to Streaming.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert!(
+            matches!(session.phase(), SessionPhase::Streaming),
+            "expected Streaming phase after correction from Sending, got {:?}",
+            session.phase()
+        );
+    }
+
+    // --- Mutant killers: on_stream_completed should_save, token counting, preserve_assistant ---
+
+    #[tokio::test]
+    async fn on_stream_completed_finished_persists_session() {
+        // Given an interacted session in streaming state.
+        let (actor, store) =
+            super::super::super::helpers::test_actor_with_store(vec![]);
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.mark_interacted();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+        let (_sink, ctx) = test_context();
+
+        // When handling StreamCompleted with Finished reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: Some("response".to_owned()),
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the session was persisted (should_save = true for Finished).
+        assert!(
+            store.last_saved_session(&session_id).is_some(),
+            "expected session to be saved after Finished"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_error_persists_session() {
+        // Given an interacted session in streaming state.
+        let (actor, store) =
+            super::super::super::helpers::test_actor_with_store(vec![]);
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.mark_interacted();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+        let (_sink, ctx) = test_context();
+
+        // When handling StreamCompleted with Error reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Error,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the session was persisted (should_save = true for Error).
+        assert!(
+            store.last_saved_session(&session_id).is_some(),
+            "expected session to be saved after Error"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_canceled_does_not_persist_session() {
+        // Given an interacted session in streaming state.
+        let (actor, store) =
+            super::super::super::helpers::test_actor_with_store(vec![]);
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.mark_interacted();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+        let (_sink, ctx) = test_context();
+
+        // When handling StreamCompleted with Canceled reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Canceled,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the session was NOT persisted (should_save = false for Canceled).
+        assert!(
+            store.last_saved_session(&session_id).is_none(),
+            "expected session NOT to be saved after Canceled"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_does_not_count_tokens_on_error() {
+        // Given a session with a token record in streaming state.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_token_record(TokenRecord {
+                timestamp: jiff::Timestamp::now(),
+                tokens_sent: 100,
+                tokens_received: 0,
+                cost: None,
+            });
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with Error reason and some content.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Error,
+            assistant_content: Some("some error content".to_owned()),
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then no tokens were counted (Error skips token counting).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let ledger = session.token_ledger();
+        assert_eq!(ledger.len(), 1);
+        assert_eq!(
+            ledger[0].tokens_received, 0,
+            "expected 0 tokens_received on Error"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_tool_use_preserves_assistant_entry() {
+        // Given a session in streaming state with tokens appended via on_stream_token.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("do something"));
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+        // Append tokens so there's a non-empty assistant entry.
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "I will help".to_owned(),
+            is_thinking: false,
+        });
+
+        // When handling StreamCompleted with ToolUse reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::ToolUse,
+            assistant_content: Some("response".to_owned()),
+            tool_calls: Some(vec![crate::feat::tools_actor::tool_types::ToolCall {
+                id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                arguments: "{}".to_owned(),
+            }]),
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the assistant entry is preserved (not removed from history).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let has_assistant = session
+            .history()
+            .iter()
+            .any(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::Assistant(t) if t == "I will help"));
+        assert!(
+            has_assistant,
+            "expected assistant entry 'I will help' to be preserved after ToolUse"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_tool_use_counts_tool_call_arguments() {
+        // Given a session with a token record (from prompt assembly) in streaming state.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_token_record(TokenRecord {
+                timestamp: jiff::Timestamp::now(),
+                tokens_sent: 100,
+                tokens_received: 0,
+                cost: None,
+            });
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted(ToolUse) with tool calls.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::ToolUse,
+            assistant_content: Some("checking".to_owned()),
+            tool_calls: Some(vec![crate::feat::tools_actor::tool_types::ToolCall {
+                id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                arguments: r#"{"command":"ls -la /very/long/path"}"#.to_owned(),
+            }]),
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the token record includes tokens from both text and tool call arguments.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let ledger = session.token_ledger();
+        assert_eq!(ledger.len(), 1);
+        // tokens_received should be > just "checking" (2 tokens with tiktoken).
+        // It must include the tool call arguments and name.
+        assert!(
+            ledger[0].tokens_received > 2,
+            "expected tokens_received > 2 (text only), got {}",
+            ledger[0].tokens_received
+        );
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_finished_preserves_assistant_entry() {
+        // Given a session in streaming state with tokens appended.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+        // Append a token to create the assistant entry.
+        actor.on_stream_token(&StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "world".to_owned(),
+            is_thinking: false,
+        });
+
+        // When handling StreamCompleted with Finished reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: Some("world".to_owned()),
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the assistant entry is preserved in history (not removed).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let has_world = session
+            .history()
+            .iter()
+            .any(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::Assistant(t) if t.contains("world")));
+        assert!(has_world, "expected assistant entry with 'world' to be preserved after Finished");
+    }
+
 
     #[tokio::test]
     async fn on_stream_completed_canceled_with_complete_tool_loop_does_not_exclude() {

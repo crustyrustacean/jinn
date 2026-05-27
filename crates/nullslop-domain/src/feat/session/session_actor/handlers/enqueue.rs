@@ -202,3 +202,252 @@ impl SessionPersistenceActor {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use super::super::super::helpers::{test_actor, test_context};
+    use crate::feat::chat_input::protocol::command::{
+        EnqueueUserMessage, PushChatEntry, SetChatInputText,
+    };
+    use crate::feat::provider::protocol::command::SendMessage;
+    use crate::feat::session::chat_session::SessionPhase;
+    use crate::protocol::{ChatEntry, ChatEntryKind, Command, Event};
+
+    // --- handle_enqueue_user_message ---
+
+    #[tokio::test]
+    async fn handle_enqueue_user_message_dispatches_when_idle() {
+        // Given an idle session.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let _session = state.active_session_mut();
+            state.session.active_session_id().clone()
+        };
+
+        // When enqueuing a user message.
+        actor
+            .handle_enqueue_user_message(
+                &EnqueueUserMessage {
+                    session_id: session_id.clone(),
+                    entry: ChatEntry::user("hello world"),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the message is dispatched (history has the entry, phase is streaming).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        assert_eq!(session.phase(), SessionPhase::Streaming);
+        assert_eq!(session.history().len(), 1);
+        assert!(
+            matches!(&session.history()[0].kind, ChatEntryKind::User { display, .. } if display == "hello world"),
+            "expected user entry in history"
+        );
+
+        // And SendToLlmProvider was emitted.
+        let has_send = sink
+            .commands()
+            .iter()
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
+        assert!(has_send, "expected SendToLlmProvider command");
+    }
+
+    #[tokio::test]
+    async fn handle_enqueue_user_message_sets_title_from_first_message() {
+        // Given a new session with no title.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let _ = state.active_session_mut();
+            state.session.active_session_id().clone()
+        };
+
+        // When enqueuing the first user message.
+        actor
+            .handle_enqueue_user_message(
+                &EnqueueUserMessage {
+                    session_id: session_id.clone(),
+                    entry: ChatEntry::user("My First Question"),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the title is set from the first line of the message.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        assert_eq!(session.title(), Some("My First Question"));
+    }
+
+    #[tokio::test]
+    async fn handle_enqueue_user_message_queues_when_busy() {
+        // Given a session in Streaming phase (busy).
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When enqueuing a user message.
+        actor
+            .handle_enqueue_user_message(
+                &EnqueueUserMessage {
+                    session_id: session_id.clone(),
+                    entry: ChatEntry::user("queued msg"),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the message is queued (not dispatched — phase stays Streaming).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        assert_eq!(session.phase(), SessionPhase::Streaming);
+        // No history entry because the message was queued, not pushed.
+        assert_eq!(session.history().len(), 0);
+        // The queue should have the message.
+        assert_eq!(session.queue().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn handle_enqueue_user_message_no_provider_sends_none_provider_id() {
+        // Given a session with default model (NO_PROVIDER_ID).
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let _ = state.active_session_mut();
+            state.session.active_session_id().clone()
+        };
+
+        // When enqueuing a message.
+        actor
+            .handle_enqueue_user_message(
+                &EnqueueUserMessage {
+                    session_id: session_id.clone(),
+                    entry: ChatEntry::user("test"),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then SendToLlmProvider has provider_id = None (because model == NO_PROVIDER_ID).
+        let send_cmd = sink
+            .commands()
+            .iter()
+            .find_map(|c| match c {
+                Command::SendToLlmProvider(s) => Some(s.provider_id.clone()),
+                _ => None,
+            });
+        // With default model (NO_PROVIDER_ID), provider_id should be None.
+        // Mutant (== -> !=) would send Some(NO_PROVIDER_ID) instead.
+        assert_eq!(send_cmd, Some(None), "expected None provider_id for NO_PROVIDER_ID model");
+    }
+
+    // --- handle_set_chat_input_text ---
+
+    #[tokio::test]
+    async fn handle_set_chat_input_text_updates_buffer() {
+        // Given a session.
+        let actor = test_actor();
+        let session_id = {
+            let mut state = actor.state.write();
+            let _ = state.active_session_mut();
+            state.session.active_session_id().clone()
+        };
+
+        // When setting the input text.
+        actor.handle_set_chat_input_text(&SetChatInputText {
+            session_id: session_id.clone(),
+            text: "new input text".to_owned(),
+        });
+
+        // Then the input buffer is updated.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        assert_eq!(session.chat_input().text(), "new input text");
+    }
+
+    // --- handle_push_chat_entry ---
+
+    #[tokio::test]
+    async fn handle_push_chat_entry_pushes_and_emits() {
+        // Given a session.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let _ = state.active_session_mut();
+            state.session.active_session_id().clone()
+        };
+
+        // When pushing a chat entry.
+        let entry = ChatEntry::user("pushed");
+        actor
+            .handle_push_chat_entry(
+                &PushChatEntry {
+                    session_id: session_id.clone(),
+                    entry: entry.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the entry is in history.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        assert_eq!(session.history().len(), 1);
+        assert!(
+            matches!(&session.history()[0].kind, ChatEntryKind::User { display, .. } if display == "pushed"),
+            "expected pushed entry"
+        );
+
+        // And ChatEntrySubmitted event was emitted.
+        let has_submitted = sink.events().iter().any(|e| {
+            matches!(e, Event::ChatEntrySubmitted(e) if e.session_id == session_id)
+        });
+        assert!(has_submitted, "expected ChatEntrySubmitted event");
+
+        // And HistoryAppended was emitted.
+        let has_history = sink.events().iter().any(|e| {
+            matches!(e, Event::HistoryAppended(e) if e.session_id == session_id)
+        });
+        assert!(has_history, "expected HistoryAppended event");
+    }
+
+    // --- handle_send_message ---
+
+    #[tokio::test]
+    async fn handle_send_message_emits_enqueue_user_message() {
+        // Given a test context.
+        let _actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = crate::protocol::SessionId::new();
+
+        // When calling handle_send_message.
+        crate::feat::session::session_actor::SessionPersistenceActor::handle_send_message(
+            &SendMessage {
+                session_id: session_id.clone(),
+                text: "legacy message".to_owned(),
+            },
+            &ctx,
+        );
+
+        // Then EnqueueUserMessage command was emitted.
+        let commands = sink.commands();
+        let has_enqueue = commands.iter().any(|c| {
+            matches!(c, Command::EnqueueUserMessage(e) if e.session_id == session_id)
+        });
+        assert!(has_enqueue, "expected EnqueueUserMessage command from SendMessage");
+    }
+
+    // --- Helpers ---
+}

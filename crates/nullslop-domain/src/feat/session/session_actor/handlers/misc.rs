@@ -90,3 +90,145 @@ fn build_models_refresh_table(event: &ModelsRefreshed) -> String {
 
     table
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use super::super::super::helpers::{test_actor, test_actor_with_store};
+    use crate::feat::provider::protocol::event::ModelsRefreshed;
+    use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
+    use crate::protocol::{ChatEntryKind, SessionId};
+    use nullslop_provider::ModelInfo;
+    use std::collections::HashMap;
+
+    // --- on_models_refreshed ---
+
+    #[test]
+    fn on_models_refreshed_pushes_transient_entry() {
+        // Given a session actor.
+        let actor = test_actor();
+        let session_id = SessionId::new();
+
+        // When refreshing models with some results.
+        let mut results = HashMap::new();
+        results.insert(
+            "ollama".to_owned(),
+            vec![ModelInfo {
+                id: "llama3".to_owned(),
+                context_length: Some(8192),
+            }],
+        );
+        actor.on_models_refreshed(&ModelsRefreshed {
+            session_id: session_id.clone(),
+            results,
+            errors: HashMap::new(),
+        });
+
+        // Then a transient entry with a table was pushed.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        assert_eq!(session.history().len(), 1);
+        let entry = &session.history()[0];
+        assert!(matches!(&entry.kind, ChatEntryKind::Transient(t) if t.contains("ollama")));
+    }
+
+    #[test]
+    fn on_models_refreshed_empty_results_shows_no_providers_message() {
+        // Given a session actor.
+        let actor = test_actor();
+        let session_id = SessionId::new();
+
+        // When refreshing models with empty results AND empty errors.
+        actor.on_models_refreshed(&ModelsRefreshed {
+            session_id: session_id.clone(),
+            results: HashMap::new(),
+            errors: HashMap::new(),
+        });
+
+        // Then a transient entry with "no providers found" message was pushed.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        assert_eq!(session.history().len(), 1);
+        let entry = &session.history()[0];
+        assert!(
+            matches!(&entry.kind, ChatEntryKind::Transient(t) if t.contains("no providers found")),
+            "expected 'no providers found' message, got {:?}",
+            entry.kind
+        );
+    }
+
+    #[test]
+    fn on_models_refreshed_with_errors_shows_table() {
+        // Given a session actor.
+        let actor = test_actor();
+        let session_id = SessionId::new();
+
+        // When refreshing models with errors but no results.
+        let mut errors = HashMap::new();
+        errors.insert("openai".to_owned(), "API key not resolved".to_owned());
+        actor.on_models_refreshed(&ModelsRefreshed {
+            session_id: session_id.clone(),
+            results: HashMap::new(),
+            errors,
+        });
+
+        // Then a transient entry with a table (not the "no providers" message) was pushed.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        let entry = &session.history()[0];
+        assert!(
+            matches!(&entry.kind, ChatEntryKind::Transient(t) if t.contains("openai") && t.contains("API key not resolved")),
+            "expected table with error, got {:?}",
+            entry.kind
+        );
+    }
+
+    // --- build_models_refresh_table ---
+
+    #[test]
+    fn build_models_refresh_table_includes_provider_and_model_count() {
+        // Given a refresh event with results.
+        let mut results = HashMap::new();
+        results.insert(
+            "ollama".to_owned(),
+            vec![
+                ModelInfo { id: "llama3".to_owned(), context_length: Some(8192) },
+                ModelInfo { id: "phi3".to_owned(), context_length: None },
+            ],
+        );
+        let event = ModelsRefreshed {
+            session_id: SessionId::new(),
+            results,
+            errors: HashMap::new(),
+        };
+
+        // When building the table.
+        let table = super::build_models_refresh_table(&event);
+
+        // Then the table contains the provider name and correct model count.
+        assert!(table.contains("ollama"), "expected provider name in table");
+        assert!(table.contains("2"), "expected model count in table");
+        assert!(table.contains("✅"), "expected success indicator");
+    }
+
+    // --- handle_load_session_picker_entries ---
+
+    #[tokio::test]
+    async fn handle_load_session_picker_entries_loads_from_store() {
+        // Given an actor with a store containing a session.
+        let session = crate::feat::session::chat_session::ChatSessionState::new();
+        let (actor, _store) = test_actor_with_store(vec![session]);
+
+        // When loading session picker entries.
+        actor
+            .handle_load_session_picker_entries(&LoadSessionPickerEntries)
+            .await;
+
+        // Then the session picker has entries (at least one from the stored session).
+        let state = actor.state.read();
+        assert!(
+            !state.frontend.session_picker.items().is_empty(),
+            "expected session picker to have entries after loading from store"
+        );
+    }
+}
