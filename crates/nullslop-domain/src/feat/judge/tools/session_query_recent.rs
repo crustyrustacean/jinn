@@ -303,4 +303,110 @@ auto_reset: None,
         assert!(result.success);
         assert!(result.content.contains("No entries found"));
     }
+
+    #[rstest::rstest]
+    fn session_query_recent_uses_correct_role_labels() {
+        // Given a judge session with origin entries of struct-variant kinds.
+        let state = State::new(AppState::default());
+        let origin_id = state.read().session.active_session_id().clone();
+
+        {
+            let mut guard = state.write();
+            let origin = guard.session_mut(&origin_id);
+            origin.push_entry(ChatEntry::user("user_msg_xyzzy"));
+            origin.push_entry(ChatEntry::assistant("assistant_msg_xyzzy"));
+            origin.push_entry(ChatEntry::tool_result(
+                "tr-1",
+                "tool_name",
+                "toolresult_msg_xyzzy",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ));
+        }
+
+        let mut judge_session = crate::feat::session::chat_session::ChatSessionState::new();
+        let judge_id = judge_session.session_id().clone();
+        judge_session.set_judge(JudgeMeta {
+            origin_session: origin_id,
+            is_attached: true,
+            judge_name: "test-judge".to_owned(),
+auto_reset: None,
+});
+        state.write().session.insert(judge_session);
+
+        // When querying recent entries.
+        let result = run_tool(&state, judge_id, r#"{\"count\": 3}"#);
+
+        // Then each entry is labeled with its correct role.
+        assert!(result.success);
+        assert!(result.content.contains("[user]"), "should label user entries: {}", result.content);
+        assert!(result.content.contains("[assistant]"), "should label assistant entries: {}", result.content);
+        assert!(result.content.contains("[tool]"), "should label tool_result entries: {}", result.content);
+        // None of these struct-variant entries should be labeled "other".
+        assert!(!result.content.contains("[other]"), "no struct-variant entries should be labeled 'other': {}", result.content);
+    }
+
+    #[rstest::rstest]
+    fn session_query_recent_truncates_at_500_chars() {
+        // Given a judge session with origin entry whose text is > 500 chars.
+        let state = State::new(AppState::default());
+        let origin_id = state.read().session.active_session_id().clone();
+
+        let long_text = format!("{}XYZ", "a".repeat(500));
+        {
+            let mut guard = state.write();
+            let origin = guard.session_mut(&origin_id);
+            origin.push_entry(ChatEntry::user(long_text));
+        }
+
+        let mut judge_session = crate::feat::session::chat_session::ChatSessionState::new();
+        let judge_id = judge_session.session_id().clone();
+        judge_session.set_judge(JudgeMeta {
+            origin_session: origin_id,
+            is_attached: true,
+            judge_name: "test-judge".to_owned(),
+auto_reset: None,
+});
+        state.write().session.insert(judge_session);
+
+        // When querying.
+        let result = run_tool(&state, judge_id, r#"{\"count\": 1}"#);
+
+        // Then the output is truncated.
+        assert!(result.success);
+        assert!(result.content.contains("..."), "long entry should be truncated: {}", result.content);
+        assert!(!result.content.contains("XYZ"), "text beyond 500 chars should be truncated: {}", result.content);
+    }
+
+    #[rstest::rstest]
+    fn session_query_recent_does_not_truncate_at_exactly_500_chars() {
+        // Given a judge session with origin entry whose text is exactly 500 chars.
+        let state = State::new(AppState::default());
+        let origin_id = state.read().session.active_session_id().clone();
+
+        let exact_text = format!("{}END", "a".repeat(497)); // 500 chars total
+        assert_eq!(exact_text.len(), 500);
+        {
+            let mut guard = state.write();
+            let origin = guard.session_mut(&origin_id);
+            origin.push_entry(ChatEntry::user(exact_text));
+        }
+
+        let mut judge_session = crate::feat::session::chat_session::ChatSessionState::new();
+        let judge_id = judge_session.session_id().clone();
+        judge_session.set_judge(JudgeMeta {
+            origin_session: origin_id,
+            is_attached: true,
+            judge_name: "test-judge".to_owned(),
+auto_reset: None,
+});
+        state.write().session.insert(judge_session);
+
+        // When querying.
+        let result = run_tool(&state, judge_id, r#"{\"count\": 1}"#);
+
+        // Then the output is NOT truncated (text.len() > 500 is false for exactly 500).
+        assert!(result.success);
+        assert!(!result.content.contains("..."), "500-char text should not be truncated: {}", result.content);
+        assert!(result.content.contains("END"), "full text should be present: {}", result.content);
+    }
 }

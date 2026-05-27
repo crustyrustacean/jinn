@@ -1292,4 +1292,209 @@ mod tests {
         // Then the database is usable.
         assert!(store.load_summaries().await.is_ok());
     }
+
+    // ── Round-trip persistence tests ───────────────────────────────────
+
+    /// Helper: create a fresh in-memory store for testing.
+    async fn fresh_store() -> SqliteSessionStore {
+        let dir = tempfile::tempdir().expect("temp dir");
+        SqliteSessionStore::new_in(dir.path()).expect("new_in")
+    }
+
+    /// Helper: create a minimal session with one user entry.
+    fn make_session() -> ChatSessionState {
+        let mut session = ChatSessionState::new();
+        session.push_entry(ChatEntry::user("hello world"));
+        session
+    }
+
+    #[tokio::test]
+    async fn save_then_load_summaries_returns_saved_session() {
+        // Given a store with a saved session.
+        let store = fresh_store().await;
+        let session = make_session();
+        let id = session.session_id().clone();
+        store.save(&session).await.expect("save");
+
+        // When loading summaries.
+        let summaries = store.load_summaries().await.expect("load_summaries");
+
+        // Then the saved session appears in the list.
+        assert_eq!(summaries.len(), 1, "should have exactly 1 summary");
+        assert_eq!(summaries[0].session_id, id);
+    }
+
+    #[tokio::test]
+    async fn delete_removes_session() {
+        // Given a store with a saved session.
+        let store = fresh_store().await;
+        let session = make_session();
+        let id = session.session_id().clone();
+        store.save(&session).await.expect("save");
+
+        // When deleting the session.
+        store.delete(&id).await.expect("delete");
+
+        // Then the session is gone from summaries.
+        let summaries = store.load_summaries().await.expect("load_summaries");
+        assert!(summaries.is_empty(), "session should be deleted");
+    }
+
+    #[tokio::test]
+    async fn fork_creates_new_session_with_entries() {
+        // Given a store with a saved session.
+        let store = fresh_store().await;
+        let session = make_session();
+        let source_id = session.session_id().clone();
+        store.save(&session).await.expect("save");
+
+        // When forking the session.
+        let fork_id = store.fork(&source_id, 1).await.expect("fork");
+
+        // Then the fork has a different ID.
+        assert_ne!(fork_id, source_id, "forked session should have a new ID");
+
+        // And the forked session can be loaded.
+        let loaded = store
+            .load_session(&fork_id)
+            .await
+            .expect("load")
+            .expect("forked session should exist");
+        assert_eq!(loaded.history().len(), 1, "fork should copy entries");
+    }
+
+    #[tokio::test]
+    async fn set_archived_removes_from_unarchived_summaries() {
+        // Given a store with a saved session.
+        let store = fresh_store().await;
+        let session = make_session();
+        let id = session.session_id().clone();
+        store.save(&session).await.expect("save");
+
+        // Verify the session appears in unarchived summaries BEFORE archiving.
+        let unarchived_before = store
+            .load_unarchived_summaries()
+            .await
+            .expect("load_unarchived");
+        assert_eq!(unarchived_before.len(), 1, "session should appear in unarchived before archiving");
+
+        // When archiving the session.
+        store.set_archived(&id, true).await.expect("set_archived");
+
+        // Then it disappears from unarchived summaries.
+        let unarchived_after = store
+            .load_unarchived_summaries()
+            .await
+            .expect("load_unarchived");
+        assert!(unarchived_after.is_empty(), "archived session should not appear");
+
+        // And it still appears in all summaries.
+        let all = store.load_summaries().await.expect("load_summaries");
+        assert_eq!(all.len(), 1, "archived session should still be in all summaries");
+    }
+
+    #[tokio::test]
+    async fn archived_flag_persists_across_save_and_load() {
+        // Given a store.
+        let store = fresh_store().await;
+
+        // When saving an archived session.
+        let mut session = make_session();
+        session.set_session_state(SessionState::Archived);
+        let id = session.session_id().clone();
+        store.save(&session).await.expect("save");
+
+        // Then loading it back shows it as archived.
+        let loaded = store
+            .load_session(&id)
+            .await
+            .expect("load")
+            .expect("session should exist");
+        assert_eq!(
+            loaded.session_state(),
+            SessionState::Archived,
+            "loaded session should be archived"
+        );
+
+        // And saving an active session loads as active.
+        let mut session2 = make_session();
+        session2.set_session_state(SessionState::Loaded);
+        let id2 = session2.session_id().clone();
+        store.save(&session2).await.expect("save");
+        let loaded2 = store
+            .load_session(&id2)
+            .await
+            .expect("load")
+            .expect("session should exist");
+        assert_eq!(
+            loaded2.session_state(),
+            SessionState::Loaded,
+            "loaded session should be active"
+        );
+    }
+
+    #[tokio::test]
+    async fn fork_preserves_parent_metadata() {
+        // Given a store with a saved session.
+        let store = fresh_store().await;
+        let session = make_session();
+        let source_id = session.session_id().clone();
+        let source_created = *session.created_at();
+        store.save(&session).await.expect("save");
+
+        // When forking.
+        let fork_id = store.fork(&source_id, 1).await.expect("fork");
+
+        // Then the forked session's parent points to the source.
+        let loaded = store
+            .load_session(&fork_id)
+            .await
+            .expect("load")
+            .expect("forked session should exist");
+        assert_eq!(
+            loaded.parent_session().as_ref(),
+            Some(&source_id),
+            "fork should have parent_session set"
+        );
+
+        // And the forked session has a different created_at (fork_metadata patches timestamps).
+        assert_ne!(
+            loaded.created_at(),
+            &source_created,
+            "fork should update created_at via fork_metadata"
+        );
+    }
+
+    #[tokio::test]
+    async fn shutdown_cleans_up_empty_sessions() {
+        // Given a store with an empty session (no history entries).
+        let store = fresh_store().await;
+        let empty_session = ChatSessionState::new();
+        let empty_id = empty_session.session_id().clone();
+        store.save(&empty_session).await.expect("save empty");
+
+        // Also save a non-empty session that should survive.
+        let full_session = make_session();
+        let full_id = full_session.session_id().clone();
+        store.save(&full_session).await.expect("save full");
+
+        // Verify both are visible before shutdown.
+        let before = store.load_summaries().await.expect("load_summaries");
+        assert_eq!(before.len(), 2, "both sessions should be visible before shutdown");
+
+        // When shutting down.
+        store.shutdown().await.expect("shutdown");
+
+        // Then only the non-empty session survives.
+        let after = store.load_summaries().await.expect("load_summaries after shutdown");
+        let ids: Vec<_> = after.iter().map(|s| &s.session_id).collect();
+        assert!(
+            ids.contains(&&full_id),
+            "non-empty session should survive shutdown"
+        );
+        assert!(
+            !ids.contains(&&empty_id),
+            "empty session should be cleaned up during shutdown"
+        );
+    }
 }
