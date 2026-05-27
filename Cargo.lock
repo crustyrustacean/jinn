@@ -1994,6 +1994,7 @@ dependencies = [
  "nullslop-domain",
  "nullslop-plugin",
  "nullslop-tui",
+ "nullslop-web-fetch",
  "ratatui-spatial-splits",
  "ratatui-which-key",
  "reqwest",
