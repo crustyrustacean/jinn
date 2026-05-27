@@ -315,3 +315,150 @@ impl SessionPersistenceActor {
         }
     }
 }
+
+#[cfg(test)]
+mod dispatch_tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use super::*;
+    use crate::common::actor::ActorEnvelope;
+    use crate::feat::provider::protocol::event::StreamToken;
+    use crate::feat::tools_actor::protocol::event::ToolCallReceived;
+    use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
+    use crate::protocol::{Command, Event};
+
+    fn test_actor() -> SessionPersistenceActor {
+        use crate::common::app_state::AppState;
+        use crate::common::state::State;
+        use crate::feat::context::strategy::token_estimator::TiktokenCounter;
+
+        SessionPersistenceActor {
+            state: State::new(AppState::default()),
+            services: None,
+            store: None,
+            counter: TiktokenCounter::o200k_base(),
+            builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
+            shell: "/bin/sh".to_owned(),
+        }
+    }
+
+    fn test_context() -> (
+        std::sync::Arc<crate::common::actor::RecordingSink>,
+        crate::common::actor::ActorContext,
+    ) {
+        let sink = std::sync::Arc::new(crate::common::actor::RecordingSink::new());
+        let ctx = crate::common::actor::ActorContext::new("test-session-actor", sink.clone());
+        (sink, ctx)
+    }
+
+    #[tokio::test]
+    async fn handle_event_stream_token_dispatches_to_handler() {
+        // Given an actor with a session in streaming state.
+        let mut actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling a StreamToken event via the dispatch path.
+        let event = Event::StreamToken(StreamToken {
+            session_id: session_id.clone(),
+            index: 0,
+            token: "hello".to_owned(),
+            is_thinking: false,
+        });
+        actor
+            .handle(ActorEnvelope::Event(event), &ctx)
+            .await;
+
+        // Then the handler was invoked (session still streaming = no crash).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        // Verify the token was appended (handler ran successfully).
+        assert!(!session.history().is_empty());
+    }
+
+    #[tokio::test]
+    async fn handle_event_tool_call_received_dispatches_to_handler() {
+        // Given an actor with an active session.
+        let mut actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = actor.state.read().session.active_session_id().clone();
+
+        // When handling a ToolCallReceived event via the dispatch path.
+        let event = Event::ToolCallReceived(ToolCallReceived {
+            session_id: session_id.clone(),
+            tool_call: nullslop_provider::ToolCall {
+                id: "tc_1".to_owned(),
+                name: "bash".to_owned(),
+                arguments: "{}".to_owned(),
+            },
+        });
+        actor
+            .handle(ActorEnvelope::Event(event), &ctx)
+            .await;
+
+        // Then the handler was invoked (no panic = dispatch worked).
+    }
+
+    #[tokio::test]
+    async fn handle_command_enqueue_user_message_dispatches_to_handler() {
+        // Given an actor with an active session.
+        let mut actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = actor.state.read().session.active_session_id().clone();
+
+        // When handling an EnqueueUserMessage command via the dispatch path.
+        let cmd = Command::EnqueueUserMessage(EnqueueUserMessage {
+            session_id: session_id.clone(),
+            entry: crate::protocol::ChatEntry::user("hello world"),
+        });
+        actor
+            .handle(ActorEnvelope::Command(cmd), &ctx)
+            .await;
+
+        // Then the handler was invoked (no panic = dispatch worked).
+    }
+
+    #[tokio::test]
+    async fn handle_event_models_refreshed_dispatches_to_handler() {
+        // Given an actor.
+        let mut actor = test_actor();
+        let (_sink, ctx) = test_context();
+
+        // When handling a ModelsRefreshed event via the dispatch path.
+        let event = Event::ModelsRefreshed(ModelsRefreshed {
+            session_id: crate::protocol::SessionId::new(),
+            results: std::collections::HashMap::new(),
+            errors: std::collections::HashMap::new(),
+        });
+        actor
+            .handle(ActorEnvelope::Event(event), &ctx)
+            .await;
+
+        // Then no panic (dispatch to on_models_refreshed worked).
+    }
+
+    #[tokio::test]
+    async fn handle_event_environment_loaded_dispatches_to_handler() {
+        // Given an actor.
+        let mut actor = test_actor();
+        let (_sink, ctx) = test_context();
+
+        // When handling an EnvironmentLoaded event via the dispatch path.
+        let event = Event::EnvironmentLoaded(EnvironmentLoaded {
+            config: crate::feat::provider_infra::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+            },
+        });
+        actor
+            .handle(ActorEnvelope::Event(event), &ctx)
+            .await;
+
+        // Then no panic (dispatch to on_environment_loaded worked).
+    }
+}

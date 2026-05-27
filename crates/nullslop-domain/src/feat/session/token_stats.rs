@@ -172,3 +172,189 @@ where
     }
     total
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    use super::*;
+    use crate::feat::session::chat_session::ChatSessionState;
+    use jiff::Timestamp;
+
+    /// Build a sessions map with a parent→child→grandchild tree.
+    /// Each session has one token record with known values.
+    fn build_tree() -> HashMap<SessionId, ChatSessionState> {
+        let mut root = ChatSessionState::new();
+        root.push_token_record(TokenRecord {
+            timestamp: Timestamp::now(),
+            tokens_sent: 100,
+            tokens_received: 200,
+            cost: Some(0.01),
+        });
+        let root_id = root.session_id().clone();
+
+        let mut child = ChatSessionState::new();
+        child.set_parent_session(root_id.clone());
+        child.push_token_record(TokenRecord {
+            timestamp: Timestamp::now(),
+            tokens_sent: 300,
+            tokens_received: 400,
+            cost: Some(0.02),
+        });
+        let child_id = child.session_id().clone();
+
+        let mut grandchild = ChatSessionState::new();
+        grandchild.set_parent_session(child_id.clone());
+        grandchild.push_token_record(TokenRecord {
+            timestamp: Timestamp::now(),
+            tokens_sent: 500,
+            tokens_received: 600,
+            cost: Some(0.03),
+        });
+
+        let mut map = HashMap::new();
+        map.insert(root_id, root);
+        map.insert(child_id, child);
+        map.insert(grandchild.session_id().clone(), grandchild);
+        map
+    }
+
+    #[rstest::rstest]
+    fn aggregate_children_sums_own_and_descendants() {
+        // Given a tree: root → child → grandchild.
+        let map = build_tree();
+        let root_id = map
+            .iter()
+            .find(|(_, s)| s.parent_session().is_none())
+            .map(|(id, _)| id.clone())
+            .expect("root");
+
+        // When aggregating children of root.
+        let stats = aggregate_children(&map, &root_id);
+
+        // Then the result includes child (300+400) + grandchild (500+600).
+        assert_eq!(stats.total_sent, 300 + 500); // 800
+        assert_eq!(stats.total_received, 400 + 600); // 1000
+        assert_eq!(stats.request_count, 2);
+    }
+
+    #[rstest::rstest]
+    fn aggregate_children_returns_zero_for_leaf() {
+        // Given a tree: root → child → grandchild.
+        let map = build_tree();
+        let grandchild_id = map
+            .iter()
+            .find(|(_, s)| {
+                s.parent_session().is_some()
+                    && !map
+                        .values()
+                        .any(|c| c.parent_session().as_ref() == Some(s.session_id()))
+            })
+            .map(|(id, _)| id.clone())
+            .expect("grandchild");
+
+        // When aggregating children of the grandchild (a leaf).
+        let stats = aggregate_children(&map, &grandchild_id);
+
+        // Then the result is zero (no descendants).
+        assert_eq!(stats.total_sent, 0);
+        assert_eq!(stats.total_received, 0);
+        assert_eq!(stats.request_count, 0);
+    }
+
+    #[rstest::rstest]
+    fn aggregate_children_cost_sums_all_descendant_costs() {
+        // Given a tree: root → child → grandchild.
+        let map = build_tree();
+        let root_id = map
+            .iter()
+            .find(|(_, s)| s.parent_session().is_none())
+            .map(|(id, _)| id.clone())
+            .expect("root");
+
+        // When aggregating costs of root's descendants.
+        let cost = aggregate_children_cost(&map, &root_id);
+
+        // Then child cost (0.02) + grandchild cost (0.03) = 0.05.
+        let expected = 0.02 + 0.03;
+        assert!((cost - expected).abs() < f64::EPSILON, "expected {expected}, got {cost}");
+    }
+
+    #[rstest::rstest]
+    fn aggregate_children_cost_returns_zero_for_leaf() {
+        // Given a tree: root → child → grandchild.
+        let map = build_tree();
+        let grandchild_id = map
+            .iter()
+            .find(|(_, s)| {
+                s.parent_session().is_some()
+                    && !map
+                        .values()
+                        .any(|c| c.parent_session().as_ref() == Some(s.session_id()))
+            })
+            .map(|(id, _)| id.clone())
+            .expect("grandchild");
+
+        // When aggregating costs of the grandchild (a leaf).
+        let cost = aggregate_children_cost(&map, &grandchild_id);
+
+        // Then the cost is 0.0.
+        assert_eq!(cost, 0.0);
+    }
+
+    #[rstest::rstest]
+    fn aggregate_session_stats_includes_own_and_children() {
+        // Given a tree: root → child → grandchild.
+        let map = build_tree();
+        let root_id = map
+            .iter()
+            .find(|(_, s)| s.parent_session().is_none())
+            .map(|(id, _)| id.clone())
+            .expect("root");
+
+        // When aggregating full stats for root.
+        let stats = aggregate_session_stats(&map, &root_id);
+
+        // Then own = root's record (100 sent, 200 received).
+        assert_eq!(stats.own.total_sent, 100);
+        assert_eq!(stats.own.total_received, 200);
+        assert_eq!(stats.own.request_count, 1);
+
+        // And children = child + grandchild (300+500 sent, 400+600 received).
+        assert_eq!(stats.children.total_sent, 800);
+        assert_eq!(stats.children.total_received, 1000);
+        assert_eq!(stats.children.request_count, 2);
+
+        // And costs are summed.
+        assert!((stats.own_cost - 0.01).abs() < f64::EPSILON);
+        assert!((stats.children_cost - 0.05).abs() < f64::EPSILON);
+        assert!((stats.total_cost() - 0.06).abs() < f64::EPSILON);
+    }
+
+    #[rstest::rstest]
+    fn aggregate_children_returns_zero_for_empty_map() {
+        // Given an empty map.
+        let map: HashMap<SessionId, ChatSessionState> = HashMap::new();
+        let id = SessionId::new();
+
+        // When aggregating.
+        let stats = aggregate_children(&map, &id);
+
+        // Then all zeros.
+        assert_eq!(stats.total_sent, 0);
+        assert_eq!(stats.total_received, 0);
+        assert_eq!(stats.request_count, 0);
+    }
+
+    #[rstest::rstest]
+    fn aggregate_children_cost_returns_zero_for_empty_map() {
+        // Given an empty map.
+        let map: HashMap<SessionId, ChatSessionState> = HashMap::new();
+        let id = SessionId::new();
+
+        // When aggregating costs.
+        let cost = aggregate_children_cost(&map, &id);
+
+        // Then zero.
+        assert_eq!(cost, 0.0);
+    }
+}

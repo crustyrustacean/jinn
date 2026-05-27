@@ -56,3 +56,34 @@ impl fmt::Debug for ToolContext {
             .finish_non_exhaustive()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[rstest::rstest]
+    fn tool_context_debug_contains_cwd_and_timeout() {
+        // Given a ToolContext with known values.
+        let ctx = ToolContext {
+            cwd: PathBuf::from("/tmp/test"),
+            timeout: Some(std::time::Duration::from_secs(30)),
+            state: None,
+            session_id: Some(crate::protocol::SessionId::new()),
+            app_paths: crate::common::app_paths::AppPaths::default(),
+            sink: None,
+            shell: "/bin/sh".to_owned(),
+            max_output_lines: None,
+            max_output_bytes: None,
+        };
+
+        // When debugging.
+        let debug_str = format!("{ctx:?}");
+
+        // Then the output contains cwd, timeout, and session_id.
+        assert!(debug_str.contains("/tmp/test"), "debug should contain cwd");
+        assert!(debug_str.contains("timeout"), "debug should contain timeout");
+        assert!(debug_str.contains("session_id"), "debug should contain session_id");
+        assert!(debug_str.contains("ToolContext"), "debug should contain struct name");
+    }
+}
