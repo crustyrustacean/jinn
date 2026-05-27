@@ -311,7 +311,8 @@ impl SessionPersistenceActor {
             | Command::RescanJudges(..)
             | Command::LoadCompactionModelPickerEntries(..)
             | Command::CancelPendingJudgeEvaluation(..)
-            | Command::Dynamic(..) => {}
+            | Command::Dynamic(..)
+            | Command::ExecuteWebFetch(..) => {}
         }
     }
 }
