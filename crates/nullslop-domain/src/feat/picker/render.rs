@@ -88,3 +88,23 @@ pub fn render_tool_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         .footer(footer);
     widget.render(frame, area);
 }
+
+/// Renders the skill picker overlay.
+pub fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    let enabled_count = state
+        .frontend
+        .skill_picker
+        .items()
+        .iter()
+        .filter(|s| s.enabled)
+        .count();
+    let total = state.frontend.skill_picker.items().len();
+    let footer = Line::from(format!(
+        " TAB toggle \u{00b7} {enabled_count}/{total} enabled \u{00b7} Enter confirm \u{00b7} ESC cancel "
+    ));
+    let widget = SelectionWidget::new(&state.frontend.skill_picker)
+        .title(Line::from(" Skills "))
+        .title_style(Style::default().fg(state.frontend.theme.popup_title))
+        .footer(footer);
+    widget.render(frame, area);
+}

@@ -210,6 +210,7 @@ impl IntentHandler {
             Intent::PickerMoveCursorLeft => feat::picker::intent::handle_move_cursor_left(state),
             Intent::PickerMoveCursorRight => feat::picker::intent::handle_move_cursor_right(state),
             Intent::ToolToggleSelected => feat::picker::intent::handle_tool_toggle(state),
+            Intent::SkillToggleSelected => feat::picker::intent::handle_skill_toggle(state),
             Intent::SessionNew => feat::session::intent::handle_session_new(state),
             Intent::RefreshModels => feat::session::intent::handle_refresh_models(state),
             Intent::RescanPromptTemplates => {
