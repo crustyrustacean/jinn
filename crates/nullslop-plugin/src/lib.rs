@@ -1,17 +1,23 @@
 //! Plugin system for nullslop.
 //!
-//! Embeds a Lua VM and provides bindings for emitting commands (`ns.emit`),
-//! subscribing to events (`ps.sub`, `ps.pub`, `ps.unsub`), and loading
-//! plugins from directories containing `init.lua`.
+//! Each plugin runs in its own sandboxed Lua VM. The [`PluginRegistry`]
+//! owns all VMs and provides a centralized API for dispatching events
+//! to plugins and collecting hook results.
 //!
-//! The plugin host does not depend on the TUI crate. It accepts a command
-//! sender callback that the TUI wiring provides at startup.
+//! The plugin crate defines interfaces ([`TranslatorFn`], [`PluginRegistry`]).
+//! The wiring layer (in the main binary) provides the concrete command
+//! translation mapping.
 
 mod bindings;
+mod hooks;
 mod host;
 mod loader;
 mod preflight;
+mod registry;
 mod subscriber;
+mod translator;
 
-pub use host::{CommandSender, PluginHost, PluginInfo};
+pub use host::PluginHost;
+pub use registry::{CommandSender, PluginError, PluginInfo, PluginRegistry};
 pub use subscriber::WelcomeSubscriber;
+pub use translator::TranslatorFn;

@@ -115,7 +115,7 @@ pub fn install(lua: &Lua, sender: &CommandSender) -> Result<(), mlua::Error> {
     clippy::only_used_in_recursion,
     reason = "lua parameter needed for Table -> recursive value_to_json calls"
 )]
-fn value_to_json(lua: &Lua, value: &Value) -> Result<serde_json::Value, mlua::Error> {
+pub(crate) fn value_to_json(lua: &Lua, value: &Value) -> Result<serde_json::Value, mlua::Error> {
     match value {
         Value::Nil => Ok(serde_json::Value::Null),
         Value::Boolean(b) => Ok(serde_json::Value::Bool(*b)),
