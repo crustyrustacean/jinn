@@ -32,7 +32,7 @@ use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, NoDi
 use crate::common::state::State;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::tools_actor::protocol::command::{
-    CancelToolBatch, ExecuteTool, ExecuteToolBatch, ExecuteWebFetch, RegisterTools,
+    CancelToolBatch, ExecuteToolBatch, ExecuteWebFetch, RegisterTools,
 };
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,

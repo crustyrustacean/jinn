@@ -38,6 +38,10 @@ use nullslop_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use nullslop_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use nullslop_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
 
+use nullslop_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
+use nullslop_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
+use nullslop_web_fetch::HttpFetcher;
+
 use nullslop_domain::{
     ActorCounter, ActorHostService, ActorMessageSink, AppCore, AppMsg, InMemoryActorHost,
     MessageSink, ShutdownTracker, State, spawn, spawn_forwarding_task, system_spawn,
@@ -238,6 +242,31 @@ pub fn create_core_with_actor_host(
             builtin_filter: None,
             shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
         },
+    ));
+
+    // Web fetch actor — reads backend from preferences, constructs fetcher.
+    let web_fetch_backend = user_preferences_storage
+        .load()
+        .map(|p| p.web_fetch.backend)
+        .unwrap_or(WebFetchBackend::Http);
+    let web_fetcher: std::sync::Arc<dyn nullslop_web_fetch::WebFetcher> = match web_fetch_backend {
+        WebFetchBackend::Http => std::sync::Arc::new(HttpFetcher::new()),
+        WebFetchBackend::HeadlessChrome => {
+            // Phase 8 will add HeadlessChromeFetcher.
+            // For now, fall back to HttpFetcher with a warning.
+            tracing::warn!(
+                "headless-chrome backend not yet implemented, falling back to http"
+            );
+            std::sync::Arc::new(HttpFetcher::new())
+        }
+    };
+    actors.push(spawn::<WebFetchActor>(
+        "web-fetch",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        WebFetchActorDeps { web_fetcher },
     ));
 
     // Session persistence actor.
