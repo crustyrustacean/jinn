@@ -35,7 +35,7 @@ impl Extractor for MarkdownExtractor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test assertions")] 
 
     use super::*;
 
