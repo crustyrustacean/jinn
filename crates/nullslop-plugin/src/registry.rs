@@ -1038,4 +1038,46 @@ mod tests {
             .expect("get received");
         assert_eq!(received, "hello");
     }
+
+    #[rstest::rstest]
+    fn for_hook_end_to_end_with_file_on_disk() {
+        // Given a registry and a plugin file on disk that registers ps.hook.
+        let (registry, rx) = test_registry_with_sender();
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let plugin_dir = dir.path().join("e2e-hook-plugin");
+        fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+        fs::write(
+            plugin_dir.join("init.lua"),
+            r#"
+                ps.hook("render_items", function(ctx)
+                    return {
+                        title = ctx.title or "default",
+                        items = { "a", "b", "c" }
+                    }
+                end)
+            "#,
+        )
+        .expect("write init.lua");
+        registry.load_plugin(&plugin_dir).expect("load plugin");
+
+        // When calling for_hook with a payload the hook reads.
+        #[derive(serde::Deserialize, Debug, PartialEq)]
+        struct RenderResult {
+            title: String,
+            items: Vec<String>,
+        }
+        let results: Vec<RenderResult> = registry.for_hook(
+            "render_items",
+            &serde_json::json!({ "title": "my-title" }),
+        );
+
+        // Then the hook was called and returned deserialized data.
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].title, "my-title");
+        assert_eq!(results[0].items, vec!["a", "b", "c"]);
+
+        // And no commands were sent (for_hook is read-only).
+        drop(registry);
+        assert!(rx.try_recv().is_err());
+    }
 }
