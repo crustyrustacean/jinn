@@ -453,3 +453,166 @@ fn drain_and_apply_returns_zero_when_queue_empty() {
     // Then zero batches were applied.
     assert_eq!(count, 0);
 }
+
+// --- PinEntry with specific positions ---
+
+#[test]
+fn pin_entry_top_sets_position() {
+    // Given a session with an entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    let entry_id = session.history()[0].id.clone();
+
+    // When applying a PinEntry mutation with Top position.
+    session.apply_mutations(vec![HistoryMutation::PinEntry {
+        entry_id: entry_id.clone(),
+        position: PinPosition::Top,
+    }]);
+
+    // Then the entry is pinned to Top.
+    assert_eq!(session.history()[0].pin_position, Some(PinPosition::Top));
+}
+
+#[test]
+fn pin_entry_bottom_sets_position() {
+    // Given a session with an entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    let entry_id = session.history()[0].id.clone();
+
+    // When applying a PinEntry mutation with Bottom position.
+    session.apply_mutations(vec![HistoryMutation::PinEntry {
+        entry_id: entry_id.clone(),
+        position: PinPosition::Bottom,
+    }]);
+
+    // Then the entry is pinned to Bottom.
+    assert_eq!(session.history()[0].pin_position, Some(PinPosition::Bottom));
+}
+
+#[test]
+fn pin_entry_relative_sets_position() {
+    // Given a session with an entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    let entry_id = session.history()[0].id.clone();
+
+    // When applying a PinEntry mutation with Relative position.
+    session.apply_mutations(vec![HistoryMutation::PinEntry {
+        entry_id: entry_id.clone(),
+        position: PinPosition::Relative,
+    }]);
+
+    // Then the entry is pinned to Relative.
+    assert_eq!(session.history()[0].pin_position, Some(PinPosition::Relative));
+}
+
+#[test]
+fn pin_entry_can_change_position() {
+    // Given a session with a Top-pinned entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    let entry_id = session.history()[0].id.clone();
+    session.apply_mutations(vec![HistoryMutation::PinEntry {
+        entry_id: entry_id.clone(),
+        position: PinPosition::Top,
+    }]);
+    assert_eq!(session.history()[0].pin_position, Some(PinPosition::Top));
+
+    // When changing to Bottom.
+    session.apply_mutations(vec![HistoryMutation::PinEntry {
+        entry_id: entry_id.clone(),
+        position: PinPosition::Bottom,
+    }]);
+
+    // Then the position is updated.
+    assert_eq!(session.history()[0].pin_position, Some(PinPosition::Bottom));
+}
+
+// --- ContextOverride variants ---
+
+#[test]
+fn set_context_override_forced_include() {
+    // Given a session with an entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    let entry_id = session.history()[0].id.clone();
+
+    // When applying SetContextOverride with ForcedInclude.
+    session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::ForcedInclude,
+    }]);
+
+    // Then the entry has ForcedInclude.
+    assert_eq!(
+        session.history()[0].context_override,
+        ContextOverride::ForcedInclude
+    );
+}
+
+#[test]
+fn set_context_override_default_resets_to_default() {
+    // Given a session with a ForcedExclude entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    let entry_id = session.history()[0].id.clone();
+    session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::ForcedExclude,
+    }]);
+    assert_eq!(
+        session.history()[0].context_override,
+        ContextOverride::ForcedExclude
+    );
+
+    // When resetting to Default.
+    session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::Default,
+    }]);
+
+    // Then the entry is back to Default.
+    assert_eq!(
+        session.history()[0].context_override,
+        ContextOverride::Default
+    );
+}
+
+#[test]
+fn unpin_entry_removes_pin_from_pinned_entry() {
+    // Given a session with a pinned entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    let entry_id = session.history()[0].id.clone();
+    session.apply_mutations(vec![HistoryMutation::PinEntry {
+        entry_id: entry_id.clone(),
+        position: PinPosition::Top,
+    }]);
+    assert!(session.history()[0].pin_position.is_some());
+
+    // When applying UnpinEntry.
+    session.apply_mutations(vec![HistoryMutation::UnpinEntry {
+        entry_id: entry_id.clone(),
+    }]);
+
+    // Then the pin is removed.
+    assert!(session.history()[0].pin_position.is_none());
+}
+
+#[test]
+fn unpin_entry_on_unpinned_entry_is_noop() {
+    // Given a session with an unpinned entry.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    let entry_id = session.history()[0].id.clone();
+    assert!(session.history()[0].pin_position.is_none());
+
+    // When applying UnpinEntry on an already-unpinned entry.
+    session.apply_mutations(vec![HistoryMutation::UnpinEntry {
+        entry_id: entry_id.clone(),
+    }]);
+
+    // Then no panic, still None.
+    assert!(session.history()[0].pin_position.is_none());
+}
