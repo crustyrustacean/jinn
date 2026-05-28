@@ -63,7 +63,7 @@ impl SessionPersistenceActor {
         event: &ToolExecutionCompleted,
         ctx: &ActorContext,
     ) {
-        let total_tokens = {
+        {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
             session.finalize_tool_result(
@@ -74,10 +74,9 @@ impl SessionPersistenceActor {
                 event.result.full_content.clone(),
                 event.result.truncation.clone(),
             );
-            super::super::helpers::estimate_total_tokens(session)
         };
 
-        super::super::helpers::emit_history_appended(ctx, &event.session_id, total_tokens);
+        super::super::helpers::emit_history_appended(ctx, &event.session_id);
         self.save_active_session(&event.session_id).await;
     }
 

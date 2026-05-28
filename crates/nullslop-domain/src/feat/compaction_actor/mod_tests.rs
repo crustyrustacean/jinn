@@ -337,6 +337,14 @@ fn test_actor_with_low_budget() -> (
     let state = State::new(app_state);
     let session_id = state.read().session.active_session_id().clone();
 
+    // Set context_size above threshold so compaction triggers.
+    // threshold = 0.7 * 150_000 = 105_000, so 200_000 is well above.
+    {
+        let mut guard = state.write();
+        let session = guard.session.active_session_mut();
+        session.set_context_size(200_000);
+    }
+
     // Set a test compaction prompt so generate_summary doesn't get an empty prompt.
     state.write().context.compaction_prompt = "test compaction prompt".to_owned();
 
@@ -361,11 +369,10 @@ fn count_schedule_auto_compaction(commands: &[Command]) -> usize {
         .count()
 }
 
-/// Helper: build a `HistoryAppended` payload with high token count.
+/// Helper: build a `HistoryAppended` payload.
 fn high_token_event(session_id: &SessionId) -> HistoryAppended {
     HistoryAppended {
         session_id: session_id.clone(),
-        total_estimated_tokens: 200_000, // well above threshold (0.7 * 150_000 = 105_000)
     }
 }
 
@@ -1148,7 +1155,69 @@ fn gather_respects_start_and_cut_bounds() {
     assert_eq!(indices, vec![2, 3]);
 }
 
+/// Helper: create a test actor without context_size set.
+fn test_actor_without_context_size() -> (
+    std::sync::Arc<RecordingSink>,
+    ActorContext,
+    super::CompactionActor,
+    SessionId,
+) {
+    let sink = std::sync::Arc::new(RecordingSink::new());
+    let ctx = ActorContext::new("test-compaction", sink.clone());
+
+    let app_state = AppState::default();
+    let state = State::new(app_state);
+    let session_id = state.read().session.active_session_id().clone();
+    // Do NOT set context_size — it defaults to None.
+    state.write().context.compaction_prompt = "test compaction prompt".to_owned();
+
+    let services = Services::new();
+    let handle = services.handle.clone();
+    let deps = CompactionActorDeps {
+        state,
+        services,
+        handle,
+    };
+    let mut ctx = ctx;
+    let actor = CompactionActor::activate(deps, &mut ctx);
+
+    (sink, ctx, actor, session_id)
+}
+
 // --- handle_history_appended threshold boundary tests ---
+
+/// Helper: create actor with a specific context_size set.
+fn test_actor_with_context_size(context_size: u32) -> (
+    std::sync::Arc<RecordingSink>,
+    ActorContext,
+    super::CompactionActor,
+    SessionId,
+) {
+    let sink = std::sync::Arc::new(RecordingSink::new());
+    let ctx = ActorContext::new("test-compaction", sink.clone());
+
+    let app_state = AppState::default();
+    let state = State::new(app_state);
+    let session_id = state.read().session.active_session_id().clone();
+    {
+        let mut guard = state.write();
+        let session = guard.session.active_session_mut();
+        session.set_context_size(context_size);
+    }
+    state.write().context.compaction_prompt = "test compaction prompt".to_owned();
+
+    let services = Services::new();
+    let handle = services.handle.clone();
+    let deps = CompactionActorDeps {
+        state,
+        services,
+        handle,
+    };
+    let mut ctx = ctx;
+    let actor = CompactionActor::activate(deps, &mut ctx);
+
+    (sink, ctx, actor, session_id)
+}
 
 #[rstest::rstest]
 #[test]
@@ -1156,12 +1225,11 @@ fn history_appended_does_not_trigger_at_exact_threshold() {
     // Given an actor with default config.
     // Default: threshold=0.7, fallback_context_window=150_000
     // threshold_tokens = 0.7 * 150_000 = 105_000
-    let (sink, ctx, mut actor, session_id) = test_actor_with_low_budget();
+    let (sink, ctx, mut actor, session_id) = test_actor_with_context_size(105_000);
 
-    // When sending HistoryAppended with tokens exactly at the threshold.
+    // When sending HistoryAppended with context_size exactly at the threshold.
     let event = HistoryAppended {
         session_id: session_id.clone(),
-        total_estimated_tokens: 105_000, // exactly threshold * context_window
     };
     actor.handle_history_appended(&event, &ctx);
 
@@ -1174,18 +1242,34 @@ fn history_appended_does_not_trigger_at_exact_threshold() {
 #[test]
 fn history_appended_triggers_above_threshold() {
     // Given an actor with default config.
-    let (sink, ctx, mut actor, session_id) = test_actor_with_low_budget();
+    let (sink, ctx, mut actor, session_id) = test_actor_with_context_size(105_001);
 
-    // When sending HistoryAppended with tokens one above the threshold.
+    // When sending HistoryAppended with context_size one above the threshold.
     let event = HistoryAppended {
         session_id: session_id.clone(),
-        total_estimated_tokens: 105_001, // one above threshold
     };
     actor.handle_history_appended(&event, &ctx);
 
     // Then one ScheduleAutoCompaction is emitted.
     let count = count_schedule_auto_compaction(&sink.commands());
     assert_eq!(count, 1, "should trigger above threshold");
+}
+
+#[rstest::rstest]
+#[test]
+fn history_appended_skips_when_context_size_is_none() {
+    // Given an actor where context_size has not been set (None).
+    let (sink, ctx, mut actor, session_id) = test_actor_without_context_size();
+
+    // When sending HistoryAppended.
+    let event = HistoryAppended {
+        session_id: session_id.clone(),
+    };
+    actor.handle_history_appended(&event, &ctx);
+
+    // Then NO ScheduleAutoCompaction is emitted.
+    let count = count_schedule_auto_compaction(&sink.commands());
+    assert_eq!(count, 0, "should not trigger when context_size is None");
 }
 
 // --- perform_compaction end-to-end tests ---

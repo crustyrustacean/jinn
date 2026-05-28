@@ -178,9 +178,10 @@ impl CompactionActor {
 
     /// Handle a `HistoryAppended` event for auto-compaction trigger.
     ///
-    /// Compares the reported `total_estimated_tokens` against the configured
-    /// threshold. If exceeded, sends `ScheduleAutoCompaction` to set a flag
-    /// on the session that triggers compaction at the next turn boundary.
+    /// Reads `session.context_size()` (tiktoken-based, from last prompt assembly)
+    /// and compares it against the configured threshold. If exceeded, sends
+    /// `ScheduleAutoCompaction` to set a flag on the session that triggers
+    /// compaction at the next turn boundary.
     fn handle_history_appended(&mut self, payload: &HistoryAppended, ctx: &ActorContext) {
         if self.auto_compaction_pending {
             tracing::debug!(
@@ -218,7 +219,17 @@ impl CompactionActor {
                 .and_then(|r| r.context_length)
                 .map_or(config.fallback_context_window, |c| c as usize);
 
-            let total_tokens = payload.total_estimated_tokens;
+            // Read tiktoken-based context size from the last prompt assembly.
+            // Returns early if no prompt has been assembled yet (None).
+            let Some(context_size) = session.context_size() else {
+                tracing::debug!(
+                    session_id = ?session_id,
+                    "skipping auto-compaction: no context_size set yet"
+                );
+                return;
+            };
+
+            let total_tokens = context_size as usize;
 
             #[allow(clippy::cast_precision_loss)]
             let threshold_tokens = (config.threshold * context_window as f64) as usize;
