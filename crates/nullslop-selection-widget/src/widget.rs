@@ -61,7 +61,7 @@ pub(crate) const PROMPT: &str = "> ";
 ///
 /// Consecutive indices are merged into a single range. For example,
 /// `[0, 1, 2, 5, 6]` becomes `[0..3, 5..7]`.
-fn fuzzy_bytes_to_ranges(indices: &[usize]) -> Vec<std::ops::Range<usize>> {
+pub(crate) fn fuzzy_bytes_to_ranges(indices: &[usize]) -> Vec<std::ops::Range<usize>> {
     let mut iter = indices.iter().copied();
     let Some(first) = iter.next() else {
         return Vec::new();
