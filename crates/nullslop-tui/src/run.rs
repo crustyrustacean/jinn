@@ -173,6 +173,14 @@ fn run_main_loop(
     Ok(())
 }
 
+/// Result of a suspend/restore cycle.
+enum SuspendResult {
+    /// The edited content, to be written to the input buffer.
+    EditContent(Option<String>),
+    /// The selected directory path, to be set as session CWD.
+    ChangeCwd(Option<std::path::PathBuf>),
+}
+
 /// Executes a suspend/restore cycle for the given action.
 ///
 /// 1. Stops the background event thread
@@ -194,7 +202,7 @@ fn handle_suspend_action(
     }
     app.events.drain();
 
-    let result_content = crate::terminal::suspend_and_run(terminal, || match action {
+    let result = crate::terminal::suspend_and_run(terminal, || match action {
         crate::suspend::SuspendAction::Edit {
             initial_content,
             on_result,
@@ -205,7 +213,58 @@ fn handle_suspend_action(
                 .flatten();
 
             let changed = edited.filter(|c| c != &initial_content);
-            on_result(changed)
+            SuspendResult::EditContent(on_result(changed))
+        }
+        crate::suspend::SuspendAction::ChangeCwd { search_root } => {
+            let command_template = app
+                .core
+                .state
+                .read()
+                .frontend
+                .preferences
+                .cwd_picker
+                .command
+                .clone();
+
+            // Shell-escape the path for safe substitution.
+            let escaped_path = shell_escape(search_root.to_string_lossy());
+            let rendered = command_template.replace("{path}", &escaped_path);
+
+            let output_result = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(&rendered)
+                .current_dir(&search_root)
+                .output();
+
+            let selected = match output_result {
+                Ok(output) => {
+                    if output.status.success() {
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        stdout
+                            .lines()
+                            .next()
+                            .filter(|line| !line.is_empty())
+                            .map(std::path::PathBuf::from)
+                    } else {
+                        // Non-zero exit = user cancelled (ESC in fzf) or error.
+                        // Log stderr as debug — user cancelled is not an error.
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        if !stderr.is_empty() {
+                            tracing::debug!(
+                                stderr = %stderr,
+                                exit_code = output.status.code().unwrap_or(-1),
+                                "CWD picker exited with error"
+                            );
+                        }
+                        None
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(err = %e, "failed to run CWD picker command");
+                    None
+                }
+            };
+            SuspendResult::ChangeCwd(selected)
         }
     })
     .change_context(TuiRunError)
@@ -221,14 +280,67 @@ fn handle_suspend_action(
         .change_context(TuiRunError)
         .attach("failed to redraw after suspend")?;
 
-    // Handle the suspend result directly — set input_buffer on AppState.
-    if let Some(content) = result_content {
-        app.core
-            .state
-            .write()
-            .active_chat_input_mut()
-            .replace_all(content);
+    // Handle the suspend result.
+    match result {
+        SuspendResult::EditContent(content) => {
+            if let Some(content) = content {
+                app.core
+                    .state
+                    .write()
+                    .active_chat_input_mut()
+                    .replace_all(content);
+            }
+        }
+        SuspendResult::ChangeCwd(path) => {
+            if let Some(path) = path {
+                // Validate: must exist and be a directory.
+                if path.is_dir() {
+                    let canonical = match std::fs::canonicalize(&path) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            tracing::warn!(
+                                path = %path.display(),
+                                err = %e,
+                                "failed to canonicalize CWD picker result"
+                            );
+                            return Ok(());
+                        }
+                    };
+                    app.core
+                        .state
+                        .write()
+                        .active_session_mut()
+                        .set_cwd(canonical);
+                    tracing::info!(
+                        cwd = %app.core.state.read().active_session().cwd().display(),
+                        "session CWD updated"
+                    );
+                } else {
+                    tracing::warn!(
+                        path = %path.display(),
+                        "CWD picker returned non-directory path, ignoring"
+                    );
+                }
+            }
+        }
     }
 
     Ok(())
+}
+
+/// Shell-escapes a path for safe substitution into a `sh -c` command.
+///
+/// Wraps in single quotes, escaping any embedded single quotes.
+fn shell_escape(s: std::borrow::Cow<'_, str>) -> String {
+    let mut result = String::with_capacity(s.len() + 2);
+    result.push('\'');
+    for ch in s.chars() {
+        if ch == '\'' {
+            result.push_str("'\\''") ;
+        } else {
+            result.push(ch);
+        }
+    }
+    result.push('\'');
+    result
 }
