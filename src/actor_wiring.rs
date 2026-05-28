@@ -448,6 +448,28 @@ pub fn create_core_with_actor_host(
         ));
     }
 
+    // Compaction trigger actor — handles /compact and /compact-all commands.
+    {
+        use nullslop_domain::feat::compaction_worker::{CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker};
+
+        let config = state.read().frontend.preferences.compaction.clone();
+        let compaction_prompt = state.read().context.compaction_prompt.clone();
+
+        actors.push(spawn::<CompactionTriggerActor>(
+            "compaction-trigger",
+            &sink, handle, &counter, &shutdown_tracker,
+            CompactionTriggerActorDeps {
+                worker: CompactionWorker {
+                    services: services.clone(),
+                    handle: handle.clone(),
+                    state: state.clone(),
+                    config,
+                    compaction_prompt,
+                },
+            },
+        ));
+    }
+
     // Sidebar state actor — keeps sidebar cursor in sync after session removal.
     actors.push(spawn::<
         nullslop_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor,
