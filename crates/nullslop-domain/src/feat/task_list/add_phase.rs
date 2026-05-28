@@ -92,15 +92,14 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             }
         };
 
-        let phase_id;
-        let rendered;
-        {
+        let (phase_id, rendered) = {
             let mut w = state.write();
             let session = w.session_mut(&session_id);
             let list = session.task_list_mut();
-            phase_id = list.add_phase(&description);
-            rendered = list.render_text();
-        }
+            let phase_id = list.add_phase(&description);
+            let rendered = list.render_text();
+            (phase_id, rendered)
+        };
 
         ToolResult {
             tool_call_id: call.id,
