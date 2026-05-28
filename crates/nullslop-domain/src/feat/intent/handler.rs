@@ -62,6 +62,13 @@ impl IntentHandler {
     pub fn handle(intent: &Intent, state: &mut AppState) -> IntentResult {
         state.frontend.tui_signals.clear();
 
+        // Clear ignore sweep state when the user performs any action other than
+        // pressing x. This ensures the sweep only continues during consecutive
+        // x presses within 100ms.
+        if !matches!(intent, Intent::ChatEntryIgnoreSelected) {
+            state.active_session_mut().clear_ignore_sweep();
+        }
+
         // Cancel stream prompt intercept: if the prompt is showing,
         // ESC (NormalEscape) confirms the cancel;
         // any other intent dismisses the prompt and continues processing.
