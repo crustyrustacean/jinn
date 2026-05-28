@@ -334,11 +334,14 @@ fn execute_slash_command(
 ) -> IntentResult {
     match command {
         SlashCommand::Compact | SlashCommand::CompactAll => {
-            // TODO: Re-implement via HistoryWorker (Phase 3)
-            let _session_id = state.session.active_session_id();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::system("Compaction is temporarily disabled during refactoring."));
-            IntentResult::empty()
+            let compact_all = matches!(command, SlashCommand::CompactAll);
+            let session_id = state.session.active_session_id().clone();
+            IntentResult::with_commands(vec![Command::TriggerCompaction(
+                crate::feat::session::protocol::trigger_compaction::TriggerCompaction {
+                    session_id,
+                    compact_all,
+                },
+            )])
         }
         SlashCommand::New => crate::feat::session::intent::handle_session_new(state),
         SlashCommand::Workflow => {

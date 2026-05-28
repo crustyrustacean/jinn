@@ -11,6 +11,8 @@
 
 pub mod algorithm;
 pub mod serializer;
+pub mod trigger_actor;
 pub mod worker;
 
+pub use trigger_actor::{CompactionTriggerActor, CompactionTriggerActorDeps};
 pub use worker::{CompactionTrigger, CompactionWorker};

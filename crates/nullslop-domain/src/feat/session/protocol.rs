@@ -14,6 +14,7 @@ pub mod session_load_requested;
 pub mod session_new;
 pub mod session_phase_changed;
 pub mod submit_history_mutations;
+pub mod trigger_compaction;
 pub mod user_interacted;
 
 pub use archive_session::ArchiveSession;

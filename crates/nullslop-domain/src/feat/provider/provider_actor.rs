@@ -132,6 +132,7 @@ impl ProviderActor {
             | Command::MarkSessionInteracted(..)
             | Command::CancelPendingJudgeEvaluation(..)
             | Command::SubmitHistoryMutations(..)
+            | Command::TriggerCompaction(..)
             | Command::Dynamic(..)
             | Command::ExecuteWebFetch(..) => {}
         }

@@ -150,6 +150,8 @@ pub enum Command {
     /// static `CommandMsg::NAME`. If no actor subscribes to that name, the
     /// command is silently dropped.
     Dynamic(DynamicCommand),
+    /// Trigger compaction for a session (from /compact or /compact-all).
+    TriggerCompaction(crate::feat::session::protocol::trigger_compaction::TriggerCompaction),
 }
 
 impl Command {
@@ -217,6 +219,9 @@ impl Command {
                 Some(crate::feat::judge::CancelPendingJudgeEvaluation::NAME)
             }
             Self::Dynamic(..) => Some(DynamicCommand::NAME),
+            Self::TriggerCompaction(..) => Some(
+                crate::feat::session::protocol::trigger_compaction::TriggerCompaction::NAME,
+            ),
         }
     }
 
@@ -383,6 +388,13 @@ impl std::fmt::Display for Command {
             }
             Command::Dynamic(d) => {
                 write!(f, "dynamic command '{}'", d.name)
+            }
+            Command::TriggerCompaction(payload) => {
+                write!(
+                    f,
+                    "trigger compaction for {} (compact_all={})",
+                    payload.session_id, payload.compact_all
+                )
             }
         }
     }

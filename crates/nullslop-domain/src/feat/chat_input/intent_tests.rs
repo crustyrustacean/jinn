@@ -1096,11 +1096,15 @@ fn submit_compact_slash_command_pushes_system_message() {
     // When handling SubmitMessage.
     let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
 
-    // Then a MarkSessionInteracted command is dispatched (compaction temporarily disabled).
-    assert_eq!(result.commands.len(), 1);
+    // Then a MarkSessionInteracted and TriggerCompaction command are dispatched.
+    assert_eq!(result.commands.len(), 2);
     assert!(
         matches!(&result.commands[0], Command::MarkSessionInteracted(..)),
         "first command should be MarkSessionInteracted"
+    );
+    assert!(
+        matches!(&result.commands[1], Command::TriggerCompaction(..)),
+        "second command should be TriggerCompaction"
     );
 }
 
