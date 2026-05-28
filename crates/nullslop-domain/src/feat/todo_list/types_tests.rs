@@ -241,7 +241,7 @@ fn render_text_shows_phases_and_tasks() {
     assert!(rendered.contains("[ ] Read docs"));
     assert!(rendered.contains("[ ] Call API"));
     // Phase ID should appear in the output.
-    assert!(rendered.contains(&format!("[{}]", pid)));
+    assert!(rendered.contains(&format!("[{pid}]")));
 }
 
 #[test]
@@ -379,10 +379,10 @@ fn id_generation_no_collision() {
     assert_eq!(sorted_pids.len(), phase_ids.len());
 
     // All task IDs are unique.
-    let mut sorted_tids = task_ids.clone();
-    sorted_tids.sort();
-    sorted_tids.dedup();
-    assert_eq!(sorted_tids.len(), task_ids.len());
+    let mut unique_tids = task_ids.clone();
+    unique_tids.sort();
+    unique_tids.dedup();
+    assert_eq!(unique_tids.len(), task_ids.len());
 }
 
 #[test]
