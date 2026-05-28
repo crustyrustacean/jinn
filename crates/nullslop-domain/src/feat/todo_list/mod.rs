@@ -503,6 +503,81 @@ impl TaskList {
         Ok(new_task_id)
     }
 
+    /// Defers a task to the end of a specific phase (or a new phase).
+    ///
+    /// The source task is marked with `Deferred` status and remains in place.
+    /// A new `Pending` copy with the same description is appended to the end
+    /// of the target phase.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The source task does not exist (`TaskNotFound`)
+    /// - The source task is already deferred (`AlreadyDeferred`)
+    /// - `target_phase_id` is provided but the phase does not exist (`PhaseNotFound`)
+    ///
+    /// # Panics
+    ///
+    /// Panics if internal invariants are violated (source found but then missing).
+    pub fn defer_to_phase(
+        &mut self,
+        source_task_id: &TaskId,
+        target_phase_id: &PhaseId,
+    ) -> Result<TaskId, TaskListError> {
+        // Find source task info.
+        let mut source_info: Option<(usize, String, TaskStatus)> = None;
+        for phase in &self.phases {
+            for task in &phase.tasks {
+                if &task.id == source_task_id {
+                    source_info = Some((phase.tasks.iter().position(|t| &t.id == source_task_id).unwrap(), task.description.clone(), task.status));
+                    break;
+                }
+            }
+            if source_info.is_some() {
+                break;
+            }
+        }
+
+        let (src_pi, src_desc, src_status) =
+            source_info.ok_or_else(|| TaskListError::TaskNotFound(source_task_id.clone()))?;
+
+        // Validate source is not already deferred.
+        if src_status == TaskStatus::Deferred {
+            return Err(TaskListError::AlreadyDeferred(source_task_id.clone()));
+        }
+
+        // Validate target phase exists.
+        let target_pi = self
+            .phases
+            .iter()
+            .position(|p| &p.id == target_phase_id)
+            .ok_or_else(|| TaskListError::PhaseNotFound(target_phase_id.clone()))?;
+
+        // Mark source task as deferred.
+        self.phases[src_pi].tasks.iter_mut().find(|t| &t.id == source_task_id).expect("source was found above").status =
+            TaskStatus::Deferred;
+
+        // Generate new task ID.
+        let existing: Vec<_> = self
+            .phases
+            .iter()
+            .flat_map(|p| &p.tasks)
+            .map(|t| t.id.clone())
+            .collect();
+        let new_task_id = TaskId::new(&existing);
+
+        let new_task = Task {
+            id: new_task_id.clone(),
+            description: src_desc,
+            status: TaskStatus::Pending,
+        };
+
+        // Append to end of target phase.
+        self.phases[target_pi].tasks.push(new_task);
+
+        Ok(new_task_id)
+    }
+
     /// Returns the phase with the given ID, if it exists.
     pub fn get_phase(&self, phase_id: &PhaseId) -> Option<&Phase> {
         self.phases.iter().find(|p| &p.id == phase_id)
