@@ -122,10 +122,10 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<c-d>", Intent::ScrollDown, KeyCategory::Navigation)
             // Input — external editor
             .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
-            // CWD picker — search from session CWD
+            // Change CWD — search from session CWD
             .bind("<M-c>", Intent::ChangeCwd { root: CwdRoot::Session }, KeyCategory::Navigation)
-            // CWD picker — search from home
-            .bind("<M-C>", Intent::ChangeCwd { root: CwdRoot::Home }, KeyCategory::Navigation)
+            // Change CWD — search from home directory
+            .bind("<M-d>", Intent::ChangeCwd { root: CwdRoot::Home }, KeyCategory::Navigation)
             // g prefix — general commands and model management
             .describe_group_with_category("g", "general", KeyCategory::General)
             .describe_group_with_category("gm", "model", KeyCategory::Model)
@@ -208,10 +208,10 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<c-k>", Intent::EnterNormalMode, KeyCategory::General)
             .bind("<c-c>", Intent::Interrupt { session_id: None }, KeyCategory::General)
             .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
-            // CWD picker — search from session CWD
+            // Change CWD — search from session CWD
             .bind("<M-c>", Intent::ChangeCwd { root: CwdRoot::Session }, KeyCategory::Navigation)
-            // CWD picker — search from home
-            .bind("<M-C>", Intent::ChangeCwd { root: CwdRoot::Home }, KeyCategory::Navigation)
+            // Change CWD — search from home directory
+            .bind("<M-d>", Intent::ChangeCwd { root: CwdRoot::Home }, KeyCategory::Navigation)
             .bind("<f1>", Intent::ToggleWhichkey, KeyCategory::General)
             .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
             .bind("<left>", Intent::MoveCursorLeft, KeyCategory::Input)

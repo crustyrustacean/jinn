@@ -219,7 +219,7 @@ mod tests {
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::preferences_actor::RequestRetryConfig;
     use crate::feat::preferences_actor::user_preferences::{
-        CompactionConfig, ContextSlidingWindowConfig, CwdPickerConfig,
+        CompactionConfig, ContextSlidingWindowConfig, CwdSelectorConfig,
         OpenrouterWebSearchConfig, WebFetchConfig,
     };
 
@@ -255,7 +255,7 @@ mod tests {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_picker: CwdPickerConfig::default(),
+            cwd_selector: CwdSelectorConfig::default(),
         };
 
         // When saving and reloading.
@@ -306,7 +306,7 @@ mod tests {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_picker: CwdPickerConfig::default(),
+            cwd_selector: CwdSelectorConfig::default(),
         };
 
         // When saving and reloading.
@@ -340,7 +340,7 @@ mod tests {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_picker: CwdPickerConfig::default(),
+            cwd_selector: CwdSelectorConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -374,7 +374,7 @@ mod tests {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_picker: CwdPickerConfig::default(),
+            cwd_selector: CwdSelectorConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -395,7 +395,7 @@ mod tests {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_picker: CwdPickerConfig::default(),
+            cwd_selector: CwdSelectorConfig::default(),
         };
         service.save(&updated).expect("save updated");
 
@@ -425,7 +425,7 @@ mod tests {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_picker: CwdPickerConfig::default(),
+            cwd_selector: CwdSelectorConfig::default(),
         };
         service.save(&prefs).expect("save");
 

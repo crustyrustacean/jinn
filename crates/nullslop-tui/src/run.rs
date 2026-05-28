@@ -223,7 +223,7 @@ fn handle_suspend_action(
                 .read()
                 .frontend
                 .preferences
-                .cwd_picker
+                .cwd_selector
                 .command
                 .clone();
 
@@ -254,14 +254,14 @@ fn handle_suspend_action(
                             tracing::debug!(
                                 stderr = %stderr,
                                 exit_code = output.status.code().unwrap_or(-1),
-                                "CWD picker exited with error"
+                                "CWD selector exited with error"
                             );
                         }
                         None
                     }
                 }
                 Err(e) => {
-                    tracing::error!(err = %e, "failed to run CWD picker command");
+                    tracing::error!(err = %e, "failed to run CWD selector command");
                     None
                 }
             };
@@ -302,7 +302,7 @@ fn handle_suspend_action(
                             tracing::warn!(
                                 path = %path.display(),
                                 err = %e,
-                                "failed to canonicalize CWD picker result"
+                                "failed to canonicalize CWD selector result"
                             );
                             return Ok(());
                         }
@@ -328,7 +328,7 @@ fn handle_suspend_action(
                 } else {
                     tracing::warn!(
                         path = %path.display(),
-                        "CWD picker returned non-directory path, ignoring"
+                        "CWD selector returned non-directory path, ignoring"
                     );
                 }
             }

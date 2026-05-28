@@ -116,7 +116,7 @@ pub fn handle_edit_input(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Requests a CWD change via the external directory picker.
+/// Requests a CWD change via the external directory selection command.
 ///
 /// Sets the `change_cwd_requested` TUI signal so the outer platform layer
 /// can suspend the TUI and run the configured picker command.

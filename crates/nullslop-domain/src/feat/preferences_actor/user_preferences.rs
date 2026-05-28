@@ -51,26 +51,26 @@ pub struct SessionLifecycle {
     pub teardown: Option<crate::feat::session_lifecycle::builtin::LifecycleCommand>,
 }
 
-/// CWD picker configuration.
+/// CWD selector configuration.
 ///
-/// Serialized as `[cwd_picker]` in `nullslop.toml`.
+/// Serialized as `[cwd_selector]` in `nullslop.toml`.
 /// Controls the shell command used to select a new working directory.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CwdPickerConfig {
+pub struct CwdSelectorConfig {
     /// Shell command template. `{path}` is replaced with the search root.
     /// Default: `find -L {path} -type d 2>/dev/null | fzf --no-multi`
-    #[serde(default = "CwdPickerConfig::default_command")]
+    #[serde(default = "CwdSelectorConfig::default_command")]
     pub command: String,
 }
 
-impl CwdPickerConfig {
+impl CwdSelectorConfig {
     /// Returns the default picker command.
     fn default_command() -> String {
         "find -L {path} -type d 2>/dev/null | fzf --no-multi".to_owned()
     }
 }
 
-impl Default for CwdPickerConfig {
+impl Default for CwdSelectorConfig {
     fn default() -> Self {
         Self {
             command: Self::default_command(),
@@ -359,9 +359,9 @@ pub struct UserPreferences {
     /// OpenRouter web search server tool configuration.
     #[serde(default)]
     pub openrouter_web_search: OpenrouterWebSearchConfig,
-    /// CWD picker configuration.
+    /// CWD selector configuration.
     #[serde(default)]
-    pub cwd_picker: CwdPickerConfig,
+    pub cwd_selector: CwdSelectorConfig,
 }
 
 /// Returns the path to the user preferences file.
@@ -499,7 +499,7 @@ mod tests {
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_picker: CwdPickerConfig::default(),
+            cwd_selector: CwdSelectorConfig::default(),
         };
 
         // When saving and reloading.
@@ -571,7 +571,7 @@ last_strategy = "sliding_window""#,
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_picker: CwdPickerConfig::default(),
+            cwd_selector: CwdSelectorConfig::default(),
         };
 
         // When saving.
@@ -602,7 +602,7 @@ last_strategy = "sliding_window""#,
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_picker: CwdPickerConfig::default(),
+            cwd_selector: CwdSelectorConfig::default(),
         };
 
         // When saving and reloading.
@@ -647,7 +647,7 @@ last_strategy = "sliding_window""#,
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_picker: CwdPickerConfig::default(),
+            cwd_selector: CwdSelectorConfig::default(),
         };
 
         // When saving and reloading.
@@ -692,7 +692,7 @@ last_strategy = "sliding_window""#,
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_picker: CwdPickerConfig::default(),
+            cwd_selector: CwdSelectorConfig::default(),
         };
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
@@ -806,7 +806,7 @@ teardown_command = "~/.config/nullslop/scripts/fossil-cleanup.sh $1"
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_picker: CwdPickerConfig::default(),
+            cwd_selector: CwdSelectorConfig::default(),
         };
 
         save_preferences_to(&prefs, &path).expect("save");
