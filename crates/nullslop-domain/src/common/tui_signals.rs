@@ -37,6 +37,9 @@ pub struct TuiSignals {
 
     /// Text to copy to the system clipboard (set by yank-selected-entry intent).
     pub yank_text: Option<String>,
+
+    /// Request to change CWD via external picker. Carries the search root.
+    pub change_cwd_requested: Option<crate::protocol::CwdRoot>,
 }
 
 impl Default for TuiSignals {
@@ -53,6 +56,7 @@ impl TuiSignals {
             toggle_whichkey: false,
             edit_requested: false,
             yank_text: None,
+            change_cwd_requested: None,
         }
     }
 
@@ -61,6 +65,7 @@ impl TuiSignals {
         self.toggle_whichkey = false;
         self.edit_requested = false;
         self.yank_text = None;
+        self.change_cwd_requested = None;
     }
 }
 
@@ -75,13 +80,14 @@ mod tests {
         let mut signals = TuiSignals::new();
         signals.toggle_whichkey = true;
         signals.edit_requested = true;
-        signals.toggle_whichkey = true;
+        signals.change_cwd_requested = Some(crate::protocol::CwdRoot::Session);
 
         // When clearing.
         signals.clear();
 
-        // Then all flags are false.
+        // Then all flags are false/None.
         assert!(!signals.toggle_whichkey);
         assert!(!signals.edit_requested);
+        assert!(signals.change_cwd_requested.is_none());
     }
 }
