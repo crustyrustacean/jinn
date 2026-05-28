@@ -354,3 +354,34 @@ fn shell_escape(s: &str) -> String {
     result.push('\'');
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[rstest::rstest]
+    fn shell_escape_simple_path() {
+        assert_eq!(shell_escape("/home/user/project"), "'/home/user/project'");
+    }
+
+    #[rstest::rstest]
+    fn shell_escape_path_with_spaces() {
+        assert_eq!(
+            shell_escape("/home/user/my project"),
+            "'/home/user/my project'"
+        );
+    }
+
+    #[rstest::rstest]
+    fn shell_escape_path_with_single_quote() {
+        assert_eq!(
+            shell_escape("/home/user/it's/project"),
+            "'/home/user/it'\\''s/project'"
+        );
+    }
+
+    #[rstest::rstest]
+    fn shell_escape_empty_string() {
+        assert_eq!(shell_escape(""), "''");
+    }
+}
