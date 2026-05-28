@@ -312,6 +312,15 @@ fn handle_suspend_action(
                         .write()
                         .active_session_mut()
                         .set_cwd(canonical);
+
+                    // Rescan context files from the new CWD.
+                    let new_cwd = app.core.state.read().active_session().cwd().to_owned();
+                    let context_files =
+                        nullslop_domain::feat::context::env_context::load_project_context_files_sync(
+                            &new_cwd,
+                        );
+                    app.core.state.write().context.context_files = context_files;
+
                     tracing::info!(
                         cwd = %app.core.state.read().active_session().cwd().display(),
                         "session CWD updated"
