@@ -32,7 +32,7 @@ use crate::feat::provider::protocol::event::{
     StreamToken,
 };
 use crate::feat::session_lifecycle::protocol::event::{
-    SessionSetupCompleted, SessionTeardownFinished,
+    SessionCreated, SessionSetupCompleted, SessionTeardownFinished,
 };
 use crate::feat::skills::skills_scan_actor::SkillsLoaded;
 use crate::feat::tools_actor::protocol::event::{
@@ -110,6 +110,8 @@ pub enum Event {
     PreferencesUpdated(PreferencesUpdated),
     /// The active session changed (tab switch or session load).
     ActiveSessionChanged(crate::protocol::system::ActiveSessionChanged),
+    /// A new chat session was created.
+    SessionCreated(SessionCreated),
     /// A lifecycle setup command completed.
     SessionSetupCompleted(SessionSetupCompleted),
     /// A lifecycle teardown command finished.
@@ -185,6 +187,7 @@ impl Event {
             Self::ActiveSessionChanged(..) => {
                 Some(crate::protocol::system::ActiveSessionChanged::TYPE_NAME)
             }
+            Self::SessionCreated(..) => Some(SessionCreated::TYPE_NAME),
             Self::SessionSetupCompleted(..) => Some(SessionSetupCompleted::TYPE_NAME),
             Self::SessionTeardownFinished(..) => Some(SessionTeardownFinished::TYPE_NAME),
             Self::CompactionCompleted(..) => Some(CompactionCompleted::TYPE_NAME),
