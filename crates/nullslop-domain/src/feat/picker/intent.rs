@@ -1182,12 +1182,14 @@ mod tests {
             Skill {
                 name: "phased-task-loop".to_owned(),
                 description: "Structured phased implementation workflow".to_owned(),
+                body: String::new(),
                 file_path: PathBuf::from("/tmp/skills/phased-task-loop/SKILL.md"),
                 base_dir: PathBuf::from("/tmp/skills/phased-task-loop"),
             },
             Skill {
                 name: "web-coder".to_owned(),
                 description: "Expert web development".to_owned(),
+                body: String::new(),
                 file_path: PathBuf::from("/tmp/skills/web-coder/SKILL.md"),
                 base_dir: PathBuf::from("/tmp/skills/web-coder"),
             },

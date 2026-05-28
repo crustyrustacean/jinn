@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use super::Skill;
-use super::frontmatter::parse_frontmatter;
+use super::frontmatter::{parse_frontmatter, strip_frontmatter};
 
 /// Scans a directory for agent skills.
 ///
@@ -44,9 +44,12 @@ pub fn scan_skills(dir: &Path) -> Vec<Skill> {
             .name
             .unwrap_or_else(|| entry.file_name().to_string_lossy().to_string());
 
+        let body = strip_frontmatter(&content);
+
         skills.push(Skill {
             name,
             description,
+            body,
             file_path: skill_md,
             base_dir: entry.path(),
         });
@@ -80,6 +83,7 @@ mod tests {
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "my-skill");
         assert_eq!(skills[0].description, "A test skill");
+        assert_eq!(skills[0].body, "# Content");
         assert_eq!(skills[0].file_path, skill_dir.join("SKILL.md"));
         assert_eq!(skills[0].base_dir, skill_dir);
     }
@@ -211,5 +215,25 @@ mod tests {
         assert!(names.contains(&"skill-a"));
         assert!(names.contains(&"skill-b"));
         assert!(names.contains(&"skill-c"));
+    }
+
+    #[rstest::rstest]
+    fn scan_skills_body_is_empty_for_frontmatter_only_file() {
+        // Given a skill with frontmatter but no body content.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let skill_dir = dir.path().join("no-body");
+        fs::create_dir_all(&skill_dir).expect("create skill dir");
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: no-body\ndescription: Has desc\n---",
+        )
+        .expect("write SKILL.md");
+
+        // When scanning for skills.
+        let skills = scan_skills(dir.path());
+
+        // Then one skill is found with an empty body.
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].body, "");
     }
 }
