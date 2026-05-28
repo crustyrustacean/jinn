@@ -21,6 +21,7 @@ mod history_mutation_tests;
 #[cfg(test)]
 mod entries_tests;
 pub mod intent;
+pub mod phase_machine;
 pub mod picker_entry;
 pub mod profile;
 pub mod protocol;
