@@ -13,21 +13,24 @@ use crate::feat::todo_list::{PhaseId, TaskList, TaskListError, TaskPosition, Tas
 fn add_phase_creates_phase_with_id_and_description() {
     let mut list = TaskList::new();
     let id = list.add_phase("Research");
-    assert_eq!(id, PhaseId::new_for_test("p1"));
+    // ID should start with 'p' and be 4 chars total (prefix + 3 random chars).
+    let id_str = id.to_string();
+    assert!(id_str.starts_with('p'));
+    assert_eq!(id_str.len(), 4);
     let phase = list.get_phase(&id).unwrap();
     assert_eq!(phase.description(), "Research");
     assert!(phase.is_empty());
 }
 
 #[test]
-fn add_phase_increments_id_counter() {
+fn add_phase_generates_distinct_ids() {
     let mut list = TaskList::new();
     let id1 = list.add_phase("Research");
     let id2 = list.add_phase("Build");
     let id3 = list.add_phase("Test");
-    assert_eq!(id1, PhaseId::new_for_test("p1"));
-    assert_eq!(id2, PhaseId::new_for_test("p2"));
-    assert_eq!(id3, PhaseId::new_for_test("p3"));
+    assert_ne!(id1, id2);
+    assert_ne!(id2, id3);
+    assert_ne!(id1, id3);
 }
 
 #[test]
@@ -237,7 +240,8 @@ fn render_text_shows_phases_and_tasks() {
     assert!(rendered.contains("Phase 1: Research"));
     assert!(rendered.contains("[ ] Read docs"));
     assert!(rendered.contains("[ ] Call API"));
-    assert!(rendered.contains("[p1]"));
+    // Phase ID should appear in the output.
+    assert!(rendered.contains(&format!("[{}]", pid)));
 }
 
 #[test]
@@ -319,4 +323,77 @@ fn id_display_format() {
     let tid = crate::feat::todo_list::TaskId::new_for_test("t2");
     assert_eq!(format!("{pid}"), "p1");
     assert_eq!(format!("{tid}"), "t2");
+}
+
+// ---------------------------------------------------------------------------
+// Random ID generation
+// ---------------------------------------------------------------------------
+
+#[test]
+fn id_format_is_correct() {
+    // Phase IDs start with 'p' and are 4 chars total.
+    // Task IDs start with 't' and are 4 chars total.
+    // The remaining 3 chars are from the charset [a-z0-9 minus {p, t}].
+    let mut list = TaskList::new();
+    let pid = list.add_phase("Phase");
+    let tid = list.add_task(&pid, "Task", TaskPosition::End).unwrap();
+
+    let pid_str = pid.to_string();
+    let tid_str = tid.to_string();
+
+    assert_eq!(pid_str.len(), 4);
+    assert!(pid_str.starts_with('p'));
+    // The 3 random chars should not contain 'p' or 't'.
+    let suffix = &pid_str[1..];
+    for ch in suffix.chars() {
+        assert!(ch.is_ascii_alphanumeric());
+        assert!(ch != 'p' && ch != 't', "char '{ch}' should not be 'p' or 't'");
+    }
+
+    assert_eq!(tid_str.len(), 4);
+    assert!(tid_str.starts_with('t'));
+    let suffix = &tid_str[1..];
+    for ch in suffix.chars() {
+        assert!(ch.is_ascii_alphanumeric());
+        assert!(ch != 'p' && ch != 't', "char '{ch}' should not be 'p' or 't'");
+    }
+}
+
+#[test]
+fn id_generation_no_collision() {
+    let mut list = TaskList::new();
+    let mut phase_ids = Vec::new();
+    let mut task_ids = Vec::new();
+
+    for i in 0..50 {
+        let pid = list.add_phase(&format!("Phase {i}"));
+        phase_ids.push(pid.clone());
+        let tid = list.add_task(&pid, &format!("Task {i}"), TaskPosition::End).unwrap();
+        task_ids.push(tid);
+    }
+
+    // All phase IDs are unique.
+    let mut sorted_pids = phase_ids.clone();
+    sorted_pids.sort();
+    sorted_pids.dedup();
+    assert_eq!(sorted_pids.len(), phase_ids.len());
+
+    // All task IDs are unique.
+    let mut sorted_tids = task_ids.clone();
+    sorted_tids.sort();
+    sorted_tids.dedup();
+    assert_eq!(sorted_tids.len(), task_ids.len());
+}
+
+#[test]
+fn serde_backward_compat_with_counters() {
+    // Old-format JSON with counter fields should deserialize cleanly.
+    let json = r#"{"phases":[],"next_phase_id":5,"next_task_id":10}"#;
+    let mut list: TaskList = serde_json::from_str(json).unwrap();
+    assert!(list.is_empty());
+    // Should be able to add phases/tasks after loading old format.
+    let pid = list.add_phase("New phase");
+    let tid = list.add_task(&pid, "New task", TaskPosition::End).unwrap();
+    assert_eq!(pid.to_string().len(), 4);
+    assert_eq!(tid.to_string().len(), 4);
 }

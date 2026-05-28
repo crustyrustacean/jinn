@@ -155,11 +155,6 @@ mod tests {
         let result = futures::executor::block_on(result);
         assert!(result.success, "expected success: {:?}", result.content);
         assert!(
-            result.content.contains("p1"),
-            "should contain phase ID: {:?}",
-            result.content
-        );
-        assert!(
             result.content.contains("Phase 1: Research"),
             "should show phase: {:?}",
             result.content
