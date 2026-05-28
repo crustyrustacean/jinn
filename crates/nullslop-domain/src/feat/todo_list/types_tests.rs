@@ -615,3 +615,59 @@ fn defer_to_phase_errors_on_already_deferred() {
     let result = list.defer_to_phase(&t1, &p2);
     assert!(matches!(result, Err(TaskListError::AlreadyDeferred(_))));
 }
+
+#[test]
+fn set_from_descriptions_creates_phases_and_tasks() {
+    let mut list = TaskList::new();
+    list.set_from_descriptions(vec![
+        ("Research".to_owned(), vec!["Read docs".to_owned(), "Call API".to_owned()]),
+        ("Build".to_owned(), vec!["Write code".to_owned()]),
+        ("Deploy".to_owned(), vec![]),
+    ]).unwrap();
+
+    assert_eq!(list.phases().len(), 3);
+    assert_eq!(list.phases()[0].description(), "Research");
+    assert_eq!(list.phases()[0].tasks().len(), 2);
+    assert_eq!(list.phases()[1].description(), "Build");
+    assert_eq!(list.phases()[1].tasks().len(), 1);
+    assert_eq!(list.phases()[2].description(), "Deploy");
+    assert!(list.phases()[2].is_empty());
+
+    // All tasks are pending.
+    for phase in list.phases() {
+        for task in phase.tasks() {
+            assert_eq!(task.status(), TaskStatus::Pending);
+        }
+    }
+
+    // All IDs are unique.
+    let mut ids: Vec<String> = list.phases().iter()
+        .flat_map(|p| p.tasks().iter().map(|t| t.id().to_string()))
+        .collect();
+    ids.sort();
+    ids.dedup();
+    assert_eq!(ids.len(), list.phases().iter().map(|p| p.tasks().len()).sum::<usize>());
+}
+
+#[test]
+fn set_from_descriptions_replaces_existing() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Old");
+    list.add_task(&p1, "Old task", TaskPosition::End).unwrap();
+
+    list.set_from_descriptions(vec![
+        ("New".to_owned(), vec!["New task".to_owned()]),
+    ]).unwrap();
+
+    assert_eq!(list.phases().len(), 1);
+    assert_eq!(list.phases()[0].description(), "New");
+    assert_eq!(list.phases()[0].tasks().len(), 1);
+    assert_eq!(list.phases()[0].tasks()[0].description(), "New task");
+}
+
+#[test]
+fn set_from_descriptions_errors_on_empty() {
+    let mut list = TaskList::new();
+    let result = list.set_from_descriptions(vec![]);
+    assert!(matches!(result, Err(TaskListError::EmptyPhasesList)));
+}
