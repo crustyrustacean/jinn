@@ -3,7 +3,7 @@
 //! BDD-style tests following AGENTS.md conventions.
 //! Each test covers a single behavior.
 
-use crate::feat::todo_list::{PhaseId, TaskList, TaskListError, TaskPosition, TaskStatus};
+use crate::feat::todo_list::{PhaseId, TaskId, TaskList, TaskListError, TaskPosition, TaskStatus};
 
 // ---------------------------------------------------------------------------
 // add_phase
@@ -396,4 +396,163 @@ fn serde_backward_compat_with_counters() {
     let tid = list.add_task(&pid, "New task", TaskPosition::End).unwrap();
     assert_eq!(pid.to_string().len(), 4);
     assert_eq!(tid.to_string().len(), 4);
+}
+
+#[test]
+fn defer_task_marks_source_and_creates_copy() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Research");
+    let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
+    let p2 = list.add_phase("Build");
+    let t2 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
+
+    let new_tid = list.defer_task(&t1, TaskPosition::After(t2.clone())).unwrap();
+
+    // Source task should be deferred.
+    let source = list.get_task(&t1).unwrap();
+    assert_eq!(source.status(), TaskStatus::Deferred);
+
+    // New task should be pending in phase 2.
+    let copy = list.get_task(&new_tid).unwrap();
+    assert_eq!(copy.status(), TaskStatus::Pending);
+    assert_eq!(copy.description(), "Read docs");
+    assert_ne!(copy.id(), source.id());
+
+    // Phase 2 should have the original task + the copy.
+    let phase2 = list.get_phase(&p2).unwrap();
+    assert_eq!(phase2.tasks().len(), 2);
+}
+
+#[test]
+fn defer_task_same_phase() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Research");
+    let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
+    let t2 = list.add_task(&p1, "Call API", TaskPosition::End).unwrap();
+
+    let new_tid = list.defer_task(&t1, TaskPosition::Before(t2.clone())).unwrap();
+
+    // Source deferred.
+    let source = list.get_task(&t1).unwrap();
+    assert_eq!(source.status(), TaskStatus::Deferred);
+
+    // Copy is pending with same description.
+    let copy = list.get_task(&new_tid).unwrap();
+    assert_eq!(copy.status(), TaskStatus::Pending);
+    assert_eq!(copy.description(), "Read docs");
+
+    // Same phase has 3 tasks now (deferred + pending copy + original pending).
+    let phase = list.get_phase(&p1).unwrap();
+    assert_eq!(phase.tasks().len(), 3);
+}
+
+#[test]
+fn defer_task_error_on_missing_source() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Build");
+    let t1 = list.add_task(&p1, "Write code", TaskPosition::End).unwrap();
+
+    let fake_id = TaskId::new_for_test("t99");
+    let result = list.defer_task(&fake_id, TaskPosition::After(t1));
+    assert!(matches!(result, Err(TaskListError::TaskNotFound(_))));
+}
+
+#[test]
+fn defer_task_error_on_missing_reference() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Build");
+    let t1 = list.add_task(&p1, "Write code", TaskPosition::End).unwrap();
+
+    let fake_ref = TaskId::new_for_test("t99");
+    let result = list.defer_task(&t1, TaskPosition::After(fake_ref));
+    assert!(matches!(result, Err(TaskListError::TaskNotFound(_))));
+}
+
+#[test]
+fn defer_task_error_on_self_reference() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Build");
+    let t1 = list.add_task(&p1, "Write code", TaskPosition::End).unwrap();
+
+    let result = list.defer_task(&t1, TaskPosition::After(t1.clone()));
+    assert!(matches!(result, Err(TaskListError::SelfReference(_))));
+}
+
+#[test]
+fn defer_task_error_on_already_deferred() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Research");
+    let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
+    let p2 = list.add_phase("Build");
+    let t2 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
+
+    // Defer once.
+    list.defer_task(&t1, TaskPosition::After(t2.clone())).unwrap();
+
+    // Try to defer again.
+    let result = list.defer_task(&t1, TaskPosition::After(t2));
+    assert!(matches!(result, Err(TaskListError::AlreadyDeferred(_))));
+}
+
+#[test]
+fn render_text_excludes_deferred() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Research");
+    let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
+    let p2 = list.add_phase("Build");
+    let t2 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
+
+    let new_tid = list.defer_task(&t1, TaskPosition::After(t2.clone())).unwrap();
+
+    let rendered = list.render_text();
+
+    // The deferred source should NOT appear as a task line.
+    assert!(
+        !rendered.contains(&format!("- [ ] Read docs [{t1}]")),
+        "deferred task should not appear in render"
+    );
+    // The copy should appear.
+    assert!(
+        rendered.contains(&format!("- [ ] Read docs [{new_tid}]")),
+        "copy should appear in render"
+    );
+}
+
+#[test]
+fn render_text_shows_no_tasks_when_all_deferred() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Research");
+    let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
+    let p2 = list.add_phase("Build");
+    let t2 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
+
+    // Defer the only task in phase 1.
+    list.defer_task(&t1, TaskPosition::After(t2)).unwrap();
+
+    let rendered = list.render_text();
+
+    // Phase 1 should show (no tasks) since its only task is deferred.
+    let phase1_section = rendered.split("Phase 1").nth(1).unwrap();
+    let phase1_text = phase1_section.split("Phase 2").next().unwrap();
+    assert!(
+        phase1_text.contains("(no tasks)"),
+        "phase with all deferred tasks should show (no tasks)"
+    );
+}
+
+#[test]
+fn render_phase_text_excludes_deferred() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Research");
+    let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
+    let p2 = list.add_phase("Build");
+    let t2 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
+
+    list.defer_task(&t1, TaskPosition::After(t2)).unwrap();
+
+    let rendered = list.render_phase_text(&p1).unwrap();
+    assert!(
+        rendered.contains("(no tasks)"),
+        "phase with only deferred task should show (no tasks)"
+    );
 }
