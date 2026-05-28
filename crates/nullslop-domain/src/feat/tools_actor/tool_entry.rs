@@ -118,7 +118,12 @@ fn split_match_indices(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::single_range_in_vec_init,
+        reason = "test code"
+    )]
     use super::*;
     use crate::feat::theme::default_theme;
 
