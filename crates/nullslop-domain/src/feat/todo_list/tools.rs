@@ -25,6 +25,7 @@ pub mod defer_task;
 pub mod defer_to_phase;
 pub mod get_phase;
 pub mod get_task_list;
+pub mod set_list;
 
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition};
 use crate::feat::tools_actor::BoxedToolFuture;
@@ -65,6 +66,10 @@ pub fn tool_entries() -> Vec<BuiltinToolEntry> {
             get_phase::definition(),
             get_phase::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
         ),
+        (
+            set_list::definition(),
+            set_list::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+        ),
     ]
 }
 
@@ -78,5 +83,6 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
         defer_to_phase::definition(),
         get_task_list::definition(),
         get_phase::definition(),
+        set_list::definition(),
     ]
 }

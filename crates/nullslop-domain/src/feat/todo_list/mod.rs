@@ -198,6 +198,9 @@ pub enum TaskListError {
     /// The task is already deferred.
     #[error("task is already deferred: {0}")]
     AlreadyDeferred(TaskId),
+    /// The phases list provided was empty.
+    #[error("phases list must not be empty")]
+    EmptyPhasesList,
 }
 
 // ---------------------------------------------------------------------------
@@ -576,6 +579,35 @@ impl TaskList {
         self.phases[target_pi].tasks.push(new_task);
 
         Ok(new_task_id)
+    }
+
+    /// Replaces the entire task list from a description-based structure.
+    ///
+    /// Clears all existing phases and creates new ones from the provided data.
+    /// Each tuple is `(phase_description, task_descriptions)`. All new tasks
+    /// are created with `Pending` status.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `phases` is empty.
+    pub fn set_from_descriptions(
+        &mut self,
+        phases: Vec<(String, Vec<String>)>,
+    ) -> Result<(), TaskListError> {
+        if phases.is_empty() {
+            return Err(TaskListError::EmptyPhasesList);
+        }
+
+        self.phases.clear();
+
+        for (phase_desc, task_descs) in phases {
+            let pid = self.add_phase(&phase_desc);
+            for task_desc in task_descs {
+                self.add_task(&pid, &task_desc, TaskPosition::End)?;
+            }
+        }
+
+        Ok(())
     }
 
     /// Returns the phase with the given ID, if it exists.
