@@ -435,31 +435,6 @@ fn begin_sending_sets_is_sending() {
 }
 
 #[rstest::rstest]
-fn begin_assembling_is_noop_when_sending() {
-    // Given a session that is sending.
-    let mut session = ChatSessionState::new();
-    session.begin_sending();
-
-    // When calling begin_assembling.
-    session.begin_assembling();
-
-    // Then phase stays Sending (no panic).
-    assert_eq!(session.phase(), SessionPhase::Sending);
-}
-
-#[rstest::rstest]
-fn finish_assembling_is_noop_when_idle() {
-    // Given a session that is idle.
-    let mut session = ChatSessionState::new();
-
-    // When calling finish_assembling.
-    session.finish_assembling();
-
-    // Then phase stays Idle (no panic).
-    assert_eq!(session.phase(), SessionPhase::Idle);
-}
-
-#[rstest::rstest]
 fn begin_sending_is_noop_when_already_sending() {
     // Given a session that is already sending.
     let mut session = ChatSessionState::new();
@@ -2062,161 +2037,6 @@ fn finalize_tool_result_pushes_new_entry_for_unknown_id() {
     }
 }
 
-#[rstest::rstest]
-fn begin_compacting_transitions_to_compacting_phase() {
-    // Given an idle session.
-    let mut session = ChatSessionState::new();
-    assert_eq!(session.phase(), SessionPhase::Idle);
-
-    // When beginning compaction.
-    session.begin_compacting(vec![]);
-
-    // Then the session is in Compacting phase.
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-    assert_ne!(session.phase(), SessionPhase::Idle);
-}
-
-#[rstest::rstest]
-fn finish_compacting_returns_to_idle() {
-    // Given a session in Compacting phase.
-    let mut session = ChatSessionState::new();
-    session.begin_compacting(vec![]);
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-
-    // When finishing compaction.
-    session.finish_compacting();
-
-    // Then the session is idle.
-    assert_eq!(session.phase(), SessionPhase::Idle);
-    assert_ne!(session.phase(), SessionPhase::Compacting);
-}
-
-#[rstest::rstest]
-fn begin_compacting_is_noop_when_already_compacting() {
-    // Given a session already compacting.
-    let mut session = ChatSessionState::new();
-    session.begin_compacting(vec![]);
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-
-    // When calling begin_compacting again.
-    session.begin_compacting(vec![]);
-
-    // Then phase stays Compacting (no panic, no double-transition).
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-}
-
-#[rstest::rstest]
-fn begin_compacting_is_noop_when_streaming() {
-    // Given a session that is streaming.
-    let mut session = ChatSessionState::new();
-    session.begin_streaming();
-
-    // When calling begin_compacting.
-    session.begin_compacting(vec![]);
-
-    // Then phase stays Streaming (no panic).
-    assert_eq!(session.phase(), SessionPhase::Streaming);
-}
-
-#[rstest::rstest]
-fn finish_compacting_does_not_panic_when_idle() {
-    // Given a session in Idle phase.
-    let mut session = ChatSessionState::new();
-    assert_eq!(session.phase(), SessionPhase::Idle);
-
-    // When finishing compaction (phase is Idle, not Compacting).
-    session.finish_compacting();
-
-    // Then the phase remains Idle — no panic.
-    assert_eq!(session.phase(), SessionPhase::Idle);
-}
-
-#[rstest::rstest]
-fn finish_compacting_does_not_panic_when_streaming() {
-    // Given a session in Streaming phase.
-    let mut session = ChatSessionState::new();
-    session.begin_streaming();
-    assert_eq!(session.phase(), SessionPhase::Streaming);
-
-    // When finishing compaction (phase is Streaming, not Compacting).
-    session.finish_compacting();
-
-    // Then the phase remains Streaming — no panic.
-    assert_eq!(session.phase(), SessionPhase::Streaming);
-}
-
-#[rstest::rstest]
-fn cancel_compacting_returns_to_idle() {
-    // Given a session in Compacting phase.
-    let mut session = ChatSessionState::new();
-    session.begin_compacting(vec![0, 1]);
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-
-    // When cancelling compaction.
-    let drained = session.cancel_compacting();
-
-    // Then the session is idle.
-    assert_eq!(session.phase(), SessionPhase::Idle);
-    // And no messages were drained (queue was empty).
-    assert!(drained.is_empty());
-}
-
-#[rstest::rstest]
-fn cancel_compacting_unignores_entries() {
-    // Given a session with 3 entries, 2 marked as ignored during compaction.
-    let mut session = ChatSessionState::new();
-    session.push_entry(ChatEntry::user("a"));
-    session.push_entry(ChatEntry::assistant("b"));
-    session.push_entry(ChatEntry::user("c"));
-
-    session.begin_compacting(vec![0, 1]);
-    session.mark_entries_ignored(&[0, 1]);
-    assert!(session.history()[0].ignored());
-    assert!(session.history()[1].ignored());
-
-    // When cancelling compaction.
-    session.cancel_compacting();
-
-    // Then the entries are un-ignored.
-    assert!(!session.history()[0].ignored());
-    assert!(!session.history()[1].ignored());
-    assert!(!session.history()[2].ignored());
-}
-
-#[rstest::rstest]
-fn cancel_compacting_drains_queue() {
-    // Given a session in Compacting phase with a queued message.
-    let mut session = ChatSessionState::new();
-    session.begin_compacting(vec![]);
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        ChatEntry::user("queued during compaction"),
-    ));
-
-    // When cancelling compaction.
-    let drained = session.cancel_compacting();
-
-    // Then the queued message is returned.
-    assert_eq!(drained.len(), 1);
-    let crate::feat::session::queue_item::QueueItem::UserMessage(entry) = &drained[0] else {
-        panic!("expected UserMessage")
-    };
-    assert_eq!(entry.text(), "queued during compaction");
-}
-
-#[rstest::rstest]
-fn cancel_compacting_is_noop_when_idle() {
-    // Given a session in Idle phase.
-    let mut session = ChatSessionState::new();
-    assert_eq!(session.phase(), SessionPhase::Idle);
-
-    // When cancelling compaction (phase is Idle, not Compacting).
-    let drained = session.cancel_compacting();
-
-    // Then no panic and nothing was drained.
-    assert!(drained.is_empty());
-    assert_eq!(session.phase(), SessionPhase::Idle);
-}
-
 // --- LifecycleScriptState transition tests ---
 
 #[rstest::rstest]
@@ -3206,141 +3026,7 @@ fn force_exclude_no_tool_calls_is_noop() {
 // Phase 1: Session Phase State Machine Guards
 // ===========================================================================
 
-// --- begin_assembling happy path & guards ---
 
-#[rstest::rstest]
-fn begin_assembling_transitions_idle_to_assembling() {
-    // Given a session that is idle.
-    let mut session = ChatSessionState::new();
-    assert_eq!(session.phase(), SessionPhase::Idle);
-
-    // When beginning assembling.
-    session.begin_assembling();
-
-    // Then phase is Assembling.
-    assert_eq!(session.phase(), SessionPhase::Assembling);
-}
-
-#[rstest::rstest]
-fn begin_assembling_is_noop_when_assembling() {
-    // Given a session already assembling.
-    let mut session = ChatSessionState::new();
-    session.begin_assembling();
-    assert_eq!(session.phase(), SessionPhase::Assembling);
-
-    // When calling begin_assembling again.
-    session.begin_assembling();
-
-    // Then phase stays Assembling (no panic, no double-transition).
-    assert_eq!(session.phase(), SessionPhase::Assembling);
-}
-
-#[rstest::rstest]
-fn begin_assembling_is_noop_when_streaming() {
-    // Given a session that is streaming.
-    let mut session = ChatSessionState::new();
-    session.begin_streaming();
-
-    // When calling begin_assembling.
-    session.begin_assembling();
-
-    // Then phase stays Streaming.
-    assert_eq!(session.phase(), SessionPhase::Streaming);
-}
-
-#[rstest::rstest]
-fn begin_assembling_is_noop_when_compacting() {
-    // Given a session that is compacting.
-    let mut session = ChatSessionState::new();
-    session.core.ephemeral.phase = SessionPhase::Compacting;
-
-    // When calling begin_assembling.
-    session.begin_assembling();
-
-    // Then phase stays Compacting.
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-}
-
-#[rstest::rstest]
-fn begin_assembling_is_noop_when_tearing_down() {
-    // Given a session that is tearing down.
-    let mut session = ChatSessionState::new();
-    session.core.ephemeral.phase = SessionPhase::TearingDown;
-
-    // When calling begin_assembling.
-    session.begin_assembling();
-
-    // Then phase stays TearingDown.
-    assert_eq!(session.phase(), SessionPhase::TearingDown);
-}
-
-// --- finish_assembling happy path & guards ---
-
-#[rstest::rstest]
-fn finish_assembling_transitions_assembling_to_idle() {
-    // Given a session in Assembling phase.
-    let mut session = ChatSessionState::new();
-    session.begin_assembling();
-    assert_eq!(session.phase(), SessionPhase::Assembling);
-
-    // When finishing assembling.
-    session.finish_assembling();
-
-    // Then phase is Idle.
-    assert_eq!(session.phase(), SessionPhase::Idle);
-}
-
-#[rstest::rstest]
-fn finish_assembling_is_noop_when_sending() {
-    // Given a session in Sending phase.
-    let mut session = ChatSessionState::new();
-    session.begin_sending();
-
-    // When calling finish_assembling.
-    session.finish_assembling();
-
-    // Then phase stays Sending.
-    assert_eq!(session.phase(), SessionPhase::Sending);
-}
-
-#[rstest::rstest]
-fn finish_assembling_is_noop_when_streaming() {
-    // Given a session in Streaming phase.
-    let mut session = ChatSessionState::new();
-    session.begin_streaming();
-
-    // When calling finish_assembling.
-    session.finish_assembling();
-
-    // Then phase stays Streaming.
-    assert_eq!(session.phase(), SessionPhase::Streaming);
-}
-
-#[rstest::rstest]
-fn finish_assembling_is_noop_when_compacting() {
-    // Given a session in Compacting phase.
-    let mut session = ChatSessionState::new();
-    session.core.ephemeral.phase = SessionPhase::Compacting;
-
-    // When calling finish_assembling.
-    session.finish_assembling();
-
-    // Then phase stays Compacting.
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-}
-
-#[rstest::rstest]
-fn finish_assembling_is_noop_when_tearing_down() {
-    // Given a session in TearingDown phase.
-    let mut session = ChatSessionState::new();
-    session.core.ephemeral.phase = SessionPhase::TearingDown;
-
-    // When calling finish_assembling.
-    session.finish_assembling();
-
-    // Then phase stays TearingDown.
-    assert_eq!(session.phase(), SessionPhase::TearingDown);
-}
 
 // --- begin_tearing_down happy path & guards ---
 
@@ -3383,31 +3069,9 @@ fn begin_tearing_down_is_noop_when_streaming() {
     assert_eq!(session.phase(), SessionPhase::Streaming);
 }
 
-#[rstest::rstest]
-fn begin_tearing_down_is_noop_when_assembling() {
-    // Given a session in Assembling phase.
-    let mut session = ChatSessionState::new();
-    session.begin_assembling();
 
-    // When calling begin_tearing_down.
-    session.begin_tearing_down();
 
-    // Then phase stays Assembling.
-    assert_eq!(session.phase(), SessionPhase::Assembling);
-}
 
-#[rstest::rstest]
-fn begin_tearing_down_is_noop_when_compacting() {
-    // Given a session in Compacting phase.
-    let mut session = ChatSessionState::new();
-    session.core.ephemeral.phase = SessionPhase::Compacting;
-
-    // When calling begin_tearing_down.
-    session.begin_tearing_down();
-
-    // Then phase stays Compacting.
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-}
 
 #[rstest::rstest]
 fn begin_tearing_down_is_noop_when_already_tearing_down() {
@@ -3476,31 +3140,9 @@ fn finish_tearing_down_is_noop_when_streaming() {
     assert_eq!(session.phase(), SessionPhase::Streaming);
 }
 
-#[rstest::rstest]
-fn finish_tearing_down_is_noop_when_assembling() {
-    // Given a session in Assembling phase.
-    let mut session = ChatSessionState::new();
-    session.begin_assembling();
 
-    // When calling finish_tearing_down.
-    session.finish_tearing_down();
 
-    // Then phase stays Assembling.
-    assert_eq!(session.phase(), SessionPhase::Assembling);
-}
 
-#[rstest::rstest]
-fn finish_tearing_down_is_noop_when_compacting() {
-    // Given a session in Compacting phase.
-    let mut session = ChatSessionState::new();
-    session.core.ephemeral.phase = SessionPhase::Compacting;
-
-    // When calling finish_tearing_down.
-    session.finish_tearing_down();
-
-    // Then phase stays Compacting.
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-}
 
 // --- cancel_stream_and_drain ---
 
@@ -3530,7 +3172,7 @@ fn cancel_stream_and_drain_discards_non_user_items() {
     let mut session = ChatSessionState::new();
     session.begin_streaming();
     session.enqueue(
-        crate::feat::session::queue_item::QueueItem::CompactionNeeded { compact_all: false },
+        crate::feat::session::queue_item::QueueItem::ToolContinuation,
     );
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
         ChatEntry::user("keep this"),
@@ -3854,10 +3496,8 @@ fn insert_entry_at_shifts_multiple_indices() {
 
 #[rstest::rstest]
 #[case::idle("idle", SessionPhase::Idle)]
-#[case::assembling("assembling", SessionPhase::Assembling)]
 #[case::sending("sending", SessionPhase::Sending)]
 #[case::streaming("streaming", SessionPhase::Streaming)]
-#[case::compacting("compacting", SessionPhase::Compacting)]
 #[case::tearing_down("tearing_down", SessionPhase::TearingDown)]
 fn session_phase_from_str_roundtrips(#[case] input: &str, #[case] expected: SessionPhase) {
     // Given a phase string.
@@ -4688,16 +4328,16 @@ fn enqueue_front_puts_item_at_front_of_queue() {
         session.history()[0].clone(),
     ));
 
-    // When enqueuing a CompactionNeeded at the front.
+    // When enqueuing a ToolContinuation at the front.
     session.enqueue_front(
-        crate::feat::session::queue_item::QueueItem::CompactionNeeded { compact_all: false },
+        crate::feat::session::queue_item::QueueItem::ToolContinuation,
     );
 
-    // Then dequeue returns CompactionNeeded first.
+    // Then dequeue returns ToolContinuation first.
     let front = session.dequeue();
     assert!(matches!(
         front,
-        Some(crate::feat::session::queue_item::QueueItem::CompactionNeeded { compact_all: false })
+        Some(crate::feat::session::queue_item::QueueItem::ToolContinuation)
     ));
 }
 

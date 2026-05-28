@@ -5,11 +5,10 @@
 //! and queue draining on `StreamCompleted`.
 
 use crate::common::actor::ActorContext;
-use crate::feat::compaction_actor::protocol::command::CompactContext;
 use crate::feat::context::strategy::token_estimator::TokenCounter;
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
 
-use crate::protocol::{ChatEntry, Command};
+use crate::protocol::ChatEntry;
 
 use super::super::SessionPersistenceActor;
 use crate::feat::session::chat_session::SessionPhase;
@@ -98,7 +97,7 @@ impl SessionPersistenceActor {
             None => None,
         };
 
-        let (old_phase, new_phase, should_emit_compact_context);
+        let (old_phase, new_phase);
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
@@ -130,7 +129,6 @@ impl SessionPersistenceActor {
             // ToolUse defers to on_tool_batch_completed.
             if event.reason != StreamCompletedReason::ToolUse
                 && !session.is_judge()
-                && !session.is_auto_compaction_requested()
             {
                 let count = session.drain_and_apply_pending_mutations();
                 if count > 0 {
@@ -143,32 +141,10 @@ impl SessionPersistenceActor {
                 }
             }
 
-            // For ToolUse: do NOT consume auto-compaction flag here. The tool
-            // batch is still executing. Let on_tool_batch_completed handle the
-            // flag after tool results are in. Peek at the flag to know if
-            // compaction is pending.
-            // For Finished/Error/Canceled: consume the flag to clean up.
-            let auto_compaction_requested = if event.reason == StreamCompletedReason::ToolUse {
-                session.is_auto_compaction_requested()
-            } else {
-                session.take_auto_compaction_requested()
-            };
-
             // Tool use means the conversation continues — always transition to sending
-            // so the tool loop runs. Auto-compaction is handled later in
-            // on_tool_batch_completed.
+            // so the tool loop runs.
             if event.reason == StreamCompletedReason::ToolUse {
                 session.begin_sending();
-            }
-
-            // If auto-compaction requested (non-ToolUse),
-            // skip Idle entirely and transition directly to Compacting.
-            // For ToolUse, this is deferred — on_tool_batch_completed will handle
-            // the flag after tools finish.
-            let mut should_emit_compact_context_local = false;
-            if auto_compaction_requested && event.reason != StreamCompletedReason::ToolUse {
-                session.core.ephemeral.phase = SessionPhase::Compacting;
-                should_emit_compact_context_local = true;
             }
 
             // When returning to Idle with no retry, drain queued messages
@@ -199,22 +175,10 @@ impl SessionPersistenceActor {
             }
 
             new_phase = session.phase();
-            should_emit_compact_context = should_emit_compact_context_local;
         }
 
         super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
         super::super::helpers::emit_history_appended(ctx, &event.session_id);
-
-        // If we transitioned directly to Compacting, emit CompactContext to kick off
-        // the compaction actor.
-        if should_emit_compact_context
-            && let Err(e) = ctx.send_command(Command::CompactContext(CompactContext {
-                session_id: event.session_id.clone(),
-                compact_all: false,
-            }))
-        {
-            tracing::warn!(err = ?e, "failed to emit CompactContext after soft cancel");
-        }
 
         // Persist session after stream finishes (not on cancel).
         if should_save {
@@ -365,59 +329,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn on_stream_completed_tool_use_with_auto_compaction_begins_sending() {
-        // Given a session in streaming state with auto-compaction requested.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.begin_streaming();
-            session.request_auto_compaction();
-            state.session.active_session_id().clone()
-        };
-
-        // When handling StreamCompleted with ToolUse reason.
-        let event = StreamCompleted {
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::ToolUse,
-            assistant_content: Some("response".to_owned()),
-            tool_calls: Some(vec![crate::feat::tools_actor::tool_types::ToolCall {
-                id: "tc-1".to_owned(),
-                name: "bash".to_owned(),
-                arguments: "{}".to_owned(),
-            }]),
-            cost: None,
-        };
-        actor.on_stream_completed(&event, &ctx).await;
-
-        // Then the session is in Sending phase (tools still execute).
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert!(
-            matches!(session.phase(), SessionPhase::Sending),
-            "expected Sending after auto-compaction during ToolUse, got {:?}",
-            session.phase()
-        );
-
-        // And the auto-compaction flag is still set (not consumed yet — peeked for ToolUse).
-        assert!(
-            session.is_auto_compaction_requested(),
-            "expected auto-compaction flag to still be set"
-        );
-
-        // And no SendToLlmProvider was emitted.
-        let commands = sink.commands();
-        let has_send = commands
-            .iter()
-            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(
-            !has_send,
-            "expected no SendToLlmProvider after auto-compaction peek"
-        );
-    }
-
-    #[tokio::test]
     async fn on_stream_completed_finished_emits_history_appended() {
         // Given a session actor with a session in streaming state with history.
         let actor = test_actor();
@@ -520,182 +431,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn on_stream_completed_tool_use_with_auto_compaction_defers_compaction() {
-        // Given a session in streaming state with auto-compaction requested.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.begin_streaming();
-            session.request_auto_compaction();
-            state.session.active_session_id().clone()
-        };
-
-        // When handling StreamCompleted with ToolUse reason and auto-compaction.
-        let event = StreamCompleted {
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::ToolUse,
-            assistant_content: Some("response".to_owned()),
-            tool_calls: Some(vec![crate::feat::tools_actor::tool_types::ToolCall {
-                id: "tc-1".to_owned(),
-                name: "bash".to_owned(),
-                arguments: "{}".to_owned(),
-            }]),
-            cost: None,
-        };
-        actor.on_stream_completed(&event, &ctx).await;
-
-        // Then the session is in Sending phase (tools execute before compaction).
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert!(
-            matches!(session.phase(), SessionPhase::Sending),
-            "expected Sending after ToolUse with auto-compaction, got {:?}",
-            session.phase()
-        );
-
-        // And the auto-compaction flag is still set (not consumed yet).
-        assert!(
-            session.is_auto_compaction_requested(),
-            "expected auto-compaction flag to still be set after ToolUse"
-        );
-
-        // And no CompactContext was emitted (compaction deferred).
-        let commands = sink.commands();
-        let has_compact = commands
-            .iter()
-            .any(|c| matches!(c, Command::CompactContext(_)));
-        assert!(
-            !has_compact,
-            "expected no CompactContext — compaction should be deferred"
-        );
-
-        // And no SendToLlmProvider was emitted.
-        let has_send = commands
-            .iter()
-            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(!has_send, "expected no SendToLlmProvider");
-    }
-
-    #[tokio::test]
-    async fn on_stream_completed_finished_with_auto_compaction_transitions_to_compacting() {
-        // Given a session in streaming state with auto-compaction requested.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("hello"));
-            session.begin_streaming();
-            session.request_auto_compaction();
-            state.session.active_session_id().clone()
-        };
-
-        // When handling StreamCompleted with Finished reason and auto-compaction.
-        let event = StreamCompleted {
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Finished,
-            assistant_content: Some("response".to_owned()),
-            tool_calls: None,
-            cost: None,
-        };
-        actor.on_stream_completed(&event, &ctx).await;
-
-        // Then the session transitions directly to Compacting (NOT Idle).
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert!(
-            matches!(session.phase(), SessionPhase::Compacting),
-            "expected Compacting after Finished with auto-compaction, got {:?}",
-            session.phase()
-        );
-
-        // And CompactContext was emitted.
-        let commands = sink.commands();
-        let has_compact = commands
-            .iter()
-            .any(|c| matches!(c, Command::CompactContext(_)));
-        assert!(
-            has_compact,
-            "expected CompactContext command after Finished with auto-compaction"
-        );
-    }
-
-    #[tokio::test]
-    async fn on_stream_completed_then_tool_batch_auto_compaction_full_flow() {
-        // Given a session streaming with auto-compaction requested.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.begin_streaming();
-            session.request_auto_compaction();
-            state.session.active_session_id().clone()
-        };
-
-        // When handling StreamCompleted(ToolUse) then ToolBatchCompleted.
-        let stream_event = StreamCompleted {
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::ToolUse,
-            assistant_content: Some("response".to_owned()),
-            tool_calls: Some(vec![crate::feat::tools_actor::tool_types::ToolCall {
-                id: "tc-1".to_owned(),
-                name: "bash".to_owned(),
-                arguments: "{}".to_owned(),
-            }]),
-            cost: None,
-        };
-        actor.on_stream_completed(&stream_event, &ctx).await;
-
-        // Then session is in Sending (tool loop continues).
-        {
-            let state = actor.state.read();
-            let session = state.session.get(&session_id).expect("session exists");
-            assert!(matches!(session.phase(), SessionPhase::Sending));
-        }
-
-        // When tool batch completes.
-        let batch_event = crate::feat::tools_actor::protocol::event::ToolBatchCompleted {
-            session_id: session_id.clone(),
-            results: vec![crate::feat::tools_actor::tool_types::ToolResult {
-                tool_call_id: "tc-1".to_owned(),
-                name: "bash".to_owned(),
-                content: "file1.txt".to_owned(),
-                success: true,
-                full_content: None,
-                truncation: None,
-            }],
-        };
-        actor.on_tool_batch_completed(&batch_event, &ctx);
-
-        // Then session is in Compacting (NOT Idle — the whole point of the fix).
-        {
-            let state = actor.state.read();
-            let session = state.session.get(&session_id).expect("session exists");
-            assert!(
-                matches!(session.phase(), SessionPhase::Compacting),
-                "expected Compacting after tool batch auto-compaction, got {:?}",
-                session.phase()
-            );
-        }
-
-        // And CompactContext was emitted.
-        let commands = sink.commands();
-        let has_compact = commands
-            .iter()
-            .any(|c| matches!(c, Command::CompactContext(_)));
-        assert!(has_compact, "expected CompactContext during full flow");
-
-        // And no SendToLlmProvider was emitted throughout.
-        let has_send = commands
-            .iter()
-            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(!has_send, "expected no SendToLlmProvider during full flow");
-    }
-
-    #[tokio::test]
     async fn on_stream_completed_canceled_force_excludes_dangling_tool_calls() {
         // Given a session in streaming state with dangling tool calls in history.
         let actor = test_actor();
@@ -743,13 +478,6 @@ mod tests {
             history[3].context_override,
             crate::protocol::ContextOverride::Default
         );
-
-        // And a CompactContext was not emitted.
-        let commands = sink.commands();
-        let has_compact = commands
-            .iter()
-            .any(|c| matches!(c, Command::CompactContext(_)));
-        assert!(!has_compact, "expected no CompactContext after cancel");
     }
 
     // --- Mutant killers: on_stream_token ---
@@ -1203,140 +931,6 @@ mod tests {
             matches!(session.phase(), SessionPhase::Idle),
             "expected Idle after Finished without auto-compaction, got {:?}",
             session.phase()
-        );
-
-        // And no CompactContext was emitted.
-        let commands = sink.commands();
-        let has_compact = commands
-            .iter()
-            .any(|c| matches!(c, Command::CompactContext(_)));
-        assert!(!has_compact, "expected no CompactContext");
-    }
-
-    #[tokio::test]
-    async fn on_stream_completed_error_with_auto_compaction_goes_to_compacting() {
-        // Given a session in streaming state with auto-compaction requested.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.begin_streaming();
-            session.request_auto_compaction();
-            state.session.active_session_id().clone()
-        };
-
-        // When handling StreamCompleted with Error reason and auto-compaction.
-        // Error is a turn boundary, so auto-compaction is honored.
-        let event = StreamCompleted {
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Error,
-            assistant_content: None,
-            tool_calls: None,
-            cost: None,
-        };
-        actor.on_stream_completed(&event, &ctx).await;
-
-        // Then the session transitions to Compacting (auto-compaction honored even on Error).
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert!(
-            matches!(session.phase(), SessionPhase::Compacting),
-            "expected Compacting after Error with auto-compaction, got {:?}",
-            session.phase()
-        );
-
-        // And the auto-compaction flag is consumed (cleared).
-        assert!(
-            !session.is_auto_compaction_requested(),
-            "expected auto-compaction flag to be consumed after Error"
-        );
-
-        // And CompactContext was emitted.
-        let commands = sink.commands();
-        let has_compact = commands
-            .iter()
-            .any(|c| matches!(c, Command::CompactContext(_)));
-        assert!(
-            has_compact,
-            "expected CompactContext after Error with auto-compaction"
-        );
-    }
-
-    #[tokio::test]
-    async fn on_stream_completed_canceled_with_auto_compaction_goes_to_compacting() {
-        // Given a session in streaming state with auto-compaction requested.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("hello"));
-            session.begin_streaming();
-            session.request_auto_compaction();
-            state.session.active_session_id().clone()
-        };
-
-        // When handling StreamCompleted with Canceled reason and auto-compaction.
-        let event = StreamCompleted {
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Canceled,
-            assistant_content: None,
-            tool_calls: None,
-            cost: None,
-        };
-        actor.on_stream_completed(&event, &ctx).await;
-
-        // Then the session transitions to Compacting (NOT Idle).
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert!(
-            matches!(session.phase(), SessionPhase::Compacting),
-            "expected Compacting after Canceled with auto-compaction, got {:?}",
-            session.phase()
-        );
-
-        // And CompactContext was emitted.
-        let commands = sink.commands();
-        let has_compact = commands
-            .iter()
-            .any(|c| matches!(c, Command::CompactContext(_)));
-        assert!(
-            has_compact,
-            "expected CompactContext after Canceled with auto-compaction"
-        );
-    }
-
-    #[tokio::test]
-    async fn on_stream_completed_auto_compaction_flag_consumed_on_finished() {
-        // Given a session in streaming state with auto-compaction requested.
-        let actor = test_actor();
-        let (_sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("hello"));
-            session.begin_streaming();
-            session.request_auto_compaction();
-            state.session.active_session_id().clone()
-        };
-
-        // When handling StreamCompleted with Finished reason.
-        let event = StreamCompleted {
-            session_id: session_id.clone(),
-            reason: StreamCompletedReason::Finished,
-            assistant_content: Some("response".to_owned()),
-            tool_calls: None,
-            cost: None,
-        };
-        actor.on_stream_completed(&event, &ctx).await;
-
-        // Then the auto-compaction flag is consumed (cleared).
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert!(
-            !session.is_auto_compaction_requested(),
-            "expected auto-compaction flag to be consumed after Finished"
         );
     }
 

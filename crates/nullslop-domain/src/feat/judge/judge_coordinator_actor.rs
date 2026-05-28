@@ -1645,15 +1645,15 @@ mod tests {
 
         let (mut actor, sink, ctx) = create_actor(state);
 
-        // When origin transitions to Compacting (NOT Idle).
-        let compacting_event = ActorEnvelope::Event(Event::SessionPhaseChanged(
+        // When origin transitions to TearingDown (NOT Idle).
+        let teardown_event = ActorEnvelope::Event(Event::SessionPhaseChanged(
             SessionPhaseChanged {
                 session_id: origin_id.clone(),
                 old_phase: SessionPhase::Sending,
-                new_phase: SessionPhase::Compacting,
+                new_phase: SessionPhase::TearingDown,
             },
         ));
-        actor.handle(compacting_event, &ctx).await;
+        actor.handle(teardown_event, &ctx).await;
 
         // Then no commands are emitted (judge NOT triggered).
         let commands = sink.commands();
@@ -1663,7 +1663,7 @@ mod tests {
         );
         assert!(
             judge_commands.is_empty(),
-            "expected no judge trigger on Compacting phase"
+            "expected no judge trigger on TearingDown phase"
         );
     }
 
@@ -1698,65 +1698,6 @@ mod tests {
         assert!(
             judge_commands.is_empty(),
             "expected no judge trigger on Sending phase"
-        );
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn judge_triggered_only_on_final_idle_after_compaction_sequence() {
-        // Given an origin session with an attached judge.
-        let state = State::new(AppState::default());
-        let (origin_id, origin) = make_origin_session();
-        state.write().session.insert(origin);
-        let (judge_id, judge) = make_judge_session(origin_id.clone(), true);
-        state.write().session.insert(judge);
-
-        let (mut actor, sink, ctx) = create_actor(state);
-
-        // Simulate auto-compaction sequence:
-        // Sending → Compacting (no judge trigger)
-        let compacting_event = ActorEnvelope::Event(Event::SessionPhaseChanged(
-            SessionPhaseChanged {
-                session_id: origin_id.clone(),
-                old_phase: SessionPhase::Sending,
-                new_phase: SessionPhase::Compacting,
-            },
-        ));
-        actor.handle(compacting_event, &ctx).await;
-        sink.clear();
-
-        // Compacting → Sending (no judge trigger)
-        let sending_event = ActorEnvelope::Event(Event::SessionPhaseChanged(
-            SessionPhaseChanged {
-                session_id: origin_id.clone(),
-                old_phase: SessionPhase::Compacting,
-                new_phase: SessionPhase::Sending,
-            },
-        ));
-        actor.handle(sending_event, &ctx).await;
-        sink.clear();
-
-        // Sending → Idle (judge IS triggered)
-        let idle_event = ActorEnvelope::Event(Event::SessionPhaseChanged(
-            SessionPhaseChanged {
-                session_id: origin_id.clone(),
-                old_phase: SessionPhase::Sending,
-                new_phase: SessionPhase::Idle,
-            },
-        ));
-        actor.handle(idle_event, &ctx).await;
-
-        // Then judge was triggered ONLY on the final Idle.
-        let commands = sink.commands();
-        let judge_commands = find_commands(
-            &commands,
-            |c| matches!(c, Command::EnqueueUserMessage(msg) if msg.session_id == judge_id),
-        );
-        assert_eq!(
-            judge_commands.len(),
-            1,
-            "expected exactly 1 judge trigger on final Idle, got {}",
-            judge_commands.len()
         );
     }
 }

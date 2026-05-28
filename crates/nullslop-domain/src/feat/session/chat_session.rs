@@ -37,17 +37,13 @@ use crate::protocol::{
 /// that document the valid state machine edges.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum SessionPhase {
-    /// Session is completely idle — not sending, streaming, assembling, or compacting.
+    /// Session is completely idle — not sending, streaming, or compacting.
     #[default]
     Idle,
-    /// A prompt assembly request is in progress.
-    Assembling,
     /// A message has been dispatched to the LLM but no tokens have arrived yet.
     Sending,
     /// LLM tokens are actively streaming into the session.
     Streaming,
-    /// Context compaction is in progress.
-    Compacting,
     /// A lifecycle teardown script is running.
     TearingDown,
 }
@@ -58,10 +54,8 @@ impl std::str::FromStr for SessionPhase {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "idle" => Ok(Self::Idle),
-            "assembling" => Ok(Self::Assembling),
             "sending" => Ok(Self::Sending),
             "streaming" => Ok(Self::Streaming),
-            "compacting" => Ok(Self::Compacting),
             "tearing_down" => Ok(Self::TearingDown),
             _ => Err(SessionPhaseParseError(s.to_owned())),
         }
@@ -197,11 +191,8 @@ pub struct SessionCoreEphemeral {
     /// Maps tool_call_id to history index for pending streaming ToolResult entries.
     /// OWNER: session-actor.
     pub(crate) streaming_tool_result_indices: HashMap<String, usize>,
-    /// Set to true by `ScheduleAutoCompaction` when token threshold is exceeded.
-    /// Checked at `on_tool_batch_completed` and `on_stream_completed`. When set,
-    /// the session transitions directly to Compacting instead of continuing the
-    /// turn or returning to Idle. Self-clearing on read via
-    /// `take_auto_compaction_requested`.
+    /// Set to true when auto-compaction is needed.
+    /// Will be replaced by background worker triggering in Phase 4.
     /// OWNER: session-actor.
     #[serde(default)]
     pub(crate) auto_compaction_requested: bool,
@@ -1002,7 +993,7 @@ impl ChatSessionState {
     /// Used when the user interrupts or switches to Normal mode during an
     /// active stream. The display text from drained `UserMessage` entries is
     /// joined with newlines and replaces whatever was in the input box.
-    /// `ToolContinuation` and `CompactionNeeded` items are silently discarded.
+    /// `ToolContinuation` items are silently discarded.
     pub fn cancel_stream_and_drain(&mut self) {
         self.cancel_streaming();
         let drained = self.drain_queue();
@@ -1259,36 +1250,6 @@ impl ChatSessionState {
 
 
 
-    // --- Assembling ---
-
-    /// Mark the session as having a prompt assembly in progress.
-    ///
-    /// Soft guard: if not idle, logs a warning and returns without changing phase.
-    pub fn begin_assembling(&mut self) {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Idle) {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
-                "begin_assembling called while not idle — ignoring"
-            );
-            return;
-        }
-        self.core.ephemeral.phase = SessionPhase::Assembling;
-    }
-
-    /// Clear the assembling flag (called when prompt assembly completes).
-    ///
-    /// Soft guard: if not assembling, logs a warning and returns without changing phase.
-    pub fn finish_assembling(&mut self) {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Assembling) {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
-                "finish_assembling called while not assembling — ignoring"
-            );
-            return;
-        }
-        self.core.ephemeral.phase = SessionPhase::Idle;
-    }
-
     /// Switch the active prompt strategy for this session.
     pub fn switch_strategy(&mut self, strategy_id: PromptStrategyId) {
         self.core.profile.strategy = strategy_id;
@@ -1394,58 +1355,7 @@ impl ChatSessionState {
         self.core.ephemeral.phase = SessionPhase::Idle;
     }
 
-    /// Mark the session as compacting.
-    ///
-    /// Soft guard: if not idle, logs a warning and returns without changing phase.
-    pub fn begin_compacting(&mut self, gathered_indices: Vec<usize>) {
-        if !matches!(
-            self.core.ephemeral.phase,
-            SessionPhase::Idle | SessionPhase::Compacting
-        ) {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
-                "begin_compacting called while not idle or compacting — ignoring"
-            );
-            return;
-        }
-        self.core.ephemeral.phase = SessionPhase::Compacting;
-        self.core.ephemeral.compaction_gathered_indices = gathered_indices;
-    }
-
-    /// Mark compaction as finished.
-    ///
-    /// Soft guard: if the session is not currently compacting (e.g. compaction was
-    /// cancelled by the user while the LLM call was in flight), logs a warning and
-    /// returns early instead of panicking.
-    pub fn finish_compacting(&mut self) {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Compacting) {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
-                "finish_compacting called while not compacting — ignoring"
-            );
-            return;
-        }
-        self.core.ephemeral.compaction_gathered_indices.clear();
-        self.core.ephemeral.phase = SessionPhase::Idle;
-    }
-
-    /// Mark compaction as finished and transition to Sending phase.
-    ///
-    /// Used after successful auto-compaction to resume the turn.
-    /// The session goes `Compacting → Sending` instead of `Compacting → Idle`.
-    pub fn finish_compacting_into_sending(&mut self) {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Compacting) {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
-                "finish_compacting_into_sending called while not compacting — ignoring"
-            );
-            return;
-        }
-        self.core.ephemeral.compaction_gathered_indices.clear();
-        self.core.ephemeral.phase = SessionPhase::Sending;
-    }
-
-    /// Mark the session as running a lifecycle teardown script.
+    /// Mark the session as tearing down.
     ///
     /// Soft guard: if not idle, logs a warning and returns without changing phase.
     pub fn begin_tearing_down(&mut self) {
@@ -1459,10 +1369,9 @@ impl ChatSessionState {
         self.core.ephemeral.phase = SessionPhase::TearingDown;
     }
 
-    /// Mark teardown as finished, returning to `Idle`.
+    /// Finish tearing down, return to idle.
     ///
-    /// Soft guard: if the session is not currently tearing down, logs a warning
-    /// and returns without changing phase.
+    /// Soft guard: if not tearing down, logs a warning and returns without changing phase.
     pub fn finish_tearing_down(&mut self) {
         if !matches!(self.core.ephemeral.phase, SessionPhase::TearingDown) {
             tracing::warn!(
@@ -1472,29 +1381,6 @@ impl ChatSessionState {
             return;
         }
         self.core.ephemeral.phase = SessionPhase::Idle;
-    }
-
-    /// Cancel an in-progress compaction.
-    ///
-    /// Sets phase to Idle, un-ignores entries that were marked during
-    /// `begin_compacting`, and returns drained queued messages so the
-    /// caller can start a new turn if needed.
-    ///
-    /// No-op if not currently compacting.
-    pub fn cancel_compacting(
-        &mut self,
-    ) -> std::collections::VecDeque<crate::feat::session::queue_item::QueueItem> {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Compacting) {
-            return std::collections::VecDeque::new();
-        }
-        let indices = std::mem::take(&mut self.core.ephemeral.compaction_gathered_indices);
-        for i in indices {
-            if i < self.core.history.len() {
-                self.core.history[i].context_override = ContextOverride::Default;
-            }
-        }
-        self.core.ephemeral.phase = SessionPhase::Idle;
-        self.drain_queue()
     }
 
     /// The current scroll offset (lines to skip from top).

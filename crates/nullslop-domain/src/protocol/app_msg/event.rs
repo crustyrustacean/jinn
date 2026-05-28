@@ -23,7 +23,6 @@ use crate::common::actor::protocol::event::{
     ActorShutdownCompleted, ActorStarted, ActorStarting, AllActorsSpawned,
 };
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
-use crate::feat::compaction_actor::protocol::event::CompactionCompleted;
 // Re-export infrastructure types only. Domain structs are imported from their modules.
 pub use crate::common::actor::event_msg::EventMsg;
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
@@ -114,8 +113,6 @@ pub enum Event {
     SessionSetupCompleted(SessionSetupCompleted),
     /// A lifecycle teardown command finished.
     SessionTeardownFinished(SessionTeardownFinished),
-    /// Context compaction completed for a session.
-    CompactionCompleted(CompactionCompleted),
     /// A session was closed and removed from the sessions map.
     SessionClosed(crate::feat::session::protocol::session_closed::SessionClosed),
     /// A session was marked as interacted with by the user.
@@ -187,7 +184,6 @@ impl Event {
             }
             Self::SessionSetupCompleted(..) => Some(SessionSetupCompleted::TYPE_NAME),
             Self::SessionTeardownFinished(..) => Some(SessionTeardownFinished::TYPE_NAME),
-            Self::CompactionCompleted(..) => Some(CompactionCompleted::TYPE_NAME),
             Self::SessionClosed(..) => {
                 Some(crate::feat::session::protocol::session_closed::SessionClosed::TYPE_NAME)
             }

@@ -110,7 +110,6 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<PersistSession>();
         ctx.subscribe_command::<CloseSession>();
         ctx.subscribe_command::<crate::feat::session::protocol::archive_session::ArchiveSession>();
-        ctx.subscribe_command::<crate::feat::session::protocol::schedule_auto_compaction::ScheduleAutoCompaction>();
         ctx.subscribe_command::<crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations>();
         ctx.subscribe_command::<MarkSessionInteracted>();
 
@@ -119,11 +118,6 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<crate::feat::context::protocol::command::UnpinChatEntry>();
         ctx.subscribe_command::<crate::feat::context::protocol::command::LoadPersonaPickerEntries>(
         );
-
-        // Compaction command subscriptions.
-        ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::BeginCompaction>(
-        );
-        ctx.subscribe_command::<crate::feat::compaction_actor::protocol::command::EndCompaction>();
 
         // Event subscriptions.
         ctx.subscribe_event::<StreamToken>();
@@ -260,15 +254,6 @@ impl SessionPersistenceActor {
             Command::PersistSession(payload) => {
                 self.handle_persist_session(payload).await;
             }
-            Command::BeginCompaction(payload) => {
-                self.handle_begin_compaction(payload, ctx).await;
-            }
-            Command::EndCompaction(payload) => {
-                self.handle_end_compaction(payload, ctx).await;
-            }
-            Command::ScheduleAutoCompaction(payload) => {
-                self.handle_schedule_auto_compaction(payload);
-            }
             // Context-related commands (relocated from PromptAssemblyActor).
             Command::PinChatEntry(payload) => {
                 self.handle_pin_chat_entry(payload, ctx);
@@ -294,7 +279,6 @@ impl SessionPersistenceActor {
             | Command::ExecuteTool(..)
             | Command::ProceedWithShutdown(..)
             | Command::CancelStream(..)
-            | Command::CancelCompaction(..)
             | Command::RefreshModels
             | Command::RescanPromptTemplates
             | Command::ExecuteToolBatch(..)
@@ -305,8 +289,6 @@ impl SessionPersistenceActor {
             | Command::ScanSkills
             | Command::RescanPersonas(..)
             | Command::UpdatePreferences(..)
-            | Command::CompactContext(..)
-            | Command::EnqueueCompaction(..)
             | Command::InitWorkflow(..)
             | Command::StartWorkflow(..)
             | Command::CancelWorkflow(..)
