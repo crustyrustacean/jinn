@@ -37,6 +37,7 @@ pub fn definition() -> ToolDefinition {
             "required": ["task_id"],
             "additionalProperties": false
         }),
+        server_tool_type: None,
     }
 }
 

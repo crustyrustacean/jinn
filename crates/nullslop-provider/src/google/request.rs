@@ -221,6 +221,7 @@ mod tests {
                 "properties": {"input": {"type": "string"}},
                 "required": ["input"]
             }),
+            server_tool_type: None,
         };
         let json = tool_definition_to_json(&def);
         assert_eq!(json["name"], "echo");

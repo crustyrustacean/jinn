@@ -130,7 +130,7 @@ async fn activate_emits_tools_registered_for_builtins() {
         .iter()
         .find(|p| p.provider == "builtin")
         .expect("expected builtin ToolsRegistered");
-    assert_eq!(builtin_evt.definitions.len(), 15);
+    assert_eq!(builtin_evt.definitions.len(), 16);
 }
 
 // --- RegisterTools command tests ---
@@ -149,6 +149,7 @@ async fn register_tools_stores_actor_tools() {
         prompt_snippet: None,
         prompt_guidelines: vec![],
         parameters: serde_json::json!({"type": "object", "properties": {}}),
+        server_tool_type: None,
     };
 
     // When registering an actor-provided tool.
@@ -186,6 +187,7 @@ async fn register_tools_emits_event() {
         prompt_snippet: None,
         prompt_guidelines: vec![],
         parameters: serde_json::json!({"type": "object", "properties": {}}),
+        server_tool_type: None,
     };
 
     // When registering tools.
@@ -220,6 +222,7 @@ async fn register_tools_records_tool_count() {
         prompt_snippet: None,
         prompt_guidelines: vec![],
         parameters: serde_json::json!({"type": "object", "properties": {}}),
+        server_tool_type: None,
     };
 
     // When registering tools.
@@ -1028,6 +1031,7 @@ async fn handle_processes_register_tools_command() {
         prompt_snippet: None,
         prompt_guidelines: vec![],
         parameters: serde_json::json!({"type": "object", "properties": {}}),
+        server_tool_type: None,
     };
 
     // When calling handle with ActorEnvelope::Command(RegisterTools).
@@ -1099,6 +1103,7 @@ fn tool_registration_debug_shows_name() {
             prompt_snippet: None,
             prompt_guidelines: vec![],
             parameters: serde_json::json!({}),
+            server_tool_type: None,
         },
         execute: |_call, _ctx| Box::pin(async { unimplemented!() }),
     };

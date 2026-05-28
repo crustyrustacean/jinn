@@ -219,7 +219,7 @@ mod tests {
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::preferences_actor::RequestRetryConfig;
     use crate::feat::preferences_actor::user_preferences::{
-        CompactionConfig, ContextSlidingWindowConfig, WebFetchConfig,
+        CompactionConfig, ContextSlidingWindowConfig, OpenrouterWebSearchConfig, WebFetchConfig,
     };
 
     #[rstest::rstest]
@@ -253,6 +253,7 @@ mod tests {
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            openrouter_web_search: OpenrouterWebSearchConfig::default(),
         };
 
         // When saving and reloading.
@@ -302,6 +303,7 @@ mod tests {
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            openrouter_web_search: OpenrouterWebSearchConfig::default(),
         };
 
         // When saving and reloading.
@@ -334,6 +336,7 @@ mod tests {
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            openrouter_web_search: OpenrouterWebSearchConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -366,6 +369,7 @@ mod tests {
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            openrouter_web_search: OpenrouterWebSearchConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -385,6 +389,7 @@ mod tests {
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            openrouter_web_search: OpenrouterWebSearchConfig::default(),
         };
         service.save(&updated).expect("save updated");
 
@@ -413,6 +418,7 @@ mod tests {
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            openrouter_web_search: OpenrouterWebSearchConfig::default(),
         };
         service.save(&prefs).expect("save");
 

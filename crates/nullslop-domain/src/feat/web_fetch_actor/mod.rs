@@ -210,6 +210,7 @@ fn web_fetch_tool_definition() -> ToolDefinition {
         }),
         prompt_snippet: None,
         prompt_guidelines: vec![],
+        server_tool_type: None,
     }
 }
 

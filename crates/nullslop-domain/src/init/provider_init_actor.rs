@@ -159,7 +159,8 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::feat::preferences_actor::user_preferences::{
-        CompactionConfig, ContextSlidingWindowConfig, RequestRetryConfig, WebFetchConfig,
+        CompactionConfig, ContextSlidingWindowConfig, OpenrouterWebSearchConfig,
+        RequestRetryConfig, WebFetchConfig,
     };
     use crate::feat::provider_infra::ProviderEntry;
     use crate::init::EnvironmentLoaded;
@@ -211,6 +212,7 @@ mod tests {
                 context_sliding_window: ContextSlidingWindowConfig::default(),
                 request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+                openrouter_web_search: OpenrouterWebSearchConfig::default(),
             })
             .expect("save prefs");
 
@@ -431,6 +433,7 @@ mod tests {
                 context_sliding_window: ContextSlidingWindowConfig::default(),
                 request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+                openrouter_web_search: OpenrouterWebSearchConfig::default(),
             })
             .expect("save prefs");
 
