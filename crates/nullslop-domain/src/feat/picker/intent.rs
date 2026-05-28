@@ -619,11 +619,16 @@ fn load_tool_picker_entries(state: &mut AppState) {
         .context
         .tool_definitions
         .values()
-        .map(|def| ToolEntry {
-            name: def.name.clone(),
-            description: def.description.clone(),
-            enabled: !disabled.contains(&def.name),
-            theme: theme.clone(),
+        .map(|def| {
+            let name = def.name.clone();
+            let description = def.description.clone();
+            ToolEntry {
+                name: name.clone(),
+                description: description.clone(),
+                search_text: format!("{name} {description}"),
+                enabled: !disabled.contains(&def.name),
+                theme: theme.clone(),
+            }
         })
         .collect();
 
@@ -670,11 +675,16 @@ fn load_skill_picker_entries(state: &mut AppState) {
         .context
         .skills
         .iter()
-        .map(|skill| SkillEntry {
-            name: skill.name.clone(),
-            description: skill.description.clone(),
-            enabled: !disabled.contains(&skill.name),
-            theme: theme.clone(),
+        .map(|skill| {
+            let name = skill.name.clone();
+            let description = skill.description.clone();
+            SkillEntry {
+                search_text: format!("{name} {description}"),
+                name,
+                description,
+                enabled: !disabled.contains(&skill.name),
+                theme: theme.clone(),
+            }
         })
         .collect();
 

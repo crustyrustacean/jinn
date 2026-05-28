@@ -14,6 +14,9 @@ pub struct SkillEntry {
     pub name: String,
     /// Human-readable skill description.
     pub description: String,
+    /// Combined searchable text: `"{name} {description}"`.
+    /// Used for fuzzy matching so users can search by description terms.
+    pub search_text: String,
     /// Whether the skill is currently enabled for this session.
     pub enabled: bool,
     /// Theme for styling.
@@ -22,7 +25,7 @@ pub struct SkillEntry {
 
 impl PickerItem for SkillEntry {
     fn display_label(&self) -> &str {
-        &self.name
+        &self.search_text
     }
 
     fn render_row(&self, is_selected: bool) -> Line<'static> {
@@ -66,11 +69,14 @@ impl PickerItem for SkillEntry {
 
         let marker_span = Span::styled(marker.to_owned(), Style::default().fg(marker_color));
 
-        // Highlight matched bytes in the name using the same pattern as other pickers.
+        // Match indices are byte offsets into search_text = "{name} {description}".
+        // Only highlight the name portion in the row (description is in the preview pane).
+        let (name_indices, _desc_indices) = split_match_indices(match_indices, self.name.len());
+
         let name_spans = highlight_text_with_bg(
             &self.name,
             style,
-            match_indices,
+            &name_indices,
             self.theme.picker_highlight_bg,
         );
 
@@ -80,30 +86,69 @@ impl PickerItem for SkillEntry {
     }
 }
 
+/// Splits match indices from `search_text = "{name} {description}"` into
+/// name-portion and description-portion indices.
+///
+/// The space separator occupies byte offset `name_len`. Description indices
+/// are remapped to be relative to the start of the description string.
+fn split_match_indices(
+    indices: &[Range<usize>],
+    name_len: usize,
+) -> (Vec<Range<usize>>, Vec<Range<usize>>) {
+    let desc_offset = name_len + 1; // +1 for the space separator.
+
+    let mut name_indices = Vec::new();
+    let mut desc_indices = Vec::new();
+
+    for range in indices {
+        // Name portion: clamp to [0, name_len)
+        if range.start < name_len {
+            let end = range.end.min(name_len);
+            name_indices.push(range.start..end);
+        }
+
+        // Description portion: remap to [0, description.len())
+        if range.end > desc_offset {
+            let start = range.start.saturating_sub(desc_offset);
+            let end = range.end.saturating_sub(desc_offset);
+            desc_indices.push(start..end);
+        }
+    }
+
+    (name_indices, desc_indices)
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::feat::theme::default_theme;
 
-    fn make_entry(name: &str, enabled: bool) -> SkillEntry {
+    fn make_entry(name: &str, description: &str, enabled: bool) -> SkillEntry {
         SkillEntry {
             name: name.to_owned(),
-            description: String::new(),
+            description: description.to_owned(),
+            search_text: format!("{name} {description}"),
             enabled,
             theme: default_theme(),
         }
     }
 
     #[rstest::rstest]
-    fn display_label_returns_name() {
-        let entry = make_entry("phased-task-loop", true);
-        assert_eq!(entry.display_label(), "phased-task-loop");
+    fn display_label_returns_search_text() {
+        // Given a skill entry with name and description.
+        let entry = make_entry("phased-task-loop", "Structured workflow", true);
+
+        // When getting the display label.
+        let label = entry.display_label();
+
+        // Then it contains both name and description.
+        assert_eq!(label, "phased-task-loop Structured workflow");
     }
 
     #[rstest::rstest]
     fn render_row_enabled_shows_checkmark() {
-        let entry = make_entry("web-coder", true);
+        let entry = make_entry("web-coder", "Expert web dev", true);
         let line = entry.render_row(false);
         let rendered = line.to_string();
         assert!(rendered.contains('\u{2713}'), "should contain ✓");
@@ -112,10 +157,62 @@ mod tests {
 
     #[rstest::rstest]
     fn render_row_disabled_shows_cross() {
-        let entry = make_entry("web-coder", false);
+        let entry = make_entry("web-coder", "Expert web dev", false);
         let line = entry.render_row(false);
         let rendered = line.to_string();
         assert!(rendered.contains('\u{2717}'), "should contain ✗");
         assert!(!rendered.contains('\u{2713}'), "should not contain ✓");
+    }
+
+    #[rstest::rstest]
+    fn render_row_with_highlight_only_highlights_name() {
+        // Given a skill entry where the match spans both name and description.
+        let entry = make_entry("web-coder", "Expert web development", true);
+
+        // search_text = "web-coder Expert web development"
+        // Match "web" at byte offsets 0..3 (name portion).
+        let match_indices = vec![0..3];
+
+        // When rendering with highlight.
+        let line = entry.render_row_with_highlight(false, &match_indices);
+
+        // Then the row contains the name.
+        let rendered = line.to_string();
+        assert!(rendered.contains("web-coder"));
+    }
+
+    #[rstest::rstest]
+    fn split_match_indices_partitions_correctly() {
+        // Given match indices spanning across name/description boundary.
+        // search_text = "abc xyz" (name="abc", desc="xyz", separator at byte 3)
+        let name_len = 3;
+
+        // When splitting indices that span the boundary.
+        let (name_idx, desc_idx) = split_match_indices(&[0..5], name_len);
+
+        // Then name gets [0..3] and description gets [0..1].
+        assert_eq!(name_idx, vec![0..3]);
+        assert_eq!(desc_idx, vec![0..1]);
+    }
+
+    #[rstest::rstest]
+    fn split_match_indices_name_only_match() {
+        // Given match indices only in the name portion.
+        let (name_idx, desc_idx) = split_match_indices(&[0..2], 5);
+
+        // Then only name indices are populated.
+        assert_eq!(name_idx, vec![0..2]);
+        assert!(desc_idx.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn split_match_indices_description_only_match() {
+        // Given match indices only in the description portion.
+        // search_text = "hello world" (name=5, separator at 5, desc starts at 6)
+        let (name_idx, desc_idx) = split_match_indices(&[6..11], 5);
+
+        // Then only description indices are populated (remapped to 0..5).
+        assert!(name_idx.is_empty());
+        assert_eq!(desc_idx, vec![0..5]);
     }
 }
