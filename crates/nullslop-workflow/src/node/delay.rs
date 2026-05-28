@@ -84,6 +84,8 @@ impl WorkflowNode for DelayNode {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing, reason = "test code")]
+    #![expect(clippy::expect_used, reason = "test code")]
     use super::*;
     use crate::port::{PortValue, ScalarValue};
     use std::time::Instant;
@@ -104,7 +106,6 @@ mod tests {
 
         // Then it delays by approximately the configured duration.
         let elapsed = start.elapsed();
-        #[expect(clippy::expect_used, reason = "test assertion")]
         let outputs = result.expect("delay node should succeed");
         assert_eq!(outputs.get_text("in").unwrap(), "data");
         assert!(
@@ -134,7 +135,6 @@ mod tests {
         let result = node.execute(inputs, &test_ctx()).await;
 
         // Then both values are passed through.
-        #[expect(clippy::expect_used, reason = "test assertion")]
         let outputs = result.expect("delay node should succeed");
         assert_eq!(outputs.get_text("text").unwrap(), "hello");
         assert_eq!(outputs.get_text("label").unwrap(), "greeting");

@@ -185,6 +185,7 @@ fn format_duration(ms: u64) -> String {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, reason = "test code")]
     use super::*;
 
     // --- diff_cell ---
@@ -228,8 +229,14 @@ mod tests {
         // Then the delta is exactly 30, not 100*130 or 100-130.
         let content = cell.content();
         assert!(content.contains("30"), "expected '30' in {content}");
-        assert!(!content.contains("230"), "should not contain 230: {content}");
-        assert!(!content.contains("13000"), "should not contain 13000: {content}");
+        assert!(
+            !content.contains("230"),
+            "should not contain 230: {content}"
+        );
+        assert!(
+            !content.contains("13000"),
+            "should not contain 13000: {content}"
+        );
     }
 
     #[rstest::rstest]
@@ -241,7 +248,10 @@ mod tests {
         let content = cell.content();
         assert!(content.contains("30"), "expected '30' in {content}");
         assert!(!content.contains("10"), "should not contain 10: {content}");
-        assert!(!content.contains("1000"), "should not contain 1000: {content}");
+        assert!(
+            !content.contains("1000"),
+            "should not contain 1000: {content}"
+        );
     }
 
     // --- diff_cell_f64 ---
@@ -283,7 +293,10 @@ mod tests {
         assert!(content.contains('+'), "expected '+' in {content}");
         // delta = b - a = 1.5, not b + a = 3.5, not b / a = 2.5
         assert!(content.contains("1.5"), "expected '1.5' in {content}");
-        assert!(!content.contains("3.5"), "should not contain 3.5 (would mean +): {content}");
+        assert!(
+            !content.contains("3.5"),
+            "should not contain 3.5 (would mean +): {content}"
+        );
     }
 
     #[rstest::rstest]
@@ -295,8 +308,14 @@ mod tests {
         assert!(content.contains('-'), "expected '-' in {content}");
         // abs(delta) = 2.0, not 4.0 (would be +), not 3.0 (would be /)
         assert!(content.contains("2.0"), "expected '2.0' in {content}");
-        assert!(!content.contains("4.0"), "should not contain 4.0: {content}");
-        assert!(!content.contains("3.0"), "should not contain 3.0: {content}");
+        assert!(
+            !content.contains("4.0"),
+            "should not contain 4.0: {content}"
+        );
+        assert!(
+            !content.contains("3.0"),
+            "should not contain 3.0: {content}"
+        );
     }
 
     #[rstest::rstest]
@@ -308,7 +327,10 @@ mod tests {
         let content = cell.content();
         // Should show "-$0.5000", not "$-0.5000" (sign deletion mutant)
         assert!(content.contains('-'), "expected '-' in {content}");
-        assert!(!content.contains("$-"), "should not contain '$-' (unary negation deleted): {content}");
+        assert!(
+            !content.contains("$-"),
+            "should not contain '$-' (unary negation deleted): {content}"
+        );
     }
 
     // --- diff_cell_ms ---
@@ -347,7 +369,10 @@ mod tests {
 
         let content = cell.content();
         assert!(content.contains("30"), "expected '30' in {content}");
-        assert!(!content.contains("230"), "should not contain 230 (would be +): {content}");
+        assert!(
+            !content.contains("230"),
+            "should not contain 230 (would be +): {content}"
+        );
     }
 
     #[rstest::rstest]
@@ -357,8 +382,14 @@ mod tests {
 
         let content = cell.content();
         assert!(content.contains("150"), "expected '150' in {content}");
-        assert!(!content.contains("250"), "should not contain 250 (would be +): {content}");
-        assert!(!content.contains("4"), "should not contain 4 (would be /): {content}");
+        assert!(
+            !content.contains("250"),
+            "should not contain 250 (would be +): {content}"
+        );
+        assert!(
+            !content.contains('4'),
+            "should not contain 4 (would be /): {content}"
+        );
     }
 
     // --- format_duration ---
@@ -392,9 +423,18 @@ mod tests {
         let csv_a_path = dir.path().join("a.csv");
         let csv_b_path = dir.path().join("b.csv");
 
-        let header = "name,category,model,turns,tokens_in,tokens_out,cost,wall_time_ms,passed,status\n";
-        std::fs::write(&csv_a_path, format!("{header}task1,cat1,model-a,1,100,50,0.01,5000,true,completed")).expect("write a");
-        std::fs::write(&csv_b_path, format!("{header}task1,cat1,model-a,1,100,50,0.01,5000,false,completed")).expect("write b");
+        let header =
+            "name,category,model,turns,tokens_in,tokens_out,cost,wall_time_ms,passed,status\n";
+        std::fs::write(
+            &csv_a_path,
+            format!("{header}task1,cat1,model-a,1,100,50,0.01,5000,true,completed"),
+        )
+        .expect("write a");
+        std::fs::write(
+            &csv_b_path,
+            format!("{header}task1,cat1,model-a,1,100,50,0.01,5000,false,completed"),
+        )
+        .expect("write b");
 
         // When comparing (captures stdout).
         // The compare_results function prints the table.

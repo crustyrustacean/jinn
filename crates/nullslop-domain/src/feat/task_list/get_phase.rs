@@ -81,7 +81,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             None => ToolResult {
                 tool_call_id: call.id,
                 name: call.name,
-                content: format!("Error: phase not found: {}", phase_id_str),
+                content: format!("Error: phase not found: {phase_id_str}"),
                 success: false,
                 full_content: None,
                 truncation: None,

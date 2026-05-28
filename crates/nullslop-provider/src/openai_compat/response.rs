@@ -297,7 +297,7 @@ impl StreamResponseParser {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     fn parse_single(json: &str) -> Vec<StreamEvent> {
@@ -703,7 +703,8 @@ mod tests {
         let chunk1 = serde_json::json!({
             "id": "x",
             "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
-        }).to_string();
+        })
+        .to_string();
         let events1 = parser.parse_data(&chunk1);
         // Done is deferred — no events from parse_data.
         assert!(events1.is_empty());
@@ -712,9 +713,13 @@ mod tests {
         let chunk2 = serde_json::json!({
             "id": "x",
             "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
-        }).to_string();
+        })
+        .to_string();
         let events2 = parser.parse_data(&chunk2);
-        assert!(events2.is_empty(), "duplicate finish_reason should not emit events");
+        assert!(
+            events2.is_empty(),
+            "duplicate finish_reason should not emit events"
+        );
 
         // [DONE] sentinel flushes exactly one Done.
         let done_events = parser.handle_done();

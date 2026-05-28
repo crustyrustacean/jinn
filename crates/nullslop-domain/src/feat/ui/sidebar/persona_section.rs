@@ -120,7 +120,7 @@ impl SidebarSection for PersonaSection {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::{PersonaSection, navigate, receive_cursor};
     use crate::Intent;
     use crate::common::app_state::AppState;

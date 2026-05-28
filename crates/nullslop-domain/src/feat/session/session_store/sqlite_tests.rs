@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing)]
+#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::session_store::SessionStore;

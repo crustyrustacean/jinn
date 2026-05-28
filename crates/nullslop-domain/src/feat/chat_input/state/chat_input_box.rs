@@ -577,7 +577,7 @@ impl Default for ChatInputBoxState {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
     use crate::feat::chat_input::AutocompleteMatch;
@@ -684,24 +684,30 @@ mod tests {
 
     #[rstest::rstest]
     fn replace_grapheme_range_replaces_middle() {
-        // Given "hello world".
+        // Given "hello world" with cursor at end (grapheme 11).
         let mut state = ChatInputBoxState::new();
         state.insert_text("hello world");
+        // Cursor is now at grapheme 11 (after "world").
 
-        // When replacing graphemes 6..11 ("world") with "there".
-        state.insert_text(""); // Just to set up
-        state.move_cursor_to_start();
-        // Use complete_autocomplete which calls replace_grapheme_range internally
-        // Let's test via insert_text + manual cursor positioning instead.
-        // Actually let's test via a helper that exercises replace_grapheme_range:
-        // Activate autocomplete, then complete.
-        let matches = vec![AutocompleteMatch {
-            name: "test".to_owned(),
-            description: String::new(),
-        }];
-        state.move_cursor_to_end();
-        // We can't directly call replace_grapheme_range (private), but we can
-        // test it indirectly through complete_autocomplete.
+        // Activate autocomplete with token_start at grapheme 6 (start of "world").
+        // complete_autocomplete will call replace_grapheme_range(6, 11, "#there").
+        state.activate_autocomplete(
+            6,
+            AutocompleteTrigger::Hash,
+            vec![AutocompleteMatch {
+                name: "there".to_owned(),
+                description: String::new(),
+            }],
+        );
+
+        // When completing autocomplete with "there".
+        state.complete_autocomplete("there");
+
+        // Then graphemes 6..11 ("world") are replaced with "#there",
+        // producing "hello #there".
+        assert_eq!(state.text(), "hello #there");
+        // Cursor is after the replacement: 6 (start) + 6 (graphemes in "#there").
+        assert_eq!(state.cursor_pos(), 12);
     }
 
     // --- scroll_to_cursor ---
@@ -826,11 +832,7 @@ mod tests {
         // Given "#ab" with autocomplete at # and cursor after "ab".
         let mut state = ChatInputBoxState::new();
         state.insert_text("#ab");
-        state.activate_autocomplete(
-            0,
-            AutocompleteTrigger::Hash,
-            vec![],
-        );
+        state.activate_autocomplete(0, AutocompleteTrigger::Hash, vec![]);
 
         // When reading filter.
         let filter = state.autocomplete_filter();
@@ -844,11 +846,7 @@ mod tests {
         // Given "#" with cursor right after #.
         let mut state = ChatInputBoxState::new();
         state.insert_text("#");
-        state.activate_autocomplete(
-            0,
-            AutocompleteTrigger::Hash,
-            vec![],
-        );
+        state.activate_autocomplete(0, AutocompleteTrigger::Hash, vec![]);
 
         // When reading filter.
         let filter = state.autocomplete_filter();
@@ -863,9 +861,18 @@ mod tests {
         let mut state = ChatInputBoxState::new();
         state.insert_text("#");
         let matches = vec![
-            AutocompleteMatch { name: "a".to_owned(), description: String::new() },
-            AutocompleteMatch { name: "b".to_owned(), description: String::new() },
-            AutocompleteMatch { name: "c".to_owned(), description: String::new() },
+            AutocompleteMatch {
+                name: "a".to_owned(),
+                description: String::new(),
+            },
+            AutocompleteMatch {
+                name: "b".to_owned(),
+                description: String::new(),
+            },
+            AutocompleteMatch {
+                name: "c".to_owned(),
+                description: String::new(),
+            },
         ];
         state.activate_autocomplete(0, AutocompleteTrigger::Hash, matches.clone());
         // Default selection is last (index 2).
@@ -886,11 +893,7 @@ mod tests {
         // Given "#greet#" with autocomplete active.
         let mut state = ChatInputBoxState::new();
         state.insert_text("#greet#");
-        state.activate_autocomplete(
-            0,
-            AutocompleteTrigger::Hash,
-            vec![],
-        );
+        state.activate_autocomplete(0, AutocompleteTrigger::Hash, vec![]);
 
         // When expanding with body text.
         state.expand_autocomplete("Hello, world!");
@@ -905,15 +908,22 @@ mod tests {
         // Given autocomplete with 2 matches.
         let mut state = ChatInputBoxState::new();
         state.insert_text("#");
-        let initial = vec![
-            AutocompleteMatch { name: "a".to_owned(), description: String::new() },
-        ];
+        let initial = vec![AutocompleteMatch {
+            name: "a".to_owned(),
+            description: String::new(),
+        }];
         state.activate_autocomplete(0, AutocompleteTrigger::Hash, initial);
 
         // When updating matches.
         let updated = vec![
-            AutocompleteMatch { name: "b".to_owned(), description: String::new() },
-            AutocompleteMatch { name: "c".to_owned(), description: String::new() },
+            AutocompleteMatch {
+                name: "b".to_owned(),
+                description: String::new(),
+            },
+            AutocompleteMatch {
+                name: "c".to_owned(),
+                description: String::new(),
+            },
         ];
         state.update_autocomplete_matches(updated);
 
@@ -931,7 +941,10 @@ mod tests {
         state.activate_autocomplete(
             0,
             AutocompleteTrigger::Hash,
-            vec![AutocompleteMatch { name: "a".to_owned(), description: String::new() }],
+            vec![AutocompleteMatch {
+                name: "a".to_owned(),
+                description: String::new(),
+            }],
         );
 
         // When getting mutable reference.

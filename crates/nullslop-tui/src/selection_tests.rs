@@ -486,9 +486,17 @@ fn find_for_position_excludes_right_and_bottom_edges() {
     rects.rebuild(vec![rect]);
 
     // Right edge exclusion.
-    assert_eq!(rects.find_for_position(10, 2), None, "x=right() must not match with <");
+    assert_eq!(
+        rects.find_for_position(10, 2),
+        None,
+        "x=right() must not match with <"
+    );
     // Bottom edge exclusion.
-    assert_eq!(rects.find_for_position(5, 5), None, "y=bottom() must not match with <");
+    assert_eq!(
+        rects.find_for_position(5, 5),
+        None,
+        "y=bottom() must not match with <"
+    );
     // Interior point must match.
     assert_eq!(rects.find_for_position(5, 2), Some(rect));
 }
@@ -499,17 +507,22 @@ fn find_for_position_uses_multiplication_for_area() {
     // Two rects: one 2x3=6 area, one 3x2=6 area (tie).
     // And one 1x1=1 area inside both. The smallest must win.
     let large1 = Rect::new(0, 0, 3, 3); // area = 3*3 = 9
-    let small = Rect::new(0, 0, 1, 1);  // area = 1*1 = 1
+    let small = Rect::new(0, 0, 1, 1); // area = 1*1 = 1
     let mut rects = SelectableRects::new();
     rects.rebuild(vec![large1, small]);
 
     let found = rects.find_for_position(0, 0);
-    assert_eq!(found, Some(small), "smallest area rect must win (area=1, not 9)");
+    assert_eq!(
+        found,
+        Some(small),
+        "smallest area rect must win (area=1, not 9)"
+    );
 }
 
 // Kills: find_last_nonws_in_row delete !
 #[rstest::rstest]
 fn find_last_nonws_returns_last_not_first_nonws() {
+    use crate::selection::find_last_nonws_in_row;
     let area = Rect::new(0, 0, 10, 1);
     let mut buffer = Buffer::empty(area);
     // Cells: "A  B"
@@ -518,11 +531,14 @@ fn find_last_nonws_returns_last_not_first_nonws() {
     buffer.cell_mut((3, 0)).unwrap().set_symbol("B");
     // (4,0) through (9,0) are whitespace
 
-    use crate::selection::find_last_nonws_in_row;
     let result = find_last_nonws_in_row(&buffer, 0, 0, 9);
     // Without the !, it would return the first non-ws (x=0).
     // With !, it returns the last non-ws (x=3).
-    assert_eq!(result, Some(3), "must return last non-ws position (x=3), not first (x=0)");
+    assert_eq!(
+        result,
+        Some(3),
+        "must return last non-ws position (x=3), not first (x=0)"
+    );
 }
 
 // Kills: SelectionState::cancel -> Default::default()
@@ -542,7 +558,10 @@ fn cancel_dragging_returns_idle_variant() {
 // Kills: SelectionState::is_active -> true
 #[rstest::rstest]
 fn idle_is_not_active() {
-    assert!(!SelectionState::Idle.is_active(), "Idle must return false for is_active");
+    assert!(
+        !SelectionState::Idle.is_active(),
+        "Idle must return false for is_active"
+    );
 }
 
 #[rstest::rstest]

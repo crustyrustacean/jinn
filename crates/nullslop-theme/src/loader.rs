@@ -184,7 +184,7 @@ pub fn resolve_theme_from_dir(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use tempfile::TempDir;
 
     use super::*;

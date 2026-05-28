@@ -304,7 +304,7 @@ fn count_messages(messages: &[LlmMessage], counter: &dyn TokenCounter) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::common::app_state::AppState;
     use crate::common::state::State;

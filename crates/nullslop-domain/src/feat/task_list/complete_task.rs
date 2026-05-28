@@ -68,9 +68,11 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             match list.complete_task(&task_id) {
                 Ok(()) => {
                     let rendered = list.render_text();
-                    Ok(format!("Task [{}] marked as completed.\n\n{}", task_id, rendered))
+                    Ok(format!(
+                        "Task [{task_id}] marked as completed.\n\n{rendered}"
+                    ))
                 }
-                Err(e) => Err(format!("Error: {}", e)),
+                Err(e) => Err(format!("Error: {e}")),
             }
         };
 

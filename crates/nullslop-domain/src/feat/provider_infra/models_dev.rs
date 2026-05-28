@@ -120,7 +120,7 @@ impl ModelsDevData {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     fn write_json(dir: &std::path::Path, filename: &str, json: &str) -> std::path::PathBuf {

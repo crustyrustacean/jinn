@@ -23,20 +23,6 @@ struct ModelEntry {
     context_window: Option<u32>,
 }
 
-const MODELS_BASE_URL: &str = "https://api.anthropic.com";
-
-/// Fetch available model IDs from Anthropic.
-///
-/// # Errors
-///
-/// Returns [`LlmServiceError::Provider`] on HTTP or parse errors.
-pub async fn list_models(
-    client: &Client,
-    api_key: &str,
-) -> Result<Vec<ModelInfo>, Report<LlmServiceError>> {
-    list_models_with_base_url(client, api_key, MODELS_BASE_URL).await
-}
-
 /// Fetch models from a custom base URL (for testing).
 pub(crate) async fn list_models_with_base_url(
     client: &Client,
@@ -108,7 +94,8 @@ mod tests {
             .match_header("x-api-key", "test-key")
             .with_status(200)
             .with_body(
-                serde_json::json!({"data": [{"id": "claude-3", "context_window": 200000}]}).to_string(),
+                serde_json::json!({"data": [{"id": "claude-3", "context_window": 200_000}]})
+                    .to_string(),
             )
             .create_async()
             .await;
@@ -119,10 +106,13 @@ mod tests {
         // Then models are returned.
         let models = result.expect("should succeed");
         assert_eq!(models.len(), 1);
-        assert_eq!(models[0], ModelInfo {
-            id: "claude-3".to_owned(),
-            context_length: Some(200_000),
-        });
+        assert_eq!(
+            models[0],
+            ModelInfo {
+                id: "claude-3".to_owned(),
+                context_length: Some(200_000),
+            }
+        );
         mock.assert_async().await;
     }
 

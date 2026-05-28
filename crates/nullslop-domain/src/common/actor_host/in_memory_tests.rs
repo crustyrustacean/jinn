@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing)]
+#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -608,9 +608,16 @@ fn recording_sink_take_commands_returns_previously_sent_commands() {
     let taken = sink.take_commands();
 
     // Then the taken commands contain what was sent.
-    assert_eq!(taken.len(), 1, "take_commands should return previously sent commands");
+    assert_eq!(
+        taken.len(),
+        1,
+        "take_commands should return previously sent commands"
+    );
     assert!(matches!(taken[0], Command::RefreshModels));
 
     // And subsequent calls return empty (they were drained).
-    assert!(sink.take_commands().is_empty(), "take_commands should drain");
+    assert!(
+        sink.take_commands().is_empty(),
+        "take_commands should drain"
+    );
 }

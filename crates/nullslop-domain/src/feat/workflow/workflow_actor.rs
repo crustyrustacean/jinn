@@ -399,7 +399,7 @@ impl WorkflowActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, dead_code)]
 
     use super::*;
     use crate::common::actor::message_sink::RecordingSink;
@@ -408,9 +408,9 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::session::chat_entry::ChatEntry;
     use crate::feat::session::chat_session::{ChatSessionState, SessionPhase};
+    use crate::feat::workflow::WorkflowId;
     use crate::feat::workflow::example::add_numbers;
     use crate::protocol::SessionId;
-    use crate::feat::workflow::WorkflowId;
     use std::sync::Arc;
 
     fn make_registry() -> Arc<WorkflowRegistry> {
@@ -460,7 +460,10 @@ mod tests {
     }
 
     fn make_actor_context(sink: &Arc<RecordingSink>) -> ActorContext {
-        ActorContext::new("test-workflow-actor", sink.clone() as Arc<dyn crate::common::actor::MessageSink>)
+        ActorContext::new(
+            "test-workflow-actor",
+            sink.clone() as Arc<dyn crate::common::actor::MessageSink>,
+        )
     }
 
     // --- handle_init_workflow ---

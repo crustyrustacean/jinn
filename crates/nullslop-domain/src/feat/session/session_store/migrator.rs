@@ -440,7 +440,7 @@ fn migrate_v12(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErr
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use tempfile::TempDir;
 

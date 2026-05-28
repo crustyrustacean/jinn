@@ -79,7 +79,7 @@ pub(crate) fn find_visible_indices(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     // --- compute_scroll: scroll-to-selected logic ---

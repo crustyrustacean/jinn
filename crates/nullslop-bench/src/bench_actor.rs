@@ -598,11 +598,19 @@ mod tests {
 
     /// Create a minimal test state with a session that has a bench lifecycle.
     fn test_state_with_session() -> (State, SessionId) {
+        test_state_with_named_session("hello-world")
+    }
+
+    fn test_state_with_noop_session() -> (State, SessionId) {
+        test_state_with_named_session("test-noop")
+    }
+
+    fn test_state_with_named_session(lifecycle_name: &str) -> (State, SessionId) {
         let state = State::new(nullslop_domain::AppState::default());
         let session_id = {
             let mut s = state.write();
             let session = s.active_session_mut();
-            session.set_lifecycle_name(Some("hello-world".to_owned()));
+            session.set_lifecycle_name(Some(lifecycle_name.to_owned()));
             s.session.active_session_id().clone()
         };
         (state, session_id)
@@ -797,8 +805,8 @@ mod tests {
 
     #[tokio::test]
     async fn result_is_recorded_on_idle_phase_change() {
-        // Given a tracked bench session.
-        let (state, session_id) = test_state_with_session();
+        // Given a tracked bench session with a noop task (avoids cargo check).
+        let (state, session_id) = test_state_with_noop_session();
 
         let csv_dir = tempfile::TempDir::new().expect("temp dir");
         let csv_path = csv_dir.path().join("results.csv");
@@ -846,7 +854,7 @@ mod tests {
             "expected header + at least 1 row, got: {content}"
         );
         assert!(
-            lines[1].contains("hello-world"),
+            lines[1].contains("test-noop"),
             "row should contain task name"
         );
     }
