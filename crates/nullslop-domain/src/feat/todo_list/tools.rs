@@ -13,22 +13,29 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! Task list tool registry.
+//! Todo list tool registry.
 //!
-//! Wires each task list tool module into a list of (definition, execute) pairs
+//! Wires each todo list tool module into a list of (definition, execute) pairs
 //! for registration by the tool orchestrator.
+
+pub mod add_phase;
+pub mod add_task;
+pub mod complete_task;
+pub mod defer_task;
+pub mod defer_to_phase;
+pub mod get_phase;
+pub mod get_task_list;
+pub mod set_list;
 
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition};
 use crate::feat::tools_actor::BoxedToolFuture;
 
-use super::{add_phase, add_task, complete_task, get_phase, get_task_list};
-
 /// A built-in tool entry: its definition paired with its execute function.
 pub type BuiltinToolEntry = (ToolDefinition, fn(ToolCall, ToolContext) -> BoxedToolFuture);
 
-/// Returns all task list tool entries (definition + execute function).
+/// Returns all todo list tool entries (definition + execute function).
 ///
-/// Used by the tool orchestrator to register task list tools at activation.
+/// Used by the tool orchestrator to register todo list tools at activation.
 pub fn tool_entries() -> Vec<BuiltinToolEntry> {
     vec![
         (
@@ -44,6 +51,14 @@ pub fn tool_entries() -> Vec<BuiltinToolEntry> {
             complete_task::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
         ),
         (
+            defer_task::definition(),
+            defer_task::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+        ),
+        (
+            defer_to_phase::definition(),
+            defer_to_phase::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+        ),
+        (
             get_task_list::definition(),
             get_task_list::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
         ),
@@ -51,16 +66,23 @@ pub fn tool_entries() -> Vec<BuiltinToolEntry> {
             get_phase::definition(),
             get_phase::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
         ),
+        (
+            set_list::definition(),
+            set_list::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+        ),
     ]
 }
 
-/// Returns all task list tool definitions (for prompt injection).
+/// Returns all todo list tool definitions (for prompt injection).
 pub fn tool_definitions() -> Vec<ToolDefinition> {
     vec![
         add_phase::definition(),
         add_task::definition(),
         complete_task::definition(),
+        defer_task::definition(),
+        defer_to_phase::definition(),
         get_task_list::definition(),
         get_phase::definition(),
+        set_list::definition(),
     ]
 }
