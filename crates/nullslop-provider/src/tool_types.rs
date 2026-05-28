@@ -30,6 +30,24 @@ pub struct TruncationMeta {
     pub output_bytes: usize,
 }
 
+/// Server-side tool types handled by the provider (not by nullslop).
+///
+/// These tools are included in API requests but never dispatched locally.
+/// The provider handles execution and returns results inline.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ServerToolType {
+    OpenrouterWebSearch,
+}
+
+impl ServerToolType {
+    /// Returns the provider-specific tool type string for API requests.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::OpenrouterWebSearch => "openrouter:web_search",
+        }
+    }
+}
+
 /// A tool definition that describes a tool the LLM can invoke.
 ///
 /// Actors register these at startup via `RegisterTools`.
@@ -47,6 +65,9 @@ pub struct ToolDefinition {
     /// Behavioral guidelines injected into the "Tool guidelines" section of the system prompt.
     #[serde(default)]
     pub prompt_guidelines: Vec<String>,
+    /// For server-side tools, the provider tool type. `None` for function tools.
+    #[serde(default)]
+    pub server_tool_type: Option<ServerToolType>,
 }
 
 /// A tool call requested by the LLM during a streaming response.
@@ -94,6 +115,7 @@ mod tests {
             parameters: serde_json::json!({"type": "object", "properties": {"path": {"type": "string"}}}),
             prompt_snippet: Some("Read file contents".to_owned()),
             prompt_guidelines: vec!["Use read to examine files.".to_owned()],
+            server_tool_type: None,
         };
         let json = serde_json::to_string(&def).expect("serialize");
         let back: ToolDefinition = serde_json::from_str(&json).expect("deserialize");
@@ -175,5 +197,41 @@ mod tests {
         assert_eq!(result.content, "ok");
         assert!(result.full_content.is_none());
         assert!(result.truncation.is_none());
+    }
+
+    // --- ServerToolType tests ---
+
+    #[rstest::rstest]
+    fn server_tool_type_as_str_returns_correct_string() {
+        assert_eq!(ServerToolType::OpenrouterWebSearch.as_str(), "openrouter:web_search");
+    }
+
+    #[rstest::rstest]
+    fn tool_definition_with_server_tool_type_roundtrips() {
+        let def = ToolDefinition {
+            name: "openrouter:web_search".to_owned(),
+            description: "Search the web".to_owned(),
+            parameters: serde_json::json!({"engine": "exa"}),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            server_tool_type: Some(ServerToolType::OpenrouterWebSearch),
+        };
+        let json = serde_json::to_string(&def).expect("serialize");
+        let back: ToolDefinition = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, def);
+        assert_eq!(back.server_tool_type, Some(ServerToolType::OpenrouterWebSearch));
+    }
+
+    #[rstest::rstest]
+    fn tool_definition_without_server_tool_type_deserializes_as_none() {
+        // Given JSON without server_tool_type (pre-existing data).
+        let json = r#"{"name":"file_read","description":"Read a file","parameters":{"type":"object"},"prompt_snippet":null,"prompt_guidelines":[]}"#;
+
+        // When deserializing.
+        let def: ToolDefinition = serde_json::from_str(json).expect("deserialize");
+
+        // Then server_tool_type defaults to None.
+        assert_eq!(def.name, "file_read");
+        assert_eq!(def.server_tool_type, None);
     }
 }

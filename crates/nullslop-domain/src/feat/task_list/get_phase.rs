@@ -39,6 +39,7 @@ pub fn definition() -> ToolDefinition {
             "required": ["phase_id"],
             "additionalProperties": false
         }),
+        server_tool_type: None,
     }
 }
 

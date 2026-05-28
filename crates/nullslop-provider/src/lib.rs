@@ -30,7 +30,7 @@ pub use openai_compat::{OpenAiCompatibleFactory, OpenAiCompatibleService, Provid
 pub use sample::SampleLlmServiceFactory;
 pub use service::{ChatStream, LlmService, LlmServiceError, LlmServiceFactory, ToolStream};
 pub use stream_event::{StopReason, StreamEvent, StreamUsage};
-pub use tool_types::{ToolCall, ToolDefinition, ToolResult};
+pub use tool_types::{ServerToolType, ToolCall, ToolDefinition, ToolResult};
 
 pub use retry::{NoOpOnRetry, OnRetry, RetryConfig, RetryingLlmService};
 

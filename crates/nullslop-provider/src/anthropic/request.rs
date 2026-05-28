@@ -252,6 +252,7 @@ mod tests {
             prompt_snippet: None,
             prompt_guidelines: vec![],
             parameters: serde_json::json!({"type": "object"}),
+            server_tool_type: None,
         };
         let json = tool_definition_to_json(&def);
         assert!(json.get("input_schema").is_some());

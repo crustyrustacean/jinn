@@ -37,6 +37,8 @@ use crate::feat::tools_actor::protocol::command::{
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
 };
+use crate::feat::preferences_actor::OpenrouterWebSearchConfig;
+use nullslop_provider::ServerToolType;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::{Command, Event, SessionId};
 
@@ -121,6 +123,44 @@ pub struct ToolOrchestratorActorDeps {
     pub shell: String,
 }
 
+/// Builds the `openrouter:web_search` tool definition from config.
+///
+/// The `parameters` field contains actual config values (not a JSON Schema)
+/// because server tools send config directly, not a function parameter schema.
+fn build_openrouter_web_search_definition(config: &OpenrouterWebSearchConfig) -> ToolDefinition {
+    let mut params = serde_json::Map::new();
+    if let Some(ref engine) = config.engine {
+        params.insert("engine".to_owned(), serde_json::Value::String(engine.clone()));
+    }
+    if let Some(max) = config.max_results {
+        params.insert("max_results".to_owned(), serde_json::json!(max));
+    }
+    if let Some(max) = config.max_total_results {
+        params.insert("max_total_results".to_owned(), serde_json::json!(max));
+    }
+    if let Some(ref size) = config.search_context_size {
+        params.insert(
+            "search_context_size".to_owned(),
+            serde_json::Value::String(size.clone()),
+        );
+    }
+    if let Some(ref domains) = config.allowed_domains {
+        params.insert("allowed_domains".to_owned(), serde_json::json!(domains));
+    }
+    if let Some(ref domains) = config.excluded_domains {
+        params.insert("excluded_domains".to_owned(), serde_json::json!(domains));
+    }
+
+    ToolDefinition {
+        name: "openrouter:web_search".to_owned(),
+        description: "Search the web for real-time information.".to_owned(),
+        parameters: serde_json::Value::Object(params),
+        prompt_snippet: Some("Web search (OpenRouter)".to_owned()),
+        prompt_guidelines: vec![],
+        server_tool_type: Some(ServerToolType::OpenrouterWebSearch),
+    }
+}
+
 impl Actor for ToolOrchestratorActor {
     type Message = NoDirectMsg;
     type Deps = ToolOrchestratorActorDeps;
@@ -131,6 +171,12 @@ impl Actor for ToolOrchestratorActor {
         ctx.subscribe_command::<ExecuteToolBatch>();
         ctx.subscribe_command::<CancelToolBatch>();
         ctx.subscribe_event::<ToolExecutionCompleted>();
+
+        // Read web search config before moving state into actor.
+        let web_search_config = {
+            let guard = deps.state.read();
+            guard.frontend.preferences.openrouter_web_search.clone()
+        };
 
         let mut actor = Self {
             tools: HashMap::new(),
@@ -149,7 +195,7 @@ impl Actor for ToolOrchestratorActor {
         } else {
             all_builtins
         };
-        let builtin_definitions: Vec<ToolDefinition> =
+        let mut builtin_definitions: Vec<ToolDefinition> =
             builtins.iter().map(|(d, _)| d.clone()).collect();
 
         for (def, execute_fn) in builtins {
@@ -162,6 +208,27 @@ impl Actor for ToolOrchestratorActor {
                 },
             );
         }
+
+        // Register openrouter:web_search server tool.
+        let web_search_def = build_openrouter_web_search_definition(&web_search_config);
+        actor.tools.insert(
+            web_search_def.name.clone(),
+            ToolRegistration::Builtin {
+                definition: web_search_def.clone(),
+                execute: |_call, _ctx| {
+                    // Server tool — handled by OpenRouter, never dispatched locally.
+                    Box::pin(std::future::ready(ToolResult {
+                        tool_call_id: String::new(),
+                        name: "openrouter:web_search".to_owned(),
+                        content: "server tool should not be dispatched".to_owned(),
+                        success: false,
+                        full_content: None,
+                        truncation: None,
+                    }))
+                },
+            },
+        );
+        builtin_definitions.push(web_search_def);
 
         // Announce built-in tools so the LLM actor can cache them.
         if let Err(e) = ctx.send_event(Event::ToolsRegistered(ToolsRegistered {

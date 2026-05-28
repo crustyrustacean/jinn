@@ -21,6 +21,7 @@ pub fn tool_schema_to_definition(schema: &ToolSchema) -> ToolDefinition {
         parameters: schema.parameters.clone(),
         prompt_snippet: Some(schema.description.clone()),
         prompt_guidelines: vec![],
+        server_tool_type: None,
     }
 }
 

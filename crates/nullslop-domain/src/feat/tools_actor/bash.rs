@@ -101,6 +101,7 @@ pub fn definition() -> ToolDefinition {
             },
             "required": ["command"]
         }),
+        server_tool_type: None,
     }
 }
 

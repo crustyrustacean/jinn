@@ -15,6 +15,7 @@ use crate::feat::skills::format::format_skills_for_prompt;
 use crate::protocol::{
     ChatEntry, LlmMessage, PinPosition, SessionId, ToolDefinition, entries_to_messages,
 };
+use nullslop_provider::ServerToolType;
 
 /// Overrides for [`assemble_prompt`]. When provided, these replace the default
 /// sources for system prompt, tools, skills, and context files.
@@ -114,6 +115,18 @@ pub fn assemble_prompt(
     let disabled = session.disabled_tools();
     if overrides.is_none_or(|o| o.tool_definitions.is_none()) {
         tool_defs.retain(|def| !disabled.contains(&def.name));
+    }
+
+    // Filter out server tools that don't match the active provider.
+    // The model string format is "provider_name/model_name" — extract provider.
+    let provider_name = session.model().split('/').next().unwrap_or("");
+    if overrides.is_none_or(|o| o.tool_definitions.is_none()) {
+        tool_defs.retain(|def| {
+            match def.server_tool_type {
+                Some(ServerToolType::OpenrouterWebSearch) => provider_name == "openrouter",
+                _ => true, // Regular function tools always pass through.
+            }
+        });
     }
 
     // Inject judge-specific tools for judge sessions.
@@ -321,6 +334,7 @@ mod tests {
             parameters: serde_json::json!({"type": "object"}),
             prompt_snippet: Some(format!("{name} does things")),
             prompt_guidelines: vec![],
+            server_tool_type: None,
         }
     }
 
@@ -571,6 +585,7 @@ mod tests {
                 parameters: serde_json::json!({"type": "object"}),
                 prompt_snippet: Some("workflow tool does things".to_owned()),
                 prompt_guidelines: vec![],
+                server_tool_type: None,
             }]),
             ..Default::default()
         };
@@ -989,6 +1004,7 @@ mod tests {
                 parameters: serde_json::json!({"type": "object"}),
                 prompt_snippet: Some("workflow bash".to_owned()),
                 prompt_guidelines: vec![],
+                server_tool_type: None,
             }]),
             ..Default::default()
         };
