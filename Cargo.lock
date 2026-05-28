@@ -2351,6 +2351,7 @@ dependencies = [
  "crossterm",
  "derive_more",
  "dialoguer",
+ "dirs",
  "error-stack",
  "kanal",
  "nullslop-domain",
