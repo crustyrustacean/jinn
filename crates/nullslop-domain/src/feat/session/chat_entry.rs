@@ -504,7 +504,7 @@ impl ChatEntry {
     /// Single source of truth. All consumers (assembly, gutter, minimap,
     /// token estimator, visual items) must use this method.
     ///
-    /// Priority: pin > context_override > kind default.
+    /// Priority: pin > context_override > empty assistant > kind default.
     #[must_use]
     pub fn is_in_context(&self) -> bool {
         if self.is_pinned() {
@@ -513,7 +513,17 @@ impl ChatEntry {
         match self.context_override {
             ContextOverride::ForcedInclude => true,
             ContextOverride::ForcedExclude => false,
-            ContextOverride::Default => self.kind.is_included_by_default(),
+            ContextOverride::Default => {
+                // Empty assistant entries carry no context information.
+                // They are created when the LLM responds with tool calls
+                // but no text, and render as zero lines in the UI.
+                // Treat them as out-of-context so they don't split
+                // contiguous hidden blocks.
+                if self.is_empty_assistant() {
+                    return false;
+                }
+                self.kind.is_included_by_default()
+            }
         }
     }
 

@@ -912,3 +912,43 @@ fn complete_tool_batch_produces_valid_messages() {
         );
     }
 }
+
+#[rstest::rstest]
+fn orphan_tool_call_after_excluded_empty_assistant_creates_synthetic() {
+    // Given an empty assistant (excluded by default) followed by a tool call
+    // and a tool result — simulating the user having excluded entries.
+    let entries = vec![
+        ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#),
+        ChatEntry::tool_result("tc-1", "bash", "file.txt", ToolResultStatus::Success),
+    ];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then a synthetic empty assistant message is created for the orphan tool call.
+    assert_eq!(messages.len(), 2);
+    match &messages[0] {
+        LlmMessage::Assistant {
+            content,
+            tool_calls,
+        } => {
+            assert!(content.is_empty());
+            assert!(tool_calls.is_some());
+            assert_eq!(tool_calls.as_ref().expect("some").len(), 1);
+            assert_eq!(tool_calls.as_ref().expect("some")[0].id, "tc-1");
+        }
+        other => panic!("expected Assistant, got {other:?}"),
+    }
+    match &messages[1] {
+        LlmMessage::Tool {
+            tool_call_id,
+            name,
+            content,
+        } => {
+            assert_eq!(tool_call_id, "tc-1");
+            assert_eq!(name, "bash");
+            assert_eq!(content, "file.txt");
+        }
+        other => panic!("expected Tool, got {other:?}"),
+    }
+}

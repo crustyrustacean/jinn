@@ -857,6 +857,55 @@ fn all_exclude_default_kinds_are_not_in_context() {
     }
 }
 
+// --- Empty assistant is_in_context tests ---
+
+#[rstest::rstest]
+fn empty_assistant_default_is_not_in_context() {
+    // Given an empty Assistant entry with Default override.
+    let entry = ChatEntry::assistant("");
+
+    // Then it is NOT in context (empty assistants carry no information).
+    assert!(!entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn nonempty_assistant_default_is_in_context() {
+    // Given a non-empty Assistant entry with Default override.
+    let entry = ChatEntry::assistant("response text");
+
+    // Then it IS in context.
+    assert!(entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn empty_assistant_forced_include_is_in_context() {
+    // Given an empty Assistant entry with ForcedInclude override.
+    let entry =
+        ChatEntry::assistant("").with_context_override(ContextOverride::ForcedInclude);
+
+    // Then ForcedInclude overrides the empty-assistant rule — it IS in context.
+    assert!(entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn empty_assistant_forced_exclude_is_not_in_context() {
+    // Given an empty Assistant entry with ForcedExclude override.
+    let entry =
+        ChatEntry::assistant("").with_context_override(ContextOverride::ForcedExclude);
+
+    // Then it is NOT in context.
+    assert!(!entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn pinned_empty_assistant_default_is_in_context() {
+    // Given an empty Assistant entry that is pinned.
+    let entry = ChatEntry::assistant("").with_pin(PinPosition::Top);
+
+    // Then pin overrides the empty-assistant rule — it IS in context.
+    assert!(entry.is_in_context());
+}
+
 // --- ContextOverride serialization tests ---
 
 #[rstest::rstest]
