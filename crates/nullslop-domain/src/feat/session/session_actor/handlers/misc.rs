@@ -7,6 +7,7 @@ use crate::feat::provider::protocol::event::ModelsRefreshed;
 
 use super::super::SessionPersistenceActor;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
+use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 use crate::protocol::ChatEntry;
 
 impl SessionPersistenceActor {
@@ -48,6 +49,30 @@ impl SessionPersistenceActor {
             let mut state = self.state.write();
             state.frontend.session_picker.set_items(entries);
         }
+    }
+
+    /// Queues a batch of history mutations for deferred application.
+    ///
+    /// Workers submit `Vec<HistoryMutation>` batches via the
+    /// `SubmitHistoryMutations` command. This handler pushes them to
+    /// `pending_mutations` without applying — they are drained and applied
+    /// at the next safe application point (tool batch completion or stream
+    /// completion).
+    pub(in crate::feat::session::session_actor) fn handle_submit_history_mutations(
+        &self,
+        payload: &SubmitHistoryMutations,
+    ) {
+        if payload.mutations.is_empty() {
+            return;
+        }
+        let mut state = self.state.write();
+        let session = state.session_mut_or_create(&payload.session_id);
+        session.queue_mutations(payload.mutations.clone());
+        tracing::debug!(
+            session_id = %payload.session_id,
+            queue_len = session.core.ephemeral.pending_mutations.len(),
+            "queued history mutations from worker"
+        );
     }
 }
 
