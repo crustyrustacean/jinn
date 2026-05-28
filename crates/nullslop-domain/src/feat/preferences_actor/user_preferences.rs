@@ -175,7 +175,7 @@ impl Default for WebFetchConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenrouterWebSearchConfig {
     /// Search engine: "auto", "native", "exa", "firecrawl", or "parallel".
-    /// `None` means use OpenRouter's default ("auto").
+    /// Default: "exa".
     #[serde(default)]
     pub engine: Option<String>,
 
@@ -204,7 +204,7 @@ pub struct OpenrouterWebSearchConfig {
 impl Default for OpenrouterWebSearchConfig {
     fn default() -> Self {
         Self {
-            engine: None,
+            engine: Some("exa".to_owned()),
             max_results: None,
             max_total_results: None,
             search_context_size: None,
@@ -868,7 +868,7 @@ backend = "socks"
     #[rstest::rstest]
     fn default_preferences_has_default_openrouter_web_search() {
         let prefs = UserPreferences::default();
-        assert!(prefs.openrouter_web_search.engine.is_none());
+        assert_eq!(prefs.openrouter_web_search.engine.as_deref(), Some("exa"));
         assert!(prefs.openrouter_web_search.max_results.is_none());
         assert!(prefs.openrouter_web_search.max_total_results.is_none());
         assert!(prefs.openrouter_web_search.search_context_size.is_none());
