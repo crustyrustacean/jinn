@@ -504,7 +504,7 @@ impl ChatEntry {
     /// Single source of truth. All consumers (assembly, gutter, minimap,
     /// token estimator, visual items) must use this method.
     ///
-    /// Priority: pin > context_override > kind default.
+    /// Priority: pin > context_override > non-context defaults > kind default.
     #[must_use]
     pub fn is_in_context(&self) -> bool {
         if self.is_pinned() {
@@ -513,7 +513,15 @@ impl ChatEntry {
         match self.context_override {
             ContextOverride::ForcedInclude => true,
             ContextOverride::ForcedExclude => false,
-            ContextOverride::Default => self.kind.is_included_by_default(),
+            ContextOverride::Default => {
+                // Certain entries are excluded by default even though their
+                // *kind* is included by default. They carry no useful context
+                // and should not split contiguous hidden blocks.
+                if self.is_empty_assistant() || self.is_pending_tool_result() {
+                    return false;
+                }
+                self.kind.is_included_by_default()
+            }
         }
     }
 
@@ -547,6 +555,19 @@ impl ChatEntry {
     #[must_use]
     pub fn is_empty_assistant(&self) -> bool {
         matches!(&self.kind, ChatEntryKind::Assistant(text) if text.is_empty())
+    }
+
+    /// Whether this is a ToolResult that never completed (Pending status).
+    ///
+    /// Pending results are created when a tool call starts but never
+    /// receives a success or failure status. They carry incomplete data
+    /// and should be treated as out-of-context.
+    #[must_use]
+    pub fn is_pending_tool_result(&self) -> bool {
+        matches!(
+            &self.kind,
+            ChatEntryKind::ToolResult { status: ToolResultStatus::Pending, .. }
+        )
     }
 
     /// The pin position, if this entry is pinned.
