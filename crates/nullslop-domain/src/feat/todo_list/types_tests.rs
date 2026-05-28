@@ -3,7 +3,7 @@
 //! BDD-style tests following AGENTS.md conventions.
 //! Each test covers a single behavior.
 
-use crate::feat::task_list::{PhaseId, TaskList, TaskListError, TaskPosition, TaskStatus};
+use crate::feat::todo_list::{PhaseId, TaskList, TaskListError, TaskPosition, TaskStatus};
 
 // ---------------------------------------------------------------------------
 // add_phase
@@ -163,7 +163,7 @@ fn complete_task_marks_as_completed() {
 fn complete_task_rejects_unknown_id() {
     let mut list = TaskList::new();
     list.add_phase("Build");
-    let bad_id = crate::feat::task_list::TaskId::new_for_test("t99");
+    let bad_id = crate::feat::todo_list::TaskId::new_for_test("t99");
     let result = list.complete_task(&bad_id);
     assert_eq!(result, Err(TaskListError::TaskNotFound(bad_id)));
 }
@@ -210,7 +210,7 @@ fn get_task_finds_task_from_any_phase() {
 #[test]
 fn get_task_returns_none_for_missing_id() {
     let list = TaskList::new();
-    let missing = crate::feat::task_list::TaskId::new_for_test("t99");
+    let missing = crate::feat::todo_list::TaskId::new_for_test("t99");
     assert!(list.get_task(&missing).is_none());
 }
 
@@ -316,7 +316,7 @@ fn serde_deserializes_partial_json() {
 #[test]
 fn id_display_format() {
     let pid = PhaseId::new_for_test("p1");
-    let tid = crate::feat::task_list::TaskId::new_for_test("t2");
+    let tid = crate::feat::todo_list::TaskId::new_for_test("t2");
     assert_eq!(format!("{pid}"), "p1");
     assert_eq!(format!("{tid}"), "t2");
 }

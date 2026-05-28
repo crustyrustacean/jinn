@@ -322,7 +322,7 @@ pub struct SessionCore {
     /// Phased task list for agent session planning.
     /// OWNER: tools-actor (mutated by task list tools).
     #[serde(default)]
-    pub(crate) task_list: crate::feat::task_list::TaskList,
+    pub(crate) task_list: crate::feat::todo_list::TaskList,
     /// Runtime-only state — not persisted across restarts.
     #[serde(skip)]
     pub(crate) ephemeral: SessionCoreEphemeral,
@@ -349,7 +349,7 @@ impl Default for SessionCore {
             is_workflow: false,
             judge: None,
             workflow_overrides: None,
-            task_list: crate::feat::task_list::TaskList::default(),
+            task_list: crate::feat::todo_list::TaskList::default(),
             has_interacted: false,
             ephemeral: SessionCoreEphemeral::default(),
         }
@@ -2268,12 +2268,12 @@ impl ChatSessionState {
     }
 
     /// Read-only access to this session's task list.
-    pub fn task_list(&self) -> &crate::feat::task_list::TaskList {
+    pub fn task_list(&self) -> &crate::feat::todo_list::TaskList {
         &self.core.task_list
     }
 
     /// Mutable access to this session's task list.
-    pub fn task_list_mut(&mut self) -> &mut crate::feat::task_list::TaskList {
+    pub fn task_list_mut(&mut self) -> &mut crate::feat::todo_list::TaskList {
         &mut self.core.task_list
     }
 
