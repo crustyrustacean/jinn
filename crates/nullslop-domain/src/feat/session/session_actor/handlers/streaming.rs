@@ -165,7 +165,7 @@ impl SessionPersistenceActor {
                                 _ => None,
                             }
                         }
-                        _ => None,
+                        crate::feat::session::queue_item::QueueItem::ToolContinuation => None,
                     })
                     .collect();
                 let drained_text = display_texts.join("\n");
@@ -196,7 +196,7 @@ mod tests {
     };
     use crate::feat::session::chat_session::SessionPhase;
     use crate::feat::session::token_stats::TokenRecord;
-    use crate::protocol::{ChatEntry, Command, Event};
+    use crate::protocol::{ChatEntry, Event};
 
     #[tokio::test]
     async fn on_stream_completed_error_reason_finishes_streaming() {
@@ -434,7 +434,7 @@ mod tests {
     async fn on_stream_completed_canceled_force_excludes_dangling_tool_calls() {
         // Given a session in streaming state with dangling tool calls in history.
         let actor = test_actor();
-        let (sink, ctx) = test_context();
+        let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -904,7 +904,7 @@ mod tests {
     async fn on_stream_completed_finished_without_auto_compaction_goes_to_idle() {
         // Given a session in streaming state WITHOUT auto-compaction requested.
         let actor = test_actor();
-        let (sink, ctx) = test_context();
+        let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();

@@ -338,7 +338,7 @@ fn execute_slash_command(
             let _session_id = state.session.active_session_id();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::system("Compaction is temporarily disabled during refactoring."));
-            return IntentResult::empty();
+            IntentResult::empty()
         }
         SlashCommand::New => crate::feat::session::intent::handle_session_new(state),
         SlashCommand::Workflow => {

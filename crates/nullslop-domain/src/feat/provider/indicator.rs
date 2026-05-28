@@ -115,6 +115,7 @@ mod tests {
     }
 
 
+    #[rstest::rstest]
     fn renders_working_label_during_sending_phase() {
         // Given a session in Sending phase.
         use nullslop_testutil::{buffer_row, setup_term};
