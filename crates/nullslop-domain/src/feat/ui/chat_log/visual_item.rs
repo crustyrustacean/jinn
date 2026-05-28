@@ -557,4 +557,37 @@ mod tests {
             VisualItem::CollapsedIgnoredBlock { start: 2, count: 5 }
         );
     }
+
+    #[rstest::rstest]
+    fn empty_assistant_does_not_split_excluded_block() {
+        // Given: 1 in-context, 2 excluded, 1 empty assistant (default),
+        // 2 excluded, 14 in-context (total 20).
+        // The empty assistant is out-of-context (is_in_context returns false
+        // for empty assistants with Default override).
+        let mut history = make_entries(1, false);
+        history.extend(make_entries(2, true));
+        history.push(ChatEntry::assistant("")); // empty assistant
+        history.extend(make_entries(2, true));
+        history.extend(make_entries(14, false));
+
+        // When building visual items.
+        let items = build_visual_items(
+            &history,
+            &HashSet::new(),
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
+
+        // Then: 1 Entry, 1 Collapsed(1, 5), 14 Entry.
+        // The empty assistant is absorbed into the surrounding excluded block.
+        assert_eq!(items.len(), 1 + 1 + 14);
+        assert_eq!(items[0], VisualItem::Entry(0));
+        assert_eq!(
+            items[1],
+            VisualItem::CollapsedIgnoredBlock { start: 1, count: 5 }
+        );
+        for i in 0..14 {
+            assert_eq!(items[2 + i], VisualItem::Entry(6 + i));
+        }
+    }
 }
