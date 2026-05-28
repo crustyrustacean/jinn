@@ -1,7 +1,9 @@
 //! Skill picker entry type and rendering.
 
 use crate::feat::theme::Theme;
+use crate::feat::ui::chat_log::markdown::render_markdown;
 use nullslop_selection_widget::PickerItem;
+use nullslop_selection_widget::PreviewContent;
 use nullslop_selection_widget::highlight::highlight_text_with_bg;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
@@ -17,6 +19,8 @@ pub struct SkillEntry {
     /// Combined searchable text: `"{name} {description}"`.
     /// Used for fuzzy matching so users can search by description terms.
     pub search_text: String,
+    /// Markdown body content (from SKILL.md, after stripping frontmatter).
+    pub body: String,
     /// Whether the skill is currently enabled for this session.
     pub enabled: bool,
     /// Theme for styling.
@@ -86,6 +90,15 @@ impl PickerItem for SkillEntry {
     }
 }
 
+impl PreviewContent for SkillEntry {
+    fn preview_lines(&self, width: usize) -> Vec<Line<'static>> {
+        if self.body.is_empty() {
+            return Vec::new();
+        }
+        render_markdown(&self.body, width as u16, &self.theme)
+    }
+}
+
 /// Splits match indices from `search_text = "{name} {description}"` into
 /// name-portion and description-portion indices.
 ///
@@ -134,6 +147,7 @@ mod tests {
             name: name.to_owned(),
             description: description.to_owned(),
             search_text: format!("{name} {description}"),
+            body: String::new(),
             enabled,
             theme: default_theme(),
         }
