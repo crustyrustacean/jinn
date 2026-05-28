@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing)]
+#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
 use crate::feat::context::strategy::compaction_data::CompactionSessionData;
 use crate::feat::context::strategy::types::StrategyState;

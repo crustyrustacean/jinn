@@ -134,7 +134,7 @@ pub async fn run_teardown_command(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     // --- Setup command tests ---

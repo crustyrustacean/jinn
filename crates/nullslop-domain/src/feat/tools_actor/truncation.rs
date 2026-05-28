@@ -247,7 +247,7 @@ pub fn format_size(bytes: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     // --- truncate_head ---

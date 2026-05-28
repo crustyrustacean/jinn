@@ -184,7 +184,6 @@ fn compute_x_offset(
 }
 
 #[cfg(test)]
-#[expect(clippy::indexing_slicing, reason = "test indices are known-valid")]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;

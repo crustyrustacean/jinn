@@ -4,7 +4,7 @@
 //! mutations → actor submits them via command bus → session queues
 //! and later applies them at safe drain points.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing)]
+#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
 use std::sync::Arc;
 

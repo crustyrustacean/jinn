@@ -89,7 +89,7 @@ pub fn handle_reset_judge(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::common::app_state::AppState;
     use crate::common::app_state::FocusScope;

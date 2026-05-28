@@ -159,7 +159,7 @@ pub fn truncate_to_width(s: &str, max_width: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use ratatui::style::{Color, Style};
     use ratatui::text::{Line, Span};
 
