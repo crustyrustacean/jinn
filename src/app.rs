@@ -148,57 +148,7 @@ impl App {
                 // Resolve mouse selection config from environment.
                 let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
 
-                // Initialize plugin system.
-                // Create the MsgHandler early so the plugin CommandSender routes
-                // through the TUI message handler (where the welcome subscriber
-                // intercept lives) instead of directly to the actor host.
                 let tui_events = nullslop_tui::MsgHandler::new();
-                let tui_event_sender = tui_events.sender();
-                let plugin_registry = {
-                    let cmd_sender = nullslop_plugin::CommandSender::new(
-                        move |cmd: nullslop_domain::Command| {
-                            tui_event_sender.send(nullslop_tui::msg::Msg::Command(cmd));
-                        },
-                    );
-                    let translator = crate::plugin_wiring::build_translator();
-                    let registry = nullslop_plugin::PluginRegistry::new(translator, cmd_sender);
-
-                    // Load plugins.
-                    let mut plugin_count = 0usize;
-
-                    // System plugins (installed by package manager).
-                    let system_dir = paths.system_plugins_dir();
-                    if system_dir.is_dir() {
-                        let infos = registry.load_all(&system_dir);
-                        plugin_count += infos.len();
-                    }
-
-                    // User plugins (~/.config/nullslop/plugins).
-                    let user_dir = paths.plugins_dir();
-                    if user_dir.is_dir() {
-                        let infos = registry.load_all(&user_dir);
-                        plugin_count += infos.len();
-                    }
-
-                    if plugin_count > 0 {
-                        tracing::info!(count = plugin_count, "loaded plugins");
-                    }
-
-                    registry
-                };
-
-                // Fire app::started event.
-                tracing::info!("dispatching app::started event");
-                let session_id = core.state.read().session.active_session_id().to_string();
-                let ctx = nullslop_plugin::ctx::AppStartedCtx {
-                    session_id,
-                };
-                nullslop_plugin::emit(
-                    nullslop_plugin::hooks::APP_STARTED,
-                    &plugin_registry,
-                    &ctx,
-                );
-
                 let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
                 let mut ui_registry = nullslop_domain::AppUiRegistry::new();
                 nullslop_domain::register_all_ui_elements(&mut ui_registry);
@@ -226,7 +176,6 @@ impl App {
                         nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                         s
                     },
-                    plugin_registry,
                 }));
                 runner.run().change_context(AppError)?;
             }
@@ -373,7 +322,6 @@ impl App {
                                 nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                                 s
                             },
-                            plugin_registry: nullslop_plugin::PluginRegistry::new_for_tests(),
                         }));
                         runner.run().change_context(AppError)?;
                     }
@@ -449,7 +397,6 @@ impl App {
                                 nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                                 s
                             },
-                            plugin_registry: nullslop_plugin::PluginRegistry::new_for_tests(),
                         }));
                         runner.run().change_context(AppError)?;
                     }

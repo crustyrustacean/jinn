@@ -5,7 +5,7 @@
 //! The section is hidden when the task list is empty.
 
 use crate::common::app_state::AppState;
-use crate::feat::task_list::{TaskList, TaskStatus};
+use crate::feat::todo_list::{TaskList, TaskStatus};
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
@@ -95,13 +95,15 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
         } else {
             for task in phase.tasks() {
                 let indicator = match task.status() {
-                    TaskStatus::Pending => "\u{25CB} ",   // ○
-                    TaskStatus::Completed => "\u{2713} ", // ✓
+                    TaskStatus::Pending => "\u{25CB} ",    // \u{25CB}  ○
+                    TaskStatus::Completed => "\u{2713} ",  // \u{2713}  ✓
+                    TaskStatus::Deferred => "\u{25BC} ",   // \u{25BC}  ▼
                 };
-                let style = if task.status() == TaskStatus::Completed {
-                    Style::default().fg(theme.muted_text)
-                } else {
-                    Style::default().fg(theme.primary_text)
+                let style = match task.status() {
+                    TaskStatus::Pending => Style::default().fg(theme.primary_text),
+                    TaskStatus::Completed | TaskStatus::Deferred => {
+                        Style::default().fg(theme.muted_text)
+                    }
                 };
                 lines.push(Line::from(Span::styled(
                     format!("    {}{}", indicator, task.description()),
@@ -149,7 +151,7 @@ fn compute_height(list: &TaskList) -> u16 {
 mod tests {
     use super::*;
     use crate::common::app_state::AppState;
-    use crate::feat::task_list::TaskPosition;
+    use crate::feat::todo_list::TaskPosition;
 
     fn setup_with_tasks() -> AppState {
         let mut app = AppState::default();
@@ -268,5 +270,46 @@ mod tests {
     fn id_returns_task_list() {
         let section = TaskListSection;
         assert_eq!(section.id(), SidebarSectionId::TaskList);
+    }
+
+    #[test]
+    fn build_render_lines_shows_deferred_indicator() {
+        let mut app = AppState::default();
+        let session = app.session.active_session_mut();
+        let p1 = session.task_list_mut().add_phase("Research");
+        let t1 = session
+            .task_list_mut()
+            .add_task(&p1, "Read docs", TaskPosition::End)
+            .unwrap();
+        let p2 = session.task_list_mut().add_phase("Build");
+        let t2 = session
+            .task_list_mut()
+            .add_task(&p2, "Write code", TaskPosition::End)
+            .unwrap();
+
+        // Defer t1 (Read docs) to after t2.
+        session
+            .task_list_mut()
+            .defer_task(&t1, crate::feat::todo_list::TaskPosition::After(t2))
+            .unwrap();
+
+        let list = session.task_list().clone();
+        let lines = build_render_lines(&list, &app);
+        let combined: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .map(|s| s.content.to_string())
+            .collect();
+
+        // Sidebar should show the deferred task with ▼ indicator.
+        assert!(
+            combined.contains("\u{25BC}"),
+            "should contain deferred indicator ▼"
+        );
+        // Sidebar should also show pending tasks.
+        assert!(
+            combined.contains("\u{25CB}"),
+            "should contain pending indicator ○"
+        );
     }
 }

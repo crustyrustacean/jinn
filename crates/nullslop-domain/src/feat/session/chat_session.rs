@@ -313,7 +313,7 @@ pub struct SessionCore {
     /// Phased task list for agent session planning.
     /// OWNER: tools-actor (mutated by task list tools).
     #[serde(default)]
-    pub(crate) task_list: crate::feat::task_list::TaskList,
+    pub(crate) task_list: crate::feat::todo_list::TaskList,
     /// Runtime-only state — not persisted across restarts.
     #[serde(skip)]
     pub(crate) ephemeral: SessionCoreEphemeral,
@@ -340,7 +340,7 @@ impl Default for SessionCore {
             is_workflow: false,
             judge: None,
             workflow_overrides: None,
-            task_list: crate::feat::task_list::TaskList::default(),
+            task_list: crate::feat::todo_list::TaskList::default(),
             has_interacted: false,
             ephemeral: SessionCoreEphemeral::default(),
         }
@@ -425,6 +425,15 @@ pub struct SessionUi {
     /// ignored blocks. Set by the renderer each frame, read by intent
     /// handlers for navigation and toggle.
     pub(crate) visual_items: RwLock<Vec<crate::feat::ui::chat_log::visual_item::VisualItem>>,
+    /// Tracks an active "x-sweep": holding `x` to apply a fixed ignore state
+    /// across consecutive entries.
+    ///
+    /// `Some((instant, override))` means a sweep is active:
+    /// - `instant`: timestamp of the last `x` press in this sweep
+    /// - `override`: the `ContextOverride` to apply to subsequent entries
+    ///
+    /// Cleared by: >100ms gap, or any non-`ChatEntryIgnoreSelected` intent.
+    pub(crate) ignore_sweep: Option<(std::time::Instant, ContextOverride)>,
 }
 
 impl Clone for SessionUi {
@@ -454,6 +463,7 @@ impl Clone for SessionUi {
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .clone(),
             ),
+            ignore_sweep: self.ignore_sweep,
         }
     }
 }
@@ -473,6 +483,7 @@ impl Default for SessionUi {
             saved_history_position: None,
             shown_ignored_blocks: HashSet::new(),
             visual_items: RwLock::new(Vec::new()),
+            ignore_sweep: None,
         }
     }
 }
@@ -603,6 +614,49 @@ impl ChatSessionState {
                 };
             }
         }
+    }
+
+    /// Set the context override on the currently selected entry to a specific
+    /// value (not a toggle). Used by the x-sweep to apply a captured state.
+    ///
+    /// Does nothing if no entry is selected.
+    pub fn set_entry_context_override(&mut self, override_state: ContextOverride) {
+        if let Some(idx) = self.selected_entry_index() {
+            let items = self.visual_items().clone();
+            let hist_idx = if items.is_empty() {
+                idx
+            } else {
+                match items.get(idx) {
+                    Some(VisualItem::Entry(h)) => *h,
+                    _ => return,
+                }
+            };
+            if let Some(entry) = self.core.history.get_mut(hist_idx) {
+                entry.context_override = override_state;
+            }
+        }
+    }
+
+    /// Returns the sweep target state if an active sweep exists and has not
+    /// expired (>100ms since last press). Consumes (clears) the sweep state
+    /// regardless of expiry — the caller must re-store it if continuing.
+    pub fn take_ignore_sweep(&mut self) -> Option<ContextOverride> {
+        let (instant, override_state) = self.ui.ignore_sweep.take()?;
+        if instant.elapsed() < std::time::Duration::from_millis(100) {
+            Some(override_state)
+        } else {
+            None
+        }
+    }
+
+    /// Starts or continues a sweep by storing the target state and current time.
+    pub fn set_ignore_sweep(&mut self, target: ContextOverride) {
+        self.ui.ignore_sweep = Some((std::time::Instant::now(), target));
+    }
+
+    /// Clears the sweep state, resetting to normal toggle behavior.
+    pub fn clear_ignore_sweep(&mut self) {
+        self.ui.ignore_sweep = None;
     }
 
     /// Whether this session has no history entries.
@@ -2154,12 +2208,12 @@ impl ChatSessionState {
     }
 
     /// Read-only access to this session's task list.
-    pub fn task_list(&self) -> &crate::feat::task_list::TaskList {
+    pub fn task_list(&self) -> &crate::feat::todo_list::TaskList {
         &self.core.task_list
     }
 
     /// Mutable access to this session's task list.
-    pub fn task_list_mut(&mut self) -> &mut crate::feat::task_list::TaskList {
+    pub fn task_list_mut(&mut self) -> &mut crate::feat::todo_list::TaskList {
         &mut self.core.task_list
     }
 

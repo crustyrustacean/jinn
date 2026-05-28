@@ -78,7 +78,7 @@ fn tool_error(call: ToolCall, msg: &str) -> ToolResult {
 mod tests {
     use crate::common::app_state::AppState;
     use crate::common::state::State;
-    use crate::feat::task_list::TaskPosition;
+    use crate::feat::todo_list::TaskPosition;
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext};
     use crate::protocol::SessionId;
 
