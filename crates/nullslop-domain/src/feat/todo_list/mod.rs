@@ -11,7 +11,28 @@ mod types_tests;
 
 use std::fmt;
 
+use rand::Rng;
 use serde::{Deserialize, Serialize};
+
+// ---------------------------------------------------------------------------
+// ID generation
+// ---------------------------------------------------------------------------
+
+/// Characters used for random ID generation: a-z and 0-9, excluding `p` and `t`.
+///
+/// `p` and `t` are excluded to avoid ambiguity with the phase/task ID prefixes.
+/// 34 characters → 34³ = 39,304 possible IDs per type.
+const ID_CHARSET: &[u8] = b"abcdefghijklmnqrsuvwxyz0123456789";
+
+/// Generates 3 random characters from the ID charset.
+fn generate_id_chars() -> [u8; 3] {
+    let mut rng = rand::rng();
+    [
+        ID_CHARSET[rng.random_range(0..ID_CHARSET.len())],
+        ID_CHARSET[rng.random_range(0..ID_CHARSET.len())],
+        ID_CHARSET[rng.random_range(0..ID_CHARSET.len())],
+    ]
+}
 
 // ---------------------------------------------------------------------------
 // ID types
@@ -19,13 +40,21 @@ use serde::{Deserialize, Serialize};
 
 /// Unique identifier for a phase within a task list.
 ///
-/// Generated as "p1", "p2", etc. Stable — never changes after creation.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Random 3-char alphanumeric (excluding `p` and `t`) prefixed with `p`.
+/// Globally unique within the task list — collision-checked against existing IDs.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct PhaseId(String);
 
 impl PhaseId {
-    fn new(counter: u64) -> Self {
-        Self(format!("p{counter}"))
+    fn new(existing: &[PhaseId]) -> Self {
+        loop {
+            let chars = generate_id_chars();
+            let candidate =
+                format!("p{}", std::str::from_utf8(&chars).expect("charset is valid UTF-8"));
+            if !existing.iter().any(|e| e.0 == candidate) {
+                return Self(candidate);
+            }
+        }
     }
 
     /// Creates a PhaseId from a known string.
@@ -56,14 +85,21 @@ impl AsRef<str> for PhaseId {
 
 /// Unique identifier for a task within a task list.
 ///
-/// Generated as "t1", "t2", etc. Globally unique across all phases.
-/// Stable — never changes after creation.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Random 3-char alphanumeric (excluding `p` and `t`) prefixed with `t`.
+/// Globally unique across all phases — collision-checked against existing IDs.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct TaskId(String);
 
 impl TaskId {
-    fn new(counter: u64) -> Self {
-        Self(format!("t{counter}"))
+    fn new(existing: &[TaskId]) -> Self {
+        loop {
+            let chars = generate_id_chars();
+            let candidate =
+                format!("t{}", std::str::from_utf8(&chars).expect("charset is valid UTF-8"));
+            if !existing.iter().any(|e| e.0 == candidate) {
+                return Self(candidate);
+            }
+        }
     }
 
     /// Creates a TaskId from a known string.
@@ -250,30 +286,19 @@ impl Phase {
 /// Derives `Serialize`/`Deserialize` — the existing session save/load pipeline
 /// handles persistence automatically. The `#[serde(default)]` attribute on the
 /// `SessionCore` field ensures backward compatibility with old sessions.
-/// Serde default for counter fields — starts at 1 so the first ID is "p1"/"t1".
-const fn default_counter_start() -> u64 {
-    1
-}
-
+/// Old serialized data with counter fields (`next_phase_id`, `next_task_id`) will
+/// deserialize cleanly — unknown fields are ignored by serde's default behavior.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskList {
     /// Ordered phases in this task list.
     #[serde(default)]
     pub(crate) phases: Vec<Phase>,
-    /// Auto-increment counter for phase IDs. Starts at 1.
-    #[serde(default = "default_counter_start")]
-    next_phase_id: u64,
-    /// Auto-increment counter for task IDs (global across all phases). Starts at 1.
-    #[serde(default = "default_counter_start")]
-    next_task_id: u64,
 }
 
 impl Default for TaskList {
     fn default() -> Self {
         Self {
             phases: Vec::new(),
-            next_phase_id: 1,
-            next_task_id: 1,
         }
     }
 }
@@ -287,8 +312,8 @@ impl TaskList {
 
     /// Adds a new phase and returns its ID.
     pub fn add_phase(&mut self, description: &str) -> PhaseId {
-        let id = PhaseId::new(self.next_phase_id);
-        self.next_phase_id += 1;
+        let existing: Vec<_> = self.phases.iter().map(|p| p.id.clone()).collect();
+        let id = PhaseId::new(&existing);
         self.phases.push(Phase {
             id: id.clone(),
             description: description.to_owned(),
@@ -308,8 +333,13 @@ impl TaskList {
         description: &str,
         position: TaskPosition,
     ) -> Result<TaskId, TaskListError> {
-        let task_id = TaskId::new(self.next_task_id);
-        self.next_task_id += 1;
+        let existing: Vec<_> = self
+            .phases
+            .iter()
+            .flat_map(|p| &p.tasks)
+            .map(|t| t.id.clone())
+            .collect();
+        let task_id = TaskId::new(&existing);
 
         let new_task = Task {
             id: task_id.clone(),

@@ -125,14 +125,14 @@ mod tests {
         }
     }
 
-    fn setup_with_phase() -> (State, SessionId) {
+    fn setup_with_phase() -> (State, SessionId, String) {
         let app = AppState::default();
         let state = State::new(app);
         let session_id = {
             let r = state.read();
             r.session.active_session_id().clone()
         };
-        {
+        let pid = {
             let mut w = state.write();
             let session = w.session_mut(&session_id);
             let pid = session.task_list_mut().add_phase("Research");
@@ -140,17 +140,18 @@ mod tests {
                 .task_list_mut()
                 .add_task(&pid, "Read docs", TaskPosition::End)
                 .unwrap();
-        }
-        (state, session_id)
+            pid.to_string()
+        };
+        (state, session_id, pid)
     }
 
     #[test]
     fn get_phase_returns_phase_tasks() {
-        let (state, session_id) = setup_with_phase();
+        let (state, session_id, pid) = setup_with_phase();
         let call = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_get_phase".to_owned(),
-            arguments: r#"{"phase_id": "p1"}"#.to_owned(),
+            arguments: serde_json::json!({"phase_id": pid}).to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
         let result = execute(call, ctx);
@@ -162,7 +163,7 @@ mod tests {
 
     #[test]
     fn get_phase_errors_on_missing_phase() {
-        let (state, session_id) = setup_with_phase();
+        let (state, session_id, _pid) = setup_with_phase();
         let call = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_get_phase".to_owned(),

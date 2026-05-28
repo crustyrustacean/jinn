@@ -132,32 +132,33 @@ mod tests {
         }
     }
 
-    fn setup_with_task() -> (State, SessionId) {
+    fn setup_with_task() -> (State, SessionId, String) {
         let app = AppState::default();
         let state = State::new(app);
         let session_id = {
             let r = state.read();
             r.session.active_session_id().clone()
         };
-        {
+        let tid = {
             let mut w = state.write();
             let session = w.session_mut(&session_id);
             let pid = session.task_list_mut().add_phase("Build");
             session
                 .task_list_mut()
                 .add_task(&pid, "Write code", TaskPosition::End)
-                .unwrap();
-        }
-        (state, session_id)
+                .unwrap()
+                .to_string()
+        };
+        (state, session_id, tid)
     }
 
     #[test]
     fn complete_task_marks_as_completed() {
-        let (state, session_id) = setup_with_task();
+        let (state, session_id, tid) = setup_with_task();
         let call = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_complete_task".to_owned(),
-            arguments: r#"{"task_id": "t1"}"#.to_owned(),
+            arguments: serde_json::json!({"task_id": tid}).to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
         let result = execute(call, ctx);
@@ -171,7 +172,7 @@ mod tests {
 
     #[test]
     fn complete_task_errors_on_unknown_task() {
-        let (state, session_id) = setup_with_task();
+        let (state, session_id, _tid) = setup_with_task();
         let call = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_complete_task".to_owned(),

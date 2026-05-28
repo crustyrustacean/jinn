@@ -175,48 +175,53 @@ mod tests {
         }
     }
 
-    fn setup_with_phase() -> (State, SessionId) {
+    fn setup_with_phase() -> (State, SessionId, String, String) {
         let app = AppState::default();
         let state = State::new(app);
         let session_id = {
             let r = state.read();
             r.session.active_session_id().clone()
         };
-        {
+        let (pid, tid) = {
             let mut w = state.write();
             let session = w.session_mut(&session_id);
             let pid = session.task_list_mut().add_phase("Build");
-            session
+            let tid = session
                 .task_list_mut()
                 .add_task(&pid, "Write code", TaskPosition::End)
                 .unwrap();
-        }
-        (state, session_id)
+            (pid.to_string(), tid.to_string())
+        };
+        (state, session_id, pid, tid)
     }
 
     #[test]
     fn add_task_appends_to_phase() {
-        let (state, session_id) = setup_with_phase();
+        let (state, session_id, pid, _tid) = setup_with_phase();
         let call = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_add_task".to_owned(),
-            arguments: r#"{"phase_id": "p1", "description": "Write tests"}"#.to_owned(),
+            arguments: serde_json::json!({"phase_id": pid, "description": "Write tests"})
+                .to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
         let result = execute(call, ctx);
         let result = futures::executor::block_on(result);
         assert!(result.success, "expected success: {:?}", result.content);
-        assert!(result.content.contains("t2"), "should contain new task ID");
+        assert!(
+            result.content.contains("Created task"),
+            "should contain new task"
+        );
     }
 
     #[test]
     fn add_task_inserts_after_reference() {
-        let (state, session_id) = setup_with_phase();
+        let (state, session_id, pid, tid) = setup_with_phase();
         let call = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_add_task".to_owned(),
-            arguments: r#"{"phase_id": "p1", "description": "Write docs", "after_task": "t1"}"#
-                .to_owned(),
+            arguments: serde_json::json!({"phase_id": pid, "description": "Write docs", "after_task": tid})
+                .to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
         let result = execute(call, ctx);
@@ -226,12 +231,12 @@ mod tests {
 
     #[test]
     fn add_task_inserts_before_reference() {
-        let (state, session_id) = setup_with_phase();
+        let (state, session_id, pid, tid) = setup_with_phase();
         let call = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_add_task".to_owned(),
-            arguments: r#"{"phase_id": "p1", "description": "Write docs", "before_task": "t1"}"#
-                .to_owned(),
+            arguments: serde_json::json!({"phase_id": pid, "description": "Write docs", "before_task": tid})
+                .to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
         let result = execute(call, ctx);
@@ -241,7 +246,7 @@ mod tests {
 
     #[test]
     fn add_task_errors_on_missing_phase() {
-        let (state, session_id) = setup_with_phase();
+        let (state, session_id, _pid, _tid) = setup_with_phase();
         let call = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_add_task".to_owned(),
@@ -256,17 +261,22 @@ mod tests {
 
     #[test]
     fn add_task_errors_on_both_after_and_before() {
-        let (state, session_id) = setup_with_phase();
+        let (state, session_id, pid, tid) = setup_with_phase();
         let call = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_add_task".to_owned(),
-            arguments: r#"{"phase_id": "p1", "description": "Task", "after_task": "t1", "before_task": "t1"}"#.to_owned(),
+            arguments: serde_json::json!({"phase_id": pid, "description": "Task", "after_task": tid, "before_task": tid})
+                .to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
         let result = execute(call, ctx);
         let result = futures::executor::block_on(result);
         assert!(!result.success);
-        assert!(result.content.contains("both after_task and before_task"));
+        assert!(
+            result
+                .content
+                .contains("both after_task and before_task")
+        );
     }
 
     #[test]
