@@ -200,7 +200,10 @@ impl IntentHandler {
                 let (result, maybe_intent) = feat::picker::intent::handle_picker_confirm(state);
                 if let Some(intent) = maybe_intent {
                     let redispatch = IntentHandler::handle(&intent, state);
-                    IntentResult::with_commands([result.commands, redispatch.commands].concat())
+                    IntentResult::with_commands_and_events(
+                        [result.commands, redispatch.commands].concat(),
+                        [result.events, redispatch.events].concat(),
+                    )
                 } else {
                     result
                 }

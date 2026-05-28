@@ -1,5 +1,5 @@
 //! The [`Intent`] enum — one variant per user-initiated action.
-use crate::protocol::{Command, PickerKind, SessionId};
+use crate::protocol::{Command, Event, PickerKind, SessionId};
 
 /// The search root for the directory picker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -460,23 +460,37 @@ impl std::fmt::Display for Intent {
 
 /// What an intent handler returns after processing an intent.
 ///
-/// Carries commands to be dispatched to the actor system.
+/// Carries commands and events to be dispatched to the actor system.
 #[derive(Debug)]
 pub struct IntentResult {
     /// Commands to send to the actor system.
     pub commands: Vec<Command>,
+    /// Events to broadcast to the actor system.
+    pub events: Vec<Event>,
 }
 
 impl IntentResult {
-    /// An empty result with no commands.
+    /// An empty result with no commands or events.
     #[must_use]
     pub fn empty() -> Self {
-        Self { commands: vec![] }
+        Self {
+            commands: vec![],
+            events: vec![],
+        }
     }
 
     /// A result with commands.
     #[must_use]
     pub fn with_commands(commands: Vec<Command>) -> Self {
-        Self { commands }
+        Self {
+            commands,
+            events: vec![],
+        }
+    }
+
+    /// A result with both commands and events.
+    #[must_use]
+    pub fn with_commands_and_events(commands: Vec<Command>, events: Vec<Event>) -> Self {
+        Self { commands, events }
     }
 }
