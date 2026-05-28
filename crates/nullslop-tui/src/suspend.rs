@@ -28,7 +28,7 @@ pub enum SuspendAction {
         #[debug("<closure>")]
         on_result: Box<dyn FnOnce(Option<String>) -> Option<String>>,
     },
-    /// Run the CWD picker command, return the selected directory path.
+    /// Run the CWD selection command, return the selected directory path.
     ChangeCwd {
         /// The directory to substitute as {path} in the command template.
         search_root: std::path::PathBuf,

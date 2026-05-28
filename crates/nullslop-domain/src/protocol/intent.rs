@@ -311,7 +311,7 @@ pub enum Intent {
     /// Move cursor down one visual line in workflow input buffer.
     WorkflowInputCursorDown,
 
-    // --- CWD Picker ---
+    // --- CWD Selection ---
     /// Change the session's working directory via an external picker.
     ChangeCwd {
         /// Where to search from.

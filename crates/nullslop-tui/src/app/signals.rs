@@ -10,7 +10,7 @@ pub(super) struct TuiSignalsSnapshot {
     pub edit_requested: bool,
     /// Text to copy to the system clipboard (from yank-selected-entry intent).
     pub yank_text: Option<String>,
-    /// Request to change CWD via external picker. Carries the search root.
+    /// Request to change CWD via external command. Carries the search root.
     pub change_cwd_requested: Option<nullslop_domain::protocol::CwdRoot>,
 }
 

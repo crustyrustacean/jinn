@@ -38,7 +38,7 @@ pub struct TuiSignals {
     /// Text to copy to the system clipboard (set by yank-selected-entry intent).
     pub yank_text: Option<String>,
 
-    /// Request to change CWD via external picker. Carries the search root.
+    /// Request to change CWD via external command. Carries the search root.
     pub change_cwd_requested: Option<crate::protocol::CwdRoot>,
 }
 
