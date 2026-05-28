@@ -322,6 +322,7 @@ mod tests {
         Skill {
             name: name.to_owned(),
             description: format!("{name} skill"),
+            body: String::new(),
             file_path: std::path::PathBuf::from(format!("/skills/{name}/SKILL.md")),
             base_dir: std::path::PathBuf::from(format!("/skills/{name}")),
         }
