@@ -40,6 +40,7 @@ pub fn definition() -> ToolDefinition {
             },
             "required": ["summary"]
         }),
+        server_tool_type: None,
     }
 }
 

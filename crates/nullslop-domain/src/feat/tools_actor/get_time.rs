@@ -15,6 +15,7 @@ pub fn definition() -> ToolDefinition {
             "type": "object",
             "properties": {}
         }),
+        server_tool_type: None,
     }
 }
 

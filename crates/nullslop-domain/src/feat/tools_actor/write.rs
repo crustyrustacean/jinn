@@ -33,6 +33,7 @@ pub fn definition() -> ToolDefinition {
             },
             "required": ["path", "content"]
         }),
+        server_tool_type: None,
     }
 }
 

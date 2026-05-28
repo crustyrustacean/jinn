@@ -75,6 +75,7 @@ mod tests {
                 .into_iter()
                 .map(std::string::ToString::to_string)
                 .collect(),
+            server_tool_type: None,
         }
     }
 

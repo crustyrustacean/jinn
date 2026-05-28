@@ -32,6 +32,7 @@ pub fn definition() -> ToolDefinition {
             "properties": {},
             "additionalProperties": false
         }),
+        server_tool_type: None,
     }
 }
 
