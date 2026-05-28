@@ -116,6 +116,15 @@ pub fn handle_edit_input(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
+/// Requests a CWD change via the external directory selection command.
+///
+/// Sets the `change_cwd_requested` TUI signal so the outer platform layer
+/// can suspend the TUI and run the configured picker command.
+pub fn handle_change_cwd(state: &mut AppState, root: crate::protocol::CwdRoot) -> IntentResult {
+    state.frontend.tui_signals.change_cwd_requested = Some(root);
+    IntentResult::empty()
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
@@ -453,5 +462,41 @@ mod tests {
 
         // Then selection skips both empty assistants and lands on index 0.
         assert_eq!(state.active_session().selected_entry_index(), Some(0));
+    }
+
+    #[rstest::rstest]
+    fn change_cwd_sets_signal_to_session_root() {
+        // Given default state.
+        let mut state = AppState::default();
+
+        // When handling ChangeCwd with Session root.
+        let result =
+            handle_change_cwd(&mut state, crate::protocol::CwdRoot::Session);
+
+        // Then the signal is set with Session root.
+        assert_eq!(
+            state.frontend.tui_signals.change_cwd_requested,
+            Some(crate::protocol::CwdRoot::Session)
+        );
+        // And no commands are emitted.
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn change_cwd_sets_signal_to_home_root() {
+        // Given default state.
+        let mut state = AppState::default();
+
+        // When handling ChangeCwd with Home root.
+        let result =
+            handle_change_cwd(&mut state, crate::protocol::CwdRoot::Home);
+
+        // Then the signal is set with Home root.
+        assert_eq!(
+            state.frontend.tui_signals.change_cwd_requested,
+            Some(crate::protocol::CwdRoot::Home)
+        );
+        // And no commands are emitted.
+        assert!(result.commands.is_empty());
     }
 }
