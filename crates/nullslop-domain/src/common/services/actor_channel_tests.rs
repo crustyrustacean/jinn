@@ -1,4 +1,8 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing)]
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::match_wildcard_for_single_variants
+)]
 
 use super::actor_channel::ActorChannelService;
 use crate::common::core::app_msg::AppMsg;
@@ -57,7 +61,9 @@ fn send_delivers_raw_message() {
     // When sending a raw AppMsg.
     svc.send(AppMsg::Command {
         command: crate::protocol::Command::RefreshModels,
-        source: Some(crate::common::actor::actor_name::ActorName::new("test-source")),
+        source: Some(crate::common::actor::actor_name::ActorName::new(
+            "test-source",
+        )),
     });
 
     // Then the raw message arrives on the channel.

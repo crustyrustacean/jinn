@@ -104,7 +104,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         ToolResult {
             tool_call_id: call.id,
             name: call.name,
-            content: format!("Created phase [{}].\n\n{}", phase_id, rendered),
+            content: format!("Created phase [{phase_id}].\n\n{rendered}"),
             success: true,
             full_content: None,
             truncation: None,

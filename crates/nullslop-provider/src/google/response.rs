@@ -144,7 +144,7 @@ impl GeminiStreamParser {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     fn parse_single(json: &str) -> Vec<StreamEvent> {
@@ -233,13 +233,20 @@ mod tests {
                 "content": {"parts": [{"text": "hi"}]},
                 "finishReason": "STOP"
             }]
-        }).to_string();
+        })
+        .to_string();
         let events1 = parser.parse_data(&chunk);
-        let done_count_1 = events1.iter().filter(|e| matches!(e, StreamEvent::Done { .. })).count();
+        let done_count_1 = events1
+            .iter()
+            .filter(|e| matches!(e, StreamEvent::Done { .. }))
+            .count();
         assert_eq!(done_count_1, 1, "first chunk should emit exactly one Done");
 
         let events2 = parser.parse_data(&chunk);
-        let done_count_2 = events2.iter().filter(|e| matches!(e, StreamEvent::Done { .. })).count();
+        let done_count_2 = events2
+            .iter()
+            .filter(|e| matches!(e, StreamEvent::Done { .. }))
+            .count();
         assert_eq!(done_count_2, 0, "second chunk should not emit another Done");
     }
 
@@ -253,7 +260,8 @@ mod tests {
                 "content": {"parts": [{"text": "done"}]},
                 "finishReason": "STOP"
             }]
-        }).to_string();
+        })
+        .to_string();
         let events = parser.parse_data(&json);
 
         let done = events
@@ -261,7 +269,10 @@ mod tests {
             .find(|e| matches!(e, StreamEvent::Done { .. }))
             .expect("should have a Done event");
         match done {
-            StreamEvent::Done { stop_reason: StopReason::EndTurn, .. } => {}
+            StreamEvent::Done {
+                stop_reason: StopReason::EndTurn,
+                ..
+            } => {}
             other => panic!("expected EndTurn, got {other:?}"),
         }
     }

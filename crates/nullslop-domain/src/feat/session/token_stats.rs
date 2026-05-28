@@ -175,7 +175,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::float_cmp)]
     use super::*;
     use crate::feat::session::chat_session::ChatSessionState;
     use jiff::Timestamp;
@@ -276,7 +276,10 @@ mod tests {
 
         // Then child cost (0.02) + grandchild cost (0.03) = 0.05.
         let expected = 0.02 + 0.03;
-        assert!((cost - expected).abs() < f64::EPSILON, "expected {expected}, got {cost}");
+        assert!(
+            (cost - expected).abs() < f64::EPSILON,
+            "expected {expected}, got {cost}"
+        );
     }
 
     #[rstest::rstest]

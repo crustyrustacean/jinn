@@ -34,10 +34,10 @@ use crate::feat::provider::protocol::command::{
 use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
+use crate::feat::session::protocol::schedule_auto_compaction::ScheduleAutoCompaction;
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
-use crate::feat::session::protocol::schedule_auto_compaction::ScheduleAutoCompaction;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 use crate::feat::session_lifecycle::protocol::command::{
     FinishSessionTeardown, PersistSession, RunSessionSetup, RunSessionTeardown,
@@ -433,7 +433,7 @@ impl std::fmt::Display for Command {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::protocol::SessionId;
 

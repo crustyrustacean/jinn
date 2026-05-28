@@ -595,7 +595,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     judge,
                     workflow_overrides: _workflow_overrides, // runtime-only, not persisted
                     has_interacted: _has_interacted, // deserialized from DB, restored by handle_session_load_completed
-                    task_list: _task_list, // persisted via session JSON column, not here
+                    task_list: _task_list,           // persisted via session JSON column, not here
                 },
             ui: _ui, // runtime-only UI state, not persisted
         } = session;
@@ -1199,13 +1199,12 @@ fn load_judge_sessions_for_origin_blocking(
     origin_session_id: &SessionId,
 ) -> Result<Vec<ChatSessionState>, Report<SessionStoreError>> {
     let origin_str = origin_session_id.to_string();
-    let rows: Vec<SessionRow> = sql_query(
-        "SELECT * FROM sessions WHERE json_extract(judge_meta, '$.origin_session') = ?",
-    )
-    .bind::<diesel::sql_types::Text, _>(&origin_str)
-    .get_results(conn)
-    .change_context(SessionStoreError)
-    .attach("failed to query judge sessions for origin")?;
+    let rows: Vec<SessionRow> =
+        sql_query("SELECT * FROM sessions WHERE json_extract(judge_meta, '$.origin_session') = ?")
+            .bind::<diesel::sql_types::Text, _>(&origin_str)
+            .get_results(conn)
+            .change_context(SessionStoreError)
+            .attach("failed to query judge sessions for origin")?;
 
     let mut sessions = Vec::new();
     for row in rows {
@@ -1299,7 +1298,7 @@ mod tests {
     // ── Round-trip persistence tests ───────────────────────────────────
 
     /// Helper: create a fresh in-memory store for testing.
-    async fn fresh_store() -> SqliteSessionStore {
+    fn fresh_store() -> SqliteSessionStore {
         let dir = tempfile::tempdir().expect("temp dir");
         SqliteSessionStore::new_in(dir.path()).expect("new_in")
     }
@@ -1314,7 +1313,7 @@ mod tests {
     #[tokio::test]
     async fn save_then_load_summaries_returns_saved_session() {
         // Given a store with a saved session.
-        let store = fresh_store().await;
+        let store = fresh_store();
         let session = make_session();
         let id = session.session_id().clone();
         store.save(&session).await.expect("save");
@@ -1330,7 +1329,7 @@ mod tests {
     #[tokio::test]
     async fn delete_removes_session() {
         // Given a store with a saved session.
-        let store = fresh_store().await;
+        let store = fresh_store();
         let session = make_session();
         let id = session.session_id().clone();
         store.save(&session).await.expect("save");
@@ -1346,7 +1345,7 @@ mod tests {
     #[tokio::test]
     async fn fork_creates_new_session_with_entries() {
         // Given a store with a saved session.
-        let store = fresh_store().await;
+        let store = fresh_store();
         let session = make_session();
         let source_id = session.session_id().clone();
         store.save(&session).await.expect("save");
@@ -1369,7 +1368,7 @@ mod tests {
     #[tokio::test]
     async fn set_archived_removes_from_unarchived_summaries() {
         // Given a store with a saved session.
-        let store = fresh_store().await;
+        let store = fresh_store();
         let session = make_session();
         let id = session.session_id().clone();
         store.save(&session).await.expect("save");
@@ -1379,7 +1378,11 @@ mod tests {
             .load_unarchived_summaries()
             .await
             .expect("load_unarchived");
-        assert_eq!(unarchived_before.len(), 1, "session should appear in unarchived before archiving");
+        assert_eq!(
+            unarchived_before.len(),
+            1,
+            "session should appear in unarchived before archiving"
+        );
 
         // When archiving the session.
         store.set_archived(&id, true).await.expect("set_archived");
@@ -1389,17 +1392,24 @@ mod tests {
             .load_unarchived_summaries()
             .await
             .expect("load_unarchived");
-        assert!(unarchived_after.is_empty(), "archived session should not appear");
+        assert!(
+            unarchived_after.is_empty(),
+            "archived session should not appear"
+        );
 
         // And it still appears in all summaries.
         let all = store.load_summaries().await.expect("load_summaries");
-        assert_eq!(all.len(), 1, "archived session should still be in all summaries");
+        assert_eq!(
+            all.len(),
+            1,
+            "archived session should still be in all summaries"
+        );
     }
 
     #[tokio::test]
     async fn archived_flag_persists_across_save_and_load() {
         // Given a store.
-        let store = fresh_store().await;
+        let store = fresh_store();
 
         // When saving an archived session.
         let mut session = make_session();
@@ -1439,7 +1449,7 @@ mod tests {
     #[tokio::test]
     async fn fork_preserves_parent_metadata() {
         // Given a store with a saved session.
-        let store = fresh_store().await;
+        let store = fresh_store();
         let session = make_session();
         let source_id = session.session_id().clone();
         let source_created = *session.created_at();
@@ -1471,7 +1481,7 @@ mod tests {
     #[tokio::test]
     async fn shutdown_cleans_up_empty_sessions() {
         // Given a store with an empty session (no history entries).
-        let store = fresh_store().await;
+        let store = fresh_store();
         let empty_session = ChatSessionState::new();
         let empty_id = empty_session.session_id().clone();
         store.save(&empty_session).await.expect("save empty");
@@ -1483,13 +1493,20 @@ mod tests {
 
         // Verify both are visible before shutdown.
         let before = store.load_summaries().await.expect("load_summaries");
-        assert_eq!(before.len(), 2, "both sessions should be visible before shutdown");
+        assert_eq!(
+            before.len(),
+            2,
+            "both sessions should be visible before shutdown"
+        );
 
         // When shutting down.
         store.shutdown().await.expect("shutdown");
 
         // Then only the non-empty session survives.
-        let after = store.load_summaries().await.expect("load_summaries after shutdown");
+        let after = store
+            .load_summaries()
+            .await
+            .expect("load_summaries after shutdown");
         let ids: Vec<_> = after.iter().map(|s| &s.session_id).collect();
         assert!(
             ids.contains(&&full_id),

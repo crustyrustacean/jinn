@@ -128,17 +128,18 @@ impl SessionPersistenceActor {
 
             // Apply pending history mutations for non-ToolUse completions.
             // ToolUse defers to on_tool_batch_completed.
-            if event.reason != StreamCompletedReason::ToolUse {
-                if !session.is_judge() && !session.is_auto_compaction_requested() {
-                    let count = session.drain_and_apply_pending_mutations();
-                    if count > 0 {
-                        tracing::debug!(
-                            session_id = %event.session_id,
-                            count,
-                            reason = ?event.reason,
-                            "applied pending history mutations at stream completion"
-                        );
-                    }
+            if event.reason != StreamCompletedReason::ToolUse
+                && !session.is_judge()
+                && !session.is_auto_compaction_requested()
+            {
+                let count = session.drain_and_apply_pending_mutations();
+                if count > 0 {
+                    tracing::debug!(
+                        session_id = %event.session_id,
+                        count,
+                        reason = ?event.reason,
+                        "applied pending history mutations at stream completion"
+                    );
                 }
             }
 
@@ -165,9 +166,7 @@ impl SessionPersistenceActor {
             // For ToolUse, this is deferred — on_tool_batch_completed will handle
             // the flag after tools finish.
             let mut should_emit_compact_context_local = false;
-            if auto_compaction_requested
-                && event.reason != StreamCompletedReason::ToolUse
-            {
+            if auto_compaction_requested && event.reason != StreamCompletedReason::ToolUse {
                 session.core.ephemeral.phase = SessionPhase::Compacting;
                 should_emit_compact_context_local = true;
             }
@@ -228,7 +227,9 @@ impl SessionPersistenceActor {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
     use super::super::super::helpers::{test_actor, test_context};
-    use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
+    use crate::feat::provider::protocol::event::{
+        StreamCompleted, StreamCompletedReason, StreamToken,
+    };
     use crate::feat::session::chat_session::SessionPhase;
     use crate::feat::session::token_stats::TokenRecord;
     use crate::protocol::{ChatEntry, Command, Event};
@@ -410,7 +411,10 @@ mod tests {
         let has_send = commands
             .iter()
             .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(!has_send, "expected no SendToLlmProvider after auto-compaction peek");
+        assert!(
+            !has_send,
+            "expected no SendToLlmProvider after auto-compaction peek"
+        );
     }
 
     #[tokio::test]
@@ -721,12 +725,24 @@ mod tests {
         let session = state.session.get(&session_id).expect("session exists");
         let history = session.history();
         // User entry is not excluded.
-        assert_eq!(history[0].context_override, crate::protocol::ContextOverride::Default);
+        assert_eq!(
+            history[0].context_override,
+            crate::protocol::ContextOverride::Default
+        );
         // Empty Assistant and ToolCall are excluded.
-        assert_eq!(history[1].context_override, crate::protocol::ContextOverride::ForcedExclude);
-        assert_eq!(history[2].context_override, crate::protocol::ContextOverride::ForcedExclude);
+        assert_eq!(
+            history[1].context_override,
+            crate::protocol::ContextOverride::ForcedExclude
+        );
+        assert_eq!(
+            history[2].context_override,
+            crate::protocol::ContextOverride::ForcedExclude
+        );
         // Error entry ("Cancelled") is not excluded.
-        assert_eq!(history[3].context_override, crate::protocol::ContextOverride::Default);
+        assert_eq!(
+            history[3].context_override,
+            crate::protocol::ContextOverride::Default
+        );
 
         // And a CompactContext was not emitted.
         let commands = sink.commands();
@@ -742,7 +758,7 @@ mod tests {
     async fn on_stream_token_appends_text_to_assistant_entry() {
         // Given a session in streaming state.
         let actor = test_actor();
-        let (_sink, ctx) = test_context();
+        let (_sink, _ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -844,8 +860,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_finished_persists_session() {
         // Given an interacted session in streaming state.
-        let (actor, store) =
-            super::super::super::helpers::test_actor_with_store(vec![]);
+        let (actor, store) = super::super::super::helpers::test_actor_with_store(vec![]);
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -876,8 +891,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_error_persists_session() {
         // Given an interacted session in streaming state.
-        let (actor, store) =
-            super::super::super::helpers::test_actor_with_store(vec![]);
+        let (actor, store) = super::super::super::helpers::test_actor_with_store(vec![]);
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -908,8 +922,7 @@ mod tests {
     #[tokio::test]
     async fn on_stream_completed_canceled_does_not_persist_session() {
         // Given an interacted session in streaming state.
-        let (actor, store) =
-            super::super::super::helpers::test_actor_with_store(vec![]);
+        let (actor, store) = super::super::super::helpers::test_actor_with_store(vec![]);
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -1106,9 +1119,11 @@ mod tests {
             .history()
             .iter()
             .any(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::Assistant(t) if t.contains("world")));
-        assert!(has_world, "expected assistant entry with 'world' to be preserved after Finished");
+        assert!(
+            has_world,
+            "expected assistant entry with 'world' to be preserved after Finished"
+        );
     }
-
 
     #[tokio::test]
     async fn on_stream_completed_canceled_with_complete_tool_loop_does_not_exclude() {
@@ -1121,14 +1136,12 @@ mod tests {
             session.push_entry(ChatEntry::user("run it"));
             session.push_entry(ChatEntry::assistant(""));
             session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
-            session.push_entry(
-                ChatEntry::tool_result(
-                    "tc-1",
-                    "bash",
-                    "file.txt",
-                    crate::feat::session::tool_result_status::ToolResultStatus::Success,
-                ),
-            );
+            session.push_entry(ChatEntry::tool_result(
+                "tc-1",
+                "bash",
+                "file.txt",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ));
             session.begin_streaming();
             state.session.active_session_id().clone()
         };
@@ -1381,7 +1394,10 @@ mod tests {
         let has_history = events.iter().any(
             |e| matches!(e, Event::HistoryAppended(payload) if payload.session_id == session_id),
         );
-        assert!(has_history, "expected HistoryAppended event after mutation application");
+        assert!(
+            has_history,
+            "expected HistoryAppended event after mutation application"
+        );
     }
 
     #[tokio::test]

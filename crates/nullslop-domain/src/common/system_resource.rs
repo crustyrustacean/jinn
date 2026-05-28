@@ -57,15 +57,12 @@ pub fn load_system_resource(
     Err(Report::new(SystemResourceError)
         .attach(format!("system resource '{name}' not found"))
         .attach(format!("  searched user:   {}", user_path.display()))
-        .attach(format!(
-            "  searched system: {}",
-            system_path.display()
-        )))
+        .attach(format!("  searched system: {}", system_path.display())))
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
 
@@ -134,7 +131,10 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         let msg = format!("{err:#?}");
-        assert!(msg.contains("not found"), "error should mention 'not found'");
+        assert!(
+            msg.contains("not found"),
+            "error should mention 'not found'"
+        );
     }
 
     #[rstest::rstest]
