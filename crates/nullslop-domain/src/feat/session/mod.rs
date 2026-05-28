@@ -15,6 +15,9 @@ pub mod chat_entry;
 mod chat_entry_tests;
 pub mod chat_session;
 pub mod entries;
+pub mod history_mutation;
+#[cfg(test)]
+mod history_mutation_tests;
 #[cfg(test)]
 mod entries_tests;
 pub mod intent;

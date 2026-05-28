@@ -126,6 +126,22 @@ impl SessionPersistenceActor {
                 session.force_exclude_dangling_tool_calls();
             }
 
+            // Apply pending history mutations for non-ToolUse completions.
+            // ToolUse defers to on_tool_batch_completed.
+            if event.reason != StreamCompletedReason::ToolUse {
+                if !session.is_judge() && !session.is_auto_compaction_requested() {
+                    let count = session.drain_and_apply_pending_mutations();
+                    if count > 0 {
+                        tracing::debug!(
+                            session_id = %event.session_id,
+                            count,
+                            reason = ?event.reason,
+                            "applied pending history mutations at stream completion"
+                        );
+                    }
+                }
+            }
+
             // For ToolUse: do NOT consume auto-compaction flag here. The tool
             // batch is still executing. Let on_tool_batch_completed handle the
             // flag after tool results are in. Peek at the flag to know if
@@ -1309,5 +1325,211 @@ mod tests {
             !session.is_auto_compaction_requested(),
             "expected auto-compaction flag to be consumed after Finished"
         );
+    }
+
+    // --- Phase 2: History mutation application hooks ---
+
+    #[tokio::test]
+    async fn on_stream_completed_finished_applies_pending_mutations() {
+        // Given a session in streaming state with pending mutations.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let (entry_id, session_id) = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            let entry = ChatEntry::assistant("response");
+            let entry_id = entry.id.clone();
+            session.push_entry(entry);
+            session.begin_streaming();
+            // Queue a mutation to exclude the assistant entry.
+            session.queue_mutations(vec![
+                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id.clone(),
+                    value: crate::protocol::ContextOverride::ForcedExclude,
+                },
+            ]);
+            (entry_id, state.session.active_session_id().clone())
+        };
+
+        // When handling StreamCompleted with Finished reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: Some("response".to_owned()),
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the mutation was applied — the assistant entry is now ForcedExclude.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let assistant = session
+            .history()
+            .iter()
+            .find(|e| e.id == entry_id)
+            .expect("assistant entry exists");
+        assert_eq!(
+            assistant.context_override,
+            crate::protocol::ContextOverride::ForcedExclude,
+            "expected mutation to be applied at stream completion"
+        );
+
+        // And a HistoryAppended event was emitted.
+        let events = sink.events();
+        let has_history = events.iter().any(
+            |e| matches!(e, Event::HistoryAppended(payload) if payload.session_id == session_id),
+        );
+        assert!(has_history, "expected HistoryAppended event after mutation application");
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_error_applies_pending_mutations() {
+        // Given a session in streaming state with pending mutations.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let (entry_id, session_id) = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            let entry = ChatEntry::assistant("partial");
+            let entry_id = entry.id.clone();
+            session.push_entry(entry);
+            session.begin_streaming();
+            session.queue_mutations(vec![
+                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id.clone(),
+                    value: crate::protocol::ContextOverride::ForcedExclude,
+                },
+            ]);
+            (entry_id, state.session.active_session_id().clone())
+        };
+
+        // When handling StreamCompleted with Error reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Error,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the mutation was applied.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let assistant = session
+            .history()
+            .iter()
+            .find(|e| e.id == entry_id)
+            .expect("assistant entry exists");
+        assert_eq!(
+            assistant.context_override,
+            crate::protocol::ContextOverride::ForcedExclude,
+            "expected mutation to be applied at stream error"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_canceled_applies_pending_mutations() {
+        // Given a session in streaming state with pending mutations.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let (entry_id, session_id) = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            let entry = ChatEntry::assistant("partial");
+            let entry_id = entry.id.clone();
+            session.push_entry(entry);
+            session.begin_streaming();
+            session.queue_mutations(vec![
+                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id.clone(),
+                    value: crate::protocol::ContextOverride::ForcedExclude,
+                },
+            ]);
+            (entry_id, state.session.active_session_id().clone())
+        };
+
+        // When handling StreamCompleted with Canceled reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Canceled,
+            assistant_content: None,
+            tool_calls: None,
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the mutation was applied.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let assistant = session
+            .history()
+            .iter()
+            .find(|e| e.id == entry_id)
+            .expect("assistant entry exists");
+        assert_eq!(
+            assistant.context_override,
+            crate::protocol::ContextOverride::ForcedExclude,
+            "expected mutation to be applied at stream canceled"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_tool_use_does_not_apply_mutations() {
+        // Given a session in streaming state with pending mutations.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let (entry_id, session_id) = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("hello"));
+            let entry = ChatEntry::assistant("checking");
+            let entry_id = entry.id.clone();
+            session.push_entry(entry);
+            session.begin_streaming();
+            session.queue_mutations(vec![
+                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id.clone(),
+                    value: crate::protocol::ContextOverride::ForcedExclude,
+                },
+            ]);
+            (entry_id, state.session.active_session_id().clone())
+        };
+
+        // When handling StreamCompleted with ToolUse reason.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::ToolUse,
+            assistant_content: Some("response".to_owned()),
+            tool_calls: Some(vec![crate::feat::tools_actor::tool_types::ToolCall {
+                id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                arguments: "{}".to_owned(),
+            }]),
+            cost: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the mutation was NOT applied (ToolUse defers to tool batch).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let assistant = session
+            .history()
+            .iter()
+            .find(|e| e.id == entry_id)
+            .expect("assistant entry exists");
+        assert_eq!(
+            assistant.context_override,
+            crate::protocol::ContextOverride::Default,
+            "expected mutation to NOT be applied for ToolUse reason"
+        );
+
+        // And the mutations are still in the queue (not drained).
+        // Note: we can't easily check the queue directly from outside,
+        // but the entry not being modified is sufficient proof.
     }
 }

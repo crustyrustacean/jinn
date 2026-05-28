@@ -111,6 +111,7 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<CloseSession>();
         ctx.subscribe_command::<crate::feat::session::protocol::archive_session::ArchiveSession>();
         ctx.subscribe_command::<crate::feat::session::protocol::schedule_auto_compaction::ScheduleAutoCompaction>();
+        ctx.subscribe_command::<crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations>();
         ctx.subscribe_command::<MarkSessionInteracted>();
 
         // Context-related subscriptions (relocated from PromptAssemblyActor).
@@ -284,6 +285,9 @@ impl SessionPersistenceActor {
             }
             Command::MarkSessionInteracted(payload) => {
                 self.handle_mark_session_interacted(payload, ctx).await;
+            }
+            Command::SubmitHistoryMutations(payload) => {
+                self.handle_submit_history_mutations(payload);
             }
             // Commands NOT subscribed to - these should not arrive.
             Command::SendToLlmProvider(..)

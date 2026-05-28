@@ -38,6 +38,7 @@ use crate::feat::session::protocol::session_fork_requested::SessionForkRequested
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::session::protocol::schedule_auto_compaction::ScheduleAutoCompaction;
+use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 use crate::feat::session_lifecycle::protocol::command::{
     FinishSessionTeardown, PersistSession, RunSessionSetup, RunSessionTeardown,
 };
@@ -140,6 +141,12 @@ pub enum Command {
     /// Sent by the CompactionActor when token threshold is exceeded.
     /// The session transitions directly to Compacting — never through Idle.
     ScheduleAutoCompaction(ScheduleAutoCompaction),
+    /// Submit a batch of history mutations for deferred application.
+    ///
+    /// Workers produce `Vec<HistoryMutation>` batches and send them via this
+    /// command. The session actor queues them for application at the next
+    /// safe drain point (tool batch completion or stream completion).
+    SubmitHistoryMutations(SubmitHistoryMutations),
     /// Finish an async teardown shell command (result from spawned task).
     FinishSessionTeardown(FinishSessionTeardown),
     /// Request to load (initialize) a named workflow without executing it.
@@ -213,6 +220,7 @@ impl Command {
             }
             Self::PersistSession(..) => Some(PersistSession::NAME),
             Self::ScheduleAutoCompaction(..) => Some(ScheduleAutoCompaction::NAME),
+            Self::SubmitHistoryMutations(..) => Some(SubmitHistoryMutations::NAME),
             Self::FinishSessionTeardown(..) => Some(FinishSessionTeardown::NAME),
             Self::InitWorkflow(..) => {
                 Some(crate::feat::workflow::protocol::command::InitWorkflow::NAME)
@@ -370,6 +378,14 @@ impl std::fmt::Display for Command {
             }
             Command::FinishSessionTeardown(payload) => {
                 write!(f, "finish session teardown for {}", payload.session_id)
+            }
+            Command::SubmitHistoryMutations(payload) => {
+                write!(
+                    f,
+                    "submit {} history mutations for {}",
+                    payload.mutations.len(),
+                    payload.session_id
+                )
             }
             Command::InitWorkflow(payload) => {
                 write!(

@@ -419,6 +419,27 @@ pub fn create_core_with_actor_host(
         },
     ));
 
+    // ── History mutation workers ──────────────────────────────────────────
+    //
+    // To add a new history mutation worker:
+    //
+    //   1. Implement `HistoryWorker` for your heuristic type
+    //      (see `crates/nullslop-domain/src/feat/history_worker/worker_trait.rs`).
+    //   2. Add a spawn call here:
+    //
+    //   use nullslop_domain::feat::history_worker::{HistoryWorkerActor, HistoryWorkerActorDeps};
+    //
+    //   actors.push(spawn::<HistoryWorkerActor<MyWorker>>(
+    //       "history-worker-my-worker",
+    //       &sink, handle, &counter, &shutdown_tracker,
+    //       HistoryWorkerActorDeps {
+    //           worker: MyWorker::new(),
+    //           state: state.clone(),
+    //       },
+    //   ));
+    //
+    // No workers are spawned by default — add them as needed.
+
     // Sidebar state actor — keeps sidebar cursor in sync after session removal.
     actors.push(spawn::<
         nullslop_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor,
