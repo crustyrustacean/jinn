@@ -857,6 +857,104 @@ fn all_exclude_default_kinds_are_not_in_context() {
     }
 }
 
+// --- Empty assistant is_in_context tests ---
+
+#[rstest::rstest]
+fn empty_assistant_default_is_not_in_context() {
+    // Given an empty Assistant entry with Default override.
+    let entry = ChatEntry::assistant("");
+
+    // Then it is NOT in context (empty assistants carry no information).
+    assert!(!entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn nonempty_assistant_default_is_in_context() {
+    // Given a non-empty Assistant entry with Default override.
+    let entry = ChatEntry::assistant("response text");
+
+    // Then it IS in context.
+    assert!(entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn empty_assistant_forced_include_is_in_context() {
+    // Given an empty Assistant entry with ForcedInclude override.
+    let entry =
+        ChatEntry::assistant("").with_context_override(ContextOverride::ForcedInclude);
+
+    // Then ForcedInclude overrides the empty-assistant rule — it IS in context.
+    assert!(entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn empty_assistant_forced_exclude_is_not_in_context() {
+    // Given an empty Assistant entry with ForcedExclude override.
+    let entry =
+        ChatEntry::assistant("").with_context_override(ContextOverride::ForcedExclude);
+
+    // Then it is NOT in context.
+    assert!(!entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn pinned_empty_assistant_default_is_in_context() {
+    // Given an empty Assistant entry that is pinned.
+    let entry = ChatEntry::assistant("").with_pin(PinPosition::Top);
+
+    // Then pin overrides the empty-assistant rule — it IS in context.
+    assert!(entry.is_in_context());
+}
+
+// --- Pending tool result is_in_context tests ---
+
+#[rstest::rstest]
+fn pending_tool_result_default_is_not_in_context() {
+    // Given a ToolResult with Pending status and Default override.
+    let entry = ChatEntry::tool_result("tc-1", "bash", "", ToolResultStatus::Pending);
+
+    // Then it is NOT in context (pending results are incomplete).
+    assert!(!entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn success_tool_result_default_is_in_context() {
+    // Given a ToolResult with Success status and Default override.
+    let entry = ChatEntry::tool_result("tc-1", "bash", "output", ToolResultStatus::Success);
+
+    // Then it IS in context.
+    assert!(entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn failure_tool_result_default_is_in_context() {
+    // Given a ToolResult with Failure status and Default override.
+    let entry = ChatEntry::tool_result("tc-1", "bash", "error", ToolResultStatus::Failure);
+
+    // Then it IS in context (failed results are still complete).
+    assert!(entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn pending_tool_result_forced_include_is_in_context() {
+    // Given a ToolResult with Pending status and ForcedInclude override.
+    let entry = ChatEntry::tool_result("tc-1", "bash", "", ToolResultStatus::Pending)
+        .with_context_override(ContextOverride::ForcedInclude);
+
+    // Then ForcedInclude overrides the pending rule — it IS in context.
+    assert!(entry.is_in_context());
+}
+
+#[rstest::rstest]
+fn pinned_pending_tool_result_default_is_in_context() {
+    // Given a ToolResult with Pending status that is pinned.
+    let entry = ChatEntry::tool_result("tc-1", "bash", "", ToolResultStatus::Pending)
+        .with_pin(PinPosition::Top);
+
+    // Then pin overrides the pending rule — it IS in context.
+    assert!(entry.is_in_context());
+}
+
 // --- ContextOverride serialization tests ---
 
 #[rstest::rstest]
