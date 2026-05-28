@@ -695,6 +695,7 @@ async fn when_submit_tools_registered(world: &mut AppWorld, tool_name: String) {
             parameters: serde_json::json!({"type": "object"}),
             prompt_snippet: None,
             prompt_guidelines: vec![],
+            server_tool_type: None,
         }],
     }));
     // Give the actor system time to process.
