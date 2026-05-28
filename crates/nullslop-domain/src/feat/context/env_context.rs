@@ -112,6 +112,48 @@ async fn load_context_file_from_dir(dir: &Path) -> Option<ContextFile> {
     None
 }
 
+/// Synchronous version of [`load_project_context_files`].
+///
+/// Used when context rescan must happen outside an async runtime
+/// (e.g., from the TUI suspend handler).
+pub fn load_project_context_files_sync(cwd: &Path) -> Vec<ContextFile> {
+    let mut files = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    let mut current = Some(cwd.to_path_buf());
+    while let Some(dir) = current {
+        if let Some(file) = load_context_file_from_dir_sync(&dir) {
+            let canonical = file.path.clone();
+            if seen.insert(canonical) {
+                files.push(file);
+            }
+        }
+
+        // Stop at root.
+        if dir.parent().is_none() || dir.parent() == Some(dir.as_path()) {
+            break;
+        }
+        current = dir.parent().map(std::path::Path::to_path_buf);
+    }
+
+    // Reverse so root files come first, CWD files come last.
+    files.reverse();
+    files
+}
+
+/// Synchronous single-directory context file loader.
+fn load_context_file_from_dir_sync(dir: &Path) -> Option<ContextFile> {
+    for filename in CONTEXT_FILE_CANDIDATES {
+        let path = dir.join(filename);
+        if path.exists()
+            && let Ok(content) = std::fs::read_to_string(&path)
+        {
+            return Some(ContextFile { path, content });
+        }
+    }
+    None
+}
+
 /// Returns the current date as YYYY-MM-DD.
 fn format_current_date() -> String {
     let now = std::time::SystemTime::now();
