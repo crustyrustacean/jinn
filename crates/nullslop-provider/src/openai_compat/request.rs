@@ -6,7 +6,7 @@
 use serde::Serialize;
 
 use crate::LlmMessage;
-use crate::tool_types::ToolDefinition;
+use crate::tool_types::{ServerToolType, ToolDefinition};
 
 /// Top-level request body for OpenAI-compatible chat completions.
 #[derive(Debug, Serialize)]
@@ -208,14 +208,21 @@ fn tool_call_to_json(tc: &crate::tool_types::ToolCall) -> serde_json::Value {
 
 /// Convert a [`ToolDefinition`] to OpenAI-format JSON.
 fn tool_definition_to_json(def: &ToolDefinition) -> serde_json::Value {
-    serde_json::json!({
-        "type": "function",
-        "function": {
-            "name": def.name,
-            "description": def.description,
+    if let Some(ref tool_type) = def.server_tool_type {
+        serde_json::json!({
+            "type": tool_type.as_str(),
             "parameters": def.parameters,
-        },
-    })
+        })
+    } else {
+        serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": def.name,
+                "description": def.description,
+                "parameters": def.parameters,
+            },
+        })
+    }
 }
 
 #[cfg(test)]
@@ -251,6 +258,7 @@ mod tests {
             prompt_snippet: None,
             prompt_guidelines: vec![],
             parameters: serde_json::json!({"type": "object"}),
+            server_tool_type: None,
         }];
 
         // When building request.
@@ -734,6 +742,7 @@ mod tests {
             prompt_snippet: None,
             prompt_guidelines: vec![],
             parameters: serde_json::json!({"type": "object"}),
+            server_tool_type: None,
         };
 
         // When converting to JSON.
@@ -745,5 +754,61 @@ mod tests {
         assert_eq!(func["name"], "get_weather");
         assert_eq!(func["description"], "Get weather");
         assert_eq!(func["parameters"]["type"], "object");
+    }
+
+    #[rstest::rstest]
+    fn server_tool_definition_serializes_with_provider_type() {
+        // Given a server tool definition.
+        let def = ToolDefinition {
+            name: "openrouter:web_search".to_owned(),
+            description: "Search the web".to_owned(),
+            parameters: serde_json::json!({"engine": "exa", "max_results": 5}),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            server_tool_type: Some(ServerToolType::OpenrouterWebSearch),
+        };
+
+        // When converting to JSON.
+        let json = tool_definition_to_json(&def);
+
+        // Then it has the server tool shape (no function wrapper).
+        assert_eq!(json["type"], "openrouter:web_search");
+        assert_eq!(json["parameters"]["engine"], "exa");
+        assert_eq!(json["parameters"]["max_results"], 5);
+        // No "function" key.
+        assert!(json.get("function").is_none());
+    }
+
+    #[rstest::rstest]
+    fn mixed_tools_serialize_correctly() {
+        // Given a mix of function and server tools.
+        let func_tool = ToolDefinition {
+            name: "bash".to_owned(),
+            description: "Run command".to_owned(),
+            parameters: serde_json::json!({"type": "object"}),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            server_tool_type: None,
+        };
+        let server_tool = ToolDefinition {
+            name: "openrouter:web_search".to_owned(),
+            description: "Search".to_owned(),
+            parameters: serde_json::json!({}),
+            prompt_snippet: None,
+            prompt_guidelines: vec![],
+            server_tool_type: Some(ServerToolType::OpenrouterWebSearch),
+        };
+
+        // When converting both.
+        let func_json = tool_definition_to_json(&func_tool);
+        let server_json = tool_definition_to_json(&server_tool);
+
+        // Then function tool has function wrapper.
+        assert_eq!(func_json["type"], "function");
+        assert!(func_json.get("function").is_some());
+
+        // And server tool has provider type.
+        assert_eq!(server_json["type"], "openrouter:web_search");
+        assert!(server_json.get("function").is_none());
     }
 }

@@ -102,7 +102,7 @@ mod tests {
     use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::feat::preferences_actor::user_preferences::{
-        CompactionConfig, ContextSlidingWindowConfig, WebFetchConfig,
+        CompactionConfig, ContextSlidingWindowConfig, OpenrouterWebSearchConfig, WebFetchConfig,
     };
     use crate::protocol::Event;
 
@@ -144,6 +144,7 @@ mod tests {
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            openrouter_web_search: OpenrouterWebSearchConfig::default(),
         };
         actor
             .handle(
@@ -186,6 +187,7 @@ mod tests {
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            openrouter_web_search: OpenrouterWebSearchConfig::default(),
         };
         actor
             .handle(
@@ -212,6 +214,7 @@ mod tests {
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            openrouter_web_search: OpenrouterWebSearchConfig::default(),
         };
         actor
             .handle(
@@ -302,6 +305,7 @@ mod tests {
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            openrouter_web_search: OpenrouterWebSearchConfig::default(),
         };
         actor
             .handle(

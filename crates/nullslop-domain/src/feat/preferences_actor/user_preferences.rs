@@ -166,6 +166,54 @@ impl Default for WebFetchConfig {
     }
 }
 
+/// OpenRouter web search server tool configuration.
+///
+/// Serialized as `[openrouter_web_search]` in `nullslop.toml`.
+/// Controls parameters sent to the `openrouter:web_search` server tool.
+/// All fields are optional — when `None`, the parameter is omitted from
+/// the request and OpenRouter uses its default.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenrouterWebSearchConfig {
+    /// Search engine: "auto", "native", "exa", "firecrawl", or "parallel".
+    /// `None` means use OpenRouter's default ("auto").
+    #[serde(default)]
+    pub engine: Option<String>,
+
+    /// Maximum results per search call (1–25). `None` = OpenRouter default (5).
+    #[serde(default)]
+    pub max_results: Option<u32>,
+
+    /// Maximum total results across all searches in one request.
+    #[serde(default)]
+    pub max_total_results: Option<u32>,
+
+    /// How much context to retrieve: "low", "medium", or "high".
+    /// `None` = OpenRouter picks adaptively.
+    #[serde(default)]
+    pub search_context_size: Option<String>,
+
+    /// Only return results from these domains.
+    #[serde(default)]
+    pub allowed_domains: Option<Vec<String>>,
+
+    /// Exclude results from these domains.
+    #[serde(default)]
+    pub excluded_domains: Option<Vec<String>>,
+}
+
+impl Default for OpenrouterWebSearchConfig {
+    fn default() -> Self {
+        Self {
+            engine: None,
+            max_results: None,
+            max_total_results: None,
+            search_context_size: None,
+            allowed_domains: None,
+            excluded_domains: None,
+        }
+    }
+}
+
 /// Default retry configuration values.
 const DEFAULT_RETRY_MAX_RETRIES: u32 = 5;
 const DEFAULT_RETRY_BASE_DELAY_SECS: u64 = 2;
@@ -281,6 +329,9 @@ pub struct UserPreferences {
     /// Web fetch tool configuration.
     #[serde(default)]
     pub web_fetch: WebFetchConfig,
+    /// OpenRouter web search server tool configuration.
+    #[serde(default)]
+    pub openrouter_web_search: OpenrouterWebSearchConfig,
 }
 
 /// Returns the path to the user preferences file.
@@ -417,6 +468,7 @@ mod tests {
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            openrouter_web_search: OpenrouterWebSearchConfig::default(),
         };
 
         // When saving and reloading.
@@ -487,6 +539,7 @@ last_strategy = "sliding_window""#,
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            openrouter_web_search: OpenrouterWebSearchConfig::default(),
         };
 
         // When saving.
@@ -516,6 +569,7 @@ last_strategy = "sliding_window""#,
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            openrouter_web_search: OpenrouterWebSearchConfig::default(),
         };
 
         // When saving and reloading.
@@ -559,6 +613,7 @@ last_strategy = "sliding_window""#,
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            openrouter_web_search: OpenrouterWebSearchConfig::default(),
         };
 
         // When saving and reloading.
@@ -602,6 +657,7 @@ last_strategy = "sliding_window""#,
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            openrouter_web_search: OpenrouterWebSearchConfig::default(),
         };
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
@@ -714,6 +770,7 @@ teardown_command = "~/.config/nullslop/scripts/fossil-cleanup.sh $1"
             context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
+            openrouter_web_search: OpenrouterWebSearchConfig::default(),
         };
 
         save_preferences_to(&prefs, &path).expect("save");
@@ -804,5 +861,115 @@ backend = "socks"
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
         assert_eq!(reloaded.web_fetch.backend, WebFetchBackend::HeadlessChrome);
+    }
+
+    // --- OpenRouterWebSearchConfig tests ---
+
+    #[rstest::rstest]
+    fn default_preferences_has_default_openrouter_web_search() {
+        let prefs = UserPreferences::default();
+        assert!(prefs.openrouter_web_search.engine.is_none());
+        assert!(prefs.openrouter_web_search.max_results.is_none());
+        assert!(prefs.openrouter_web_search.max_total_results.is_none());
+        assert!(prefs.openrouter_web_search.search_context_size.is_none());
+        assert!(prefs.openrouter_web_search.allowed_domains.is_none());
+        assert!(prefs.openrouter_web_search.excluded_domains.is_none());
+    }
+
+    #[rstest::rstest]
+    fn save_then_load_round_trips_openrouter_web_search_config() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let prefs = UserPreferences {
+            openrouter_web_search: OpenrouterWebSearchConfig {
+                engine: Some("exa".to_owned()),
+                max_results: Some(10),
+                max_total_results: Some(50),
+                search_context_size: Some("high".to_owned()),
+                allowed_domains: Some(vec!["arxiv.org".to_owned()]),
+                excluded_domains: Some(vec!["reddit.com".to_owned()]),
+            },
+            ..UserPreferences::default()
+        };
+
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+
+        assert_eq!(reloaded.openrouter_web_search.engine.as_deref(), Some("exa"));
+        assert_eq!(reloaded.openrouter_web_search.max_results, Some(10));
+        assert_eq!(reloaded.openrouter_web_search.max_total_results, Some(50));
+        assert_eq!(
+            reloaded.openrouter_web_search.search_context_size.as_deref(),
+            Some("high")
+        );
+        assert_eq!(
+            reloaded.openrouter_web_search.allowed_domains,
+            Some(vec!["arxiv.org".to_owned()])
+        );
+        assert_eq!(
+            reloaded.openrouter_web_search.excluded_domains,
+            Some(vec!["reddit.com".to_owned()])
+        );
+    }
+
+    #[rstest::rstest]
+    fn load_parses_openrouter_web_search_config() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[openrouter_web_search]
+engine = "parallel"
+max_results = 5
+max_total_results = 20
+search_context_size = "medium"
+allowed_domains = ["nature.com", "arxiv.org"]
+excluded_domains = ["spam.com"]
+"#,
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+
+        assert_eq!(prefs.openrouter_web_search.engine.as_deref(), Some("parallel"));
+        assert_eq!(prefs.openrouter_web_search.max_results, Some(5));
+        assert_eq!(prefs.openrouter_web_search.max_total_results, Some(20));
+        assert_eq!(
+            prefs.openrouter_web_search.search_context_size.as_deref(),
+            Some("medium")
+        );
+        assert_eq!(
+            prefs.openrouter_web_search.allowed_domains,
+            Some(vec!["nature.com".to_owned(), "arxiv.org".to_owned()])
+        );
+        assert_eq!(
+            prefs.openrouter_web_search.excluded_domains,
+            Some(vec!["spam.com".to_owned()])
+        );
+    }
+
+    #[rstest::rstest]
+    fn load_without_openrouter_web_search_section_uses_defaults() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"last_model = "ollama/llama3"
+"#,
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+
+        let defaults = OpenrouterWebSearchConfig::default();
+        assert_eq!(prefs.openrouter_web_search.engine, defaults.engine);
+        assert_eq!(prefs.openrouter_web_search.max_results, defaults.max_results);
+        assert_eq!(prefs.openrouter_web_search.max_total_results, defaults.max_total_results);
+        assert_eq!(
+            prefs.openrouter_web_search.search_context_size,
+            defaults.search_context_size
+        );
+        assert_eq!(prefs.openrouter_web_search.allowed_domains, defaults.allowed_domains);
+        assert_eq!(prefs.openrouter_web_search.excluded_domains, defaults.excluded_domains);
     }
 }

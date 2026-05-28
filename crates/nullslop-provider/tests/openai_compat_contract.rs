@@ -160,6 +160,7 @@ async fn tool_call_streaming_yields_tool_use_start() {
                 prompt_snippet: None,
                 prompt_guidelines: vec![],
                 parameters: serde_json::json!({"type": "object"}),
+                server_tool_type: None,
             }],
         )
         .await
@@ -210,6 +211,7 @@ async fn tool_call_streaming_yields_input_delta() {
                 prompt_snippet: None,
                 prompt_guidelines: vec![],
                 parameters: serde_json::json!({"type": "object"}),
+                server_tool_type: None,
             }],
         )
         .await
@@ -260,6 +262,7 @@ async fn tool_call_streaming_yields_tool_use_complete() {
                 prompt_snippet: None,
                 prompt_guidelines: vec![],
                 parameters: serde_json::json!({"type": "object"}),
+                server_tool_type: None,
             }],
         )
         .await
@@ -310,6 +313,7 @@ async fn tool_call_streaming_yields_done_event() {
                 prompt_snippet: None,
                 prompt_guidelines: vec![],
                 parameters: serde_json::json!({"type": "object"}),
+                server_tool_type: None,
             }],
         )
         .await

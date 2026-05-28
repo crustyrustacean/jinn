@@ -265,6 +265,7 @@ fn estimate_tool_schema_tokens_returns_nonzero_for_tools() {
         parameters: serde_json::json!({"type": "object"}),
         prompt_snippet: None,
         prompt_guidelines: vec![],
+        server_tool_type: None,
     }];
 
     // When estimating tool schema tokens.
@@ -285,6 +286,7 @@ fn estimate_tool_schema_tokens_sums_all_tools() {
             parameters: serde_json::json!({"type": "object"}),
             prompt_snippet: None,
             prompt_guidelines: vec![],
+            server_tool_type: None,
         },
         ToolDefinition {
             name: "read".to_owned(),
@@ -292,6 +294,7 @@ fn estimate_tool_schema_tokens_sums_all_tools() {
             parameters: serde_json::json!({"type": "object"}),
             prompt_snippet: None,
             prompt_guidelines: vec![],
+            server_tool_type: None,
         },
     ];
 

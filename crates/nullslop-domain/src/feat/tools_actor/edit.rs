@@ -62,6 +62,7 @@ pub fn definition() -> ToolDefinition {
             "required": ["path", "edits"],
             "additionalProperties": false
         }),
+        server_tool_type: None,
     }
 }
 
