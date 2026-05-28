@@ -166,6 +166,7 @@ mod tests {
     )]
 
     use super::*;
+    use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::protocol::{ChatEntry, PinPosition};
 
     fn make_entries(count: usize, ignored: bool) -> Vec<ChatEntry> {
@@ -580,6 +581,44 @@ mod tests {
 
         // Then: 1 Entry, 1 Collapsed(1, 5), 14 Entry.
         // The empty assistant is absorbed into the surrounding excluded block.
+        assert_eq!(items.len(), 1 + 1 + 14);
+        assert_eq!(items[0], VisualItem::Entry(0));
+        assert_eq!(
+            items[1],
+            VisualItem::CollapsedIgnoredBlock { start: 1, count: 5 }
+        );
+        for i in 0..14 {
+            assert_eq!(items[2 + i], VisualItem::Entry(6 + i));
+        }
+    }
+
+    #[rstest::rstest]
+    fn pending_tool_result_does_not_split_excluded_block() {
+        // Given: 1 in-context, 2 excluded, 1 pending tool result (default),
+        // 2 excluded, 14 in-context (total 20).
+        // The pending tool result is out-of-context (is_in_context returns
+        // false for pending results with Default override).
+        let mut history = make_entries(1, false);
+        history.extend(make_entries(2, true));
+        history.push(ChatEntry::tool_result(
+            "tc-1",
+            "bash",
+            "",
+            ToolResultStatus::Pending,
+        ));
+        history.extend(make_entries(2, true));
+        history.extend(make_entries(14, false));
+
+        // When building visual items.
+        let items = build_visual_items(
+            &history,
+            &HashSet::new(),
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
+
+        // Then: 1 Entry, 1 Collapsed(1, 5), 14 Entry.
+        // The pending tool result is absorbed into the surrounding excluded block.
         assert_eq!(items.len(), 1 + 1 + 14);
         assert_eq!(items[0], VisualItem::Entry(0));
         assert_eq!(
