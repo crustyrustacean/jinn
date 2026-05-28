@@ -16,6 +16,7 @@ pub mod sessions;
 pub mod sidebar;
 pub mod sidebar_state_actor;
 pub mod state;
+pub mod task_list_section;
 
 #[cfg(test)]
 mod sessions_tests;
@@ -34,5 +35,6 @@ pub use state::SidebarState;
 pub fn register_sections(sidebar: &mut Sidebar) {
     sidebar.register(Box::new(persona_section::PersonaSection));
     sidebar.register(Box::new(pins::PinsSection));
+    sidebar.register(Box::new(task_list_section::TaskListSection));
     sidebar.register(Box::new(sessions::SessionsSection::new()));
 }
