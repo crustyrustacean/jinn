@@ -1,8 +1,7 @@
 //! Shared helpers used across multiple handler concern modules.
 
 use crate::common::actor::ActorContext;
-use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, estimate_entry_tokens};
-use crate::feat::session::chat_session::{ChatSessionState, SessionPhase};
+use crate::feat::session::chat_session::SessionPhase;
 use crate::protocol::{Event, SessionId};
 
 /// Emit a `SessionPhaseChanged` event if the phase actually changed.
@@ -27,30 +26,16 @@ pub(in crate::feat::session::session_actor) fn emit_phase_changed(
     }
 }
 
-/// Compute total estimated tokens for a session's history.
-pub(in crate::feat::session::session_actor) fn estimate_total_tokens(
-    session: &ChatSessionState,
-) -> usize {
-    let estimator = CharRatioEstimator;
-    session
-        .history()
-        .iter()
-        .map(|e| estimate_entry_tokens(&estimator, e))
-        .sum()
-}
-
-/// Emit a `HistoryAppended` event with the total estimated tokens.
+/// Emit a `HistoryAppended` event.
 ///
-/// Call this outside the write lock with the pre-computed token count.
+/// Call this outside the write lock.
 pub(in crate::feat::session::session_actor) fn emit_history_appended(
     ctx: &ActorContext,
     session_id: &SessionId,
-    total_estimated_tokens: usize,
 ) {
     if let Err(e) = ctx.send_event(Event::HistoryAppended(
         crate::feat::session::protocol::history_appended::HistoryAppended {
             session_id: session_id.clone(),
-            total_estimated_tokens,
         },
     )) {
         tracing::warn!(err = ?e, "failed to emit HistoryAppended");
@@ -258,26 +243,4 @@ pub(super) fn test_actor_with_store(
     )
 }
 
-#[cfg(test)]
-mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
-    use super::*;
-    use crate::protocol::ChatEntry;
 
-    #[test]
-    fn estimate_total_tokens_returns_nonzero_for_session_with_entries() {
-        // Given a session with multiple entries.
-        let mut session = ChatSessionState::new();
-        session.push_entry(ChatEntry::user("hello world from user"));
-        session.push_entry(ChatEntry::assistant("hello from assistant"));
-
-        // When estimating total tokens.
-        let tokens = estimate_total_tokens(&session);
-
-        // Then the result is a meaningful sum (not 0 or 1).
-        assert!(
-            tokens > 1,
-            "estimate_total_tokens should return a sum > 1 for a session with entries, got {tokens}"
-        );
-    }
-}

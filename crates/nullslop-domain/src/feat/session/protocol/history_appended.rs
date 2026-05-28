@@ -27,14 +27,13 @@ use crate::protocol::{EventMsg, SessionId};
 
 /// Emitted when a new entry is appended to the session history.
 ///
-/// Carries the estimated total token count of the full history after
-/// the entry was appended, so the compaction actor can evaluate the
-/// threshold without re-scanning the entire history.
+/// Carries no token count — the compaction actor reads `context_size()`
+/// directly from session state, which uses the tiktoken-based count
+/// from the last prompt assembly. This ensures the threshold check
+/// and the status bar display use the same value.
 #[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
 #[event_msg("session")]
 pub struct HistoryAppended {
     /// The session whose history was appended to.
     pub session_id: SessionId,
-    /// Estimated token count of the full history after this entry was appended.
-    pub total_estimated_tokens: usize,
 }

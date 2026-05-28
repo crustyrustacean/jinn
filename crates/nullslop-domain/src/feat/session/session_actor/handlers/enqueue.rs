@@ -33,7 +33,7 @@ impl SessionPersistenceActor {
         payload: &EnqueueUserMessage,
         ctx: &ActorContext,
     ) {
-        let (action, total_tokens, workflow_overrides) = {
+        let (action, workflow_overrides) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
             let workflow_overrides: Option<crate::feat::context::assemble::AssemblyOverrides> =
@@ -56,10 +56,8 @@ impl SessionPersistenceActor {
                     }
                     session.push_entry(payload.entry.clone());
                     session.begin_sending();
-                    let total_tokens = super::super::helpers::estimate_total_tokens(session);
                     (
                         EnqueueAction::DispatchDirectly,
-                        total_tokens,
                         workflow_overrides,
                     )
                 }
@@ -71,7 +69,7 @@ impl SessionPersistenceActor {
                     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
                         payload.entry.clone(),
                     ));
-                    (EnqueueAction::Queued, 0usize, None)
+                    (EnqueueAction::Queued, None)
                 }
             }
         };
@@ -81,7 +79,6 @@ impl SessionPersistenceActor {
                 super::super::helpers::emit_history_appended(
                     ctx,
                     &payload.session_id,
-                    total_tokens,
                 );
                 // Assemble the prompt directly and emit SendToLlmProvider.
                 let assembled = {
@@ -170,11 +167,10 @@ impl SessionPersistenceActor {
         payload: &PushChatEntry,
         ctx: &ActorContext,
     ) {
-        let total_tokens = {
+        {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
             session.push_entry(payload.entry.clone());
-            super::super::helpers::estimate_total_tokens(session)
         };
 
         if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
@@ -184,7 +180,7 @@ impl SessionPersistenceActor {
             tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted");
         }
 
-        super::super::helpers::emit_history_appended(ctx, &payload.session_id, total_tokens);
+        super::super::helpers::emit_history_appended(ctx, &payload.session_id);
 
         self.save_active_session(&payload.session_id).await;
     }

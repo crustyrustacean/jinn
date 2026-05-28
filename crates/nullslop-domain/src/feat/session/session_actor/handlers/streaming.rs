@@ -98,7 +98,7 @@ impl SessionPersistenceActor {
             None => None,
         };
 
-        let (old_phase, new_phase, total_tokens, should_emit_compact_context);
+        let (old_phase, new_phase, should_emit_compact_context);
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
@@ -184,12 +184,11 @@ impl SessionPersistenceActor {
             }
 
             new_phase = session.phase();
-            total_tokens = super::super::helpers::estimate_total_tokens(session);
             should_emit_compact_context = should_emit_compact_context_local;
         }
 
         super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
-        super::super::helpers::emit_history_appended(ctx, &event.session_id, total_tokens);
+        super::super::helpers::emit_history_appended(ctx, &event.session_id);
 
         // If we transitioned directly to Compacting, emit CompactContext to kick off
         // the compaction actor.
