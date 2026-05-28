@@ -556,3 +556,62 @@ fn render_phase_text_excludes_deferred() {
         "phase with only deferred task should show (no tasks)"
     );
 }
+
+#[test]
+fn defer_to_phase_appends_to_existing_phase() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Research");
+    let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
+    let p2 = list.add_phase("Build");
+
+    let new_tid = list.defer_to_phase(&t1, &p2).unwrap();
+
+    // Source deferred.
+    let source = list.get_task(&t1).unwrap();
+    assert_eq!(source.status(), TaskStatus::Deferred);
+
+    // Copy is pending in phase 2.
+    let copy = list.get_task(&new_tid).unwrap();
+    assert_eq!(copy.status(), TaskStatus::Pending);
+    assert_eq!(copy.description(), "Read docs");
+
+    // Phase 2 has 1 task (the copy).
+    let phase2 = list.get_phase(&p2).unwrap();
+    assert_eq!(phase2.tasks().len(), 1);
+}
+
+#[test]
+fn defer_to_phase_errors_on_missing_source() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Build");
+
+    let fake_id = TaskId::new_for_test("t99");
+    let result = list.defer_to_phase(&fake_id, &p1);
+    assert!(matches!(result, Err(TaskListError::TaskNotFound(_))));
+}
+
+#[test]
+fn defer_to_phase_errors_on_missing_phase() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Build");
+    let t1 = list.add_task(&p1, "Write code", TaskPosition::End).unwrap();
+
+    let fake_phase = PhaseId::new_for_test("p99");
+    let result = list.defer_to_phase(&t1, &fake_phase);
+    assert!(matches!(result, Err(TaskListError::PhaseNotFound(_))));
+}
+
+#[test]
+fn defer_to_phase_errors_on_already_deferred() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Research");
+    let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
+    let p2 = list.add_phase("Build");
+
+    // Defer once.
+    list.defer_to_phase(&t1, &p2).unwrap();
+
+    // Try to defer again.
+    let result = list.defer_to_phase(&t1, &p2);
+    assert!(matches!(result, Err(TaskListError::AlreadyDeferred(_))));
+}

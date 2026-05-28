@@ -22,6 +22,7 @@ pub mod add_phase;
 pub mod add_task;
 pub mod complete_task;
 pub mod defer_task;
+pub mod defer_to_phase;
 pub mod get_phase;
 pub mod get_task_list;
 
@@ -53,6 +54,10 @@ pub fn tool_entries() -> Vec<BuiltinToolEntry> {
             defer_task::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
         ),
         (
+            defer_to_phase::definition(),
+            defer_to_phase::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+        ),
+        (
             get_task_list::definition(),
             get_task_list::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
         ),
@@ -70,6 +75,7 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
         add_task::definition(),
         complete_task::definition(),
         defer_task::definition(),
+        defer_to_phase::definition(),
         get_task_list::definition(),
         get_phase::definition(),
     ]
