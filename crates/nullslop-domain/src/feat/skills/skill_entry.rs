@@ -234,4 +234,34 @@ mod tests {
         assert!(name_idx.is_empty());
         assert_eq!(desc_idx, vec![0..5]);
     }
+
+    #[rstest::rstest]
+    fn preview_lines_renders_markdown_body() {
+        // Given a skill entry with a markdown body.
+        let mut entry = make_entry("test-skill", "A test skill", true);
+        entry.body = "# Hello World\n\nThis is a test.".to_owned();
+
+        // When rendering preview lines.
+        let lines = entry.preview_lines(80);
+
+        // Then lines are produced containing the body text.
+        assert!(!lines.is_empty(), "should produce lines from markdown body");
+        let rendered: String = lines.iter().map(std::string::ToString::to_string).collect();
+        assert!(
+            rendered.contains("Hello World"),
+            "rendered output should contain body text"
+        );
+    }
+
+    #[rstest::rstest]
+    fn preview_lines_empty_for_empty_body() {
+        // Given a skill entry with an empty body.
+        let entry = make_entry("no-body", "No body here", true);
+
+        // When rendering preview lines.
+        let lines = entry.preview_lines(80);
+
+        // Then no lines are produced.
+        assert!(lines.is_empty(), "empty body should produce no preview lines");
+    }
 }
