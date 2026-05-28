@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use crate::protocol::{ChatEntry, ChatEntryId};
 
 /// Number of entries from the end that are never hidden, regardless of `ignored`.
-pub(crate) const PROXIMITY_COUNT: usize = 10;
+pub(crate) const PROXIMITY_COUNT: usize = 3;
 
 /// Default minimum contiguous excluded entries required to collapse.
 /// Blocks with fewer entries are displayed individually.
@@ -219,9 +219,9 @@ mod tests {
     #[rstest::rstest]
     fn ignored_entries_collapsed_into_block() {
         // Given 3 non-ignored, 10 ignored, 7 non-ignored (total 20).
-        // PROXIMITY_COUNT = 10, so protected_start = 10.
-        // Ignored entries at indices 3..12. Of those, 10..12 are protected.
-        // So collapsed block is (3, 7), then 3 Entry for 10..12, then 7 Entry for 13..19.
+        // PROXIMITY_COUNT = 3, so protected_start = 17.
+        // Ignored entries at indices 3..12 are all below protected_start.
+        // So all 10 collapse into one block, then 7 non-ignored Entry.
         let mut history = make_entries(3, false);
         history.extend(make_entries(10, true));
         history.extend(make_entries(7, false));
@@ -234,22 +234,18 @@ mod tests {
             DEFAULT_MIN_COLLAPSE_COUNT,
         );
 
-        // Then: 3 Entry, 1 CollapsedIgnoredBlock(3, 7), 3 Entry(10..12), 7 Entry(13..19).
-        assert_eq!(items.len(), 3 + 1 + 3 + 7);
+        // Then: 3 Entry, 1 CollapsedIgnoredBlock(3, 10), 7 Entry(13..19).
+        assert_eq!(items.len(), 3 + 1 + 7);
         for i in 0..3 {
             assert_eq!(items[i], VisualItem::Entry(i));
         }
         assert_eq!(
             items[3],
-            VisualItem::CollapsedIgnoredBlock { start: 3, count: 7 }
+            VisualItem::CollapsedIgnoredBlock { start: 3, count: 10 }
         );
-        // Protected ignored entries 10..12 shown individually.
-        for i in 0..3 {
-            assert_eq!(items[4 + i], VisualItem::Entry(10 + i));
-        }
         // Non-ignored entries 13..19.
         for i in 0..7 {
-            assert_eq!(items[7 + i], VisualItem::Entry(13 + i));
+            assert_eq!(items[4 + i], VisualItem::Entry(13 + i));
         }
     }
 
