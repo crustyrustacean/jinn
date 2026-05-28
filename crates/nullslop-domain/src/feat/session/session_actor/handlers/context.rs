@@ -245,22 +245,22 @@ mod tests {
         // Then no judge tool names are in the global map.
         let guard = state.read();
         assert!(
-            !guard.context.tool_definitions.contains_key("session_query"),
+            !guard.context.tool_definitions.contains_key("judge_session_query"),
             "session_query should not be in global tool map"
         );
         assert!(
             !guard
                 .context
                 .tool_definitions
-                .contains_key("session_query_recent"),
+                .contains_key("judge_session_query_recent"),
             "session_query_recent should not be in global tool map"
         );
         assert!(
-            !guard.context.tool_definitions.contains_key("task_complete"),
+            !guard.context.tool_definitions.contains_key("judge_task_complete"),
             "task_complete should not be in global tool map"
         );
         assert!(
-            !guard.context.tool_definitions.contains_key("task_incomplete"),
+            !guard.context.tool_definitions.contains_key("judge_task_incomplete"),
             "task_incomplete should not be in global tool map"
         );
     }

@@ -24,7 +24,7 @@ use super::super::protocol::{JudgeVerdict, Verdict};
 /// Returns the tool definition for `task_complete`.
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
-        name: "task_complete".to_owned(),
+        name: "judge_task_complete".to_owned(),
         description: "Mark the origin session's task as successfully completed. \
             Call this when the agent's work meets all acceptance criteria."
             .to_owned(),
@@ -146,7 +146,7 @@ mod tests {
     fn make_call() -> ToolCall {
         ToolCall {
             id: "test-call".to_owned(),
-            name: "task_complete".to_owned(),
+            name: "judge_task_complete".to_owned(),
             arguments: "{}".to_owned(),
         }
     }

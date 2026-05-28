@@ -24,7 +24,7 @@ use super::super::protocol::{JudgeVerdict, Verdict};
 /// Returns the tool definition for `task_incomplete`.
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
-        name: "task_incomplete".to_owned(),
+        name: "judge_task_incomplete".to_owned(),
         description: "Report that the origin session's task is NOT complete. \
             Provide a summary of what is missing or incorrect."
             .to_owned(),
@@ -159,7 +159,7 @@ mod tests {
     fn make_call(summary: &str) -> ToolCall {
         ToolCall {
             id: "test-call".to_owned(),
-            name: "task_incomplete".to_owned(),
+            name: "judge_task_incomplete".to_owned(),
             arguments: format!(r#"{{"summary": "{summary}"}}"#),
         }
     }

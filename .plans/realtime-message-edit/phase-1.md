@@ -199,3 +199,31 @@ use crate::feat::session::history_mutation::HistoryMutation;
 - [x] Multiple `InsertEntry` in one batch produce correct ordering
 - [x] `just check` passes
 - [x] `just test` passes (all existing tests still pass)
+
+---
+
+## Review: Phase 1 — Define `HistoryMutation` enum and mutation queue
+
+### Changes
+
+Created the `HistoryMutation` enum with four variants (`SetContextOverride`, `InsertEntry`, `PinEntry`, `UnpinEntry`) and added a pending mutation queue to `SessionCoreEphemeral`. Added five new methods to `ChatSessionState`: `find_entry_index_by_id`, `queue_mutations`, `drain_pending_mutations`, `apply_mutations`, and `drain_and_apply_pending_mutations`. Wrote 21 unit tests covering all mutation types, index shifting, nonexistent entry skipping, and queue operations.
+
+### Divergence Summary
+
+None. All acceptance criteria met as planned.
+
+### Verification
+
+- `just check` passes (compilation successful)
+- 21 new tests pass (`cargo nextest run -p nullslop-domain -E "test(history_mutation)"`)
+- 2920 total tests pass across affected crates (no regressions)
+- Pre-existing `nullslop-workflow` compilation error unrelated to our changes
+
+### Risks
+
+- The `apply_mutations` method resolves `ChatEntryId` → index via linear scan (`iter().position()`). For very large histories (5000+ entries), this could be slow. A `HashMap<ChatEntryId, usize>` index could be added later if needed.
+- Phase 2 will add the safe application hooks that call `drain_and_apply_pending_mutations` at turn boundaries.
+
+### Next Steps
+
+Proceeding to phase 2.
