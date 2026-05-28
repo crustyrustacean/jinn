@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing)]
+#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
 use crate::feat::provider_infra::config::ProvidersConfig;
 use crate::feat::provider_infra::registry_service::ProviderRegistryService;

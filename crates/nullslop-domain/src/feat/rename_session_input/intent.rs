@@ -163,7 +163,7 @@ pub fn handle_paste(state: &mut AppState, text: &str) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
     use crate::feat::session::chat_session::ChatSessionState;
     use crate::protocol::ChatEntry;

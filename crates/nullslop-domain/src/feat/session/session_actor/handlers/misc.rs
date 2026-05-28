@@ -118,7 +118,7 @@ fn build_models_refresh_table(event: &ModelsRefreshed) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::super::super::helpers::{test_actor, test_actor_with_store};
     use crate::feat::provider::protocol::event::ModelsRefreshed;
     use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;

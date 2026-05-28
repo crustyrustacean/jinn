@@ -116,7 +116,7 @@ pub struct ScanSkills;
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use std::sync::Arc;
 
     use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, RecordingSink};

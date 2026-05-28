@@ -229,7 +229,7 @@ pub fn generate_unified_diff(original: &str, modified: &str, path: &str) -> Stri
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     #[rstest::rstest]

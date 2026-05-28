@@ -183,7 +183,7 @@ mod tests {
         let app = setup_with_tasks();
         let section = TaskListSection;
         let height = section.content_height(&app);
-        assert!(height > 0, "expected non-zero height, got {}", height);
+        assert!(height > 0, "expected non-zero height, got {height}");
     }
 
     #[test]

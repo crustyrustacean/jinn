@@ -85,7 +85,7 @@ fn validate_pin_action(state: &AppState) -> Result<(), PinsActionError> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use crate::protocol::{ChatEntry, PinPosition};
 
     use super::*;

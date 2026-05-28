@@ -160,7 +160,7 @@ fn error_no_session(call: &ToolCall) -> ToolResult {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
     use crate::common::app_state::AppState;
     use crate::common::state::State;
