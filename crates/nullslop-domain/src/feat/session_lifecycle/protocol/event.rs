@@ -22,6 +22,18 @@ pub struct SessionSetupCompleted {
     pub error: Option<String>,
 }
 
+/// A new chat session was created.
+///
+/// Emitted by the intent handler when `handle_session_lifecycle_setup()` inserts
+/// a new session into the sessions map. Actor plugins subscribe to this event
+/// to run side effects (e.g., welcome messages).
+#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
+#[event_msg("session_lifecycle")]
+pub struct SessionCreated {
+    /// The newly created session's ID.
+    pub session_id: SessionId,
+}
+
 /// Teardown command finished (success or failure).
 ///
 /// Emitted by the session-persistence actor after running a lifecycle teardown command.

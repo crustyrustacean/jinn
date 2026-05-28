@@ -64,9 +64,6 @@ pub struct TuiApp {
     pub config: TuiConfig,
     /// Sidebar container with registered sections.
     pub sidebar: Sidebar,
-    /// Plugin registry for per-VM plugin dispatch.
-    #[debug(skip)]
-    pub plugin_registry: nullslop_plugin::PluginRegistry,
 }
 
 impl TuiApp {
@@ -227,7 +224,7 @@ impl TuiApp {
     )]
     pub fn route_intent(&mut self, intent: Intent) {
         // Step 1–3: Handle intent, collect results, release lock.
-        let (commands, signals) = {
+        let (commands, events, signals) = {
             let mut state = self.core.state.write();
             let result = IntentHandler::handle(&intent, &mut state);
 
@@ -239,8 +236,9 @@ impl TuiApp {
             // Collect signals before releasing lock.
             let signals = signals::TuiSignalsSnapshot::from_state(&state);
             let commands = result.commands;
+            let events = result.events;
 
-            (commands, signals)
+            (commands, events, signals)
         };
 
         // Step 4: Send commands to core channel.
@@ -251,20 +249,15 @@ impl TuiApp {
             });
         }
 
-        // Step 4b: Dispatch plugin events for session creation.
-        if matches!(intent, Intent::SessionNew | Intent::SessionNewWithLifecycle) {
-            let session_id = self.core.state.read().session.active_session_id().clone();
-            let ctx = nullslop_plugin::ctx::SessionCreatedCtx {
-                session_id: session_id.to_string(),
-            };
-            nullslop_plugin::emit(
-                nullslop_plugin::hooks::SESSION_CREATED,
-                &self.plugin_registry,
-                &ctx,
-            );
+        // Step 5: Send events to core channel.
+        for event in events {
+            let _ = self.core.sender().send(AppMsg::Event {
+                event,
+                source: None,
+            });
         }
 
-        // Step 5: Handle TUI signals.
+        // Step 6: Handle TUI signals.
         if signals.toggle_whichkey {
             self.which_key.toggle();
         }

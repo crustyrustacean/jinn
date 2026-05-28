@@ -14,6 +14,8 @@ use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session_lifecycle::command_template::{CommandTemplate, parse_quoted_args};
 use crate::feat::session_lifecycle::protocol::command::{PersistSession, RunSessionSetup};
+use crate::feat::session_lifecycle::protocol::event::SessionCreated;
+use crate::protocol::app_msg::Event;
 use crate::protocol::{Command, IntentResult, PromptStrategyId, SessionId};
 
 /// Errors that can occur when validating arg input.
@@ -128,6 +130,11 @@ pub fn handle_session_lifecycle_setup(
         .scope_stack
         .push(crate::common::app_state::FocusScope::Input);
 
+    // Build the session-created event.
+    let created_event = Event::SessionCreated(SessionCreated {
+        session_id: new_id.clone(),
+    });
+
     // If the lifecycle has a setup command, emit it for async execution.
     if let Some(ref setup_cmd) = setup_command {
         let rendered = match setup_cmd {
@@ -144,28 +151,31 @@ pub fn handle_session_lifecycle_setup(
             }
         };
 
-        return IntentResult::with_commands(vec![
-            Command::PersistSession(PersistSession {
-                session_id: new_id.clone(),
-            }),
-            Command::PushChatEntry(PushChatEntry {
-                session_id: new_id.clone(),
-                entry: crate::feat::session::session_actor::setup_running_msg(),
-            }),
-            Command::RunSessionSetup(RunSessionSetup {
-                session_id: new_id,
-                command: rendered,
-                args: args.to_vec(),
-                lifecycle_command: Some(setup_cmd.clone()),
-            }),
-        ]);
+        return IntentResult::with_commands_and_events(
+            vec![
+                Command::PersistSession(PersistSession {
+                    session_id: new_id.clone(),
+                }),
+                Command::PushChatEntry(PushChatEntry {
+                    session_id: new_id.clone(),
+                    entry: crate::feat::session::session_actor::setup_running_msg(),
+                }),
+                Command::RunSessionSetup(RunSessionSetup {
+                    session_id: new_id,
+                    command: rendered,
+                    args: args.to_vec(),
+                    lifecycle_command: Some(setup_cmd.clone()),
+                }),
+            ],
+            vec![created_event],
+        );
     }
 
     // No setup command — use default CWD immediately.
     let default_cwd = state.session.default_cwd().clone();
     state.session_mut(&new_id).set_cwd(default_cwd);
 
-    IntentResult::empty()
+    IntentResult::with_commands_and_events(vec![], vec![created_event])
 }
 
 /// Handle `Intent::SessionClose`.
