@@ -475,6 +475,11 @@ impl IntentHandler {
                     state,
                 )
             }
+
+            // --- CWD Picker ---
+            Intent::ChangeCwd { root } => {
+                crate::feat::navigation::intent::handle_change_cwd(state, *root)
+            }
         }
     }
 }

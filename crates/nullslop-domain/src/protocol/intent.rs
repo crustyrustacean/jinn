@@ -1,6 +1,24 @@
 //! The [`Intent`] enum — one variant per user-initiated action.
 use crate::protocol::{Command, PickerKind, SessionId};
 
+/// The search root for the directory picker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CwdRoot {
+    /// Search from the active session's current CWD.
+    Session,
+    /// Search from the user's home directory.
+    Home,
+}
+
+impl std::fmt::Display for CwdRoot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CwdRoot::Session => write!(f, "session"),
+            CwdRoot::Home => write!(f, "home"),
+        }
+    }
+}
+
 /// A user-initiated action.
 ///
 /// Every keymap binding and mouse event produces exactly one [`Intent`] variant.
@@ -292,6 +310,13 @@ pub enum Intent {
     WorkflowInputCursorUp,
     /// Move cursor down one visual line in workflow input buffer.
     WorkflowInputCursorDown,
+
+    // --- CWD Picker ---
+    /// Change the session's working directory via an external picker.
+    ChangeCwd {
+        /// Where to search from.
+        root: CwdRoot,
+    },
 }
 
 impl std::fmt::Display for Intent {
@@ -428,6 +453,7 @@ impl std::fmt::Display for Intent {
             Intent::WorkflowInputCursorWordRight => write!(f, "workflow input cursor word right"),
             Intent::WorkflowInputCursorUp => write!(f, "workflow input cursor up"),
             Intent::WorkflowInputCursorDown => write!(f, "workflow input cursor down"),
+            Intent::ChangeCwd { root } => write!(f, "change cwd ({root})"),
         }
     }
 }
