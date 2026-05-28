@@ -191,6 +191,7 @@ enum SuspendResult {
 /// 6. Restarts the event thread
 /// 7. Redraws the terminal
 /// 8. Writes the result directly to the active session's input box via `replace_all`
+#[expect(clippy::too_many_lines, reason = "large match on SuspendAction variants")]
 fn handle_suspend_action(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     app: &mut TuiApp,
@@ -227,7 +228,7 @@ fn handle_suspend_action(
                 .clone();
 
             // Shell-escape the path for safe substitution.
-            let escaped_path = shell_escape(search_root.to_string_lossy());
+            let escaped_path = shell_escape(&search_root.to_string_lossy());
             let rendered = command_template.replace("{path}", &escaped_path);
 
             let output_result = std::process::Command::new("sh")
@@ -331,7 +332,7 @@ fn handle_suspend_action(
 /// Shell-escapes a path for safe substitution into a `sh -c` command.
 ///
 /// Wraps in single quotes, escaping any embedded single quotes.
-fn shell_escape(s: std::borrow::Cow<'_, str>) -> String {
+fn shell_escape(s: &str) -> String {
     let mut result = String::with_capacity(s.len() + 2);
     result.push('\'');
     for ch in s.chars() {
