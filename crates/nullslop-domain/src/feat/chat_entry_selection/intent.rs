@@ -3,18 +3,16 @@
 use crate::common::app_state::AppState;
 use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
+use crate::feat::session::ChatSessionState;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
-use crate::protocol::{Command, IntentResult, PinPosition};
+use crate::protocol::{Command, ContextOverride, IntentResult, PinPosition};
 
 use super::validator;
-/// Selects the next chat entry in the active session.
+
+/// Advances the selection cursor by one entry, paging the viewport if needed.
 ///
-/// If the cursor is on the last visible entry, pages the viewport down first,
-/// then advances the cursor by exactly 1 (not jump to first visible in new viewport).
-/// Clamps at the last entry in history — no wrapping.
-pub fn handle_select_next(state: &mut AppState) -> IntentResult {
-    validator::validate_chat_entry_select_next(state);
-    let session = state.active_session_mut();
+/// Returns `false` if already at the last entry (no-op).
+pub(crate) fn advance_selection_one(session: &mut ChatSessionState) -> bool {
     let visible = session.visible_entry_range();
     let current = session.selected_entry_index();
     let max = if session.visual_items().is_empty() {
@@ -23,28 +21,40 @@ pub fn handle_select_next(state: &mut AppState) -> IntentResult {
         session.visual_items().len().saturating_sub(1)
     };
 
-    if let Some(cur) = current {
-        if cur >= max {
-            // Already at last entry — no-op.
-            return IntentResult::empty();
-        }
-        // Check if cursor is at last visible entry.
-        let last_visible = if visible.is_empty() {
-            None
-        } else {
-            Some(visible.end.saturating_sub(1))
-        };
-        if last_visible == Some(cur) {
-            // At last visible — page down, then advance by exactly 1.
-            let viewport_height = session.viewport_height_value().max(1);
-            session.scroll_down(viewport_height);
+    let Some(cur) = current else {
+        // No selection — select first entry if history exists.
+        if !session.history().is_empty() {
             session.select_next_entry();
-        } else {
-            session.select_next_entry();
+            return true;
         }
-    } else if !session.history().is_empty() {
-        session.select_next_entry();
+        return false;
+    };
+
+    if cur >= max {
+        return false; // At bottom — no-op.
     }
+
+    let last_visible = if visible.is_empty() {
+        None
+    } else {
+        Some(visible.end.saturating_sub(1))
+    };
+
+    if last_visible == Some(cur) {
+        let viewport_height = session.viewport_height_value().max(1);
+        session.scroll_down(viewport_height);
+    }
+    session.select_next_entry();
+    true
+}
+/// Selects the next chat entry in the active session.
+///
+/// If the cursor is on the last visible entry, pages the viewport down first,
+/// then advances the cursor by exactly 1 (not jump to first visible in new viewport).
+/// Clamps at the last entry in history — no wrapping.
+pub fn handle_select_next(state: &mut AppState) -> IntentResult {
+    validator::validate_chat_entry_select_next(state);
+    advance_selection_one(state.active_session_mut());
     IntentResult::empty()
 }
 
@@ -210,17 +220,86 @@ pub fn handle_yank_selected(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Toggle the `ignored` flag on the currently selected chat entry.
+/// Toggle the `ignored` flag on the currently selected chat entry, with
+/// sweep support for holding `x`.
 ///
-/// Validates that the history is non-empty, an entry is selected,
-/// the entry is not pinned, and the entry kind is ignorable.
-/// On success, toggles the flag and returns a `PersistSession` command
-/// so the change is saved to disk.
+/// **First press:** validates, toggles the entry, captures the resulting
+/// `ContextOverride`, advances the cursor, and stores the sweep state.
+///
+/// **Subsequent presses within 100ms:** applies the captured state (not a
+/// toggle) to the now-selected entry, advances the cursor, and refreshes
+/// the sweep timestamp. Pinned entries are skipped during the sweep.
+///
+/// The sweep state is cleared by either a >100ms gap or any non-
+/// `ChatEntryIgnoreSelected` intent.
 pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
+    // Try to continue an existing sweep.
+    if let Some(target) = state.active_session_mut().take_ignore_sweep() {
+        // Sweep continuation — apply fixed state, skip pinned entries.
+        loop {
+            let session = state.active_session_mut();
+
+            // If no entry is selected or we can't advance, stop.
+            if session.selected_entry_index().is_none() {
+                return IntentResult::empty();
+            }
+
+            // Check if the currently selected entry is pinned.
+            let is_pinned = session
+                .selected_entry()
+                .is_some_and(|e| e.is_pinned());
+
+            if is_pinned {
+                // Skip pinned — try advancing to the next entry.
+                if !advance_selection_one(session) {
+                    // At bottom, pinned is the last entry — stop.
+                    return IntentResult::empty();
+                }
+                // Loop to check the new entry.
+                continue;
+            }
+
+            // Apply the captured state directly (not a toggle).
+            session.set_entry_context_override(target);
+
+            // Advance cursor for next press.
+            advance_selection_one(session);
+
+            // Re-store sweep state with fresh timestamp.
+            session.set_ignore_sweep(target);
+
+            let session_id = state.active_session().session_id().clone();
+            return IntentResult::with_commands(vec![Command::PersistSession(
+                crate::feat::session_lifecycle::protocol::command::PersistSession { session_id },
+            )]);
+        }
+    }
+
+    // Fresh press (no active sweep) — validate and toggle.
     if validator::validate_chat_entry_ignore_selected(state).is_err() {
         return IntentResult::empty();
     }
+
+    // Toggle the entry's ignore state.
     state.active_session_mut().toggle_entry_ignored();
+
+    // Capture the resulting state on the toggled entry.
+    let captured = state
+        .active_session()
+        .selected_entry()
+        .expect("validator confirmed selection exists")
+        .context_override;
+
+    // Advance cursor.
+    advance_selection_one(state.active_session_mut());
+
+    // Store sweep state for potential continuation — only when the result
+    // is a forced override. A Default result means the user reverted an entry
+    // to its kind default; that's not a sweep action.
+    if captured != ContextOverride::Default {
+        state.active_session_mut().set_ignore_sweep(captured);
+    }
+
     let session_id = state.active_session().session_id().clone();
     IntentResult::with_commands(vec![Command::PersistSession(
         crate::feat::session_lifecycle::protocol::command::PersistSession { session_id },
@@ -1058,5 +1137,244 @@ mod tests {
         );
         let selected = state.active_session().selected_entry().expect("entry");
         assert_eq!(selected.context_override, ContextOverride::ForcedExclude);
+    }
+
+    // --- Sweep tests ---
+
+    #[rstest::rstest]
+    fn sweep_first_press_toggles_and_captures_state() {
+        // Given a session with 3 user entries, first selected.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        state.active_session_mut().push_entry(ChatEntry::user("b"));
+        state.active_session_mut().push_entry(ChatEntry::user("c"));
+        // Select first entry.
+        state.active_session_mut().select_prev_entry();
+        state.active_session_mut().select_prev_entry();
+        assert_eq!(state.active_session().selected_entry_index(), Some(0));
+
+        // When handling ignore selected (first press).
+        let result = handle_ignore_selected(&mut state);
+
+        // Then entry 0 is toggled to ForcedExclude.
+        assert_eq!(
+            state.active_session().history()[0].context_override,
+            ContextOverride::ForcedExclude
+        );
+        // And the cursor has advanced to entry 1.
+        assert_eq!(state.active_session().selected_entry_index(), Some(1));
+        // And sweep state is stored with ForcedExclude target.
+        let sweep = state.active_session_mut().take_ignore_sweep();
+        assert_eq!(sweep, Some(ContextOverride::ForcedExclude));
+        // And a PersistSession command is returned.
+        assert!(result.commands.iter().any(|c| matches!(c, Command::PersistSession(_))));
+    }
+
+    #[rstest::rstest]
+    fn sweep_second_press_applies_captured_state() {
+        // Given a session with 3 user entries, entry 0 already toggled to
+        // ForcedExclude, cursor at entry 1, sweep active with ForcedExclude.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        state.active_session_mut().push_entry(ChatEntry::user("b"));
+        state.active_session_mut().push_entry(ChatEntry::user("c"));
+        state.active_session_mut().select_prev_entry();
+        state.active_session_mut().select_prev_entry();
+
+        // First press — toggles entry 0, advances to 1.
+        let _result = handle_ignore_selected(&mut state);
+        assert_eq!(state.active_session().selected_entry_index(), Some(1));
+
+        // When handling ignore selected again (second press, within 100ms).
+        let _result = handle_ignore_selected(&mut state);
+
+        // Then entry 1 is now ForcedExclude (applied, not toggled).
+        assert_eq!(
+            state.active_session().history()[1].context_override,
+            ContextOverride::ForcedExclude
+        );
+        // And cursor has advanced to entry 2.
+        assert_eq!(state.active_session().selected_entry_index(), Some(2));
+        // And sweep state is still active.
+        assert!(state.active_session_mut().take_ignore_sweep().is_some());
+    }
+
+    #[rstest::rstest]
+    fn sweep_third_press_continues_to_bottom() {
+        // Given a session with 3 user entries, sweep already applied to 0 and 1,
+        // cursor at entry 2.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        state.active_session_mut().push_entry(ChatEntry::user("b"));
+        state.active_session_mut().push_entry(ChatEntry::user("c"));
+        state.active_session_mut().select_prev_entry();
+        state.active_session_mut().select_prev_entry();
+
+        // First press.
+        let _result = handle_ignore_selected(&mut state);
+        // Second press.
+        let _result = handle_ignore_selected(&mut state);
+        assert_eq!(state.active_session().selected_entry_index(), Some(2));
+
+        // When handling ignore selected (third press).
+        let result = handle_ignore_selected(&mut state);
+
+        // Then entry 2 is ForcedExclude.
+        assert_eq!(
+            state.active_session().history()[2].context_override,
+            ContextOverride::ForcedExclude
+        );
+        // And cursor stays at entry 2 (at bottom, can't advance further).
+        assert_eq!(state.active_session().selected_entry_index(), Some(2));
+        // And commands are still returned.
+        assert!(result.commands.iter().any(|c| matches!(c, Command::PersistSession(_))));
+    }
+
+    #[rstest::rstest]
+    fn sweep_stops_at_bottom() {
+        // Given a single entry session.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("only"));
+        state.active_session_mut().select_next_entry();
+
+        // When handling ignore selected.
+        let result = handle_ignore_selected(&mut state);
+
+        // Then the entry is toggled.
+        assert_eq!(
+            state.active_session().history()[0].context_override,
+            ContextOverride::ForcedExclude
+        );
+        // And cursor stays at 0 (at bottom).
+        assert_eq!(state.active_session().selected_entry_index(), Some(0));
+        // And sweep state is stored (ready if more entries appear).
+        assert!(state.active_session_mut().take_ignore_sweep().is_some());
+        // And commands are returned.
+        assert!(!result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn sweep_expired_resets_to_toggle() {
+        // Given a session with 2 user entries, sweep was started but expired.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        state.active_session_mut().push_entry(ChatEntry::user("b"));
+        state.active_session_mut().select_prev_entry();
+
+        // First press — toggles entry 0, advances to 1.
+        let _result = handle_ignore_selected(&mut state);
+        assert_eq!(state.active_session().selected_entry_index(), Some(1));
+
+        // Expire the sweep by setting a stale timestamp.
+        state.active_session_mut().ui.ignore_sweep = Some((
+            std::time::Instant::now() - std::time::Duration::from_millis(200),
+            ContextOverride::ForcedExclude,
+        ));
+
+        // When handling ignore selected again (after timeout).
+        let _result = handle_ignore_selected(&mut state);
+
+        // Then entry 1 is toggled (fresh toggle: Default → ForcedExclude).
+        assert_eq!(
+            state.active_session().history()[1].context_override,
+            ContextOverride::ForcedExclude
+        );
+        // And sweep state is refreshed with a new timestamp.
+        let sweep = state.active_session_mut().ui.ignore_sweep.take();
+        assert!(sweep.is_some(), "sweep state should be re-stored");
+        let (instant, target) = sweep.unwrap();
+        assert!(instant.elapsed() < std::time::Duration::from_millis(10));
+        assert_eq!(target, ContextOverride::ForcedExclude);
+    }
+
+    #[rstest::rstest]
+    fn sweep_skips_pinned_entries() {
+        // Given entries [user, user_pinned, user], entry 0 selected.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        let pinned_entry = ChatEntry::user("pinned").with_pin(PinPosition::Top);
+        state.active_session_mut().push_entry(pinned_entry);
+        state.active_session_mut().push_entry(ChatEntry::user("c"));
+        state.active_session_mut().select_prev_entry();
+        state.active_session_mut().select_prev_entry();
+        assert_eq!(state.active_session().selected_entry_index(), Some(0));
+
+        // First press — toggles entry 0, advances to entry 1 (pinned).
+        let _result = handle_ignore_selected(&mut state);
+        assert_eq!(state.active_session().selected_entry_index(), Some(1));
+        assert_eq!(
+            state.active_session().history()[0].context_override,
+            ContextOverride::ForcedExclude
+        );
+
+        // When handling second press (cursor on pinned entry 1).
+        let _result = handle_ignore_selected(&mut state);
+
+        // Then pinned entry 1 is unchanged (still Default).
+        assert_eq!(
+            state.active_session().history()[1].context_override,
+            ContextOverride::Default
+        );
+        // And entry 2 (after pinned) gets ForcedExclude.
+        assert_eq!(
+            state.active_session().history()[2].context_override,
+            ContextOverride::ForcedExclude
+        );
+        // And cursor has advanced past the pinned entry to entry 2 (or beyond).
+        assert_eq!(state.active_session().selected_entry_index(), Some(2));
+    }
+
+    #[rstest::rstest]
+    fn sweep_skips_pinned_at_bottom_stops() {
+        // Given entries [user, pinned], entry 0 selected.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        state.active_session_mut().push_entry(
+            ChatEntry::user("pinned").with_pin(PinPosition::Top),
+        );
+        state.active_session_mut().select_prev_entry();
+
+        // First press — toggles entry 0, advances to entry 1 (pinned).
+        let _result = handle_ignore_selected(&mut state);
+        assert_eq!(state.active_session().selected_entry_index(), Some(1));
+
+        // When handling second press (cursor on pinned entry 1, at bottom).
+        let result = handle_ignore_selected(&mut state);
+
+        // Then pinned entry is unchanged.
+        assert_eq!(
+            state.active_session().history()[1].context_override,
+            ContextOverride::Default
+        );
+        // And no commands returned (no-op: pinned at bottom).
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn sweep_not_started_on_toggle_to_default() {
+        // Given a session with 2 user entries, entry 0 already ForcedExclude.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("a").with_ignored(true));
+        state.active_session_mut().push_entry(ChatEntry::user("b"));
+        state.active_session_mut().select_prev_entry();
+        assert_eq!(state.active_session().selected_entry_index(), Some(0));
+
+        // When handling ignore selected (toggle from ForcedExclude → Default).
+        let _result = handle_ignore_selected(&mut state);
+
+        // Then entry 0 is now Default (un-ignored).
+        assert_eq!(
+            state.active_session().history()[0].context_override,
+            ContextOverride::Default
+        );
+        // And cursor has advanced.
+        assert_eq!(state.active_session().selected_entry_index(), Some(1));
+        // And NO sweep state is stored (Default is not a sweep target).
+        assert!(
+            state.active_session_mut().take_ignore_sweep().is_none(),
+            "toggling to Default should not start a sweep"
+        );
     }
 }
