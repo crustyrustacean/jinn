@@ -188,6 +188,23 @@ impl SessionPersistenceActor {
             return;
         }
 
+        // Apply pending history mutations before assembling the prompt.
+        // Skip if judge session or auto-compaction is pending.
+        {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&event.session_id);
+            if !session.is_judge() && !session.is_auto_compaction_requested() {
+                let count = session.drain_and_apply_pending_mutations();
+                if count > 0 {
+                    tracing::debug!(
+                        session_id = %event.session_id,
+                        count,
+                        "applied pending history mutations at tool batch completion"
+                    );
+                }
+            }
+        }
+
         // Assemble the prompt directly and emit SendToLlmProvider.
         // Note: the session is already in sending state, set by on_stream_completed(ToolUse).
         let workflow_overrides: Option<crate::feat::context::assemble::AssemblyOverrides> = {
@@ -876,5 +893,229 @@ mod tests {
             !session.is_auto_compaction_requested(),
             "expected auto-compaction flag to stay false in normal flow"
         );
+    }
+
+    // --- Phase 2: History mutation application hooks ---
+
+    #[tokio::test]
+    async fn on_tool_batch_completed_applies_pending_mutations() {
+        // Given a session in sending state with pending history mutations.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let (entry_id, session_id) = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("list files"));
+            let entry = ChatEntry::assistant("checking");
+            let entry_id = entry.id.clone();
+            session.push_entry(entry);
+            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+            session.push_entry(ChatEntry::assistant("here are the files"));
+            session.begin_streaming();
+            session.finish_streaming(true);
+            session.begin_sending();
+            // Queue a mutation to exclude the assistant entry.
+            session.queue_mutations(vec![
+                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id.clone(),
+                    value: crate::protocol::ContextOverride::ForcedExclude,
+                },
+            ]);
+            (entry_id, state.session.active_session_id().clone())
+        };
+
+        // When handling ToolBatchCompleted.
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+            }],
+        };
+        actor.on_tool_batch_completed(&event, &ctx);
+
+        // Then the mutation was applied — the assistant entry is now ForcedExclude.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let assistant = session
+            .history()
+            .iter()
+            .find(|e| e.id == entry_id)
+            .expect("assistant entry exists");
+        assert_eq!(
+            assistant.context_override,
+            crate::protocol::ContextOverride::ForcedExclude,
+            "expected mutation to be applied at tool batch completion"
+        );
+
+        // And SendToLlmProvider was still emitted (normal flow continues).
+        let commands = sink.commands();
+        let has_send = commands
+            .iter()
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
+        assert!(has_send, "expected SendToLlmProvider after mutation application");
+    }
+
+    #[tokio::test]
+    async fn on_tool_batch_completed_skips_mutations_for_judge_session() {
+        // Given a judge session in sending state with pending mutations.
+        let actor = test_actor();
+        let (entry_id, session_id) = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("list files"));
+            let entry = ChatEntry::assistant("checking");
+            let entry_id = entry.id.clone();
+            session.push_entry(entry);
+            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+            session.push_entry(ChatEntry::assistant("here are the files"));
+            session.begin_streaming();
+            session.finish_streaming(true);
+            session.begin_sending();
+            // Mark as judge session.
+            session.set_judge(crate::feat::judge::JudgeMeta {
+                origin_session: crate::protocol::SessionId::new(),
+                is_attached: true,
+                judge_name: "test-judge".to_owned(),
+                auto_reset: None,
+            });
+            // Queue a mutation.
+            session.queue_mutations(vec![
+                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id.clone(),
+                    value: crate::protocol::ContextOverride::ForcedExclude,
+                },
+            ]);
+            (entry_id, state.session.active_session_id().clone())
+        };
+        let (_sink, ctx) = test_context();
+
+        // When handling ToolBatchCompleted.
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+            }],
+        };
+        actor.on_tool_batch_completed(&event, &ctx);
+
+        // Then the mutation was NOT applied — the entry is still Default.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let assistant = session
+            .history()
+            .iter()
+            .find(|e| e.id == entry_id)
+            .expect("assistant entry exists");
+        assert_eq!(
+            assistant.context_override,
+            crate::protocol::ContextOverride::Default,
+            "expected mutation to be skipped for judge session"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_tool_batch_completed_skips_mutations_when_auto_compaction_pending() {
+        // Given a session with auto-compaction requested and pending mutations.
+        // Auto-compaction triggers an early return in on_tool_batch_completed,
+        // so the mutation drain is never reached.
+        let actor = test_actor();
+        let (entry_id, session_id) = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            let entry = ChatEntry::assistant("checking");
+            let entry_id = entry.id.clone();
+            session.push_entry(ChatEntry::user("list files"));
+            session.push_entry(entry);
+            session.begin_streaming();
+            session.finish_streaming(true);
+            session.begin_sending();
+            session.request_auto_compaction();
+            session.queue_mutations(vec![
+                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id.clone(),
+                    value: crate::protocol::ContextOverride::ForcedExclude,
+                },
+            ]);
+            (entry_id, state.session.active_session_id().clone())
+        };
+        let (_sink, ctx) = test_context();
+
+        // When handling ToolBatchCompleted (auto-compaction triggers early return).
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+            }],
+        };
+        actor.on_tool_batch_completed(&event, &ctx);
+
+        // Then the mutation was NOT applied (auto-compaction early return fired first).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let assistant = session
+            .history()
+            .iter()
+            .find(|e| e.id == entry_id)
+            .expect("assistant entry exists");
+        assert_eq!(
+            assistant.context_override,
+            crate::protocol::ContextOverride::Default,
+            "expected mutation to be skipped when auto-compaction early-return fires"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_tool_batch_completed_empty_mutation_queue_is_noop() {
+        // Given a session in sending state with no pending mutations.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("list files"));
+            session.push_entry(ChatEntry::assistant("checking"));
+            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+            session.push_entry(ChatEntry::assistant("here are the files"));
+            session.begin_streaming();
+            session.finish_streaming(true);
+            session.begin_sending();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling ToolBatchCompleted.
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+            }],
+        };
+        actor.on_tool_batch_completed(&event, &ctx);
+
+        // Then SendToLlmProvider was emitted (no side effects from empty queue).
+        let commands = sink.commands();
+        let has_send = commands
+            .iter()
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
+        assert!(has_send, "expected SendToLlmProvider with empty mutation queue");
     }
 }

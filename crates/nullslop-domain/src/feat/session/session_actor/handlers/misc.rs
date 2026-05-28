@@ -7,6 +7,7 @@ use crate::feat::provider::protocol::event::ModelsRefreshed;
 
 use super::super::SessionPersistenceActor;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
+use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 use crate::protocol::ChatEntry;
 
 impl SessionPersistenceActor {
@@ -48,6 +49,30 @@ impl SessionPersistenceActor {
             let mut state = self.state.write();
             state.frontend.session_picker.set_items(entries);
         }
+    }
+
+    /// Queues a batch of history mutations for deferred application.
+    ///
+    /// Workers submit `Vec<HistoryMutation>` batches via the
+    /// `SubmitHistoryMutations` command. This handler pushes them to
+    /// `pending_mutations` without applying — they are drained and applied
+    /// at the next safe application point (tool batch completion or stream
+    /// completion).
+    pub(in crate::feat::session::session_actor) fn handle_submit_history_mutations(
+        &self,
+        payload: &SubmitHistoryMutations,
+    ) {
+        if payload.mutations.is_empty() {
+            return;
+        }
+        let mut state = self.state.write();
+        let session = state.session_mut_or_create(&payload.session_id);
+        session.queue_mutations(payload.mutations.clone());
+        tracing::debug!(
+            session_id = %payload.session_id,
+            queue_len = session.core.ephemeral.pending_mutations.len(),
+            "queued history mutations from worker"
+        );
     }
 }
 
@@ -230,5 +255,145 @@ mod tests {
             !state.frontend.session_picker.items().is_empty(),
             "expected session picker to have entries after loading from store"
         );
+    }
+
+    // --- handle_submit_history_mutations ---
+
+    #[test]
+    fn handle_submit_history_mutations_queues_mutations_without_applying() {
+        // Given a session actor with a session that has one entry.
+        let actor = test_actor();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(crate::protocol::ChatEntry::user("hello"));
+            state.session.active_session_id().clone()
+        };
+        let entry_id = {
+            let state = actor.state.read();
+            state.session.get(&session_id).unwrap().history()[0].id.clone()
+        };
+
+        // When submitting history mutations.
+        actor.handle_submit_history_mutations(
+            &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                session_id: session_id.clone(),
+                mutations: vec![
+                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                        entry_id: entry_id.clone(),
+                        value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
+                    },
+                ],
+            },
+        );
+
+        // Then mutations are queued but NOT applied yet.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).unwrap();
+        // ContextOverride is still Default (not applied).
+        assert_eq!(
+            session.history()[0].context_override,
+            crate::feat::session::chat_entry::ContextOverride::Default
+        );
+        // But the queue has one batch.
+        assert_eq!(session.core.ephemeral.pending_mutations.len(), 1);
+    }
+
+    #[test]
+    fn handle_submit_history_mutations_with_empty_batch_is_noop() {
+        // Given a session actor.
+        let actor = test_actor();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session_id().clone()
+        };
+
+        // When submitting an empty mutations vec.
+        actor.handle_submit_history_mutations(
+            &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                session_id: session_id.clone(),
+                mutations: vec![],
+            },
+        );
+
+        // Then no batch was queued.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).unwrap();
+        assert!(session.core.ephemeral.pending_mutations.is_empty());
+    }
+
+    #[test]
+    fn handle_submit_history_mutations_creates_session_if_missing() {
+        // Given a session actor with no session for the target ID.
+        let actor = test_actor();
+        let new_session_id = SessionId::new();
+
+        // When submitting mutations for a nonexistent session.
+        actor.handle_submit_history_mutations(
+            &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                session_id: new_session_id.clone(),
+                mutations: vec![
+                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                        entry_id: crate::feat::session::chat_entry::ChatEntryId::new(),
+                        value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
+                    },
+                ],
+            },
+        );
+
+        // Then the session was created and the batch was queued.
+        let state = actor.state.read();
+        let session = state.session.get(&new_session_id).unwrap();
+        assert_eq!(session.core.ephemeral.pending_mutations.len(), 1);
+    }
+
+    #[test]
+    fn handle_submit_history_mutations_multiple_submissions_accumulate() {
+        // Given a session actor.
+        let actor = test_actor();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(crate::protocol::ChatEntry::user("first"));
+            session.push_entry(crate::protocol::ChatEntry::user("second"));
+            state.session.active_session_id().clone()
+        };
+        let entry_id_1 = {
+            let state = actor.state.read();
+            state.session.get(&session_id).unwrap().history()[0].id.clone()
+        };
+        let entry_id_2 = {
+            let state = actor.state.read();
+            state.session.get(&session_id).unwrap().history()[1].id.clone()
+        };
+
+        // When submitting two batches.
+        actor.handle_submit_history_mutations(
+            &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                session_id: session_id.clone(),
+                mutations: vec![
+                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                        entry_id: entry_id_1,
+                        value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
+                    },
+                ],
+            },
+        );
+        actor.handle_submit_history_mutations(
+            &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                session_id: session_id.clone(),
+                mutations: vec![
+                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                        entry_id: entry_id_2,
+                        value: crate::feat::session::chat_entry::ContextOverride::ForcedInclude,
+                    },
+                ],
+            },
+        );
+
+        // Then both batches are in the queue in order.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).unwrap();
+        assert_eq!(session.core.ephemeral.pending_mutations.len(), 2);
     }
 }
