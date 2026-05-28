@@ -219,6 +219,11 @@ pub struct SessionCoreEphemeral {
     /// Rendered as the animated "Working..." spinner when non-zero.
     #[serde(default)]
     pub(crate) busy_counter: BusyCounter,
+    /// Pending history mutation batches from background workers.
+    /// Drained and applied at safe application points (tool batch completion,
+    /// stream completion). Not persisted across restarts.
+    #[serde(skip)]
+    pub(crate) pending_mutations: Vec<Vec<crate::feat::session::history_mutation::HistoryMutation>>,
 }
 
 // Core session state — owned by session-actor and context-actor.
@@ -2524,6 +2529,76 @@ impl ChatSessionState {
     /// Returns `true` if the tool loop was disabled, and clears the flag.
     pub fn take_tool_loop_disabled(&mut self) -> bool {
         std::mem::take(&mut self.core.ephemeral.tool_loop_disabled)
+    }
+
+    // --- History mutations (background workers) ---
+
+    /// Resolve a [`ChatEntryId`] to its current index in history.
+    ///
+    /// Returns `None` if the entry no longer exists.
+    pub fn find_entry_index_by_id(&self, id: &ChatEntryId) -> Option<usize> {
+        self.core.history.iter().position(|e| e.id == *id)
+    }
+
+    /// Queue a batch of mutations for deferred application.
+    ///
+    /// Empty batches are silently ignored.
+    pub fn queue_mutations(&mut self, batch: Vec<crate::feat::session::history_mutation::HistoryMutation>) {
+        if !batch.is_empty() {
+            self.core.ephemeral.pending_mutations.push(batch);
+        }
+    }
+
+    /// Drain all pending mutation batches.
+    pub fn drain_pending_mutations(&mut self) -> Vec<Vec<crate::feat::session::history_mutation::HistoryMutation>> {
+        std::mem::take(&mut self.core.ephemeral.pending_mutations)
+    }
+
+    /// Apply a batch of mutations. Resolves IDs to current positions.
+    ///
+    /// Silently skips mutations targeting nonexistent entries.
+    /// Processing order within a batch is preserved — earlier mutations
+    /// are visible to later ones in the same batch.
+    pub fn apply_mutations(&mut self, batch: Vec<crate::feat::session::history_mutation::HistoryMutation>) {
+        use crate::feat::session::history_mutation::HistoryMutation;
+
+        for mutation in batch {
+            match mutation {
+                HistoryMutation::SetContextOverride { entry_id, value } => {
+                    if let Some(entry) = self.core.history.iter_mut().find(|e| e.id == entry_id) {
+                        entry.context_override = value;
+                    }
+                }
+                HistoryMutation::InsertEntry { after_entry_id, entry } => {
+                    let insert_at = match after_entry_id {
+                        Some(id) => match self.find_entry_index_by_id(&id) {
+                            Some(idx) => idx + 1,
+                            None => continue,
+                        },
+                        None => 0,
+                    };
+                    self.insert_entry_at(insert_at, entry);
+                }
+                HistoryMutation::PinEntry { entry_id, position } => {
+                    self.pin_entry(&entry_id, position);
+                }
+                HistoryMutation::UnpinEntry { entry_id } => {
+                    self.unpin_entry(&entry_id);
+                }
+            }
+        }
+    }
+
+    /// Drain all pending mutation batches and apply them.
+    ///
+    /// Returns the number of batches applied.
+    pub fn drain_and_apply_pending_mutations(&mut self) -> usize {
+        let batches = self.drain_pending_mutations();
+        let count = batches.len();
+        for batch in batches {
+            self.apply_mutations(batch);
+        }
+        count
     }
 }
 
