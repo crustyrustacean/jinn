@@ -684,25 +684,30 @@ mod tests {
 
     #[rstest::rstest]
     fn replace_grapheme_range_replaces_middle() {
-        // Given "hello world".
+        // Given "hello world" with cursor at end (grapheme 11).
         let mut state = ChatInputBoxState::new();
         state.insert_text("hello world");
+        // Cursor is now at grapheme 11 (after "world").
 
-        // When replacing graphemes 6..11 ("world") with "there".
-        state.insert_text(""); // Just to set up
-        state.move_cursor_to_start();
-        // Use complete_autocomplete which calls replace_grapheme_range internally
-        // Let's test via insert_text + manual cursor positioning instead.
-        // Actually let's test via a helper that exercises replace_grapheme_range:
-        // Activate autocomplete, then complete.
-        let matches = vec![AutocompleteMatch {
-            name: "test".to_owned(),
-            description: String::new(),
-        }];
-        state.move_cursor_to_end();
-        // We can't directly call replace_grapheme_range (private), but we can
-        // test it indirectly through complete_autocomplete.
-        todo!("fix this test");
+        // Activate autocomplete with token_start at grapheme 6 (start of "world").
+        // complete_autocomplete will call replace_grapheme_range(6, 11, "#there").
+        state.activate_autocomplete(
+            6,
+            AutocompleteTrigger::Hash,
+            vec![AutocompleteMatch {
+                name: "there".to_owned(),
+                description: String::new(),
+            }],
+        );
+
+        // When completing autocomplete with "there".
+        state.complete_autocomplete("there");
+
+        // Then graphemes 6..11 ("world") are replaced with "#there",
+        // producing "hello #there".
+        assert_eq!(state.text(), "hello #there");
+        // Cursor is after the replacement: 6 (start) + 6 (graphemes in "#there").
+        assert_eq!(state.cursor_pos(), 12);
     }
 
     // --- scroll_to_cursor ---
