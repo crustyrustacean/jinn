@@ -1,5 +1,6 @@
 //! Tool picker entry type and rendering.
 
+use crate::feat::picker::style::dim_style;
 use crate::feat::theme::Theme;
 use nullslop_selection_widget::PickerItem;
 use nullslop_selection_widget::highlight::highlight_text_with_bg;
@@ -45,7 +46,12 @@ impl PickerItem for ToolEntry {
 
         let marker_span = Span::styled(marker.to_owned(), Style::default().fg(marker_color));
         let name_span = Span::styled(self.name.clone(), style);
-        Line::from(vec![marker_span, name_span])
+
+        // Description in dim text after an em-dash (same pattern as session lifecycle picker).
+        let desc_style = dim_style(is_selected, &self.theme);
+        let desc_span = Span::styled(format!(" \u{2014} {}", self.description), desc_style);
+
+        Line::from(vec![marker_span, name_span, desc_span])
     }
 
     fn render_row_with_highlight(
@@ -70,8 +76,7 @@ impl PickerItem for ToolEntry {
         let marker_span = Span::styled(marker.to_owned(), Style::default().fg(marker_color));
 
         // Match indices are byte offsets into search_text = "{name} {description}".
-        // Only highlight the name portion in the row for now (Phase 3 adds inline description).
-        let (name_indices, _desc_indices) = split_match_indices(match_indices, self.name.len());
+        let (name_indices, desc_indices) = split_match_indices(match_indices, self.name.len());
 
         let name_spans = highlight_text_with_bg(
             &self.name,
@@ -80,8 +85,20 @@ impl PickerItem for ToolEntry {
             self.theme.picker_highlight_bg,
         );
 
+        // Separator and description in dim style.
+        let desc_style = dim_style(is_selected, &self.theme);
+        let sep_span = Span::styled(" \u{2014} ".to_owned(), desc_style);
+        let desc_spans = highlight_text_with_bg(
+            &self.description,
+            desc_style,
+            &desc_indices,
+            self.theme.picker_highlight_bg,
+        );
+
         let mut spans = vec![marker_span];
         spans.extend(name_spans);
+        spans.push(sep_span);
+        spans.extend(desc_spans);
         Line::from(spans)
     }
 }
@@ -192,5 +209,36 @@ mod tests {
 
         assert!(name_idx.is_empty());
         assert_eq!(desc_idx, vec![0..5]);
+    }
+
+    #[rstest::rstest]
+    fn render_row_shows_description() {
+        // Given a tool entry with a description.
+        let entry = make_entry("bash", "Run shell commands", true);
+
+        // When rendering the row.
+        let line = entry.render_row(false);
+        let rendered = line.to_string();
+
+        // Then the description appears after an em-dash.
+        assert!(rendered.contains('\u{2014}'), "should contain em-dash");
+        assert!(rendered.contains("Run shell commands"));
+    }
+
+    #[rstest::rstest]
+    fn render_row_description_uses_muted_color() {
+        // Given a tool entry with a description.
+        let entry = make_entry("bash", "Run commands", true);
+
+        // When rendering the row (not selected).
+        let line = entry.render_row(false);
+
+        // Then the description span uses muted text color.
+        let desc_span = &line.spans[2];
+        assert_eq!(
+            desc_span.style.fg,
+            Some(default_theme().muted_text),
+            "description should use muted text color"
+        );
     }
 }
