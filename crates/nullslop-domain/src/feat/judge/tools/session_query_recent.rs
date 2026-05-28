@@ -24,7 +24,7 @@ use crate::protocol::ChatEntry;
 /// Returns the tool definition for `session_query_recent`.
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
-        name: "session_query_recent".to_owned(),
+        name: "judge_session_query_recent".to_owned(),
         description: "Retrieve the most recent messages from the origin session. \
             Returns the last N entries (user, assistant, tool results) in chronological order. \
             Use this to quickly review what the agent just did without searching."
@@ -185,7 +185,7 @@ mod tests {
     fn make_call(args: &str) -> ToolCall {
         ToolCall {
             id: "test-call".to_owned(),
-            name: "session_query_recent".to_owned(),
+            name: "judge_session_query_recent".to_owned(),
             arguments: args.to_owned(),
         }
     }

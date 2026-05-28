@@ -710,19 +710,19 @@ mod tests {
             .map(|t| t.name.as_str())
             .collect();
         assert!(
-            tool_names.contains(&"session_query"),
+            tool_names.contains(&"judge_session_query"),
             "judge tools should include session_query, got: {tool_names:?}"
         );
         assert!(
-            tool_names.contains(&"session_query_recent"),
+            tool_names.contains(&"judge_session_query_recent"),
             "judge tools should include session_query_recent, got: {tool_names:?}"
         );
         assert!(
-            tool_names.contains(&"task_complete"),
+            tool_names.contains(&"judge_task_complete"),
             "judge tools should include task_complete, got: {tool_names:?}"
         );
         assert!(
-            tool_names.contains(&"task_incomplete"),
+            tool_names.contains(&"judge_task_incomplete"),
             "judge tools should include task_incomplete, got: {tool_names:?}"
         );
     }
@@ -781,19 +781,19 @@ mod tests {
 
         // And the tool definitions include judge tools.
         assert!(
-            tool_names.contains(&"session_query"),
+            tool_names.contains(&"judge_session_query"),
             "judge session should have session_query, got: {tool_names:?}"
         );
         assert!(
-            tool_names.contains(&"session_query_recent"),
+            tool_names.contains(&"judge_session_query_recent"),
             "judge session should have session_query_recent, got: {tool_names:?}"
         );
         assert!(
-            tool_names.contains(&"task_complete"),
+            tool_names.contains(&"judge_task_complete"),
             "judge session should have task_complete, got: {tool_names:?}"
         );
         assert!(
-            tool_names.contains(&"task_incomplete"),
+            tool_names.contains(&"judge_task_incomplete"),
             "judge session should have task_incomplete, got: {tool_names:?}"
         );
     }
@@ -814,11 +814,11 @@ mod tests {
             .map(|t| t.name.as_str())
             .collect();
         assert!(
-            !tool_names.contains(&"session_query"),
+            !tool_names.contains(&"judge_session_query"),
             "regular sessions should not have session_query, got: {tool_names:?}"
         );
         assert!(
-            !tool_names.contains(&"task_complete"),
+            !tool_names.contains(&"judge_task_complete"),
             "regular sessions should not have task_complete, got: {tool_names:?}"
         );
     }
@@ -1062,11 +1062,11 @@ mod tests {
             "enabled read should be included, got: {tool_names:?}"
         );
         assert!(
-            tool_names.contains(&"session_query"),
+            tool_names.contains(&"judge_session_query"),
             "judge tools should still be included, got: {tool_names:?}"
         );
         assert!(
-            tool_names.contains(&"task_complete"),
+            tool_names.contains(&"judge_task_complete"),
             "judge tools should still be included, got: {tool_names:?}"
         );
     }

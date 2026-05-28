@@ -560,6 +560,7 @@ impl From<PersistableCore> for SessionCore {
             judge: None,              // set from DB column after deserialization
             workflow_overrides: None, // runtime-only, never persisted
             has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
+            task_list: crate::feat::task_list::TaskList::default(), // not persisted via this path
         }
     }
 }
@@ -594,6 +595,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     judge,
                     workflow_overrides: _workflow_overrides, // runtime-only, not persisted
                     has_interacted: _has_interacted, // deserialized from DB, restored by handle_session_load_completed
+                    task_list: _task_list, // persisted via session JSON column, not here
                 },
             ui: _ui, // runtime-only UI state, not persisted
         } = session;
@@ -729,6 +731,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 judge: None,
                 workflow_overrides: None, // runtime-only, set later if needed
                 has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
+                task_list: crate::feat::task_list::TaskList::default(), // restored from JSON column
             }
         };
 
