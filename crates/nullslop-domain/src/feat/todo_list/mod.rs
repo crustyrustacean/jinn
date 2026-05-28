@@ -288,19 +288,11 @@ impl Phase {
 /// `SessionCore` field ensures backward compatibility with old sessions.
 /// Old serialized data with counter fields (`next_phase_id`, `next_task_id`) will
 /// deserialize cleanly — unknown fields are ignored by serde's default behavior.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskList {
     /// Ordered phases in this task list.
     #[serde(default)]
     pub(crate) phases: Vec<Phase>,
-}
-
-impl Default for TaskList {
-    fn default() -> Self {
-        Self {
-            phases: Vec::new(),
-        }
-    }
 }
 
 impl TaskList {
