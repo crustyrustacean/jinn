@@ -112,6 +112,48 @@ async fn load_context_file_from_dir(dir: &Path) -> Option<ContextFile> {
     None
 }
 
+/// Synchronous version of [`load_project_context_files`].
+///
+/// Used when context rescan must happen outside an async runtime
+/// (e.g., from the TUI suspend handler).
+pub fn load_project_context_files_sync(cwd: &Path) -> Vec<ContextFile> {
+    let mut files = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    let mut current = Some(cwd.to_path_buf());
+    while let Some(dir) = current {
+        if let Some(file) = load_context_file_from_dir_sync(&dir) {
+            let canonical = file.path.clone();
+            if seen.insert(canonical) {
+                files.push(file);
+            }
+        }
+
+        // Stop at root.
+        if dir.parent().is_none() || dir.parent() == Some(dir.as_path()) {
+            break;
+        }
+        current = dir.parent().map(std::path::Path::to_path_buf);
+    }
+
+    // Reverse so root files come first, CWD files come last.
+    files.reverse();
+    files
+}
+
+/// Synchronous single-directory context file loader.
+fn load_context_file_from_dir_sync(dir: &Path) -> Option<ContextFile> {
+    for filename in CONTEXT_FILE_CANDIDATES {
+        let path = dir.join(filename);
+        if path.exists()
+            && let Ok(content) = std::fs::read_to_string(&path)
+        {
+            return Some(ContextFile { path, content });
+        }
+    }
+    None
+}
+
 /// Returns the current date as YYYY-MM-DD.
 fn format_current_date() -> String {
     let now = std::time::SystemTime::now();
@@ -349,5 +391,50 @@ mod tests {
         // Then the parent's file is found.
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].content, "parent context");
+    }
+
+    // --- Tests for load_project_context_files_sync ---
+
+    #[rstest::rstest]
+    fn sync_load_finds_agents_md() {
+        // Given a temp directory with AGENTS.md.
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(dir.path().join("AGENTS.md"), "# Sync Test").expect("write");
+
+        // When loading context files synchronously.
+        let files = load_project_context_files_sync(dir.path());
+
+        // Then the file is found.
+        assert_eq!(files.len(), 1);
+        assert!(files[0].path.ends_with("AGENTS.md"));
+        assert_eq!(files[0].content, "# Sync Test");
+    }
+
+    #[rstest::rstest]
+    fn sync_load_returns_empty_for_missing() {
+        // Given a directory with no context files.
+        let dir = tempfile::TempDir::new().expect("temp dir");
+
+        // When loading context files synchronously.
+        let files = load_project_context_files_sync(dir.path());
+
+        // Then no files are found.
+        assert!(files.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn sync_load_finds_file_in_parent() {
+        // Given parent/AGENTS.md and child/ as CWD.
+        let parent = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(parent.path().join("AGENTS.md"), "parent sync context").expect("write");
+        let child = parent.path().join("subdir");
+        std::fs::create_dir_all(&child).expect("create");
+
+        // When loading from child synchronously.
+        let files = load_project_context_files_sync(&child);
+
+        // Then the parent's file is found.
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].content, "parent sync context");
     }
 }
