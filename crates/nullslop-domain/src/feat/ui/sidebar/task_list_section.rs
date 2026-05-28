@@ -5,7 +5,7 @@
 //! The section is hidden when the task list is empty.
 
 use crate::common::app_state::AppState;
-use crate::feat::task_list::{TaskList, TaskStatus};
+use crate::feat::todo_list::{TaskList, TaskStatus};
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
@@ -149,7 +149,7 @@ fn compute_height(list: &TaskList) -> u16 {
 mod tests {
     use super::*;
     use crate::common::app_state::AppState;
-    use crate::feat::task_list::TaskPosition;
+    use crate::feat::todo_list::TaskPosition;
 
     fn setup_with_tasks() -> AppState {
         let mut app = AppState::default();

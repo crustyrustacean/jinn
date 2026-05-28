@@ -1,10 +1,13 @@
-//! Task list data model — phases, tasks, and positioning.
+//! Todo list subsystem — phased task tracking for agent sessions.
 //!
-//! A [`TaskList`] contains ordered [`Phase`]s, each containing ordered [`Task`]s.
-//! One level of nesting: phases are containers, tasks are leaf items.
-//!
-//! IDs are stable auto-incrementing strings ("p1", "p2" for phases; "t1", "t2" for tasks).
-//! They never change even if items are reordered.
+//! Provides a structured task list with one level of nesting: phases contain tasks.
+//! The data model is stored per-session on [`SessionCore`](crate::feat::session::chat_session::SessionCore)
+//! and persists across restarts via the existing session serialization pipeline.
+
+pub mod tools;
+
+#[cfg(test)]
+mod types_tests;
 
 use std::fmt;
 
