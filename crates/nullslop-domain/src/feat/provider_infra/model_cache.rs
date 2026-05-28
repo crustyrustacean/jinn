@@ -178,7 +178,7 @@ pub fn cache_path() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     #[rstest::rstest]

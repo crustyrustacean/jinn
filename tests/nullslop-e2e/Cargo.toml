@@ -13,6 +13,7 @@ cucumber = { workspace = true }
 tokio = { workspace = true }
 nullslop-tui = { workspace = true }
 nullslop-domain = { workspace = true }
+nullslop-plugin = { workspace = true }
 crossterm = { workspace = true }
 ratatui-which-key = { workspace = true }
 ratatui-spatial-splits = { workspace = true }

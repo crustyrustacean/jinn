@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing)]
+#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
 use super::context::*;
 use crate::ActorRef;
@@ -280,5 +280,8 @@ fn subscribe_all_events_registers_wildcard() {
 
     // Then take_registrations returns the all-events flag.
     let (_, _, all_events) = ctx.take_registrations();
-    assert!(all_events, "subscribe_all_events should set the wildcard flag");
+    assert!(
+        all_events,
+        "subscribe_all_events should set the wildcard flag"
+    );
 }

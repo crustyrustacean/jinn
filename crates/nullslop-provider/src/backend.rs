@@ -98,7 +98,7 @@ impl std::fmt::Display for Backend {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     #[rstest::rstest]

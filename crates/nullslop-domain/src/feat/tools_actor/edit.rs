@@ -214,7 +214,7 @@ fn parse_args(raw: &str) -> Result<(String, Vec<Edit>), serde_json::Error> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext};

@@ -73,7 +73,7 @@ See `{config_path}` for available environment variables."
 
 #[cfg(test)]
 mod startup_msg_tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::protocol::ChatEntryKind;
 

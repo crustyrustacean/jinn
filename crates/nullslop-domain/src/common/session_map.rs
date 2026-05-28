@@ -295,7 +295,7 @@ impl SessionMap {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     fn default_map() -> SessionMap {
         let session = ChatSessionState::new();

@@ -84,7 +84,7 @@ pub fn render_rename_session_input(frame: &mut Frame<'_>, area: Rect, state: &Ap
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
     use nullslop_testutil::setup_term;

@@ -1,4 +1,8 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing)]
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::match_wildcard_for_single_variants
+)]
 
 use super::app_core::*;
 use crate::common::core::app_msg::AppMsg;
@@ -14,7 +18,10 @@ fn submit_command_sends_on_channel() {
     core.submit_command(crate::protocol::Command::RefreshModels);
 
     // Then the message was sent on the channel.
-    let msg: AppMsg = rx.try_recv().expect("should receive message").expect("non-none");
+    let msg: AppMsg = rx
+        .try_recv()
+        .expect("should receive message")
+        .expect("non-none");
     match msg {
         AppMsg::Command { command, source } => {
             assert!(matches!(command, crate::protocol::Command::RefreshModels));

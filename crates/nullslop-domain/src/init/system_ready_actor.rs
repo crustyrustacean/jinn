@@ -95,7 +95,7 @@ impl SystemReadyActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::common::actor::{ActorContext, MessageSink, SendResult};
     use crate::protocol::Event;
@@ -264,7 +264,10 @@ mod tests {
             .await;
 
         // Then the oneshot is consumed (1 == 1, all_spawned already true).
-        assert!(actor.ready_tx.is_none(), "handle should have processed ActorStarted");
+        assert!(
+            actor.ready_tx.is_none(),
+            "handle should have processed ActorStarted"
+        );
         assert!(rx.try_recv().is_ok(), "oneshot should be sent via handle");
     }
 }

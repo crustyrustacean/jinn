@@ -35,7 +35,10 @@ pub use translator::TranslatorFn;
 /// ```ignore
 /// plugin::emit(hooks::APP_STARTED, &registry, &AppStartedCtx { session_id });
 /// ```
-pub fn emit(event_name: &str, registry: &PluginRegistry, ctx: &impl serde::Serialize) {
+pub fn emit<S>(event_name: &str, registry: &PluginRegistry, ctx: &S)
+where
+    S: serde::Serialize,
+{
     registry.emit(event_name, ctx);
 }
 
@@ -50,13 +53,10 @@ pub fn emit(event_name: &str, registry: &PluginRegistry, ctx: &impl serde::Seria
 /// ```ignore
 /// let items: Vec<MyItem> = plugin::for_hook("render_sidebar", &registry, &ctx);
 /// ```
-pub fn for_hook<T>(
-    hook_name: &str,
-    registry: &PluginRegistry,
-    ctx: &impl serde::Serialize,
-) -> Vec<T>
+pub fn for_hook<T, S>(hook_name: &str, registry: &PluginRegistry, ctx: &S) -> Vec<T>
 where
     T: serde::de::DeserializeOwned,
+    S: serde::Serialize,
 {
     registry.for_hook(hook_name, ctx)
 }

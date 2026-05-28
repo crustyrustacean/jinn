@@ -40,7 +40,7 @@ pub fn compute_turn_count(history: &[ChatEntry]) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::protocol::ChatEntry;
 

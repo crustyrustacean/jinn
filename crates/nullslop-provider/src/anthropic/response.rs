@@ -215,7 +215,7 @@ impl AnthropicStreamParser {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     fn parse_single(json: &str) -> Option<StreamEvent> {
@@ -382,9 +382,7 @@ mod tests {
         let mut parser = AnthropicStreamParser::new();
 
         // message_start with usage.input_tokens.
-        parser.parse_data(
-            r#"{"type":"message_start","message":{"usage":{"input_tokens":42}}}"#,
-        );
+        parser.parse_data(r#"{"type":"message_start","message":{"usage":{"input_tokens":42}}}"#);
 
         // message_delta with stop_reason and output_tokens.
         let event = parser.parse_data(
@@ -408,14 +406,11 @@ mod tests {
         // present should yield usage. Changing `||` to `&&` would break this.
         let mut parser = AnthropicStreamParser::new();
 
-        parser.parse_data(
-            r#"{"type":"message_start","message":{"usage":{"input_tokens":99}}}"#,
-        );
+        parser.parse_data(r#"{"type":"message_start","message":{"usage":{"input_tokens":99}}}"#);
 
         // message_delta with stop_reason but NO usage/output_tokens.
-        let event = parser.parse_data(
-            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"}}"#,
-        );
+        let event =
+            parser.parse_data(r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"}}"#);
 
         // Then usage is still Some because input_tokens was set.
         match event {

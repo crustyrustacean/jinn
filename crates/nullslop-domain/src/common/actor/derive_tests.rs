@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing)]
+#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
 //! Tests for `EventMsg` and `CommandMsg` derive macro code generation.
 

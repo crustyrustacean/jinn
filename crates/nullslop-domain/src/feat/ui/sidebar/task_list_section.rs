@@ -5,7 +5,7 @@
 //! The section is hidden when the task list is empty.
 
 use crate::common::app_state::AppState;
-use crate::feat::task_list::{TaskStatus, TaskList};
+use crate::feat::task_list::{TaskList, TaskStatus};
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
@@ -67,7 +67,11 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
     // Header.
     let phase_count = list.phases().len();
     lines.push(Line::from(vec![Span::styled(
-        format!(" Task List \u{2014} {} phase{}", phase_count, if phase_count == 1 { "" } else { "s" }),
+        format!(
+            " Task List \u{2014} {} phase{}",
+            phase_count,
+            if phase_count == 1 { "" } else { "s" }
+        ),
         Style::default()
             .fg(theme.primary_text)
             .add_modifier(Modifier::BOLD),
@@ -91,7 +95,7 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
         } else {
             for task in phase.tasks() {
                 let indicator = match task.status() {
-                    TaskStatus::Pending => "\u{25CB} ", // ○
+                    TaskStatus::Pending => "\u{25CB} ",   // ○
                     TaskStatus::Completed => "\u{2713} ", // ✓
                 };
                 let style = if task.status() == TaskStatus::Completed {
@@ -145,7 +149,6 @@ fn compute_height(list: &TaskList) -> u16 {
 mod tests {
     use super::*;
     use crate::common::app_state::AppState;
-    use crate::common::state::State;
     use crate::feat::task_list::TaskPosition;
 
     fn setup_with_tasks() -> AppState {
@@ -180,7 +183,7 @@ mod tests {
         let app = setup_with_tasks();
         let section = TaskListSection;
         let height = section.content_height(&app);
-        assert!(height > 0, "expected non-zero height, got {}", height);
+        assert!(height > 0, "expected non-zero height, got {height}");
     }
 
     #[test]
@@ -202,14 +205,24 @@ mod tests {
         let app = setup_with_tasks();
         let list = app.session.active_session().task_list().clone();
         let lines = build_render_lines(&list, &app);
-        let text: Vec<String> = lines.iter().map(|l| {
-            l.spans.iter().map(|s| s.content.to_string()).collect()
-        }).collect();
+        let text: Vec<String> = lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.to_string()).collect())
+            .collect();
         let combined = text.join("\n");
-        assert!(combined.contains("Research"), "should contain phase: Research");
+        assert!(
+            combined.contains("Research"),
+            "should contain phase: Research"
+        );
         assert!(combined.contains("Build"), "should contain phase: Build");
-        assert!(combined.contains("Read docs"), "should contain task: Read docs");
-        assert!(combined.contains("Write code"), "should contain task: Write code");
+        assert!(
+            combined.contains("Read docs"),
+            "should contain task: Read docs"
+        );
+        assert!(
+            combined.contains("Write code"),
+            "should contain task: Write code"
+        );
     }
 
     #[test]
@@ -217,8 +230,15 @@ mod tests {
         let app = setup_with_tasks();
         let list = app.session.active_session().task_list().clone();
         let lines = build_render_lines(&list, &app);
-        let combined: String = lines.iter().flat_map(|l| l.spans.iter()).map(|s| s.content.to_string()).collect();
-        assert!(combined.contains("\u{25CB}"), "should contain pending indicator ○");
+        let combined: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .map(|s| s.content.to_string())
+            .collect();
+        assert!(
+            combined.contains("\u{25CB}"),
+            "should contain pending indicator ○"
+        );
     }
 
     #[test]
@@ -233,8 +253,15 @@ mod tests {
         session.task_list_mut().complete_task(&tid).unwrap();
         let list = session.task_list().clone();
         let lines = build_render_lines(&list, &app);
-        let combined: String = lines.iter().flat_map(|l| l.spans.iter()).map(|s| s.content.to_string()).collect();
-        assert!(combined.contains("\u{2713}"), "should contain completed indicator ✓");
+        let combined: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .map(|s| s.content.to_string())
+            .collect();
+        assert!(
+            combined.contains("\u{2713}"),
+            "should contain completed indicator ✓"
+        );
     }
 
     #[test]

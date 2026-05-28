@@ -67,7 +67,7 @@ pub fn to_lines(name: &str, content: &str, ctx: &RenderContext) -> Vec<Line<'sta
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::feat::ui::chat_log::shared::RenderContext;
 

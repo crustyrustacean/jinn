@@ -100,8 +100,9 @@ impl PluginInstance {
             clippy::arc_with_non_send_sync,
             reason = "mlua::Function is !Send but only used from the main thread"
         )]
-        let subscriptions: Arc<RefCell<std::collections::HashMap<String, Vec<mlua::Function>>>> =
-            Arc::new(RefCell::new(std::collections::HashMap::new()));
+        let subscriptions: Arc<
+            RefCell<std::collections::HashMap<String, Vec<mlua::Function>>>,
+        > = Arc::new(RefCell::new(std::collections::HashMap::new()));
 
         #[expect(
             clippy::arc_with_non_send_sync,
@@ -111,12 +112,10 @@ impl PluginInstance {
             Arc::new(RefCell::new(std::collections::HashMap::new()));
 
         // Install ns table.
-        let ns = lua
-            .create_table()
-            .map_err(|e| {
-                tracing::error!(err = %e, "failed to create ns table");
-                Report::new(PluginError).attach("Lua table creation failed")
-            })?;
+        let ns = lua.create_table().map_err(|e| {
+            tracing::error!(err = %e, "failed to create ns table");
+            Report::new(PluginError).attach("Lua table creation failed")
+        })?;
 
         {
             let translator = translator.clone();
@@ -153,24 +152,20 @@ impl PluginInstance {
         }
 
         // Install ps table.
-        let ps = lua
-            .create_table()
-            .map_err(|e| {
-                tracing::error!(err = %e, "failed to create ps table");
-                Report::new(PluginError).attach("Lua table creation failed")
-            })?;
+        let ps = lua.create_table().map_err(|e| {
+            tracing::error!(err = %e, "failed to create ps table");
+            Report::new(PluginError).attach("Lua table creation failed")
+        })?;
 
         // ps.sub — fire-and-forget subscription.
         {
             let subs = subscriptions.clone();
             let ps_sub = lua
-                .create_function(
-                    move |_lua, (name, callback): (String, mlua::Function)| {
-                        let mut map = subs.borrow_mut();
-                        map.entry(name).or_default().push(callback);
-                        Ok(())
-                    },
-                )
+                .create_function(move |_lua, (name, callback): (String, mlua::Function)| {
+                    let mut map = subs.borrow_mut();
+                    map.entry(name).or_default().push(callback);
+                    Ok(())
+                })
                 .map_err(|e| {
                     tracing::error!(err = %e, "failed to create ps.sub function");
                     Report::new(PluginError).attach("Lua function creation failed")
@@ -185,13 +180,11 @@ impl PluginInstance {
         {
             let hooks_ref = hooks.clone();
             let ps_hook = lua
-                .create_function(
-                    move |_lua, (name, callback): (String, mlua::Function)| {
-                        let mut map = hooks_ref.borrow_mut();
-                        map.entry(name).or_default().push(callback);
-                        Ok(())
-                    },
-                )
+                .create_function(move |_lua, (name, callback): (String, mlua::Function)| {
+                    let mut map = hooks_ref.borrow_mut();
+                    map.entry(name).or_default().push(callback);
+                    Ok(())
+                })
                 .map_err(|e| {
                     tracing::error!(err = %e, "failed to create ps.hook function");
                     Report::new(PluginError).attach("Lua function creation failed")
@@ -317,13 +310,15 @@ impl PluginRegistry {
     pub fn load_plugin(&self, dir: &Path) -> Result<PluginInfo, Report<PluginError>> {
         let init_path = dir.join("init.lua");
         if !init_path.is_file() {
-            return Err(Report::new(PluginError)
-                .attach(format!("no init.lua in {}", dir.display())));
+            return Err(
+                Report::new(PluginError).attach(format!("no init.lua in {}", dir.display()))
+            );
         }
 
-        let name = dir
-            .file_name()
-            .map_or_else(|| String::from("unknown"), |n| n.to_string_lossy().into_owned());
+        let name = dir.file_name().map_or_else(
+            || String::from("unknown"),
+            |n| n.to_string_lossy().into_owned(),
+        );
 
         if self.loaded.borrow().contains(&name) {
             tracing::info!(plugin = %name, "overriding plugin with newer version");
@@ -331,11 +326,7 @@ impl PluginRegistry {
             self.instances.borrow_mut().retain(|i| i.name != name);
         }
 
-        let instance = PluginInstance::new(
-            &name,
-            &self.translator,
-            &self.command_sender,
-        )?;
+        let instance = PluginInstance::new(&name, &self.translator, &self.command_sender)?;
 
         let source = std::fs::read_to_string(&init_path).map_err(|e| {
             tracing::error!(err = %e, path = %init_path.display(), "failed to read init.lua");
@@ -395,7 +386,10 @@ impl PluginRegistry {
     /// Calls every `ps.sub` callback registered for `event_name` across
     /// all plugin instances. Individual callback errors are logged as
     /// warnings and do not stop dispatch to other VMs or callbacks.
-    pub fn emit(&self, event_name: &str, ctx: &impl serde::Serialize) {
+    pub fn emit<S>(&self, event_name: &str, ctx: &S)
+    where
+        S: serde::Serialize,
+    {
         let payload = serde_json::to_value(ctx).unwrap_or_default();
         let instances = self.instances.borrow();
         for instance in instances.iter() {
@@ -408,18 +402,17 @@ impl PluginRegistry {
                 continue;
             }
 
-            let lua_payload =
-                match crate::bindings::json_to_lua_value(&instance.lua, &payload) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        tracing::warn!(
-                            err = %e,
-                            plugin = %instance.name,
-                            "failed to convert payload to Lua"
-                        );
-                        continue;
-                    }
-                };
+            let lua_payload = match crate::bindings::json_to_lua_value(&instance.lua, &payload) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!(
+                        err = %e,
+                        plugin = %instance.name,
+                        "failed to convert payload to Lua"
+                    );
+                    continue;
+                }
+            };
 
             for callback in &callbacks {
                 if let Err(e) = callback.call::<()>(lua_payload.clone()) {
@@ -440,9 +433,10 @@ impl PluginRegistry {
     /// all plugin instances. Each callback's return value is deserialized
     /// into `T`. Individual failures (Lua errors or deserialization errors)
     /// are logged as warnings and excluded from results.
-    pub fn for_hook<T>(&self, hook_name: &str, ctx: &impl serde::Serialize) -> Vec<T>
+    pub fn for_hook<T, S>(&self, hook_name: &str, ctx: &S) -> Vec<T>
     where
         T: serde::de::DeserializeOwned,
+        S: serde::Serialize,
     {
         let payload = serde_json::to_value(ctx).unwrap_or_default();
         let mut results = Vec::new();
@@ -458,18 +452,17 @@ impl PluginRegistry {
                 continue;
             }
 
-            let lua_payload =
-                match crate::bindings::json_to_lua_value(&instance.lua, &payload) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        tracing::warn!(
-                            err = %e,
-                            plugin = %instance.name,
-                            "failed to convert payload to Lua"
-                        );
-                        continue;
-                    }
-                };
+            let lua_payload = match crate::bindings::json_to_lua_value(&instance.lua, &payload) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!(
+                        err = %e,
+                        plugin = %instance.name,
+                        "failed to convert payload to Lua"
+                    );
+                    continue;
+                }
+            };
 
             for callback in &callbacks {
                 match callback.call::<mlua::Value>(lua_payload.clone()) {
@@ -649,8 +642,7 @@ mod tests {
         for name in ["valid1", "valid2"] {
             let plugin_dir = dir.path().join(name);
             fs::create_dir_all(&plugin_dir).expect("create dir");
-            fs::write(plugin_dir.join("init.lua"), format!("-- {name}"))
-                .expect("write init.lua");
+            fs::write(plugin_dir.join("init.lua"), format!("-- {name}")).expect("write init.lua");
         }
 
         // Invalid: dir with no init.lua.
@@ -714,11 +706,7 @@ mod tests {
         let dir1 = tempfile::tempdir().expect("create temp dir 1");
         let plugin_dir1 = dir1.path().join("alpha");
         fs::create_dir_all(&plugin_dir1).expect("create plugin dir 1");
-        fs::write(
-            plugin_dir1.join("init.lua"),
-            r#"version = "v1""#,
-        )
-        .expect("write init.lua 1");
+        fs::write(plugin_dir1.join("init.lua"), r#"version = "v1""#).expect("write init.lua 1");
 
         let result = registry.load_plugin(&plugin_dir1);
         assert!(result.is_ok(), "initial load should succeed");
@@ -727,11 +715,7 @@ mod tests {
         let dir2 = tempfile::tempdir().expect("create temp dir 2");
         let plugin_dir2 = dir2.path().join("alpha");
         fs::create_dir_all(&plugin_dir2).expect("create plugin dir 2");
-        fs::write(
-            plugin_dir2.join("init.lua"),
-            r#"version = "v2""#,
-        )
-        .expect("write init.lua 2");
+        fs::write(plugin_dir2.join("init.lua"), r#"version = "v2""#).expect("write init.lua 2");
         // Also add a new plugin "beta".
         let plugin_dir3 = dir2.path().join("beta");
         fs::create_dir_all(&plugin_dir3).expect("create plugin dir 3");
@@ -748,7 +732,10 @@ mod tests {
 
         // And the running alpha plugin is v2.
         let instances = registry.instances.borrow();
-        let alpha = instances.iter().find(|i| i.name == "alpha").expect("find alpha");
+        let alpha = instances
+            .iter()
+            .find(|i| i.name == "alpha")
+            .expect("find alpha");
         let v: String = alpha.lua.globals().get("version").expect("get version");
         assert_eq!(v, "v2");
     }
@@ -803,7 +790,7 @@ mod tests {
         let translator: TranslatorFn = Arc::new(move |name, _payload| {
             if name == "test_cmd" {
                 let tx = tx_test.clone();
-                tx.send(true).ok();
+                tx.send(true).ok().unwrap();
             }
             None
         });
@@ -827,10 +814,7 @@ mod tests {
 
         // Then the subscriber callback fired (translator was called).
         let result = rx_test.recv_timeout(std::time::Duration::from_millis(100));
-        assert!(
-            result.is_ok(),
-            "emit should have triggered the subscriber"
-        );
+        assert!(result.is_ok(), "emit should have triggered the subscriber");
         drop(rx_test);
     }
 
@@ -888,13 +872,22 @@ mod tests {
             .get("hook_called")
             .expect("get hook_called");
         assert!(sub_called, "ps.sub callback should have been called");
-        assert!(!hook_called, "ps.hook callback should NOT have been called by emit");
+        assert!(
+            !hook_called,
+            "ps.hook callback should NOT have been called by emit"
+        );
     }
 
     // ── for_hook (data-returning) ──────────────────────────────────────
 
     #[rstest::rstest]
     fn for_hook_collects_return_values() {
+        #[derive(serde::Deserialize, Debug, PartialEq)]
+        struct TestItem {
+            name: String,
+            count: i64,
+        }
+
         // Given a registry with a plugin that registers a hook returning data.
         let registry = test_registry();
         let dir = tempfile::tempdir().expect("create temp dir");
@@ -912,11 +905,6 @@ mod tests {
         registry.load_plugin(&plugin_dir).expect("load plugin");
 
         // When calling for_hook.
-        #[derive(serde::Deserialize, Debug, PartialEq)]
-        struct TestItem {
-            name: String,
-            count: i64,
-        }
         let results: Vec<TestItem> = registry.for_hook("get_items", &serde_json::json!({}));
 
         // Then the hook return value was collected.
@@ -978,7 +966,10 @@ mod tests {
             .globals()
             .get("hook_called")
             .expect("get hook_called");
-        assert!(!sub_called, "ps.sub callback should NOT have been called by for_hook");
+        assert!(
+            !sub_called,
+            "ps.sub callback should NOT have been called by for_hook"
+        );
         assert!(hook_called, "ps.hook callback should have been called");
     }
 
@@ -1035,11 +1026,7 @@ mod tests {
 
         // Then the callback was NOT invoked.
         let instances = registry.instances.borrow();
-        let flag: bool = instances[0]
-            .lua
-            .globals()
-            .get("flag")
-            .expect("get flag");
+        let flag: bool = instances[0].lua.globals().get("flag").expect("get flag");
         assert!(!flag, "callback should not have been invoked after unsub");
     }
 
@@ -1077,6 +1064,12 @@ mod tests {
 
     #[rstest::rstest]
     fn for_hook_end_to_end_with_file_on_disk() {
+        #[derive(serde::Deserialize, Debug, PartialEq)]
+        struct RenderResult {
+            title: String,
+            items: Vec<String>,
+        }
+
         // Given a registry and a plugin file on disk that registers ps.hook.
         let (registry, rx) = test_registry_with_sender();
         let dir = tempfile::tempdir().expect("create temp dir");
@@ -1097,15 +1090,8 @@ mod tests {
         registry.load_plugin(&plugin_dir).expect("load plugin");
 
         // When calling for_hook with a payload the hook reads.
-        #[derive(serde::Deserialize, Debug, PartialEq)]
-        struct RenderResult {
-            title: String,
-            items: Vec<String>,
-        }
-        let results: Vec<RenderResult> = registry.for_hook(
-            "render_items",
-            &serde_json::json!({ "title": "my-title" }),
-        );
+        let results: Vec<RenderResult> =
+            registry.for_hook("render_items", &serde_json::json!({ "title": "my-title" }));
 
         // Then the hook was called and returned deserialized data.
         assert_eq!(results.len(), 1);

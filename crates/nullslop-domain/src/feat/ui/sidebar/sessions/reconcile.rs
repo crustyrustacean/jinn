@@ -40,7 +40,7 @@ pub fn reconcile_after_session_removal(state: &mut AppState) {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::feat::session::chat_session::ChatSessionState;
 

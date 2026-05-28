@@ -7,7 +7,7 @@
 //! Note: Testing the full `refresh_models` flow requires actual network calls,
 //! so those specific mutants are killed by integration tests instead.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing)]
+#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
 use std::sync::Arc;
 

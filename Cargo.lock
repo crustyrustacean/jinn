@@ -2252,6 +2252,7 @@ dependencies = [
  "kanal",
  "nullslop",
  "nullslop-domain",
+ "nullslop-plugin",
  "nullslop-tui",
  "ratatui-spatial-splits",
  "ratatui-which-key",

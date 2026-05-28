@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing)]
+#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
 //! Tests for the compaction actor.
 
@@ -969,10 +969,7 @@ fn cut_index_equals_history_len_when_compact_all() {
 #[test]
 fn compute_cut_index_returns_start_when_tokens_within_reserve() {
     // Given a history with total tokens below the reserve.
-    let history = vec![
-        ChatEntry::user("hi"),
-        ChatEntry::assistant("hello"),
-    ];
+    let history = vec![ChatEntry::user("hi"), ChatEntry::assistant("hello")];
 
     // When computing cut index with a very large reserve.
     let cut_index = super::compute_cut_index(&history, 0, 100_000, false);
@@ -984,10 +981,7 @@ fn compute_cut_index_returns_start_when_tokens_within_reserve() {
 #[test]
 fn compute_cut_index_returns_len_when_compact_all() {
     // Given any history.
-    let history = vec![
-        ChatEntry::user("hi"),
-        ChatEntry::assistant("hello"),
-    ];
+    let history = vec![ChatEntry::user("hi"), ChatEntry::assistant("hello")];
 
     // When computing cut index with compact_all=true.
     let cut_index = super::compute_cut_index(&history, 0, 100_000, true);
@@ -998,7 +992,9 @@ fn compute_cut_index_returns_len_when_compact_all() {
 
 #[test]
 fn compute_cut_index_walks_backwards_past_reserve() {
-    use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, estimate_entry_tokens};
+    use crate::feat::context::strategy::token_estimator::{
+        CharRatioEstimator, estimate_entry_tokens,
+    };
 
     // Given a history with entries that have known token counts.
     // CharRatioEstimator: graphemes / 4 + 1
@@ -1016,7 +1012,10 @@ fn compute_cut_index_walks_backwards_past_reserve() {
 
     // Calculate total tokens to find a good reserve value.
     let estimator = CharRatioEstimator;
-    let total_tokens: usize = history.iter().map(|e| estimate_entry_tokens(&estimator, e)).sum();
+    let total_tokens: usize = history
+        .iter()
+        .map(|e| estimate_entry_tokens(&estimator, e))
+        .sum();
 
     // Reserve slightly less than half the tokens so the cut is unambiguous.
     let reserve = total_tokens / 2 - 1;
@@ -1026,7 +1025,10 @@ fn compute_cut_index_walks_backwards_past_reserve() {
 
     // Then cut_index is somewhere in the middle (not 0, not len).
     assert!(cut_index > 0, "cut_index should be > 0, got {cut_index}");
-    assert!(cut_index < history.len(), "cut_index should be < len, got {cut_index}");
+    assert!(
+        cut_index < history.len(),
+        "cut_index should be < len, got {cut_index}"
+    );
 
     // And the entries before the cut represent more than the reserve.
     // Verify by checking that the "old" entries (before cut) are more than the reserve.
@@ -1103,10 +1105,7 @@ fn gather_excludes_system_and_compaction_entries() {
 #[test]
 fn gather_returns_empty_when_all_exempt() {
     // Given history with only System entries.
-    let history = vec![
-        ChatEntry::system("s1"),
-        ChatEntry::system("s2"),
-    ];
+    let history = vec![ChatEntry::system("s1"), ChatEntry::system("s2")];
 
     // When gathering.
     let (indices, tokens) = super::gather_compactable_entries(&history, 0, 2);
@@ -1118,7 +1117,9 @@ fn gather_returns_empty_when_all_exempt() {
 
 #[test]
 fn gather_tokens_before_matches_expected_sum() {
-    use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, estimate_entry_tokens};
+    use crate::feat::context::strategy::token_estimator::{
+        CharRatioEstimator, estimate_entry_tokens,
+    };
 
     // Given history with 3 user entries.
     let history = vec![
@@ -1132,7 +1133,10 @@ fn gather_tokens_before_matches_expected_sum() {
 
     // Then tokens_before matches the manually computed sum.
     let estimator = CharRatioEstimator;
-    let expected: usize = history.iter().map(|e| estimate_entry_tokens(&estimator, e)).sum();
+    let expected: usize = history
+        .iter()
+        .map(|e| estimate_entry_tokens(&estimator, e))
+        .sum();
     assert_eq!(indices, vec![0, 1, 2]);
     assert_eq!(tokens_before, expected);
 }
@@ -1187,7 +1191,9 @@ fn test_actor_without_context_size() -> (
 // --- handle_history_appended threshold boundary tests ---
 
 /// Helper: create actor with a specific context_size set.
-fn test_actor_with_context_size(context_size: u32) -> (
+fn test_actor_with_context_size(
+    context_size: u32,
+) -> (
     std::sync::Arc<RecordingSink>,
     ActorContext,
     super::CompactionActor,
@@ -1284,6 +1290,8 @@ fn test_compaction_env() -> (
     super::CompactionActor,
     SessionId,
 ) {
+    use crate::feat::provider_infra::FakeLlmServiceFactory;
+    use crate::feat::provider_infra::LlmServiceFactoryService;
     let sink = std::sync::Arc::new(RecordingSink::new());
     let ctx = ActorContext::new("test-compaction-e2e", sink.clone());
 
@@ -1312,11 +1320,8 @@ fn test_compaction_env() -> (
     }
 
     // Create services with a fake LLM that returns actual tokens.
-    use crate::feat::provider_infra::FakeLlmServiceFactory;
-    use crate::feat::provider_infra::LlmServiceFactoryService;
-    let fake_factory = FakeLlmServiceFactory::new(vec![
-        "Summary of the conversation so far.".to_owned(),
-    ]);
+    let fake_factory =
+        FakeLlmServiceFactory::new(vec!["Summary of the conversation so far.".to_owned()]);
     let mut services = Services::new();
     services.llm_service = LlmServiceFactoryService::new(std::sync::Arc::new(fake_factory));
     let handle = services.handle.clone();
@@ -1346,14 +1351,14 @@ fn find_end_compaction(commands: &[Command]) -> Option<super::protocol::command:
 #[test]
 fn perform_compaction_compacts_entries_and_returns_nonzero() {
     // Given a session with many entries and a fake LLM.
-    let (sink, _ctx, mut actor, session_id) = test_compaction_env();
+    let (sink, ctx, mut actor, session_id) = test_compaction_env();
 
     // When triggering compaction.
     let compact_cmd = super::protocol::command::CompactContext {
         session_id: session_id.clone(),
         compact_all: false,
     };
-    actor.handle_compact_context(&compact_cmd, &_ctx);
+    actor.handle_compact_context(&compact_cmd, &ctx);
 
     // Then wait for the spawned task to complete (poll the sink).
     let mut end_cmd = None;
@@ -1378,19 +1383,14 @@ fn perform_compaction_compacts_entries_and_returns_nonzero() {
         result.entries_compacted
     );
     // And the summary is non-empty and not "xyzzy" (kills Ok(String::new()) and Ok("xyzzy".into())).
-    assert!(
-        !result.summary.is_empty(),
-        "summary should not be empty"
-    );
-    assert_ne!(
-        result.summary, "xyzzy",
-        "summary should not be xyzzy"
-    );
+    assert!(!result.summary.is_empty(), "summary should not be empty");
+    assert_ne!(result.summary, "xyzzy", "summary should not be xyzzy");
     // And tokens_before > tokens_after (summary is shorter than original).
     assert!(
         result.tokens_before > result.tokens_after,
         "tokens_before ({}) should be > tokens_after ({})",
-        result.tokens_before, result.tokens_after
+        result.tokens_before,
+        result.tokens_after
     );
 }
 
@@ -1398,14 +1398,14 @@ fn perform_compaction_compacts_entries_and_returns_nonzero() {
 #[test]
 fn perform_compaction_compact_all_compacts_everything() {
     // Given a session with many entries and a fake LLM.
-    let (sink, _ctx, mut actor, session_id) = test_compaction_env();
+    let (sink, ctx, mut actor, session_id) = test_compaction_env();
 
     // When triggering compaction with compact_all=true.
     let compact_cmd = super::protocol::command::CompactContext {
         session_id: session_id.clone(),
         compact_all: true,
     };
-    actor.handle_compact_context(&compact_cmd, &_ctx);
+    actor.handle_compact_context(&compact_cmd, &ctx);
 
     // Then wait for completion.
     let mut end_cmd = None;

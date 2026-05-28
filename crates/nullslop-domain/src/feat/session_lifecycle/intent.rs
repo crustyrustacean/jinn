@@ -310,7 +310,7 @@ fn close_session_and_switch(closing_id: &SessionId) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::common::app_state::AppState;
     use crate::feat::preferences_actor::user_preferences::SessionLifecycle;

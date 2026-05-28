@@ -97,7 +97,7 @@ impl ActorHost for FakeActorHost {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     #[rstest::rstest]
@@ -193,6 +193,9 @@ mod tests {
         host.begin_shutdown(tx);
 
         // Then the completion fires immediately.
-        assert!(rx.try_recv().is_ok(), "begin_shutdown should fire completion");
+        assert!(
+            rx.try_recv().is_ok(),
+            "begin_shutdown should fire completion"
+        );
     }
 }

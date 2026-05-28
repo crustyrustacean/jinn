@@ -296,6 +296,8 @@ impl TaskList {
 
     /// Adds a new task to the specified phase at the given position.
     ///
+    /// # Errors
+    ///
     /// Returns the new task's ID, or an error if the phase or position reference is invalid.
     pub fn add_task(
         &mut self,
@@ -323,21 +325,21 @@ impl TaskList {
                 phase.tasks.push(new_task);
             }
             TaskPosition::After(after_id) => {
-                let idx = phase
-                    .find_task_index(&after_id)
-                    .ok_or_else(|| TaskListError::TaskNotInPhase {
+                let idx = phase.find_task_index(&after_id).ok_or_else(|| {
+                    TaskListError::TaskNotInPhase {
                         task_id: after_id.clone(),
                         phase_id: phase_id.clone(),
-                    })?;
+                    }
+                })?;
                 phase.tasks.insert(idx + 1, new_task);
             }
             TaskPosition::Before(before_id) => {
-                let idx = phase
-                    .find_task_index(&before_id)
-                    .ok_or_else(|| TaskListError::TaskNotInPhase {
+                let idx = phase.find_task_index(&before_id).ok_or_else(|| {
+                    TaskListError::TaskNotInPhase {
                         task_id: before_id.clone(),
                         phase_id: phase_id.clone(),
-                    })?;
+                    }
+                })?;
                 phase.tasks.insert(idx, new_task);
             }
         }
@@ -347,7 +349,11 @@ impl TaskList {
 
     /// Marks a task as completed.
     ///
-    /// Searches all phases for the task. Returns an error if not found.
+    /// Searches all phases for the task.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if not found.
     pub fn complete_task(&mut self, task_id: &TaskId) -> Result<(), TaskListError> {
         for phase in &mut self.phases {
             if let Some(task) = phase.tasks.iter_mut().find(|t| &t.id == task_id) {
@@ -391,7 +397,12 @@ impl TaskList {
 
         let mut lines = Vec::new();
         for (i, phase) in self.phases.iter().enumerate() {
-            lines.push(format!("## Phase {}: {} [{}]", i + 1, phase.description, phase.id));
+            lines.push(format!(
+                "## Phase {}: {} [{}]",
+                i + 1,
+                phase.description,
+                phase.id
+            ));
             if phase.tasks.is_empty() {
                 lines.push("  (no tasks)".to_owned());
             } else {

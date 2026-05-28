@@ -64,7 +64,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::super::ui_element_fake::FakeUiElement;
     use super::UiRegistry;
 

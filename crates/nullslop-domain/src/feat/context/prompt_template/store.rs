@@ -277,7 +277,7 @@ impl PromptTemplateStore {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     /// Writes a minimal .md template file to `dir`.

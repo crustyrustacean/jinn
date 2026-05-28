@@ -721,6 +721,7 @@ pub enum PortError {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing, clippy::expect_used, reason = "test code")]
     use super::*;
 
     // --- ScalarType::from_value tests ---
@@ -1372,10 +1373,7 @@ mod tests {
         );
         let result = values.get_number("ratio");
         let n = result.expect("should find number");
-        assert!(
-            (n - 3.7).abs() < f64::EPSILON,
-            "expected 3.7, got {n}"
-        );
+        assert!((n - 3.7).abs() < f64::EPSILON, "expected 3.7, got {n}");
         assert!(n != 0.0, "must not be 0.0");
         assert!(n != 1.0, "must not be 1.0");
         assert!(n != -1.0, "must not be -1.0");
@@ -1390,7 +1388,7 @@ mod tests {
             PortValue::Single(ScalarValue::Boolean(false)),
         );
         let result = values.get_boolean("flag");
-        assert_eq!(result.unwrap(), false, "must return the stored false, not true");
+        assert!(!result.unwrap(), "must return the stored false, not true");
     }
 
     #[test]
@@ -1401,14 +1399,18 @@ mod tests {
             PortValue::Single(ScalarValue::Boolean(true)),
         );
         let result = values.get_boolean("flag");
-        assert_eq!(result.unwrap(), true, "must return the stored true, not false");
+        assert!(result.unwrap(), "must return the stored true, not false");
     }
 
     // Kills: get_vector -> Ok(Box::leak(Box::new(vec![])))
     #[test]
     fn get_vector_returns_actual_vector_contents() {
         let mut values = PortValues::new();
-        let items = vec![ScalarValue::Number(10.0), ScalarValue::Number(20.0), ScalarValue::Number(30.0)];
+        let items = vec![
+            ScalarValue::Number(10.0),
+            ScalarValue::Number(20.0),
+            ScalarValue::Number(30.0),
+        ];
         values.insert("data".to_owned(), PortValue::Vector(items));
         let result = values.get_vector("data");
         let v = result.expect("should find vector");
@@ -1441,14 +1443,17 @@ mod tests {
             PortValue::Single(ScalarValue::Boolean(false)),
         );
         let result = values.take_boolean("flag");
-        assert_eq!(result.unwrap(), false, "must return the stored false, not true");
+        assert!(!result.unwrap(), "must return the stored false, not true");
     }
 
     // Kills: is_empty -> true, is_empty -> false
     #[test]
     fn is_empty_returns_true_for_empty_port_values() {
         let values = PortValues::new();
-        assert!(values.is_empty(), "empty PortValues must report is_empty=true");
+        assert!(
+            values.is_empty(),
+            "empty PortValues must report is_empty=true"
+        );
     }
 
     #[test]
@@ -1458,7 +1463,10 @@ mod tests {
             "a".to_owned(),
             PortValue::Single(ScalarValue::Text("x".to_owned())),
         );
-        assert!(!values.is_empty(), "non-empty PortValues must report is_empty=false");
+        assert!(
+            !values.is_empty(),
+            "non-empty PortValues must report is_empty=false"
+        );
     }
 
     // Kills: From<HashMap<String, PortValue>> for PortValues -> Default::default()
@@ -1469,10 +1477,7 @@ mod tests {
             "a".to_owned(),
             PortValue::Single(ScalarValue::Text("hello".to_owned())),
         );
-        map.insert(
-            "b".to_owned(),
-            PortValue::Single(ScalarValue::Number(42.0)),
-        );
+        map.insert("b".to_owned(), PortValue::Single(ScalarValue::Number(42.0)));
         map.insert(
             "c".to_owned(),
             PortValue::Single(ScalarValue::Boolean(true)),
