@@ -175,7 +175,7 @@ pub fn validate_chat_entry_ignore_selected(
 
 #[cfg(test)]
 mod fork_from_entry_tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use crate::common::app_state::AppState;
     use crate::protocol::ChatEntry;
 
@@ -228,7 +228,7 @@ mod fork_from_entry_tests {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use crate::protocol::ChatEntry;
 
     use super::*;
@@ -407,7 +407,7 @@ mod tests {
 
 #[cfg(test)]
 mod yank_selected_tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use crate::common::app_state::AppState;
     use crate::protocol::ChatEntry;
 
@@ -460,7 +460,7 @@ mod yank_selected_tests {
 
 #[cfg(test)]
 mod ignore_selected_tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use crate::common::app_state::AppState;
     use crate::protocol::{ChatEntry, PinPosition};
 

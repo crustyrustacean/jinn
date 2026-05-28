@@ -220,7 +220,7 @@ fn tool_definition_to_json(def: &ToolDefinition) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     #[rstest::rstest]

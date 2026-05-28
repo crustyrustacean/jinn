@@ -108,7 +108,7 @@ impl ActorHostService {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
 
     #[rstest::rstest]
@@ -162,7 +162,11 @@ mod tests {
         );
 
         // Then the backend received the event.
-        assert_eq!(backend.events_sent().len(), 1, "send_event should delegate to backend");
+        assert_eq!(
+            backend.events_sent().len(),
+            1,
+            "send_event should delegate to backend"
+        );
     }
 
     #[rstest::rstest]
@@ -176,7 +180,11 @@ mod tests {
         service.send_command(&Command::RefreshModels, None);
 
         // Then the backend received the command.
-        assert_eq!(backend.commands_sent().len(), 1, "send_command should delegate to backend");
+        assert_eq!(
+            backend.commands_sent().len(),
+            1,
+            "send_command should delegate to backend"
+        );
     }
 
     #[rstest::rstest]
@@ -190,7 +198,11 @@ mod tests {
         service.send_system(crate::common::actor::SystemMessage::ApplicationShuttingDown);
 
         // Then the backend received the system message.
-        assert_eq!(backend.system_sent().len(), 1, "send_system should delegate to backend");
+        assert_eq!(
+            backend.system_sent().len(),
+            1,
+            "send_system should delegate to backend"
+        );
     }
 
     #[rstest::rstest]
@@ -204,7 +216,10 @@ mod tests {
         service.begin_shutdown(tx);
 
         // Then the backend fires the completion immediately.
-        assert!(rx.try_recv().is_ok(), "begin_shutdown should delegate to FakeActorHost");
+        assert!(
+            rx.try_recv().is_ok(),
+            "begin_shutdown should delegate to FakeActorHost"
+        );
     }
 
     #[rstest::rstest]

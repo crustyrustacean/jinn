@@ -148,7 +148,7 @@ impl ProviderInitActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing)]
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use std::sync::Arc;
 
     use crate::AppState;
@@ -210,7 +210,7 @@ mod tests {
                 compaction: CompactionConfig::default(),
                 context_sliding_window: ContextSlidingWindowConfig::default(),
                 request_retry: RequestRetryConfig::default(),
-            web_fetch: WebFetchConfig::default(),
+                web_fetch: WebFetchConfig::default(),
             })
             .expect("save prefs");
 
@@ -430,7 +430,7 @@ mod tests {
                 compaction: CompactionConfig::default(),
                 context_sliding_window: ContextSlidingWindowConfig::default(),
                 request_retry: RequestRetryConfig::default(),
-            web_fetch: WebFetchConfig::default(),
+                web_fetch: WebFetchConfig::default(),
             })
             .expect("save prefs");
 

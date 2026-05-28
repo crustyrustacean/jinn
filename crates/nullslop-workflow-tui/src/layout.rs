@@ -186,6 +186,7 @@ fn compute_x_offset(
 #[cfg(test)]
 #[expect(clippy::indexing_slicing, reason = "test indices are known-valid")]
 mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use nullslop_workflow::execution::WorkflowExecution;
     use nullslop_workflow::graph::WorkflowGraph;
@@ -449,8 +450,16 @@ mod tests {
         node.y = 20;
         let layout = GraphLayout { nodes: vec![node] };
         let (w, h) = layout.content_size();
-        assert_eq!(w, 10 + layout.nodes[0].width, "width = x + node_width, not x*node_width");
-        assert_eq!(h, 20 + layout.nodes[0].height, "height = y + node_height, not y*node_height");
+        assert_eq!(
+            w,
+            10 + layout.nodes[0].width,
+            "width = x + node_width, not x*node_width"
+        );
+        assert_eq!(
+            h,
+            20 + layout.nodes[0].height,
+            "height = y + node_height, not y*node_height"
+        );
     }
 
     // Kills: compute_y_offset + -> *, + -> -
@@ -465,14 +474,18 @@ mod tests {
         let c = layout.nodes.iter().find(|n| n.name == "c").expect("c");
 
         // They must have different y positions.
-        assert_ne!(b.y, c.y, "nodes in same column must be at different y positions");
+        assert_ne!(
+            b.y, c.y,
+            "nodes in same column must be at different y positions"
+        );
 
         // The lower node must start after the upper node ends (with spacing).
         let (upper, lower) = if b.y < c.y { (b, c) } else { (c, b) };
         assert!(
             lower.y >= upper.y + upper.height + V_SPACING,
             "lower node must start after upper node + spacing: lower.y={}, upper.y+height+spacing={}",
-            lower.y, upper.y + upper.height + V_SPACING,
+            lower.y,
+            upper.y + upper.height + V_SPACING,
         );
     }
 
@@ -502,12 +515,18 @@ mod tests {
         assert!(
             b.x >= a.x + a.width + H_SPACING,
             "b.x ({}) must be >= a.x ({}) + a.width ({}) + H_SPACING ({})",
-            b.x, a.x, a.width, H_SPACING,
+            b.x,
+            a.x,
+            a.width,
+            H_SPACING,
         );
         assert!(
             c.x >= b.x + b.width + H_SPACING,
             "c.x ({}) must be >= b.x ({}) + b.width ({}) + H_SPACING ({})",
-            c.x, b.x, b.width, H_SPACING,
+            c.x,
+            b.x,
+            b.width,
+            H_SPACING,
         );
     }
 }

@@ -268,7 +268,7 @@ mod tests {
     #[test]
     fn session_id_short_returns_first_10_graphemes() {
         // Given a session ID like "s-01923abc-def4-7def-8901-234567890abc".
-        let id = SessionId::from("s-01923abc-def4-7def-8901-234567890abc".to_string());
+        let id = SessionId::from("s-01923abc-def4-7def-8901-234567890abc".to_owned());
 
         // When shortening.
         let short = session_id_short(&id);
@@ -282,7 +282,7 @@ mod tests {
     #[test]
     fn session_id_short_handles_short_ids() {
         // Given a very short session ID.
-        let id = SessionId::from("s-short".to_string());
+        let id = SessionId::from("s-short".to_owned());
 
         // When shortening.
         let short = session_id_short(&id);
@@ -325,8 +325,14 @@ mod tests {
 
         // Then it contains the struct name and the name field.
         // This kills: replace Debug::fmt with Ok(Default::default()).
-        assert!(output.contains("BenchTaskHandler"), "should contain struct name: {output}");
-        assert!(output.contains("my-cool-task"), "should contain task name: {output}");
+        assert!(
+            output.contains("BenchTaskHandler"),
+            "should contain struct name: {output}"
+        );
+        assert!(
+            output.contains("my-cool-task"),
+            "should contain task name: {output}"
+        );
         assert!(!output.is_empty(), "should not be empty");
     }
 }

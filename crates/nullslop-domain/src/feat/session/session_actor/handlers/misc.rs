@@ -217,8 +217,14 @@ mod tests {
         results.insert(
             "ollama".to_owned(),
             vec![
-                ModelInfo { id: "llama3".to_owned(), context_length: Some(8192) },
-                ModelInfo { id: "phi3".to_owned(), context_length: None },
+                ModelInfo {
+                    id: "llama3".to_owned(),
+                    context_length: Some(8192),
+                },
+                ModelInfo {
+                    id: "phi3".to_owned(),
+                    context_length: None,
+                },
             ],
         );
         let event = ModelsRefreshed {
@@ -232,7 +238,7 @@ mod tests {
 
         // Then the table contains the provider name and correct model count.
         assert!(table.contains("ollama"), "expected provider name in table");
-        assert!(table.contains("2"), "expected model count in table");
+        assert!(table.contains('2'), "expected model count in table");
         assert!(table.contains("✅"), "expected success indicator");
     }
 
@@ -271,7 +277,9 @@ mod tests {
         };
         let entry_id = {
             let state = actor.state.read();
-            state.session.get(&session_id).unwrap().history()[0].id.clone()
+            state.session.get(&session_id).unwrap().history()[0]
+                .id
+                .clone()
         };
 
         // When submitting history mutations.
@@ -360,11 +368,15 @@ mod tests {
         };
         let entry_id_1 = {
             let state = actor.state.read();
-            state.session.get(&session_id).unwrap().history()[0].id.clone()
+            state.session.get(&session_id).unwrap().history()[0]
+                .id
+                .clone()
         };
         let entry_id_2 = {
             let state = actor.state.read();
-            state.session.get(&session_id).unwrap().history()[1].id.clone()
+            state.session.get(&session_id).unwrap().history()[1]
+                .id
+                .clone()
         };
 
         // When submitting two batches.

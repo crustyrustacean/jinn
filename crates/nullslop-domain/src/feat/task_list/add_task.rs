@@ -83,10 +83,14 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             Some(s) => s.to_owned(),
             None => return tool_error(call, "missing 'description' argument"),
         };
-        let after_task: Option<String> =
-            args.get("after_task").and_then(|v| v.as_str()).map(String::from);
-        let before_task: Option<String> =
-            args.get("before_task").and_then(|v| v.as_str()).map(String::from);
+        let after_task: Option<String> = args
+            .get("after_task")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let before_task: Option<String> = args
+            .get("before_task")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
         if after_task.is_some() && before_task.is_some() {
             return tool_error(call, "cannot specify both after_task and before_task");
@@ -108,9 +112,9 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             match list.add_task(&phase_id, &description, position) {
                 Ok(task_id) => {
                     let rendered = list.render_text();
-                    Ok(format!("Created task [{}].\n\n{}", task_id, rendered))
+                    Ok(format!("Created task [{task_id}].\n\n{rendered}"))
                 }
-                Err(e) => Err(format!("Error: {}", e)),
+                Err(e) => Err(format!("Error: {e}")),
             }
         };
 

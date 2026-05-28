@@ -1,6 +1,6 @@
 //! Tests for [`HistoryMutation`] application and queue operations.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::unwrap_in_tests)]
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
 
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ContextOverride, PinPosition};
 use crate::feat::session::chat_session::ChatSessionState;
@@ -333,10 +333,7 @@ fn apply_mutations_pins_entry_by_id() {
     }]);
 
     // Then the entry is pinned.
-    assert_eq!(
-        session.history()[0].pin_position,
-        Some(PinPosition::Top)
-    );
+    assert_eq!(session.history()[0].pin_position, Some(PinPosition::Top));
 }
 
 #[test]
@@ -504,7 +501,10 @@ fn pin_entry_relative_sets_position() {
     }]);
 
     // Then the entry is pinned to Relative.
-    assert_eq!(session.history()[0].pin_position, Some(PinPosition::Relative));
+    assert_eq!(
+        session.history()[0].pin_position,
+        Some(PinPosition::Relative)
+    );
 }
 
 #[test]

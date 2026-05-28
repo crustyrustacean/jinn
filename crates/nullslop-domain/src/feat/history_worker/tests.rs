@@ -4,7 +4,7 @@
 //! mutations → actor submits them via command bus → session queues
 //! and later applies them at safe drain points.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::unwrap_in_tests)]
+#![allow(clippy::expect_used, clippy::indexing_slicing)]
 
 use std::sync::Arc;
 
@@ -26,7 +26,7 @@ use crate::protocol::{Command, SessionId};
 struct TruncateOldUserEntries;
 
 impl HistoryWorker for TruncateOldUserEntries {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "test-truncate-old-user"
     }
 
@@ -57,7 +57,7 @@ impl HistoryWorker for TruncateOldUserEntries {
 struct NoOpWorker;
 
 impl HistoryWorker for NoOpWorker {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "test-noop"
     }
 
@@ -86,10 +86,7 @@ fn test_state_with_session(entries: Vec<ChatEntry>) -> (State, SessionId) {
 fn make_actor<H: HistoryWorker + Clone>(worker: H, state: State) -> HistoryWorkerActor<H> {
     let sink = Arc::new(RecordingSink::new());
     let mut ctx = ActorContext::new("test-worker", sink);
-    HistoryWorkerActor::activate(
-        HistoryWorkerActorDeps { worker, state },
-        &mut ctx,
-    )
+    HistoryWorkerActor::activate(HistoryWorkerActorDeps { worker, state }, &mut ctx)
 }
 
 fn test_ctx() -> (Arc<RecordingSink>, ActorContext) {
@@ -102,7 +99,9 @@ fn test_ctx() -> (Arc<RecordingSink>, ActorContext) {
 
 #[test]
 fn worker_produces_mutations_for_long_history() {
-    let entries: Vec<ChatEntry> = (0..5).map(|i| ChatEntry::user(format!("msg {i}"))).collect();
+    let entries: Vec<ChatEntry> = (0..5)
+        .map(|i| ChatEntry::user(format!("msg {i}")))
+        .collect();
     let worker = TruncateOldUserEntries;
     let mutations = worker.evaluate(&entries);
     assert_eq!(mutations.len(), 2); // 5 entries - 3 kept = 2 excluded
@@ -117,7 +116,9 @@ fn worker_produces_mutations_for_long_history() {
 
 #[test]
 fn worker_produces_no_mutations_for_short_history() {
-    let entries: Vec<ChatEntry> = (0..3).map(|i| ChatEntry::user(format!("msg {i}"))).collect();
+    let entries: Vec<ChatEntry> = (0..3)
+        .map(|i| ChatEntry::user(format!("msg {i}")))
+        .collect();
     let worker = TruncateOldUserEntries;
     let mutations = worker.evaluate(&entries);
     assert!(mutations.is_empty());
@@ -125,14 +126,15 @@ fn worker_produces_no_mutations_for_short_history() {
 
 #[test]
 fn actor_emits_submit_command_for_long_history() {
-    let entries: Vec<ChatEntry> = (0..5).map(|i| ChatEntry::user(format!("msg {i}"))).collect();
+    let entries: Vec<ChatEntry> = (0..5)
+        .map(|i| ChatEntry::user(format!("msg {i}")))
+        .collect();
     let (state, session_id) = test_state_with_session(entries);
     let actor = make_actor(TruncateOldUserEntries, state);
     let (sink, ctx) = test_ctx();
 
     let event = HistoryAppended {
         session_id: session_id.clone(),
-        total_estimated_tokens: 100,
     };
     actor.handle_history_appended(&event, &ctx);
 
@@ -149,15 +151,14 @@ fn actor_emits_submit_command_for_long_history() {
 
 #[test]
 fn actor_emits_nothing_for_short_history() {
-    let entries: Vec<ChatEntry> = (0..2).map(|i| ChatEntry::user(format!("msg {i}"))).collect();
+    let entries: Vec<ChatEntry> = (0..2)
+        .map(|i| ChatEntry::user(format!("msg {i}")))
+        .collect();
     let (state, session_id) = test_state_with_session(entries);
     let actor = make_actor(TruncateOldUserEntries, state);
     let (sink, ctx) = test_ctx();
 
-    let event = HistoryAppended {
-        session_id,
-        total_estimated_tokens: 50,
-    };
+    let event = HistoryAppended { session_id };
     actor.handle_history_appended(&event, &ctx);
 
     let commands = sink.take_commands();
@@ -172,7 +173,6 @@ fn actor_skips_nonexistent_session() {
 
     let event = HistoryAppended {
         session_id: SessionId::new(),
-        total_estimated_tokens: 100,
     };
     actor.handle_history_appended(&event, &ctx);
 
@@ -183,7 +183,9 @@ fn actor_skips_nonexistent_session() {
 #[test]
 fn actor_skips_judge_session() {
     // Given a session that is a judge session with enough entries to trigger mutations.
-    let entries: Vec<ChatEntry> = (0..5).map(|i| ChatEntry::user(format!("msg {i}"))).collect();
+    let entries: Vec<ChatEntry> = (0..5)
+        .map(|i| ChatEntry::user(format!("msg {i}")))
+        .collect();
     let state = State::new(AppState::default());
     let session_id = {
         let mut session = crate::feat::session::chat_session::ChatSessionState::new();
@@ -205,10 +207,7 @@ fn actor_skips_judge_session() {
     let actor = make_actor(TruncateOldUserEntries, state);
     let (sink, ctx) = test_ctx();
 
-    let event = HistoryAppended {
-        session_id,
-        total_estimated_tokens: 100,
-    };
+    let event = HistoryAppended { session_id };
     actor.handle_history_appended(&event, &ctx);
 
     // Then no commands were emitted — judge session is skipped.
@@ -219,7 +218,9 @@ fn actor_skips_judge_session() {
 #[test]
 fn actor_skips_session_with_auto_compaction_pending() {
     // Given a session with auto-compaction requested and enough entries to trigger mutations.
-    let entries: Vec<ChatEntry> = (0..5).map(|i| ChatEntry::user(format!("msg {i}"))).collect();
+    let entries: Vec<ChatEntry> = (0..5)
+        .map(|i| ChatEntry::user(format!("msg {i}")))
+        .collect();
     let state = State::new(AppState::default());
     let session_id = {
         let mut session = crate::feat::session::chat_session::ChatSessionState::new();
@@ -236,10 +237,7 @@ fn actor_skips_session_with_auto_compaction_pending() {
     let actor = make_actor(TruncateOldUserEntries, state);
     let (sink, ctx) = test_ctx();
 
-    let event = HistoryAppended {
-        session_id,
-        total_estimated_tokens: 100,
-    };
+    let event = HistoryAppended { session_id };
     actor.handle_history_appended(&event, &ctx);
 
     // Then no commands were emitted — auto-compaction pending session is skipped.
@@ -249,15 +247,14 @@ fn actor_skips_session_with_auto_compaction_pending() {
 
 #[test]
 fn noop_worker_never_produces_mutations() {
-    let entries: Vec<ChatEntry> = (0..10).map(|i| ChatEntry::user(format!("msg {i}"))).collect();
+    let entries: Vec<ChatEntry> = (0..10)
+        .map(|i| ChatEntry::user(format!("msg {i}")))
+        .collect();
     let (state, session_id) = test_state_with_session(entries);
     let actor = make_actor(NoOpWorker, state);
     let (sink, ctx) = test_ctx();
 
-    let event = HistoryAppended {
-        session_id,
-        total_estimated_tokens: 200,
-    };
+    let event = HistoryAppended { session_id };
     actor.handle_history_appended(&event, &ctx);
 
     let commands = sink.take_commands();

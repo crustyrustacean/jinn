@@ -268,7 +268,8 @@ mod tests {
             .match_header("x-api-key", "test-key")
             .with_status(200)
             .with_body(
-                serde_json::json!({"data": [{"id": "claude-3", "context_window": 200000}]}).to_string(),
+                serde_json::json!({"data": [{"id": "claude-3", "context_window": 200_000}]})
+                    .to_string(),
             )
             .create_async()
             .await;
@@ -287,10 +288,13 @@ mod tests {
         // Then models are returned.
         let models = result.expect("should succeed");
         assert_eq!(models.len(), 1);
-        assert_eq!(models[0], ModelInfo {
-            id: "claude-3".to_owned(),
-            context_length: Some(200_000),
-        });
+        assert_eq!(
+            models[0],
+            ModelInfo {
+                id: "claude-3".to_owned(),
+                context_length: Some(200_000),
+            }
+        );
         mock.assert_async().await;
     }
 

@@ -258,7 +258,7 @@ mod tests {
         // Then it contains specific known tasks, not just [""] or ["xyzzy"].
         // This kills: replace list_task_names with vec![""], vec!["xyzzy"].
         assert!(
-            names.iter().any(|n| *n == "hello-world"),
+            names.contains(&"hello-world"),
             "expected 'hello-world' in task names, got: {names:?}"
         );
         // Also verify no empty or placeholder names.
@@ -271,6 +271,10 @@ mod tests {
             "task names should not contain 'xyzzy': {names:?}"
         );
         // Verify there are multiple distinct real tasks.
-        assert!(names.len() > 5, "expected multiple tasks, got {}", names.len());
+        assert!(
+            names.len() > 5,
+            "expected multiple tasks, got {}",
+            names.len()
+        );
     }
 }

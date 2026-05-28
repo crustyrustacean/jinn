@@ -27,6 +27,7 @@ struct ModelEntry {
 /// # Errors
 ///
 /// Returns [`LlmServiceError::Provider`] on HTTP or parse errors.
+#[allow(dead_code)]
 pub async fn list_models(
     client: &Client,
     api_key: &str,
@@ -101,7 +102,8 @@ mod tests {
             .mock("GET", "/v1beta/models?key=test-key")
             .with_status(200)
             .with_body(
-                serde_json::json!({"models": [{"name": "gemini-pro", "input_token_limit": 32000}]}).to_string(),
+                serde_json::json!({"models": [{"name": "gemini-pro", "input_token_limit": 32000}]})
+                    .to_string(),
             )
             .create_async()
             .await;
@@ -111,10 +113,13 @@ mod tests {
 
         let models = result.expect("should succeed");
         assert_eq!(models.len(), 1);
-        assert_eq!(models[0], ModelInfo {
-            id: "gemini-pro".to_owned(),
-            context_length: Some(32_000),
-        });
+        assert_eq!(
+            models[0],
+            ModelInfo {
+                id: "gemini-pro".to_owned(),
+                context_length: Some(32_000),
+            }
+        );
         mock.assert_async().await;
     }
 

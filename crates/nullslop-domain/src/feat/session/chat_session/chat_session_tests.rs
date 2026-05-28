@@ -1,12 +1,17 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
-use crate::feat::session::tool_result_status::ToolResultStatus;
-use crate::feat::session::token_stats::TokenRecord;
-use crate::feat::session::profile::SessionProfile;
-use crate::feat::context::strategy::types::StrategyState;
 use crate::feat::context::strategy::compaction_data::CompactionSessionData;
-use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
-use crate::protocol::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId, SessionId};
+use crate::feat::context::strategy::types::StrategyState;
+use crate::feat::session::profile::SessionProfile;
+use crate::feat::session::token_stats::TokenRecord;
+use crate::feat::session::tool_result_status::ToolResultStatus;
+use crate::feat::ui::chat_log::visual_item::{
+    DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
+};
+use crate::protocol::{
+    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId,
+    SessionId,
+};
 use std::path::PathBuf;
 
 use super::*;
@@ -1086,7 +1091,9 @@ fn pin_entry_at_block_end_no_forward_propagation() {
 /// would collapse because `shown_ignored_blocks` didn't cover it.
 #[rstest::rstest]
 fn regression_pin_in_expanded_block_keeps_all_visible() {
-    use crate::feat::ui::chat_log::visual_item::{build_visual_items, VisualItem, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
+    use crate::feat::ui::chat_log::visual_item::{
+        DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
+    };
 
     // Layout: [user] [ignored-A] [ignored-B] [ignored-C] [ignored-D] [user]
     let mut session = ChatSessionState::new();
@@ -1095,7 +1102,7 @@ fn regression_pin_in_expanded_block_keeps_all_visible() {
     session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 2 — pin target
     session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3
     session.push_entry(ChatEntry::assistant("d").with_ignored(true)); // idx 4
-    session.push_entry(ChatEntry::user("after"));                     // idx 5
+    session.push_entry(ChatEntry::user("after")); // idx 5
 
     // Expand the ignored block.
     let rep_id = session.history()[1].id.clone();
@@ -1115,8 +1122,13 @@ fn regression_pin_in_expanded_block_keeps_all_visible() {
     );
 
     // There should be no CollapsedIgnoredBlock — all entries are shown.
-    let collapsed = items.iter().any(|item| matches!(item, VisualItem::CollapsedIgnoredBlock { .. }));
-    assert!(!collapsed, "no entries should be collapsed after pinning in expanded block");
+    let collapsed = items
+        .iter()
+        .any(|item| matches!(item, VisualItem::CollapsedIgnoredBlock { .. }));
+    assert!(
+        !collapsed,
+        "no entries should be collapsed after pinning in expanded block"
+    );
 
     // All history entries should appear as VisualItem::Entry.
     let entry_count = items
@@ -1137,7 +1149,7 @@ fn regression_toggle_h_after_pin_split_toggles_correct_sub_block() {
     session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 2
     session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3
     session.push_entry(ChatEntry::assistant("d").with_ignored(true)); // idx 4
-    session.push_entry(ChatEntry::user("after"));                     // idx 5
+    session.push_entry(ChatEntry::user("after")); // idx 5
 
     // Expand, then pin ignored-B.
     let rep_id = session.history()[1].id.clone();
@@ -1163,7 +1175,9 @@ fn regression_toggle_h_after_pin_split_toggles_correct_sub_block() {
 /// one block controlled by the original representative.
 #[rstest::rstest]
 fn regression_unpin_remerges_block_correctly() {
-    use crate::feat::ui::chat_log::visual_item::{build_visual_items, VisualItem, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
+    use crate::feat::ui::chat_log::visual_item::{
+        DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
+    };
 
     // Layout: [user] [ignored-A] [ignored-B] [ignored-C] [user]
     let mut session = ChatSessionState::new();
@@ -1171,7 +1185,7 @@ fn regression_unpin_remerges_block_correctly() {
     session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 1
     session.push_entry(ChatEntry::assistant("b").with_ignored(true)); // idx 2
     session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 3
-    session.push_entry(ChatEntry::user("after"));                     // idx 4
+    session.push_entry(ChatEntry::user("after")); // idx 4
 
     // Expand the block.
     let rep_id = session.history()[1].id.clone();
@@ -1193,14 +1207,19 @@ fn regression_unpin_remerges_block_correctly() {
     );
 
     // No collapsed block — all 5 entries visible.
-    let collapsed = items.iter().any(|item| matches!(item, VisualItem::CollapsedIgnoredBlock { .. }));
+    let collapsed = items
+        .iter()
+        .any(|item| matches!(item, VisualItem::CollapsedIgnoredBlock { .. }));
     assert!(!collapsed, "no collapsed block after unpin re-merge");
 
     let entry_count = items
         .iter()
         .filter(|item| matches!(item, VisualItem::Entry(_)))
         .count();
-    assert_eq!(entry_count, 5, "all 5 entries should be visible after unpin");
+    assert_eq!(
+        entry_count, 5,
+        "all 5 entries should be visible after unpin"
+    );
 
     // Toggle on the original rep should now collapse the re-merged block.
     session.toggle_ignored_block_visibility(&rep_id);
@@ -2545,7 +2564,11 @@ fn is_tool_call_streaming_returns_false_for_non_streaming_entry() {
     // Given a session with a finalized tool call entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
-    session.push_entry(ChatEntry::tool_call("tc-1", "write", r#"{"path":"foo.rs"}"#));
+    session.push_entry(ChatEntry::tool_call(
+        "tc-1",
+        "write",
+        r#"{"path":"foo.rs"}"#,
+    ));
 
     // When checking if the tool call entry is streaming.
     let entry_id = session.history()[1].id.clone();
@@ -2757,11 +2780,17 @@ fn toggle_ignored_block_visibility_stops_at_pinned_entry() {
     // Then the representative is the first entry of the second sub-block,
     // not the first entry of the whole ignored region.
     assert!(
-        session.ui.shown_ignored_blocks.contains(&second_sub_block_id),
+        session
+            .ui
+            .shown_ignored_blocks
+            .contains(&second_sub_block_id),
         "representative should be the second sub-block start (index 7)"
     );
     assert!(
-        !session.ui.shown_ignored_blocks.contains(&first_sub_block_start_id),
+        !session
+            .ui
+            .shown_ignored_blocks
+            .contains(&first_sub_block_start_id),
         "representative should NOT be the first sub-block start (index 3)"
     );
 }
@@ -2803,11 +2832,17 @@ fn toggle_ignored_block_visibility_stops_at_pinned_entry_in_first_sub_block() {
 
     // Then the representative is the first entry of the first sub-block only.
     assert!(
-        session.ui.shown_ignored_blocks.contains(&first_sub_block_start_id),
+        session
+            .ui
+            .shown_ignored_blocks
+            .contains(&first_sub_block_start_id),
         "representative should be the first sub-block start (index 3)"
     );
     assert!(
-        !session.ui.shown_ignored_blocks.contains(&second_sub_block_start_id),
+        !session
+            .ui
+            .shown_ignored_blocks
+            .contains(&second_sub_block_start_id),
         "representative should NOT be the second sub-block start (index 7)"
     );
 }
@@ -2817,7 +2852,9 @@ fn toggle_ignored_block_visibility_stops_at_pinned_entry_in_first_sub_block() {
 #[rstest::rstest]
 fn select_next_walks_visual_items_with_collapsed_block() {
     // Given a session with visual items: [Entry, CollapsedBlock, Entry].
-    use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
+    use crate::feat::ui::chat_log::visual_item::{
+        DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
+    };
 
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // index 0
@@ -2851,7 +2888,9 @@ fn select_next_walks_visual_items_with_collapsed_block() {
 #[rstest::rstest]
 fn select_prev_walks_visual_items_with_collapsed_block() {
     // Given a session with visual items: [Entry, CollapsedBlock, Entry, ...].
-    use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
+    use crate::feat::ui::chat_log::visual_item::{
+        DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
+    };
 
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // index 0
@@ -2884,7 +2923,9 @@ fn select_prev_walks_visual_items_with_collapsed_block() {
 #[rstest::rstest]
 fn selected_entry_returns_none_for_collapsed_block() {
     // Given a session with visual items where a collapsed block is selected.
-    use crate::feat::ui::chat_log::visual_item::{build_visual_items, DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT};
+    use crate::feat::ui::chat_log::visual_item::{
+        DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
+    };
 
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a"));
@@ -2939,13 +2980,19 @@ fn toggle_entry_ignored_flips_false_to_true() {
     session.set_visual_items(items);
     // Select the entry.
     session.set_selected_entry_index(0);
-    assert!(!session.history()[idx].ignored(), "entry should start un-ignored");
+    assert!(
+        !session.history()[idx].ignored(),
+        "entry should start un-ignored"
+    );
 
     // When toggling ignored.
     session.toggle_entry_ignored();
 
     // Then the entry is ignored.
-    assert!(session.history()[idx].ignored(), "entry should be ignored after toggle");
+    assert!(
+        session.history()[idx].ignored(),
+        "entry should be ignored after toggle"
+    );
 }
 
 #[rstest::rstest]
@@ -2962,13 +3009,19 @@ fn toggle_entry_ignored_flips_true_to_false() {
     session.set_visual_items(items);
     // Select the entry.
     session.set_selected_entry_index(0);
-    assert!(session.history()[idx].ignored(), "entry should start ignored");
+    assert!(
+        session.history()[idx].ignored(),
+        "entry should start ignored"
+    );
 
     // When toggling ignored.
     session.toggle_entry_ignored();
 
     // Then the entry is un-ignored.
-    assert!(!session.history()[idx].ignored(), "entry should be un-ignored after toggle");
+    assert!(
+        !session.history()[idx].ignored(),
+        "entry should be un-ignored after toggle"
+    );
 }
 
 // --- is_persistable tests ---
@@ -3477,9 +3530,7 @@ fn cancel_stream_and_drain_discards_non_user_items() {
     let mut session = ChatSessionState::new();
     session.begin_streaming();
     session.enqueue(
-        crate::feat::session::queue_item::QueueItem::CompactionNeeded {
-            compact_all: false,
-        },
+        crate::feat::session::queue_item::QueueItem::CompactionNeeded { compact_all: false },
     );
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
         ChatEntry::user("keep this"),
@@ -3512,9 +3563,7 @@ fn cancel_stream_and_drain_skips_tool_continuation() {
     // Given a streaming session with a tool continuation in the queue.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.enqueue(
-        crate::feat::session::queue_item::QueueItem::ToolContinuation,
-    );
+    session.enqueue(crate::feat::session::queue_item::QueueItem::ToolContinuation);
 
     // When cancelling and draining.
     session.cancel_stream_and_drain();
@@ -3527,12 +3576,17 @@ fn cancel_stream_and_drain_skips_tool_continuation() {
 fn cancel_stream_and_drain_uses_display_not_expanded() {
     // Given a user entry where display differs from expanded.
     let mut entry = ChatEntry::user("short");
-    if let ChatEntryKind::User { ref mut expanded, .. } = entry.kind {
+    if let ChatEntryKind::User {
+        ref mut expanded, ..
+    } = entry.kind
+    {
         *expanded = "short\nwith\nextra\nlines".to_owned();
     }
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(entry));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        entry,
+    ));
 
     // When cancelling and draining.
     session.cancel_stream_and_drain();
@@ -3594,7 +3648,10 @@ fn insert_entry_at_shifts_thinking_entry_index() {
     session.insert_entry_at(0, ChatEntry::system("inserted"));
 
     // Then thinking index shifted from 2 to 3.
-    assert_eq!(session.core.ephemeral.streaming_thinking_entry_index, Some(3));
+    assert_eq!(
+        session.core.ephemeral.streaming_thinking_entry_index,
+        Some(3)
+    );
 }
 
 #[rstest::rstest]
@@ -3608,7 +3665,10 @@ fn insert_entry_at_does_not_shift_thinking_index_before_insertion() {
     session.insert_entry_at(1, ChatEntry::system("inserted"));
 
     // Then thinking index stays at 0.
-    assert_eq!(session.core.ephemeral.streaming_thinking_entry_index, Some(0));
+    assert_eq!(
+        session.core.ephemeral.streaming_thinking_entry_index,
+        Some(0)
+    );
 }
 
 #[rstest::rstest]
@@ -3619,14 +3679,30 @@ fn insert_entry_at_shifts_tool_result_indices() {
     session.push_entry(ChatEntry::user("b")); // idx 1
     session.push_entry(ChatEntry::user("c")); // idx 2
     session.push_entry(ChatEntry::user("d")); // idx 3
-    session.push_entry(ChatEntry::tool_result("tr-1", "bash", "ok", ToolResultStatus::Success)); // idx 4
-    session.core.ephemeral.streaming_tool_result_indices.insert("tr-1".to_owned(), 4);
+    session.push_entry(ChatEntry::tool_result(
+        "tr-1",
+        "bash",
+        "ok",
+        ToolResultStatus::Success,
+    )); // idx 4
+    session
+        .core
+        .ephemeral
+        .streaming_tool_result_indices
+        .insert("tr-1".to_owned(), 4);
 
     // When inserting at index 2.
     session.insert_entry_at(2, ChatEntry::system("inserted"));
 
     // Then tool result index shifted from 4 to 5.
-    assert_eq!(session.core.ephemeral.streaming_tool_result_indices.get("tr-1"), Some(&5));
+    assert_eq!(
+        session
+            .core
+            .ephemeral
+            .streaming_tool_result_indices
+            .get("tr-1"),
+        Some(&5)
+    );
 }
 
 #[rstest::rstest]
@@ -3634,14 +3710,30 @@ fn insert_entry_at_does_not_shift_tool_result_indices_before_insertion() {
     // Given a session with tool result index at position 1.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // idx 0
-    session.push_entry(ChatEntry::tool_result("tr-1", "bash", "ok", ToolResultStatus::Success)); // idx 1
-    session.core.ephemeral.streaming_tool_result_indices.insert("tr-1".to_owned(), 1);
+    session.push_entry(ChatEntry::tool_result(
+        "tr-1",
+        "bash",
+        "ok",
+        ToolResultStatus::Success,
+    )); // idx 1
+    session
+        .core
+        .ephemeral
+        .streaming_tool_result_indices
+        .insert("tr-1".to_owned(), 1);
 
     // When inserting at index 2 (after the tool result).
     session.insert_entry_at(2, ChatEntry::system("inserted"));
 
     // Then tool result index stays at 1.
-    assert_eq!(session.core.ephemeral.streaming_tool_result_indices.get("tr-1"), Some(&1));
+    assert_eq!(
+        session
+            .core
+            .ephemeral
+            .streaming_tool_result_indices
+            .get("tr-1"),
+        Some(&1)
+    );
 }
 
 #[rstest::rstest]
@@ -3652,13 +3744,20 @@ fn insert_entry_at_shifts_tool_call_indices() {
     session.push_entry(ChatEntry::user("b")); // idx 1
     session.push_entry(ChatEntry::user("c")); // idx 2
     session.push_entry(ChatEntry::tool_call("tc-1", "bash", "{}")); // idx 3
-    session.core.ephemeral.streaming_tool_call_indices.insert(0, 3);
+    session
+        .core
+        .ephemeral
+        .streaming_tool_call_indices
+        .insert(0, 3);
 
     // When inserting at index 1.
     session.insert_entry_at(1, ChatEntry::system("inserted"));
 
     // Then tool call history index shifted from 3 to 4.
-    assert_eq!(session.core.ephemeral.streaming_tool_call_indices.get(&0), Some(&4));
+    assert_eq!(
+        session.core.ephemeral.streaming_tool_call_indices.get(&0),
+        Some(&4)
+    );
 }
 
 #[rstest::rstest]
@@ -3667,13 +3766,20 @@ fn insert_entry_at_does_not_shift_tool_call_indices_before_insertion() {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // idx 0
     session.push_entry(ChatEntry::tool_call("tc-1", "bash", "{}")); // idx 1
-    session.core.ephemeral.streaming_tool_call_indices.insert(0, 1);
+    session
+        .core
+        .ephemeral
+        .streaming_tool_call_indices
+        .insert(0, 1);
 
     // When inserting at index 3 (after the tool call).
     session.insert_entry_at(3, ChatEntry::system("inserted"));
 
     // Then tool call history index stays at 1.
-    assert_eq!(session.core.ephemeral.streaming_tool_call_indices.get(&0), Some(&1));
+    assert_eq!(
+        session.core.ephemeral.streaming_tool_call_indices.get(&0),
+        Some(&1)
+    );
 }
 
 #[rstest::rstest]
@@ -3707,7 +3813,10 @@ fn insert_entry_at_clamps_index_beyond_length() {
     assert_eq!(result, 2);
     assert_eq!(session.history().len(), 3);
     // And the inserted entry is at the end.
-    assert!(matches!(session.history()[2].kind, ChatEntryKind::System(_)));
+    assert!(matches!(
+        session.history()[2].kind,
+        ChatEntryKind::System(_)
+    ));
 }
 
 #[rstest::rstest]
@@ -3718,15 +3827,25 @@ fn insert_entry_at_shifts_multiple_indices() {
     session.push_entry(ChatEntry::assistant("streaming")); // idx 1
     session.core.ephemeral.streaming_entry_index = Some(1);
     session.core.ephemeral.streaming_thinking_entry_index = Some(1);
-    session.core.ephemeral.streaming_tool_call_indices.insert(0, 1);
+    session
+        .core
+        .ephemeral
+        .streaming_tool_call_indices
+        .insert(0, 1);
 
     // When inserting at index 0.
     session.insert_entry_at(0, ChatEntry::system("inserted"));
 
     // Then ALL indices at or after insertion point are shifted.
     assert_eq!(session.core.ephemeral.streaming_entry_index, Some(2));
-    assert_eq!(session.core.ephemeral.streaming_thinking_entry_index, Some(2));
-    assert_eq!(session.core.ephemeral.streaming_tool_call_indices.get(&0), Some(&2));
+    assert_eq!(
+        session.core.ephemeral.streaming_thinking_entry_index,
+        Some(2)
+    );
+    assert_eq!(
+        session.core.ephemeral.streaming_tool_call_indices.get(&0),
+        Some(&2)
+    );
 }
 
 // ===========================================================================
@@ -4309,7 +4428,11 @@ fn toggle_ignored_block_does_not_cross_pinned_entry() {
     // not crossing the pinned entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::assistant("a").with_ignored(true)); // idx 0
-    session.push_entry(ChatEntry::assistant("b").with_ignored(true).with_pin(PinPosition::Top)); // idx 1
+    session.push_entry(
+        ChatEntry::assistant("b")
+            .with_ignored(true)
+            .with_pin(PinPosition::Top),
+    ); // idx 1
     session.push_entry(ChatEntry::assistant("c").with_ignored(true)); // idx 2
 
     // When toggling on ignored-C (idx 2).
@@ -4413,7 +4536,7 @@ fn restore_token_ledger_sets_records() {
 fn restore_updated_at_sets_timestamp() {
     // Given a session.
     let mut session = ChatSessionState::new();
-    let original = session.updated_at().clone();
+    let original = *session.updated_at();
 
     // When restoring updated_at to a different time.
     let ts = jiff::Timestamp::UNIX_EPOCH;
@@ -4442,7 +4565,7 @@ fn touch_updates_timestamp() {
     // Given a session with a known updated_at.
     let mut session = ChatSessionState::new();
     session.restore_updated_at(jiff::Timestamp::UNIX_EPOCH);
-    let before = session.updated_at().clone();
+    let before = *session.updated_at();
 
     // When touching.
     session.touch();
@@ -4457,7 +4580,9 @@ fn strategy_state_returns_data() {
     let mut session = ChatSessionState::new();
     let key = PromptStrategyId::passthrough();
     let val = StrategyState::Compaction(CompactionSessionData::default());
-    session.strategy_state_mut().insert(key.clone(), val.clone());
+    session
+        .strategy_state_mut()
+        .insert(key.clone(), val.clone());
 
     // Then the immutable accessor returns the same data.
     assert!(session.strategy_state().contains_key(&key));
@@ -4470,7 +4595,10 @@ fn strategy_state_mut_allows_modification() {
 
     // When inserting via mutable accessor.
     let key = PromptStrategyId::passthrough();
-    session.strategy_state_mut().insert(key.clone(), StrategyState::Compaction(CompactionSessionData::default()));
+    session.strategy_state_mut().insert(
+        key.clone(),
+        StrategyState::Compaction(CompactionSessionData::default()),
+    );
 
     // Then the immutable accessor sees the change.
     assert_eq!(session.strategy_state().len(), 1);
@@ -4480,7 +4608,9 @@ fn strategy_state_mut_allows_modification() {
 fn blobs_returns_data() {
     // Given a session with a blob entry.
     let mut session = ChatSessionState::new();
-    session.blobs_mut().insert("key".to_owned(), serde_json::json!({"v": 42}));
+    session
+        .blobs_mut()
+        .insert("key".to_owned(), serde_json::json!({"v": 42}));
 
     // Then the immutable accessor returns it.
     assert!(session.blobs().contains_key("key"));
@@ -4492,7 +4622,9 @@ fn blobs_mut_allows_modification() {
     let mut session = ChatSessionState::new();
 
     // When inserting via mutable accessor.
-    session.blobs_mut().insert("k".to_owned(), serde_json::json!(true));
+    session
+        .blobs_mut()
+        .insert("k".to_owned(), serde_json::json!(true));
 
     // Then the immutable accessor sees it.
     assert_eq!(session.blobs().len(), 1);
@@ -4557,9 +4689,9 @@ fn enqueue_front_puts_item_at_front_of_queue() {
     ));
 
     // When enqueuing a CompactionNeeded at the front.
-    session.enqueue_front(crate::feat::session::queue_item::QueueItem::CompactionNeeded {
-        compact_all: false,
-    });
+    session.enqueue_front(
+        crate::feat::session::queue_item::QueueItem::CompactionNeeded { compact_all: false },
+    );
 
     // Then dequeue returns CompactionNeeded first.
     let front = session.dequeue();
