@@ -24,7 +24,7 @@ use crate::protocol::ChatEntry;
 /// Returns the tool definition for `session_query`.
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
-        name: "session_query".to_owned(),
+        name: "judge_session_query".to_owned(),
         description: "Search the origin session's message history for relevant entries. \
             Use this to inspect what the agent has done so far."
             .to_owned(),
@@ -200,7 +200,7 @@ mod tests {
     fn make_call(query: &str) -> ToolCall {
         ToolCall {
             id: "test-call".to_owned(),
-            name: "session_query".to_owned(),
+            name: "judge_session_query".to_owned(),
             arguments: format!(r#"{{"query": "{query}"}}"#),
         }
     }
@@ -297,7 +297,7 @@ auto_reset: None,
         // When querying with empty string.
         let call = ToolCall {
             id: "test-call".to_owned(),
-            name: "session_query".to_owned(),
+            name: "judge_session_query".to_owned(),
             arguments: r#"{"query": ""}"#.to_owned(),
         };
         let result = super::execute(call, ctx).await;

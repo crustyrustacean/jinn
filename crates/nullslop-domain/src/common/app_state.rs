@@ -333,6 +333,7 @@ impl ScopeStack {
             let scope = match section {
                 SidebarSectionId::Persona => FocusScope::SidebarPersona,
                 SidebarSectionId::Pins => FocusScope::SidebarPins,
+                SidebarSectionId::TaskList => return, // non-interactive section
                 SidebarSectionId::Sessions => FocusScope::SidebarSessions,
             };
             self.stack.pop();

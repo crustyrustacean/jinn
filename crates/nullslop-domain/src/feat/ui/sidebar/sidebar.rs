@@ -9,7 +9,7 @@ use ratatui::widgets::Block;
 use super::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
-use super::{persona_section, pins, sessions};
+use super::{persona_section, pins, sessions, task_list_section};
 use crate::common::app_state::AppState;
 
 /// The sidebar container.
@@ -170,6 +170,7 @@ fn dispatch_navigate(
     match section {
         SidebarSectionId::Persona => persona_section::navigate(intent, state),
         SidebarSectionId::Pins => pins::navigate(intent, state),
+        SidebarSectionId::TaskList => task_list_section::navigate(intent, state),
         SidebarSectionId::Sessions => sessions::navigate(intent, state),
     }
 }
@@ -177,7 +178,8 @@ fn dispatch_navigate(
 fn next_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
     match id {
         SidebarSectionId::Persona => Some(SidebarSectionId::Pins),
-        SidebarSectionId::Pins => Some(SidebarSectionId::Sessions),
+        SidebarSectionId::Pins => Some(SidebarSectionId::TaskList),
+        SidebarSectionId::TaskList => Some(SidebarSectionId::Sessions),
         SidebarSectionId::Sessions => None,
     }
 }
@@ -186,7 +188,8 @@ fn prev_section(id: SidebarSectionId) -> Option<SidebarSectionId> {
     match id {
         SidebarSectionId::Persona => None,
         SidebarSectionId::Pins => Some(SidebarSectionId::Persona),
-        SidebarSectionId::Sessions => Some(SidebarSectionId::Pins),
+        SidebarSectionId::TaskList => Some(SidebarSectionId::Pins),
+        SidebarSectionId::Sessions => Some(SidebarSectionId::TaskList),
     }
 }
 
@@ -194,6 +197,8 @@ fn section_has_content(id: SidebarSectionId, state: &AppState) -> bool {
     match id {
         SidebarSectionId::Persona => true,
         SidebarSectionId::Pins => !state.sorted_pinned_ids().is_empty(),
+        // TaskList is always skipped by navigation — render-only.
+        SidebarSectionId::TaskList => false,
         SidebarSectionId::Sessions => !state.session.is_empty(),
     }
 }
@@ -202,6 +207,7 @@ pub(crate) fn clear_cursor(id: SidebarSectionId, state: &mut AppState) {
     match id {
         SidebarSectionId::Persona => state.frontend.persona_section.cursor = None,
         SidebarSectionId::Pins => state.frontend.pins.clear_selection(),
+        SidebarSectionId::TaskList => { /* no-op: non-interactive section */ }
         SidebarSectionId::Sessions => state.frontend.sessions_section.selected_index = None,
     }
 }
@@ -210,6 +216,7 @@ fn receive_cursor(id: SidebarSectionId, enter_from: EnterFrom, state: &mut AppSt
     match id {
         SidebarSectionId::Persona => persona_section::receive_cursor(state, enter_from),
         SidebarSectionId::Pins => pins::receive_cursor(state, enter_from),
+        SidebarSectionId::TaskList => task_list_section::receive_cursor(state, enter_from),
         SidebarSectionId::Sessions => sessions::receive_cursor(state, enter_from),
     }
 }
@@ -219,6 +226,7 @@ fn section_has_cursor(id: SidebarSectionId, state: &AppState) -> bool {
     match id {
         SidebarSectionId::Persona => state.frontend.persona_section.cursor.is_some(),
         SidebarSectionId::Pins => state.frontend.pins.selected_id().is_some(),
+        SidebarSectionId::TaskList => false,
         SidebarSectionId::Sessions => state.frontend.sessions_section.selected_index.is_some(),
     }
 }
