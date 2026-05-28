@@ -682,6 +682,7 @@ fn load_skill_picker_entries(state: &mut AppState) {
                 search_text: format!("{name} {description}"),
                 name,
                 description,
+                body: skill.body.clone(),
                 enabled: !disabled.contains(&skill.name),
                 theme: theme.clone(),
             }

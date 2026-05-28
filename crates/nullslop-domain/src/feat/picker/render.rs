@@ -1,6 +1,7 @@
 //! Picker rendering for persona and theme pickers.
 
 use crate::common::app_state::AppState;
+use nullslop_selection_widget::PreviewSelectionWidget;
 use nullslop_selection_widget::SelectionWidget;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -89,7 +90,10 @@ pub fn render_tool_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     widget.render(frame, area);
 }
 
-/// Renders the skill picker overlay.
+/// Renders the skill picker overlay with a preview pane.
+///
+/// Uses [`PreviewSelectionWidget`] to show the selected skill's markdown body
+/// in a split pane (vertical on wide terminals, horizontal on narrow ones).
 pub fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let enabled_count = state
         .frontend
@@ -102,7 +106,7 @@ pub fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) 
     let footer = Line::from(format!(
         " TAB toggle \u{00b7} {enabled_count}/{total} enabled \u{00b7} Enter confirm \u{00b7} ESC cancel "
     ));
-    let widget = SelectionWidget::new(&state.frontend.skill_picker)
+    let widget = PreviewSelectionWidget::new(&state.frontend.skill_picker)
         .title(Line::from(" Skills "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(footer);
