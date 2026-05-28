@@ -392,4 +392,49 @@ mod tests {
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].content, "parent context");
     }
+
+    // --- Tests for load_project_context_files_sync ---
+
+    #[rstest::rstest]
+    fn sync_load_finds_agents_md() {
+        // Given a temp directory with AGENTS.md.
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(dir.path().join("AGENTS.md"), "# Sync Test").expect("write");
+
+        // When loading context files synchronously.
+        let files = load_project_context_files_sync(dir.path());
+
+        // Then the file is found.
+        assert_eq!(files.len(), 1);
+        assert!(files[0].path.ends_with("AGENTS.md"));
+        assert_eq!(files[0].content, "# Sync Test");
+    }
+
+    #[rstest::rstest]
+    fn sync_load_returns_empty_for_missing() {
+        // Given a directory with no context files.
+        let dir = tempfile::TempDir::new().expect("temp dir");
+
+        // When loading context files synchronously.
+        let files = load_project_context_files_sync(dir.path());
+
+        // Then no files are found.
+        assert!(files.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn sync_load_finds_file_in_parent() {
+        // Given parent/AGENTS.md and child/ as CWD.
+        let parent = tempfile::TempDir::new().expect("temp dir");
+        std::fs::write(parent.path().join("AGENTS.md"), "parent sync context").expect("write");
+        let child = parent.path().join("subdir");
+        std::fs::create_dir_all(&child).expect("create");
+
+        // When loading from child synchronously.
+        let files = load_project_context_files_sync(&child);
+
+        // Then the parent's file is found.
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].content, "parent sync context");
+    }
 }
