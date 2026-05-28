@@ -1,9 +1,9 @@
 //! Generic `HistoryWorkerActor` — wraps any [`HistoryWorker`] as a bus actor.
 //!
 //! Subscribes to [`HistoryAppended`] events. On each event:
-//! 1. Checks exclusion criteria (judge session, auto-compaction pending)
+//! 1. Checks exclusion criteria (judge session)
 //! 2. Acquires a brief read lock, clones `history.to_vec()`, drops lock
-//! 3. Calls `worker.evaluate(&history_snapshot)` outside any lock
+//! 3. Spawns a tokio task for `worker.evaluate(history_snapshot).await`
 //! 4. If mutations are produced, emits [`SubmitHistoryMutations`]
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
@@ -48,7 +48,7 @@ impl<H: HistoryWorker + Clone> Actor for HistoryWorkerActor<H> {
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Event(Event::HistoryAppended(ref payload)) => {
-                self.handle_history_appended(payload, ctx);
+                self.handle_history_appended(payload, ctx).await;
             }
             ActorEnvelope::Command(_)
             | ActorEnvelope::Event(_)
@@ -59,17 +59,18 @@ impl<H: HistoryWorker + Clone> Actor for HistoryWorkerActor<H> {
 }
 
 impl<H: HistoryWorker> HistoryWorkerActor<H> {
-    pub(crate) fn handle_history_appended(&self, event: &HistoryAppended, ctx: &ActorContext) {
-        // Skip judge sessions and sessions with pending auto-compaction.
+    pub(crate) async fn handle_history_appended(
+        &self,
+        event: &HistoryAppended,
+        ctx: &ActorContext,
+    ) {
+        // Skip judge sessions.
         {
             let state = self.state.read();
             let Some(session) = state.session.get(&event.session_id) else {
                 return;
             };
             if session.is_judge() {
-                return;
-            }
-            if session.is_auto_compaction_requested() {
                 return;
             }
         }
@@ -83,8 +84,8 @@ impl<H: HistoryWorker> HistoryWorkerActor<H> {
             session.history().to_vec()
         };
 
-        // Run heuristic evaluation outside any lock.
-        let mutations = self.worker.evaluate(&history_snapshot);
+        // Run heuristic evaluation outside any lock (async).
+        let mutations = self.worker.evaluate(history_snapshot).await;
         if mutations.is_empty() {
             return;
         }
