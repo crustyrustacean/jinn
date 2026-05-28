@@ -15,21 +15,18 @@
 
 //! Queue actor — sole owner of turn dispatch queue consumption.
 //!
-//! Subscribes to [`SessionPhaseChanged`] events and [`EnqueueCompaction`] commands.
+//! Subscribes to [`SessionPhaseChanged`] events.
 //! When a session transitions to `Idle`, pops the next item from the turn queue
-//! and dispatches it. When [`EnqueueCompaction`] arrives and the session is idle,
-//! dispatches compaction immediately; otherwise enqueues for later.
+//! and dispatches it.
 //!
 //! # Dispatch behavior
 //!
 //! - `UserMessage` → push entry, set title, begin sending, call `assemble_prompt()` + emit `SendToLlmProvider`
 //! - `ToolContinuation` → call `assemble_prompt()` + emit `SendToLlmProvider`
-//! - `CompactionNeeded` → emit `CompactContext`
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
-use crate::feat::compaction_actor::protocol::command::{CompactContext, EnqueueCompaction};
 use crate::feat::context::assemble::assemble_prompt;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::feat::provider::protocol::command::SendToLlmProvider;
@@ -65,7 +62,6 @@ impl Actor for QueueActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.set_description("Dispatches queued turns when sessions become idle");
         ctx.subscribe_event::<SessionPhaseChanged>();
-        ctx.subscribe_command::<EnqueueCompaction>();
 
         Self {
             state: deps.state,
@@ -77,9 +73,6 @@ impl Actor for QueueActor {
         match msg {
             ActorEnvelope::Event(Event::SessionPhaseChanged(payload)) => {
                 self.handle_session_phase_changed(&payload, ctx).await;
-            }
-            ActorEnvelope::Command(Command::EnqueueCompaction(payload)) => {
-                self.handle_enqueue_compaction(&payload, ctx).await;
             }
             ActorEnvelope::Command(_)
             | ActorEnvelope::Event(_)
@@ -99,12 +92,6 @@ impl QueueActor {
         match (payload.old_phase, payload.new_phase) {
             (_, SessionPhase::Idle) => {
                 self.handle_idle_transition(&payload.session_id, ctx).await;
-            }
-            (SessionPhase::Compacting, SessionPhase::Sending) => {
-                // Auto-compaction continuation: session has already transitioned
-                // to Sending by the session actor before emitting this event.
-                self.dispatch_compaction_continuation(&payload.session_id, ctx)
-                    .await;
             }
             _ => {}
         }
@@ -132,32 +119,10 @@ impl QueueActor {
             QueueItem::ToolContinuation => {
                 self.dispatch_tool_continuation(session_id, ctx).await;
             }
-            QueueItem::CompactionNeeded { compact_all } => {
-                self.dispatch_compaction(session_id, compact_all, ctx).await;
-            }
+
         }
     }
 
-    /// Handle `EnqueueCompaction` — if idle, dispatch immediately; otherwise enqueue.
-    async fn handle_enqueue_compaction(&self, payload: &EnqueueCompaction, ctx: &ActorContext) {
-        let is_idle = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&payload.session_id);
-            if matches!(session.phase(), SessionPhase::Idle) {
-                true
-            } else {
-                session.enqueue(QueueItem::CompactionNeeded {
-                    compact_all: payload.compact_all,
-                });
-                false
-            }
-        };
-
-        if is_idle {
-            self.dispatch_compaction(&payload.session_id, payload.compact_all, ctx)
-                .await;
-        }
-    }
 
     /// Dispatch a user message: push to history, set title, begin sending,
     /// assemble prompt, emit SendToLlmProvider, emit ChatEntrySubmitted, emit PersistSession.
@@ -263,90 +228,7 @@ impl QueueActor {
         }
     }
 
-    /// Dispatch a compaction continuation: assemble prompt and emit SendToLlmProvider.
-    ///
-    /// This is used after auto-compaction when the session has been transitioned
-    /// to Sending with a continuation user entry already pushed.
-    #[allow(clippy::unused_async)]
-    async fn dispatch_compaction_continuation(
-        &self,
-        session_id: &crate::protocol::SessionId,
-        ctx: &ActorContext,
-    ) {
-        let phase = {
-            let state = self.state.read();
-            state.session(session_id).phase()
-        };
 
-        if !matches!(phase, SessionPhase::Sending) {
-            tracing::warn!(
-                session_id = ?session_id,
-                current_phase = ?phase,
-                "SessionPhaseChanged(Compacting → Sending) but session is not Sending — skipping continuation"
-            );
-            return;
-        }
-
-        let assembled = {
-            let guard = self.state.read();
-            assemble_prompt(&guard, session_id, &self.counter, None)
-        };
-
-        let provider_id = {
-            let state = self.state.read();
-            let model = state.session(session_id).profile().model.clone();
-            if model == crate::feat::provider_infra::NO_PROVIDER_ID {
-                None
-            } else {
-                Some(model)
-            }
-        };
-
-        let estimated_tokens = assembled.estimated_tokens();
-
-        if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
-            session_id: session_id.clone(),
-            messages: assembled.messages,
-            provider_id,
-            estimated_tokens,
-            tool_definitions: assembled.tool_definitions,
-        })) {
-            tracing::warn!(
-                err = ?e,
-                "queue-actor failed to emit SendToLlmProvider from compaction continuation"
-            );
-        }
-    }
-
-    /// Dispatch compaction: emit CompactContext if session is Idle.
-    #[allow(clippy::unused_async)]
-    async fn dispatch_compaction(
-        &self,
-        session_id: &crate::protocol::SessionId,
-        compact_all: bool,
-        ctx: &ActorContext,
-    ) {
-        let phase = {
-            let state = self.state.read();
-            state.session(session_id).phase()
-        };
-
-        if !matches!(phase, SessionPhase::Idle) {
-            tracing::warn!(
-                session_id = ?session_id,
-                current_phase = ?phase,
-                "CompactionNeeded dispatched but session is not Idle — skipping"
-            );
-            return;
-        }
-
-        if let Err(e) = ctx.send_command(Command::CompactContext(CompactContext {
-            session_id: session_id.clone(),
-            compact_all,
-        })) {
-            tracing::warn!(err = ?e, "queue-actor failed to emit CompactContext");
-        }
-    }
 }
 
 #[cfg(test)]
@@ -411,41 +293,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn session_phase_changed_idle_pops_compaction_needed_from_queue() {
-        // Given a session with a queued CompactionNeeded item in Idle phase.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.enqueue(QueueItem::CompactionNeeded { compact_all: false });
-            state.session.active_session_id().clone()
-        };
-
-        // When handling SessionPhaseChanged with Idle phase.
-        let payload = SessionPhaseChanged {
-            session_id: session_id.clone(),
-            old_phase: SessionPhase::Sending,
-            new_phase: SessionPhase::Idle,
-        };
-        actor.handle_session_phase_changed(&payload, &ctx).await;
-
-        // Then CompactContext was emitted.
-        let commands = sink.commands();
-        let has_compact = commands
-            .iter()
-            .any(|c| matches!(c, Command::CompactContext(_)));
-        assert!(
-            has_compact,
-            "expected CompactContext command for queued CompactionNeeded"
-        );
-
-        // And the queue is empty.
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.queue_len(), 0);
-    }
 
     #[tokio::test]
     async fn session_phase_changed_non_idle_does_not_pop_queue() {
@@ -507,66 +354,7 @@ mod tests {
         assert!(commands.is_empty(), "expected no commands for empty queue");
     }
 
-    #[tokio::test]
-    async fn enqueue_compaction_dispatches_immediately_when_idle() {
-        // Given a session in Idle phase.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let state = actor.state.read();
-            state.session.active_session_id().clone()
-        };
 
-        // When handling EnqueueCompaction.
-        let payload = EnqueueCompaction {
-            session_id: session_id.clone(),
-            compact_all: false,
-        };
-        actor.handle_enqueue_compaction(&payload, &ctx).await;
-
-        // Then CompactContext was emitted directly (not queued).
-        let commands = sink.commands();
-        let has_compact = commands
-            .iter()
-            .any(|c| matches!(c, Command::CompactContext(_)));
-        assert!(has_compact, "expected CompactContext for idle session");
-
-        // And the queue is still empty (was never enqueued).
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.queue_len(), 0);
-    }
-
-    #[tokio::test]
-    async fn enqueue_compaction_queues_when_not_idle() {
-        // Given a session in Sending phase.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            state.active_session_mut().begin_sending();
-            state.session.active_session_id().clone()
-        };
-
-        // When handling EnqueueCompaction.
-        let payload = EnqueueCompaction {
-            session_id: session_id.clone(),
-            compact_all: false,
-        };
-        actor.handle_enqueue_compaction(&payload, &ctx).await;
-
-        // Then no CompactContext was emitted.
-        let commands = sink.commands();
-        let has_compact = commands
-            .iter()
-            .any(|c| matches!(c, Command::CompactContext(_)));
-        assert!(!has_compact, "expected no CompactContext for busy session");
-
-        // And the queue has the item.
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(session.queue_len(), 1);
-    }
 
     #[tokio::test]
     async fn dispatch_user_message_emits_chat_entry_submitted() {
@@ -637,30 +425,6 @@ mod tests {
         assert!(matches!(session.phase(), SessionPhase::Sending));
     }
 
-    #[tokio::test]
-    async fn dispatch_compaction_skips_when_not_idle() {
-        // Given a session in Sending phase.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            state.active_session_mut().begin_sending();
-            state.session.active_session_id().clone()
-        };
-
-        // When dispatching compaction.
-        actor.dispatch_compaction(&session_id, false, &ctx).await;
-
-        // Then no CompactContext was emitted.
-        let commands = sink.commands();
-        let has_compact = commands
-            .iter()
-            .any(|c| matches!(c, Command::CompactContext(_)));
-        assert!(
-            !has_compact,
-            "expected no CompactContext for non-idle session"
-        );
-    }
 
     #[tokio::test]
     async fn dispatch_tool_continuation_emits_send_to_llm_provider() {
@@ -685,69 +449,7 @@ mod tests {
         assert!(has_send, "expected SendToLlmProvider command");
     }
 
-    #[tokio::test]
-    async fn session_phase_changed_compacting_to_sending_dispatches_continuation() {
-        // Given a session in Sending phase with history (simulating auto-compaction
-        // where handle_end_compaction pushed the continuation entry and set Sending).
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("previous message"));
-            session.push_entry(ChatEntry::user("A compaction has just occurred. Continue"));
-            session.begin_sending();
-            state.session.active_session_id().clone()
-        };
 
-        // When handling SessionPhaseChanged(Compacting → Sending).
-        let payload = SessionPhaseChanged {
-            session_id: session_id.clone(),
-            old_phase: SessionPhase::Compacting,
-            new_phase: SessionPhase::Sending,
-        };
-        actor.handle_session_phase_changed(&payload, &ctx).await;
-
-        // Then SendToLlmProvider was emitted for the continuation.
-        let commands = sink.commands();
-        let has_send = commands
-            .iter()
-            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(
-            has_send,
-            "expected SendToLlmProvider for Compacting → Sending continuation"
-        );
-    }
-
-    #[tokio::test]
-    async fn session_phase_changed_compacting_to_sending_skips_when_not_sending() {
-        // Given a session in Idle phase (not Sending — should not happen in practice
-        // but we guard against it).
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let state = actor.state.read();
-            state.session.active_session_id().clone()
-        };
-
-        // When handling SessionPhaseChanged(Compacting → Sending) but session is Idle.
-        let payload = SessionPhaseChanged {
-            session_id: session_id.clone(),
-            old_phase: SessionPhase::Compacting,
-            new_phase: SessionPhase::Sending,
-        };
-        actor.handle_session_phase_changed(&payload, &ctx).await;
-
-        // Then no SendToLlmProvider was emitted.
-        let commands = sink.commands();
-        let has_send = commands
-            .iter()
-            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(
-            !has_send,
-            "expected no SendToLlmProvider when session is not Sending"
-        );
-    }
 
     #[tokio::test]
     async fn session_phase_changed_idle_to_sending_does_not_dispatch_continuation() {
@@ -888,69 +590,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn dispatch_compaction_continuation_provider_id_is_none_when_no_provider() {
-        // Given a session in Sending phase with history and default model.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("previous message"));
-            session.push_entry(ChatEntry::user("A compaction has just occurred. Continue"));
-            session.begin_sending();
-            state.session.active_session_id().clone()
-        };
 
-        // When dispatching a compaction continuation.
-        actor
-            .dispatch_compaction_continuation(&session_id, &ctx)
-            .await;
-
-        // Then SendToLlmProvider has provider_id = None.
-        let commands = sink.commands();
-        let provider_id: Option<String> = commands.iter().find_map(|c| match c {
-            Command::SendToLlmProvider(cmd) => cmd.provider_id.clone(),
-            _ => None,
-        });
-        assert_eq!(
-            provider_id, None,
-            "expected provider_id None for NO_PROVIDER_ID in compaction continuation"
-        );
-    }
-
-    #[tokio::test]
-    async fn dispatch_compaction_continuation_provider_id_is_some_when_model_set() {
-        // Given a session in Sending phase with history and explicit model.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("previous message"));
-            session.push_entry(ChatEntry::user("A compaction has just occurred. Continue"));
-            session.begin_sending();
-            state.active_session_mut().set_model("compact-model".to_owned());
-            state.session.active_session_id().clone()
-        };
-
-        // When dispatching a compaction continuation.
-        actor
-            .dispatch_compaction_continuation(&session_id, &ctx)
-            .await;
-
-        // Then SendToLlmProvider has provider_id = Some("compact-model").
-        let commands = sink.commands();
-        let provider_id: Option<String> = commands.iter().find_map(|c| match c {
-            Command::SendToLlmProvider(cmd) => cmd.provider_id.clone(),
-            _ => None,
-        });
-        assert_eq!(
-            provider_id,
-            Some("compact-model".to_owned()),
-            "expected provider_id Some(\"compact-model\") in compaction continuation"
-        );
-    }
 
     #[tokio::test]
     async fn handle_processes_session_phase_changed_event() {
@@ -989,36 +629,4 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn handle_processes_enqueue_compaction_command() {
-        // Given a session in Idle phase.
-        let mut actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let state = actor.state.read();
-            state.session.active_session_id().clone()
-        };
-
-        // When calling handle with an ActorEnvelope::Command(EnqueueCompaction).
-        let payload = EnqueueCompaction {
-            session_id: session_id.clone(),
-            compact_all: false,
-        };
-        actor
-            .handle(
-                ActorEnvelope::Command(Command::EnqueueCompaction(payload)),
-                &ctx,
-            )
-            .await;
-
-        // Then CompactContext was emitted.
-        let commands = sink.commands();
-        let has_compact = commands
-            .iter()
-            .any(|c| matches!(c, Command::CompactContext(_)));
-        assert!(
-            has_compact,
-            "expected CompactContext when handle processes EnqueueCompaction"
-        );
-    }
 }

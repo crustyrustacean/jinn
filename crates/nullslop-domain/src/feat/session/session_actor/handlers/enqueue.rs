@@ -63,8 +63,6 @@ impl SessionPersistenceActor {
                 }
                 SessionPhase::Sending
                 | SessionPhase::Streaming
-                | SessionPhase::Assembling
-                | SessionPhase::Compacting
                 | SessionPhase::TearingDown => {
                     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
                         payload.entry.clone(),

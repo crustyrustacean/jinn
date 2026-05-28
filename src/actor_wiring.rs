@@ -390,22 +390,6 @@ pub fn create_core_with_actor_host(
         },
     ));
 
-    // Compaction actor.
-    actors.push(spawn::<
-        nullslop_domain::feat::compaction_actor::CompactionActor,
-    >(
-        "compaction",
-        &sink,
-        handle,
-        &counter,
-        &shutdown_tracker,
-        nullslop_domain::feat::compaction_actor::CompactionActorDeps {
-            state: state.clone(),
-            services: services.clone(),
-            handle: handle.clone(),
-        },
-    ));
-
     // Queue actor — dispatches queued turns when sessions become idle.
     actors.push(spawn::<nullslop_domain::feat::queue_actor::QueueActor>(
         "queue",

@@ -1,4 +1,3 @@
-pub(super) mod compaction;
 pub(super) mod context;
 pub(super) mod enqueue;
 pub(super) mod lifecycle;

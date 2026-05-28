@@ -20,7 +20,6 @@ use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
 use crate::feat::chat_input::slash_command::SlashCommand;
 use crate::feat::chat_input::state::autocomplete::AutocompleteState;
-use crate::feat::compaction_actor::protocol::command::EnqueueCompaction;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::session::chat_session::SessionPhase;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
@@ -334,19 +333,12 @@ fn execute_slash_command(
     state: &mut AppState,
 ) -> IntentResult {
     match command {
-        SlashCommand::Compact => {
-            let session_id = state.session.active_session_id().clone();
-            IntentResult::with_commands(vec![Command::EnqueueCompaction(EnqueueCompaction {
-                session_id,
-                compact_all: false,
-            })])
-        }
-        SlashCommand::CompactAll => {
-            let session_id = state.session.active_session_id().clone();
-            IntentResult::with_commands(vec![Command::EnqueueCompaction(EnqueueCompaction {
-                session_id,
-                compact_all: true,
-            })])
+        SlashCommand::Compact | SlashCommand::CompactAll => {
+            // TODO: Re-implement via HistoryWorker (Phase 3)
+            let _session_id = state.session.active_session_id();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::system("Compaction is temporarily disabled during refactoring."));
+            return IntentResult::empty();
         }
         SlashCommand::New => crate::feat::session::intent::handle_session_new(state),
         SlashCommand::Workflow => {

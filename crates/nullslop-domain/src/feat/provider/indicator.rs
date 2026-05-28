@@ -67,7 +67,6 @@ impl UiElement<AppState> for StreamingIndicatorElement {
             phase,
             SessionPhase::Sending
                 | SessionPhase::Streaming
-                | SessionPhase::Compacting
                 | SessionPhase::TearingDown
         );
         if !is_lifecycle_busy && !is_phase_busy {
@@ -76,8 +75,6 @@ impl UiElement<AppState> for StreamingIndicatorElement {
 
         let label = if is_lifecycle_busy {
             " Working...".to_owned()
-        } else if matches!(phase, SessionPhase::Compacting) {
-            " Compacting...".to_owned()
         } else if matches!(phase, SessionPhase::TearingDown) {
             " Tearing down...".to_owned()
         } else if queue_len > 0 {
@@ -117,31 +114,7 @@ mod tests {
         assert_eq!(name, "streaming-indicator");
     }
 
-    #[rstest::rstest]
-    fn renders_compacting_label_during_compacting_phase() {
-        // Given a session in Compacting phase.
-        use nullslop_testutil::{buffer_row, setup_term};
 
-        let mut element = StreamingIndicatorElement::new();
-        let mut state = AppState::default();
-        state.active_session_mut().begin_compacting(vec![]);
-        let (mut terminal, area) = setup_term(30, 1);
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-        let buffer = terminal.backend().buffer().clone();
-        let row = buffer_row(&buffer, 0, 30);
-
-        // Then the label shows "Compacting...".
-        assert!(
-            row.contains("Compacting..."),
-            "expected Compacting..., got: {row}"
-        );
-    }
-
-    #[rstest::rstest]
     fn renders_working_label_during_sending_phase() {
         // Given a session in Sending phase.
         use nullslop_testutil::{buffer_row, setup_term};
