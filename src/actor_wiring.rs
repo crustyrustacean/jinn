@@ -405,7 +405,7 @@ pub fn create_core_with_actor_host(
         },
     ));
 
-    // ── History mutation workers ──────────────────────────────────────────
+    // ── History mutation workers ────────────────��─────────────────────────
     //
     // To add a new history mutation worker:
     //
@@ -424,7 +424,29 @@ pub fn create_core_with_actor_host(
     //       },
     //   ));
     //
-    // No workers are spawned by default — add them as needed.
+    // Compaction worker — summarizes conversation history into structured checkpoints.
+    {
+        use nullslop_domain::feat::compaction_worker::CompactionWorker;
+        use nullslop_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
+
+        let config = state.read().frontend.preferences.compaction.clone();
+        let compaction_prompt = state.read().context.compaction_prompt.clone();
+
+        actors.push(spawn::<HistoryWorkerActor<CompactionWorker>>(
+            "history-worker-compaction",
+            &sink, handle, &counter, &shutdown_tracker,
+            HistoryWorkerActorDeps {
+                worker: CompactionWorker {
+                    services: services.clone(),
+                    handle: handle.clone(),
+                    state: state.clone(),
+                    config,
+                    compaction_prompt,
+                },
+                state: state.clone(),
+            },
+        ));
+    }
 
     // Sidebar state actor — keeps sidebar cursor in sync after session removal.
     actors.push(spawn::<
