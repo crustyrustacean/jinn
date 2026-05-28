@@ -64,9 +64,6 @@ pub struct TuiApp {
     pub config: TuiConfig,
     /// Sidebar container with registered sections.
     pub sidebar: Sidebar,
-    /// Plugin registry for per-VM plugin dispatch.
-    #[debug(skip)]
-    pub plugin_registry: nullslop_plugin::PluginRegistry,
 }
 
 impl TuiApp {

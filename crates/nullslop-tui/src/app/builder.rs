@@ -84,7 +84,6 @@ impl TuiAppBuilder {
                 nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                 s
             },
-            plugin_registry: nullslop_plugin::PluginRegistry::new_for_tests(),
         }
     }
 }
