@@ -140,14 +140,17 @@ pub enum TaskStatus {
     Pending,
     /// Task has been completed.
     Completed,
+    /// Task has been deferred to a later phase.
+    Deferred,
 }
 
 impl TaskStatus {
     /// Returns the display indicator for this status.
     pub fn indicator(&self) -> &'static str {
         match self {
-            Self::Pending => "○",
-            Self::Completed => "✓",
+            Self::Pending => "\u{25CB}",
+            Self::Completed => "\u{2713}",
+            Self::Deferred => "\u{25BC}",
         }
     }
 }
@@ -186,11 +189,15 @@ pub enum TaskListError {
     /// The referenced task belongs to a different phase.
     #[error("task {task_id} is not in phase {phase_id}")]
     TaskNotInPhase {
-        /// The task that was referenced.
         task_id: TaskId,
-        /// The phase that was targeted.
         phase_id: PhaseId,
     },
+    /// Cannot defer a task relative to itself.
+    #[error("cannot defer task relative to itself: {0}")]
+    SelfReference(TaskId),
+    /// The task is already deferred.
+    #[error("task is already deferred: {0}")]
+    AlreadyDeferred(TaskId),
 }
 
 // ---------------------------------------------------------------------------
@@ -389,6 +396,113 @@ impl TaskList {
         Err(TaskListError::TaskNotFound(task_id.clone()))
     }
 
+    /// Defers a task by marking it as deferred and creating a pending copy.
+    ///
+    /// The source task is marked with `Deferred` status (▼) and remains in place.
+    /// A new `Pending` copy with the same description is created at the specified
+    /// position relative to a reference task. The reference task determines the
+    /// target phase.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The source task does not exist (`TaskNotFound`)
+    /// - The source task is already deferred (`AlreadyDeferred`)
+    /// - The reference task does not exist (`TaskNotFound`)
+    /// - The source and reference are the same task (`SelfReference`)
+    ///
+    /// # Panics
+    ///
+    /// Panics if internal invariants are violated (source/reference found but then missing).
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn defer_task(
+        &mut self,
+        source_task_id: &TaskId,
+        position: TaskPosition,
+    ) -> Result<TaskId, TaskListError> {
+        // Extract the reference task ID from the position.
+        let ref_task_id: &TaskId = match &position {
+            TaskPosition::After(id) | TaskPosition::Before(id) => id,
+            TaskPosition::End => {
+                return Err(TaskListError::BothAfterAndBefore);
+            }
+        };
+
+        // Validate source != reference.
+        if source_task_id == ref_task_id {
+            return Err(TaskListError::SelfReference(source_task_id.clone()));
+        }
+
+        // Find source task info (phase index, task index, description, status).
+        let mut source_info: Option<(usize, usize, String, TaskStatus)> = None;
+        for (pi, phase) in self.phases.iter().enumerate() {
+            for (ti, task) in phase.tasks.iter().enumerate() {
+                if &task.id == source_task_id {
+                    source_info = Some((pi, ti, task.description.clone(), task.status));
+                    break;
+                }
+            }
+            if source_info.is_some() {
+                break;
+            }
+        }
+
+        let (src_pi, _src_ti, src_desc, src_status) =
+            source_info.ok_or_else(|| TaskListError::TaskNotFound(source_task_id.clone()))?;
+
+        // Validate source is not already deferred.
+        if src_status == TaskStatus::Deferred {
+            return Err(TaskListError::AlreadyDeferred(source_task_id.clone()));
+        }
+
+        // Find reference task's phase.
+        let mut ref_phase_idx: Option<usize> = None;
+        for (pi, phase) in self.phases.iter().enumerate() {
+            if phase.tasks.iter().any(|t| &t.id == ref_task_id) {
+                ref_phase_idx = Some(pi);
+                break;
+            }
+        }
+
+        let target_pi =
+            ref_phase_idx.ok_or_else(|| TaskListError::TaskNotFound(ref_task_id.clone()))?;
+
+        // Mark source task as deferred.
+        self.phases[src_pi].tasks.iter_mut().find(|t| &t.id == source_task_id).expect("source was found above").status =
+            TaskStatus::Deferred;
+
+        // Generate new task ID.
+        let existing: Vec<_> = self
+            .phases
+            .iter()
+            .flat_map(|p| &p.tasks)
+            .map(|t| t.id.clone())
+            .collect();
+        let new_task_id = TaskId::new(&existing);
+
+        let new_task = Task {
+            id: new_task_id.clone(),
+            description: src_desc,
+            status: TaskStatus::Pending,
+        };
+
+        // Insert at position in target phase.
+        let phase = &mut self.phases[target_pi];
+        match &position {
+            TaskPosition::After(after_id) => {
+                let idx = phase.find_task_index(after_id).expect("ref was found above");
+                phase.tasks.insert(idx + 1, new_task);
+            }
+            TaskPosition::Before(before_id) => {
+                let idx = phase.find_task_index(before_id).expect("ref was found above");
+                phase.tasks.insert(idx, new_task);
+            }
+            TaskPosition::End => unreachable!(),
+        }
+
+        Ok(new_task_id)
+    }
+
     /// Returns the phase with the given ID, if it exists.
     pub fn get_phase(&self, phase_id: &PhaseId) -> Option<&Phase> {
         self.phases.iter().find(|p| &p.id == phase_id)
@@ -431,12 +545,22 @@ impl TaskList {
             if phase.tasks.is_empty() {
                 lines.push("  (no tasks)".to_owned());
             } else {
-                for task in &phase.tasks {
-                    let check = match task.status {
-                        TaskStatus::Pending => " ",
-                        TaskStatus::Completed => "✓",
-                    };
-                    lines.push(format!("- [{}] {} [{}]", check, task.description, task.id));
+                let visible: Vec<_> = phase
+                    .tasks
+                    .iter()
+                    .filter(|t| t.status != TaskStatus::Deferred)
+                    .collect();
+                if visible.is_empty() {
+                    lines.push("  (no tasks)".to_owned());
+                } else {
+                    for task in visible {
+                        let check = match task.status {
+                            TaskStatus::Pending => " ",
+                            TaskStatus::Completed => "\u{2713}",
+                            TaskStatus::Deferred => unreachable!(),
+                        };
+                        lines.push(format!("- [{}] {} [{}]", check, task.description, task.id));
+                    }
                 }
             }
             lines.push(String::new());
@@ -468,12 +592,22 @@ impl TaskList {
         if phase.tasks.is_empty() {
             lines.push("  (no tasks)".to_owned());
         } else {
-            for task in &phase.tasks {
-                let check = match task.status {
-                    TaskStatus::Pending => " ",
-                    TaskStatus::Completed => "✓",
-                };
-                lines.push(format!("- [{}] {} [{}]", check, task.description, task.id));
+            let visible: Vec<_> = phase
+                .tasks
+                .iter()
+                .filter(|t| t.status != TaskStatus::Deferred)
+                .collect();
+            if visible.is_empty() {
+                lines.push("  (no tasks)".to_owned());
+            } else {
+                for task in visible {
+                    let check = match task.status {
+                        TaskStatus::Pending => " ",
+                        TaskStatus::Completed => "\u{2713}",
+                        TaskStatus::Deferred => unreachable!(),
+                    };
+                    lines.push(format!("- [{}] {} [{}]", check, task.description, task.id));
+                }
             }
         }
 
