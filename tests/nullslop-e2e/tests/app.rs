@@ -188,7 +188,6 @@ impl AppWorld {
                 nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
                 s
             },
-            plugin_registry: nullslop_plugin::PluginRegistry::new_for_tests(),
         };
 
         (app, handle)
@@ -616,7 +615,6 @@ fn when_restart_app(world: &mut AppWorld) {
             nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
             s
         },
-        plugin_registry: nullslop_plugin::PluginRegistry::new_for_tests(),
     };
 
     world.app = app;

@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use crate::protocol::{ChatEntry, ChatEntryId};
 
 /// Number of entries from the end that are never hidden, regardless of `ignored`.
-pub(crate) const PROXIMITY_COUNT: usize = 10;
+pub(crate) const PROXIMITY_COUNT: usize = 3;
 
 /// Default minimum contiguous excluded entries required to collapse.
 /// Blocks with fewer entries are displayed individually.
@@ -166,6 +166,7 @@ mod tests {
     )]
 
     use super::*;
+    use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::protocol::{ChatEntry, PinPosition};
 
     fn make_entries(count: usize, ignored: bool) -> Vec<ChatEntry> {
@@ -218,9 +219,9 @@ mod tests {
     #[rstest::rstest]
     fn ignored_entries_collapsed_into_block() {
         // Given 3 non-ignored, 10 ignored, 7 non-ignored (total 20).
-        // PROXIMITY_COUNT = 10, so protected_start = 10.
-        // Ignored entries at indices 3..12. Of those, 10..12 are protected.
-        // So collapsed block is (3, 7), then 3 Entry for 10..12, then 7 Entry for 13..19.
+        // PROXIMITY_COUNT = 3, so protected_start = 17.
+        // Ignored entries at indices 3..12 are all below protected_start.
+        // So all 10 collapse into one block, then 7 non-ignored Entry.
         let mut history = make_entries(3, false);
         history.extend(make_entries(10, true));
         history.extend(make_entries(7, false));
@@ -233,22 +234,18 @@ mod tests {
             DEFAULT_MIN_COLLAPSE_COUNT,
         );
 
-        // Then: 3 Entry, 1 CollapsedIgnoredBlock(3, 7), 3 Entry(10..12), 7 Entry(13..19).
-        assert_eq!(items.len(), 3 + 1 + 3 + 7);
+        // Then: 3 Entry, 1 CollapsedIgnoredBlock(3, 10), 7 Entry(13..19).
+        assert_eq!(items.len(), 3 + 1 + 7);
         for i in 0..3 {
             assert_eq!(items[i], VisualItem::Entry(i));
         }
         assert_eq!(
             items[3],
-            VisualItem::CollapsedIgnoredBlock { start: 3, count: 7 }
+            VisualItem::CollapsedIgnoredBlock { start: 3, count: 10 }
         );
-        // Protected ignored entries 10..12 shown individually.
-        for i in 0..3 {
-            assert_eq!(items[4 + i], VisualItem::Entry(10 + i));
-        }
         // Non-ignored entries 13..19.
         for i in 0..7 {
-            assert_eq!(items[7 + i], VisualItem::Entry(13 + i));
+            assert_eq!(items[4 + i], VisualItem::Entry(13 + i));
         }
     }
 
@@ -556,5 +553,76 @@ mod tests {
             items[2],
             VisualItem::CollapsedIgnoredBlock { start: 2, count: 5 }
         );
+    }
+
+    #[rstest::rstest]
+    fn empty_assistant_does_not_split_excluded_block() {
+        // Given: 1 in-context, 2 excluded, 1 empty assistant (default),
+        // 2 excluded, 14 in-context (total 20).
+        // The empty assistant is out-of-context (is_in_context returns false
+        // for empty assistants with Default override).
+        let mut history = make_entries(1, false);
+        history.extend(make_entries(2, true));
+        history.push(ChatEntry::assistant("")); // empty assistant
+        history.extend(make_entries(2, true));
+        history.extend(make_entries(14, false));
+
+        // When building visual items.
+        let items = build_visual_items(
+            &history,
+            &HashSet::new(),
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
+
+        // Then: 1 Entry, 1 Collapsed(1, 5), 14 Entry.
+        // The empty assistant is absorbed into the surrounding excluded block.
+        assert_eq!(items.len(), 1 + 1 + 14);
+        assert_eq!(items[0], VisualItem::Entry(0));
+        assert_eq!(
+            items[1],
+            VisualItem::CollapsedIgnoredBlock { start: 1, count: 5 }
+        );
+        for i in 0..14 {
+            assert_eq!(items[2 + i], VisualItem::Entry(6 + i));
+        }
+    }
+
+    #[rstest::rstest]
+    fn pending_tool_result_does_not_split_excluded_block() {
+        // Given: 1 in-context, 2 excluded, 1 pending tool result (default),
+        // 2 excluded, 14 in-context (total 20).
+        // The pending tool result is out-of-context (is_in_context returns
+        // false for pending results with Default override).
+        let mut history = make_entries(1, false);
+        history.extend(make_entries(2, true));
+        history.push(ChatEntry::tool_result(
+            "tc-1",
+            "bash",
+            "",
+            ToolResultStatus::Pending,
+        ));
+        history.extend(make_entries(2, true));
+        history.extend(make_entries(14, false));
+
+        // When building visual items.
+        let items = build_visual_items(
+            &history,
+            &HashSet::new(),
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
+
+        // Then: 1 Entry, 1 Collapsed(1, 5), 14 Entry.
+        // The pending tool result is absorbed into the surrounding excluded block.
+        assert_eq!(items.len(), 1 + 1 + 14);
+        assert_eq!(items[0], VisualItem::Entry(0));
+        assert_eq!(
+            items[1],
+            VisualItem::CollapsedIgnoredBlock { start: 1, count: 5 }
+        );
+        for i in 0..14 {
+            assert_eq!(items[2 + i], VisualItem::Entry(6 + i));
+        }
     }
 }
