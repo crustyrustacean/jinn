@@ -10,6 +10,7 @@
 
 use super::machine::{SessionPhaseMachine, TransitionError};
 use super::phase::{Phase, PhaseKind};
+use super::transition::PhaseTransitions;
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -40,9 +41,8 @@ fn tearing_down_machine() -> SessionPhaseMachine {
     m
 }
 
-fn assert_err(err: &TransitionError, expected_from: PhaseKind, expected_trigger: &str) {
+fn assert_from(err: &TransitionError, expected_from: PhaseKind) {
     assert_eq!(err.from, expected_from, "error from phase mismatch");
-    assert_eq!(err.trigger, expected_trigger, "error trigger mismatch");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -149,9 +149,7 @@ fn sending_to_streaming_on_tool_batch() {
 fn sending_to_idle_on_tool_loop_disabled() {
     // Given a machine in Sending with tool_loop_disabled set.
     let mut m = sending_machine();
-    m.sending_phase_mut()
-        .expect("should be in Sending")
-        .tool_loop_disabled = true;
+    m.set_tool_loop_disabled();
 
     // When tool batch completes.
     let outcome = m.on_tool_batch_completed().expect("should succeed");
@@ -285,9 +283,7 @@ fn streaming_state_cleared_on_finish() {
 fn tool_loop_disabled_cleared() {
     // Given a machine in Sending with tool_loop_disabled set.
     let mut m = sending_machine();
-    m.sending_phase_mut()
-        .expect("should be sending")
-        .tool_loop_disabled = true;
+    m.set_tool_loop_disabled();
 
     // When tool batch completes.
     let outcome = m.on_tool_batch_completed().expect("should succeed");
@@ -307,21 +303,21 @@ fn tool_loop_disabled_cleared() {
 fn reject_dispatch_while_streaming() {
     let mut m = streaming_machine();
     let err = m.on_dispatch_message().unwrap_err();
-    assert_err(&err, PhaseKind::Streaming, "on_dispatch_message");
+    assert_from(&err, PhaseKind::Streaming);
 }
 
 #[test]
 fn reject_dispatch_while_sending() {
     let mut m = sending_machine();
     let err = m.on_dispatch_message().unwrap_err();
-    assert_err(&err, PhaseKind::Sending, "on_dispatch_message");
+    assert_from(&err, PhaseKind::Sending);
 }
 
 #[test]
 fn reject_dispatch_while_tearing_down() {
     let mut m = tearing_down_machine();
     let err = m.on_dispatch_message().unwrap_err();
-    assert_err(&err, PhaseKind::TearingDown, "on_dispatch_message");
+    assert_from(&err, PhaseKind::TearingDown);
 }
 
 // --- on_first_token ---
@@ -330,21 +326,21 @@ fn reject_dispatch_while_tearing_down() {
 fn reject_first_token_while_idle() {
     let mut m = idle_machine();
     let err = m.on_first_token().unwrap_err();
-    assert_err(&err, PhaseKind::Idle, "on_first_token");
+    assert_from(&err, PhaseKind::Idle);
 }
 
 #[test]
 fn reject_first_token_while_streaming() {
     let mut m = streaming_machine();
     let err = m.on_first_token().unwrap_err();
-    assert_err(&err, PhaseKind::Streaming, "on_first_token");
+    assert_from(&err, PhaseKind::Streaming);
 }
 
 #[test]
 fn reject_first_token_while_tearing_down() {
     let mut m = tearing_down_machine();
     let err = m.on_first_token().unwrap_err();
-    assert_err(&err, PhaseKind::TearingDown, "on_first_token");
+    assert_from(&err, PhaseKind::TearingDown);
 }
 
 // --- on_stream_completed_finished ---
@@ -353,21 +349,21 @@ fn reject_first_token_while_tearing_down() {
 fn reject_stream_completed_while_idle() {
     let mut m = idle_machine();
     let err = m.on_stream_completed_finished().unwrap_err();
-    assert_err(&err, PhaseKind::Idle, "on_stream_completed_finished");
+    assert_from(&err, PhaseKind::Idle);
 }
 
 #[test]
 fn reject_stream_completed_while_sending() {
     let mut m = sending_machine();
     let err = m.on_stream_completed_finished().unwrap_err();
-    assert_err(&err, PhaseKind::Sending, "on_stream_completed_finished");
+    assert_from(&err, PhaseKind::Sending);
 }
 
 #[test]
 fn reject_stream_completed_while_tearing_down() {
     let mut m = tearing_down_machine();
     let err = m.on_stream_completed_finished().unwrap_err();
-    assert_err(&err, PhaseKind::TearingDown, "on_stream_completed_finished");
+    assert_from(&err, PhaseKind::TearingDown);
 }
 
 // --- on_tool_batch_completed ---
@@ -376,21 +372,21 @@ fn reject_stream_completed_while_tearing_down() {
 fn reject_tool_batch_while_idle() {
     let mut m = idle_machine();
     let err = m.on_tool_batch_completed().unwrap_err();
-    assert_err(&err, PhaseKind::Idle, "on_tool_batch_completed");
+    assert_from(&err, PhaseKind::Idle);
 }
 
 #[test]
 fn reject_tool_batch_while_streaming() {
     let mut m = streaming_machine();
     let err = m.on_tool_batch_completed().unwrap_err();
-    assert_err(&err, PhaseKind::Streaming, "on_tool_batch_completed");
+    assert_from(&err, PhaseKind::Streaming);
 }
 
 #[test]
 fn reject_tool_batch_while_tearing_down() {
     let mut m = tearing_down_machine();
     let err = m.on_tool_batch_completed().unwrap_err();
-    assert_err(&err, PhaseKind::TearingDown, "on_tool_batch_completed");
+    assert_from(&err, PhaseKind::TearingDown);
 }
 
 // --- on_request_teardown ---
@@ -399,21 +395,21 @@ fn reject_tool_batch_while_tearing_down() {
 fn reject_teardown_while_streaming() {
     let mut m = streaming_machine();
     let err = m.on_request_teardown().unwrap_err();
-    assert_err(&err, PhaseKind::Streaming, "on_request_teardown");
+    assert_from(&err, PhaseKind::Streaming);
 }
 
 #[test]
 fn reject_teardown_while_sending() {
     let mut m = sending_machine();
     let err = m.on_request_teardown().unwrap_err();
-    assert_err(&err, PhaseKind::Sending, "on_request_teardown");
+    assert_from(&err, PhaseKind::Sending);
 }
 
 #[test]
 fn reject_teardown_while_tearing_down() {
     let mut m = tearing_down_machine();
     let err = m.on_request_teardown().unwrap_err();
-    assert_err(&err, PhaseKind::TearingDown, "on_request_teardown");
+    assert_from(&err, PhaseKind::TearingDown);
 }
 
 // --- on_teardown_complete ---
@@ -422,14 +418,14 @@ fn reject_teardown_while_tearing_down() {
 fn reject_teardown_complete_while_idle() {
     let mut m = idle_machine();
     let err = m.on_teardown_complete().unwrap_err();
-    assert_err(&err, PhaseKind::Idle, "on_teardown_complete");
+    assert_from(&err, PhaseKind::Idle);
 }
 
 #[test]
 fn reject_teardown_complete_while_streaming() {
     let mut m = streaming_machine();
     let err = m.on_teardown_complete().unwrap_err();
-    assert_err(&err, PhaseKind::Streaming, "on_teardown_complete");
+    assert_from(&err, PhaseKind::Streaming);
 }
 
 // --- cancel ---
@@ -438,21 +434,21 @@ fn reject_teardown_complete_while_streaming() {
 fn reject_cancel_while_idle() {
     let mut m = idle_machine();
     let err = m.cancel().unwrap_err();
-    assert_err(&err, PhaseKind::Idle, "cancel");
+    assert_from(&err, PhaseKind::Idle);
 }
 
 #[test]
 fn reject_cancel_while_sending() {
     let mut m = sending_machine();
     let err = m.cancel().unwrap_err();
-    assert_err(&err, PhaseKind::Sending, "cancel");
+    assert_from(&err, PhaseKind::Sending);
 }
 
 #[test]
 fn reject_cancel_while_tearing_down() {
     let mut m = tearing_down_machine();
     let err = m.cancel().unwrap_err();
-    assert_err(&err, PhaseKind::TearingDown, "cancel");
+    assert_from(&err, PhaseKind::TearingDown);
 }
 
 // --- soft_cancel ---
@@ -461,21 +457,21 @@ fn reject_cancel_while_tearing_down() {
 fn reject_soft_cancel_while_idle() {
     let mut m = idle_machine();
     let err = m.soft_cancel().unwrap_err();
-    assert_err(&err, PhaseKind::Idle, "soft_cancel");
+    assert_from(&err, PhaseKind::Idle);
 }
 
 #[test]
 fn reject_soft_cancel_while_sending() {
     let mut m = sending_machine();
     let err = m.soft_cancel().unwrap_err();
-    assert_err(&err, PhaseKind::Sending, "soft_cancel");
+    assert_from(&err, PhaseKind::Sending);
 }
 
 #[test]
 fn reject_soft_cancel_while_tearing_down() {
     let mut m = tearing_down_machine();
     let err = m.soft_cancel().unwrap_err();
-    assert_err(&err, PhaseKind::TearingDown, "soft_cancel");
+    assert_from(&err, PhaseKind::TearingDown);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -542,9 +538,7 @@ fn tool_loop_disabled_mid_cycle() {
     m.on_stream_completed_tool_use().expect("tool use");
 
     // Set tool_loop_disabled while in Sending.
-    m.sending_phase_mut()
-        .expect("should be sending")
-        .tool_loop_disabled = true;
+    m.set_tool_loop_disabled();
 
     let outcome = m.on_tool_batch_completed().expect("tool batch");
     assert_eq!(outcome.new_phase, PhaseKind::Idle);
@@ -628,7 +622,7 @@ fn sending_phase_tracks_tool_loop_disabled() {
     let mut m = sending_machine();
 
     // When the flag is set.
-    m.sending_phase_mut().expect("sending").tool_loop_disabled = true;
+    m.set_tool_loop_disabled();
 
     // Then on_tool_batch_completed reads it and goes to Idle.
     let outcome = m.on_tool_batch_completed().expect("tool batch");

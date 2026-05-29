@@ -358,6 +358,8 @@ mod tests {
                 "bash",
                 r#"{\"command\":\"ls\"}"#,
             ));
+            session.begin_sending();
+            session.begin_streaming();
             session.begin_tool_result("tc-1", "bash");
             state.session.active_session_id().clone()
         };
@@ -600,11 +602,13 @@ mod tests {
 
     #[test]
     fn on_tool_execution_started_creates_pending_result() {
-        // Given a session.
+        // Given a session in streaming state.
         let actor = test_actor();
         let session_id = {
             let mut state = actor.state.write();
-            let _ = state.active_session_mut();
+            let session = state.active_session_mut();
+            session.begin_sending();
+            session.begin_streaming();
             state.session.active_session_id().clone()
         };
 
@@ -634,6 +638,8 @@ mod tests {
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
+            session.begin_sending();
+            session.begin_streaming();
             session.begin_tool_result("tc-1", "bash");
             state.session.active_session_id().clone()
         };

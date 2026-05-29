@@ -19,9 +19,9 @@
 //! Idle ──on_request_teardown()──► TearingDown ──on_teardown_complete()──► Idle
 //! ```
 
-use std::fmt;
+use serde::{Deserialize, Serialize};
 
-use super::phase::{IdlePhase, Phase, PhaseKind, SendingPhase, StreamingPhase, TearingDownPhase};
+use super::phase::{IdlePhase, Phase, PhaseKind, SendingPhase, StreamingPhase};
 
 /// Result of a successful phase transition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,25 +43,15 @@ pub struct CancelOutcome {
 }
 
 /// Error returned when a transition is not valid from the current phase.
-#[derive(Debug)]
+///
+/// Callers should attach contextual information via `.attach()` to explain
+/// why the transition was attempted.
+#[derive(Debug, wherror::Error)]
+#[error("invalid transition from {from:?}")]
 pub struct TransitionError {
     /// The phase the machine was in when the invalid transition was attempted.
     pub from: PhaseKind,
-    /// The name of the transition method that was called.
-    pub trigger: &'static str,
 }
-
-impl fmt::Display for TransitionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "invalid transition from {:?} via {}",
-            self.from, self.trigger
-        )
-    }
-}
-
-impl std::error::Error for TransitionError {}
 
 /// Validated phase transition machine for a chat session.
 ///
@@ -73,9 +63,15 @@ impl std::error::Error for TransitionError {}
 /// Call transition methods to advance the phase. Use accessor methods
 /// (`streaming_phase`, `sending_phase_mut`, etc.) to read or modify
 /// per-phase data without transitioning.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SessionPhaseMachine {
     phase: Phase,
+    /// When `true`, `on_tool_batch_completed` transitions to `Idle`
+    /// instead of continuing the tool loop. Set by judge verdict tools
+    /// (`task_complete`, `task_incomplete`) during `Streaming` or `Sending`.
+    /// Machine-level flag that survives phase transitions.
+    /// Self-clearing on read.
+    tool_loop_disabled: bool,
 }
 
 impl SessionPhaseMachine {
@@ -95,163 +91,36 @@ impl SessionPhaseMachine {
         self.phase.kind()
     }
 
+    // ── Escape hatches (Phase 1 bridge) ──────────────────────────────
+
+    /// Force the machine to Idle regardless of current state.
+    ///
+    /// Used during Phase 1 migration to support legacy methods that bypass
+    /// the normal transition graph (e.g., `finish_sending` which does
+    /// `Sending → Idle` — not a valid machine transition).
+    ///
+    /// Will be removed once all callers go through proper transitions.
+    pub fn force_idle(&mut self) {
+        self.phase = Phase::Idle(IdlePhase);
+    }
+
     // ── Transitions ─────────────────────────────────────────────────────
 
-    /// `Idle → Sending` — a message has been dispatched to the LLM.
+    /// Disable the tool loop for this session's current turn.
     ///
-    /// # Errors
-    ///
-    /// Returns [`TransitionError`] if not in `Idle`.
-    pub fn on_dispatch_message(&mut self) -> Result<TransitionOutcome, TransitionError> {
-        let old = self.require_kind(PhaseKind::Idle, "on_dispatch_message")?;
-        self.phase = Phase::Sending(SendingPhase::default());
-        Ok(TransitionOutcome {
-            old_phase: old,
-            new_phase: PhaseKind::Sending,
-        })
+    /// After the current tool batch completes, `on_tool_batch_completed`
+    /// will transition to `Idle` instead of continuing the tool loop.
+    /// Machine-level flag that survives phase transitions.
+    /// The flag is consumed (cleared) by [`take_tool_loop_disabled`](Self::take_tool_loop_disabled).
+    pub fn set_tool_loop_disabled(&mut self) {
+        self.tool_loop_disabled = true;
     }
 
-    /// `Sending → Streaming` — the first token has arrived from the LLM.
+    /// Take the tool-loop-disabled flag, clearing it.
     ///
-    /// # Errors
-    ///
-    /// Returns [`TransitionError`] if not in `Sending`.
-    pub fn on_first_token(&mut self) -> Result<TransitionOutcome, TransitionError> {
-        let old = self.require_kind(PhaseKind::Sending, "on_first_token")?;
-        self.phase = Phase::Streaming(StreamingPhase::default());
-        Ok(TransitionOutcome {
-            old_phase: old,
-            new_phase: PhaseKind::Streaming,
-        })
-    }
-
-    /// `Streaming → Sending` — stream ended with tool use (continue tool loop).
-    ///
-    /// If `soft_cancel_requested` was set on the `StreamingPhase`, transitions
-    /// to `Idle` instead of continuing the tool loop.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TransitionError`] if not in `Streaming`.
-    pub fn on_stream_completed_tool_use(&mut self) -> Result<TransitionOutcome, TransitionError> {
-        let old = self.require_kind(PhaseKind::Streaming, "on_stream_completed_tool_use")?;
-        let Phase::Streaming(ref streaming) = self.phase else {
-            unreachable!()
-        };
-
-        if streaming.soft_cancel_requested {
-            self.phase = Phase::Idle(IdlePhase);
-            Ok(TransitionOutcome {
-                old_phase: old,
-                new_phase: PhaseKind::Idle,
-            })
-        } else {
-            self.phase = Phase::Sending(SendingPhase::default());
-            Ok(TransitionOutcome {
-                old_phase: old,
-                new_phase: PhaseKind::Sending,
-            })
-        }
-    }
-
-    /// `Streaming → Idle` — stream ended normally (no tool use).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TransitionError`] if not in `Streaming`.
-    pub fn on_stream_completed_finished(&mut self) -> Result<TransitionOutcome, TransitionError> {
-        let old = self.require_kind(PhaseKind::Streaming, "on_stream_completed_finished")?;
-        self.phase = Phase::Idle(IdlePhase);
-        Ok(TransitionOutcome {
-            old_phase: old,
-            new_phase: PhaseKind::Idle,
-        })
-    }
-
-    /// `Streaming → Idle` — stream ended with an error.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TransitionError`] if not in `Streaming`.
-    pub fn on_stream_completed_error(&mut self) -> Result<TransitionOutcome, TransitionError> {
-        let old = self.require_kind(PhaseKind::Streaming, "on_stream_completed_error")?;
-        self.phase = Phase::Idle(IdlePhase);
-        Ok(TransitionOutcome {
-            old_phase: old,
-            new_phase: PhaseKind::Idle,
-        })
-    }
-
-    /// `Streaming → Idle` — stream was canceled by the user.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TransitionError`] if not in `Streaming`.
-    pub fn on_stream_completed_canceled(&mut self) -> Result<TransitionOutcome, TransitionError> {
-        let old = self.require_kind(PhaseKind::Streaming, "on_stream_completed_canceled")?;
-        self.phase = Phase::Idle(IdlePhase);
-        Ok(TransitionOutcome {
-            old_phase: old,
-            new_phase: PhaseKind::Idle,
-        })
-    }
-
-    /// `Sending → Streaming` or `Sending → Idle`.
-    ///
-    /// If `tool_loop_disabled` is set on the `SendingPhase`, transitions to
-    /// `Idle` (tool loop stops). Otherwise transitions to `Streaming`
-    /// (tool loop continues with the next LLM request).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TransitionError`] if not in `Sending`.
-    pub fn on_tool_batch_completed(&mut self) -> Result<TransitionOutcome, TransitionError> {
-        let old = self.require_kind(PhaseKind::Sending, "on_tool_batch_completed")?;
-        let Phase::Sending(ref sending) = self.phase else {
-            unreachable!()
-        };
-
-        if sending.tool_loop_disabled {
-            self.phase = Phase::Idle(IdlePhase);
-            Ok(TransitionOutcome {
-                old_phase: old,
-                new_phase: PhaseKind::Idle,
-            })
-        } else {
-            self.phase = Phase::Streaming(StreamingPhase::default());
-            Ok(TransitionOutcome {
-                old_phase: old,
-                new_phase: PhaseKind::Streaming,
-            })
-        }
-    }
-
-    /// `Idle → TearingDown` — a lifecycle teardown script has started.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TransitionError`] if not in `Idle`.
-    pub fn on_request_teardown(&mut self) -> Result<TransitionOutcome, TransitionError> {
-        let old = self.require_kind(PhaseKind::Idle, "on_request_teardown")?;
-        self.phase = Phase::TearingDown(TearingDownPhase);
-        Ok(TransitionOutcome {
-            old_phase: old,
-            new_phase: PhaseKind::TearingDown,
-        })
-    }
-
-    /// `TearingDown → Idle` — teardown script completed.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TransitionError`] if not in `TearingDown`.
-    pub fn on_teardown_complete(&mut self) -> Result<TransitionOutcome, TransitionError> {
-        let old = self.require_kind(PhaseKind::TearingDown, "on_teardown_complete")?;
-        self.phase = Phase::Idle(IdlePhase);
-        Ok(TransitionOutcome {
-            old_phase: old,
-            new_phase: PhaseKind::Idle,
-        })
+    /// Returns `true` if the tool loop was disabled, and clears the flag.
+    pub fn take_tool_loop_disabled(&mut self) -> bool {
+        std::mem::take(&mut self.tool_loop_disabled)
     }
 
     /// `Streaming → Idle` — hard cancel, returns old streaming data.
@@ -264,10 +133,16 @@ impl SessionPhaseMachine {
     ///
     /// Returns [`TransitionError`] if not in `Streaming`.
     pub fn cancel(&mut self) -> Result<CancelOutcome, TransitionError> {
-        let old = self.require_kind(PhaseKind::Streaming, "cancel")?;
+        let old = self.validate(PhaseKind::Streaming)?;
         let old_phase = std::mem::replace(&mut self.phase, Phase::Idle(IdlePhase));
         let Phase::Streaming(old_streaming) = old_phase else {
-            unreachable!()
+            return Ok(CancelOutcome {
+                outcome: TransitionOutcome {
+                    old_phase: old,
+                    new_phase: PhaseKind::Idle,
+                },
+                old_streaming: StreamingPhase::default(),
+            });
         };
         Ok(CancelOutcome {
             outcome: TransitionOutcome {
@@ -288,11 +163,10 @@ impl SessionPhaseMachine {
     ///
     /// Returns [`TransitionError`] if not in `Streaming`.
     pub fn soft_cancel(&mut self) -> Result<(), TransitionError> {
-        self.require_kind(PhaseKind::Streaming, "soft_cancel")?;
-        let Phase::Streaming(ref mut streaming) = self.phase else {
-            unreachable!()
-        };
-        streaming.soft_cancel_requested = true;
+        self.validate(PhaseKind::Streaming)?;
+        if let Phase::Streaming(ref mut streaming) = self.phase {
+            streaming.soft_cancel_requested = true;
+        }
         Ok(())
     }
 
@@ -314,7 +188,91 @@ impl SessionPhaseMachine {
         }
     }
 
+    // ── Streaming state accessors ─────────────────────────────────────────
+
+    /// The streaming assistant entry index, if streaming.
+    pub fn streaming_entry_index(&self) -> Option<usize> {
+        self.streaming_phase().and_then(|sp| sp.streaming_entry_index)
+    }
+
+    /// Set the streaming assistant entry index. No-op if not streaming.
+    pub fn set_streaming_entry_index(&mut self, index: usize) {
+        if let Some(sp) = self.streaming_phase_mut() {
+            sp.streaming_entry_index = Some(index);
+        }
+    }
+
+    /// The streaming thinking entry index, if streaming.
+    pub fn streaming_thinking_entry_index(&self) -> Option<usize> {
+        self.streaming_phase().and_then(|sp| sp.streaming_thinking_entry_index)
+    }
+
+    /// Set the streaming thinking entry index. No-op if not streaming.
+    pub fn set_streaming_thinking_entry_index(&mut self, index: usize) {
+        if let Some(sp) = self.streaming_phase_mut() {
+            sp.streaming_thinking_entry_index = Some(index);
+        }
+    }
+
+    /// Read-only access to tool-call tracking map. Returns empty if not streaming.
+    pub fn streaming_tool_call_indices(&self) -> &std::collections::HashMap<usize, usize> {
+        use std::sync::OnceLock;
+        static EMPTY: OnceLock<std::collections::HashMap<usize, usize>> = OnceLock::new();
+        self.streaming_phase()
+            .map(|sp| &sp.streaming_tool_call_indices)
+            .unwrap_or_else(|| EMPTY.get_or_init(std::collections::HashMap::new))
+    }
+
+    /// Mutable access to tool-call tracking map. Returns `None` if not streaming.
+    pub fn streaming_tool_call_indices_mut(&mut self) -> Option<&mut std::collections::HashMap<usize, usize>> {
+        self.streaming_phase_mut().map(|sp| &mut sp.streaming_tool_call_indices)
+    }
+
+    /// Read-only access to tool-result tracking map. Returns empty if not streaming.
+    pub fn streaming_tool_result_indices(&self) -> &std::collections::HashMap<String, usize> {
+        use std::sync::OnceLock;
+        static EMPTY: OnceLock<std::collections::HashMap<String, usize>> = OnceLock::new();
+        self.streaming_phase()
+            .map(|sp| &sp.streaming_tool_result_indices)
+            .unwrap_or_else(|| EMPTY.get_or_init(std::collections::HashMap::new))
+    }
+
+    /// Mutable access to tool-result tracking map. Returns `None` if not streaming.
+    pub fn streaming_tool_result_indices_mut(&mut self) -> Option<&mut std::collections::HashMap<String, usize>> {
+        self.streaming_phase_mut().map(|sp| &mut sp.streaming_tool_result_indices)
+    }
+
+    /// Shift all streaming indices >= `inserted_at` by +1.
+    ///
+    /// Called after `insert_entry_at` to keep indices valid.
+    /// No-op if not streaming.
+    pub fn shift_streaming_indices_for_insert_at(&mut self, inserted_at: usize) {
+        let Some(sp) = self.streaming_phase_mut() else { return };
+        if let Some(ref mut i) = sp.streaming_entry_index && *i >= inserted_at {
+            *i += 1;
+        }
+        if let Some(ref mut i) = sp.streaming_thinking_entry_index && *i >= inserted_at {
+            *i += 1;
+        }
+        for v in sp.streaming_tool_result_indices.values_mut() {
+            if *v >= inserted_at {
+                *v += 1;
+            }
+        }
+        for key in sp.streaming_tool_call_indices.keys().copied().collect::<Vec<_>>() {
+            if let Some(v) = sp.streaming_tool_call_indices.get_mut(&key) && *v >= inserted_at {
+                *v += 1;
+            }
+        }
+    }
+
+    /// Whether the machine is tracking a tool call at the given history index.
+    pub fn is_tool_call_at_history_index(&self, history_index: usize) -> bool {
+        self.streaming_tool_call_indices().values().any(|&v| v == history_index)
+    }
+
     /// Read-only access to `SendingPhase` data, if currently sending.
+    #[expect(dead_code, reason = "will be used when SendingPhase carries state")]
     pub fn sending_phase(&self) -> Option<&SendingPhase> {
         match &self.phase {
             Phase::Sending(s) => Some(s),
@@ -323,6 +281,7 @@ impl SessionPhaseMachine {
     }
 
     /// Mutable access to `SendingPhase` data, if currently sending.
+    #[expect(dead_code, reason = "will be used when SendingPhase carries state")]
     pub fn sending_phase_mut(&mut self) -> Option<&mut SendingPhase> {
         match &mut self.phase {
             Phase::Sending(s) => Some(s),
@@ -332,20 +291,33 @@ impl SessionPhaseMachine {
 
     // ── Internal helpers ────────────────────────────────────────────────
 
+    /// Validate the current phase, then swap to `next`.
+    ///
+    /// Returns [`TransitionOutcome`] recording the before/after phases.
+    pub(in crate::feat::session::phase_machine) fn transition(
+        &mut self,
+        expected: PhaseKind,
+        next: Phase,
+    ) -> Result<TransitionOutcome, TransitionError> {
+        let old = self.validate(expected)?;
+        let new_phase = next.kind();
+        self.phase = next;
+        Ok(TransitionOutcome {
+            old_phase: old,
+            new_phase,
+        })
+    }
+
     /// Validate that the current phase matches the expected kind.
-    fn require_kind(
+    pub(in crate::feat::session::phase_machine) fn validate(
         &self,
         expected: PhaseKind,
-        trigger: &'static str,
     ) -> Result<PhaseKind, TransitionError> {
         let actual = self.phase.kind();
         if actual == expected {
             Ok(actual)
         } else {
-            Err(TransitionError {
-                from: actual,
-                trigger,
-            })
+            Err(TransitionError { from: actual })
         }
     }
 }
