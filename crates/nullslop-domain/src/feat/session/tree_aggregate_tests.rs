@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::token_stats::TokenRecord;
-use crate::feat::session::{aggregate_tree_stats, find_tree_root};
+use crate::feat::session::{aggregate_tree_stats, find_tree_root, FrozenTreeNode};
 use crate::protocol::{ChatEntry, SessionId};
 
 /// Helper: create an empty session with the given ID.
@@ -65,7 +65,7 @@ fn single_session_is_own_root() {
     sessions.insert(id.clone(), make_session(id.clone()));
 
     // When finding the root.
-    let root = find_tree_root(&sessions, &id);
+    let root = find_tree_root(&sessions, &HashMap::new(), &id);
 
     // Then it returns the same session.
     assert_eq!(root, id);
@@ -84,7 +84,7 @@ fn child_finds_root() {
     sessions.insert(child_id.clone(), child);
 
     // When finding root from the child.
-    let root = find_tree_root(&sessions, &child_id);
+    let root = find_tree_root(&sessions, &HashMap::new(), &child_id);
 
     // Then the root is the parent.
     assert_eq!(root, parent_id);
@@ -110,7 +110,7 @@ fn deeply_nested_finds_root() {
     sessions.insert(child_id.clone(), child);
 
     // When finding root from the child.
-    let root = find_tree_root(&sessions, &child_id);
+    let root = find_tree_root(&sessions, &HashMap::new(), &child_id);
 
     // Then the root is the grandparent.
     assert_eq!(root, gp_id);
@@ -129,7 +129,7 @@ fn orphan_session_treated_as_root() {
     sessions.insert(orphan_id.clone(), orphan);
 
     // When finding root.
-    let root = find_tree_root(&sessions, &orphan_id);
+    let root = find_tree_root(&sessions, &HashMap::new(), &orphan_id);
 
     // Then the orphan itself is the root (ghost parent not in map).
     assert_eq!(root, orphan_id);
@@ -145,7 +145,7 @@ fn single_session_returns_own_stats() {
     sessions.insert(id.clone(), make_session_with_stats(id.clone(), 100, 50, Some(0.01), 2));
 
     // When aggregating tree stats.
-    let stats = aggregate_tree_stats(&sessions, &id);
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &id);
 
     // Then it returns the session's own stats.
     assert_eq!(stats.session_count, 1);
@@ -171,7 +171,7 @@ fn parent_with_children_sums_all() {
     set_parent(&mut sessions, &child2_id, &parent_id);
 
     // When aggregating from parent.
-    let stats = aggregate_tree_stats(&sessions, &parent_id);
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id);
 
     // Then all sessions are summed.
     assert_eq!(stats.session_count, 3);
@@ -197,7 +197,7 @@ fn child_sees_entire_tree() {
     set_parent(&mut sessions, &child2_id, &parent_id);
 
     // When aggregating from child1.
-    let stats = aggregate_tree_stats(&sessions, &child1_id);
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &child1_id);
 
     // Then the result includes parent + both children.
     assert_eq!(stats.session_count, 3);
@@ -222,7 +222,7 @@ fn deeply_nested_tree_sums_all() {
     set_parent(&mut sessions, &child_id, &parent_id);
 
     // When aggregating from the child.
-    let stats = aggregate_tree_stats(&sessions, &child_id);
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &child_id);
 
     // Then all 3 sessions are included.
     assert_eq!(stats.session_count, 3);
@@ -246,13 +246,288 @@ fn disconnected_sessions_excluded() {
     set_parent(&mut sessions, &child_id, &parent_id);
 
     // When aggregating from parent.
-    let stats = aggregate_tree_stats(&sessions, &parent_id);
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id);
 
     // Then disconnected is excluded.
     assert_eq!(stats.session_count, 2);
     assert_eq!(stats.total_sent, 300);
     assert_eq!(stats.total_received, 150);
     assert_eq!(stats.total_turns, 2);
+}
+
+// --- frozen node tests ---
+
+#[rstest::rstest]
+fn frozen_parent_is_found_as_root() {
+    // Given a frozen node (archived parent) and a live child.
+    let parent_id = SessionId::new();
+    let child_id = SessionId::new();
+
+    let mut sessions = HashMap::new();
+    // Only the child is live.
+    let mut child = ChatSessionState::new();
+    child.set_session_id(child_id.clone());
+    child.set_parent_session(parent_id.clone());
+    sessions.insert(child_id.clone(), child);
+
+    // Parent is archived (frozen).
+    let mut frozen_nodes = HashMap::new();
+    frozen_nodes.insert(
+        parent_id.clone(),
+        FrozenTreeNode {
+            session_id: parent_id.clone(),
+            parent_session_id: None,
+            total_sent: 0,
+            total_received: 0,
+            total_cost: 0.0,
+            total_turns: 0,
+        },
+    );
+
+    // When finding root from the live child.
+    let root = find_tree_root(&sessions, &frozen_nodes, &child_id);
+
+    // Then the frozen parent is the root.
+    assert_eq!(root, parent_id);
+}
+
+#[rstest::rstest]
+fn frozen_child_included_in_aggregate() {
+    // Given a live root with an archived (frozen) child.
+    let root_id = SessionId::new();
+    let child_id = SessionId::new();
+
+    let mut sessions = HashMap::new();
+    sessions.insert(root_id.clone(), make_session_with_stats(root_id.clone(), 100, 50, Some(0.01), 2));
+
+    let mut frozen_nodes = HashMap::new();
+    frozen_nodes.insert(
+        child_id.clone(),
+        FrozenTreeNode {
+            session_id: child_id.clone(),
+            parent_session_id: Some(root_id.clone()),
+            total_sent: 200,
+            total_received: 100,
+            total_cost: 0.02,
+            total_turns: 3,
+        },
+    );
+
+    // When aggregating from the root.
+    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &root_id);
+
+    // Then the frozen child's stats are included.
+    assert_eq!(stats.session_count, 2); // 1 live + 1 frozen
+    assert_eq!(stats.total_sent, 300); // 100 + 200
+    assert_eq!(stats.total_received, 150); // 50 + 100
+    assert!(stats.total_cost - 0.03 < 1e-10); // 0.01 + 0.02
+    assert_eq!(stats.total_turns, 5); // 2 + 3
+}
+
+#[rstest::rstest]
+fn child_of_frozen_included_in_aggregate() {
+    // Given a frozen root with a live child.
+    let root_id = SessionId::new();
+    let child_id = SessionId::new();
+
+    let mut sessions = HashMap::new();
+    sessions.insert(child_id.clone(), make_session_with_stats(child_id.clone(), 100, 50, Some(0.01), 2));
+    // The live child's parent is the frozen root.
+    if let Some(s) = sessions.get_mut(&child_id) {
+        s.set_parent_session(root_id.clone());
+    }
+
+    let mut frozen_nodes = HashMap::new();
+    frozen_nodes.insert(
+        root_id.clone(),
+        FrozenTreeNode {
+            session_id: root_id.clone(),
+            parent_session_id: None,
+            total_sent: 200,
+            total_received: 100,
+            total_cost: 0.02,
+            total_turns: 3,
+        },
+    );
+
+    // When aggregating from the live child.
+    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &child_id);
+
+    // Then both the frozen root and live child are included.
+    assert_eq!(stats.session_count, 2);
+    assert_eq!(stats.total_sent, 300);
+    assert_eq!(stats.total_received, 150);
+    assert!(stats.total_cost - 0.03 < 1e-10);
+    assert_eq!(stats.total_turns, 5);
+}
+
+#[rstest::rstest]
+fn deeply_nested_with_frozen_in_middle() {
+    // Given: grandparent (live) -> parent (frozen) -> child (live).
+    let gp_id = SessionId::new();
+    let parent_id = SessionId::new();
+    let child_id = SessionId::new();
+
+    let mut sessions = HashMap::new();
+    sessions.insert(gp_id.clone(), make_session_with_stats(gp_id.clone(), 10, 5, None, 1));
+    sessions.insert(child_id.clone(), make_session_with_stats(child_id.clone(), 30, 15, None, 1));
+    // Child's parent is the frozen parent.
+    if let Some(s) = sessions.get_mut(&child_id) {
+        s.set_parent_session(parent_id.clone());
+    }
+
+    let mut frozen_nodes = HashMap::new();
+    frozen_nodes.insert(
+        parent_id.clone(),
+        FrozenTreeNode {
+            session_id: parent_id.clone(),
+            parent_session_id: Some(gp_id.clone()),
+            total_sent: 20,
+            total_received: 10,
+            total_cost: 0.0,
+            total_turns: 1,
+        },
+    );
+
+    // When aggregating from the grandchild.
+    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &child_id);
+
+    // Then all three are included.
+    assert_eq!(stats.session_count, 3);
+    assert_eq!(stats.total_sent, 60); // 10 + 20 + 30
+    assert_eq!(stats.total_received, 30); // 5 + 10 + 15
+    assert_eq!(stats.total_turns, 3);
+}
+
+#[rstest::rstest]
+fn session_count_includes_frozen_nodes() {
+    // Given a live root with 2 frozen children.
+    let root_id = SessionId::new();
+    let child1_id = SessionId::new();
+    let child2_id = SessionId::new();
+
+    let mut sessions = HashMap::new();
+    sessions.insert(root_id.clone(), make_session(root_id.clone()));
+
+    let mut frozen_nodes = HashMap::new();
+    frozen_nodes.insert(
+        child1_id.clone(),
+        FrozenTreeNode {
+            session_id: child1_id.clone(),
+            parent_session_id: Some(root_id.clone()),
+            total_sent: 100,
+            total_received: 50,
+            total_cost: 0.01,
+            total_turns: 1,
+        },
+    );
+    frozen_nodes.insert(
+        child2_id.clone(),
+        FrozenTreeNode {
+            session_id: child2_id.clone(),
+            parent_session_id: Some(root_id.clone()),
+            total_sent: 200,
+            total_received: 100,
+            total_cost: 0.02,
+            total_turns: 2,
+        },
+    );
+
+    // When aggregating.
+    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &root_id);
+
+    // Then session_count is 3 (1 live + 2 frozen).
+    assert_eq!(stats.session_count, 3);
+    assert_eq!(stats.total_sent, 300);
+    assert_eq!(stats.total_received, 150);
+    assert_eq!(stats.total_turns, 3);
+}
+
+#[rstest::rstest]
+fn frozen_node_not_in_tree_is_excluded() {
+    // Given a live session and a frozen node that belongs to a different tree.
+    let live_id = SessionId::new();
+    let frozen_id = SessionId::new();
+    let frozen_root = SessionId::new(); // root of a disconnected tree
+
+    let mut sessions = HashMap::new();
+    sessions.insert(live_id.clone(), make_session_with_stats(live_id.clone(), 100, 50, None, 1));
+
+    let mut frozen_nodes = HashMap::new();
+    frozen_nodes.insert(
+        frozen_root.clone(),
+        FrozenTreeNode {
+            session_id: frozen_root.clone(),
+            parent_session_id: None,
+            total_sent: 999,
+            total_received: 999,
+            total_cost: 9.99,
+            total_turns: 99,
+        },
+    );
+    frozen_nodes.insert(
+        frozen_id.clone(),
+        FrozenTreeNode {
+            session_id: frozen_id.clone(),
+            parent_session_id: Some(frozen_root.clone()),
+            total_sent: 888,
+            total_received: 888,
+            total_cost: 8.88,
+            total_turns: 88,
+        },
+    );
+
+    // When aggregating the live session's tree.
+    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &live_id);
+
+    // Then only the live session is included.
+    assert_eq!(stats.session_count, 1);
+    assert_eq!(stats.total_sent, 100);
+    assert_eq!(stats.total_received, 50);
+    assert_eq!(stats.total_turns, 1);
+}
+
+#[rstest::rstest]
+fn all_frozen_tree_aggregates() {
+    // Given a tree where ALL nodes are frozen (no live sessions).
+    let root_id = SessionId::new();
+    let child_id = SessionId::new();
+
+    let sessions = HashMap::new(); // no live sessions
+
+    let mut frozen_nodes = HashMap::new();
+    frozen_nodes.insert(
+        root_id.clone(),
+        FrozenTreeNode {
+            session_id: root_id.clone(),
+            parent_session_id: None,
+            total_sent: 100,
+            total_received: 50,
+            total_cost: 0.01,
+            total_turns: 2,
+        },
+    );
+    frozen_nodes.insert(
+        child_id.clone(),
+        FrozenTreeNode {
+            session_id: child_id.clone(),
+            parent_session_id: Some(root_id.clone()),
+            total_sent: 200,
+            total_received: 100,
+            total_cost: 0.02,
+            total_turns: 3,
+        },
+    );
+
+    // When aggregating from the frozen root.
+    let stats = aggregate_tree_stats(&sessions, &frozen_nodes, &root_id);
+
+    // Then both frozen nodes are included.
+    assert_eq!(stats.session_count, 2);
+    assert_eq!(stats.total_sent, 300);
+    assert_eq!(stats.total_received, 150);
+    assert!(stats.total_cost - 0.03 < 1e-10);
+    assert_eq!(stats.total_turns, 5);
 }
 
 #[rstest::rstest]
@@ -269,7 +544,7 @@ fn empty_sessions_produce_zeros() {
     sessions.insert(child_id.clone(), child);
 
     // When aggregating.
-    let stats = aggregate_tree_stats(&sessions, &parent_id);
+    let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &parent_id);
 
     // Then all values are zero.
     assert_eq!(stats.session_count, 2);
