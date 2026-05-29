@@ -1,6 +1,7 @@
 //! Session picker rendering — renders the tree-structured session picker overlay.
 
 use crate::common::app_state::AppState;
+use crate::feat::ui::picker_states::PickerExt;
 use nullslop_selection_widget::TreePickerWidget;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -16,7 +17,7 @@ pub fn render_session_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState
         "CTRL+N to create a new session",
         Style::default().fg(Color::Rgb(255, 165, 0)),
     );
-    let widget = TreePickerWidget::new(&state.frontend.session_picker)
+    let widget = TreePickerWidget::new(&state.frontend.session_picker())
         .title(Line::from(" Sessions "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .tree_prefix_color(state.frontend.theme.muted_text)

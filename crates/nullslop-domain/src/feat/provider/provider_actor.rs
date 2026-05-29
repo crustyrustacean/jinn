@@ -28,6 +28,7 @@ use crate::feat::provider::protocol::command::{
     LoadCompactionModelPickerEntries, LoadProviderPickerEntries,
 };
 
+
 /// The provider actor.
 ///
 /// Subscribes to provider-related commands, mutates [`State`], and emits events
@@ -284,6 +285,7 @@ mod tests {
     use crate::protocol::{Command, Event};
 
     use super::{ModelsRefreshed, ProviderActor, ProviderActorDeps};
+    use crate::feat::ui::picker_states::PickerExt;
     use crate::feat::provider::protocol::command::LoadProviderPickerEntries;
     use crate::feat::provider::protocol::command::ProviderSwitch;
 
@@ -933,7 +935,7 @@ mod tests {
 
         // Then the compaction model picker has entries (at least the sentinel).
         let s = state.read();
-        let items = s.frontend.compaction_model_picker.items();
+        let items = s.frontend.compaction_model_picker().items();
         assert!(!items.is_empty(), "compaction picker should have entries after loading");
     }
 }

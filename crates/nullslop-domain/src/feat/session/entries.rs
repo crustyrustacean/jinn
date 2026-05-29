@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 
 use crate::common::app_state::AppState;
+use crate::feat::ui::picker_states::PickerExt;
 use crate::common::services::Services;
 use crate::feat::session::picker_entry::SessionTreeEntry;
 use crate::feat::theme::Theme;
@@ -145,7 +146,7 @@ pub async fn load_session_entries(services: &Services, theme: &Theme) -> Vec<Ses
 /// `TreePickerState::set_items`.
 pub async fn load_session_picker_items(services: &Services, state: &mut AppState) {
     let entries = load_session_entries(services, &state.frontend.theme).await;
-    state.frontend.session_picker.set_items(entries);
+    state.frontend.session_picker_mut().set_items(entries);
 }
 
 /// Loads session tree entries from a session store service directly.
@@ -189,7 +190,7 @@ pub async fn load_session_picker_items_from_store(
     state: &mut AppState,
 ) {
     let entries = load_session_entries_from_store(store, &state.frontend.theme).await;
-    state.frontend.session_picker.set_items(entries);
+    state.frontend.session_picker_mut().set_items(entries);
 }
 
 #[cfg(test)]
@@ -349,7 +350,7 @@ mod tests {
         load_session_picker_items(&services, &mut state).await;
 
         // Then items are set in the picker state.
-        assert!(!state.frontend.session_picker.items().is_empty());
+        assert!(!state.frontend.session_picker().items().is_empty());
     }
 
     #[rstest::rstest]
@@ -373,6 +374,6 @@ mod tests {
         load_session_picker_items_from_store(&store, &mut state).await;
 
         // Then items are set in the picker state.
-        assert!(!state.frontend.session_picker.items().is_empty());
+        assert!(!state.frontend.session_picker().items().is_empty());
     }
 }
