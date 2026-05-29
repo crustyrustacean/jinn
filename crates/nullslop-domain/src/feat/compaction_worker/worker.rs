@@ -65,11 +65,10 @@ impl HistoryWorker for CompactionWorker {
         "compaction"
     }
 
-    async fn evaluate(&self, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
-        // Delegate to the full evaluate_for_session which needs state access.
+    async fn evaluate(&self, session_id: &SessionId, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
+        // Delegate to evaluate_history which needs state access.
         // The history worker actor provides the history snapshot.
-        // We need to get config and session-specific data separately.
-        self.evaluate_history(&history).await
+        self.evaluate_history(session_id, &history).await
     }
 }
 
@@ -123,23 +122,16 @@ impl CompactionWorker {
     ///
     /// This is the auto-compaction path (triggered by `HistoryAppended`).
     /// It applies the threshold gate before calling the compaction algorithm.
-    async fn evaluate_history(&self, history: &[ChatEntry]) -> Vec<HistoryMutation> {
-        // Read live config, model, and cached token count from state.
+    async fn evaluate_history(&self, session_id: &SessionId, history: &[ChatEntry]) -> Vec<HistoryMutation> {
+        // Read live config, model, and cached token count from the triggering session.
         let (config, model_name, compaction_prompt, retry_config, cached_context_size) = {
             let state = self.state.read();
             let config = state.frontend.preferences.compaction.clone();
-            // Use model from the first session found, or fallback.
-            let model_name = state
-                .session
-                .iter()
-                .next()
-                .map(|(_, s)| s.profile().model.clone())
+            let session = state.session.get(session_id);
+            let model_name = session
+                .map(|s| s.profile().model.clone())
                 .unwrap_or_default();
-            let cached_context_size = state
-                .session
-                .iter()
-                .next()
-                .and_then(|(_, s)| s.context_size());
+            let cached_context_size = session.and_then(|s| s.context_size());
             let compaction_prompt = state.context.compaction_prompt.clone();
             let retry_config = state.frontend.preferences.request_retry.to_retry_config();
             (config, model_name, compaction_prompt, retry_config, cached_context_size)
@@ -157,14 +149,14 @@ impl CompactionWorker {
         };
 
         // Threshold gate: skip compaction if total tokens are within budget.
-        // Use the tiktoken-based cached_context_size if available (accurate),
-        // otherwise fall back to char-ratio estimation (approximate).
-        let total_tokens = cached_context_size
-            .map(|s| s as usize)
-            .unwrap_or_else(|| {
-                let start_index = find_start_boundary(history);
-                algorithm::estimate_total_tokens(history, start_index)
-            });
+        // Use the tiktoken-based cached_context_size from the session.
+        let Some(total_tokens) = cached_context_size.map(|s| s as usize) else {
+            tracing::info!(
+                session_id = %session_id,
+                "auto-compaction skipped: no cached context size"
+            );
+            return vec![];
+        };
         let budget = (context_window as f64 * config.threshold) as usize;
         tracing::info!(
             total_tokens,

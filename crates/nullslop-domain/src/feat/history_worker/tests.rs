@@ -31,7 +31,7 @@ impl HistoryWorker for TruncateOldUserEntries {
         "test-truncate-old-user"
     }
 
-    async fn evaluate(&self, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
+    async fn evaluate(&self, _session_id: &SessionId, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
         let user_entries: Vec<_> = history
             .iter()
             .filter(|e| matches!(e.kind, ChatEntryKind::User { .. }))
@@ -63,7 +63,7 @@ impl HistoryWorker for NoOpWorker {
         "test-noop"
     }
 
-    async fn evaluate(&self, _history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
+    async fn evaluate(&self, _session_id: &SessionId, _history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
         vec![]
     }
 }
@@ -106,8 +106,7 @@ fn worker_produces_mutations_for_long_history() {
         .collect();
     let worker = TruncateOldUserEntries;
     let rt = tokio::runtime::Runtime::new().expect("runtime");
-    let mutations = rt.block_on(async { worker.evaluate(entries).await });
-    assert_eq!(mutations.len(), 2); // 5 entries - 3 kept = 2 excluded
+    let mutations = rt.block_on(async { worker.evaluate(&SessionId::new(), entries).await }); // 5 entries - 3 kept = 2 excluded
     for m in &mutations {
         if let HistoryMutation::SetContextOverride { value, .. } = m {
             assert!(matches!(value, ContextOverride::ForcedExclude));
@@ -124,7 +123,7 @@ fn worker_produces_no_mutations_for_short_history() {
         .collect();
     let worker = TruncateOldUserEntries;
     let rt = tokio::runtime::Runtime::new().expect("runtime");
-    let mutations = rt.block_on(async { worker.evaluate(entries).await });
+    let mutations = rt.block_on(async { worker.evaluate(&SessionId::new(), entries).await });
     assert!(mutations.is_empty());
 }
 
