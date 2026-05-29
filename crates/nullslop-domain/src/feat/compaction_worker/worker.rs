@@ -127,7 +127,7 @@ impl CompactionWorker {
         // For the trait-based path, we use stored config.
         let (config, model_name, compaction_prompt, retry_config) = {
             let state = self.state.read();
-            let config = self.config.clone();
+            let config = state.frontend.preferences.compaction.clone();
             // Use model from the first session found, or fallback.
             let model_name = state
                 .session
@@ -155,7 +155,17 @@ impl CompactionWorker {
         let start_index = find_start_boundary(history);
         let total_tokens = algorithm::estimate_total_tokens(history, start_index);
         let budget = (context_window as f64 * config.threshold) as usize;
+        tracing::info!(
+            total_tokens,
+            budget,
+            context_window,
+            threshold = config.threshold,
+            model = %model_name,
+            history_len = history.len(),
+            "auto-compaction threshold check"
+        );
         if total_tokens <= budget {
+            tracing::info!("auto-compaction skipped: total tokens within budget");
             return vec![];
         }
 
