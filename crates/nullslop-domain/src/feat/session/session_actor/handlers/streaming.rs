@@ -62,28 +62,36 @@ impl SessionPersistenceActor {
         let should_save = event.reason == StreamCompletedReason::Finished
             || event.reason == StreamCompletedReason::Error;
 
-        // Count output tokens off the async thread
-        // Count both text content and tool call arguments (JSON) which are a
-        // significant portion of the model's output.
+        // Count output tokens off the async thread.
+        // Prefer provider-reported tokens (includes thinking, matches billing).
+        // Fall back to local counting (also includes thinking) when unavailable.
         let output_tokens: Option<tokio::task::JoinHandle<u32>> = if event.reason
             != StreamCompletedReason::Canceled
             && event.reason != StreamCompletedReason::Error
         {
-            event.assistant_content.as_ref().map(|content| {
-                let content = content.clone();
-                let tool_calls = event.tool_calls.clone();
-                let counter = self.counter;
-                tokio::task::spawn_blocking(move || {
-                    let mut tokens = counter.count(&content) as u32;
-                    if let Some(tool_calls) = tool_calls {
-                        for tc in &tool_calls {
-                            tokens += counter.count(&tc.arguments) as u32;
-                            tokens += counter.count(&tc.name) as u32;
+            if let Some(provider_tokens) = event.provider_completion_tokens {
+                // Provider-reported path: use directly, no local counting needed.
+                Some(tokio::task::spawn_blocking(move || provider_tokens as u32))
+            } else {
+                // Local fallback path: count text + thinking + tool calls.
+                event.assistant_content.as_ref().map(|content| {
+                    let content = content.clone();
+                    let tool_calls = event.tool_calls.clone();
+                    let thinking = event.thinking_content.clone().unwrap_or_default();
+                    let counter = self.counter;
+                    tokio::task::spawn_blocking(move || {
+                        let mut tokens = counter.count(&content) as u32;
+                        tokens += counter.count(&thinking) as u32;
+                        if let Some(tool_calls) = tool_calls {
+                            for tc in &tool_calls {
+                                tokens += counter.count(&tc.arguments) as u32;
+                                tokens += counter.count(&tc.name) as u32;
+                            }
                         }
-                    }
-                    tokens
+                        tokens
+                    })
                 })
-            })
+            }
         } else {
             None
         };
@@ -218,6 +226,8 @@ mod tests {
             assistant_content: None,
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -250,6 +260,8 @@ mod tests {
             assistant_content: None,
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -285,6 +297,8 @@ mod tests {
             assistant_content: None,
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -318,6 +332,8 @@ mod tests {
             assistant_content: None,
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -348,6 +364,8 @@ mod tests {
             assistant_content: Some("response".to_owned()),
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -382,6 +400,8 @@ mod tests {
             assistant_content: None,
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -416,6 +436,8 @@ mod tests {
             assistant_content: None,
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -452,6 +474,8 @@ mod tests {
             assistant_content: None,
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -606,6 +630,8 @@ mod tests {
             assistant_content: Some("response".to_owned()),
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -637,6 +663,8 @@ mod tests {
             assistant_content: None,
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -668,6 +696,8 @@ mod tests {
             assistant_content: None,
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -703,6 +733,8 @@ mod tests {
             assistant_content: Some("some error content".to_owned()),
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -748,6 +780,8 @@ mod tests {
                 arguments: "{}".to_owned(),
             }]),
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -793,6 +827,8 @@ mod tests {
                 arguments: r#"{"command":"ls -la /very/long/path"}"#.to_owned(),
             }]),
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -837,6 +873,8 @@ mod tests {
             assistant_content: Some("world".to_owned()),
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -881,6 +919,8 @@ mod tests {
             assistant_content: None,
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -921,6 +961,8 @@ mod tests {
             assistant_content: Some("response".to_owned()),
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -966,6 +1008,8 @@ mod tests {
             assistant_content: Some("response".to_owned()),
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -1023,6 +1067,8 @@ mod tests {
             assistant_content: None,
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -1070,6 +1116,8 @@ mod tests {
             assistant_content: None,
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -1121,6 +1169,8 @@ mod tests {
                 arguments: "{}".to_owned(),
             }]),
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
@@ -1141,5 +1191,173 @@ mod tests {
         // And the mutations are still in the queue (not drained).
         // Note: we can't easily check the queue directly from outside,
         // but the entry not being modified is sufficient proof.
+    }
+
+    // --- Hybrid token counting tests ---
+
+    #[tokio::test]
+    async fn on_stream_completed_provider_tokens_used_directly() {
+        // Given a session with a token record in streaming state.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_token_record(TokenRecord {
+                timestamp: jiff::Timestamp::now(),
+                tokens_sent: 100,
+                tokens_received: 0,
+                cost: None,
+            });
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with provider_completion_tokens set.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: Some("short".to_owned()),
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: Some(5000),
+            thinking_content: Some("very long thinking content here".to_owned()),
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then tokens_received equals the provider value (not local count).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let ledger = session.token_ledger();
+        assert_eq!(ledger.len(), 1);
+        assert_eq!(
+            ledger[0].tokens_received, 5000,
+            "expected provider-reported 5000, got {}",
+            ledger[0].tokens_received
+        );
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_local_fallback_includes_thinking() {
+        // Given a session with a token record in streaming state.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_token_record(TokenRecord {
+                timestamp: jiff::Timestamp::now(),
+                tokens_sent: 100,
+                tokens_received: 0,
+                cost: None,
+            });
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted without provider tokens but with thinking.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: Some("short".to_owned()),
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: None,
+            thinking_content: Some("a substantial amount of reasoning text".to_owned()),
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then tokens_received includes thinking tokens (> just "short").
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let ledger = session.token_ledger();
+        assert_eq!(ledger.len(), 1);
+        assert!(
+            ledger[0].tokens_received > 2,
+            "expected tokens_received > 2 (text only), got {} — thinking not counted",
+            ledger[0].tokens_received
+        );
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_local_fallback_without_thinking_backward_compat() {
+        // Given a session with a token record in streaming state.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_token_record(TokenRecord {
+                timestamp: jiff::Timestamp::now(),
+                tokens_sent: 100,
+                tokens_received: 0,
+                cost: None,
+            });
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling StreamCompleted with no provider tokens and no thinking.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: Some("response text".to_owned()),
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then tokens_received counts only the text (backward compat).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let ledger = session.token_ledger();
+        assert_eq!(ledger.len(), 1);
+        assert!(
+            ledger[0].tokens_received > 0,
+            "expected nonzero tokens_received for 'response text', got {}",
+            ledger[0].tokens_received
+        );
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_provider_tokens_preferred_over_local() {
+        // Given a session with a token record in streaming state.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_token_record(TokenRecord {
+                timestamp: jiff::Timestamp::now(),
+                tokens_sent: 100,
+                tokens_received: 0,
+                cost: None,
+            });
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When both provider tokens and thinking content are present.
+        // Local count would be much higher than 9999 due to thinking.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: Some("short".to_owned()),
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: Some(9999),
+            thinking_content: Some(
+                "extremely long thinking content that would produce many tokens".to_owned(),
+            ),
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then the provider value wins (not local counting).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let ledger = session.token_ledger();
+        assert_eq!(ledger[0].tokens_received, 9999);
     }
 }
