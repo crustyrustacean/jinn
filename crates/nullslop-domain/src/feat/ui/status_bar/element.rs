@@ -98,6 +98,7 @@ impl UiElement<AppState> for StatusBarElement {
         // --- Line 1 right: Tree aggregate (only when tree has >1 session) ---
         let tree = aggregate_tree_stats(
             state.session.sessions(),
+            state.session.frozen_nodes(),
             state.session.active_session_id(),
         );
         if tree.session_count > 1 {

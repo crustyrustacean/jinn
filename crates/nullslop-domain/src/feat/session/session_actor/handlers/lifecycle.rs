@@ -659,6 +659,16 @@ impl SessionPersistenceActor {
         }
         self.save_active_session(&payload.session_id).await;
 
+        // Step 2b: Snapshot stats before removing from memory.
+        {
+            let state = self.state.read();
+            if let Some(session) = state.session.get(&payload.session_id) {
+                let frozen = crate::feat::session::snapshot_frozen_node(session);
+                drop(state);
+                self.state.write().session.insert_frozen_node(frozen);
+            }
+        }
+
         // Step 3: Remove from memory.
         self.remove_and_replace(&payload.session_id);
 
@@ -754,6 +764,17 @@ impl SessionPersistenceActor {
                 }
             }
             self.save_active_session(&payload.session_id).await;
+
+            // Snapshot stats before removing from memory.
+            {
+                let state = self.state.read();
+                if let Some(session) = state.session.get(&payload.session_id) {
+                    let frozen = crate::feat::session::snapshot_frozen_node(session);
+                    drop(state);
+                    self.state.write().session.insert_frozen_node(frozen);
+                }
+            }
+
             self.remove_and_replace(&payload.session_id);
 
             // Emit events.
@@ -829,10 +850,20 @@ impl SessionPersistenceActor {
         }
         self.save_active_session(&payload.session_id).await;
 
-        // Step 2: Remove from memory.
+        // Step 2: Snapshot stats before removing from memory.
+        {
+            let state = self.state.read();
+            if let Some(session) = state.session.get(&payload.session_id) {
+                let frozen = crate::feat::session::snapshot_frozen_node(session);
+                drop(state);
+                self.state.write().session.insert_frozen_node(frozen);
+            }
+        }
+
+        // Step 3: Remove from memory.
         self.remove_and_replace(&payload.session_id);
 
-        // Step 2b: Cascade archive to judge sessions.
+        // Step 3b: Cascade archive to judge sessions.
         let judge_ids: Vec<crate::protocol::SessionId> = {
             let state = self.state.read();
             state
@@ -863,6 +894,17 @@ impl SessionPersistenceActor {
             }
             // Persist to DB.
             self.save_active_session(judge_id).await;
+
+            // Snapshot judge stats before removing.
+            {
+                let state = self.state.read();
+                if let Some(session) = state.session.get(judge_id) {
+                    let frozen = crate::feat::session::snapshot_frozen_node(session);
+                    drop(state);
+                    self.state.write().session.insert_frozen_node(frozen);
+                }
+            }
+
             // Remove from memory.
             self.remove_and_replace(judge_id);
             // Notify.

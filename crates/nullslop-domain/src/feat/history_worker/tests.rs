@@ -133,7 +133,7 @@ async fn actor_emits_submit_command_for_long_history() {
         .map(|i| ChatEntry::user(format!("msg {i}")))
         .collect();
     let (state, session_id) = test_state_with_session(entries);
-    let actor = make_actor(TruncateOldUserEntries, state);
+    let mut actor = make_actor(TruncateOldUserEntries, state);
     let (sink, ctx) = test_ctx();
 
     let event = HistoryAppended {
@@ -158,7 +158,7 @@ async fn actor_emits_nothing_for_short_history() {
         .map(|i| ChatEntry::user(format!("msg {i}")))
         .collect();
     let (state, session_id) = test_state_with_session(entries);
-    let actor = make_actor(TruncateOldUserEntries, state);
+    let mut actor = make_actor(TruncateOldUserEntries, state);
     let (sink, ctx) = test_ctx();
 
     let event = HistoryAppended { session_id };
@@ -171,7 +171,7 @@ async fn actor_emits_nothing_for_short_history() {
 #[tokio::test]
 async fn actor_skips_nonexistent_session() {
     let state = State::new(AppState::default());
-    let actor = make_actor(TruncateOldUserEntries, state);
+    let mut actor = make_actor(TruncateOldUserEntries, state);
     let (sink, ctx) = test_ctx();
 
     let event = HistoryAppended {
@@ -207,7 +207,7 @@ async fn actor_skips_judge_session() {
         app.session.insert(session);
         id
     };
-    let actor = make_actor(TruncateOldUserEntries, state);
+    let mut actor = make_actor(TruncateOldUserEntries, state);
     let (sink, ctx) = test_ctx();
 
     let event = HistoryAppended { session_id };
@@ -224,7 +224,7 @@ async fn noop_worker_never_produces_mutations() {
         .map(|i| ChatEntry::user(format!("msg {i}")))
         .collect();
     let (state, session_id) = test_state_with_session(entries);
-    let actor = make_actor(NoOpWorker, state);
+    let mut actor = make_actor(NoOpWorker, state);
     let (sink, ctx) = test_ctx();
 
     let event = HistoryAppended { session_id };
