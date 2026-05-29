@@ -30,6 +30,7 @@ use crate::feat::provider::protocol::event::{
     ModelCacheLoaded, ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted,
     StreamToken,
 };
+use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session_lifecycle::protocol::event::{
     SessionCreated, SessionSetupCompleted, SessionTeardownFinished,
 };
@@ -125,6 +126,8 @@ pub enum Event {
     SessionPhaseChanged(crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged),
     /// A new entry was appended to a session's history.
     HistoryAppended(crate::feat::session::protocol::history_appended::HistoryAppended),
+    /// A session has been fully loaded from persistent storage.
+    SessionLoadCompleted(SessionLoadCompleted),
     /// A workflow has been loaded (initialized) but not yet started.
     WorkflowInitialized(crate::feat::workflow::protocol::event::WorkflowInitialized),
     /// A workflow execution started.
@@ -202,6 +205,7 @@ impl Event {
             Self::HistoryAppended(..) => {
                 Some(crate::feat::session::protocol::history_appended::HistoryAppended::TYPE_NAME)
             }
+            Self::SessionLoadCompleted(..) => Some(SessionLoadCompleted::TYPE_NAME),
             Self::WorkflowInitialized(..) => {
                 Some(crate::feat::workflow::protocol::event::WorkflowInitialized::TYPE_NAME)
             }

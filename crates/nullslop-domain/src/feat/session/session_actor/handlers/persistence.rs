@@ -2,7 +2,7 @@
 
 use super::super::SessionPersistenceActor;
 use crate::SessionLoadRequested;
-use crate::protocol::Command;
+use crate::protocol::Event;
 
 impl SessionPersistenceActor {
     /// Saves the current state of a session to disk.
@@ -80,6 +80,28 @@ impl SessionPersistenceActor {
         self.save_active_session(&payload.session_id).await;
     }
 
+    /// Inserts a session into the session map and emits [`SessionLoadCompleted`].
+    ///
+    /// This is the single canonical "load a session" path. Every site that
+    /// inserts a [`ChatSessionState`] into `state.session` must go through
+    /// this method so that external subscribers (token-count actor, sidebar,
+    /// etc.) are notified.
+    ///
+    /// # Guarantees
+    ///
+    /// The session is inserted **before** the event is emitted, so
+    /// subscribers can look it up by ID immediately.
+    pub(in crate::feat::session::session_actor) fn load_and_insert(
+        &self,
+        session: crate::feat::session::chat_session::ChatSessionState,
+        ctx: &crate::common::actor::ActorContext,
+    ) {
+        use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted as CompletedPayload;
+
+        self.state.write().session.insert(session.clone());
+        let _ = ctx.send_event(Event::SessionLoadCompleted(CompletedPayload { session }));
+    }
+
     /// Creates an empty session with the given ID and emits a `SessionLoadCompleted` command.
     ///
     /// Used as a fallback when a session is not found or fails to load.
@@ -93,16 +115,17 @@ impl SessionPersistenceActor {
 
         let mut session = crate::feat::session::chat_session::ChatSessionState::new();
         session.set_session_id(session_id.clone());
-        let _ = ctx.send_command(Command::SessionLoadCompleted(CompletedPayload { session }));
+        let _ = ctx.send_event(Event::SessionLoadCompleted(CompletedPayload { session }));
     }
 
     /// Loads all judge sessions belonging to the given origin from the store,
     /// unarchives them, sets their state to `Loaded`, and inserts them into
-    /// the in-memory session map.
+    /// the in-memory session map via `load_and_insert`.
     async fn load_and_insert_judge_sessions(
         &self,
         store: &crate::feat::session::SessionStoreService,
         origin_id: &crate::protocol::SessionId,
+        ctx: &crate::common::actor::ActorContext,
     ) {
         let judge_sessions = match store.load_judge_sessions_for_origin(origin_id).await {
             Ok(sessions) => sessions,
@@ -115,23 +138,18 @@ impl SessionPersistenceActor {
             }
         };
 
-        if !judge_sessions.is_empty() {
-            for judge_session in &judge_sessions {
-                let judge_id = judge_session.session_id().clone();
-                if let Err(e) = store.set_archived(&judge_id, false).await {
-                    tracing::warn!(
-                        err = ?e,
-                        judge_session_id = %judge_id,
-                        "failed to unarchive judge session"
-                    );
-                }
+        for mut judge_session in judge_sessions {
+            let judge_id = judge_session.session_id().clone();
+            if let Err(e) = store.set_archived(&judge_id, false).await {
+                tracing::warn!(
+                    err = ?e,
+                    judge_session_id = %judge_id,
+                    "failed to unarchive judge session"
+                );
             }
-            let mut state = self.state.write();
-            for mut judge_session in judge_sessions {
-                judge_session
-                    .set_session_state(crate::feat::session::chat_session::SessionState::Loaded);
-                state.session.insert(judge_session);
-            }
+            judge_session
+                .set_session_state(crate::feat::session::chat_session::SessionState::Loaded);
+            self.load_and_insert(judge_session, ctx);
         }
     }
 
@@ -150,8 +168,6 @@ impl SessionPersistenceActor {
         store: &crate::feat::session::SessionStoreService,
         ctx: &crate::common::actor::ActorContext,
     ) -> bool {
-        use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted as CompletedPayload;
-
         let Some(meta) = session.judge() else {
             return false;
         };
@@ -189,12 +205,13 @@ impl SessionPersistenceActor {
                     state.session.begin_load(origin_id.clone());
                 }
 
-                // Auto-load judge sessions for the origin.
-                self.load_and_insert_judge_sessions(store, &origin_id).await;
+                // Insert origin into state and emit its event BEFORE loading judges
+                // so subscribers see the origin first.
+                self.load_and_insert(origin_session, ctx);
 
-                let _ = ctx.send_command(Command::SessionLoadCompleted(CompletedPayload {
-                    session: origin_session,
-                }));
+                // Auto-load judge sessions for the origin.
+                self.load_and_insert_judge_sessions(store, &origin_id, ctx).await;
+
                 true
             }
             Ok(None) => {
@@ -224,8 +241,6 @@ impl SessionPersistenceActor {
         evt: &SessionLoadRequested,
         ctx: &crate::common::actor::ActorContext,
     ) {
-        use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted as CompletedPayload;
-
         let Some(store) = self.store.clone() else {
             tracing::warn!("session-actor has no store — dropping load request");
             return;
@@ -251,15 +266,15 @@ impl SessionPersistenceActor {
                 // Reset in-memory state so the sidebar filter includes this session.
                 session.set_session_state(crate::feat::session::chat_session::SessionState::Loaded);
 
+                // Insert into state and emit SessionLoadCompleted for subscribers.
+                self.load_and_insert(session, ctx);
+
                 // Load judge sessions that belong to this origin.
                 // They may have been cascade-archived alongside the origin.
                 // We unarchive and insert them into memory so the coordinator
                 // can trigger them on the next IDLE transition.
-                self.load_and_insert_judge_sessions(&store, &evt.session_id)
+                self.load_and_insert_judge_sessions(&store, &evt.session_id, ctx)
                     .await;
-
-                let _ =
-                    ctx.send_command(Command::SessionLoadCompleted(CompletedPayload { session }));
             }
             Ok(None) => {
                 tracing::warn!(
@@ -290,7 +305,7 @@ mod tests {
     use crate::feat::session::chat_session::SessionState;
     use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
     use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
-    use crate::protocol::Command;
+    use crate::protocol::Event;
 
     #[tokio::test]
     async fn loading_archived_session_resets_state_to_loaded() {
@@ -314,10 +329,10 @@ mod tests {
 
         // Then SessionLoadCompleted is emitted with session_state == Loaded.
         let loaded_session = sink
-            .commands()
+            .events()
             .iter()
             .find_map(|cmd| match cmd {
-                Command::SessionLoadCompleted(payload) => Some(payload.session.clone()),
+                Event::SessionLoadCompleted(payload) => Some(payload.session.clone()),
                 _ => None,
             })
             .expect("expected SessionLoadCompleted command");
@@ -466,10 +481,10 @@ mod tests {
 
         // Then SessionLoadCompleted is emitted with the origin session.
         let loaded_session = sink
-            .commands()
+            .events()
             .iter()
             .find_map(|cmd| match cmd {
-                Command::SessionLoadCompleted(payload) => Some(payload.session.clone()),
+                Event::SessionLoadCompleted(payload) => Some(payload.session.clone()),
                 _ => None,
             })
             .expect("expected SessionLoadCompleted command");
@@ -557,10 +572,10 @@ mod tests {
 
         // Then SessionLoadCompleted is emitted.
         let loaded = sink
-            .commands()
+            .events()
             .iter()
             .find_map(|cmd| match cmd {
-                Command::SessionLoadCompleted(payload) => Some(payload.session.clone()),
+                Event::SessionLoadCompleted(payload) => Some(payload.session.clone()),
                 _ => None,
             })
             .expect("expected SessionLoadCompleted");
@@ -603,10 +618,10 @@ mod tests {
 
         // Then SessionLoadCompleted emits the origin session, not the judge.
         let loaded = sink
-            .commands()
+            .events()
             .iter()
             .find_map(|cmd| match cmd {
-                Command::SessionLoadCompleted(payload) => Some(payload.session.clone()),
+                Event::SessionLoadCompleted(payload) => Some(payload.session.clone()),
                 _ => None,
             })
             .expect("expected SessionLoadCompleted");
@@ -710,10 +725,10 @@ mod tests {
 
         // Then SessionLoadCompleted emits the judge (fallback).
         let loaded = sink
-            .commands()
+            .events()
             .iter()
             .find_map(|cmd| match cmd {
-                Command::SessionLoadCompleted(payload) => Some(payload.session.clone()),
+                Event::SessionLoadCompleted(payload) => Some(payload.session.clone()),
                 _ => None,
             })
             .expect("expected SessionLoadCompleted");
@@ -761,10 +776,10 @@ mod tests {
 
         // Then the origin is the emitted session.
         let loaded = sink
-            .commands()
+            .events()
             .iter()
             .find_map(|cmd| match cmd {
-                Command::SessionLoadCompleted(payload) => Some(payload.session.clone()),
+                Event::SessionLoadCompleted(payload) => Some(payload.session.clone()),
                 _ => None,
             })
             .expect("expected SessionLoadCompleted");
@@ -805,10 +820,10 @@ mod tests {
 
         // Then SessionLoadCompleted emits it normally (no infinite loop).
         let loaded = sink
-            .commands()
+            .events()
             .iter()
             .find_map(|cmd| match cmd {
-                Command::SessionLoadCompleted(payload) => Some(payload.session.clone()),
+                Event::SessionLoadCompleted(payload) => Some(payload.session.clone()),
                 _ => None,
             })
             .expect("expected SessionLoadCompleted");
