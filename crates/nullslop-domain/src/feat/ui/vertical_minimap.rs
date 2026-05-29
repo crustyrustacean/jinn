@@ -376,6 +376,7 @@ pub fn render_minimap_arrow(
 
     let y = chat_log_area.y + arrow_row_min(arrow.row, chat_log_area.height);
 
+    #[allow(clippy::single_match_else, reason = "different match arms produce different widget layouts")]
     match arrow.token_count {
         Some(count) => {
             let formatted = format_entry_tokens(count);
@@ -423,9 +424,9 @@ fn arrow_row_min(row: u16, height: u16) -> u16 {
 /// Examples: `"123"`, `"1.0k"`, `"42.5k"`, `"1.0M"`.
 fn format_entry_tokens(count: u32) -> String {
     if count >= 1_000_000 {
-        format!("{:.1}M", count as f64 / 1_000_000.0)
+        format!("{:.1}M", f64::from(count) / 1_000_000.0)
     } else if count >= 1_000 {
-        format!("{:.1}k", count as f64 / 1_000.0)
+        format!("{:.1}k", f64::from(count) / 1_000.0)
     } else {
         count.to_string()
     }
