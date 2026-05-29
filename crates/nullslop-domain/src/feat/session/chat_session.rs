@@ -1061,12 +1061,15 @@ impl ChatSessionState {
         self.ensure_assistant_entry();
         let entry = ChatEntry::tool_call(id, name, "");
         let history_index = self.push_entry(entry);
-        self.core
-            .ephemeral
-            .machine
-            .streaming_tool_call_indices_mut()
-            .expect("begin_tool_call requires Streaming phase")
-            .insert(index, history_index);
+        let Some(indices) = self.core.ephemeral.machine.streaming_tool_call_indices_mut() else {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.machine.kind(),
+                index,
+                "begin_tool_call called while not streaming — ignoring"
+            );
+            return;
+        };
+        indices.insert(index, history_index);
     }
 
     /// Append an incremental delta to a streaming tool call's arguments.
@@ -1144,12 +1147,15 @@ impl ChatSessionState {
             crate::feat::session::tool_result_status::ToolResultStatus::Pending,
         );
         let history_index = self.push_entry(entry);
-        self.core
-            .ephemeral
-            .machine
-            .streaming_tool_result_indices_mut()
-            .expect("begin_tool_result requires Streaming phase")
-            .insert(tool_call_id.to_owned(), history_index);
+        let Some(indices) = self.core.ephemeral.machine.streaming_tool_result_indices_mut() else {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.machine.kind(),
+                tool_call_id,
+                "begin_tool_result called while not streaming — ignoring"
+            );
+            return;
+        };
+        indices.insert(tool_call_id.to_owned(), history_index);
     }
 
     /// Append incremental output to a pending ToolResult entry.
