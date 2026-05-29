@@ -167,7 +167,7 @@ impl SessionPersistenceActor {
             .active_persona
             .as_ref()
             .map(|p| p.name.clone());
-        let entries: Vec<PersonaEntry> = state
+        let mut entries: Vec<PersonaEntry> = state
             .context
             .personas
             .iter()
@@ -180,7 +180,9 @@ impl SessionPersistenceActor {
             .collect();
         drop(state);
 
-        let mut state = self.state.write();
+    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
+    let mut state = self.state.write();
         state.frontend.persona_picker.set_items(entries);
     }
 }
