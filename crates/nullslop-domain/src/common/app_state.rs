@@ -12,7 +12,7 @@
 // --- Re-exports: types moved to their feature homes ---
 pub use crate::common::session_map::SessionLoadGuard;
 pub use crate::common::focus::{FocusScope, ScopeStack};
-pub use crate::common::frontend_state::{FrontendCaches, FrontendState};
+pub use crate::feat::ui::frontend_state::{FrontendCaches, FrontendState};
 pub use crate::feat::context::assembly_state::ContextAssemblyState;
 pub use crate::feat::provider::ProviderState;
 pub use crate::feat::rename_session_input::state::RenameSessionInputState;
@@ -24,6 +24,7 @@ use crate::protocol::{ChatEntryId, PickerKind, PinPosition, SessionId};
 use crate::common::session_map::SessionMap;
 pub use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::ui::picker_states::PickerExt;
 
 /// Written to exclusively by `SessionPersistenceActor` and `IntentHandler`.
 /// No other actor should mutate these fields.
@@ -56,16 +57,16 @@ impl AppState {
         let kind = self.frontend.scope_stack.picker_kind().copied()?;
         match kind {
             PickerKind::Provider => Some(&mut self.provider.provider_picker),
-            PickerKind::Session => Some(&mut self.frontend.session_picker),
-            PickerKind::Persona => Some(&mut self.frontend.persona_picker),
-            PickerKind::Theme => Some(&mut self.frontend.theme_picker),
+            PickerKind::Session => Some(self.frontend.session_picker_mut()),
+            PickerKind::Persona => Some(self.frontend.persona_picker_mut()),
+            PickerKind::Theme => Some(self.frontend.theme_picker_mut()),
 
-            PickerKind::SessionLifecycle => Some(&mut self.frontend.session_lifecycle_picker),
-            PickerKind::Workflow => Some(&mut self.frontend.workflow_picker),
-            PickerKind::Judge => Some(&mut self.frontend.judge_picker),
-            PickerKind::CompactionModel => Some(&mut self.frontend.compaction_model_picker),
-            PickerKind::Tool => Some(&mut self.frontend.tool_picker),
-            PickerKind::Skill => Some(&mut self.frontend.skill_picker),
+            PickerKind::SessionLifecycle => Some(self.frontend.session_lifecycle_picker_mut()),
+            PickerKind::Workflow => Some(self.frontend.workflow_picker_mut()),
+            PickerKind::Judge => Some(self.frontend.judge_picker_mut()),
+            PickerKind::CompactionModel => Some(self.frontend.compaction_model_picker_mut()),
+            PickerKind::Tool => Some(self.frontend.tool_picker_mut()),
+            PickerKind::Skill => Some(self.frontend.skill_picker_mut()),
         }
     }
 
