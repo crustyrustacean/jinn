@@ -4,6 +4,7 @@
 //! and loading session picker entries from the session store into app state.
 
 use crate::feat::provider::protocol::event::ModelsRefreshed;
+use crate::feat::session::phase_machine::PhaseKind;
 
 use super::super::SessionPersistenceActor;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
@@ -55,9 +56,9 @@ impl SessionPersistenceActor {
     ///
     /// Workers submit `Vec<HistoryMutation>` batches via the
     /// `SubmitHistoryMutations` command. This handler pushes them to
-    /// `pending_mutations` without applying — they are drained and applied
-    /// at the next safe application point (tool batch completion or stream
-    /// completion).
+    /// `pending_mutations` and applies them immediately if the session is
+    /// idle (no active stream). If the session is streaming or sending,
+    /// mutations are deferred until the next stream completion.
     pub(in crate::feat::session::session_actor) fn handle_submit_history_mutations(
         &self,
         payload: &SubmitHistoryMutations,
@@ -73,6 +74,19 @@ impl SessionPersistenceActor {
             queue_len = session.core.ephemeral.pending_mutations.len(),
             "queued history mutations from worker"
         );
+
+        // If the session is idle (no active stream), drain immediately.
+        // Otherwise mutations wait for the next stream completion.
+        if matches!(session.phase(), PhaseKind::Idle) {
+            let count = session.drain_and_apply_pending_mutations();
+            if count > 0 {
+                tracing::info!(
+                    session_id = %payload.session_id,
+                    count,
+                    "applied pending history mutations immediately (session idle)"
+                );
+            }
+        }
     }
 }
 
@@ -266,7 +280,7 @@ mod tests {
     // --- handle_submit_history_mutations ---
 
     #[test]
-    fn handle_submit_history_mutations_queues_mutations_without_applying() {
+    fn handle_submit_history_mutations_applies_immediately_when_idle() {
         // Given a session actor with a session that has one entry.
         let actor = test_actor();
         let session_id = {
@@ -282,7 +296,7 @@ mod tests {
                 .clone()
         };
 
-        // When submitting history mutations.
+        // When submitting history mutations while session is idle.
         actor.handle_submit_history_mutations(
             &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
                 session_id: session_id.clone(),
@@ -295,16 +309,15 @@ mod tests {
             },
         );
 
-        // Then mutations are queued but NOT applied yet.
+        // Then mutations are applied immediately (session is idle).
         let state = actor.state.read();
         let session = state.session.get(&session_id).unwrap();
-        // ContextOverride is still Default (not applied).
         assert_eq!(
             session.history()[0].context_override,
-            crate::feat::session::chat_entry::ContextOverride::Default
+            crate::feat::session::chat_entry::ContextOverride::ForcedExclude
         );
-        // But the queue has one batch.
-        assert_eq!(session.core.ephemeral.pending_mutations.len(), 1);
+        // Queue is empty after drain.
+        assert!(session.core.ephemeral.pending_mutations.is_empty());
     }
 
     #[test]
@@ -349,14 +362,15 @@ mod tests {
             },
         );
 
-        // Then the session was created and the batch was queued.
+        // Then the session was created and mutations applied immediately.
         let state = actor.state.read();
         let session = state.session.get(&new_session_id).unwrap();
-        assert_eq!(session.core.ephemeral.pending_mutations.len(), 1);
+        // Queue is empty (mutations were applied, though the entry ID didn't match).
+        assert!(session.core.ephemeral.pending_mutations.is_empty());
     }
 
     #[test]
-    fn handle_submit_history_mutations_multiple_submissions_accumulate() {
+    fn handle_submit_history_mutations_multiple_submissions_each_applied_immediately() {
         // Given a session actor.
         let actor = test_actor();
         let session_id = {
@@ -379,7 +393,7 @@ mod tests {
                 .clone()
         };
 
-        // When submitting two batches.
+        // When submitting two batches (session is idle, each applies immediately).
         actor.handle_submit_history_mutations(
             &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
                 session_id: session_id.clone(),
@@ -403,9 +417,17 @@ mod tests {
             },
         );
 
-        // Then both batches are in the queue in order.
+        // Then both mutations are applied and queue is empty.
         let state = actor.state.read();
         let session = state.session.get(&session_id).unwrap();
-        assert_eq!(session.core.ephemeral.pending_mutations.len(), 2);
+        assert_eq!(session.core.ephemeral.pending_mutations.len(), 0);
+        assert_eq!(
+            session.history()[0].context_override,
+            crate::feat::session::chat_entry::ContextOverride::ForcedExclude
+        );
+        assert_eq!(
+            session.history()[1].context_override,
+            crate::feat::session::chat_entry::ContextOverride::ForcedInclude
+        );
     }
 }

@@ -19,8 +19,9 @@ use crate::tasks;
 use nullslop_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry};
 use nullslop_domain::feat::provider::protocol::command::CancelStream;
 use nullslop_domain::feat::provider::protocol::event::StreamCompleted;
-use nullslop_domain::feat::session::chat_session::{ChatSessionState, SessionPhase};
+use nullslop_domain::feat::session::chat_session::ChatSessionState;
 use nullslop_domain::feat::session::profile::SessionProfile;
+use nullslop_domain::feat::session::phase_machine::PhaseKind;
 use nullslop_domain::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use nullslop_domain::feat::session::session_actor::setup_running_msg;
 use nullslop_domain::feat::session::token_stats::TokenStats;
@@ -412,7 +413,7 @@ impl BenchActor {
         ctx: &ActorContext,
     ) {
         // Only care about Idle transitions for tracked sessions.
-        if payload.new_phase != SessionPhase::Idle {
+        if payload.new_phase != PhaseKind::Idle {
             return;
         }
 
@@ -836,8 +837,8 @@ mod tests {
             .handle_session_phase_changed(
                 &SessionPhaseChanged {
                     session_id: session_id.clone(),
-                    old_phase: SessionPhase::Streaming,
-                    new_phase: SessionPhase::Idle,
+                    old_phase: PhaseKind::Streaming,
+                    new_phase: PhaseKind::Idle,
                 },
                 &ctx,
             )
@@ -887,8 +888,8 @@ mod tests {
             .handle_session_phase_changed(
                 &SessionPhaseChanged {
                     session_id: session_id.clone(),
-                    old_phase: SessionPhase::Streaming,
-                    new_phase: SessionPhase::Sending,
+                    old_phase: PhaseKind::Streaming,
+                    new_phase: PhaseKind::Sending,
                 },
                 &ctx,
             )
@@ -1037,8 +1038,8 @@ mod tests {
             .handle_session_phase_changed(
                 &SessionPhaseChanged {
                     session_id: session_id.clone(),
-                    old_phase: SessionPhase::Streaming,
-                    new_phase: SessionPhase::Idle,
+                    old_phase: PhaseKind::Streaming,
+                    new_phase: PhaseKind::Idle,
                 },
                 &ctx,
             )
@@ -1059,8 +1060,8 @@ mod tests {
             .handle_session_phase_changed(
                 &SessionPhaseChanged {
                     session_id: session_id.clone(),
-                    old_phase: SessionPhase::Streaming,
-                    new_phase: SessionPhase::Idle,
+                    old_phase: PhaseKind::Streaming,
+                    new_phase: PhaseKind::Idle,
                 },
                 &ctx,
             )
@@ -1154,8 +1155,8 @@ mod tests {
             .handle_session_phase_changed(
                 &SessionPhaseChanged {
                     session_id: session_id.clone(),
-                    old_phase: SessionPhase::Streaming,
-                    new_phase: SessionPhase::Idle,
+                    old_phase: PhaseKind::Streaming,
+                    new_phase: PhaseKind::Idle,
                 },
                 &ctx,
             )
@@ -1217,8 +1218,8 @@ mod tests {
             .handle_session_phase_changed(
                 &SessionPhaseChanged {
                     session_id: session_id.clone(),
-                    old_phase: SessionPhase::Streaming,
-                    new_phase: SessionPhase::Idle,
+                    old_phase: PhaseKind::Streaming,
+                    new_phase: PhaseKind::Idle,
                 },
                 &ctx,
             )
@@ -1425,8 +1426,8 @@ mod tests {
             .handle_session_phase_changed(
                 &SessionPhaseChanged {
                     session_id: session_id.clone(),
-                    old_phase: SessionPhase::Streaming,
-                    new_phase: SessionPhase::Idle,
+                    old_phase: PhaseKind::Streaming,
+                    new_phase: PhaseKind::Idle,
                 },
                 &ctx,
             )
@@ -1494,8 +1495,8 @@ mod tests {
             .handle_session_phase_changed(
                 &SessionPhaseChanged {
                     session_id: session_id.clone(),
-                    old_phase: SessionPhase::Streaming,
-                    new_phase: SessionPhase::Idle,
+                    old_phase: PhaseKind::Streaming,
+                    new_phase: PhaseKind::Idle,
                 },
                 &ctx,
             )
@@ -1554,8 +1555,8 @@ mod tests {
             .handle_session_phase_changed(
                 &SessionPhaseChanged {
                     session_id: session_id.clone(),
-                    old_phase: SessionPhase::Streaming,
-                    new_phase: SessionPhase::Idle,
+                    old_phase: PhaseKind::Streaming,
+                    new_phase: PhaseKind::Idle,
                 },
                 &ctx,
             )
@@ -1637,8 +1638,8 @@ mod tests {
             .handle_session_phase_changed(
                 &SessionPhaseChanged {
                     session_id: session_id.clone(),
-                    old_phase: SessionPhase::Streaming,
-                    new_phase: SessionPhase::Idle,
+                    old_phase: PhaseKind::Streaming,
+                    new_phase: PhaseKind::Idle,
                 },
                 &ctx,
             )
@@ -1715,8 +1716,8 @@ mod tests {
             .handle_session_phase_changed(
                 &SessionPhaseChanged {
                     session_id: session_id.clone(),
-                    old_phase: SessionPhase::Streaming,
-                    new_phase: SessionPhase::Idle,
+                    old_phase: PhaseKind::Streaming,
+                    new_phase: PhaseKind::Idle,
                 },
                 &ctx,
             )

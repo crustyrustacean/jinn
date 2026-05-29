@@ -23,6 +23,7 @@ use crate::feat::session::chat_history::ChatHistory;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::protocol::{
     ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId,
     SessionId,
@@ -37,17 +38,13 @@ use crate::protocol::{
 /// that document the valid state machine edges.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum SessionPhase {
-    /// Session is completely idle — not sending, streaming, assembling, or compacting.
+    /// Session is completely idle — not sending, streaming, or compacting.
     #[default]
     Idle,
-    /// A prompt assembly request is in progress.
-    Assembling,
     /// A message has been dispatched to the LLM but no tokens have arrived yet.
     Sending,
     /// LLM tokens are actively streaming into the session.
     Streaming,
-    /// Context compaction is in progress.
-    Compacting,
     /// A lifecycle teardown script is running.
     TearingDown,
 }
@@ -58,10 +55,8 @@ impl std::str::FromStr for SessionPhase {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "idle" => Ok(Self::Idle),
-            "assembling" => Ok(Self::Assembling),
             "sending" => Ok(Self::Sending),
             "streaming" => Ok(Self::Streaming),
-            "compacting" => Ok(Self::Compacting),
             "tearing_down" => Ok(Self::TearingDown),
             _ => Err(SessionPhaseParseError(s.to_owned())),
         }
@@ -72,6 +67,28 @@ impl std::str::FromStr for SessionPhase {
 #[derive(Debug, wherror::Error)]
 #[error("unknown session phase: {0}")]
 pub struct SessionPhaseParseError(String);
+
+impl From<crate::feat::session::phase_machine::PhaseKind> for SessionPhase {
+    fn from(kind: crate::feat::session::phase_machine::PhaseKind) -> Self {
+        match kind {
+            crate::feat::session::phase_machine::PhaseKind::Idle => Self::Idle,
+            crate::feat::session::phase_machine::PhaseKind::Sending => Self::Sending,
+            crate::feat::session::phase_machine::PhaseKind::Streaming => Self::Streaming,
+            crate::feat::session::phase_machine::PhaseKind::TearingDown => Self::TearingDown,
+        }
+    }
+}
+
+impl From<SessionPhase> for crate::feat::session::phase_machine::PhaseKind {
+    fn from(phase: SessionPhase) -> Self {
+        match phase {
+            SessionPhase::Idle => Self::Idle,
+            SessionPhase::Sending => Self::Sending,
+            SessionPhase::Streaming => Self::Streaming,
+            SessionPhase::TearingDown => Self::TearingDown,
+        }
+    }
+}
 
 /// Error returned when a streaming operation fails.
 #[derive(Debug, wherror::Error)]
@@ -180,41 +197,15 @@ impl BusyCounter {
 /// be accidentally excluded from persistence.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SessionCoreEphemeral {
-    /// The current session phase (idle, sending, streaming, assembling, compacting).
-    pub(crate) phase: SessionPhase,
-    /// Index into `history` for the entry currently receiving stream tokens.
-    pub(crate) streaming_entry_index: Option<usize>,
+    /// Validated phase transition machine.
+    /// The single source of truth for phase state.
+    pub(crate) machine: crate::feat::session::phase_machine::SessionPhaseMachine,
     /// Turn dispatch queue — drives all turn transitions through a single processor.
     pub(crate) message_queue: crate::feat::session::turn_queue::TurnQueue,
-    /// Maps stream tool call index to history index for in-progress tool calls.
-    pub(crate) streaming_tool_call_indices: HashMap<usize, usize>,
-    /// Index into `history` for the entry currently receiving thinking tokens.
-    pub(crate) streaming_thinking_entry_index: Option<usize>,
     /// Cached context size in tokens (assembled prompt size).
     /// Updated when context is assembled. Not persisted across restarts.
     /// OWNER: session-actor.
     pub(crate) cached_context_size: Option<u32>,
-    /// Maps tool_call_id to history index for pending streaming ToolResult entries.
-    /// OWNER: session-actor.
-    pub(crate) streaming_tool_result_indices: HashMap<String, usize>,
-    /// Set to true by `ScheduleAutoCompaction` when token threshold is exceeded.
-    /// Checked at `on_tool_batch_completed` and `on_stream_completed`. When set,
-    /// the session transitions directly to Compacting instead of continuing the
-    /// turn or returning to Idle. Self-clearing on read via
-    /// `take_auto_compaction_requested`.
-    /// OWNER: session-actor.
-    #[serde(default)]
-    pub(crate) auto_compaction_requested: bool,
-    /// When true, `on_tool_batch_completed` skips `SendToLlmProvider` and
-    /// transitions to Idle instead of continuing the tool loop. Set by judge
-    /// verdict tools (`task_complete`, `task_incomplete`). Self-clearing on read.
-    /// OWNER: session-actor / verdict tools.
-    pub(crate) tool_loop_disabled: bool,
-    /// Indices of entries marked as ignored during compaction.
-    /// Used to un-ignore on cancel. Empty when not compacting.
-    /// Not persisted — compaction is ephemeral.
-    #[serde(skip)]
-    pub(crate) compaction_gathered_indices: Vec<usize>,
     /// Reference-counted busy counter for lifecycle scripts and other async operations.
     /// Rendered as the animated "Working..." spinner when non-zero.
     #[serde(default)]
@@ -752,14 +743,8 @@ impl ChatSessionState {
             self.push_entry(entry);
         }
 
-        // Reset ephemeral streaming state.
-        self.core.ephemeral.streaming_entry_index = None;
-        self.core.ephemeral.streaming_thinking_entry_index = None;
-        self.core.ephemeral.streaming_tool_call_indices.clear();
-        self.core.ephemeral.streaming_tool_result_indices.clear();
-        self.core.ephemeral.auto_compaction_requested = false;
-        self.core.ephemeral.tool_loop_disabled = false;
-        self.core.ephemeral.compaction_gathered_indices.clear();
+        // Reset machine to Idle — drops all StreamingPhase data.
+        self.core.ephemeral.machine = crate::feat::session::phase_machine::SessionPhaseMachine::new();
         self.core.ephemeral.busy_counter = BusyCounter::default();
 
         // Drain the turn queue — discard any queued items.
@@ -839,45 +824,8 @@ impl ChatSessionState {
     pub fn insert_entry_at(&mut self, index: usize, entry: ChatEntry) -> usize {
         let clamped = index.min(self.core.history.len());
         self.core.history.insert(clamped, entry);
-        // Shift tracking indices that point to entries at or after the insertion point.
-        if let Some(ref mut i) = self.core.ephemeral.streaming_entry_index
-            && *i >= clamped
-        {
-            *i += 1;
-        }
-        if let Some(ref mut i) = self.core.ephemeral.streaming_thinking_entry_index
-            && *i >= clamped
-        {
-            *i += 1;
-        }
-        for i in self
-            .core
-            .ephemeral
-            .streaming_tool_result_indices
-            .values_mut()
-        {
-            if *i >= clamped {
-                *i += 1;
-            }
-        }
-        for key in self
-            .core
-            .ephemeral
-            .streaming_tool_call_indices
-            .keys()
-            .copied()
-            .collect::<Vec<_>>()
-        {
-            if let Some(v) = self
-                .core
-                .ephemeral
-                .streaming_tool_call_indices
-                .get_mut(&key)
-                && *v >= clamped
-            {
-                *v += 1;
-            }
-        }
+        // Delegate index shifting to the machine (handles all 4 streaming fields).
+        self.core.ephemeral.machine.shift_streaming_indices_for_insert_at(clamped);
         clamped
     }
 
@@ -887,38 +835,50 @@ impl ChatSessionState {
     /// `begin_tool_call`, or `cancel_streaming`. No-op if the entry
     /// already exists or the session is not streaming.
     fn ensure_assistant_entry(&mut self) {
-        if self.core.ephemeral.streaming_entry_index.is_some()
-            || !matches!(self.core.ephemeral.phase, SessionPhase::Streaming)
+        if self.core.ephemeral.machine.streaming_entry_index().is_some()
+            || !matches!(self.core.ephemeral.machine.kind(), PhaseKind::Streaming)
         {
             return;
         }
         let entry = ChatEntry::assistant("");
         let index = self.push_entry(entry);
-        self.core.ephemeral.streaming_entry_index = Some(index);
+        self.core.ephemeral.machine.set_streaming_entry_index(index);
     }
 
+
+
     /// Begin a new streaming response.
-    ///
-    /// Sets the streaming flag but does NOT create an Assistant entry.
-    /// The entry is created lazily on first `append_stream_token`,
-    /// `begin_tool_call`, or `finish_streaming`. This ensures entries are
-    /// always appended in the correct order (thinking before assistant)
-    /// without any index-shifting insertions.
-    ///
-    /// Soft guard: if the session is not in Sending or Idle phase, logs a warning
-    /// and returns without changing state.
+    //
+    // Phase 1 wiring: delegates to machine.on_first_token() and syncs the
+    // legacy phase field. If the machine rejects the transition (e.g. not in
+    // Sending), logs a warning and returns without changing state — matching
+    // the old soft-guard behavior.
+    //
+    // Note: The old code accepted both `Sending` and `Idle` phases. The machine
+    // only accepts `Sending → Streaming`. To maintain backward compat during the
+    // migration, we also accept `Idle → Streaming` by first transitioning to
+    // `Sending` then to `Streaming`.
     pub fn begin_streaming(&mut self) {
-        if !matches!(
-            self.core.ephemeral.phase,
-            SessionPhase::Sending | SessionPhase::Idle
-        ) {
+        use crate::feat::session::phase_machine::PhaseTransitions;
+        // If Idle, first transition to Sending (some callers skip begin_sending()).
+        if matches!(self.core.ephemeral.machine.kind(), PhaseKind::Idle) {
+            if let Err(e) = self.core.ephemeral.machine.on_dispatch_message() {
+                tracing::warn!(
+                    current_phase = ?self.core.ephemeral.machine.kind(),
+                    err = %e,
+                    "begin_streaming: on_dispatch_message rejected — ignoring"
+                );
+                return;
+            }
+        }
+        if let Err(e) = self.core.ephemeral.machine.on_first_token() {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
-                "begin_streaming called while not in Sending or Idle phase — ignoring"
+                current_phase = ?self.core.ephemeral.machine.kind(),
+                err = %e,
+                "begin_streaming: machine rejected transition — ignoring"
             );
             return;
         }
-        self.core.ephemeral.phase = SessionPhase::Streaming;
     }
 
     /// Append a token to the streaming assistant entry.
@@ -938,9 +898,9 @@ impl ChatSessionState {
     where
         S: AsRef<str>,
     {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Streaming) {
+        if !matches!(self.core.ephemeral.machine.kind(), PhaseKind::Streaming) {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
+                current_phase = ?self.core.ephemeral.machine.kind(),
                 "append_stream_token called while not streaming — ignoring"
             );
             return Err(StreamingError::NoStreamingEntry);
@@ -949,7 +909,8 @@ impl ChatSessionState {
         let index = self
             .core
             .ephemeral
-            .streaming_entry_index
+            .machine
+            .streaming_entry_index()
             .ok_or(StreamingError::NoStreamingEntry)?;
         if let ChatEntry {
             kind: ChatEntryKind::Assistant(ref mut text),
@@ -972,20 +933,28 @@ impl ChatSessionState {
     /// Soft guard: if the session is not streaming or thinking has already begun,
     /// logs a warning and returns without changing state.
     pub fn begin_thinking(&mut self) {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Streaming) {
+        if !matches!(self.core.ephemeral.machine.kind(), PhaseKind::Streaming) {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
+                current_phase = ?self.core.ephemeral.machine.kind(),
                 "begin_thinking called while not streaming — ignoring"
             );
             return;
         }
-        if self.core.ephemeral.streaming_thinking_entry_index.is_some() {
+        if self.core.ephemeral.machine.streaming_thinking_entry_index().is_some() {
             tracing::warn!("begin_thinking called while already thinking — ignoring");
             return;
         }
         let entry = ChatEntry::thinking("");
-        let index = self.push_entry(entry);
-        self.core.ephemeral.streaming_thinking_entry_index = Some(index);
+        // Insert thinking BEFORE the assistant entry when the assistant entry
+        // already exists. Some providers (OpenRouter) send reasoning tokens
+        // AFTER content tokens, so the assistant entry is already in history.
+        // The thinking entry should appear before it in the chat log.
+        let index = if let Some(assistant_idx) = self.core.ephemeral.machine.streaming_entry_index() {
+            self.insert_entry_at(assistant_idx, entry)
+        } else {
+            self.push_entry(entry)
+        };
+        self.core.ephemeral.machine.set_streaming_thinking_entry_index(index);
     }
 
     /// Append a thinking token to the streaming Thinking entry.
@@ -1005,7 +974,8 @@ impl ChatSessionState {
         let index = self
             .core
             .ephemeral
-            .streaming_thinking_entry_index
+            .machine
+            .streaming_thinking_entry_index()
             .ok_or(StreamingError::NoThinkingEntry)?;
         if let ChatEntry {
             kind: ChatEntryKind::Thinking(ref mut text),
@@ -1019,36 +989,42 @@ impl ChatSessionState {
 
     /// The index of the streaming thinking entry, if thinking is being accumulated.
     pub fn streaming_thinking_entry_index(&self) -> Option<usize> {
-        self.core.ephemeral.streaming_thinking_entry_index
+        self.core.ephemeral.machine.streaming_thinking_entry_index()
     }
 
     /// Mark streaming as finished (normal completion).
-    ///
-    /// Creates an empty Assistant entry if no tokens were ever appended
-    /// (e.g., a stream that ended immediately), unless `preserve_assistant`
-    /// is `false`. When `false`, the method skips `ensure_assistant_entry()`
-    /// so that error/cancel entries remain the last entry in history.
+    //
+    // Phase 1 wiring: delegates to machine.on_stream_completed_finished()
+    // and syncs legacy phase field.
     pub fn finish_streaming(&mut self, preserve_assistant: bool) {
         if preserve_assistant {
             self.ensure_assistant_entry();
         }
-        self.core.ephemeral.phase = SessionPhase::Idle;
-        self.core.ephemeral.streaming_entry_index = None;
-        self.core.ephemeral.streaming_tool_call_indices.clear();
-        self.core.ephemeral.streaming_thinking_entry_index = None;
+        use crate::feat::session::phase_machine::PhaseTransitions;
+        if let Err(e) = self.core.ephemeral.machine.on_stream_completed_finished() {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.machine.kind(),
+                err = %e,
+                "finish_streaming: machine rejected transition"
+            );
+            return;
+        }
+        // Streaming indices cleared automatically by Phase::Streaming drop.
     }
 
     /// Cancel streaming but keep partial text in history.
-    ///
-    /// If an Assistant entry was created, its partial text is preserved.
-    /// If no entry was created (stream cancelled before any tokens), just clears flags.
+    //
+    // Phase 1 wiring: delegates to machine.cancel() and syncs legacy phase.
     pub fn cancel_streaming(&mut self) {
         self.ensure_assistant_entry();
-        self.core.ephemeral.phase = SessionPhase::Idle;
-        self.core.ephemeral.streaming_entry_index = None;
-        self.core.ephemeral.streaming_tool_call_indices.clear();
-        self.core.ephemeral.streaming_thinking_entry_index = None;
-        self.core.ephemeral.streaming_tool_result_indices.clear();
+        if let Err(e) = self.core.ephemeral.machine.cancel() {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.machine.kind(),
+                err = %e,
+                "cancel_streaming: machine rejected cancel"
+            );
+        }
+        // All streaming indices cleaned up by StreamingPhase drop on cancel()
     }
 
     /// Cancel streaming and drain queued messages back to the input buffer.
@@ -1056,7 +1032,7 @@ impl ChatSessionState {
     /// Used when the user interrupts or switches to Normal mode during an
     /// active stream. The display text from drained `UserMessage` entries is
     /// joined with newlines and replaces whatever was in the input box.
-    /// `ToolContinuation` and `CompactionNeeded` items are silently discarded.
+    /// `ToolContinuation` items are silently discarded.
     pub fn cancel_stream_and_drain(&mut self) {
         self.cancel_streaming();
         let drained = self.drain_queue();
@@ -1069,7 +1045,7 @@ impl ChatSessionState {
                         _ => None,
                     }
                 }
-                _ => None,
+                crate::feat::session::queue_item::QueueItem::ToolContinuation => None,
             })
             .collect();
         let drained_text = display_texts.join("\n");
@@ -1079,8 +1055,8 @@ impl ChatSessionState {
     }
 
     /// Returns the current session lifecycle phase.
-    pub fn phase(&self) -> SessionPhase {
-        self.core.ephemeral.phase
+    pub fn phase(&self) -> PhaseKind {
+        self.core.ephemeral.machine.kind()
     }
 
     // --- Tool call streaming ---
@@ -1093,10 +1069,15 @@ impl ChatSessionState {
         self.ensure_assistant_entry();
         let entry = ChatEntry::tool_call(id, name, "");
         let history_index = self.push_entry(entry);
-        self.core
-            .ephemeral
-            .streaming_tool_call_indices
-            .insert(index, history_index);
+        let Some(indices) = self.core.ephemeral.machine.streaming_tool_call_indices_mut() else {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.machine.kind(),
+                index,
+                "begin_tool_call called while not streaming — ignoring"
+            );
+            return;
+        };
+        indices.insert(index, history_index);
     }
 
     /// Append an incremental delta to a streaming tool call's arguments.
@@ -1123,7 +1104,8 @@ impl ChatSessionState {
         let history_index = self
             .core
             .ephemeral
-            .streaming_tool_call_indices
+            .machine
+            .streaming_tool_call_indices()
             .get(&index)
             .copied()
             .ok_or(StreamingError::NoToolCallIndex { index })?;
@@ -1173,10 +1155,15 @@ impl ChatSessionState {
             crate::feat::session::tool_result_status::ToolResultStatus::Pending,
         );
         let history_index = self.push_entry(entry);
-        self.core
-            .ephemeral
-            .streaming_tool_result_indices
-            .insert(tool_call_id.to_owned(), history_index);
+        let Some(indices) = self.core.ephemeral.machine.streaming_tool_result_indices_mut() else {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.machine.kind(),
+                tool_call_id,
+                "begin_tool_result called while not streaming — ignoring"
+            );
+            return;
+        };
+        indices.insert(tool_call_id.to_owned(), history_index);
     }
 
     /// Append incremental output to a pending ToolResult entry.
@@ -1192,7 +1179,8 @@ impl ChatSessionState {
         let Some(&history_index) = self
             .core
             .ephemeral
-            .streaming_tool_result_indices
+            .machine
+            .streaming_tool_result_indices()
             .get(tool_call_id)
         else {
             return;
@@ -1236,8 +1224,9 @@ impl ChatSessionState {
         if let Some(history_index) = self
             .core
             .ephemeral
-            .streaming_tool_result_indices
-            .remove(tool_call_id)
+            .machine
+            .streaming_tool_result_indices_mut()
+            .and_then(|map| map.remove(tool_call_id))
         {
             // Finalize existing pending entry.
             let entry = &mut self.core.history[history_index];
@@ -1312,36 +1301,6 @@ impl ChatSessionState {
     }
 
 
-
-    // --- Assembling ---
-
-    /// Mark the session as having a prompt assembly in progress.
-    ///
-    /// Soft guard: if not idle, logs a warning and returns without changing phase.
-    pub fn begin_assembling(&mut self) {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Idle) {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
-                "begin_assembling called while not idle — ignoring"
-            );
-            return;
-        }
-        self.core.ephemeral.phase = SessionPhase::Assembling;
-    }
-
-    /// Clear the assembling flag (called when prompt assembly completes).
-    ///
-    /// Soft guard: if not assembling, logs a warning and returns without changing phase.
-    pub fn finish_assembling(&mut self) {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Assembling) {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
-                "finish_assembling called while not assembling — ignoring"
-            );
-            return;
-        }
-        self.core.ephemeral.phase = SessionPhase::Idle;
-    }
 
     /// Switch the active prompt strategy for this session.
     pub fn switch_strategy(&mut self, strategy_id: PromptStrategyId) {
@@ -1421,134 +1380,72 @@ impl ChatSessionState {
     // --- Sending ---
 
     /// Mark the session as having dispatched a message to the LLM.
-    ///
-    /// Soft guard: if not idle, logs a warning and returns without changing phase.
+    //
+    // Phase 1 wiring: delegates to machine.on_dispatch_message() and syncs
+    // the legacy phase field.
     pub fn begin_sending(&mut self) {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Idle) {
+        use crate::feat::session::phase_machine::PhaseTransitions;
+        if let Err(e) = self.core.ephemeral.machine.on_dispatch_message() {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
-                "begin_sending called while not idle — ignoring"
+                current_phase = ?self.core.ephemeral.machine.kind(),
+                err = %e,
+                "begin_sending: machine rejected transition — ignoring"
             );
             return;
         }
-        self.core.ephemeral.phase = SessionPhase::Sending;
     }
 
     /// Clear the sending flag (called when the first stream token arrives).
+    //
+    /// Complete the sending phase via the machine's validated transition.
     ///
-    /// Soft guard: if not sending, logs a warning and returns without changing phase.
-    pub fn finish_sending(&mut self) {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Sending) {
+    /// This should be called when a tool batch completes and the tool loop
+    /// is disabled. The machine reads the `tool_loop_disabled` flag and
+    /// transitions `Sending → Idle` (if set) or `Sending → Streaming` (if not).
+    ///
+    /// The caller must ensure `set_tool_loop_disabled(true)` has been called
+    /// before this method if the tool loop should be terminated.
+    pub fn finish_sending_via_machine(&mut self) {
+        use crate::feat::session::phase_machine::PhaseTransitions;
+        if let Err(e) = self.core.ephemeral.machine.on_tool_batch_completed() {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
-                "finish_sending called while not sending — ignoring"
+                current_phase = ?self.core.ephemeral.machine.kind(),
+                err = %e,
+                "finish_sending_via_machine: machine rejected transition — ignoring"
             );
-            return;
         }
-        self.core.ephemeral.phase = SessionPhase::Idle;
     }
 
-    /// Mark the session as compacting.
-    ///
-    /// Soft guard: if not idle, logs a warning and returns without changing phase.
-    pub fn begin_compacting(&mut self, gathered_indices: Vec<usize>) {
-        if !matches!(
-            self.core.ephemeral.phase,
-            SessionPhase::Idle | SessionPhase::Compacting
-        ) {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
-                "begin_compacting called while not idle or compacting — ignoring"
-            );
-            return;
-        }
-        self.core.ephemeral.phase = SessionPhase::Compacting;
-        self.core.ephemeral.compaction_gathered_indices = gathered_indices;
-    }
-
-    /// Mark compaction as finished.
-    ///
-    /// Soft guard: if the session is not currently compacting (e.g. compaction was
-    /// cancelled by the user while the LLM call was in flight), logs a warning and
-    /// returns early instead of panicking.
-    pub fn finish_compacting(&mut self) {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Compacting) {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
-                "finish_compacting called while not compacting — ignoring"
-            );
-            return;
-        }
-        self.core.ephemeral.compaction_gathered_indices.clear();
-        self.core.ephemeral.phase = SessionPhase::Idle;
-    }
-
-    /// Mark compaction as finished and transition to Sending phase.
-    ///
-    /// Used after successful auto-compaction to resume the turn.
-    /// The session goes `Compacting → Sending` instead of `Compacting → Idle`.
-    pub fn finish_compacting_into_sending(&mut self) {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Compacting) {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
-                "finish_compacting_into_sending called while not compacting — ignoring"
-            );
-            return;
-        }
-        self.core.ephemeral.compaction_gathered_indices.clear();
-        self.core.ephemeral.phase = SessionPhase::Sending;
-    }
-
-    /// Mark the session as running a lifecycle teardown script.
-    ///
-    /// Soft guard: if not idle, logs a warning and returns without changing phase.
+    /// Mark the session as tearing down.
+    //
+    // Phase 1 wiring: delegates to machine.on_request_teardown() and syncs
+    // legacy phase field.
     pub fn begin_tearing_down(&mut self) {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Idle) {
+        use crate::feat::session::phase_machine::PhaseTransitions;
+        if let Err(e) = self.core.ephemeral.machine.on_request_teardown() {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
-                "begin_tearing_down called while not idle — ignoring"
+                current_phase = ?self.core.ephemeral.machine.kind(),
+                err = %e,
+                "begin_tearing_down: machine rejected transition — ignoring"
             );
             return;
         }
-        self.core.ephemeral.phase = SessionPhase::TearingDown;
     }
 
-    /// Mark teardown as finished, returning to `Idle`.
-    ///
-    /// Soft guard: if the session is not currently tearing down, logs a warning
-    /// and returns without changing phase.
+    /// Finish tearing down, return to idle.
+    //
+    // Phase 1 wiring: delegates to machine.on_teardown_complete() and syncs
+    // legacy phase field.
     pub fn finish_tearing_down(&mut self) {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::TearingDown) {
+        use crate::feat::session::phase_machine::PhaseTransitions;
+        if let Err(e) = self.core.ephemeral.machine.on_teardown_complete() {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
-                "finish_tearing_down called while not tearing down — ignoring"
+                current_phase = ?self.core.ephemeral.machine.kind(),
+                err = %e,
+                "finish_tearing_down: machine rejected transition — ignoring"
             );
             return;
         }
-        self.core.ephemeral.phase = SessionPhase::Idle;
-    }
-
-    /// Cancel an in-progress compaction.
-    ///
-    /// Sets phase to Idle, un-ignores entries that were marked during
-    /// `begin_compacting`, and returns drained queued messages so the
-    /// caller can start a new turn if needed.
-    ///
-    /// No-op if not currently compacting.
-    pub fn cancel_compacting(
-        &mut self,
-    ) -> std::collections::VecDeque<crate::feat::session::queue_item::QueueItem> {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Compacting) {
-            return std::collections::VecDeque::new();
-        }
-        let indices = std::mem::take(&mut self.core.ephemeral.compaction_gathered_indices);
-        for i in indices {
-            if i < self.core.history.len() {
-                self.core.history[i].context_override = ContextOverride::Default;
-            }
-        }
-        self.core.ephemeral.phase = SessionPhase::Idle;
-        self.drain_queue()
     }
 
     /// The current scroll offset (lines to skip from top).
@@ -2293,9 +2190,8 @@ impl ChatSessionState {
         };
         self.core
             .ephemeral
-            .streaming_tool_call_indices
-            .values()
-            .any(|&v| v == idx)
+            .machine
+            .is_tool_call_at_history_index(idx)
     }
     /// Returns this session's working directory for tool execution.
     pub fn cwd(&self) -> &std::path::Path {
@@ -2513,33 +2409,6 @@ impl ChatSessionState {
         self.core.ephemeral.busy_counter.busy_complete();
     }
 
-    /// Request auto-compaction at the next turn boundary.
-    ///
-    /// Sets a flag that is checked by `on_tool_batch_completed` and
-    /// `on_stream_completed`. When set, the session transitions directly
-    /// to `Compacting` instead of continuing the turn or returning to `Idle`.
-    /// OWNER: `ScheduleAutoCompaction` command handler.
-    pub fn request_auto_compaction(&mut self) {
-        self.core.ephemeral.auto_compaction_requested = true;
-    }
-
-    /// Take the auto-compaction flag, clearing it.
-    ///
-    /// Returns `true` if auto-compaction was requested, and clears the flag.
-    /// Returns `false` if no auto-compaction was requested.
-    pub fn take_auto_compaction_requested(&mut self) -> bool {
-        std::mem::take(&mut self.core.ephemeral.auto_compaction_requested)
-    }
-
-    /// Check if auto-compaction was requested without consuming the flag.
-    ///
-    /// Used by `on_stream_completed(ToolUse)` to decide whether to skip
-    /// the direct-to-Compacting optimization without consuming the flag
-    /// (which is consumed later by `on_tool_batch_completed`).
-    pub fn is_auto_compaction_requested(&self) -> bool {
-        self.core.ephemeral.auto_compaction_requested
-    }
-
     /// Force-exclude any `ToolCall` entries that lack matching `ToolResult` entries,
     /// and their empty parent `Assistant` entry.
     ///
@@ -2586,18 +2455,23 @@ impl ChatSessionState {
 
     /// Disable the tool loop for this session's current turn.
     ///
-    /// After the current tool batch completes, `on_tool_batch_completed`
-    /// will skip `SendToLlmProvider` and go to Idle instead of continuing.
-    /// The flag is consumed (cleared) by `take_tool_loop_disabled`.
+    /// Delegates to [`SessionPhaseMachine::set_tool_loop_disabled`].
     pub fn set_tool_loop_disabled(&mut self) {
-        self.core.ephemeral.tool_loop_disabled = true;
+        self.core.ephemeral.machine.set_tool_loop_disabled();
     }
 
     /// Take the tool-loop-disabled flag, clearing it.
     ///
-    /// Returns `true` if the tool loop was disabled, and clears the flag.
+    /// Delegates to [`SessionPhaseMachine::take_tool_loop_disabled`].
     pub fn take_tool_loop_disabled(&mut self) -> bool {
-        std::mem::take(&mut self.core.ephemeral.tool_loop_disabled)
+        self.core.ephemeral.machine.take_tool_loop_disabled()
+    }
+
+    /// Check whether the tool loop is disabled, without clearing.
+    ///
+    /// Delegates to [`SessionPhaseMachine::is_tool_loop_disabled`].
+    pub fn is_tool_loop_disabled(&self) -> bool {
+        self.core.ephemeral.machine.is_tool_loop_disabled()
     }
 
     // --- History mutations (background workers) ---

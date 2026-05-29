@@ -57,7 +57,7 @@ fn begin_streaming_sets_is_streaming() {
     session.begin_streaming();
 
     // Then is_streaming is true.
-    assert_eq!(session.phase(), SessionPhase::Streaming);
+    assert_eq!(session.phase(), PhaseKind::Streaming);
 }
 
 #[rstest::rstest]
@@ -88,7 +88,7 @@ fn finish_streaming_clears_streaming_state() {
     session.finish_streaming(true);
 
     // Then is_streaming is false and text is preserved.
-    assert_ne!(session.phase(), SessionPhase::Streaming);
+    assert_ne!(session.phase(), PhaseKind::Streaming);
     assert_eq!(
         session.history()[0].kind,
         ChatEntryKind::Assistant("Hi".to_owned())
@@ -106,7 +106,7 @@ fn cancel_streaming_keeps_partial_text() {
     session.cancel_streaming();
 
     // Then is_streaming is false but partial text is kept.
-    assert_ne!(session.phase(), SessionPhase::Streaming);
+    assert_ne!(session.phase(), PhaseKind::Streaming);
     assert_eq!(
         session.history()[0].kind,
         ChatEntryKind::Assistant("Partial".to_owned())
@@ -123,7 +123,7 @@ fn begin_streaming_twice_is_noop() {
     session.begin_streaming();
 
     // Then phase stays Streaming (no panic, no double-transition).
-    assert_eq!(session.phase(), SessionPhase::Streaming);
+    assert_eq!(session.phase(), PhaseKind::Streaming);
 }
 
 #[rstest::rstest]
@@ -371,7 +371,7 @@ fn drain_returns_all_in_order() {
         .into_iter()
         .map(|item| match item {
             crate::feat::session::queue_item::QueueItem::UserMessage(e) => e,
-            _ => panic!("expected UserMessage"),
+            crate::feat::session::queue_item::QueueItem::ToolContinuation => panic!("expected UserMessage"),
         })
         .collect();
     assert_eq!(entries.len(), 3);
@@ -425,38 +425,13 @@ fn drain_empties_queue() {
 fn begin_sending_sets_is_sending() {
     // Given a new session (idle).
     let mut session = ChatSessionState::new();
-    assert_ne!(session.phase(), SessionPhase::Sending);
+    assert_ne!(session.phase(), PhaseKind::Sending);
 
     // When beginning sending.
     session.begin_sending();
 
     // Then is_sending is true.
-    assert_eq!(session.phase(), SessionPhase::Sending);
-}
-
-#[rstest::rstest]
-fn begin_assembling_is_noop_when_sending() {
-    // Given a session that is sending.
-    let mut session = ChatSessionState::new();
-    session.begin_sending();
-
-    // When calling begin_assembling.
-    session.begin_assembling();
-
-    // Then phase stays Sending (no panic).
-    assert_eq!(session.phase(), SessionPhase::Sending);
-}
-
-#[rstest::rstest]
-fn finish_assembling_is_noop_when_idle() {
-    // Given a session that is idle.
-    let mut session = ChatSessionState::new();
-
-    // When calling finish_assembling.
-    session.finish_assembling();
-
-    // Then phase stays Idle (no panic).
-    assert_eq!(session.phase(), SessionPhase::Idle);
+    assert_eq!(session.phase(), PhaseKind::Sending);
 }
 
 #[rstest::rstest]
@@ -469,7 +444,7 @@ fn begin_sending_is_noop_when_already_sending() {
     session.begin_sending();
 
     // Then phase stays Sending (no panic).
-    assert_eq!(session.phase(), SessionPhase::Sending);
+    assert_eq!(session.phase(), PhaseKind::Sending);
 }
 
 #[rstest::rstest]
@@ -482,32 +457,33 @@ fn begin_sending_is_noop_when_streaming() {
     session.begin_sending();
 
     // Then phase stays Streaming (no panic).
-    assert_eq!(session.phase(), SessionPhase::Streaming);
+    assert_eq!(session.phase(), PhaseKind::Streaming);
 }
 
 #[rstest::rstest]
-fn finish_sending_clears_flag() {
-    // Given a session that is sending.
+fn finish_sending_via_machine_transitions_to_idle_when_disabled() {
+    // Given a session that is sending with tool_loop_disabled set.
     let mut session = ChatSessionState::new();
     session.begin_sending();
+    session.set_tool_loop_disabled();
 
-    // When finishing sending.
-    session.finish_sending();
+    // When finishing sending via machine.
+    session.finish_sending_via_machine();
 
-    // Then is_sending is false.
-    assert_ne!(session.phase(), SessionPhase::Sending);
+    // Then the session is Idle (tool_loop_disabled triggered Sending → Idle).
+    assert_eq!(session.phase(), PhaseKind::Idle);
 }
 
 #[rstest::rstest]
-fn finish_sending_is_noop_when_not_sending() {
+fn finish_sending_via_machine_is_noop_when_not_sending() {
     // Given a session that is not sending.
     let mut session = ChatSessionState::new();
 
-    // When calling finish_sending.
-    session.finish_sending();
+    // When calling finish_sending_via_machine.
+    session.finish_sending_via_machine();
 
-    // Then phase stays Idle (no panic).
-    assert_eq!(session.phase(), SessionPhase::Idle);
+    // Then phase stays Idle (no panic, just a logged warning).
+    assert_eq!(session.phase(), PhaseKind::Idle);
 }
 
 // --- Combined status tests ---
@@ -518,7 +494,7 @@ fn is_idle_true_when_not_sending_or_streaming() {
     let session = ChatSessionState::new();
 
     // Then it is idle.
-    assert_eq!(session.phase(), SessionPhase::Idle);
+    assert_eq!(session.phase(), PhaseKind::Idle);
 }
 
 #[rstest::rstest]
@@ -528,7 +504,7 @@ fn is_idle_false_when_sending() {
     session.begin_sending();
 
     // Then it is not idle.
-    assert_ne!(session.phase(), SessionPhase::Idle);
+    assert_ne!(session.phase(), PhaseKind::Idle);
 }
 
 #[rstest::rstest]
@@ -538,7 +514,7 @@ fn is_idle_false_when_streaming() {
     session.begin_streaming();
 
     // Then it is not idle.
-    assert_ne!(session.phase(), SessionPhase::Idle);
+    assert_ne!(session.phase(), PhaseKind::Idle);
 }
 
 #[rstest::rstest]
@@ -547,15 +523,15 @@ fn cancel_streaming_returns_to_idle() {
     let mut session = ChatSessionState::new();
     session.begin_sending();
     session.begin_streaming();
-    assert_eq!(session.phase(), SessionPhase::Streaming);
+    assert_eq!(session.phase(), PhaseKind::Streaming);
 
     // When cancelling streaming.
     session.cancel_streaming();
 
     // Then the session is idle.
-    assert_eq!(session.phase(), SessionPhase::Idle);
-    assert_ne!(session.phase(), SessionPhase::Streaming);
-    assert_ne!(session.phase(), SessionPhase::Sending);
+    assert_eq!(session.phase(), PhaseKind::Idle);
+    assert_ne!(session.phase(), PhaseKind::Streaming);
+    assert_ne!(session.phase(), PhaseKind::Sending);
 }
 
 #[rstest::rstest]
@@ -564,16 +540,16 @@ fn finish_streaming_returns_to_idle() {
     let mut session = ChatSessionState::new();
     session.begin_sending();
     session.begin_streaming();
-    session.core.ephemeral.streaming_entry_index =
-        Some(session.push_entry(ChatEntry::assistant("")));
+    let idx = session.push_entry(ChatEntry::assistant(""));
+    session.core.ephemeral.machine.set_streaming_entry_index(idx);
 
     // When finishing streaming.
     session.finish_streaming(true);
 
     // Then the session is idle.
-    assert_eq!(session.phase(), SessionPhase::Idle);
-    assert_ne!(session.phase(), SessionPhase::Streaming);
-    assert_ne!(session.phase(), SessionPhase::Sending);
+    assert_eq!(session.phase(), PhaseKind::Idle);
+    assert_ne!(session.phase(), PhaseKind::Streaming);
+    assert_ne!(session.phase(), PhaseKind::Sending);
 }
 
 // --- Tool call streaming tests ---
@@ -729,7 +705,7 @@ fn finish_streaming_clears_tool_call_indices() {
     session.finish_streaming(true);
 
     // Then the tool call indices are cleared (entries remain in history).
-    assert_ne!(session.phase(), SessionPhase::Streaming);
+    assert_ne!(session.phase(), PhaseKind::Streaming);
     assert_eq!(session.history().len(), 2); // assistant + tool call still there
 }
 
@@ -744,7 +720,7 @@ fn cancel_streaming_clears_tool_call_indices() {
     session.cancel_streaming();
 
     // Then the tool call indices are cleared (entries remain in history).
-    assert_ne!(session.phase(), SessionPhase::Streaming);
+    assert_ne!(session.phase(), PhaseKind::Streaming);
     assert_eq!(session.history().len(), 2); // assistant + tool call still there
 }
 
@@ -1540,7 +1516,7 @@ fn finish_streaming_without_preserve_skips_assistant_entry() {
     session.finish_streaming(false);
 
     // Then no assistant entry was created.
-    assert_ne!(session.phase(), SessionPhase::Streaming);
+    assert_ne!(session.phase(), PhaseKind::Streaming);
     assert!(session.history().is_empty());
 }
 
@@ -1554,7 +1530,7 @@ fn finish_streaming_with_preserve_creates_assistant_entry() {
     session.finish_streaming(true);
 
     // Then an empty assistant entry was created.
-    assert_ne!(session.phase(), SessionPhase::Streaming);
+    assert_ne!(session.phase(), PhaseKind::Streaming);
     assert_eq!(session.history().len(), 1);
     assert!(matches!(session.history()[0].kind, ChatEntryKind::Assistant(ref t) if t.is_empty()));
 }
@@ -1570,7 +1546,7 @@ fn finish_streaming_without_preserve_keeps_existing_assistant() {
     session.finish_streaming(false);
 
     // Then the existing assistant entry is still there (ensure_assistant_entry was a no-op since entry already existed).
-    assert_ne!(session.phase(), SessionPhase::Streaming);
+    assert_ne!(session.phase(), PhaseKind::Streaming);
     assert_eq!(session.history().len(), 1);
     assert!(matches!(session.history()[0].kind, ChatEntryKind::Assistant(ref t) if t == "Hello"));
 }
@@ -1910,8 +1886,10 @@ fn is_empty_false_after_pushing_entry() {
 
 #[test]
 fn begin_tool_result_creates_pending_entry() {
-    // Given a default session.
+    // Given a session in streaming state.
     let mut session = ChatSessionState::new();
+    session.begin_sending();
+    session.begin_streaming();
 
     // When beginning a tool result.
     session.begin_tool_result("call_1", "bash");
@@ -1938,9 +1916,11 @@ fn begin_tool_result_creates_pending_entry() {
 
 #[test]
 fn begin_tool_result_tracks_history_index() {
-    // Given a session with one entry.
+    // Given a session in streaming state with one entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
+    session.begin_sending();
+    session.begin_streaming();
 
     // When beginning a tool result.
     session.begin_tool_result("call_1", "bash");
@@ -1950,19 +1930,22 @@ fn begin_tool_result_tracks_history_index() {
         session
             .core
             .ephemeral
-            .streaming_tool_result_indices
+            .machine
+            .streaming_tool_result_indices()
             .contains_key("call_1")
     );
     assert_eq!(
-        session.core.ephemeral.streaming_tool_result_indices["call_1"],
+        session.core.ephemeral.machine.streaming_tool_result_indices()["call_1"],
         1
     );
 }
 
 #[test]
 fn append_tool_result_output_appends_to_pending_entry() {
-    // Given a session with a pending tool result.
+    // Given a session in streaming state with a pending tool result.
     let mut session = ChatSessionState::new();
+    session.begin_sending();
+    session.begin_streaming();
     session.begin_tool_result("call_1", "bash");
 
     // When appending output.
@@ -2002,8 +1985,10 @@ fn append_tool_result_output_ignores_unknown_call_id() {
 
 #[test]
 fn finalize_tool_result_completes_pending_entry() {
-    // Given a session with a pending tool result.
+    // Given a session in streaming state with a pending tool result.
     let mut session = ChatSessionState::new();
+    session.begin_sending();
+    session.begin_streaming();
     session.begin_tool_result("call_1", "bash");
     session.append_tool_result_output(
         "call_1",
@@ -2030,7 +2015,8 @@ fn finalize_tool_result_completes_pending_entry() {
         !session
             .core
             .ephemeral
-            .streaming_tool_result_indices
+            .machine
+            .streaming_tool_result_indices()
             .contains_key("call_1")
     );
 }
@@ -2060,161 +2046,6 @@ fn finalize_tool_result_pushes_new_entry_for_unknown_id() {
         }
         other => panic!("expected ToolResult, got {other:?}"),
     }
-}
-
-#[rstest::rstest]
-fn begin_compacting_transitions_to_compacting_phase() {
-    // Given an idle session.
-    let mut session = ChatSessionState::new();
-    assert_eq!(session.phase(), SessionPhase::Idle);
-
-    // When beginning compaction.
-    session.begin_compacting(vec![]);
-
-    // Then the session is in Compacting phase.
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-    assert_ne!(session.phase(), SessionPhase::Idle);
-}
-
-#[rstest::rstest]
-fn finish_compacting_returns_to_idle() {
-    // Given a session in Compacting phase.
-    let mut session = ChatSessionState::new();
-    session.begin_compacting(vec![]);
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-
-    // When finishing compaction.
-    session.finish_compacting();
-
-    // Then the session is idle.
-    assert_eq!(session.phase(), SessionPhase::Idle);
-    assert_ne!(session.phase(), SessionPhase::Compacting);
-}
-
-#[rstest::rstest]
-fn begin_compacting_is_noop_when_already_compacting() {
-    // Given a session already compacting.
-    let mut session = ChatSessionState::new();
-    session.begin_compacting(vec![]);
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-
-    // When calling begin_compacting again.
-    session.begin_compacting(vec![]);
-
-    // Then phase stays Compacting (no panic, no double-transition).
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-}
-
-#[rstest::rstest]
-fn begin_compacting_is_noop_when_streaming() {
-    // Given a session that is streaming.
-    let mut session = ChatSessionState::new();
-    session.begin_streaming();
-
-    // When calling begin_compacting.
-    session.begin_compacting(vec![]);
-
-    // Then phase stays Streaming (no panic).
-    assert_eq!(session.phase(), SessionPhase::Streaming);
-}
-
-#[rstest::rstest]
-fn finish_compacting_does_not_panic_when_idle() {
-    // Given a session in Idle phase.
-    let mut session = ChatSessionState::new();
-    assert_eq!(session.phase(), SessionPhase::Idle);
-
-    // When finishing compaction (phase is Idle, not Compacting).
-    session.finish_compacting();
-
-    // Then the phase remains Idle — no panic.
-    assert_eq!(session.phase(), SessionPhase::Idle);
-}
-
-#[rstest::rstest]
-fn finish_compacting_does_not_panic_when_streaming() {
-    // Given a session in Streaming phase.
-    let mut session = ChatSessionState::new();
-    session.begin_streaming();
-    assert_eq!(session.phase(), SessionPhase::Streaming);
-
-    // When finishing compaction (phase is Streaming, not Compacting).
-    session.finish_compacting();
-
-    // Then the phase remains Streaming — no panic.
-    assert_eq!(session.phase(), SessionPhase::Streaming);
-}
-
-#[rstest::rstest]
-fn cancel_compacting_returns_to_idle() {
-    // Given a session in Compacting phase.
-    let mut session = ChatSessionState::new();
-    session.begin_compacting(vec![0, 1]);
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-
-    // When cancelling compaction.
-    let drained = session.cancel_compacting();
-
-    // Then the session is idle.
-    assert_eq!(session.phase(), SessionPhase::Idle);
-    // And no messages were drained (queue was empty).
-    assert!(drained.is_empty());
-}
-
-#[rstest::rstest]
-fn cancel_compacting_unignores_entries() {
-    // Given a session with 3 entries, 2 marked as ignored during compaction.
-    let mut session = ChatSessionState::new();
-    session.push_entry(ChatEntry::user("a"));
-    session.push_entry(ChatEntry::assistant("b"));
-    session.push_entry(ChatEntry::user("c"));
-
-    session.begin_compacting(vec![0, 1]);
-    session.mark_entries_ignored(&[0, 1]);
-    assert!(session.history()[0].ignored());
-    assert!(session.history()[1].ignored());
-
-    // When cancelling compaction.
-    session.cancel_compacting();
-
-    // Then the entries are un-ignored.
-    assert!(!session.history()[0].ignored());
-    assert!(!session.history()[1].ignored());
-    assert!(!session.history()[2].ignored());
-}
-
-#[rstest::rstest]
-fn cancel_compacting_drains_queue() {
-    // Given a session in Compacting phase with a queued message.
-    let mut session = ChatSessionState::new();
-    session.begin_compacting(vec![]);
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        ChatEntry::user("queued during compaction"),
-    ));
-
-    // When cancelling compaction.
-    let drained = session.cancel_compacting();
-
-    // Then the queued message is returned.
-    assert_eq!(drained.len(), 1);
-    let crate::feat::session::queue_item::QueueItem::UserMessage(entry) = &drained[0] else {
-        panic!("expected UserMessage")
-    };
-    assert_eq!(entry.text(), "queued during compaction");
-}
-
-#[rstest::rstest]
-fn cancel_compacting_is_noop_when_idle() {
-    // Given a session in Idle phase.
-    let mut session = ChatSessionState::new();
-    assert_eq!(session.phase(), SessionPhase::Idle);
-
-    // When cancelling compaction (phase is Idle, not Compacting).
-    let drained = session.cancel_compacting();
-
-    // Then no panic and nothing was drained.
-    assert!(drained.is_empty());
-    assert_eq!(session.phase(), SessionPhase::Idle);
 }
 
 // --- LifecycleScriptState transition tests ---
@@ -3206,141 +3037,7 @@ fn force_exclude_no_tool_calls_is_noop() {
 // Phase 1: Session Phase State Machine Guards
 // ===========================================================================
 
-// --- begin_assembling happy path & guards ---
 
-#[rstest::rstest]
-fn begin_assembling_transitions_idle_to_assembling() {
-    // Given a session that is idle.
-    let mut session = ChatSessionState::new();
-    assert_eq!(session.phase(), SessionPhase::Idle);
-
-    // When beginning assembling.
-    session.begin_assembling();
-
-    // Then phase is Assembling.
-    assert_eq!(session.phase(), SessionPhase::Assembling);
-}
-
-#[rstest::rstest]
-fn begin_assembling_is_noop_when_assembling() {
-    // Given a session already assembling.
-    let mut session = ChatSessionState::new();
-    session.begin_assembling();
-    assert_eq!(session.phase(), SessionPhase::Assembling);
-
-    // When calling begin_assembling again.
-    session.begin_assembling();
-
-    // Then phase stays Assembling (no panic, no double-transition).
-    assert_eq!(session.phase(), SessionPhase::Assembling);
-}
-
-#[rstest::rstest]
-fn begin_assembling_is_noop_when_streaming() {
-    // Given a session that is streaming.
-    let mut session = ChatSessionState::new();
-    session.begin_streaming();
-
-    // When calling begin_assembling.
-    session.begin_assembling();
-
-    // Then phase stays Streaming.
-    assert_eq!(session.phase(), SessionPhase::Streaming);
-}
-
-#[rstest::rstest]
-fn begin_assembling_is_noop_when_compacting() {
-    // Given a session that is compacting.
-    let mut session = ChatSessionState::new();
-    session.core.ephemeral.phase = SessionPhase::Compacting;
-
-    // When calling begin_assembling.
-    session.begin_assembling();
-
-    // Then phase stays Compacting.
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-}
-
-#[rstest::rstest]
-fn begin_assembling_is_noop_when_tearing_down() {
-    // Given a session that is tearing down.
-    let mut session = ChatSessionState::new();
-    session.core.ephemeral.phase = SessionPhase::TearingDown;
-
-    // When calling begin_assembling.
-    session.begin_assembling();
-
-    // Then phase stays TearingDown.
-    assert_eq!(session.phase(), SessionPhase::TearingDown);
-}
-
-// --- finish_assembling happy path & guards ---
-
-#[rstest::rstest]
-fn finish_assembling_transitions_assembling_to_idle() {
-    // Given a session in Assembling phase.
-    let mut session = ChatSessionState::new();
-    session.begin_assembling();
-    assert_eq!(session.phase(), SessionPhase::Assembling);
-
-    // When finishing assembling.
-    session.finish_assembling();
-
-    // Then phase is Idle.
-    assert_eq!(session.phase(), SessionPhase::Idle);
-}
-
-#[rstest::rstest]
-fn finish_assembling_is_noop_when_sending() {
-    // Given a session in Sending phase.
-    let mut session = ChatSessionState::new();
-    session.begin_sending();
-
-    // When calling finish_assembling.
-    session.finish_assembling();
-
-    // Then phase stays Sending.
-    assert_eq!(session.phase(), SessionPhase::Sending);
-}
-
-#[rstest::rstest]
-fn finish_assembling_is_noop_when_streaming() {
-    // Given a session in Streaming phase.
-    let mut session = ChatSessionState::new();
-    session.begin_streaming();
-
-    // When calling finish_assembling.
-    session.finish_assembling();
-
-    // Then phase stays Streaming.
-    assert_eq!(session.phase(), SessionPhase::Streaming);
-}
-
-#[rstest::rstest]
-fn finish_assembling_is_noop_when_compacting() {
-    // Given a session in Compacting phase.
-    let mut session = ChatSessionState::new();
-    session.core.ephemeral.phase = SessionPhase::Compacting;
-
-    // When calling finish_assembling.
-    session.finish_assembling();
-
-    // Then phase stays Compacting.
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-}
-
-#[rstest::rstest]
-fn finish_assembling_is_noop_when_tearing_down() {
-    // Given a session in TearingDown phase.
-    let mut session = ChatSessionState::new();
-    session.core.ephemeral.phase = SessionPhase::TearingDown;
-
-    // When calling finish_assembling.
-    session.finish_assembling();
-
-    // Then phase stays TearingDown.
-    assert_eq!(session.phase(), SessionPhase::TearingDown);
-}
 
 // --- begin_tearing_down happy path & guards ---
 
@@ -3348,13 +3045,13 @@ fn finish_assembling_is_noop_when_tearing_down() {
 fn begin_tearing_down_transitions_idle_to_tearing_down() {
     // Given a session that is idle.
     let mut session = ChatSessionState::new();
-    assert_eq!(session.phase(), SessionPhase::Idle);
+    assert_eq!(session.phase(), PhaseKind::Idle);
 
     // When beginning teardown.
     session.begin_tearing_down();
 
     // Then phase is TearingDown.
-    assert_eq!(session.phase(), SessionPhase::TearingDown);
+    assert_eq!(session.phase(), PhaseKind::TearingDown);
 }
 
 #[rstest::rstest]
@@ -3367,7 +3064,7 @@ fn begin_tearing_down_is_noop_when_sending() {
     session.begin_tearing_down();
 
     // Then phase stays Sending.
-    assert_eq!(session.phase(), SessionPhase::Sending);
+    assert_eq!(session.phase(), PhaseKind::Sending);
 }
 
 #[rstest::rstest]
@@ -3380,34 +3077,12 @@ fn begin_tearing_down_is_noop_when_streaming() {
     session.begin_tearing_down();
 
     // Then phase stays Streaming.
-    assert_eq!(session.phase(), SessionPhase::Streaming);
+    assert_eq!(session.phase(), PhaseKind::Streaming);
 }
 
-#[rstest::rstest]
-fn begin_tearing_down_is_noop_when_assembling() {
-    // Given a session in Assembling phase.
-    let mut session = ChatSessionState::new();
-    session.begin_assembling();
 
-    // When calling begin_tearing_down.
-    session.begin_tearing_down();
 
-    // Then phase stays Assembling.
-    assert_eq!(session.phase(), SessionPhase::Assembling);
-}
 
-#[rstest::rstest]
-fn begin_tearing_down_is_noop_when_compacting() {
-    // Given a session in Compacting phase.
-    let mut session = ChatSessionState::new();
-    session.core.ephemeral.phase = SessionPhase::Compacting;
-
-    // When calling begin_tearing_down.
-    session.begin_tearing_down();
-
-    // Then phase stays Compacting.
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-}
 
 #[rstest::rstest]
 fn begin_tearing_down_is_noop_when_already_tearing_down() {
@@ -3419,7 +3094,7 @@ fn begin_tearing_down_is_noop_when_already_tearing_down() {
     session.begin_tearing_down();
 
     // Then phase stays TearingDown (no panic, no double-transition).
-    assert_eq!(session.phase(), SessionPhase::TearingDown);
+    assert_eq!(session.phase(), PhaseKind::TearingDown);
 }
 
 // --- finish_tearing_down happy path & guards ---
@@ -3429,13 +3104,13 @@ fn finish_tearing_down_transitions_to_idle() {
     // Given a session in TearingDown phase.
     let mut session = ChatSessionState::new();
     session.begin_tearing_down();
-    assert_eq!(session.phase(), SessionPhase::TearingDown);
+    assert_eq!(session.phase(), PhaseKind::TearingDown);
 
     // When finishing teardown.
     session.finish_tearing_down();
 
     // Then phase is Idle.
-    assert_eq!(session.phase(), SessionPhase::Idle);
+    assert_eq!(session.phase(), PhaseKind::Idle);
 }
 
 #[rstest::rstest]
@@ -3447,7 +3122,7 @@ fn finish_tearing_down_is_noop_when_idle() {
     session.finish_tearing_down();
 
     // Then phase stays Idle.
-    assert_eq!(session.phase(), SessionPhase::Idle);
+    assert_eq!(session.phase(), PhaseKind::Idle);
 }
 
 #[rstest::rstest]
@@ -3460,7 +3135,7 @@ fn finish_tearing_down_is_noop_when_sending() {
     session.finish_tearing_down();
 
     // Then phase stays Sending.
-    assert_eq!(session.phase(), SessionPhase::Sending);
+    assert_eq!(session.phase(), PhaseKind::Sending);
 }
 
 #[rstest::rstest]
@@ -3473,34 +3148,12 @@ fn finish_tearing_down_is_noop_when_streaming() {
     session.finish_tearing_down();
 
     // Then phase stays Streaming.
-    assert_eq!(session.phase(), SessionPhase::Streaming);
+    assert_eq!(session.phase(), PhaseKind::Streaming);
 }
 
-#[rstest::rstest]
-fn finish_tearing_down_is_noop_when_assembling() {
-    // Given a session in Assembling phase.
-    let mut session = ChatSessionState::new();
-    session.begin_assembling();
 
-    // When calling finish_tearing_down.
-    session.finish_tearing_down();
 
-    // Then phase stays Assembling.
-    assert_eq!(session.phase(), SessionPhase::Assembling);
-}
 
-#[rstest::rstest]
-fn finish_tearing_down_is_noop_when_compacting() {
-    // Given a session in Compacting phase.
-    let mut session = ChatSessionState::new();
-    session.core.ephemeral.phase = SessionPhase::Compacting;
-
-    // When calling finish_tearing_down.
-    session.finish_tearing_down();
-
-    // Then phase stays Compacting.
-    assert_eq!(session.phase(), SessionPhase::Compacting);
-}
 
 // --- cancel_stream_and_drain ---
 
@@ -3530,7 +3183,7 @@ fn cancel_stream_and_drain_discards_non_user_items() {
     let mut session = ChatSessionState::new();
     session.begin_streaming();
     session.enqueue(
-        crate::feat::session::queue_item::QueueItem::CompactionNeeded { compact_all: false },
+        crate::feat::session::queue_item::QueueItem::ToolContinuation,
     );
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
         ChatEntry::user("keep this"),
@@ -3608,7 +3261,9 @@ fn insert_entry_at_shifts_streaming_entry_index() {
     session.push_entry(ChatEntry::user("b")); // idx 1
     session.push_entry(ChatEntry::user("c")); // idx 2
     session.push_entry(ChatEntry::assistant("streaming")); // idx 3
-    session.core.ephemeral.streaming_entry_index = Some(3);
+    session.begin_sending();
+    session.begin_streaming();
+    session.core.ephemeral.machine.set_streaming_entry_index(3);
 
     // When inserting at index 1 (before the streaming entry).
     let result = session.insert_entry_at(1, ChatEntry::system("inserted"));
@@ -3617,7 +3272,7 @@ fn insert_entry_at_shifts_streaming_entry_index() {
     assert_eq!(result, 1);
     assert_eq!(session.history().len(), 5);
     // And streaming_entry_index was shifted from 3 to 4.
-    assert_eq!(session.core.ephemeral.streaming_entry_index, Some(4));
+    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(4));
 }
 
 #[rstest::rstest]
@@ -3626,13 +3281,15 @@ fn insert_entry_at_does_not_shift_streaming_index_before_insertion() {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // idx 0
     session.push_entry(ChatEntry::assistant("streaming")); // idx 1
-    session.core.ephemeral.streaming_entry_index = Some(1);
+    session.begin_sending();
+    session.begin_streaming();
+    session.core.ephemeral.machine.set_streaming_entry_index(1);
 
     // When inserting at index 2 (after the streaming entry).
     session.insert_entry_at(2, ChatEntry::system("inserted"));
 
     // Then streaming_entry_index stays at 1.
-    assert_eq!(session.core.ephemeral.streaming_entry_index, Some(1));
+    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(1));
 }
 
 #[rstest::rstest]
@@ -3642,14 +3299,16 @@ fn insert_entry_at_shifts_thinking_entry_index() {
     session.push_entry(ChatEntry::user("a")); // idx 0
     session.push_entry(ChatEntry::user("b")); // idx 1
     session.push_entry(ChatEntry::assistant("thinking")); // idx 2
-    session.core.ephemeral.streaming_thinking_entry_index = Some(2);
+    session.begin_sending();
+    session.begin_streaming();
+    session.core.ephemeral.machine.set_streaming_thinking_entry_index(2);
 
     // When inserting at index 0.
     session.insert_entry_at(0, ChatEntry::system("inserted"));
 
     // Then thinking index shifted from 2 to 3.
     assert_eq!(
-        session.core.ephemeral.streaming_thinking_entry_index,
+        session.core.ephemeral.machine.streaming_thinking_entry_index(),
         Some(3)
     );
 }
@@ -3659,14 +3318,16 @@ fn insert_entry_at_does_not_shift_thinking_index_before_insertion() {
     // Given a session with thinking entry at index 0.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::assistant("thinking")); // idx 0
-    session.core.ephemeral.streaming_thinking_entry_index = Some(0);
+    session.begin_sending();
+    session.begin_streaming();
+    session.core.ephemeral.machine.set_streaming_thinking_entry_index(0);
 
     // When inserting at index 1 (after thinking).
     session.insert_entry_at(1, ChatEntry::system("inserted"));
 
     // Then thinking index stays at 0.
     assert_eq!(
-        session.core.ephemeral.streaming_thinking_entry_index,
+        session.core.ephemeral.machine.streaming_thinking_entry_index(),
         Some(0)
     );
 }
@@ -3685,10 +3346,14 @@ fn insert_entry_at_shifts_tool_result_indices() {
         "ok",
         ToolResultStatus::Success,
     )); // idx 4
+    session.begin_sending();
+    session.begin_streaming();
     session
         .core
         .ephemeral
-        .streaming_tool_result_indices
+        .machine
+        .streaming_tool_result_indices_mut()
+        .expect("streaming")
         .insert("tr-1".to_owned(), 4);
 
     // When inserting at index 2.
@@ -3699,7 +3364,8 @@ fn insert_entry_at_shifts_tool_result_indices() {
         session
             .core
             .ephemeral
-            .streaming_tool_result_indices
+            .machine
+            .streaming_tool_result_indices()
             .get("tr-1"),
         Some(&5)
     );
@@ -3716,10 +3382,14 @@ fn insert_entry_at_does_not_shift_tool_result_indices_before_insertion() {
         "ok",
         ToolResultStatus::Success,
     )); // idx 1
+    session.begin_sending();
+    session.begin_streaming();
     session
         .core
         .ephemeral
-        .streaming_tool_result_indices
+        .machine
+        .streaming_tool_result_indices_mut()
+        .expect("streaming")
         .insert("tr-1".to_owned(), 1);
 
     // When inserting at index 2 (after the tool result).
@@ -3730,7 +3400,8 @@ fn insert_entry_at_does_not_shift_tool_result_indices_before_insertion() {
         session
             .core
             .ephemeral
-            .streaming_tool_result_indices
+            .machine
+            .streaming_tool_result_indices()
             .get("tr-1"),
         Some(&1)
     );
@@ -3744,10 +3415,14 @@ fn insert_entry_at_shifts_tool_call_indices() {
     session.push_entry(ChatEntry::user("b")); // idx 1
     session.push_entry(ChatEntry::user("c")); // idx 2
     session.push_entry(ChatEntry::tool_call("tc-1", "bash", "{}")); // idx 3
+    session.begin_sending();
+    session.begin_streaming();
     session
         .core
         .ephemeral
-        .streaming_tool_call_indices
+        .machine
+        .streaming_tool_call_indices_mut()
+        .expect("streaming")
         .insert(0, 3);
 
     // When inserting at index 1.
@@ -3755,7 +3430,7 @@ fn insert_entry_at_shifts_tool_call_indices() {
 
     // Then tool call history index shifted from 3 to 4.
     assert_eq!(
-        session.core.ephemeral.streaming_tool_call_indices.get(&0),
+        session.core.ephemeral.machine.streaming_tool_call_indices().get(&0),
         Some(&4)
     );
 }
@@ -3766,10 +3441,14 @@ fn insert_entry_at_does_not_shift_tool_call_indices_before_insertion() {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // idx 0
     session.push_entry(ChatEntry::tool_call("tc-1", "bash", "{}")); // idx 1
+    session.begin_sending();
+    session.begin_streaming();
     session
         .core
         .ephemeral
-        .streaming_tool_call_indices
+        .machine
+        .streaming_tool_call_indices_mut()
+        .expect("streaming")
         .insert(0, 1);
 
     // When inserting at index 3 (after the tool call).
@@ -3777,7 +3456,7 @@ fn insert_entry_at_does_not_shift_tool_call_indices_before_insertion() {
 
     // Then tool call history index stays at 1.
     assert_eq!(
-        session.core.ephemeral.streaming_tool_call_indices.get(&0),
+        session.core.ephemeral.machine.streaming_tool_call_indices().get(&0),
         Some(&1)
     );
 }
@@ -3790,13 +3469,15 @@ fn insert_entry_at_shifts_at_exact_boundary() {
     session.push_entry(ChatEntry::user("a")); // idx 0
     session.push_entry(ChatEntry::user("b")); // idx 1
     session.push_entry(ChatEntry::assistant("streaming")); // idx 2
-    session.core.ephemeral.streaming_entry_index = Some(2);
+    session.begin_sending();
+    session.begin_streaming();
+    session.core.ephemeral.machine.set_streaming_entry_index(2);
 
     // When inserting at index 2 (exact boundary).
     session.insert_entry_at(2, ChatEntry::system("inserted"));
 
     // Then streaming_entry_index was shifted (>= check, not just >).
-    assert_eq!(session.core.ephemeral.streaming_entry_index, Some(3));
+    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(3));
 }
 
 #[rstest::rstest]
@@ -3825,25 +3506,29 @@ fn insert_entry_at_shifts_multiple_indices() {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // idx 0
     session.push_entry(ChatEntry::assistant("streaming")); // idx 1
-    session.core.ephemeral.streaming_entry_index = Some(1);
-    session.core.ephemeral.streaming_thinking_entry_index = Some(1);
+    session.begin_sending();
+    session.begin_streaming();
+    session.core.ephemeral.machine.set_streaming_entry_index(1);
+    session.core.ephemeral.machine.set_streaming_thinking_entry_index(1);
     session
         .core
         .ephemeral
-        .streaming_tool_call_indices
+        .machine
+        .streaming_tool_call_indices_mut()
+        .expect("streaming")
         .insert(0, 1);
 
     // When inserting at index 0.
     session.insert_entry_at(0, ChatEntry::system("inserted"));
 
     // Then ALL indices at or after insertion point are shifted.
-    assert_eq!(session.core.ephemeral.streaming_entry_index, Some(2));
+    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(2));
     assert_eq!(
-        session.core.ephemeral.streaming_thinking_entry_index,
+        session.core.ephemeral.machine.streaming_thinking_entry_index(),
         Some(2)
     );
     assert_eq!(
-        session.core.ephemeral.streaming_tool_call_indices.get(&0),
+        session.core.ephemeral.machine.streaming_tool_call_indices().get(&0),
         Some(&2)
     );
 }
@@ -3853,18 +3538,16 @@ fn insert_entry_at_shifts_multiple_indices() {
 // ===========================================================================
 
 #[rstest::rstest]
-#[case::idle("idle", SessionPhase::Idle)]
-#[case::assembling("assembling", SessionPhase::Assembling)]
-#[case::sending("sending", SessionPhase::Sending)]
-#[case::streaming("streaming", SessionPhase::Streaming)]
-#[case::compacting("compacting", SessionPhase::Compacting)]
-#[case::tearing_down("tearing_down", SessionPhase::TearingDown)]
-fn session_phase_from_str_roundtrips(#[case] input: &str, #[case] expected: SessionPhase) {
+#[case::idle("idle", PhaseKind::Idle)]
+#[case::sending("sending", PhaseKind::Sending)]
+#[case::streaming("streaming", PhaseKind::Streaming)]
+#[case::tearing_down("tearing_down", PhaseKind::TearingDown)]
+fn session_phase_from_str_roundtrips(#[case] input: &str, #[case] expected: PhaseKind) {
     // Given a phase string.
     // When parsing.
     let result: Result<SessionPhase, _> = input.parse();
     // Then it matches the expected phase.
-    assert_eq!(result.unwrap(), expected);
+    assert_eq!(PhaseKind::from(result.unwrap()), expected);
 }
 
 #[rstest::rstest]
@@ -4688,16 +4371,16 @@ fn enqueue_front_puts_item_at_front_of_queue() {
         session.history()[0].clone(),
     ));
 
-    // When enqueuing a CompactionNeeded at the front.
+    // When enqueuing a ToolContinuation at the front.
     session.enqueue_front(
-        crate::feat::session::queue_item::QueueItem::CompactionNeeded { compact_all: false },
+        crate::feat::session::queue_item::QueueItem::ToolContinuation,
     );
 
-    // Then dequeue returns CompactionNeeded first.
+    // Then dequeue returns ToolContinuation first.
     let front = session.dequeue();
     assert!(matches!(
         front,
-        Some(crate::feat::session::queue_item::QueueItem::CompactionNeeded { compact_all: false })
+        Some(crate::feat::session::queue_item::QueueItem::ToolContinuation)
     ));
 }
 
@@ -4717,82 +4400,3 @@ fn is_workflow_returns_real_value() {
     assert!(wf_session.is_workflow());
 }
 
-// --- Auto-compaction flag tests ---
-
-#[rstest::rstest]
-fn request_auto_compaction_sets_flag() {
-    // Given a new session.
-    let mut session = ChatSessionState::new();
-
-    // When requesting auto-compaction.
-    session.request_auto_compaction();
-
-    // Then the flag is set.
-    assert!(session.is_auto_compaction_requested());
-}
-
-#[rstest::rstest]
-fn take_auto_compaction_requested_clears_flag() {
-    // Given a session with auto-compaction requested.
-    let mut session = ChatSessionState::new();
-    session.request_auto_compaction();
-    assert!(session.is_auto_compaction_requested());
-
-    // When taking the flag.
-    let result = session.take_auto_compaction_requested();
-
-    // Then it returns true and the flag is cleared.
-    assert!(result);
-    assert!(!session.is_auto_compaction_requested());
-}
-
-#[rstest::rstest]
-fn take_auto_compaction_returns_false_when_not_set() {
-    // Given a session without auto-compaction requested.
-    let mut session = ChatSessionState::new();
-
-    // When taking the flag.
-    let result = session.take_auto_compaction_requested();
-
-    // Then it returns false.
-    assert!(!result);
-}
-
-#[rstest::rstest]
-fn is_auto_compaction_requested_peek_does_not_clear() {
-    // Given a session with auto-compaction requested.
-    let mut session = ChatSessionState::new();
-    session.request_auto_compaction();
-
-    // When peeking at the flag.
-    let first = session.is_auto_compaction_requested();
-    let second = session.is_auto_compaction_requested();
-
-    // Then both calls return true (flag was not consumed).
-    assert!(first);
-    assert!(second);
-}
-
-#[rstest::rstest]
-fn reset_judge_history_clears_auto_compaction_flag() {
-    // Given a session with auto-compaction requested and a pinned system entry.
-    let mut session = ChatSessionState::new();
-    session.push_entry(ChatEntry::system("judge prompt").with_pin(PinPosition::Top));
-    session.request_auto_compaction();
-    assert!(session.is_auto_compaction_requested());
-
-    // When resetting judge history.
-    session.reset_judge_history();
-
-    // Then the flag is cleared.
-    assert!(!session.is_auto_compaction_requested());
-}
-
-#[rstest::rstest]
-fn auto_compaction_flag_default_is_false() {
-    // Given a new session.
-    let session = ChatSessionState::new();
-
-    // Then the flag defaults to false.
-    assert!(!session.is_auto_compaction_requested());
-}

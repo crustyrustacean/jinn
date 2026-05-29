@@ -2,7 +2,7 @@
 
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::{AutocompleteMatch, AutocompleteTrigger};
-use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::protocol::{ChatEntry, Command};
 
 #[rstest::rstest]
@@ -647,7 +647,7 @@ fn enter_normal_mode_preserves_streaming_phase() {
     // Then the session is still streaming (not cancelled).
     assert!(matches!(
         state.active_session().phase(),
-        SessionPhase::Streaming
+        PhaseKind::Streaming
     ));
 }
 
@@ -1088,24 +1088,23 @@ fn submit_unknown_slash_command_clears_buffer() {
 }
 
 #[rstest::rstest]
-fn submit_compact_slash_command_sends_enqueue_compaction() {
+fn submit_compact_slash_command_pushes_system_message() {
     // Given a state with "/compact" in the buffer.
     let mut state = AppState::default();
-    let session_id = state.session.active_session_id().clone();
     state.active_chat_input_mut().insert_text("/compact");
 
     // When handling SubmitMessage.
     let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
 
-    // Then a MarkSessionInteracted and an EnqueueCompaction command are dispatched.
+    // Then a MarkSessionInteracted and TriggerCompaction command are dispatched.
     assert_eq!(result.commands.len(), 2);
     assert!(
         matches!(&result.commands[0], Command::MarkSessionInteracted(..)),
         "first command should be MarkSessionInteracted"
     );
     assert!(
-        matches!(&result.commands[1], Command::EnqueueCompaction(cmd) if cmd.session_id == session_id),
-        "/compact should send EnqueueCompaction command"
+        matches!(&result.commands[1], Command::TriggerCompaction(..)),
+        "second command should be TriggerCompaction"
     );
 }
 

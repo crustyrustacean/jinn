@@ -392,22 +392,6 @@ pub fn create_core_with_actor_host(
         },
     ));
 
-    // Compaction actor.
-    actors.push(spawn::<
-        nullslop_domain::feat::compaction_actor::CompactionActor,
-    >(
-        "compaction",
-        &sink,
-        handle,
-        &counter,
-        &shutdown_tracker,
-        nullslop_domain::feat::compaction_actor::CompactionActorDeps {
-            state: state.clone(),
-            services: services.clone(),
-            handle: handle.clone(),
-        },
-    ));
-
     // Token count actor — computes tiktoken counts for chat entries.
     actors.push(spawn::<
         nullslop_domain::feat::token_count_actor::TokenCountActor,
@@ -435,7 +419,7 @@ pub fn create_core_with_actor_host(
         },
     ));
 
-    // ── History mutation workers ──────────────────────────────────────────
+    // ── History mutation workers ────────────────��─────────────────────────
     //
     // To add a new history mutation worker:
     //
@@ -454,7 +438,51 @@ pub fn create_core_with_actor_host(
     //       },
     //   ));
     //
-    // No workers are spawned by default — add them as needed.
+    // Compaction worker — summarizes conversation history into structured checkpoints.
+    {
+        use nullslop_domain::feat::compaction_worker::CompactionWorker;
+        use nullslop_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
+
+        let config = state.read().frontend.preferences.compaction.clone();
+        let compaction_prompt = state.read().context.compaction_prompt.clone();
+
+        actors.push(spawn::<HistoryWorkerActor<CompactionWorker>>(
+            "history-worker-compaction",
+            &sink, handle, &counter, &shutdown_tracker,
+            HistoryWorkerActorDeps {
+                worker: CompactionWorker {
+                    services: services.clone(),
+                    handle: handle.clone(),
+                    state: state.clone(),
+                    config,
+                    compaction_prompt,
+                },
+                state: state.clone(),
+            },
+        ));
+    }
+
+    // Compaction trigger actor — handles /compact and /compact-all commands.
+    {
+        use nullslop_domain::feat::compaction_worker::{CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker};
+
+        let config = state.read().frontend.preferences.compaction.clone();
+        let compaction_prompt = state.read().context.compaction_prompt.clone();
+
+        actors.push(spawn::<CompactionTriggerActor>(
+            "compaction-trigger",
+            &sink, handle, &counter, &shutdown_tracker,
+            CompactionTriggerActorDeps {
+                worker: CompactionWorker {
+                    services: services.clone(),
+                    handle: handle.clone(),
+                    state: state.clone(),
+                    config,
+                    compaction_prompt,
+                },
+            },
+        ));
+    }
 
     // Sidebar state actor — keeps sidebar cursor in sync after session removal.
     actors.push(spawn::<

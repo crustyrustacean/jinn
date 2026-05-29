@@ -1,17 +1,19 @@
 //! Generic `HistoryWorkerActor` — wraps any [`HistoryWorker`] as a bus actor.
 //!
 //! Subscribes to [`HistoryAppended`] events. On each event:
-//! 1. Checks exclusion criteria (judge session, auto-compaction pending)
+//! 1. Checks exclusion criteria (judge session)
 //! 2. Acquires a brief read lock, clones `history.to_vec()`, drops lock
-//! 3. Calls `worker.evaluate(&history_snapshot)` outside any lock
+//! 3. Spawns a tokio task for `worker.evaluate(history_snapshot).await`
 //! 4. If mutations are produced, emits [`SubmitHistoryMutations`]
+
+use std::collections::HashSet;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::state::State;
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::session::protocol::history_appended::HistoryAppended;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
-use crate::protocol::{Command, Event};
+use crate::protocol::{Command, Event, SessionId};
 
 /// A generic actor that wraps a [`HistoryWorker`] implementation.
 ///
@@ -21,6 +23,8 @@ use crate::protocol::{Command, Event};
 pub struct HistoryWorkerActor<H: HistoryWorker> {
     worker: H,
     state: State,
+    /// Sessions currently being evaluated — prevents concurrent compaction.
+    in_flight: HashSet<SessionId>,
 }
 
 /// Dependencies for [`HistoryWorkerActor`].
@@ -42,13 +46,14 @@ impl<H: HistoryWorker + Clone> Actor for HistoryWorkerActor<H> {
         Self {
             worker: deps.worker,
             state: deps.state,
+            in_flight: HashSet::new(),
         }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Event(Event::HistoryAppended(ref payload)) => {
-                self.handle_history_appended(payload, ctx);
+                self.handle_history_appended(payload, ctx).await;
             }
             ActorEnvelope::Command(_)
             | ActorEnvelope::Event(_)
@@ -59,17 +64,34 @@ impl<H: HistoryWorker + Clone> Actor for HistoryWorkerActor<H> {
 }
 
 impl<H: HistoryWorker> HistoryWorkerActor<H> {
-    pub(crate) fn handle_history_appended(&self, event: &HistoryAppended, ctx: &ActorContext) {
-        // Skip judge sessions and sessions with pending auto-compaction.
+    pub(crate) async fn handle_history_appended(
+        &mut self,
+        event: &HistoryAppended,
+        ctx: &ActorContext,
+    ) {
+        tracing::info!(
+            worker = self.worker.name(),
+            session_id = %event.session_id,
+            "HistoryAppended received"
+        );
+
+        // Skip if already evaluating this session.
+        if self.in_flight.contains(&event.session_id) {
+            tracing::info!(
+                session_id = %event.session_id,
+                "compaction already in flight, skipping"
+            );
+            return;
+        }
+
+        // Skip judge sessions.
         {
             let state = self.state.read();
             let Some(session) = state.session.get(&event.session_id) else {
+                tracing::info!("session not found, skipping");
                 return;
             };
             if session.is_judge() {
-                return;
-            }
-            if session.is_auto_compaction_requested() {
                 return;
             }
         }
@@ -83,8 +105,15 @@ impl<H: HistoryWorker> HistoryWorkerActor<H> {
             session.history().to_vec()
         };
 
-        // Run heuristic evaluation outside any lock.
-        let mutations = self.worker.evaluate(&history_snapshot);
+        // Mark session as in-flight.
+        self.in_flight.insert(event.session_id.clone());
+
+        // Run heuristic evaluation outside any lock (async).
+        let mutations = self.worker.evaluate(&event.session_id, history_snapshot).await;
+
+        // Clear in-flight marker.
+        self.in_flight.remove(&event.session_id);
+
         if mutations.is_empty() {
             return;
         }

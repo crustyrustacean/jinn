@@ -20,9 +20,8 @@ use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
 use crate::feat::chat_input::slash_command::SlashCommand;
 use crate::feat::chat_input::state::autocomplete::AutocompleteState;
-use crate::feat::compaction_actor::protocol::command::EnqueueCompaction;
 use crate::feat::context::prompt_template::PromptTemplateStore;
-use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use crate::protocol::{ChatEntry, Command, IntentResult, SessionId};
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -334,19 +333,15 @@ fn execute_slash_command(
     state: &mut AppState,
 ) -> IntentResult {
     match command {
-        SlashCommand::Compact => {
+        SlashCommand::Compact | SlashCommand::CompactAll => {
+            let compact_all = matches!(command, SlashCommand::CompactAll);
             let session_id = state.session.active_session_id().clone();
-            IntentResult::with_commands(vec![Command::EnqueueCompaction(EnqueueCompaction {
-                session_id,
-                compact_all: false,
-            })])
-        }
-        SlashCommand::CompactAll => {
-            let session_id = state.session.active_session_id().clone();
-            IntentResult::with_commands(vec![Command::EnqueueCompaction(EnqueueCompaction {
-                session_id,
-                compact_all: true,
-            })])
+            IntentResult::with_commands(vec![Command::TriggerCompaction(
+                crate::feat::session::protocol::trigger_compaction::TriggerCompaction {
+                    session_id,
+                    compact_all,
+                },
+            )])
         }
         SlashCommand::New => crate::feat::session::intent::handle_session_new(state),
         SlashCommand::Workflow => {
@@ -480,7 +475,7 @@ pub fn handle_move_cursor_down(state: &mut AppState) -> IntentResult {
 pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
     super::validator::validate_normal_escape(state);
 
-    if !matches!(state.active_session().phase(), SessionPhase::Idle) {
+    if !matches!(state.active_session().phase(), PhaseKind::Idle) {
         // Session is busy — show cancel confirmation prompt.
         state.frontend.cancel_stream_prompt = true;
     } else if state.active_session().is_busy() {

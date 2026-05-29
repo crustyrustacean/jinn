@@ -1,7 +1,7 @@
 //! Shared helpers used across multiple handler concern modules.
 
 use crate::common::actor::ActorContext;
-use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::protocol::{Event, SessionId};
 
 /// Emit a `SessionPhaseChanged` event if the phase actually changed.
@@ -10,9 +10,11 @@ use crate::protocol::{Event, SessionId};
 pub(in crate::feat::session::session_actor) fn emit_phase_changed(
     ctx: &ActorContext,
     session_id: &SessionId,
-    old_phase: SessionPhase,
-    new_phase: SessionPhase,
+    old_phase: impl Into<PhaseKind>,
+    new_phase: impl Into<PhaseKind>,
 ) {
+    let old_phase = old_phase.into();
+    let new_phase = new_phase.into();
     if old_phase != new_phase
         && let Err(e) = ctx.send_event(Event::SessionPhaseChanged(
             crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged {

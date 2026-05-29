@@ -124,10 +124,31 @@ impl StreamResponseParser {
             }
 
             // Reasoning/thinking content delta.
-            if let Some(reasoning) = delta.get("reasoning_content").and_then(|c| c.as_str()) {
-                if !reasoning.is_empty() {
-                    results.push(StreamEvent::Reasoning(reasoning.to_owned()));
+            // Check both field names: DeepSeek R1/V3 uses `reasoning_content`,
+            // DeepSeek V4 uses `thinking_content`, OpenRouter uses `reasoning`.
+            let mut found_reasoning = false;
+            for field in ["reasoning_content", "thinking_content", "reasoning"] {
+                if let Some(reasoning) = delta.get(field).and_then(|c| c.as_str()) {
+                    if !reasoning.is_empty() {
+                        tracing::debug!(
+                            field,
+                            len = reasoning.len(),
+                            preview = %&reasoning[..reasoning.len().min(30)],
+                            "response parser: reasoning field matched"
+                        );
+                        results.push(StreamEvent::Reasoning(reasoning.to_owned()));
+                        found_reasoning = true;
+                    }
+                    break;
                 }
+            }
+            if !found_reasoning {
+                // Log what fields the delta actually has for debugging.
+                let delta_keys: Vec<&str> = delta.as_object().map(|o| o.keys().map(|k| k.as_str()).collect()).unwrap_or_default();
+                tracing::trace!(
+                    delta_keys = ?delta_keys,
+                    "response parser: no reasoning field found in delta"
+                );
             }
 
             // Tool call deltas.
@@ -325,6 +346,26 @@ mod tests {
     #[rstest::rstest]
     fn reasoning_delta_produces_reasoning_event() {
         let json = r#"{"id":"x","choices":[{"index":0,"delta":{"reasoning_content":"thinking..."},"finish_reason":null}]}"#;
+        let events = parse_single(json);
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0], StreamEvent::Reasoning("thinking...".to_owned()));
+    }
+
+    #[rstest::rstest]
+    fn thinking_content_delta_produces_reasoning_event() {
+        // DeepSeek V4 uses `thinking_content` instead of `reasoning_content`.
+        let json = r#"{"id":"x","choices":[{"index":0,"delta":{"thinking_content":"reasoning..."},"finish_reason":null}]}"#;
+        let events = parse_single(json);
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0], StreamEvent::Reasoning("reasoning...".to_owned()));
+    }
+
+    #[rstest::rstest]
+    fn reasoning_field_delta_produces_reasoning_event() {
+        // OpenRouter uses `reasoning` instead of `reasoning_content`.
+        let json = r#"{"id":"x","choices":[{"index":0,"delta":{"content":"","reasoning":"thinking..."},"finish_reason":null}]}"#;
         let events = parse_single(json);
 
         assert_eq!(events.len(), 1);

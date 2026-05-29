@@ -65,10 +65,21 @@ impl OpenAiCompatibleService {
         extra_body: Option<serde_json::Value>,
     ) -> Self {
         let base_url = base_url.unwrap_or_else(|| config.default_base_url.to_owned());
-        let extra_body = match extra_body {
+        let mut extra_body = match extra_body {
             Some(serde_json::Value::Object(map)) => map,
             _ => serde_json::Map::new(),
         };
+
+        // OpenRouter: always request reasoning tokens so thinking/reasoning
+        // is included in streaming responses.
+        // See https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
+        if config.name == "OpenRouter" && !extra_body.contains_key("reasoning") {
+            extra_body.insert(
+                "reasoning".to_owned(),
+                serde_json::json!({ "enabled": true }),
+            );
+        }
+
         Self {
             client,
             config,
@@ -125,6 +136,14 @@ impl OpenAiCompatibleService {
         }
 
         tracing::debug!("{} streaming request: POST {}", self.config.name, url);
+        tracing::debug!(
+            provider = %self.config.name,
+            model = %self.model,
+            request_body = %serde_json::to_string(&body).unwrap_or_else(|e| format!("<serialize error: {e}>")),
+            custom_headers = ?self.config.custom_headers,
+            extra_body = ?self.extra_body,
+            "full request details"
+        );
 
         let response = req
             .send()
@@ -159,23 +178,47 @@ impl OpenAiCompatibleService {
 fn create_tool_stream(response: reqwest::Response, provider_name: &str) -> ToolStream {
     let parser = StreamResponseParser::new();
     let sse = SseParser::new();
+    let mut chunk_index: usize = 0;
 
     let stream = response
         .bytes_stream()
         .scan(
             (parser, sse, provider_name.to_owned()),
-            |(parser, sse, name), chunk| {
+            move |(parser, sse, name), chunk| {
+                let ci = chunk_index;
+                chunk_index += 1;
+                let now = std::time::Instant::now();
                 let results = match chunk {
                     Ok(bytes) => {
+                        tracing::info!(
+                            provider = %name,
+                            chunk_index = ci,
+                            raw_bytes = bytes.len(),
+                            elapsed_ms = now.elapsed().as_millis(),
+                            "STREAM CHUNK received from provider"
+                        );
                         let events = sse.feed(&bytes);
+                        tracing::info!(
+                            provider = %name,
+                            chunk_index = ci,
+                            sse_events = events.len(),
+                            "STREAM CHUNK parsed SSE events"
+                        );
                         let mut stream_events = Vec::new();
                         for event in events {
                             match event {
                                 SseEvent::Data(json) => {
-                                    stream_events
-                                        .extend(parser.parse_data(&json).into_iter().map(Ok));
+                                    let parsed = parser.parse_data(&json);
+                                    tracing::info!(
+                                        provider = %name,
+                                        chunk_index = ci,
+                                        parsed_events = parsed.len(),
+                                        "STREAM CHUNK parsed StreamEvents"
+                                    );
+                                    stream_events.extend(parsed.into_iter().map(Ok));
                                 }
                                 SseEvent::Done => {
+                                    tracing::info!(provider = %name, chunk_index = ci, "STREAM [DONE]");
                                     stream_events.extend(parser.handle_done().into_iter().map(Ok));
                                 }
                             }

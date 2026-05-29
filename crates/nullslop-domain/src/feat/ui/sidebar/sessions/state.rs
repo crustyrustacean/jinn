@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::common::app_state::AppState;
-use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::protocol::SessionId;
 
 /// Sessions section cursor state — stored on `FrontendState`.
@@ -74,7 +74,7 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
             title: session.title().unwrap_or("Untitled Session").to_owned(),
             is_active: id == active_id,
             created_at: *session.created_at(),
-            is_idle: matches!(session.phase(), SessionPhase::Idle) && !session.is_busy(),
+            is_idle: matches!(session.phase(), PhaseKind::Idle) && !session.is_busy(),
             last_entry_is_error: session
                 .history()
                 .last()
