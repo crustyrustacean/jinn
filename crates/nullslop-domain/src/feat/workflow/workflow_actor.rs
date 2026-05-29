@@ -22,6 +22,7 @@ use crate::feat::workflow::protocol::event::{
 use crate::feat::workflow::workflow_registry::WorkflowRegistry;
 use crate::feat::workflow::workflow_state::WorkflowState;
 use crate::protocol::{Command, Event};
+use crate::feat::ui::picker_states::PickerExt;
 
 /// The workflow actor.
 ///
@@ -394,7 +395,7 @@ impl WorkflowActor {
         self.state
             .write()
             .frontend
-            .workflow_picker
+            .workflow_picker_mut()
             .set_items(entries);
     }
 }
@@ -663,7 +664,7 @@ mod tests {
 
         // Then the picker has entries.
         let guard = h.state.read();
-        let items = guard.frontend.workflow_picker.items();
+        let items = guard.frontend.workflow_picker().items();
         assert!(!items.is_empty());
         assert_eq!(items[0].name, "add-numbers");
     }

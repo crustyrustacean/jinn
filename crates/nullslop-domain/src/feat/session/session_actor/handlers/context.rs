@@ -17,6 +17,7 @@ use crate::feat::context::protocol::event::ChatEntryPinChanged;
 use crate::feat::persona::PersonaEntry;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
 use crate::feat::tools_actor::protocol::event::ToolsRegistered;
+use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::Event;
 
 use super::super::SessionPersistenceActor;
@@ -183,7 +184,7 @@ impl SessionPersistenceActor {
     entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
     let mut state = self.state.write();
-        state.frontend.persona_picker.set_items(entries);
+        state.frontend.persona_picker_mut().set_items(entries);
     }
 }
 
@@ -587,7 +588,7 @@ mod tests {
 
         // Then the picker has entries with correct active state.
         let guard = state.read();
-        let items = guard.frontend.persona_picker.items();
+        let items = guard.frontend.persona_picker().items();
         assert_eq!(items.len(), 2, "expected 2 persona entries");
         let active = items.iter().find(|e| e.is_active).expect("an active entry");
         assert_eq!(active.name, "learning-tutor");

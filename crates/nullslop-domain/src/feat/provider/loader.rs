@@ -3,6 +3,7 @@
 use crate::common::app_state::AppState;
 use crate::common::services::Services;
 use crate::feat::provider_infra;
+use crate::feat::ui::picker_states::PickerExt;
 
 use super::entries::{load_provider_entries, sorted_entries};
 
@@ -74,7 +75,7 @@ pub fn load_compaction_model_picker_items(services: &Services, state: &mut AppSt
     // Prepend sentinel (always first).
     entries.insert(0, sentinel);
 
-    state.frontend.compaction_model_picker.set_items(entries);
+    state.frontend.compaction_model_picker_mut().set_items(entries);
 }
 
 #[cfg(test)]
@@ -112,7 +113,7 @@ mod tests {
         load_compaction_model_picker_items(&services, &mut state);
 
         // Then the picker has entries (sentinel + 1 provider = 2).
-        let items = state.frontend.compaction_model_picker.items();
+        let items = state.frontend.compaction_model_picker().items();
         assert!(!items.is_empty(), "picker should not be empty");
         // First entry should be the sentinel "session default".
         assert_eq!(items[0].model, "session default");

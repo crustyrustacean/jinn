@@ -13,6 +13,7 @@ use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, Update
 use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch};
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
+use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::{Command, Intent, IntentResult, PickerKind};
 
 use super::validator;
@@ -34,41 +35,41 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
             state.provider.provider_picker.reset();
         }
         PickerKind::Session => {
-            state.frontend.session_picker.reset();
+            state.frontend.session_picker_mut().reset();
         }
         PickerKind::Persona => {
-            state.frontend.persona_picker.reset();
+            state.frontend.persona_picker_mut().reset();
         }
         PickerKind::Theme => {
-            state.frontend.theme_picker.reset();
+            state.frontend.theme_picker_mut().reset();
             // Save current theme so ESC can restore it.
-            state.frontend.theme_preview_original = Some(state.frontend.theme.clone());
+            *state.frontend.theme_preview_original_mut() = Some(state.frontend.theme.clone());
             // Load discovered themes as entries.
             load_theme_picker_entries(state);
         }
         PickerKind::SessionLifecycle => {
-            state.frontend.session_lifecycle_picker.reset();
+            state.frontend.session_lifecycle_picker_mut().reset();
         }
         PickerKind::Workflow => {
-            state.frontend.workflow_picker.reset();
+            state.frontend.workflow_picker_mut().reset();
         }
         PickerKind::Judge => {
-            state.frontend.judge_picker.reset();
+            state.frontend.judge_picker_mut().reset();
         }
         PickerKind::CompactionModel => {
-            state.frontend.compaction_model_picker.reset();
+            state.frontend.compaction_model_picker_mut().reset();
         }
         PickerKind::Tool => {
-            state.frontend.tool_picker.reset();
+            state.frontend.tool_picker_mut().reset();
             // Snapshot current disabled tools for ESC revert.
-            state.frontend.tool_picker_snapshot =
+            *state.frontend.tool_picker_snapshot_mut() =
                 Some(state.active_session().disabled_tools().clone());
             load_tool_picker_entries(state);
         }
         PickerKind::Skill => {
-            state.frontend.skill_picker.reset();
+            state.frontend.skill_picker_mut().reset();
             // Snapshot current disabled skills for ESC revert.
-            state.frontend.skill_picker_snapshot =
+            *state.frontend.skill_picker_snapshot_mut() =
                 Some(state.active_session().disabled_skills().clone());
             load_skill_picker_entries(state);
         }
@@ -162,7 +163,7 @@ fn load_theme_picker_entries(state: &mut AppState) {
 
     entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
-    state.frontend.theme_picker.set_items(entries);
+    state.frontend.theme_picker_mut().set_items(entries);
 }
 
 /// Previews the selected theme in real-time when the Theme picker is active.
@@ -170,7 +171,7 @@ fn preview_theme_if_active(state: &mut AppState) {
     if state.frontend.scope_stack.picker_kind() != Some(&PickerKind::Theme) {
         return;
     }
-    if let Some(entry) = state.frontend.theme_picker.selected_item() {
+    if let Some(entry) = state.frontend.theme_picker().selected_item() {
         state.frontend.theme = entry.theme.clone();
         state.invalidate_theme_caches();
     }
@@ -179,23 +180,23 @@ fn preview_theme_if_active(state: &mut AppState) {
 /// Resets the preview scroll offset to 0 when the skill picker is active.
 fn reset_preview_scroll(state: &mut AppState) {
     if state.frontend.scope_stack.picker_kind() == Some(&PickerKind::Skill) {
-        state.frontend.skill_preview_scroll = 0;
+        state.frontend.set_skill_preview_scroll(0);
     }
 }
 
 /// Scrolls the preview pane up by one page.
 pub fn handle_preview_scroll_up(state: &mut AppState) -> IntentResult {
     let page_size = preview_page_size(state);
-    state.frontend.skill_preview_scroll =
-        state.frontend.skill_preview_scroll.saturating_sub(page_size);
+    state.frontend.set_skill_preview_scroll(
+        state.frontend.skill_preview_scroll().saturating_sub(page_size));
     IntentResult::empty()
 }
 
 /// Scrolls the preview pane down by one page.
 pub fn handle_preview_scroll_down(state: &mut AppState) -> IntentResult {
     let page_size = preview_page_size(state);
-    state.frontend.skill_preview_scroll =
-        state.frontend.skill_preview_scroll.saturating_add(page_size);
+    state.frontend.set_skill_preview_scroll(
+        state.frontend.skill_preview_scroll().saturating_add(page_size));
     IntentResult::empty()
 }
 
@@ -329,7 +330,7 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
 
 /// Confirms the selected persona and sets it as active.
 fn confirm_persona(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.frontend.persona_picker.selected_item() else {
+    let Some(entry) = state.frontend.persona_picker().selected_item() else {
         return IntentResult::empty();
     };
     let persona_name = entry.name.clone();
@@ -359,13 +360,13 @@ fn confirm_persona(state: &mut AppState) -> IntentResult {
 
 /// Confirms the selected theme and persists it to preferences.
 fn confirm_theme(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.frontend.theme_picker.selected_item() else {
+    let Some(entry) = state.frontend.theme_picker().selected_item() else {
         return IntentResult::empty();
     };
     let theme_name = entry.name.clone();
 
     // Theme is already previewed (set on move). Just persist.
-    state.frontend.theme_preview_original = None;
+    *state.frontend.theme_preview_original_mut() = None;
     state.frontend.scope_stack.pop();
 
     IntentResult::with_commands(vec![Command::UpdatePreferences(UpdatePreferences {
@@ -375,7 +376,7 @@ fn confirm_theme(state: &mut AppState) -> IntentResult {
 
 /// Confirms the selected session and dispatches a switch command.
 fn confirm_session(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.frontend.session_picker.selected_item() else {
+    let Some(entry) = state.frontend.session_picker().selected_item() else {
         return IntentResult::empty();
     };
     let session_id = entry.session_id.clone();
@@ -428,7 +429,7 @@ fn load_lifecycle_picker_entries(state: &mut AppState) {
         });
     }
 
-    state.frontend.session_lifecycle_picker.set_items(entries);
+    state.frontend.session_lifecycle_picker_mut().set_items(entries);
 }
 
 /// Confirms the selected session lifecycle.
@@ -437,14 +438,15 @@ fn load_lifecycle_picker_entries(state: &mut AppState) {
 /// For now, directly triggers setup with empty args (lifecycles without args)
 /// or with empty args as a placeholder.
 fn confirm_session_lifecycle(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.frontend.session_lifecycle_picker.selected_item() else {
+    let Some(entry) = state.frontend.session_lifecycle_picker().selected_item() else {
         return IntentResult::empty();
     };
 
     let lifecycle_name = entry.name.clone();
+    let has_args = entry.has_args;
     state.frontend.scope_stack.pop();
 
-    if entry.has_args {
+    if has_args {
         // Save context and open the arg input popup.
         let template_display = state
             .frontend
@@ -488,7 +490,7 @@ fn confirm_session_lifecycle(state: &mut AppState) -> IntentResult {
 
 /// Confirms the selected workflow, starts it, and switches to the Workflow tab.
 fn confirm_workflow(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.frontend.workflow_picker.selected_item() else {
+    let Some(entry) = state.frontend.workflow_picker().selected_item() else {
         return IntentResult::empty();
     };
     let name = entry.name.clone();
@@ -529,14 +531,14 @@ fn load_judge_picker_entries(state: &mut AppState) {
         })
         .collect();
     entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    state.frontend.judge_picker.set_items(entries);
+    state.frontend.judge_picker_mut().set_items(entries);
 }
 
 /// Confirms the selected judge and creates a judge session.
 fn confirm_judge(state: &mut AppState) -> IntentResult {
     use crate::feat::session::chat_session::ChatSessionState;
 
-    let Some(entry) = state.frontend.judge_picker.selected_item().cloned() else {
+    let Some(entry) = state.frontend.judge_picker().selected_item().cloned() else {
         return IntentResult::empty();
     };
 
@@ -576,7 +578,7 @@ fn confirm_judge(state: &mut AppState) -> IntentResult {
         }
         state.session.set_active(active_id);
         state.frontend.scope_stack.push(FocusScope::Input);
-        state.frontend.judge_picker.reset();
+        state.frontend.judge_picker_mut().reset();
 
         tracing::info!(
             judge_session = %existing_id,
@@ -672,7 +674,7 @@ fn load_tool_picker_entries(state: &mut AppState) {
 
     entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
-    state.frontend.tool_picker.set_items(entries);
+    state.frontend.tool_picker_mut().set_items(entries);
 }
 
 /// Confirms the tool picker: collects disabled tool names from picker entries
@@ -680,7 +682,7 @@ fn load_tool_picker_entries(state: &mut AppState) {
 fn confirm_tool(state: &mut AppState) -> IntentResult {
     let disabled: std::collections::HashSet<String> = state
         .frontend
-        .tool_picker
+        .tool_picker()
         .items()
         .iter()
         .filter(|entry| !entry.enabled)
@@ -688,17 +690,17 @@ fn confirm_tool(state: &mut AppState) -> IntentResult {
         .collect();
 
     state.active_session_mut().set_disabled_tools(disabled);
-    state.frontend.tool_picker_snapshot = None;
+    *state.frontend.tool_picker_snapshot_mut() = None;
     state.frontend.scope_stack.pop();
     IntentResult::empty()
 }
 
 /// Toggles the `enabled` state of the currently selected tool entry.
 pub fn handle_tool_toggle(state: &mut AppState) -> IntentResult {
-    state.frontend.tool_picker.with_selected_mut(|entry| {
+    state.frontend.tool_picker_mut().with_selected_mut(|entry| {
         entry.enabled = !entry.enabled;
     });
-    state.frontend.tool_picker.move_down(PICKER_MAX_VISIBLE);
+    state.frontend.tool_picker_mut().move_down(PICKER_MAX_VISIBLE);
     IntentResult::empty()
 }
 
@@ -731,7 +733,7 @@ fn load_skill_picker_entries(state: &mut AppState) {
 
     entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
-    state.frontend.skill_picker.set_items(entries);
+    state.frontend.skill_picker_mut().set_items(entries);
 }
 
 /// Confirms the skill picker: collects disabled skill names from picker entries
@@ -739,7 +741,7 @@ fn load_skill_picker_entries(state: &mut AppState) {
 fn confirm_skill(state: &mut AppState) -> IntentResult {
     let disabled: std::collections::HashSet<String> = state
         .frontend
-        .skill_picker
+        .skill_picker()
         .items()
         .iter()
         .filter(|entry| !entry.enabled)
@@ -747,17 +749,17 @@ fn confirm_skill(state: &mut AppState) -> IntentResult {
         .collect();
 
     state.active_session_mut().set_disabled_skills(disabled);
-    state.frontend.skill_picker_snapshot = None;
+    *state.frontend.skill_picker_snapshot_mut() = None;
     state.frontend.scope_stack.pop();
     IntentResult::empty()
 }
 
 /// Toggles the `enabled` state of the currently selected skill entry.
 pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
-    state.frontend.skill_picker.with_selected_mut(|entry| {
+    state.frontend.skill_picker_mut().with_selected_mut(|entry| {
         entry.enabled = !entry.enabled;
     });
-    state.frontend.skill_picker.move_down(PICKER_MAX_VISIBLE);
+    state.frontend.skill_picker_mut().move_down(PICKER_MAX_VISIBLE);
     IntentResult::empty()
 }
 
@@ -808,7 +810,7 @@ mod tests {
         // Populate the picker and select the judge.
         load_judge_picker_entries(&mut state);
         // Select the first (and only) entry.
-        state.frontend.judge_picker.move_down(1);
+        state.frontend.judge_picker_mut().move_down(1);
 
         state
     }
@@ -881,7 +883,7 @@ mod tests {
         // Switch back to origin session and re-populate picker.
         state.session.set_active(origin_id);
         load_judge_picker_entries(&mut state);
-        state.frontend.judge_picker.move_down(1);
+        state.frontend.judge_picker_mut().move_down(1);
 
         // When confirming the picker again.
         let commands = confirm_judge(&mut state);
@@ -935,7 +937,7 @@ mod tests {
             .judges
             .push(make_judge("accuracy", "Check accuracy.", None));
         load_judge_picker_entries(&mut state);
-        state.frontend.judge_picker.move_down(1);
+        state.frontend.judge_picker_mut().move_down(1);
 
         // When confirming the judge.
         let _ = confirm_judge(&mut state);
@@ -963,7 +965,7 @@ mod tests {
             .judges
             .push(make_judge("accuracy", "Check accuracy.", None));
         load_judge_picker_entries(&mut state);
-        state.frontend.judge_picker.move_down(1);
+        state.frontend.judge_picker_mut().move_down(1);
 
         // When creating the judge.
         confirm_judge(&mut state);
@@ -991,7 +993,7 @@ mod tests {
         // Re-populate picker and select the judge again.
         state.session.set_active(origin_id.clone());
         load_judge_picker_entries(&mut state);
-        state.frontend.judge_picker.move_down(1);
+        state.frontend.judge_picker_mut().move_down(1);
         confirm_judge(&mut state);
 
         // Then the judge session's CWD is updated to the origin's new CWD.
@@ -1120,9 +1122,9 @@ mod tests {
                 theme: crate::feat::theme::default_theme(),
             },
         ];
-        state.frontend.persona_picker.set_items(entries);
-        state.frontend.persona_picker.move_down(1); // coder
-        state.frontend.persona_picker.move_down(1); // writer
+        state.frontend.persona_picker_mut().set_items(entries);
+        state.frontend.persona_picker_mut().move_down(1); // coder
+        state.frontend.persona_picker_mut().move_down(1); // writer
 
         let result = confirm_persona(&mut state);
 
@@ -1175,9 +1177,9 @@ mod tests {
 
         // Load entries and select "project-b".
         load_lifecycle_picker_entries(&mut state);
-        state.frontend.session_lifecycle_picker.move_down(1); // blank
-        state.frontend.session_lifecycle_picker.move_down(1); // project-a
-        state.frontend.session_lifecycle_picker.move_down(1); // project-b
+        state.frontend.session_lifecycle_picker_mut().move_down(1); // blank
+        state.frontend.session_lifecycle_picker_mut().move_down(1); // project-a
+        state.frontend.session_lifecycle_picker_mut().move_down(1); // project-b
 
         let _result = confirm_session_lifecycle(&mut state);
 
@@ -1212,7 +1214,7 @@ mod tests {
         load_lifecycle_picker_entries(&mut state);
 
         // Then the picker has entries (blank + project-a = 2).
-        let items = state.frontend.session_lifecycle_picker.items();
+        let items = state.frontend.session_lifecycle_picker().items();
         assert_eq!(items.len(), 2, "should have blank + 1 lifecycle = 2 entries");
         assert_eq!(items[0].name, "blank");
         assert_eq!(items[1].name, "project-a");
@@ -1260,7 +1262,7 @@ mod tests {
         load_skill_picker_entries(&mut state);
 
         // Then the picker has two entries.
-        let items = state.frontend.skill_picker.items();
+        let items = state.frontend.skill_picker().items();
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].name, "phased-task-loop");
         assert_eq!(items[1].name, "web-coder");
@@ -1278,7 +1280,7 @@ mod tests {
         load_skill_picker_entries(&mut state);
 
         // Then "web-coder" is marked disabled.
-        let items = state.frontend.skill_picker.items();
+        let items = state.frontend.skill_picker().items();
         assert!(items[0].enabled, "phased-task-loop should be enabled");
         assert!(!items[1].enabled, "web-coder should be disabled");
     }
@@ -1290,7 +1292,7 @@ mod tests {
         load_skill_picker_entries(&mut state);
 
         // Select "web-coder" (second entry) and toggle it off.
-        state.frontend.skill_picker.move_down(1); // move from 0 → 1
+        state.frontend.skill_picker_mut().move_down(1); // move from 0 → 1
         handle_skill_toggle(&mut state);
 
         // When confirming.
@@ -1305,14 +1307,14 @@ mod tests {
     fn confirm_skill_clears_snapshot() {
         // Given an open skill picker with a snapshot.
         let mut state = setup_state_with_skills();
-        state.frontend.skill_picker_snapshot = Some(std::collections::HashSet::new());
+        *state.frontend.skill_picker_snapshot_mut() = Some(std::collections::HashSet::new());
         load_skill_picker_entries(&mut state);
 
         // When confirming.
         let _ = confirm_skill(&mut state);
 
         // Then the snapshot is cleared.
-        assert!(state.frontend.skill_picker_snapshot.is_none());
+        assert!(state.frontend.skill_picker_snapshot().is_none());
     }
 
     #[rstest::rstest]
@@ -1322,19 +1324,19 @@ mod tests {
         load_skill_picker_entries(&mut state);
 
         // The first entry (phased-task-loop) is selected by default (selection=0).
-        assert!(state.frontend.skill_picker.items()[0].enabled);
+        assert!(state.frontend.skill_picker().items()[0].enabled);
 
         // When toggling.
         handle_skill_toggle(&mut state);
 
         // Then the first entry is now disabled.
-        assert!(!state.frontend.skill_picker.items()[0].enabled);
+        assert!(!state.frontend.skill_picker().items()[0].enabled);
 
         // And toggling again re-enables it (cursor moved to entry 1,
         // so we go back up first).
-        state.frontend.skill_picker.move_up(1);
+        state.frontend.skill_picker_mut().move_up(1);
         handle_skill_toggle(&mut state);
-        assert!(state.frontend.skill_picker.items()[0].enabled);
+        assert!(state.frontend.skill_picker().items()[0].enabled);
     }
 
     #[rstest::rstest]
@@ -1344,12 +1346,12 @@ mod tests {
         load_skill_picker_entries(&mut state);
 
         // Selection starts at 0.
-        assert_eq!(state.frontend.skill_picker.selection(), 0);
+        assert_eq!(state.frontend.skill_picker().selection(), 0);
 
         // When toggling.
         handle_skill_toggle(&mut state);
 
         // Then the cursor has moved down to 1.
-        assert_eq!(state.frontend.skill_picker.selection(), 1);
+        assert_eq!(state.frontend.skill_picker().selection(), 1);
     }
 }
