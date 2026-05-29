@@ -30,7 +30,7 @@ use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::context::assemble::assemble_prompt;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::feat::provider::protocol::command::SendToLlmProvider;
-use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::session::queue_item::QueueItem;
 use crate::feat::session_lifecycle::protocol::command::PersistSession;
@@ -90,7 +90,7 @@ impl QueueActor {
         ctx: &ActorContext,
     ) {
         match (payload.old_phase, payload.new_phase) {
-            (_, SessionPhase::Idle) => {
+            (_, PhaseKind::Idle) => {
                 self.handle_idle_transition(&payload.session_id, ctx).await;
             }
             _ => {}
@@ -269,8 +269,8 @@ mod tests {
         // When handling SessionPhaseChanged with Idle phase.
         let payload = SessionPhaseChanged {
             session_id: session_id.clone(),
-            old_phase: SessionPhase::Sending,
-            new_phase: SessionPhase::Idle,
+            old_phase: PhaseKind::Sending,
+            new_phase: PhaseKind::Idle,
         };
         actor.handle_session_phase_changed(&payload, &ctx).await;
 
@@ -310,8 +310,8 @@ mod tests {
         // When handling SessionPhaseChanged with Sending phase.
         let payload = SessionPhaseChanged {
             session_id: session_id.clone(),
-            old_phase: SessionPhase::Streaming,
-            new_phase: SessionPhase::Sending,
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Sending,
         };
         actor.handle_session_phase_changed(&payload, &ctx).await;
 
@@ -344,8 +344,8 @@ mod tests {
         // When handling SessionPhaseChanged with Idle phase.
         let payload = SessionPhaseChanged {
             session_id: session_id.clone(),
-            old_phase: SessionPhase::Streaming,
-            new_phase: SessionPhase::Idle,
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
         };
         actor.handle_session_phase_changed(&payload, &ctx).await;
 
@@ -464,8 +464,8 @@ mod tests {
         // When handling SessionPhaseChanged(Idle → Sending).
         let payload = SessionPhaseChanged {
             session_id: session_id.clone(),
-            old_phase: SessionPhase::Idle,
-            new_phase: SessionPhase::Sending,
+            old_phase: PhaseKind::Idle,
+            new_phase: PhaseKind::Sending,
         };
         actor.handle_session_phase_changed(&payload, &ctx).await;
 
@@ -608,8 +608,8 @@ mod tests {
         // When calling handle with an ActorEnvelope::Event(SessionPhaseChanged).
         let payload = SessionPhaseChanged {
             session_id: session_id.clone(),
-            old_phase: SessionPhase::Sending,
-            new_phase: SessionPhase::Idle,
+            old_phase: PhaseKind::Sending,
+            new_phase: PhaseKind::Idle,
         };
         actor
             .handle(
