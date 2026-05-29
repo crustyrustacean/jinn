@@ -21,10 +21,12 @@ use crate::tool_schema::ToolSchema;
 pub mod code;
 pub mod delay;
 pub mod dynamic;
+pub mod router;
 
 pub use code::CodeNode;
 pub use delay::DelayNode;
 pub use dynamic::DynamicNode;
+pub use router::RouterNode;
 
 /// Execution context passed to nodes during execution.
 ///
