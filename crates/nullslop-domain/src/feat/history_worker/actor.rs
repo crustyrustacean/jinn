@@ -92,7 +92,7 @@ impl<H: HistoryWorker> HistoryWorkerActor<H> {
         };
 
         // Run heuristic evaluation outside any lock (async).
-        let mutations = self.worker.evaluate(history_snapshot).await;
+        let mutations = self.worker.evaluate(&event.session_id, history_snapshot).await;
         if mutations.is_empty() {
             return;
         }
