@@ -109,6 +109,7 @@ pub fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) 
     let widget = PreviewSelectionWidget::new(&state.frontend.skill_picker)
         .title(Line::from(" Skills "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
+        .preview_scroll(state.frontend.skill_preview_scroll)
         .footer(footer);
     widget.render(frame, area);
 }
