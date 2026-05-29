@@ -296,7 +296,7 @@ impl SessionPersistenceActor {
             return;
         }
 
-        tracing::debug!(
+        tracing::info!(
             loaded_session = %loaded_session_id,
             tree_size = tree_ids.len(),
             need_frozen = frozen_to_insert.len(),
