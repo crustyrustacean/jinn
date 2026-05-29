@@ -11,7 +11,7 @@ use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedRea
 use crate::protocol::ChatEntry;
 
 use super::super::SessionPersistenceActor;
-use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::phase_machine::PhaseKind;
 
 impl SessionPersistenceActor {
     /// Appends a streaming token to the session's assistant entry,
@@ -20,8 +20,8 @@ impl SessionPersistenceActor {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&event.session_id);
         match session.phase() {
-            SessionPhase::Streaming => {}
-            SessionPhase::Sending => {
+            PhaseKind::Streaming => {}
+            PhaseKind::Sending => {
                 // Defensive: stream token arrived without phase transition.
                 session.begin_streaming();
             }
@@ -202,7 +202,7 @@ mod tests {
     use crate::feat::provider::protocol::event::{
         StreamCompleted, StreamCompletedReason, StreamToken,
     };
-    use crate::feat::session::chat_session::SessionPhase;
+    use crate::feat::session::phase_machine::PhaseKind;
     use crate::feat::session::token_stats::TokenRecord;
     use crate::protocol::{ChatEntry, Event};
 
@@ -215,7 +215,7 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.begin_streaming();
-            assert!(matches!(session.phase(), SessionPhase::Streaming));
+            assert!(matches!(session.phase(), PhaseKind::Streaming));
             state.session.active_session_id().clone()
         };
 
@@ -234,7 +234,7 @@ mod tests {
         // Then the session is no longer streaming.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert!(!matches!(session.phase(), SessionPhase::Streaming));
+        assert!(!matches!(session.phase(), PhaseKind::Streaming));
     }
 
     #[tokio::test]
@@ -571,7 +571,7 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            matches!(session.phase(), SessionPhase::Streaming),
+            matches!(session.phase(), PhaseKind::Streaming),
             "expected Streaming phase, got {:?}",
             session.phase()
         );
@@ -601,7 +601,7 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            matches!(session.phase(), SessionPhase::Streaming),
+            matches!(session.phase(), PhaseKind::Streaming),
             "expected Streaming phase after correction from Sending, got {:?}",
             session.phase()
         );
@@ -970,7 +970,7 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            matches!(session.phase(), SessionPhase::Idle),
+            matches!(session.phase(), PhaseKind::Idle),
             "expected Idle after Finished without auto-compaction, got {:?}",
             session.phase()
         );

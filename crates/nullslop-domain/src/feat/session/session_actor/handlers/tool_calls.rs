@@ -224,7 +224,7 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::super::super::helpers::{test_actor, test_context};
     use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
-    use crate::feat::session::chat_session::SessionPhase;
+    use crate::feat::session::phase_machine::PhaseKind;
     use crate::feat::session::token_stats::TokenRecord;
     use crate::feat::tools_actor::protocol::event::{ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionStarted, ToolExecutionOutput, ToolUseStarted};
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
@@ -294,7 +294,7 @@ mod tests {
         // Then the session transitions to streaming (assemble + send are now synchronous).
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert!(matches!(session.phase(), SessionPhase::Streaming));
+        assert!(matches!(session.phase(), PhaseKind::Streaming));
     }
 
     #[tokio::test]
@@ -424,7 +424,7 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert!(
-            matches!(session.phase(), SessionPhase::Idle),
+            matches!(session.phase(), PhaseKind::Idle),
             "expected Idle after tool_loop_disabled, got {:?}",
             session.phase()
         );

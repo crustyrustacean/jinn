@@ -73,6 +73,7 @@ pub use feat::session::PoolConfig;
 pub use feat::session::SessionStoreService;
 pub use feat::session::SqliteSessionStore;
 pub use feat::session::chat_session::SessionPhase;
+pub use feat::session::phase_machine::PhaseKind;
 pub use feat::session::no_api_keys_msg;
 
 // Re-export preferences types

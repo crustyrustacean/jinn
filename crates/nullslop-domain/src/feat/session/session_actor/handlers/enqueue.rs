@@ -15,7 +15,7 @@ use crate::feat::session::token_stats::TokenRecord;
 use crate::protocol::{ChatEntry, ChatEntryKind, Command, Event};
 
 use super::super::SessionPersistenceActor;
-use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::phase_machine::PhaseKind;
 
 /// Decision returned after inspecting session state in `EnqueueUserMessage`.
 enum EnqueueAction {
@@ -43,7 +43,7 @@ impl SessionPersistenceActor {
                     None
                 };
             match session.phase() {
-                SessionPhase::Idle => {
+                PhaseKind::Idle => {
                     // Set title on first user message.
                     if session.title().is_none() {
                         let title = match &payload.entry.kind {
@@ -61,9 +61,9 @@ impl SessionPersistenceActor {
                         workflow_overrides,
                     )
                 }
-                SessionPhase::Sending
-                | SessionPhase::Streaming
-                | SessionPhase::TearingDown => {
+                PhaseKind::Sending
+                | PhaseKind::Streaming
+                | PhaseKind::TearingDown => {
                     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
                         payload.entry.clone(),
                     ));
@@ -205,7 +205,7 @@ mod tests {
         EnqueueUserMessage, PushChatEntry, SetChatInputText,
     };
     use crate::feat::provider::protocol::command::SendMessage;
-    use crate::feat::session::chat_session::SessionPhase;
+    use crate::feat::session::phase_machine::PhaseKind;
     use crate::protocol::{ChatEntry, ChatEntryKind, Command, Event};
 
     // --- handle_enqueue_user_message ---
@@ -235,7 +235,7 @@ mod tests {
         // Then the message is dispatched (history has the entry, phase is streaming).
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
-        assert_eq!(session.phase(), SessionPhase::Streaming);
+        assert_eq!(session.phase(), PhaseKind::Streaming);
         assert_eq!(session.history().len(), 1);
         assert!(
             matches!(&session.history()[0].kind, ChatEntryKind::User { display, .. } if display == "hello world"),
@@ -304,7 +304,7 @@ mod tests {
         // Then the message is queued (not dispatched — phase stays Streaming).
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
-        assert_eq!(session.phase(), SessionPhase::Streaming);
+        assert_eq!(session.phase(), PhaseKind::Streaming);
         // No history entry because the message was queued, not pushed.
         assert_eq!(session.history().len(), 0);
         // The queue should have the message.

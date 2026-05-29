@@ -30,7 +30,7 @@
 )]
 
 use crate::AppState;
-use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::protocol::{Command, PickerKind, PinPosition};
 
 use crate::Intent;
@@ -519,7 +519,7 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
     let session_id = state.session.active_session_id().clone();
 
     // Idle but busy → cancel pending judge evaluation.
-    if state.active_session().phase() == SessionPhase::Idle
+    if state.active_session().phase() == PhaseKind::Idle
         && state.active_session().is_busy()
     {
         state.active_session_mut().cancel_stream_and_drain();

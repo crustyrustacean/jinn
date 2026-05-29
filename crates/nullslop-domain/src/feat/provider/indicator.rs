@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
-use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::phase_machine::PhaseKind;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -65,9 +65,9 @@ impl UiElement<AppState> for StreamingIndicatorElement {
 
         let is_phase_busy = matches!(
             phase,
-            SessionPhase::Sending
-                | SessionPhase::Streaming
-                | SessionPhase::TearingDown
+            PhaseKind::Sending
+                | PhaseKind::Streaming
+                | PhaseKind::TearingDown
         );
         if !is_lifecycle_busy && !is_phase_busy {
             return;
@@ -75,7 +75,7 @@ impl UiElement<AppState> for StreamingIndicatorElement {
 
         let label = if is_lifecycle_busy {
             " Working...".to_owned()
-        } else if matches!(phase, SessionPhase::TearingDown) {
+        } else if matches!(phase, PhaseKind::TearingDown) {
             " Tearing down...".to_owned()
         } else if queue_len > 0 {
             format!(" Working... ({queue_len} queued)")

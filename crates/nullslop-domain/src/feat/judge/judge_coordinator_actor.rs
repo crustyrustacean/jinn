@@ -33,7 +33,6 @@ use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry};
 use crate::feat::session::chat_entry::ChatEntry;
-use crate::feat::session::chat_session::SessionPhase;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::protocol::{Command, Event, SessionId};
@@ -331,7 +330,7 @@ impl JudgeCoordinatorActor {
         {
             let guard = self.state.read();
             if let Some(origin_session) = guard.session.get(&origin_id) {
-                if origin_session.phase() != SessionPhase::Idle {
+                if origin_session.phase() != PhaseKind::Idle {
                     tracing::debug!(
                         origin = %origin_id,
                         "origin left idle during judge retry, skipping"
@@ -412,7 +411,7 @@ impl JudgeCoordinatorActor {
         {
             let guard = self.state.read();
             if let Some(session) = guard.session.get(origin_id) {
-                if session.phase() != SessionPhase::Idle {
+                if session.phase() != PhaseKind::Idle {
                     tracing::warn!(
                         origin = %origin_id,
                         phase = ?session.phase(),
@@ -579,7 +578,8 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::feat::judge::{JudgeCoordinatorActorDeps, JudgeMeta};
-    use crate::feat::session::chat_session::{ChatSessionState, SessionPhase};
+    use crate::feat::session::chat_session::ChatSessionState;
+    use crate::feat::session::phase_machine::PhaseKind;
     use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
     use crate::protocol::{Command, Event, SessionId};
 
@@ -932,9 +932,7 @@ mod tests {
             .session
             .get_mut(&origin_id)
             .expect("origin exists")
-            .core
-            .ephemeral
-            .phase = SessionPhase::Sending;
+            .begin_sending();
 
         // Judge verdict arrives — stale.
         actor
@@ -1569,9 +1567,7 @@ mod tests {
             .session
             .get_mut(&origin_id)
             .expect("origin exists")
-            .core
-            .ephemeral
-            .phase = SessionPhase::Sending;
+            .begin_sending();
 
         // Judge goes Idle without verdict — but origin is no longer Idle.
         actor.handle(idle_event(judge_id.clone()), &ctx).await;

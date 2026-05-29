@@ -7,7 +7,7 @@
 use crate::ChatEntry;
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::protocol::command::PushChatEntry;
-use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session_lifecycle::protocol::command::PersistSession;
 use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
@@ -72,7 +72,7 @@ pub fn handle_reset_judge(state: &mut AppState) -> IntentResult {
     // Guard: reject if the judge is actively working.
     let phase = judge_session.phase();
     let is_busy = judge_session.is_busy();
-    if phase != SessionPhase::Idle || is_busy {
+    if phase != PhaseKind::Idle || is_busy {
         // Push a system message to the ORIGIN session (not the judge).
         return IntentResult::with_commands(vec![Command::PushChatEntry(PushChatEntry {
             session_id: origin_session_id,
@@ -95,7 +95,8 @@ mod tests {
     use crate::common::app_state::FocusScope;
     use crate::feat::judge::JudgeMeta;
     use crate::feat::session::chat_entry::ChatEntry;
-    use crate::feat::session::chat_session::{ChatSessionState, SessionPhase};
+    use crate::feat::session::chat_session::ChatSessionState;
+    use crate::feat::session::phase_machine::PhaseKind;
     use crate::protocol::PinPosition;
 
     /// Helper: create an AppState with an origin session and a judge child session.
@@ -153,7 +154,8 @@ auto_reset: None,
         let (mut state, judge_id, origin_id) = state_with_idle_judge();
 
         // Set phase to Streaming (non-Idle).
-        state.session.get_mut(&judge_id).expect("judge").core.ephemeral.phase = SessionPhase::Streaming;
+        state.session.get_mut(&judge_id).expect("judge").begin_sending();
+        state.session.get_mut(&judge_id).expect("judge").begin_streaming();
 
         state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         state.frontend.sessions_section.selected_index = Some(1);
@@ -176,7 +178,7 @@ auto_reset: None,
         // Phase is Idle but busy_counter is set.
         {
             let judge = state.session.get_mut(&judge_id).expect("judge");
-            assert_eq!(judge.phase(), SessionPhase::Idle);
+            assert_eq!(judge.phase(), PhaseKind::Idle);
             judge.core.ephemeral.busy_counter.set_busy();
             assert!(judge.is_busy());
         }

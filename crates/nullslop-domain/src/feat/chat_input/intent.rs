@@ -21,7 +21,7 @@ use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
 use crate::feat::chat_input::slash_command::SlashCommand;
 use crate::feat::chat_input::state::autocomplete::AutocompleteState;
 use crate::feat::context::prompt_template::PromptTemplateStore;
-use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use crate::protocol::{ChatEntry, Command, IntentResult, SessionId};
 use unicode_segmentation::UnicodeSegmentation as _;
@@ -475,7 +475,7 @@ pub fn handle_move_cursor_down(state: &mut AppState) -> IntentResult {
 pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
     super::validator::validate_normal_escape(state);
 
-    if !matches!(state.active_session().phase(), SessionPhase::Idle) {
+    if !matches!(state.active_session().phase(), PhaseKind::Idle) {
         // Session is busy — show cancel confirmation prompt.
         state.frontend.cancel_stream_prompt = true;
     } else if state.active_session().is_busy() {

@@ -680,7 +680,10 @@ async fn when_submit_cancel_stream(world: &mut AppWorld) {
         session_id,
     }));
     world
-        .wait_until(|s| s.active_session().phase() != nullslop_domain::SessionPhase::Streaming)
+        .wait_until(|s| {
+            let phase = s.active_session().phase();
+            phase != nullslop_domain::PhaseKind::Streaming
+        })
         .await;
 }
 
@@ -934,12 +937,13 @@ fn then_which_key_inactive(world: &mut AppWorld) {
 #[cucumber::then(expr = "the session should be {word}")]
 fn then_session_state(world: &mut AppWorld, state_name: String) {
     let expected: nullslop_domain::SessionPhase = state_name.parse().expect("valid session phase");
+    let expected_kind: nullslop_domain::PhaseKind = expected.into();
     let state = world.state();
     let session = state.active_session();
     assert_eq!(
         session.phase(),
-        expected,
-        "expected {expected:?}, got {:?}",
+        expected_kind,
+        "expected {expected_kind:?}, got {:?}",
         session.phase()
     );
 }
