@@ -174,6 +174,39 @@ fn preview_theme_if_active(state: &mut AppState) {
     }
 }
 
+/// Resets the preview scroll offset to 0 when the skill picker is active.
+fn reset_preview_scroll(state: &mut AppState) {
+    if state.frontend.scope_stack.picker_kind() == Some(&PickerKind::Skill) {
+        state.frontend.skill_preview_scroll = 0;
+    }
+}
+
+/// Scrolls the preview pane up by one page.
+pub fn handle_preview_scroll_up(state: &mut AppState) -> IntentResult {
+    let page_size = preview_page_size(state);
+    state.frontend.skill_preview_scroll =
+        state.frontend.skill_preview_scroll.saturating_sub(page_size);
+    IntentResult::empty()
+}
+
+/// Scrolls the preview pane down by one page.
+pub fn handle_preview_scroll_down(state: &mut AppState) -> IntentResult {
+    let page_size = preview_page_size(state);
+    state.frontend.skill_preview_scroll =
+        state.frontend.skill_preview_scroll.saturating_add(page_size);
+    IntentResult::empty()
+}
+
+/// Returns the number of visible rows in the preview pane.
+///
+/// Computed from the popup height minus chrome (border, input, separator).
+fn preview_page_size(state: &AppState) -> usize {
+    // Use a reasonable default; exact size depends on terminal.
+    // The popup is ~60% of terminal height, minus border (2), input (1), separator (1).
+    let _ = state;
+    10
+}
+
 /// Inserts a character into the active picker's filter.
 pub fn handle_insert_char(state: &mut AppState, ch: char) -> IntentResult {
     validator::validate_picker_insert_char(state, ch);
@@ -233,6 +266,7 @@ pub fn handle_move_up(state: &mut AppState) -> IntentResult {
     if let Some(picker) = state.active_picker_ops() {
         picker.move_up(PICKER_MAX_VISIBLE);
     }
+    reset_preview_scroll(state);
     preview_theme_if_active(state);
     IntentResult::empty()
 }
@@ -243,6 +277,7 @@ pub fn handle_move_down(state: &mut AppState) -> IntentResult {
     if let Some(picker) = state.active_picker_ops() {
         picker.move_down(PICKER_MAX_VISIBLE);
     }
+    reset_preview_scroll(state);
     preview_theme_if_active(state);
     IntentResult::empty()
 }
@@ -619,11 +654,16 @@ fn load_tool_picker_entries(state: &mut AppState) {
         .context
         .tool_definitions
         .values()
-        .map(|def| ToolEntry {
-            name: def.name.clone(),
-            description: def.description.clone(),
-            enabled: !disabled.contains(&def.name),
-            theme: theme.clone(),
+        .map(|def| {
+            let name = def.name.clone();
+            let description = def.description.clone();
+            ToolEntry {
+                name: name.clone(),
+                description: description.clone(),
+                search_text: format!("{name} {description}"),
+                enabled: !disabled.contains(&def.name),
+                theme: theme.clone(),
+            }
         })
         .collect();
 
@@ -670,11 +710,17 @@ fn load_skill_picker_entries(state: &mut AppState) {
         .context
         .skills
         .iter()
-        .map(|skill| SkillEntry {
-            name: skill.name.clone(),
-            description: skill.description.clone(),
-            enabled: !disabled.contains(&skill.name),
-            theme: theme.clone(),
+        .map(|skill| {
+            let name = skill.name.clone();
+            let description = skill.description.clone();
+            SkillEntry {
+                search_text: format!("{name} {description}"),
+                name,
+                description,
+                body: skill.body.clone(),
+                enabled: !disabled.contains(&skill.name),
+                theme: theme.clone(),
+            }
         })
         .collect();
 
@@ -1182,12 +1228,14 @@ mod tests {
             Skill {
                 name: "phased-task-loop".to_owned(),
                 description: "Structured phased implementation workflow".to_owned(),
+                body: String::new(),
                 file_path: PathBuf::from("/tmp/skills/phased-task-loop/SKILL.md"),
                 base_dir: PathBuf::from("/tmp/skills/phased-task-loop"),
             },
             Skill {
                 name: "web-coder".to_owned(),
                 description: "Expert web development".to_owned(),
+                body: String::new(),
                 file_path: PathBuf::from("/tmp/skills/web-coder/SKILL.md"),
                 base_dir: PathBuf::from("/tmp/skills/web-coder"),
             },

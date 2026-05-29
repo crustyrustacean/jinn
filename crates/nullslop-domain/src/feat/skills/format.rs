@@ -71,6 +71,7 @@ mod tests {
         Skill {
             name: name.to_owned(),
             description: description.to_owned(),
+            body: String::new(),
             file_path: PathBuf::from(format!("/home/user/.agents/skills/{name}/SKILL.md")),
             base_dir: PathBuf::from(format!("/home/user/.agents/skills/{name}")),
         }
@@ -125,6 +126,7 @@ mod tests {
         let skills = vec![Skill {
             name: "xml-test".to_owned(),
             description: "Has <special> & \"chars\"".to_owned(),
+            body: String::new(),
             file_path: PathBuf::from("/path/to/SKILL.md"),
             base_dir: PathBuf::from("/path/to"),
         }];
