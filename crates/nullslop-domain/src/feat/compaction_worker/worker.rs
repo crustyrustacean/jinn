@@ -16,7 +16,8 @@ use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::compaction_worker::serializer::serialize_entries_for_compaction;
 use crate::feat::compaction_worker::algorithm::{
-    adjust_cut_to_boundary, compute_cut_index, find_start_boundary, gather_compactable_entries,
+    self, adjust_cut_to_boundary, compute_cut_index, find_start_boundary,
+    gather_compactable_entries,
 };
 use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, TokenEstimator};
 
@@ -119,6 +120,9 @@ impl CompactionWorker {
     }
 
     /// Evaluate history using just the history snapshot (for HistoryWorker trait).
+    ///
+    /// This is the auto-compaction path (triggered by `HistoryAppended`).
+    /// It applies the threshold gate before calling the compaction algorithm.
     async fn evaluate_history(&self, history: &[ChatEntry]) -> Vec<HistoryMutation> {
         // For the trait-based path, we use stored config.
         let (config, model_name, compaction_prompt, retry_config) = {
@@ -135,6 +139,25 @@ impl CompactionWorker {
             let retry_config = state.frontend.preferences.request_retry.to_retry_config();
             (config, model_name, compaction_prompt, retry_config)
         };
+
+        // Resolve context window from provider registry, falling back to config.
+        let context_window = {
+            let provider_id = crate::feat::provider_infra::ProviderId::from(model_name.clone());
+            let resolved_length = self
+                .services
+                .provider_registry
+                .get(&provider_id)
+                .and_then(|r| r.context_length);
+            algorithm::resolve_context_window(resolved_length, config.fallback_context_window)
+        };
+
+        // Threshold gate: skip compaction if total tokens are within budget.
+        let start_index = find_start_boundary(history);
+        let total_tokens = algorithm::estimate_total_tokens(history, start_index);
+        let budget = (context_window as f64 * config.threshold) as usize;
+        if total_tokens <= budget {
+            return vec![];
+        }
 
         let result = self
             .evaluate_with_config(
