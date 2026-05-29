@@ -61,7 +61,7 @@ impl AppLayout {
             .min(area.width.saturating_sub(MIN_WIDTH))
             .max(MIN_SIDEBAR_WIDTH);
         let border_width: u16 = 1;
-        let minimap_width: u16 = 1;
+        let minimap_width: u16 = 2;
         let main_width = area
             .width
             .saturating_sub(sidebar_width)
