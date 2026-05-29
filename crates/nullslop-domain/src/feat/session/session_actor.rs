@@ -101,7 +101,7 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<SetChatInputText>();
         ctx.subscribe_command::<PushChatEntry>();
         ctx.subscribe_command::<SendMessage>();
-        ctx.subscribe_command::<SessionLoadCompleted>();
+        ctx.subscribe_event::<SessionLoadCompleted>();
 
         // Lifecycle command subscriptions.
         ctx.subscribe_command::<RunSessionSetup>();
@@ -201,6 +201,9 @@ impl SessionPersistenceActor {
             Event::ChatEntryPinChanged(payload) => {
                 self.save_active_session(&payload.session_id).await;
             }
+            Event::SessionLoadCompleted(payload) => {
+                self.handle_session_load_completed(payload, ctx).await;
+            }
 
             // Context-related events (relocated from PromptAssemblyActor).
             Event::ToolsRegistered(payload) => {
@@ -242,9 +245,6 @@ impl SessionPersistenceActor {
                 self.handle_push_chat_entry(payload, ctx).await;
             }
             Command::SendMessage(payload) => Self::handle_send_message(payload, ctx),
-            Command::SessionLoadCompleted(payload) => {
-                self.handle_session_load_completed(payload, ctx).await;
-            }
             Command::RunSessionSetup(payload) => {
                 self.handle_run_session_setup(payload, ctx).await;
             }

@@ -13,7 +13,7 @@ use crate::feat::context::strategy::token_estimator::{
 };
 use crate::feat::session::protocol::history_appended::HistoryAppended;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use crate::protocol::{Command, Event};
+use crate::protocol::Event;
 
 /// Dependencies for [`TokenCountActor`].
 pub struct TokenCountActorDeps {
@@ -54,7 +54,7 @@ impl Actor for TokenCountActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.set_description("Computes tiktoken-based token counts for chat entries");
         ctx.subscribe_event::<HistoryAppended>();
-        ctx.subscribe_command::<SessionLoadCompleted>();
+        ctx.subscribe_event::<SessionLoadCompleted>();
 
         Self {
             state: deps.state,
@@ -67,7 +67,7 @@ impl Actor for TokenCountActor {
             ActorEnvelope::Event(Event::HistoryAppended(ref payload)) => {
                 self.handle_history_appended(&payload.session_id);
             }
-            ActorEnvelope::Command(Command::SessionLoadCompleted(ref payload)) => {
+            ActorEnvelope::Event(Event::SessionLoadCompleted(ref payload)) => {
                 self.handle_session_load_completed(&payload.session);
             }
             ActorEnvelope::Command(_)
