@@ -17,6 +17,7 @@ pub mod workflow_actor;
 pub mod workflow_input;
 pub mod workflow_registry;
 pub mod workflow_state;
+pub mod workflow_ui_state;
 
 pub use domain_node_context::DomainNodeContext;
 pub use node::LlmNode;

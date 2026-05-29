@@ -30,6 +30,7 @@
 //! and **PromptScanActor** (template scanning).
 
 pub mod assemble;
+pub mod assembly_state;
 pub mod env_context;
 pub mod prompt_scan_actor;
 pub mod prompt_template;
