@@ -470,6 +470,7 @@ mod tests {
     use std::sync::Mutex;
     use crate::graph::WorkflowGraphBuilder;
     use crate::node::code::CodeNode;
+    use crate::node::router::RouterNode;
     use crate::port::{PortDef, PortValue, ScalarValue};
 
     /// A simple node that echoes its input to its output.
@@ -973,5 +974,171 @@ mod tests {
             inputs[1], "processed-seed",
             "second iteration input should be feedback from first iteration"
         );
+    }
+
+    /// Tests that a RouterNode inside a LoopNode body graph works correctly.
+    ///
+    /// Body graph: source → counter (tracks iteration) → router → (path_a if < 3, path_b if >= 3) → judge
+    ///
+    /// The router routes to "path_a" for iterations 1-2 and "path_b" for iteration 3+.
+    /// Deadlock detection should skip the non-matching branch inside each loop iteration.
+    /// The loop exits when the counter reaches 3.
+    #[tokio::test]
+    async fn router_inside_loop_body_graph() {
+        let iteration_count: Arc<Mutex<u32>> = Arc::new(Mutex::new(0u32));
+        let path_a_count: Arc<Mutex<u32>> = Arc::new(Mutex::new(0u32));
+        let path_b_count: Arc<Mutex<u32>> = Arc::new(Mutex::new(0u32));
+
+        let iter_clone = Arc::clone(&iteration_count);
+        let path_a_clone = Arc::clone(&path_a_count);
+        let path_b_clone = Arc::clone(&path_b_count);
+
+        let make_graph = move || {
+            let iter_c_1 = Arc::clone(&iter_clone);
+            let iter_c_2 = Arc::clone(&iter_clone);
+            let path_a_c = Arc::clone(&path_a_clone);
+            let path_b_c = Arc::clone(&path_b_clone);
+
+            // Counter increments the shared counter and outputs "low" or "high".
+            // This is the source node for the body graph.
+            let counter = CodeNode::new(
+                "counter".to_owned(),
+                vec![],
+                vec![PortDef::text("level")],
+                move |_inputs, _ctx| {
+                    let c = Arc::clone(&iter_c_1);
+                    Box::pin(async move {
+                        let mut val = c.lock().unwrap();
+                        *val += 1;
+                        let level = if *val < 3 { "low" } else { "high" };
+                        let mut out = PortValues::new();
+                        out.insert(
+                            "level".to_owned(),
+                            PortValue::Single(ScalarValue::Text(level.to_owned())),
+                        );
+                        Ok(out)
+                    })
+                },
+            );
+
+            // Router: routes "low" to path_a, "high" to path_b.
+            let router = RouterNode::new(
+                "router".to_owned(),
+                PortDef::text("input"),
+                vec![PortDef::text("path_a"), PortDef::text("path_b")],
+            )
+            .with_route("path_a".to_owned(), r"(?i)^low$")
+            .with_route("path_b".to_owned(), r"(?i)^high$");
+
+            // Path A handler: records that it ran.
+            let path_a = CodeNode::new(
+                "path_a".to_owned(),
+                vec![PortDef::text("in")],
+                vec![PortDef::text("out")],
+                move |_inputs, _ctx| {
+                    let c = Arc::clone(&path_a_c);
+                    Box::pin(async move {
+                        *c.lock().unwrap() += 1;
+                        let mut out = PortValues::new();
+                        out.insert(
+                            "out".to_owned(),
+                            PortValue::Single(ScalarValue::Text("a-ran".to_owned())),
+                        );
+                        Ok(out)
+                    })
+                },
+            );
+
+            // Path B handler: records that it ran.
+            let path_b = CodeNode::new(
+                "path_b".to_owned(),
+                vec![PortDef::text("in")],
+                vec![PortDef::text("out")],
+                move |_inputs, _ctx| {
+                    let c = Arc::clone(&path_b_c);
+                    Box::pin(async move {
+                        *c.lock().unwrap() += 1;
+                        let mut out = PortValues::new();
+                        out.insert(
+                            "out".to_owned(),
+                            PortValue::Single(ScalarValue::Text("b-ran".to_owned())),
+                        );
+                        Ok(out)
+                    })
+                },
+            );
+
+            // Judge: reads counter output and decides pass/fail.
+            let judge = CodeNode::new(
+                "judge".to_owned(),
+                vec![PortDef::text("_level")],
+                vec![PortDef::text("verdict")],
+                move |_inputs, _ctx| {
+                    let c = Arc::clone(&iter_c_2);
+                    Box::pin(async move {
+                        let current = *c.lock().unwrap();
+                        let verdict = if current >= 3 { "pass" } else { "fail" };
+                        let mut out = PortValues::new();
+                        out.insert(
+                            "verdict".to_owned(),
+                            PortValue::Single(ScalarValue::Text(verdict.to_owned())),
+                        );
+                        Ok(out)
+                    })
+                },
+            );
+
+            let mut builder = WorkflowGraphBuilder::new();
+            builder.add_node("counter".to_owned(), Box::new(counter));
+            builder.add_node("router".to_owned(), Box::new(router));
+            builder.add_node("path_a".to_owned(), Box::new(path_a));
+            builder.add_node("path_b".to_owned(), Box::new(path_b));
+            builder.add_node("judge".to_owned(), Box::new(judge));
+
+            // Counter (source) → Router → path_a (low) / path_b (high)
+            // Counter → Judge (ensures ordering)
+            builder
+                .connect("counter", "level", "router", "input")
+                .expect("counter → router");
+            builder
+                .connect("router", "path_a", "path_a", "in")
+                .expect("router.path_a → path_a");
+            builder
+                .connect("router", "path_b", "path_b", "in")
+                .expect("router.path_b → path_b");
+            builder
+                .connect("counter", "level", "judge", "_level")
+                .expect("counter → judge");
+
+            builder.build().expect("graph should build")
+        };
+
+        let loop_node = LoopNode::new(
+            "router-in-loop".to_owned(),
+            vec![],
+            vec![PortDef::text("result")],
+            Box::new(make_graph),
+        )
+        .with_exit_condition("judge".to_owned(), "verdict".to_owned(), "pass")
+        .with_output_mapping("result".to_owned(), "counter".to_owned(), "level".to_owned())
+        .with_max_iterations(5);
+
+        let ctx = TestLoopContext;
+        let result = loop_node
+            .execute(PortValues::new(), &ctx)
+            .await
+            .expect("loop with router should succeed");
+
+        // Verify the loop ran 3 iterations.
+        assert_eq!(*iteration_count.lock().unwrap(), 3);
+
+        // Verify path_a ran on iterations 1-2 (when counter < 3 → "low").
+        assert_eq!(*path_a_count.lock().unwrap(), 2, "path_a should run twice (iters 1-2)");
+
+        // Verify path_b ran on iteration 3 (when counter >= 3 → "high").
+        assert_eq!(*path_b_count.lock().unwrap(), 1, "path_b should run once (iter 3)");
+
+        // Verify output mapping.
+        assert_eq!(result.get_text("result").unwrap(), "high");
     }
 }
