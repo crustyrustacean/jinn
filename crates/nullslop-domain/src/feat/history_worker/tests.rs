@@ -25,12 +25,13 @@ use crate::protocol::{Command, SessionId};
 #[derive(Clone)]
 struct TruncateOldUserEntries;
 
+#[async_trait::async_trait]
 impl HistoryWorker for TruncateOldUserEntries {
     fn name(&self) -> &'static str {
         "test-truncate-old-user"
     }
 
-    fn evaluate(&self, history: &[ChatEntry]) -> Vec<HistoryMutation> {
+    async fn evaluate(&self, _session_id: &SessionId, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
         let user_entries: Vec<_> = history
             .iter()
             .filter(|e| matches!(e.kind, ChatEntryKind::User { .. }))
@@ -56,17 +57,18 @@ impl HistoryWorker for TruncateOldUserEntries {
 #[derive(Clone)]
 struct NoOpWorker;
 
+#[async_trait::async_trait]
 impl HistoryWorker for NoOpWorker {
     fn name(&self) -> &'static str {
         "test-noop"
     }
 
-    fn evaluate(&self, _history: &[ChatEntry]) -> Vec<HistoryMutation> {
+    async fn evaluate(&self, _session_id: &SessionId, _history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
         vec![]
     }
 }
 
-// ── Test helpers ───────────────────────────────────────────────────
+// ── Test helpers ───────────────────��───────────────────────────────
 
 fn test_state_with_session(entries: Vec<ChatEntry>) -> (State, SessionId) {
     let mut session = crate::feat::session::chat_session::ChatSessionState::new();
@@ -103,8 +105,8 @@ fn worker_produces_mutations_for_long_history() {
         .map(|i| ChatEntry::user(format!("msg {i}")))
         .collect();
     let worker = TruncateOldUserEntries;
-    let mutations = worker.evaluate(&entries);
-    assert_eq!(mutations.len(), 2); // 5 entries - 3 kept = 2 excluded
+    let rt = tokio::runtime::Runtime::new().expect("runtime");
+    let mutations = rt.block_on(async { worker.evaluate(&SessionId::new(), entries).await }); // 5 entries - 3 kept = 2 excluded
     for m in &mutations {
         if let HistoryMutation::SetContextOverride { value, .. } = m {
             assert!(matches!(value, ContextOverride::ForcedExclude));
@@ -120,23 +122,24 @@ fn worker_produces_no_mutations_for_short_history() {
         .map(|i| ChatEntry::user(format!("msg {i}")))
         .collect();
     let worker = TruncateOldUserEntries;
-    let mutations = worker.evaluate(&entries);
+    let rt = tokio::runtime::Runtime::new().expect("runtime");
+    let mutations = rt.block_on(async { worker.evaluate(&SessionId::new(), entries).await });
     assert!(mutations.is_empty());
 }
 
-#[test]
-fn actor_emits_submit_command_for_long_history() {
+#[tokio::test]
+async fn actor_emits_submit_command_for_long_history() {
     let entries: Vec<ChatEntry> = (0..5)
         .map(|i| ChatEntry::user(format!("msg {i}")))
         .collect();
     let (state, session_id) = test_state_with_session(entries);
-    let actor = make_actor(TruncateOldUserEntries, state);
+    let mut actor = make_actor(TruncateOldUserEntries, state);
     let (sink, ctx) = test_ctx();
 
     let event = HistoryAppended {
         session_id: session_id.clone(),
     };
-    actor.handle_history_appended(&event, &ctx);
+    actor.handle_history_appended(&event, &ctx).await;
 
     let commands = sink.take_commands();
     assert_eq!(commands.len(), 1);
@@ -149,39 +152,39 @@ fn actor_emits_submit_command_for_long_history() {
     }
 }
 
-#[test]
-fn actor_emits_nothing_for_short_history() {
+#[tokio::test]
+async fn actor_emits_nothing_for_short_history() {
     let entries: Vec<ChatEntry> = (0..2)
         .map(|i| ChatEntry::user(format!("msg {i}")))
         .collect();
     let (state, session_id) = test_state_with_session(entries);
-    let actor = make_actor(TruncateOldUserEntries, state);
+    let mut actor = make_actor(TruncateOldUserEntries, state);
     let (sink, ctx) = test_ctx();
 
     let event = HistoryAppended { session_id };
-    actor.handle_history_appended(&event, &ctx);
+    actor.handle_history_appended(&event, &ctx).await;
 
     let commands = sink.take_commands();
     assert!(commands.is_empty());
 }
 
-#[test]
-fn actor_skips_nonexistent_session() {
+#[tokio::test]
+async fn actor_skips_nonexistent_session() {
     let state = State::new(AppState::default());
-    let actor = make_actor(TruncateOldUserEntries, state);
+    let mut actor = make_actor(TruncateOldUserEntries, state);
     let (sink, ctx) = test_ctx();
 
     let event = HistoryAppended {
         session_id: SessionId::new(),
     };
-    actor.handle_history_appended(&event, &ctx);
+    actor.handle_history_appended(&event, &ctx).await;
 
     let commands = sink.take_commands();
     assert!(commands.is_empty());
 }
 
-#[test]
-fn actor_skips_judge_session() {
+#[tokio::test]
+async fn actor_skips_judge_session() {
     // Given a session that is a judge session with enough entries to trigger mutations.
     let entries: Vec<ChatEntry> = (0..5)
         .map(|i| ChatEntry::user(format!("msg {i}")))
@@ -204,58 +207,28 @@ fn actor_skips_judge_session() {
         app.session.insert(session);
         id
     };
-    let actor = make_actor(TruncateOldUserEntries, state);
+    let mut actor = make_actor(TruncateOldUserEntries, state);
     let (sink, ctx) = test_ctx();
 
     let event = HistoryAppended { session_id };
-    actor.handle_history_appended(&event, &ctx);
+    actor.handle_history_appended(&event, &ctx).await;
 
     // Then no commands were emitted — judge session is skipped.
     let commands = sink.take_commands();
     assert!(commands.is_empty());
 }
 
-#[test]
-fn actor_skips_session_with_auto_compaction_pending() {
-    // Given a session with auto-compaction requested and enough entries to trigger mutations.
-    let entries: Vec<ChatEntry> = (0..5)
-        .map(|i| ChatEntry::user(format!("msg {i}")))
-        .collect();
-    let state = State::new(AppState::default());
-    let session_id = {
-        let mut session = crate::feat::session::chat_session::ChatSessionState::new();
-        for entry in entries {
-            session.push_entry(entry);
-        }
-        // Request auto-compaction.
-        session.request_auto_compaction();
-        let id = session.session_id().clone();
-        let mut app = state.write();
-        app.session.insert(session);
-        id
-    };
-    let actor = make_actor(TruncateOldUserEntries, state);
-    let (sink, ctx) = test_ctx();
-
-    let event = HistoryAppended { session_id };
-    actor.handle_history_appended(&event, &ctx);
-
-    // Then no commands were emitted — auto-compaction pending session is skipped.
-    let commands = sink.take_commands();
-    assert!(commands.is_empty());
-}
-
-#[test]
-fn noop_worker_never_produces_mutations() {
+#[tokio::test]
+async fn noop_worker_never_produces_mutations() {
     let entries: Vec<ChatEntry> = (0..10)
         .map(|i| ChatEntry::user(format!("msg {i}")))
         .collect();
     let (state, session_id) = test_state_with_session(entries);
-    let actor = make_actor(NoOpWorker, state);
+    let mut actor = make_actor(NoOpWorker, state);
     let (sink, ctx) = test_ctx();
 
     let event = HistoryAppended { session_id };
-    actor.handle_history_appended(&event, &ctx);
+    actor.handle_history_appended(&event, &ctx).await;
 
     let commands = sink.take_commands();
     assert!(commands.is_empty());

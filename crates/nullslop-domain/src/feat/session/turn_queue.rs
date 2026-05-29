@@ -2,7 +2,7 @@
 //!
 //! The turn queue holds pending operations (user messages, compaction requests,
 //! tool continuations) that should be dispatched when the session transitions
-//! to [`Idle`](super::chat_session::SessionPhase::Idle).
+//! to [`Idle`](super::chat_session::PhaseKind::Idle).
 //!
 //! # Visibility
 //!

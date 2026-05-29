@@ -20,9 +20,6 @@ pub use crate::common::actor::protocol::dynamic_command::DynamicCommand;
 use crate::feat::chat_input::protocol::command::{
     EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
-use crate::feat::compaction_actor::protocol::command::{
-    BeginCompaction, CancelCompaction, CompactContext, EndCompaction, EnqueueCompaction,
-};
 use crate::feat::context::protocol::command::{
     LoadPersonaPickerEntries, PinChatEntry, RescanPersonas, UnpinChatEntry,
 };
@@ -34,7 +31,6 @@ use crate::feat::provider::protocol::command::{
 use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
-use crate::feat::session::protocol::schedule_auto_compaction::ScheduleAutoCompaction;
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
@@ -115,16 +111,6 @@ pub enum Command {
     RunSessionSetup(RunSessionSetup),
     /// Run a lifecycle teardown command asynchronously.
     RunSessionTeardown(RunSessionTeardown),
-    /// Request to compact the conversation context for a session.
-    CompactContext(CompactContext),
-    /// Enqueue a compaction via the session queue (waits for session to be idle).
-    EnqueueCompaction(EnqueueCompaction),
-    /// Begin a context compaction — marks entries ignored, sets phase to Compacting.
-    BeginCompaction(BeginCompaction),
-    /// End a context compaction — inserts result entry, sets phase to Idle.
-    EndCompaction(EndCompaction),
-    /// Cancel an in-progress context compaction — aborts the LLM call.
-    CancelCompaction(CancelCompaction),
     /// Close a session from the sessions map.
     CloseSession(CloseSession),
     /// Mark a session as having been interacted with by the user.
@@ -133,11 +119,6 @@ pub enum Command {
     ArchiveSession(crate::feat::session::protocol::archive_session::ArchiveSession),
     /// Persist a session's full state to SQLite immediately.
     PersistSession(PersistSession),
-    /// Schedule auto-compaction at the next turn boundary.
-    ///
-    /// Sent by the CompactionActor when token threshold is exceeded.
-    /// The session transitions directly to Compacting — never through Idle.
-    ScheduleAutoCompaction(ScheduleAutoCompaction),
     /// Submit a batch of history mutations for deferred application.
     ///
     /// Workers produce `Vec<HistoryMutation>` batches and send them via this
@@ -166,6 +147,8 @@ pub enum Command {
     /// static `CommandMsg::NAME`. If no actor subscribes to that name, the
     /// command is silently dropped.
     Dynamic(DynamicCommand),
+    /// Trigger compaction for a session (from /compact or /compact-all).
+    TriggerCompaction(crate::feat::session::protocol::trigger_compaction::TriggerCompaction),
 }
 
 impl Command {
@@ -204,18 +187,12 @@ impl Command {
             Self::SessionForkRequested(..) => Some(SessionForkRequested::NAME),
             Self::RunSessionSetup(..) => Some(RunSessionSetup::NAME),
             Self::RunSessionTeardown(..) => Some(RunSessionTeardown::NAME),
-            Self::CompactContext(..) => Some(CompactContext::NAME),
-            Self::EnqueueCompaction(..) => Some(EnqueueCompaction::NAME),
-            Self::BeginCompaction(..) => Some(BeginCompaction::NAME),
-            Self::EndCompaction(..) => Some(EndCompaction::NAME),
-            Self::CancelCompaction(..) => Some(CancelCompaction::NAME),
             Self::CloseSession(..) => Some(CloseSession::NAME),
             Self::MarkSessionInteracted(..) => Some(MarkSessionInteracted::NAME),
             Self::ArchiveSession(..) => {
                 Some(crate::feat::session::protocol::archive_session::ArchiveSession::NAME)
             }
             Self::PersistSession(..) => Some(PersistSession::NAME),
-            Self::ScheduleAutoCompaction(..) => Some(ScheduleAutoCompaction::NAME),
             Self::SubmitHistoryMutations(..) => Some(SubmitHistoryMutations::NAME),
             Self::FinishSessionTeardown(..) => Some(FinishSessionTeardown::NAME),
             Self::InitWorkflow(..) => {
@@ -238,6 +215,9 @@ impl Command {
                 Some(crate::feat::judge::CancelPendingJudgeEvaluation::NAME)
             }
             Self::Dynamic(..) => Some(DynamicCommand::NAME),
+            Self::TriggerCompaction(..) => Some(
+                crate::feat::session::protocol::trigger_compaction::TriggerCompaction::NAME,
+            ),
         }
     }
 
@@ -341,21 +321,6 @@ impl std::fmt::Display for Command {
             Command::RunSessionTeardown(payload) => {
                 write!(f, "run session teardown for {}", payload.session_id)
             }
-            Command::CompactContext(payload) => {
-                write!(f, "compact context for {}", payload.session_id)
-            }
-            Command::EnqueueCompaction(payload) => {
-                write!(f, "enqueue compaction for {}", payload.session_id)
-            }
-            Command::BeginCompaction(payload) => {
-                write!(f, "begin compaction for {}", payload.session_id)
-            }
-            Command::EndCompaction(payload) => {
-                write!(f, "end compaction for {}", payload.session_id)
-            }
-            Command::CancelCompaction(payload) => {
-                write!(f, "cancel compaction for {}", payload.session_id)
-            }
             Command::CloseSession(payload) => {
                 write!(f, "close session {}", payload.session_id)
             }
@@ -367,9 +332,6 @@ impl std::fmt::Display for Command {
             }
             Command::PersistSession(payload) => {
                 write!(f, "persist session {}", payload.session_id)
-            }
-            Command::ScheduleAutoCompaction(payload) => {
-                write!(f, "schedule auto-compaction for {}", payload.session_id)
             }
             Command::FinishSessionTeardown(payload) => {
                 write!(f, "finish session teardown for {}", payload.session_id)
@@ -421,6 +383,13 @@ impl std::fmt::Display for Command {
             }
             Command::Dynamic(d) => {
                 write!(f, "dynamic command '{}'", d.name)
+            }
+            Command::TriggerCompaction(payload) => {
+                write!(
+                    f,
+                    "trigger compaction for {} (compact_all={})",
+                    payload.session_id, payload.compact_all
+                )
             }
         }
     }

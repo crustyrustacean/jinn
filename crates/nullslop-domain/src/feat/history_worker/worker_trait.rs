@@ -5,19 +5,23 @@
 
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::session::history_mutation::HistoryMutation;
+use crate::protocol::SessionId;
 
 /// A pluggable history mutation heuristic.
 ///
 /// Each worker inspects a snapshot of the session history and optionally
 /// produces a batch of mutations. Workers are run outside any lock,
 /// so heuristic evaluation (including LLM calls) never blocks writes.
+#[async_trait::async_trait]
 pub trait HistoryWorker: Send + Sync + 'static {
     /// Human-readable name for logging and diagnostics.
+    #[allow(clippy::unnecessary_literal_bound)]
     fn name(&self) -> &str;
 
     /// Inspect the history snapshot and optionally produce mutations.
     ///
     /// Called outside any lock. The `history` parameter is an owned
-    /// snapshot cloned under a brief read lock.
-    fn evaluate(&self, history: &[ChatEntry]) -> Vec<HistoryMutation>;
+    /// snapshot cloned under a brief read lock. The `session_id` identifies
+    /// which session triggered the evaluation.
+    async fn evaluate(&self, session_id: &SessionId, history: Vec<ChatEntry>) -> Vec<HistoryMutation>;
 }

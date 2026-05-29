@@ -5,7 +5,6 @@ pub mod close_session;
 pub mod history_appended;
 pub mod load_session_picker_entries;
 pub mod mark_session_interacted;
-pub mod schedule_auto_compaction;
 pub mod session_archived;
 pub mod session_closed;
 pub mod session_fork_requested;
@@ -15,6 +14,7 @@ pub mod session_load_requested;
 pub mod session_new;
 pub mod session_phase_changed;
 pub mod submit_history_mutations;
+pub mod trigger_compaction;
 pub mod user_interacted;
 
 pub use archive_session::ArchiveSession;

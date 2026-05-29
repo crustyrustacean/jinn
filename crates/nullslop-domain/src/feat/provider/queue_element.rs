@@ -48,7 +48,7 @@ impl UiElement<AppState> for QueueDisplayElement {
                         Style::default().fg(state.frontend.theme.muted_text),
                     )))
                 }
-                _ => None,
+                crate::feat::session::queue_item::QueueItem::ToolContinuation => None,
             })
             .collect();
 

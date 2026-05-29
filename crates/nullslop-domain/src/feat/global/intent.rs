@@ -47,7 +47,7 @@ pub fn handle_interrupt(state: &mut AppState, target: Option<&SessionId>) -> Int
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
-    use crate::feat::session::chat_session::SessionPhase;
+    use crate::feat::session::phase_machine::PhaseKind;
 
     fn handle_quit(state: &mut AppState) -> IntentResult {
         super::handle_quit(state)
@@ -128,7 +128,7 @@ mod tests {
         // And the session is still streaming.
         assert!(matches!(
             state.active_session().phase(),
-            SessionPhase::Streaming
+            PhaseKind::Streaming
         ));
     }
 
@@ -158,7 +158,7 @@ mod tests {
         // Then the targeted session's stream is cancelled.
         assert!(matches!(
             state.session.get_unchecked(&second_id).phase(),
-            SessionPhase::Idle
+            PhaseKind::Idle
         ));
         // And a CancelStream command is returned for that session.
         assert_eq!(result.commands.len(), 1);

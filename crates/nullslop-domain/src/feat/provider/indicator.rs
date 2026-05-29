@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
-use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::phase_machine::PhaseKind;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -65,10 +65,9 @@ impl UiElement<AppState> for StreamingIndicatorElement {
 
         let is_phase_busy = matches!(
             phase,
-            SessionPhase::Sending
-                | SessionPhase::Streaming
-                | SessionPhase::Compacting
-                | SessionPhase::TearingDown
+            PhaseKind::Sending
+                | PhaseKind::Streaming
+                | PhaseKind::TearingDown
         );
         if !is_lifecycle_busy && !is_phase_busy {
             return;
@@ -76,9 +75,7 @@ impl UiElement<AppState> for StreamingIndicatorElement {
 
         let label = if is_lifecycle_busy {
             " Working...".to_owned()
-        } else if matches!(phase, SessionPhase::Compacting) {
-            " Compacting...".to_owned()
-        } else if matches!(phase, SessionPhase::TearingDown) {
+        } else if matches!(phase, PhaseKind::TearingDown) {
             " Tearing down...".to_owned()
         } else if queue_len > 0 {
             format!(" Working... ({queue_len} queued)")
@@ -117,29 +114,6 @@ mod tests {
         assert_eq!(name, "streaming-indicator");
     }
 
-    #[rstest::rstest]
-    fn renders_compacting_label_during_compacting_phase() {
-        // Given a session in Compacting phase.
-        use nullslop_testutil::{buffer_row, setup_term};
-
-        let mut element = StreamingIndicatorElement::new();
-        let mut state = AppState::default();
-        state.active_session_mut().begin_compacting(vec![]);
-        let (mut terminal, area) = setup_term(30, 1);
-        terminal
-            .draw(|frame| {
-                element.render(frame, area, &state);
-            })
-            .unwrap();
-        let buffer = terminal.backend().buffer().clone();
-        let row = buffer_row(&buffer, 0, 30);
-
-        // Then the label shows "Compacting...".
-        assert!(
-            row.contains("Compacting..."),
-            "expected Compacting..., got: {row}"
-        );
-    }
 
     #[rstest::rstest]
     fn renders_working_label_during_sending_phase() {

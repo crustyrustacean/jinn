@@ -30,8 +30,8 @@
 )]
 
 use crate::AppState;
-use crate::feat::session::chat_session::SessionPhase;
-use crate::protocol::{Command, PickerKind, PinPosition, SessionId};
+use crate::feat::session::phase_machine::PhaseKind;
+use crate::protocol::{Command, PickerKind, PinPosition};
 
 use crate::Intent;
 use crate::feat;
@@ -518,12 +518,8 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
 
     let session_id = state.session.active_session_id().clone();
 
-    if state.active_session().phase() == SessionPhase::Compacting {
-        return Some(handle_compaction_cancel(state, session_id));
-    }
-
     // Idle but busy → cancel pending judge evaluation.
-    if state.active_session().phase() == SessionPhase::Idle
+    if state.active_session().phase() == PhaseKind::Idle
         && state.active_session().is_busy()
     {
         state.active_session_mut().cancel_stream_and_drain();
@@ -579,32 +575,6 @@ fn try_handle_close_session_prompt(intent: &Intent, state: &mut AppState) -> Opt
     // Second x press — perform the close.
     // Re-validates in case session became busy between taps.
     Some(feat::ui::sidebar::sessions::handle_session_close_with_lifecycle(state))
-}
-
-/// Handle cancelling an in-progress context compaction.
-///
-/// ESC = universal abort. Cancels compaction, aborts the compaction LLM task,
-/// un-ignores entries, and drains all queue items back to the input buffer.
-/// No synthetic continue is enqueued.
-fn handle_compaction_cancel(state: &mut AppState, session_id: SessionId) -> IntentResult {
-    let _drained = state.active_session_mut().cancel_compacting();
-    // cancel_compacting already drains the queue into VecDeque<QueueItem>,
-    // but we need to put UserMessage display text into the input buffer.
-    // Use cancel_stream_and_drain which handles typed queue items.
-    // Actually, cancel_compacting already drained the queue. Let's handle
-    // the drained items manually to put text into input buffer.
-    // For now, the queue is already drained by cancel_compacting. The
-    // drained items are discarded (ESC = stop all the things).
-
-    IntentResult::with_commands(vec![
-        Command::PushChatEntry(crate::feat::chat_input::protocol::command::PushChatEntry {
-            session_id: session_id.clone(),
-            entry: crate::ChatEntry::system("Context compaction cancelled."),
-        }),
-        Command::CancelCompaction(
-            crate::feat::compaction_actor::protocol::command::CancelCompaction { session_id },
-        ),
-    ])
 }
 
 // --- Workflow Intent Handlers ---

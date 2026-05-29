@@ -119,15 +119,9 @@ impl ProviderActor {
             | Command::SessionForkRequested(..)
             | Command::RunSessionSetup(..)
             | Command::RunSessionTeardown(..)
-            | Command::CompactContext(..)
-            | Command::EnqueueCompaction(..)
-            | Command::BeginCompaction(..)
-            | Command::CancelCompaction(..)
-            | Command::EndCompaction(..)
             | Command::CloseSession(..)
             | Command::ArchiveSession(..)
             | Command::PersistSession(..)
-            | Command::ScheduleAutoCompaction(..)
             | Command::FinishSessionTeardown(..)
             | Command::InitWorkflow(..)
             | Command::StartWorkflow(..)
@@ -137,6 +131,7 @@ impl ProviderActor {
             | Command::MarkSessionInteracted(..)
             | Command::CancelPendingJudgeEvaluation(..)
             | Command::SubmitHistoryMutations(..)
+            | Command::TriggerCompaction(..)
             | Command::Dynamic(..)
             | Command::ExecuteWebFetch(..) => {}
         }

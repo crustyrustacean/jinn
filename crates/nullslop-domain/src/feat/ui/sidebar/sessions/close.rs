@@ -1,7 +1,7 @@
 //! Session close validation and handlers.
 
 use crate::common::app_state::AppState;
-use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 
 /// Why a session close can be rejected.
@@ -45,7 +45,7 @@ pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError>
         .session
         .get(&entry.id)
         .ok_or(SessionCloseError::NoSelection)?;
-    if !matches!(session.phase(), SessionPhase::Idle) || session.is_busy() {
+    if !matches!(session.phase(), PhaseKind::Idle) || session.is_busy() {
         return Err(SessionCloseError::SessionBusy);
     }
 

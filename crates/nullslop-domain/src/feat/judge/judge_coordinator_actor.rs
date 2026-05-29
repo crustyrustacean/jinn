@@ -33,7 +33,7 @@ use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry};
 use crate::feat::session::chat_entry::ChatEntry;
-use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::protocol::{Command, Event, SessionId};
 
@@ -145,7 +145,7 @@ impl JudgeCoordinatorActor {
     /// 4. Record the expected count in the pending map.
     fn handle_session_phase_changed(&mut self, payload: &SessionPhaseChanged, ctx: &ActorContext) {
         // Only care about Idle transitions.
-        if payload.new_phase != SessionPhase::Idle {
+        if payload.new_phase != PhaseKind::Idle {
             return;
         }
 
@@ -330,7 +330,7 @@ impl JudgeCoordinatorActor {
         {
             let guard = self.state.read();
             if let Some(origin_session) = guard.session.get(&origin_id) {
-                if origin_session.phase() != SessionPhase::Idle {
+                if origin_session.phase() != PhaseKind::Idle {
                     tracing::debug!(
                         origin = %origin_id,
                         "origin left idle during judge retry, skipping"
@@ -411,7 +411,7 @@ impl JudgeCoordinatorActor {
         {
             let guard = self.state.read();
             if let Some(session) = guard.session.get(origin_id) {
-                if session.phase() != SessionPhase::Idle {
+                if session.phase() != PhaseKind::Idle {
                     tracing::warn!(
                         origin = %origin_id,
                         phase = ?session.phase(),
@@ -578,7 +578,8 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::feat::judge::{JudgeCoordinatorActorDeps, JudgeMeta};
-    use crate::feat::session::chat_session::{ChatSessionState, SessionPhase};
+    use crate::feat::session::chat_session::ChatSessionState;
+    use crate::feat::session::phase_machine::PhaseKind;
     use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
     use crate::protocol::{Command, Event, SessionId};
 
@@ -616,8 +617,8 @@ mod tests {
     fn idle_event(session_id: SessionId) -> ActorEnvelope<NoDirectMsg> {
         ActorEnvelope::Event(Event::SessionPhaseChanged(SessionPhaseChanged {
             session_id,
-            old_phase: SessionPhase::Sending,
-            new_phase: SessionPhase::Idle,
+            old_phase: PhaseKind::Sending,
+            new_phase: PhaseKind::Idle,
         }))
     }
 
@@ -717,8 +718,8 @@ mod tests {
             .handle(
                 ActorEnvelope::Event(Event::SessionPhaseChanged(SessionPhaseChanged {
                     session_id: judge_id,
-                    old_phase: SessionPhase::Sending,
-                    new_phase: SessionPhase::Idle,
+                    old_phase: PhaseKind::Sending,
+                    new_phase: PhaseKind::Idle,
                 })),
                 &ctx,
             )
@@ -931,9 +932,7 @@ mod tests {
             .session
             .get_mut(&origin_id)
             .expect("origin exists")
-            .core
-            .ephemeral
-            .phase = SessionPhase::Sending;
+            .begin_sending();
 
         // Judge verdict arrives — stale.
         actor
@@ -1013,8 +1012,8 @@ mod tests {
             .handle(
                 ActorEnvelope::Event(Event::SessionPhaseChanged(SessionPhaseChanged {
                     session_id: origin_id,
-                    old_phase: SessionPhase::Sending,
-                    new_phase: SessionPhase::Streaming,
+                    old_phase: PhaseKind::Sending,
+                    new_phase: PhaseKind::Streaming,
                 })),
                 &ctx,
             )
@@ -1568,9 +1567,7 @@ mod tests {
             .session
             .get_mut(&origin_id)
             .expect("origin exists")
-            .core
-            .ephemeral
-            .phase = SessionPhase::Sending;
+            .begin_sending();
 
         // Judge goes Idle without verdict — but origin is no longer Idle.
         actor.handle(idle_event(judge_id.clone()), &ctx).await;
@@ -1645,15 +1642,15 @@ mod tests {
 
         let (mut actor, sink, ctx) = create_actor(state);
 
-        // When origin transitions to Compacting (NOT Idle).
-        let compacting_event = ActorEnvelope::Event(Event::SessionPhaseChanged(
+        // When origin transitions to TearingDown (NOT Idle).
+        let teardown_event = ActorEnvelope::Event(Event::SessionPhaseChanged(
             SessionPhaseChanged {
                 session_id: origin_id.clone(),
-                old_phase: SessionPhase::Sending,
-                new_phase: SessionPhase::Compacting,
+                old_phase: PhaseKind::Sending,
+                new_phase: PhaseKind::TearingDown,
             },
         ));
-        actor.handle(compacting_event, &ctx).await;
+        actor.handle(teardown_event, &ctx).await;
 
         // Then no commands are emitted (judge NOT triggered).
         let commands = sink.commands();
@@ -1663,7 +1660,7 @@ mod tests {
         );
         assert!(
             judge_commands.is_empty(),
-            "expected no judge trigger on Compacting phase"
+            "expected no judge trigger on TearingDown phase"
         );
     }
 
@@ -1683,8 +1680,8 @@ mod tests {
         let sending_event = ActorEnvelope::Event(Event::SessionPhaseChanged(
             SessionPhaseChanged {
                 session_id: origin_id.clone(),
-                old_phase: SessionPhase::Idle,
-                new_phase: SessionPhase::Sending,
+                old_phase: PhaseKind::Idle,
+                new_phase: PhaseKind::Sending,
             },
         ));
         actor.handle(sending_event, &ctx).await;
@@ -1698,65 +1695,6 @@ mod tests {
         assert!(
             judge_commands.is_empty(),
             "expected no judge trigger on Sending phase"
-        );
-    }
-
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn judge_triggered_only_on_final_idle_after_compaction_sequence() {
-        // Given an origin session with an attached judge.
-        let state = State::new(AppState::default());
-        let (origin_id, origin) = make_origin_session();
-        state.write().session.insert(origin);
-        let (judge_id, judge) = make_judge_session(origin_id.clone(), true);
-        state.write().session.insert(judge);
-
-        let (mut actor, sink, ctx) = create_actor(state);
-
-        // Simulate auto-compaction sequence:
-        // Sending → Compacting (no judge trigger)
-        let compacting_event = ActorEnvelope::Event(Event::SessionPhaseChanged(
-            SessionPhaseChanged {
-                session_id: origin_id.clone(),
-                old_phase: SessionPhase::Sending,
-                new_phase: SessionPhase::Compacting,
-            },
-        ));
-        actor.handle(compacting_event, &ctx).await;
-        sink.clear();
-
-        // Compacting → Sending (no judge trigger)
-        let sending_event = ActorEnvelope::Event(Event::SessionPhaseChanged(
-            SessionPhaseChanged {
-                session_id: origin_id.clone(),
-                old_phase: SessionPhase::Compacting,
-                new_phase: SessionPhase::Sending,
-            },
-        ));
-        actor.handle(sending_event, &ctx).await;
-        sink.clear();
-
-        // Sending → Idle (judge IS triggered)
-        let idle_event = ActorEnvelope::Event(Event::SessionPhaseChanged(
-            SessionPhaseChanged {
-                session_id: origin_id.clone(),
-                old_phase: SessionPhase::Sending,
-                new_phase: SessionPhase::Idle,
-            },
-        ));
-        actor.handle(idle_event, &ctx).await;
-
-        // Then judge was triggered ONLY on the final Idle.
-        let commands = sink.commands();
-        let judge_commands = find_commands(
-            &commands,
-            |c| matches!(c, Command::EnqueueUserMessage(msg) if msg.session_id == judge_id),
-        );
-        assert_eq!(
-            judge_commands.len(),
-            1,
-            "expected exactly 1 judge trigger on final Idle, got {}",
-            judge_commands.len()
         );
     }
 }
