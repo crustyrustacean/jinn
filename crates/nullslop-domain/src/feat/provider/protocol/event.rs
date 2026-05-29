@@ -38,6 +38,19 @@ pub struct StreamCompleted {
     /// Cost in USD reported by the provider for this request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<f64>,
+    /// Provider-reported completion token count (includes thinking/reasoning tokens).
+    ///
+    /// When present, this is used directly as `tokens_received` instead of local
+    /// counting, because it matches the provider's billing exactly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_completion_tokens: Option<u64>,
+    /// Accumulated thinking/reasoning content for local token counting fallback.
+    ///
+    /// Populated when the stream produced reasoning tokens and the provider did
+    /// not report `completion_tokens`. Used by the local counter to include
+    /// thinking tokens in `tokens_received`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking_content: Option<String>,
 }
 
 /// A single token from a streaming LLM response.

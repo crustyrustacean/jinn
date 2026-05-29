@@ -371,7 +371,7 @@ impl WorkflowActor {
 
         let theme = self.state.read().frontend.theme.clone();
 
-        let entries: Vec<WorkflowPickerEntry> = self
+        let mut entries: Vec<WorkflowPickerEntry> = self
             .registry
             .names()
             .into_iter()
@@ -388,6 +388,8 @@ impl WorkflowActor {
                 }
             })
             .collect();
+
+    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
         self.state
             .write()

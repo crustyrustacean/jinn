@@ -376,6 +376,8 @@ mod tests {
                 arguments: r#"{"command":"ls -la /very/long/path"}"#.to_owned(),
             }]),
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.on_stream_completed(&event, &ctx).await;
 
