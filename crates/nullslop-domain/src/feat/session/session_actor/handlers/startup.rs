@@ -103,6 +103,14 @@ impl SessionPersistenceActor {
                     // The user should land on the fresh welcome session.
                     // Previously loaded sessions appear in the sidebar but
                     // don't steal focus.
+
+                    // Hydrate frozen nodes for archived tree members.
+                    // Archived sessions (e.g., a parent that was archived while its
+                    // children remain unarchived) need frozen node snapshots so the
+                    // tree summary shows complete historical totals.
+                    if let Some(ref store) = self.store {
+                        self.hydrate_all_tree_frozen_nodes(store).await;
+                    }
                 }
             }
         }
