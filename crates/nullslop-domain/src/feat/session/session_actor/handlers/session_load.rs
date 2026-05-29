@@ -7,7 +7,7 @@
 use crate::common::actor::ActorContext;
 use crate::feat::context::assemble::assemble_prompt;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use crate::protocol::{ChatEntry, Command, Event};
+use crate::protocol::{ChatEntry, Event};
 
 use super::super::SessionPersistenceActor;
 use crate::SessionForkRequested;
@@ -142,7 +142,7 @@ impl SessionPersistenceActor {
         // Load the forked session.
         match store.load_session(&new_id).await {
             Ok(Some(session)) => {
-                if let Err(e) = ctx.send_command(Command::SessionLoadCompleted(
+                if let Err(e) = ctx.send_event(Event::SessionLoadCompleted(
                     crate::feat::session::protocol::session_load_completed::SessionLoadCompleted {
                         session,
                     },
