@@ -57,9 +57,7 @@ impl CompactionTriggerActor {
             "manual compaction triggered"
         );
 
-        use crate::feat::compaction_worker::worker::CompactionTrigger;
-
-        let trigger = CompactionTrigger {
+        let trigger = crate::feat::compaction_worker::worker::CompactionTrigger {
             session_id: payload.session_id.clone(),
             compact_all: payload.compact_all,
         };
