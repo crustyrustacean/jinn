@@ -3,6 +3,18 @@
 //! Accumulates raw bytes from `reqwest`'s `bytes_stream()` into lines,
 //! extracts `data: {...}` payloads, and handles the `[DONE]` sentinel.
 
+/// Truncate a string to at most `max_len` bytes, respecting char boundaries.
+fn truncate_str(s: &str, max_len: usize) -> &str {
+    if s.len() <= max_len {
+        return s;
+    }
+    let mut end = max_len;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 /// Stateful SSE parser that accumulates bytes and yields complete data payloads.
 ///
 /// SSE format from OpenAI-compatible providers:
@@ -43,8 +55,21 @@ impl SseParser {
     /// by buffering until a complete event boundary (`\n\n`) is found.
     pub fn feed(&mut self, bytes: &[u8]) -> Vec<SseEvent> {
         let text = String::from_utf8_lossy(bytes);
+        tracing::trace!(
+            raw_bytes = bytes.len(),
+            buffer_len_before = self.buffer.len(),
+            incoming_preview = %truncate_str(&text, 200),
+            "SSE feed"
+        );
         self.buffer.push_str(&text);
-        self.drain_events()
+        let events = self.drain_events();
+        tracing::trace!(
+            buffer_len_after = self.buffer.len(),
+            events_out = events.len(),
+            buffer_preview = %truncate_str(&self.buffer, 200),
+            "SSE feed result"
+        );
+        events
     }
 
     /// Drain any remaining buffered events (call when the stream ends).
@@ -67,11 +92,22 @@ impl SseParser {
             let event_text = self.buffer[..pos].to_owned();
             self.buffer.drain(..pos + 2);
 
+            tracing::trace!(
+                event_text_preview = %truncate_str(&event_text, 300),
+                "SSE drain found boundary"
+            );
+
             for line in event_text.lines() {
                 let line = line.trim();
                 if line.is_empty() {
                     continue;
                 }
+
+                // Log every non-empty line for visibility.
+                tracing::trace!(
+                    line_preview = %truncate_str(line, 200),
+                    "SSE line"
+                );
 
                 if let Some(data) = line.strip_prefix("data: ") {
                     let data = data.trim();
