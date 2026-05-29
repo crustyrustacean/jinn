@@ -16,3 +16,6 @@ pub mod worker;
 
 pub use trigger_actor::{CompactionTriggerActor, CompactionTriggerActorDeps};
 pub use worker::{CompactionTrigger, CompactionWorker};
+
+#[cfg(test)]
+mod worker_tests;

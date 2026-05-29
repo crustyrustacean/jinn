@@ -207,4 +207,97 @@ mod tests {
         assert_eq!(indices.len(), 1);
         assert_eq!(indices[0], 1); // Only the user entry
     }
+
+    #[test]
+    fn adjust_cut_walks_past_tool_call_group() {
+        // Given history: [User, Assistant, ToolCall, ToolResult, Assistant, ToolCall]
+        // Cut at index 2 lands on ToolCall — should walk forward past entire tool loop group.
+        // The Assistant at index 4 starts an incomplete tool loop (ToolCall at 5 has no result),
+        // so the adjustment walks past it to index 6 (history.len()).
+        let entries = vec![
+            ChatEntry::user("do something"),
+            ChatEntry::assistant("let me check"),
+            ChatEntry::tool_call("tc1", "bash", r#"{"command":"ls"}"#),
+            ChatEntry::tool_result(
+                "tc1",
+                "bash",
+                "file.txt",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ),
+            ChatEntry::assistant("here is the result"),
+            ChatEntry::tool_call("tc2", "read", r#"{"path":"file.txt"}"#),
+        ];
+
+        // When adjusting cut at index 2 (lands on ToolCall).
+        let adjusted = adjust_cut_to_boundary(&entries, 2);
+
+        // Then it walks forward past both tool groups. The first group (tc1)
+        // is complete, but the second group (tc2, no result) is incomplete.
+        // The result is past the end of history (6 = len).
+        assert_eq!(adjusted, 6, "should skip past both tool groups to end of history");
+    }
+
+    #[test]
+    fn adjust_cut_stops_at_complete_tool_loop() {
+        // Given history: [User, Assistant, ToolCall, ToolResult, Assistant("done")]
+        // Cut at index 2 lands on ToolCall — the tool loop IS complete (result present).
+        // Pass 1 walks to index 4 (Assistant). Pass 2 finds no tool calls, so the
+        // Assistant at 4 is clean — cut stays at 4.
+        let entries = vec![
+            ChatEntry::user("do something"),
+            ChatEntry::assistant("let me check"),
+            ChatEntry::tool_call("tc1", "bash", r#"{"command":"ls"}"#),
+            ChatEntry::tool_result(
+                "tc1",
+                "bash",
+                "file.txt",
+                crate::feat::session::tool_result_status::ToolResultStatus::Success,
+            ),
+            ChatEntry::assistant("done"),
+        ];
+
+        // When adjusting cut at index 2.
+        let adjusted = adjust_cut_to_boundary(&entries, 2);
+
+        // Then it stops at the Assistant at index 4 — the tool loop is complete.
+        assert_eq!(adjusted, 4, "should stop at Assistant after complete tool loop");
+    }
+
+    #[test]
+    fn adjust_cut_walks_past_incomplete_tool_loop() {
+        // Given history: [User, Assistant, ToolCall] (no ToolResult yet)
+        // Cut at index 2 lands on ToolCall — incomplete loop should skip it.
+        let entries = vec![
+            ChatEntry::user("do something"),
+            ChatEntry::assistant("let me check"),
+            ChatEntry::tool_call("tc1", "bash", r#"{"command":"ls"}"#),
+        ];
+
+        // When adjusting cut at index 2.
+        let adjusted = adjust_cut_to_boundary(&entries, 2);
+
+        // Then it walks past the incomplete tool loop to the end of history.
+        assert_eq!(adjusted, 3, "should skip past incomplete tool loop to end");
+    }
+
+    #[test]
+    fn compute_cut_index_walks_backwards_from_reserve() {
+        // Given entries with enough text that they won't all fit in a tiny reserve.
+        // Each entry ~70 chars = ~18 tokens via char-ratio (0.25 ratio).
+        let entries = vec![
+            ChatEntry::user("msg 0 is about twenty tokens long enough to be more than ten"),
+            ChatEntry::assistant("resp 0 about twenty tokens long enough to be more than ten"),
+            ChatEntry::user("msg 1 is about twenty tokens long enough to be more than ten"),
+            ChatEntry::assistant("resp 1 about twenty tokens long enough to be more than ten"),
+            ChatEntry::user("msg 2 is about twenty tokens long enough to be more than ten"),
+            ChatEntry::assistant("resp 2 about twenty tokens long enough to be more than ten"),
+        ];
+
+        // When computing cut with a tiny reserve that can only hold ~2 entries.
+        let cut = compute_cut_index(&entries, 0, 30, false);
+
+        // Then the cut is past the start — older entries don't fit in reserve.
+        assert!(cut > 0, "cut should be past start when entries exceed reserve");
+        assert!(cut < entries.len(), "cut should be before end when some entries fit");
+    }
 }
