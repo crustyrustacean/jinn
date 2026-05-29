@@ -936,6 +936,8 @@ mod tests {
                 assistant_content: None,
                 tool_calls: None,
                 cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
             },
             &ctx,
         );

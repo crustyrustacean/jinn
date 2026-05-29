@@ -208,6 +208,8 @@ impl LlmActor {
                             assistant_content: None,
                             tool_calls: None,
                             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
                         }));
                         return;
                     }
@@ -242,6 +244,8 @@ impl LlmActor {
                         assistant_content: None,
                         tool_calls: None,
                         cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
                     }));
                     return;
                 }
@@ -267,6 +271,8 @@ impl LlmActor {
                         assistant_content: None,
                         tool_calls: None,
                         cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
                     }));
                     return;
                 }
@@ -274,6 +280,7 @@ impl LlmActor {
 
             // Accumulate text and tool calls from the stream.
             let mut accumulated_text = String::new();
+            let mut accumulated_thinking = String::new();
             let mut accumulated_tool_calls: Vec<ToolCall> = Vec::new();
             let mut token_index = 0usize;
             let mut parser = reasoning_parser::ParserFactory::new().create(&model_id);
@@ -297,6 +304,7 @@ impl LlmActor {
                                 }
                             };
                             if !parsed.reasoning_text.is_empty() {
+                                accumulated_thinking.push_str(&parsed.reasoning_text);
                                 let _ = sink.send_event(Event::StreamToken(StreamToken {
                                     session_id: sid.clone(),
                                     index: token_index,
@@ -316,6 +324,7 @@ impl LlmActor {
                             }
                         }
                         StreamEvent::Reasoning(token) => {
+                            accumulated_thinking.push_str(&token);
                             let _ = sink.send_event(Event::StreamToken(StreamToken {
                                 session_id: sid.clone(),
                                 index: token_index,
@@ -358,6 +367,13 @@ impl LlmActor {
                                 "stream Done"
                             );
                             let cost = usage.as_ref().and_then(|u| u.cost);
+                            let provider_completion_tokens =
+                                usage.as_ref().and_then(|u| u.completion_tokens);
+                            let thinking_content = if accumulated_thinking.is_empty() {
+                                None
+                            } else {
+                                Some(std::mem::take(&mut accumulated_thinking))
+                            };
                             if stop_reason == StopReason::ToolUse {
                                 // Emit ExecuteToolBatch for the orchestrator.
                                 let _ = sink.send_command(Command::ExecuteToolBatch(
@@ -377,6 +393,8 @@ impl LlmActor {
                                     assistant_content: Some(accumulated_text.clone()),
                                     tool_calls: Some(accumulated_tool_calls.clone()),
                                     cost,
+                                    provider_completion_tokens,
+                                    thinking_content,
                                 }));
                             } else {
                                 // Normal end_turn — emit StreamCompleted.
@@ -386,6 +404,8 @@ impl LlmActor {
                                     assistant_content: Some(accumulated_text.clone()),
                                     tool_calls: None,
                                     cost,
+                                    provider_completion_tokens,
+                                    thinking_content,
                                 }));
                             }
                         }
@@ -410,6 +430,8 @@ impl LlmActor {
                                 assistant_content: None,
                                 tool_calls: None,
                                 cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
                             }));
                             stream_ended_normally = true;
                             break;
@@ -427,6 +449,8 @@ impl LlmActor {
                             assistant_content: None,
                             tool_calls: None,
                             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
                         }));
                         stream_ended_normally = true;
                         break;
@@ -453,6 +477,8 @@ impl LlmActor {
                     assistant_content: None,
                     tool_calls: None,
                     cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
                 }));
             }
         });
@@ -528,6 +554,8 @@ impl LlmActor {
                 assistant_content: None,
                 tool_calls: None,
                 cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
             }));
         }
     }
@@ -577,6 +605,8 @@ mod tests {
             assistant_content: None,
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.handle_stream_completed(&payload);
 
@@ -602,6 +632,8 @@ mod tests {
             assistant_content: Some("hello".to_owned()),
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.handle_stream_completed(&payload);
 
@@ -628,6 +660,8 @@ mod tests {
             assistant_content: Some("thinking...".to_owned()),
             tool_calls: Some(vec![]),
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.handle_stream_completed(&payload);
 
@@ -651,6 +685,8 @@ mod tests {
             assistant_content: None,
             tool_calls: None,
             cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
         };
         actor.handle_stream_completed(&payload);
 
