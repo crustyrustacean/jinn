@@ -36,7 +36,7 @@ mod token_stats_tests;
 #[cfg(test)]
 mod tree_aggregate_tests;
 
-pub use tree_aggregate::{TreeAggregateStats, aggregate_tree_stats, find_tree_root};
+pub use tree_aggregate::{FrozenTreeNode, TreeAggregateStats, aggregate_tree_stats, find_tree_root, snapshot_frozen_node};
 pub(crate) mod tool_result_status;
 pub mod turn_queue;
 pub mod validator;
