@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use crate::feat::session::tree_aggregate::FrozenTreeNode;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::protocol::SessionId;
 
@@ -36,6 +37,8 @@ pub struct SessionLoadGuard {
 #[derive(Debug)]
 pub struct SessionMap {
     sessions: HashMap<SessionId, ChatSessionState>,
+    /// Lightweight snapshots of archived session stats, used for tree aggregation.
+    frozen_nodes: HashMap<SessionId, FrozenTreeNode>,
     active_session: SessionId,
     session_load_guard: Option<SessionLoadGuard>,
     default_cwd: PathBuf,
@@ -49,6 +52,7 @@ impl Default for SessionMap {
         sessions.insert(id.clone(), session);
         Self {
             sessions,
+            frozen_nodes: HashMap::new(),
             active_session: id,
             session_load_guard: None,
             default_cwd: PathBuf::from("/"),
@@ -64,6 +68,7 @@ impl SessionMap {
         sessions.insert(id.clone(), session);
         Self {
             sessions,
+            frozen_nodes: HashMap::new(),
             active_session: id,
             session_load_guard: None,
             default_cwd,
@@ -234,6 +239,30 @@ impl SessionMap {
     /// All sessions.
     pub(crate) fn sessions(&self) -> &HashMap<SessionId, ChatSessionState> {
         &self.sessions
+    }
+
+    /// Insert a frozen node snapshot for an archived session.
+    ///
+    /// Replaces any existing frozen node for the same session ID.
+    pub(crate) fn insert_frozen_node(&mut self, node: FrozenTreeNode) {
+        self.frozen_nodes.insert(node.session_id.clone(), node);
+    }
+
+    /// Read-only access to frozen node snapshots.
+    ///
+    /// Used by [`aggregate_tree_stats`](crate::feat::session::aggregate_tree_stats)
+    /// to include archived sessions in tree summaries.
+    pub fn frozen_nodes(&self) -> &HashMap<SessionId, FrozenTreeNode> {
+        &self.frozen_nodes
+    }
+
+    /// Remove a frozen node snapshot.
+    ///
+    /// Called when a session is loaded back into memory so its stats
+    /// come from the live session instead.
+    /// Returns `true` if a frozen node was removed.
+    pub fn remove_frozen_node(&mut self, id: &SessionId) -> bool {
+        self.frozen_nodes.remove(id).is_some()
     }
 
     /// Mutable access to all sessions. `pub(crate)` to prevent external bypass of invariants.

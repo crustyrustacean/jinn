@@ -98,7 +98,13 @@ impl SessionPersistenceActor {
     ) {
         use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted as CompletedPayload;
 
-        self.state.write().session.insert(session.clone());
+        let session_id = session.session_id().clone();
+        {
+            let mut state = self.state.write();
+            state.session.insert(session.clone());
+            // Remove the frozen node snapshot — the live session replaces it.
+            state.session.remove_frozen_node(&session_id);
+        }
         let _ = ctx.send_event(Event::SessionLoadCompleted(CompletedPayload { session }));
     }
 
