@@ -11,7 +11,20 @@ use std::path::PathBuf;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::protocol::SessionId;
 
-use crate::common::app_state::SessionLoadGuard;
+/// Session lifecycle state — owned by the session-actor.
+///
+/// Tracks an in-progress session load from disk.
+///
+/// Only one session can be loaded at a time. The guard is set by the
+/// IntentHandler when the user confirms a session load, and cleared by
+/// the session-actor on completion (or the TUI tick on timeout).
+#[derive(Debug)]
+pub struct SessionLoadGuard {
+    /// Which session is being loaded.
+    pub session_id: SessionId,
+    /// When the load started — used for timeout detection.
+    pub started_at: std::time::Instant,
+}
 
 /// A non-empty map of sessions. The active session is always present.
 ///
