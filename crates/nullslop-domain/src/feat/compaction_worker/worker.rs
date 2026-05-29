@@ -121,56 +121,25 @@ impl CompactionWorker {
     /// Evaluate history using just the history snapshot (for HistoryWorker trait).
     ///
     /// This is the auto-compaction path (triggered by `HistoryAppended`).
-    /// It applies the threshold gate before calling the compaction algorithm.
     async fn evaluate_history(&self, session_id: &SessionId, history: &[ChatEntry]) -> Vec<HistoryMutation> {
-        // Read live config, model, and cached token count from the triggering session.
-        let (config, model_name, compaction_prompt, retry_config, cached_context_size) = {
+        // Read live config, model from the triggering session.
+        let (config, model_name, compaction_prompt, retry_config) = {
             let state = self.state.read();
             let config = state.frontend.preferences.compaction.clone();
             let session = state.session.get(session_id);
             let model_name = session
                 .map(|s| s.profile().model.clone())
                 .unwrap_or_default();
-            let cached_context_size = session.and_then(|s| s.context_size());
             let compaction_prompt = state.context.compaction_prompt.clone();
             let retry_config = state.frontend.preferences.request_retry.to_retry_config();
-            (config, model_name, compaction_prompt, retry_config, cached_context_size)
+            (config, model_name, compaction_prompt, retry_config)
         };
 
-        // Resolve context window from provider registry, falling back to config.
-        let context_window = {
-            let provider_id = crate::feat::provider_infra::ProviderId::from(model_name.clone());
-            let resolved_length = self
-                .services
-                .provider_registry
-                .get(&provider_id)
-                .and_then(|r| r.context_length);
-            algorithm::resolve_context_window(resolved_length, config.fallback_context_window)
-        };
-
-        // Threshold gate: skip compaction if total tokens are within budget.
-        // Use the tiktoken-based cached_context_size from the session.
-        let Some(total_tokens) = cached_context_size.map(|s| s as usize) else {
-            tracing::info!(
-                session_id = %session_id,
-                "auto-compaction skipped: no cached context size"
-            );
-            return vec![];
-        };
-        let budget = (context_window as f64 * config.threshold) as usize;
-        tracing::info!(
-            total_tokens,
-            budget,
-            context_window,
-            threshold = config.threshold,
-            model = %model_name,
-            history_len = history.len(),
-            "auto-compaction threshold check"
-        );
-        if total_tokens <= budget {
-            tracing::info!("auto-compaction skipped: total tokens within budget");
-            return vec![];
-        }
+        // No premature threshold gate — the algorithm itself determines if there's
+        // anything to compact. The old gate used `cached_context_size` (tiktoken count
+        // of the entire assembled context including system messages and compaction
+        // summaries), which can't be reduced by compaction. The algorithm only considers
+        // compactable entries after the last compaction boundary.
 
         let result = self
             .evaluate_with_config(
