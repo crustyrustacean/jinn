@@ -154,8 +154,11 @@ impl CompactionWorker {
     }
 
     /// Core evaluation algorithm.
+    ///
+    /// `pub(crate)` for testing — the real entry points are [`evaluate`] (trait)
+    /// and [`evaluate_for_session`] (trigger-based).
     #[allow(clippy::too_many_lines)]
-    async fn evaluate_with_config(
+    pub(crate) async fn evaluate_with_config(
         &self,
         history: &[ChatEntry],
         config: &CompactionConfig,
