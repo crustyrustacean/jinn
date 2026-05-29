@@ -423,6 +423,11 @@ pub struct FrontendCaches {
     pub entry_line_cache: RwLock<crate::feat::ui::chat_log::line_count_cache::EntryLineCache>,
     /// Cached rendered lines for session preview popups.
     pub session_preview_cache: RwLock<crate::feat::ui::sidebar::sessions::preview::SessionPreviewCache>,
+    /// Cached tiktoken-based token counts per chat entry.
+    ///
+    /// Populated by the token count actor, read by the minimap render pipeline.
+    /// Not invalidated on theme change — token counts are theme-independent.
+    pub entry_token_cache: RwLock<crate::feat::session::entry_token_cache::EntryTokenCache>,
 }
 
 impl FrontendCaches {
@@ -430,6 +435,8 @@ impl FrontendCaches {
     pub fn invalidate_all(&self) {
         self.entry_line_cache.write().clear();
         self.session_preview_cache.write().clear();
+        // Note: entry_token_cache is NOT cleared here. Token counts are
+        // theme-independent and don't need re-computation on theme change.
     }
 }
 
