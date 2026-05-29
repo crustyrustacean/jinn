@@ -74,7 +74,10 @@ impl HistoryWorker for CompactionWorker {
 
 impl CompactionWorker {
     /// Full evaluation with session state access.
-    pub async fn evaluate_for_session(&self, trigger: &CompactionTrigger) -> Vec<HistoryMutation> {
+    pub async fn evaluate_for_session(
+        &self,
+        trigger: &CompactionTrigger,
+    ) -> Result<Vec<HistoryMutation>, error_stack::Report<CompactionError>> {
         // Read config and session state.
         let (config, model_name, history, compaction_prompt, retry_config) = {
             let state = self.state.read();
@@ -88,7 +91,7 @@ impl CompactionWorker {
         };
 
         if history.is_empty() {
-            return vec![];
+            return Ok(vec![]);
         }
 
         let result = self
@@ -103,14 +106,14 @@ impl CompactionWorker {
             .await;
 
         match result {
-            Ok(mutations) => mutations,
+            Ok(mutations) => Ok(mutations),
             Err(e) => {
                 tracing::error!(
                     session_id = %trigger.session_id,
                     error = %e,
                     "compaction worker evaluation failed"
                 );
-                vec![]
+                Err(e)
             }
         }
     }

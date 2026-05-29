@@ -350,7 +350,7 @@ fn evaluate_for_session_returns_empty_for_empty_history() {
 
     // When evaluating.
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
-    let mutations = rt.block_on(async {
+    let result = rt.block_on(async {
         worker
             .evaluate_for_session(&CompactionTrigger {
                 session_id,
@@ -360,6 +360,7 @@ fn evaluate_for_session_returns_empty_for_empty_history() {
     });
 
     // Then no mutations are produced.
+    let mutations = result.expect("empty history should not error");
     assert!(mutations.is_empty(), "empty history should produce no mutations");
 }
 
@@ -467,7 +468,7 @@ fn session_continues_after_background_compaction() {
 
     // When evaluating compaction for the session.
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
-    let mutations = rt.block_on(async {
+    let result = rt.block_on(async {
         worker
             .evaluate_for_session(&CompactionTrigger {
                 session_id: session_id.clone(),
@@ -477,6 +478,7 @@ fn session_continues_after_background_compaction() {
     });
 
     // Then compaction produced mutations.
+    let mutations = result.expect("should not error");
     assert!(!mutations.is_empty(), "should have mutations for long history");
 
     // And the session phase is still Sending (compaction doesn't change phase).
