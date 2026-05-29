@@ -467,7 +467,9 @@ mod tests {
     )]
 
     use super::*;
+    use std::sync::Mutex;
     use crate::graph::WorkflowGraphBuilder;
+    use crate::node::code::CodeNode;
     use crate::port::{PortDef, PortValue, ScalarValue};
 
     /// A simple node that echoes its input to its output.
@@ -741,5 +743,235 @@ mod tests {
         assert_eq!(config["exit_condition"]["pattern"], "pass|approved");
         assert!(config["feedback_routes"].is_array());
         assert!(config["output_map"].is_array());
+    }
+
+    /// Builds a body graph where a stateful counter tracks iterations.
+    /// The judge outputs "pass" only after the 3rd iteration.
+    fn build_counter_graph(iteration_count: Arc<Mutex<u32>>) -> WorkflowGraph {
+        let count_clone = Arc::clone(&iteration_count);
+        let counter = CodeNode::new(
+            "counter".to_owned(),
+            vec![],
+            vec![PortDef::text("count")],
+            move |_inputs, _ctx| {
+                let count = Arc::clone(&count_clone);
+                Box::pin(async move {
+                    let mut c = count.lock().unwrap();
+                    *c += 1;
+                    let mut out = PortValues::new();
+                    out.insert(
+                        "count".to_owned(),
+                        PortValue::Single(ScalarValue::Text(format!("iteration-{}", *c))),
+                    );
+                    Ok(out)
+                })
+            },
+        );
+
+        let judge = CodeNode::new(
+            "judge".to_owned(),
+            vec![PortDef::text("_count")],
+            vec![PortDef::text("verdict")],
+            move |_inputs, _ctx| {
+                let c = Arc::clone(&iteration_count);
+                Box::pin(async move {
+                    let current = *c.lock().unwrap();
+                    let verdict = if current >= 3 { "pass" } else { "fail" };
+                    let mut out = PortValues::new();
+                    out.insert(
+                        "verdict".to_owned(),
+                        PortValue::Single(ScalarValue::Text(verdict.to_owned())),
+                    );
+                    Ok(out)
+                })
+            },
+        );
+
+        let mut builder = WorkflowGraphBuilder::new();
+        builder.add_node("counter".to_owned(), Box::new(counter));
+        builder.add_node("judge".to_owned(), Box::new(judge));
+        // Add an edge so counter runs before judge (ensures ordering).
+        builder
+            .connect("counter", "count", "judge", "_count")
+            .expect("counter → judge");
+        builder.build().expect("graph should build")
+    }
+
+    #[tokio::test]
+    async fn loop_runs_multiple_iterations_then_exits() {
+        // Given a loop node with a body graph that needs 3 iterations to pass.
+        let iteration_count = Arc::new(Mutex::new(0u32));
+        let count_for_factory = Arc::clone(&iteration_count);
+        let loop_node = LoopNode::new(
+            "multi-iter".to_owned(),
+            vec![],
+            vec![PortDef::text("result")],
+            Box::new(move || build_counter_graph(Arc::clone(&count_for_factory))),
+        )
+        .with_exit_condition("judge".to_owned(), "verdict".to_owned(), "pass")
+        .with_output_mapping("result".to_owned(), "counter".to_owned(), "count".to_owned())
+        .with_max_iterations(5);
+
+        // When executing the loop.
+        let ctx = TestLoopContext;
+        let result = loop_node
+            .execute(PortValues::new(), &ctx)
+            .await
+            .expect("loop should succeed after 3 iterations");
+
+        // Then it ran exactly 3 iterations.
+        assert_eq!(*iteration_count.lock().unwrap(), 3);
+        // And the output was extracted.
+        assert_eq!(result.get_text("result").unwrap(), "iteration-3");
+    }
+
+    #[tokio::test]
+    async fn loop_output_mapping_extracts_correct_values() {
+        // Given a loop node with output mapping.
+        let iteration_count = Arc::new(Mutex::new(3u32)); // Start at 3 so judge passes immediately
+        let count_for_factory = Arc::clone(&iteration_count);
+        let loop_node = LoopNode::new(
+            "output-test".to_owned(),
+            vec![],
+            vec![PortDef::text("final_count"), PortDef::text("verdict")],
+            Box::new(move || build_counter_graph(Arc::clone(&count_for_factory))),
+        )
+        .with_exit_condition("judge".to_owned(), "verdict".to_owned(), "pass")
+        .with_output_mapping("final_count".to_owned(), "counter".to_owned(), "count".to_owned())
+        .with_output_mapping("verdict".to_owned(), "judge".to_owned(), "verdict".to_owned())
+        .with_max_iterations(5);
+
+        // When executing.
+        let ctx = TestLoopContext;
+        let result = loop_node
+            .execute(PortValues::new(), &ctx)
+            .await
+            .expect("loop should succeed");
+
+        // Then both output mappings are populated.
+        assert_eq!(result.get_text("final_count").unwrap(), "iteration-4"); // 3+1=4
+        assert_eq!(result.get_text("verdict").unwrap(), "pass");
+    }
+
+    #[tokio::test]
+    async fn loop_feedback_injects_into_next_iteration() {
+        // Track what the receiver node gets each iteration.
+        let received_inputs: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+        let received_clone = Arc::clone(&received_inputs);
+        let make_graph = move || {
+            let received = Arc::clone(&received_clone);
+
+            // Source node that produces "seed" on iteration 0.
+            let source = CodeNode::new(
+                "source".to_owned(),
+                vec![],
+                vec![PortDef::text("text")],
+                move |_inputs, _ctx| {
+                    Box::pin(async move {
+                        let mut out = PortValues::new();
+                        out.insert(
+                            "text".to_owned(),
+                            PortValue::Single(ScalarValue::Text("seed".to_owned())),
+                        );
+                        Ok(out)
+                    })
+                },
+            );
+
+            // Receiver node that records its input.
+            let received_inner = Arc::clone(&received);
+            let receiver = CodeNode::new(
+                "receiver".to_owned(),
+                vec![PortDef::text("in")],
+                vec![PortDef::text("out")],
+                move |mut inputs, _ctx| {
+                    let received = Arc::clone(&received_inner);
+                    Box::pin(async move {
+                        let value = inputs
+                            .take_text("in")
+                            .map_err(|_e| error_stack::Report::new(NodeError))?;
+                        received.lock().unwrap().push(value.clone());
+                        let mut out = PortValues::new();
+                        out.insert(
+                            "out".to_owned(),
+                            PortValue::Single(ScalarValue::Text(format!("processed-{value}"))),
+                        );
+                        Ok(out)
+                    })
+                },
+            );
+
+            // Judge that passes after 2 iterations.
+            let judge = CodeNode::new(
+                "judge".to_owned(),
+                vec![PortDef::text("in")],
+                vec![PortDef::text("verdict")],
+                move |mut inputs, _ctx| {
+                    Box::pin(async move {
+                        let value = inputs
+                            .take_text("in")
+                            .map_err(|_e| error_stack::Report::new(NodeError))?;
+                        // Pass only when we see double-processed feedback (iteration 3+)
+                        let verdict = if value.starts_with("processed-processed-") {
+                            "pass"
+                        } else {
+                            "fail"
+                        };
+                        let mut out = PortValues::new();
+                        out.insert(
+                            "verdict".to_owned(),
+                            PortValue::Single(ScalarValue::Text(verdict.to_owned())),
+                        );
+                        Ok(out)
+                    })
+                },
+            );
+
+            let mut builder = WorkflowGraphBuilder::new();
+            builder.add_node("source".to_owned(), Box::new(source));
+            builder.add_node("receiver".to_owned(), Box::new(receiver));
+            builder.add_node("judge".to_owned(), Box::new(judge));
+            builder
+                .connect("source", "text", "receiver", "in")
+                .expect("source → receiver");
+            builder
+                .connect("receiver", "out", "judge", "in")
+                .expect("receiver → judge");
+            builder.build().expect("graph should build")
+        };
+
+        let loop_node = LoopNode::new(
+            "feedback-test".to_owned(),
+            vec![],
+            vec![PortDef::text("result")],
+            Box::new(make_graph),
+        )
+        .with_exit_condition("judge".to_owned(), "verdict".to_owned(), "pass")
+        .with_max_iterations(5)
+        // Feedback: receiver's output -> source's text output (overrides source for next iteration)
+        .with_feedback(
+            "receiver".to_owned(),
+            "out".to_owned(),
+            "source".to_owned(),
+            "text".to_owned(),
+        );
+
+        let ctx = TestLoopContext;
+        let result = loop_node.execute(PortValues::new(), &ctx).await;
+
+        // The loop should succeed (judge passes on iteration 2+).
+        assert!(result.is_ok(), "loop should succeed: {:?}", result.err());
+
+        // Verify the receiver got input on each iteration.
+        let inputs = received_inputs.lock().unwrap();
+        // Iteration 1: source seeds "seed" -> receiver gets "seed"
+        // Iteration 2: feedback from iter 1's output -> receiver gets "processed-seed"
+        assert!(inputs.len() >= 2, "receiver should have at least 2 inputs: {:?}", *inputs);
+        assert_eq!(inputs[0], "seed", "first iteration input should be from source");
+        assert_eq!(
+            inputs[1], "processed-seed",
+            "second iteration input should be feedback from first iteration"
+        );
     }
 }
