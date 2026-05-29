@@ -222,6 +222,9 @@ fn compute_minimap_scroll(
 pub struct MinimapArrow {
     /// Row offset from the top of the minimap area where the arrow goes.
     pub row: u16,
+    /// Cached token count for the selected entry, if available.
+    /// Used to render a numeric overlay (e.g., `"3.0k >"`) on the chat log area.
+    pub token_count: Option<u32>,
 }
 
 /// Renders the vertical minimap blocks into the given area.
@@ -305,8 +308,8 @@ pub fn render_vertical_minimap(
 
     // Arrow is always at the midpoint row.
     let arrow_row = midpoint as u16;
-
-    Some(MinimapArrow { row: arrow_row })
+    let selected_token_count = visible.get(selected_block).and_then(|e| e.token_count);
+    Some(MinimapArrow { row: arrow_row, token_count: selected_token_count })
 }
 
 /// Renders scroll direction arrows at the top/bottom of the minimap column.
@@ -358,8 +361,9 @@ fn render_scroll_arrows(
 
 /// Renders the `>` arrow overlay on the chat log area.
 ///
-/// Paints a single `>` character at the given row in the rightmost column
-/// of the chat log area, using the `border_unfocused` color.
+/// Paints a formatted token count + `>` character at the given row in the
+/// rightmost columns of the chat log area, using the `border_unfocused` color.
+/// If no token count is available, renders just `>`.
 pub fn render_minimap_arrow(
     frame: &mut Frame<'_>,
     chat_log_area: Rect,
@@ -370,23 +374,61 @@ pub fn render_minimap_arrow(
         return;
     }
 
-    let x = chat_log_area.x + chat_log_area.width.saturating_sub(1);
     let y = chat_log_area.y + arrow_row_min(arrow.row, chat_log_area.height);
 
-    let arrow_span = Span::styled(">", Style::default().fg(arrow_color));
-    let paragraph = Paragraph::new(Line::from(arrow_span));
-    let arrow_area = Rect {
-        x,
-        y,
-        width: 1,
-        height: 1,
-    };
-    frame.render_widget(paragraph, arrow_area);
+    match arrow.token_count {
+        Some(count) => {
+            let formatted = format_entry_tokens(count);
+            let text = format!("{formatted} >");
+            let width = text.len() as u16;
+            let x = chat_log_area
+                .x
+                .saturating_add(chat_log_area.width)
+                .saturating_sub(width);
+            let arrow_span =
+                Span::styled(text, Style::default().fg(arrow_color));
+            let paragraph = Paragraph::new(Line::from(arrow_span));
+            let arrow_area = Rect {
+                x,
+                y,
+                width: width.min(chat_log_area.width),
+                height: 1,
+            };
+            frame.render_widget(paragraph, arrow_area);
+        }
+        None => {
+            let x =
+                chat_log_area.x + chat_log_area.width.saturating_sub(1);
+            let arrow_span =
+                Span::styled(">", Style::default().fg(arrow_color));
+            let paragraph = Paragraph::new(Line::from(arrow_span));
+            let arrow_area = Rect {
+                x,
+                y,
+                width: 1,
+                height: 1,
+            };
+            frame.render_widget(paragraph, arrow_area);
+        }
+    }
 }
 
 /// Clamp arrow row to fit within the chat log area height.
 fn arrow_row_min(row: u16, height: u16) -> u16 {
     row.min(height.saturating_sub(1))
+}
+
+/// Format a token count for display in the minimap arrow overlay.
+///
+/// Examples: `"123"`, `"1.0k"`, `"42.5k"`, `"1.0M"`.
+fn format_entry_tokens(count: u32) -> String {
+    if count >= 1_000_000 {
+        format!("{:.1}M", count as f64 / 1_000_000.0)
+    } else if count >= 1_000 {
+        format!("{:.1}k", count as f64 / 1_000.0)
+    } else {
+        count.to_string()
+    }
 }
 
 #[cfg(test)]
@@ -706,7 +748,7 @@ mod tests {
     fn arrow_renders_greater_than_character() {
         // Given a terminal and arrow position.
         let (mut terminal, area) = nullslop_testutil::setup_term(40, 10);
-        let arrow = MinimapArrow { row: 3 };
+        let arrow = MinimapArrow { row: 3, token_count: None };
         let theme = default_theme();
 
         terminal
@@ -1080,5 +1122,90 @@ mod tests {
             block_count, 1,
             "expected 1 block for ignored entry (no token), got: {row5}"
         );
+    }
+
+    // --- format_entry_tokens ---
+
+    #[rstest::rstest]
+    fn format_entry_tokens_small() {
+        assert_eq!(format_entry_tokens(0), "0");
+        assert_eq!(format_entry_tokens(42), "42");
+        assert_eq!(format_entry_tokens(999), "999");
+    }
+
+    #[rstest::rstest]
+    fn format_entry_tokens_k() {
+        assert_eq!(format_entry_tokens(1_000), "1.0k");
+        assert_eq!(format_entry_tokens(1_500), "1.5k");
+        assert_eq!(format_entry_tokens(42_500), "42.5k");
+        assert_eq!(format_entry_tokens(999_999), "1000.0k");
+    }
+
+    #[rstest::rstest]
+    fn format_entry_tokens_m() {
+        assert_eq!(format_entry_tokens(1_000_000), "1.0M");
+        assert_eq!(format_entry_tokens(1_500_000), "1.5M");
+    }
+
+    // --- Arrow overlay with token count ---
+
+    #[rstest::rstest]
+    fn arrow_with_token_count_renders_formatted_count() {
+        // Given a terminal and arrow with token count.
+        let (mut terminal, area) = nullslop_testutil::setup_term(40, 10);
+        let arrow = MinimapArrow {
+            row: 3,
+            token_count: Some(3000),
+        };
+        let theme = default_theme();
+
+        terminal
+            .draw(|frame| {
+                render_minimap_arrow(frame, area, &arrow, theme.border_unfocused);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let rows = nullslop_testutil::buffer_rows(buffer, 40, 10);
+
+        // Then row 3 has '3.0k >' right-aligned.
+        let row_str = &rows[3];
+        assert!(
+            row_str.contains('3'),
+            "expected '3' in row 3, got: {row_str}"
+        );
+        assert!(
+            row_str.contains('>'),
+            "expected '>' in row 3, got: {row_str}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn arrow_without_token_count_renders_just_greater_than() {
+        // Given a terminal and arrow without token count.
+        let (mut terminal, area) = nullslop_testutil::setup_term(40, 10);
+        let arrow = MinimapArrow {
+            row: 3,
+            token_count: None,
+        };
+        let theme = default_theme();
+
+        terminal
+            .draw(|frame| {
+                render_minimap_arrow(frame, area, &arrow, theme.border_unfocused);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let rows = nullslop_testutil::buffer_rows(buffer, 40, 10);
+
+        // Then row 3 has only '>' (no numeric prefix).
+        let row_str = &rows[3];
+        assert!(
+            row_str.contains('>'),
+            "expected '>' in row 3, got: {row_str}"
+        );
+        // Should NOT contain 'k' or 'M' since there's no count.
+        assert!(!row_str.contains('k'), "should not have 'k'");
     }
 }
