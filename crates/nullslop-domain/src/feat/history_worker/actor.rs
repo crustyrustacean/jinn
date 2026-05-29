@@ -64,10 +64,17 @@ impl<H: HistoryWorker> HistoryWorkerActor<H> {
         event: &HistoryAppended,
         ctx: &ActorContext,
     ) {
+        tracing::info!(
+            worker = self.worker.name(),
+            session_id = %event.session_id,
+            "HistoryAppended received"
+        );
+
         // Skip judge sessions.
         {
             let state = self.state.read();
             let Some(session) = state.session.get(&event.session_id) else {
+                tracing::info!("session not found, skipping");
                 return;
             };
             if session.is_judge() {
