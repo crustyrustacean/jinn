@@ -120,10 +120,12 @@ impl SessionPersistenceActor {
 
         // Check tool loop disabled: if set, end the turn instead of continuing.
         // This is used by judge verdict tools to prevent infinite tool-call loops.
+        // finish_sending_via_machine delegates to on_tool_batch_completed() which
+        // reads and clears the tool_loop_disabled flag from the machine.
         let tool_loop_disabled = {
-            let mut state = self.state.write();
-            let session = state.session_mut_or_create(&event.session_id);
-            session.take_tool_loop_disabled()
+            let state = self.state.read();
+            let session = state.session(&event.session_id);
+            session.is_tool_loop_disabled()
         };
 
         if tool_loop_disabled {
@@ -131,7 +133,7 @@ impl SessionPersistenceActor {
                 let mut state = self.state.write();
                 let session = state.session_mut_or_create(&event.session_id);
                 let old_phase = session.phase();
-                session.finish_sending();
+                session.finish_sending_via_machine();
                 (old_phase, session.phase())
             };
             super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);

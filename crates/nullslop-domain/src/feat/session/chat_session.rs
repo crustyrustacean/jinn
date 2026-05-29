@@ -1383,20 +1383,23 @@ impl ChatSessionState {
 
     /// Clear the sending flag (called when the first stream token arrives).
     //
-    // NOTE: finish_sending is not a real machine transition. It's a legacy
-    // method for the Sending→Idle path that bypasses Streaming. It force-sets
-    // the machine to Idle. Will be removed in Phase 5.
-    pub fn finish_sending(&mut self) {
-        if !matches!(self.core.ephemeral.machine.kind(), PhaseKind::Sending) {
+    /// Complete the sending phase via the machine's validated transition.
+    ///
+    /// This should be called when a tool batch completes and the tool loop
+    /// is disabled. The machine reads the `tool_loop_disabled` flag and
+    /// transitions `Sending → Idle` (if set) or `Sending → Streaming` (if not).
+    ///
+    /// The caller must ensure `set_tool_loop_disabled(true)` has been called
+    /// before this method if the tool loop should be terminated.
+    pub fn finish_sending_via_machine(&mut self) {
+        use crate::feat::session::phase_machine::PhaseTransitions;
+        if let Err(e) = self.core.ephemeral.machine.on_tool_batch_completed() {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
-                "finish_sending called while not sending — ignoring"
+                err = %e,
+                "finish_sending_via_machine: machine rejected transition — ignoring"
             );
-            return;
         }
-        // Force-set the machine to Idle. This bypass is needed because
-        // Sending→Idle is not a valid machine transition.
-        self.core.ephemeral.machine.force_idle();
     }
 
     /// Mark the session as tearing down.
@@ -2448,6 +2451,13 @@ impl ChatSessionState {
     /// Delegates to [`SessionPhaseMachine::take_tool_loop_disabled`].
     pub fn take_tool_loop_disabled(&mut self) -> bool {
         self.core.ephemeral.machine.take_tool_loop_disabled()
+    }
+
+    /// Check whether the tool loop is disabled, without clearing.
+    ///
+    /// Delegates to [`SessionPhaseMachine::is_tool_loop_disabled`].
+    pub fn is_tool_loop_disabled(&self) -> bool {
+        self.core.ephemeral.machine.is_tool_loop_disabled()
     }
 
     // --- History mutations (background workers) ---
