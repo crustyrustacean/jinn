@@ -461,27 +461,28 @@ fn begin_sending_is_noop_when_streaming() {
 }
 
 #[rstest::rstest]
-fn finish_sending_clears_flag() {
-    // Given a session that is sending.
+fn finish_sending_via_machine_transitions_to_idle_when_disabled() {
+    // Given a session that is sending with tool_loop_disabled set.
     let mut session = ChatSessionState::new();
     session.begin_sending();
+    session.set_tool_loop_disabled();
 
-    // When finishing sending.
-    session.finish_sending();
+    // When finishing sending via machine.
+    session.finish_sending_via_machine();
 
-    // Then is_sending is false.
-    assert_ne!(session.phase(), PhaseKind::Sending);
+    // Then the session is Idle (tool_loop_disabled triggered Sending → Idle).
+    assert_eq!(session.phase(), PhaseKind::Idle);
 }
 
 #[rstest::rstest]
-fn finish_sending_is_noop_when_not_sending() {
+fn finish_sending_via_machine_is_noop_when_not_sending() {
     // Given a session that is not sending.
     let mut session = ChatSessionState::new();
 
-    // When calling finish_sending.
-    session.finish_sending();
+    // When calling finish_sending_via_machine.
+    session.finish_sending_via_machine();
 
-    // Then phase stays Idle (no panic).
+    // Then phase stays Idle (no panic, just a logged warning).
     assert_eq!(session.phase(), PhaseKind::Idle);
 }
 

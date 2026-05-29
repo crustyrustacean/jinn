@@ -100,10 +100,6 @@ impl SessionPhaseMachine {
     /// `Sending → Idle` — not a valid machine transition).
     ///
     /// Will be removed once all callers go through proper transitions.
-    pub fn force_idle(&mut self) {
-        self.phase = Phase::Idle(IdlePhase);
-    }
-
     // ── Transitions ─────────────────────────────────────────────────────
 
     /// Disable the tool loop for this session's current turn.
@@ -121,6 +117,11 @@ impl SessionPhaseMachine {
     /// Returns `true` if the tool loop was disabled, and clears the flag.
     pub fn take_tool_loop_disabled(&mut self) -> bool {
         std::mem::take(&mut self.tool_loop_disabled)
+    }
+
+    /// Returns `true` if the tool loop is disabled, without clearing.
+    pub fn is_tool_loop_disabled(&self) -> bool {
+        self.tool_loop_disabled
     }
 
     /// `Streaming → Idle` — hard cancel, returns old streaming data.
