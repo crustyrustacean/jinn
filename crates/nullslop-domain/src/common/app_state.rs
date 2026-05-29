@@ -525,6 +525,10 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (set on skill picker open, consumed on confirm/cancel).
     pub skill_picker_snapshot: Option<std::collections::HashSet<String>>,
 
+    /// Preview pane scroll offset for the skill picker.
+    /// Reset to 0 when the selection changes.
+    pub skill_preview_scroll: usize,
+
     /// Path to the themes directory (`~/.config/nullslop/themes/`).
     /// Set once during init from `AppPaths`. Used by the theme picker to discover themes.
     /// OWNER: Init code (set once at startup).
@@ -605,6 +609,7 @@ impl Default for FrontendState {
             tool_picker_snapshot: None,
             skill_picker: nullslop_selection_widget::SelectionState::new(),
             skill_picker_snapshot: None,
+            skill_preview_scroll: 0,
             themes_dir: std::path::PathBuf::new(),
             system_themes_dir: std::path::PathBuf::new(),
             session_lifecycle_picker: nullslop_selection_widget::SelectionState::new(),
