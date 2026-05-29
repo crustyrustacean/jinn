@@ -7,13 +7,17 @@
 use crate::common::actor::ActorContext;
 use crate::feat::context::assemble::assemble_prompt;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
-use crate::protocol::{ChatEntry, Command, Event};
+use crate::protocol::{ChatEntry, Event};
 
 use super::super::SessionPersistenceActor;
 use crate::SessionForkRequested;
 
 impl SessionPersistenceActor {
     /// SessionLoadCompleted: restore session state and emit follow-up commands.
+    ///
+    /// Carries the fully loaded [`ChatSessionState`]. This handler inserts it
+    /// into state, adds a system message, restores model/CWD, and recalculates
+    /// context size.
     pub(in crate::feat::session::session_actor) async fn handle_session_load_completed(
         &self,
         payload: &SessionLoadCompleted,
@@ -84,7 +88,6 @@ impl SessionPersistenceActor {
         }
 
         // Notify other actors that the active session changed.
-        // (Moved outside the first lock block since we restructured.)
         {
             let _ = ctx.send_event(Event::ActiveSessionChanged(
                 crate::protocol::system::ActiveSessionChanged {
@@ -113,7 +116,8 @@ impl SessionPersistenceActor {
     /// SessionForkRequested: fork the session in SQLite, then load the new session.
     ///
     /// Calls `store.fork()` to create a new session with entries up to `at_ordinal`,
-    /// then emits `SessionLoadCompleted` to trigger the standard session-load flow.
+    /// then uses `load_and_insert` to insert and emit `SessionLoadCompleted`,
+    /// followed by the heavy restore flow.
     pub(in crate::feat::session::session_actor) async fn on_session_fork_requested(
         &self,
         payload: &SessionForkRequested,
@@ -142,13 +146,14 @@ impl SessionPersistenceActor {
         // Load the forked session.
         match store.load_session(&new_id).await {
             Ok(Some(session)) => {
-                if let Err(e) = ctx.send_command(Command::SessionLoadCompleted(
-                    crate::feat::session::protocol::session_load_completed::SessionLoadCompleted {
-                        session,
-                    },
-                )) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SessionLoadCompleted after fork");
-                }
+                // Insert session and emit SessionLoadCompleted for external subscribers.
+                self.load_and_insert(session, ctx);
+
+                // Run the user-facing restore flow.
+                // Re-read from state since load_and_insert consumed the session.
+                let session = self.state.read().session.get(&new_id).expect("just inserted").clone();
+                let payload = SessionLoadCompleted { session };
+                self.handle_session_load_completed(&payload, ctx).await;
             }
             Ok(None) => {
                 tracing::warn!("forked session not found after creation");

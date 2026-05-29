@@ -23,6 +23,7 @@ pub mod sidebar_resize;
 pub mod skills;
 pub mod todo_list;
 pub mod theme;
+pub mod token_count_actor;
 pub mod tools_actor;
 pub mod web_fetch_actor;
 pub mod ui;
