@@ -124,8 +124,8 @@ impl CompactionWorker {
     /// This is the auto-compaction path (triggered by `HistoryAppended`).
     /// It applies the threshold gate before calling the compaction algorithm.
     async fn evaluate_history(&self, history: &[ChatEntry]) -> Vec<HistoryMutation> {
-        // For the trait-based path, we use stored config.
-        let (config, model_name, compaction_prompt, retry_config) = {
+        // Read live config, model, and cached token count from state.
+        let (config, model_name, compaction_prompt, retry_config, cached_context_size) = {
             let state = self.state.read();
             let config = state.frontend.preferences.compaction.clone();
             // Use model from the first session found, or fallback.
@@ -135,9 +135,14 @@ impl CompactionWorker {
                 .next()
                 .map(|(_, s)| s.profile().model.clone())
                 .unwrap_or_default();
+            let cached_context_size = state
+                .session
+                .iter()
+                .next()
+                .and_then(|(_, s)| s.context_size());
             let compaction_prompt = state.context.compaction_prompt.clone();
             let retry_config = state.frontend.preferences.request_retry.to_retry_config();
-            (config, model_name, compaction_prompt, retry_config)
+            (config, model_name, compaction_prompt, retry_config, cached_context_size)
         };
 
         // Resolve context window from provider registry, falling back to config.
@@ -152,8 +157,14 @@ impl CompactionWorker {
         };
 
         // Threshold gate: skip compaction if total tokens are within budget.
-        let start_index = find_start_boundary(history);
-        let total_tokens = algorithm::estimate_total_tokens(history, start_index);
+        // Use the tiktoken-based cached_context_size if available (accurate),
+        // otherwise fall back to char-ratio estimation (approximate).
+        let total_tokens = cached_context_size
+            .map(|s| s as usize)
+            .unwrap_or_else(|| {
+                let start_index = find_start_boundary(history);
+                algorithm::estimate_total_tokens(history, start_index)
+            });
         let budget = (context_window as f64 * config.threshold) as usize;
         tracing::info!(
             total_tokens,
