@@ -976,4 +976,48 @@ mod tests {
             "self-referential judge should load normally"
         );
     }
+
+    #[tokio::test]
+    async fn loading_child_session_creates_frozen_node_for_archived_parent() {
+        // Given a parent and a child session in the store.
+        let mut parent = ChatSessionState::new();
+        parent.set_title("Parent Session".to_owned());
+        parent.mark_interacted();
+        parent.push_entry(crate::protocol::ChatEntry::user("parent msg"));
+        let parent_id = parent.session_id().clone();
+
+        let mut child = ChatSessionState::new();
+        child.set_title("Child Session".to_owned());
+        child.mark_interacted();
+        child.set_parent_session(parent_id.clone());
+        child.push_entry(crate::protocol::ChatEntry::user("child msg"));
+        let child_id = child.session_id().clone();
+
+        let (mut actor, _store) = test_actor_with_store(vec![parent, child]);
+        let (_sink, ctx) = test_context();
+
+        // When loading the child session.
+        actor
+            .on_load_requested(
+                &SessionLoadRequested {
+                    session_id: child_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the parent has a frozen node (not loaded as a live session).
+        let state = actor.state.read();
+        let frozen = state.session.frozen_nodes();
+        assert!(
+            frozen.contains_key(&parent_id),
+            "parent should have a frozen node after child is loaded"
+        );
+
+        // And the child is live.
+        assert!(
+            state.session.contains(&child_id),
+            "child should be in live sessions"
+        );
+    }
 }
