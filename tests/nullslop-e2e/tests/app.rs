@@ -665,6 +665,8 @@ async fn when_submit_stream_completed(world: &mut AppWorld, reason: String) {
         assistant_content: None,
         tool_calls: None,
         cost: None,
+        provider_completion_tokens: None,
+        thinking_content: None,
     }));
     // Give the actor system time to process.
     tokio::time::sleep(Duration::from_millis(50)).await;

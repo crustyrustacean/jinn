@@ -160,6 +160,8 @@ fn load_theme_picker_entries(state: &mut AppState) {
         }
     }
 
+    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+
     state.frontend.theme_picker.set_items(entries);
 }
 
@@ -513,7 +515,7 @@ fn load_judge_picker_entries(state: &mut AppState) {
 
     let active_id = state.session.active_session_id().clone();
     let theme = state.frontend.theme.clone();
-    let entries: Vec<JudgePickerEntry> = state
+    let mut entries: Vec<JudgePickerEntry> = state
         .context
         .judges
         .iter()
@@ -526,6 +528,7 @@ fn load_judge_picker_entries(state: &mut AppState) {
             JudgePickerEntry::from_judge(j, already_attached, theme.clone())
         })
         .collect();
+    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     state.frontend.judge_picker.set_items(entries);
 }
 
@@ -650,7 +653,7 @@ fn load_tool_picker_entries(state: &mut AppState) {
     let disabled = state.active_session().disabled_tools();
     let theme = state.frontend.theme.clone();
 
-    let entries: Vec<ToolEntry> = state
+    let mut entries: Vec<ToolEntry> = state
         .context
         .tool_definitions
         .values()
@@ -666,6 +669,8 @@ fn load_tool_picker_entries(state: &mut AppState) {
             }
         })
         .collect();
+
+    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
     state.frontend.tool_picker.set_items(entries);
 }
@@ -706,7 +711,7 @@ fn load_skill_picker_entries(state: &mut AppState) {
     let disabled = state.active_session().disabled_skills();
     let theme = state.frontend.theme.clone();
 
-    let entries: Vec<SkillEntry> = state
+    let mut entries: Vec<SkillEntry> = state
         .context
         .skills
         .iter()
@@ -723,6 +728,8 @@ fn load_skill_picker_entries(state: &mut AppState) {
             }
         })
         .collect();
+
+    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
     state.frontend.skill_picker.set_items(entries);
 }
