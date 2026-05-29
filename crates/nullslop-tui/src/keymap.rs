@@ -111,6 +111,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<leader>st", Intent::OpenPicker { kind: PickerKind::Tool }, KeyCategory::General)
             .bind("<leader>sk", Intent::OpenPicker { kind: PickerKind::Skill }, KeyCategory::General)
             .bind("<leader>sh", Intent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
+            .bind("<leader>sw", Intent::OpenPicker { kind: PickerKind::Workflow }, KeyCategory::General)
             // Input — enter input mode
             .bind("i", Intent::EnterInsertMode, KeyCategory::Input)
             .bind("<c-j>", Intent::EnterInsertMode, KeyCategory::Input)
@@ -272,6 +273,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             b.bind("<Tab>", Intent::SkillToggleSelected, KeyCategory::General)
              .bind("<pgup>", Intent::PreviewScrollUp, KeyCategory::Navigation)
              .bind("<pgdn>", Intent::PreviewScrollDown, KeyCategory::Navigation);
+        })
+        .scope(Scope::PickerWorkflow, |b| {
+            add_picker_base(b);
         });
 
     // ArgInput scope — typing positional args for a lifecycle command.

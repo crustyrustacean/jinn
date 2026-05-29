@@ -185,6 +185,15 @@ impl NodeContext for DomainNodeContext {
             provider_id.map(std::borrow::ToOwned::to_owned),
         ))
     }
+
+    fn clone_arc(&self) -> Option<Arc<dyn nullslop_workflow::node::NodeContext>> {
+        Some(Arc::new(Self {
+            services: self.services.clone(),
+            state: self.state.clone(),
+            pending: Arc::clone(&self.pending),
+            current_node_name: Arc::clone(&self.current_node_name),
+        }))
+    }
 }
 
 #[cfg(test)]
