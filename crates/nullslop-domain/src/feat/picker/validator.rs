@@ -4,6 +4,7 @@
 //! Most are infallible; picker confirm and open picker are fallible.
 
 use crate::common::app_state::AppState;
+use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::PickerKind;
 use wherror::Error;
 
@@ -56,23 +57,23 @@ pub fn validate_picker_confirm(state: &AppState) -> Result<(), PickerConfirmErro
 
     let has_selection = match kind {
         PickerKind::Provider => state.provider.provider_picker.selected_item().is_some(),
-        PickerKind::Session => state.frontend.session_picker.selected_item().is_some(),
-        PickerKind::Persona => state.frontend.persona_picker.selected_item().is_some(),
-        PickerKind::Theme => state.frontend.theme_picker.selected_item().is_some(),
+        PickerKind::Session => state.frontend.session_picker().selected_item().is_some(),
+        PickerKind::Persona => state.frontend.persona_picker().selected_item().is_some(),
+        PickerKind::Theme => state.frontend.theme_picker().selected_item().is_some(),
         PickerKind::SessionLifecycle => state
             .frontend
-            .session_lifecycle_picker
+            .session_lifecycle_picker()
             .selected_item()
             .is_some(),
-        PickerKind::Workflow => state.frontend.workflow_picker.selected_item().is_some(),
-        PickerKind::Judge => state.frontend.judge_picker.selected_item().is_some(),
+        PickerKind::Workflow => state.frontend.workflow_picker().selected_item().is_some(),
+        PickerKind::Judge => state.frontend.judge_picker().selected_item().is_some(),
         PickerKind::CompactionModel => state
             .frontend
-            .compaction_model_picker
+            .compaction_model_picker()
             .selected_item()
             .is_some(),
-        PickerKind::Tool => state.frontend.tool_picker.selected_item().is_some(),
-        PickerKind::Skill => state.frontend.skill_picker.selected_item().is_some(),
+        PickerKind::Tool => state.frontend.tool_picker().selected_item().is_some(),
+        PickerKind::Skill => state.frontend.skill_picker().selected_item().is_some(),
     };
 
     if has_selection {

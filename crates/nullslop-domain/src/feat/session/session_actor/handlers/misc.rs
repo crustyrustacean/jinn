@@ -5,7 +5,7 @@
 
 use crate::feat::provider::protocol::event::ModelsRefreshed;
 use crate::feat::session::phase_machine::PhaseKind;
-
+use crate::feat::ui::picker_states::PickerExt;
 use super::super::SessionPersistenceActor;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
@@ -48,7 +48,7 @@ impl SessionPersistenceActor {
             let entries =
                 crate::feat::session::entries::load_session_entries_from_store(store, &theme).await;
             let mut state = self.state.write();
-            state.frontend.session_picker.set_items(entries);
+            state.frontend.session_picker_mut().set_items(entries);
         }
     }
 
@@ -139,6 +139,7 @@ mod tests {
     use crate::protocol::{ChatEntryKind, SessionId};
     use nullslop_provider::ModelInfo;
     use std::collections::HashMap;
+    use crate::feat::ui::picker_states::PickerExt;
 
     // --- on_models_refreshed ---
 
@@ -272,7 +273,7 @@ mod tests {
         // Then the session picker has entries (at least one from the stored session).
         let state = actor.state.read();
         assert!(
-            !state.frontend.session_picker.items().is_empty(),
+            !state.frontend.session_picker().items().is_empty(),
             "expected session picker to have entries after loading from store"
         );
     }

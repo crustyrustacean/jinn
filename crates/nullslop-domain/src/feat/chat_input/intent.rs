@@ -18,6 +18,7 @@ use crate::feat::chat_input::AutocompleteMatch;
 use crate::feat::chat_input::AutocompleteTrigger;
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
+use crate::feat::ui::picker_states::PickerExt;
 use crate::feat::chat_input::slash_command::SlashCommand;
 use crate::feat::chat_input::state::autocomplete::AutocompleteState;
 use crate::feat::context::prompt_template::PromptTemplateStore;
@@ -521,7 +522,7 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
 
     // If leaving the theme picker without confirming, restore the original theme.
     if state.frontend.scope_stack.picker_kind() == Some(&crate::protocol::PickerKind::Theme)
-        && let Some(original) = state.frontend.theme_preview_original.take()
+        && let Some(original) = state.frontend.theme_preview_original_mut().take()
     {
         state.frontend.theme = original;
         state.invalidate_theme_caches();
@@ -529,14 +530,14 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
 
     // If leaving the skill picker without confirming, restore the original disabled_skills.
     if state.frontend.scope_stack.picker_kind() == Some(&crate::protocol::PickerKind::Skill)
-        && let Some(snapshot) = state.frontend.skill_picker_snapshot.take()
+        && let Some(snapshot) = state.frontend.skill_picker_snapshot_mut().take()
     {
         state.active_session_mut().set_disabled_skills(snapshot);
     }
 
     // If leaving the tool picker without confirming, restore the original disabled_tools.
     if state.frontend.scope_stack.picker_kind() == Some(&crate::protocol::PickerKind::Tool)
-        && let Some(snapshot) = state.frontend.tool_picker_snapshot.take()
+        && let Some(snapshot) = state.frontend.tool_picker_snapshot_mut().take()
     {
         state.active_session_mut().set_disabled_tools(snapshot);
     }
