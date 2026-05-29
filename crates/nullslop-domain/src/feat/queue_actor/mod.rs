@@ -238,7 +238,7 @@ mod tests {
     use super::*;
     use crate::common::actor::{ActorContext, RecordingSink};
     use crate::common::app_state::AppState;
-    use crate::feat::session::chat_session::SessionPhase;
+    use crate::feat::session::phase_machine::PhaseKind;
     use crate::protocol::ChatEntry;
 
     fn test_actor() -> QueueActor {
@@ -422,7 +422,7 @@ mod tests {
         // Then the session is in Sending phase.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
-        assert!(matches!(session.phase(), SessionPhase::Sending));
+        assert!(matches!(session.phase(), PhaseKind::Sending));
     }
 
 

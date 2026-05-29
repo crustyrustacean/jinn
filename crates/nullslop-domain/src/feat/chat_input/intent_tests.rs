@@ -2,7 +2,7 @@
 
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::{AutocompleteMatch, AutocompleteTrigger};
-use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::protocol::{ChatEntry, Command};
 
 #[rstest::rstest]
@@ -647,7 +647,7 @@ fn enter_normal_mode_preserves_streaming_phase() {
     // Then the session is still streaming (not cancelled).
     assert!(matches!(
         state.active_session().phase(),
-        SessionPhase::Streaming
+        PhaseKind::Streaming
     ));
 }
 

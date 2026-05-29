@@ -407,7 +407,7 @@ impl SessionPersistenceActor {
                     ctx,
                     &payload.session_id,
                     old_phase,
-                    crate::feat::session::chat_session::SessionPhase::TearingDown,
+                    crate::feat::session::phase_machine::PhaseKind::TearingDown,
                 );
 
                 // Spawn tokio task to run the shell command.
@@ -600,7 +600,7 @@ impl SessionPersistenceActor {
                             ctx,
                             &payload.session_id,
                             old_phase,
-                            crate::feat::session::chat_session::SessionPhase::TearingDown,
+                            crate::feat::session::phase_machine::PhaseKind::TearingDown,
                         );
 
                         let session_id = payload.session_id.clone();
@@ -726,7 +726,7 @@ impl SessionPersistenceActor {
                 ctx,
                 &payload.session_id,
                 old_phase,
-                crate::feat::session::chat_session::SessionPhase::Idle,
+                crate::feat::session::phase_machine::PhaseKind::Idle,
             );
             return;
         }
@@ -794,12 +794,12 @@ impl SessionPersistenceActor {
             }));
 
             // Emit phase change so QueueActor drains queued messages.
-            let old_phase = crate::feat::session::chat_session::SessionPhase::TearingDown;
+            let old_phase = crate::feat::session::phase_machine::PhaseKind::TearingDown;
             super::super::helpers::emit_phase_changed(
                 ctx,
                 &payload.session_id,
                 old_phase,
-                crate::feat::session::chat_session::SessionPhase::Idle,
+                crate::feat::session::phase_machine::PhaseKind::Idle,
             );
         }
     }

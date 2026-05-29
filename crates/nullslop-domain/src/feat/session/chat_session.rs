@@ -23,6 +23,7 @@ use crate::feat::session::chat_history::ChatHistory;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::protocol::{
     ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId,
     SessionId,
@@ -69,12 +70,11 @@ pub struct SessionPhaseParseError(String);
 
 impl From<crate::feat::session::phase_machine::PhaseKind> for SessionPhase {
     fn from(kind: crate::feat::session::phase_machine::PhaseKind) -> Self {
-        use crate::feat::session::phase_machine::PhaseKind;
         match kind {
-            PhaseKind::Idle => SessionPhase::Idle,
-            PhaseKind::Sending => SessionPhase::Sending,
-            PhaseKind::Streaming => SessionPhase::Streaming,
-            PhaseKind::TearingDown => SessionPhase::TearingDown,
+            crate::feat::session::phase_machine::PhaseKind::Idle => Self::Idle,
+            crate::feat::session::phase_machine::PhaseKind::Sending => Self::Sending,
+            crate::feat::session::phase_machine::PhaseKind::Streaming => Self::Streaming,
+            crate::feat::session::phase_machine::PhaseKind::TearingDown => Self::TearingDown,
         }
     }
 }
@@ -200,9 +200,6 @@ pub struct SessionCoreEphemeral {
     /// Validated phase transition machine.
     /// The single source of truth for phase state.
     pub(crate) machine: crate::feat::session::phase_machine::SessionPhaseMachine,
-    /// The current session phase (idle, sending, streaming, assembling, compacting).
-    /// Kept in sync with the machine during the migration period.
-    pub(crate) phase: SessionPhase,
     /// Turn dispatch queue — drives all turn transitions through a single processor.
     pub(crate) message_queue: crate::feat::session::turn_queue::TurnQueue,
     /// Cached context size in tokens (assembled prompt size).
@@ -839,7 +836,7 @@ impl ChatSessionState {
     /// already exists or the session is not streaming.
     fn ensure_assistant_entry(&mut self) {
         if self.core.ephemeral.machine.streaming_entry_index().is_some()
-            || !matches!(self.core.ephemeral.phase, SessionPhase::Streaming)
+            || !matches!(self.core.ephemeral.machine.kind(), PhaseKind::Streaming)
         {
             return;
         }
@@ -848,13 +845,7 @@ impl ChatSessionState {
         self.core.ephemeral.machine.set_streaming_entry_index(index);
     }
 
-    /// Sync `phase` field from the machine's current state.
-    ///
-    /// Call this after every machine transition to keep the legacy `phase` field
-    /// in sync during the migration period.
-    fn sync_phase_from_machine(&mut self) {
-        self.core.ephemeral.phase = self.core.ephemeral.machine.kind().into();
-    }
+
 
     /// Begin a new streaming response.
     //
@@ -870,26 +861,24 @@ impl ChatSessionState {
     pub fn begin_streaming(&mut self) {
         use crate::feat::session::phase_machine::PhaseTransitions;
         // If Idle, first transition to Sending (some callers skip begin_sending()).
-        if matches!(self.core.ephemeral.phase, SessionPhase::Idle) {
+        if matches!(self.core.ephemeral.machine.kind(), PhaseKind::Idle) {
             if let Err(e) = self.core.ephemeral.machine.on_dispatch_message() {
                 tracing::warn!(
-                    current_phase = ?self.core.ephemeral.phase,
+                    current_phase = ?self.core.ephemeral.machine.kind(),
                     err = %e,
                     "begin_streaming: on_dispatch_message rejected — ignoring"
                 );
                 return;
             }
-            self.sync_phase_from_machine();
         }
         if let Err(e) = self.core.ephemeral.machine.on_first_token() {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
+                current_phase = ?self.core.ephemeral.machine.kind(),
                 err = %e,
                 "begin_streaming: machine rejected transition — ignoring"
             );
             return;
         }
-        self.sync_phase_from_machine();
     }
 
     /// Append a token to the streaming assistant entry.
@@ -909,9 +898,9 @@ impl ChatSessionState {
     where
         S: AsRef<str>,
     {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Streaming) {
+        if !matches!(self.core.ephemeral.machine.kind(), PhaseKind::Streaming) {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
+                current_phase = ?self.core.ephemeral.machine.kind(),
                 "append_stream_token called while not streaming — ignoring"
             );
             return Err(StreamingError::NoStreamingEntry);
@@ -944,9 +933,9 @@ impl ChatSessionState {
     /// Soft guard: if the session is not streaming or thinking has already begun,
     /// logs a warning and returns without changing state.
     pub fn begin_thinking(&mut self) {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Streaming) {
+        if !matches!(self.core.ephemeral.machine.kind(), PhaseKind::Streaming) {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
+                current_phase = ?self.core.ephemeral.machine.kind(),
                 "begin_thinking called while not streaming — ignoring"
             );
             return;
@@ -1006,14 +995,13 @@ impl ChatSessionState {
         use crate::feat::session::phase_machine::PhaseTransitions;
         if let Err(e) = self.core.ephemeral.machine.on_stream_completed_finished() {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
+                current_phase = ?self.core.ephemeral.machine.kind(),
                 err = %e,
                 "finish_streaming: machine rejected transition"
             );
             return;
         }
         // Streaming indices cleared automatically by Phase::Streaming drop.
-        self.sync_phase_from_machine();
     }
 
     /// Cancel streaming but keep partial text in history.
@@ -1023,13 +1011,12 @@ impl ChatSessionState {
         self.ensure_assistant_entry();
         if let Err(e) = self.core.ephemeral.machine.cancel() {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
+                current_phase = ?self.core.ephemeral.machine.kind(),
                 err = %e,
                 "cancel_streaming: machine rejected cancel"
             );
         }
         // All streaming indices cleaned up by StreamingPhase drop on cancel()
-        self.sync_phase_from_machine();
     }
 
     /// Cancel streaming and drain queued messages back to the input buffer.
@@ -1060,8 +1047,8 @@ impl ChatSessionState {
     }
 
     /// Returns the current session lifecycle phase.
-    pub fn phase(&self) -> SessionPhase {
-        self.core.ephemeral.phase
+    pub fn phase(&self) -> PhaseKind {
+        self.core.ephemeral.machine.kind()
     }
 
     // --- Tool call streaming ---
@@ -1386,13 +1373,12 @@ impl ChatSessionState {
         use crate::feat::session::phase_machine::PhaseTransitions;
         if let Err(e) = self.core.ephemeral.machine.on_dispatch_message() {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
+                current_phase = ?self.core.ephemeral.machine.kind(),
                 err = %e,
                 "begin_sending: machine rejected transition — ignoring"
             );
             return;
         }
-        self.sync_phase_from_machine();
     }
 
     /// Clear the sending flag (called when the first stream token arrives).
@@ -1401,9 +1387,9 @@ impl ChatSessionState {
     // method for the Sending→Idle path that bypasses Streaming. It force-sets
     // the machine to Idle. Will be removed in Phase 5.
     pub fn finish_sending(&mut self) {
-        if !matches!(self.core.ephemeral.phase, SessionPhase::Sending) {
+        if !matches!(self.core.ephemeral.machine.kind(), PhaseKind::Sending) {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
+                current_phase = ?self.core.ephemeral.machine.kind(),
                 "finish_sending called while not sending — ignoring"
             );
             return;
@@ -1411,7 +1397,6 @@ impl ChatSessionState {
         // Force-set the machine to Idle. This bypass is needed because
         // Sending→Idle is not a valid machine transition.
         self.core.ephemeral.machine.force_idle();
-        self.sync_phase_from_machine();
     }
 
     /// Mark the session as tearing down.
@@ -1422,13 +1407,12 @@ impl ChatSessionState {
         use crate::feat::session::phase_machine::PhaseTransitions;
         if let Err(e) = self.core.ephemeral.machine.on_request_teardown() {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
+                current_phase = ?self.core.ephemeral.machine.kind(),
                 err = %e,
                 "begin_tearing_down: machine rejected transition — ignoring"
             );
             return;
         }
-        self.sync_phase_from_machine();
     }
 
     /// Finish tearing down, return to idle.
@@ -1439,13 +1423,12 @@ impl ChatSessionState {
         use crate::feat::session::phase_machine::PhaseTransitions;
         if let Err(e) = self.core.ephemeral.machine.on_teardown_complete() {
             tracing::warn!(
-                current_phase = ?self.core.ephemeral.phase,
+                current_phase = ?self.core.ephemeral.machine.kind(),
                 err = %e,
                 "finish_tearing_down: machine rejected transition — ignoring"
             );
             return;
         }
-        self.sync_phase_from_machine();
     }
 
     /// The current scroll offset (lines to skip from top).
