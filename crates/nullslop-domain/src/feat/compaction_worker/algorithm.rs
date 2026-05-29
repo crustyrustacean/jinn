@@ -143,6 +143,31 @@ pub fn gather_compactable_entries(
     (gathered_indices, tokens_before)
 }
 
+/// Resolve the effective context window size.
+///
+/// Uses the provider-reported `context_length` if available,
+/// otherwise falls back to the configured `fallback`.
+pub fn resolve_context_window(context_length: Option<u32>, fallback: usize) -> usize {
+    context_length.map_or(fallback, |v| v as usize)
+}
+
+/// Estimate total tokens for all entries from `start_index` to end.
+///
+/// Excludes `Compaction` entries (they are boundaries, not content).
+/// Includes System entries — they consume context window budget even though
+/// they're excluded from compaction by `gather_compactable_entries()`.
+pub fn estimate_total_tokens(history: &[ChatEntry], start_index: usize) -> usize {
+    let estimator = CharRatioEstimator;
+    let mut total = 0usize;
+    for entry in history.iter().take(history.len()).skip(start_index) {
+        if entry.is_compaction() {
+            continue;
+        }
+        total += estimate_entry_tokens(&estimator, entry);
+    }
+    total
+}
+
 /// Find the start boundary: index after the last Compaction entry.
 pub fn find_start_boundary(history: &[ChatEntry]) -> usize {
     history
