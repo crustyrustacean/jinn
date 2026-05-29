@@ -945,7 +945,15 @@ impl ChatSessionState {
             return;
         }
         let entry = ChatEntry::thinking("");
-        let index = self.push_entry(entry);
+        // Insert thinking BEFORE the assistant entry when the assistant entry
+        // already exists. Some providers (OpenRouter) send reasoning tokens
+        // AFTER content tokens, so the assistant entry is already in history.
+        // The thinking entry should appear before it in the chat log.
+        let index = if let Some(assistant_idx) = self.core.ephemeral.machine.streaming_entry_index() {
+            self.insert_entry_at(assistant_idx, entry)
+        } else {
+            self.push_entry(entry)
+        };
         self.core.ephemeral.machine.set_streaming_thinking_entry_index(index);
     }
 

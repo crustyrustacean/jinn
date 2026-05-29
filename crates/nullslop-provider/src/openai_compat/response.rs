@@ -125,13 +125,30 @@ impl StreamResponseParser {
 
             // Reasoning/thinking content delta.
             // Check both field names: DeepSeek R1/V3 uses `reasoning_content`,
-            // DeepSeek V4 uses `thinking_content`.
+            // DeepSeek V4 uses `thinking_content`, OpenRouter uses `reasoning`.
+            let mut found_reasoning = false;
             for field in ["reasoning_content", "thinking_content", "reasoning"] {
                 if let Some(reasoning) = delta.get(field).and_then(|c| c.as_str()) {
                     if !reasoning.is_empty() {
+                        tracing::debug!(
+                            field,
+                            len = reasoning.len(),
+                            preview = %&reasoning[..reasoning.len().min(30)],
+                            "response parser: reasoning field matched"
+                        );
                         results.push(StreamEvent::Reasoning(reasoning.to_owned()));
+                        found_reasoning = true;
                     }
+                    break;
                 }
+            }
+            if !found_reasoning {
+                // Log what fields the delta actually has for debugging.
+                let delta_keys: Vec<&str> = delta.as_object().map(|o| o.keys().map(|k| k.as_str()).collect()).unwrap_or_default();
+                tracing::trace!(
+                    delta_keys = ?delta_keys,
+                    "response parser: no reasoning field found in delta"
+                );
             }
 
             // Tool call deltas.

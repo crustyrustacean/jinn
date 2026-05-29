@@ -291,6 +291,12 @@ impl LlmActor {
                 match result {
                     Ok(event) => match event {
                         StreamEvent::Text(token) => {
+                            tracing::info!(
+                                session_id = ?sid,
+                                token_len = token.len(),
+                                token_preview = %&token[..token.len().min(50)],
+                                "LLM ACTOR StreamEvent::Text"
+                            );
                             accumulated_text.push_str(&token);
                             let parsed = match parser.parse_reasoning_streaming_incremental(&token)
                             {
@@ -324,6 +330,12 @@ impl LlmActor {
                             }
                         }
                         StreamEvent::Reasoning(token) => {
+                            tracing::info!(
+                                session_id = ?sid,
+                                token_len = token.len(),
+                                token_preview = %&token[..token.len().min(50)],
+                                "LLM ACTOR StreamEvent::Reasoning"
+                            );
                             accumulated_thinking.push_str(&token);
                             let _ = sink.send_event(Event::StreamToken(StreamToken {
                                 session_id: sid.clone(),
