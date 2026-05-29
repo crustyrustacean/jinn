@@ -24,6 +24,30 @@ use crate::feat::ui::chat_log::visual_item::{
 /// Full block character for minimap entries.
 const FULL_BLOCK: &str = "\u{2588}";
 
+/// Token count thresholds for minimap coloring.
+///
+/// Maps approximate token counts to colors that communicate size at a glance:
+/// - Small (<100): green — barely noticeable
+/// - Medium (100–499): yellow — moderate
+/// - Large (500–999): red — significant
+/// - Extra-large (≥1000): bright magenta — dominant
+const TOKEN_THRESHOLD_SMALL: u32 = 100;
+const TOKEN_THRESHOLD_MEDIUM: u32 = 500;
+const TOKEN_THRESHOLD_LARGE: u32 = 1000;
+
+/// Returns the color for a token-count block based on size thresholds.
+fn token_threshold_color(count: u32) -> Color {
+    if count < TOKEN_THRESHOLD_SMALL {
+        Color::Green
+    } else if count < TOKEN_THRESHOLD_MEDIUM {
+        Color::Yellow
+    } else if count < TOKEN_THRESHOLD_LARGE {
+        Color::Red
+    } else {
+        Color::Rgb(255, 0, 255) // bright magenta
+    }
+}
+
 /// Categorizes chat entry types for minimap coloring.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MinimapCategory {
@@ -111,6 +135,9 @@ struct VisibleEntry {
     category: MinimapCategory,
     /// Whether the entry is ignored.
     ignored: bool,
+    /// Cached tiktoken token count, if available.
+    /// `None` for ignored/out-of-context entries or when not yet computed.
+    token_count: Option<u32>,
 }
 
 /// Computes the list of visible (non-excluded) entries from visual items.
@@ -118,6 +145,8 @@ fn compute_visible_entries(state: &AppState) -> Vec<VisibleEntry> {
     let session = state.active_session();
     let history = session.history();
     let items = session.visual_items();
+
+    let token_cache = state.frontend.caches.entry_token_cache.read();
 
     items
         .iter()
@@ -137,10 +166,25 @@ fn compute_visible_entries(state: &AppState) -> Vec<VisibleEntry> {
                 VisualItem::CollapsedIgnoredBlock { .. } => false,
                 VisualItem::Entry(hist_idx) => !history[*hist_idx].is_in_context(),
             };
+            // Look up cached token count. Only in-context entries with cached
+            // counts get a token block; ignored/out-of-context and collapsed
+            // entries get `None`.
+            let token_count = if ignored {
+                None
+            } else {
+                match item {
+                    VisualItem::CollapsedIgnoredBlock { .. } => None,
+                    VisualItem::Entry(hist_idx) => {
+                        let entry = &history[*hist_idx];
+                        token_cache.get(&entry.id)
+                    }
+                }
+            };
             Some(VisibleEntry {
                 vi_index: vi_idx,
                 category,
                 ignored,
+                token_count,
             })
         })
         .collect()
@@ -214,7 +258,7 @@ pub fn render_vertical_minimap(
     // Midpoint row where the arrow and selected block live.
     let midpoint = viewport_height / 2;
 
-    // Build lines — each row is either a block or empty.
+    // Build lines — each row is a 2-span line: [category_block][token_block].
     // Blocks are positioned relative to the midpoint so the selected
     // block always appears at the midpoint row.
     let mut lines: Vec<Line<'static>> = Vec::with_capacity(viewport_height);
@@ -222,17 +266,27 @@ pub fn render_vertical_minimap(
         let block_index = selected_block as isize + row as isize - midpoint as isize;
         if block_index >= 0 && (block_index as usize) < total_blocks {
             let entry = &visible[block_index as usize];
-            let color = if entry.ignored {
+            let cat_color = if entry.ignored {
                 darken(entry.category.color(), 0.4)
             } else {
                 entry.category.color()
             };
-            lines.push(Line::from(Span::styled(
+            let cat_span = Span::styled(
                 FULL_BLOCK.to_owned(),
-                Style::default().fg(color),
-            )));
+                Style::default().fg(cat_color),
+            );
+            // Token size block: colored block for in-context entries with
+            // cached counts, empty space for ignored/collapsed/no-cache.
+            let token_span = match entry.token_count {
+                Some(count) => Span::styled(
+                    FULL_BLOCK.to_owned(),
+                    Style::default().fg(token_threshold_color(count)),
+                ),
+                None => Span::raw(" "),
+            };
+            lines.push(Line::from(vec![cat_span, token_span]));
         } else {
-            lines.push(Line::from(""));
+            lines.push(Line::from("  "));
         }
     }
 
@@ -354,16 +408,19 @@ mod tests {
                 vi_index: 0,
                 category: MinimapCategory::User,
                 ignored: false,
+                token_count: None,
             },
             VisibleEntry {
                 vi_index: 2,
                 category: MinimapCategory::Assistant,
                 ignored: false,
+                token_count: None,
             },
             VisibleEntry {
                 vi_index: 5,
                 category: MinimapCategory::User,
                 ignored: false,
+                token_count: None,
             },
         ];
 
@@ -382,11 +439,13 @@ mod tests {
                 vi_index: 0,
                 category: MinimapCategory::User,
                 ignored: false,
+                token_count: None,
             },
             VisibleEntry {
                 vi_index: 2,
                 category: MinimapCategory::Assistant,
                 ignored: false,
+                token_count: None,
             },
         ];
 
@@ -405,11 +464,13 @@ mod tests {
                 vi_index: 0,
                 category: MinimapCategory::User,
                 ignored: false,
+                token_count: None,
             },
             VisibleEntry {
                 vi_index: 2,
                 category: MinimapCategory::Assistant,
                 ignored: false,
+                token_count: None,
             },
         ];
 
@@ -911,5 +972,113 @@ mod tests {
             "expected at least 3 blocks, got {block_count}"
         );
         assert!(arrow.is_some(), "arrow should exist after compaction");
+    }
+
+    // --- token_threshold_color ---
+
+    #[rstest::rstest]
+    fn token_threshold_small_is_green() {
+        assert_eq!(token_threshold_color(0), Color::Green);
+        assert_eq!(token_threshold_color(50), Color::Green);
+        assert_eq!(token_threshold_color(99), Color::Green);
+    }
+
+    #[rstest::rstest]
+    fn token_threshold_medium_is_yellow() {
+        assert_eq!(token_threshold_color(100), Color::Yellow);
+        assert_eq!(token_threshold_color(250), Color::Yellow);
+        assert_eq!(token_threshold_color(499), Color::Yellow);
+    }
+
+    #[rstest::rstest]
+    fn token_threshold_large_is_red() {
+        assert_eq!(token_threshold_color(500), Color::Red);
+        assert_eq!(token_threshold_color(750), Color::Red);
+        assert_eq!(token_threshold_color(999), Color::Red);
+    }
+
+    #[rstest::rstest]
+    fn token_threshold_extra_large_is_magenta() {
+        assert_eq!(token_threshold_color(1000), Color::Rgb(255, 0, 255));
+        assert_eq!(token_threshold_color(5000), Color::Rgb(255, 0, 255));
+    }
+
+    // --- Token count rendering ---
+
+    #[rstest::rstest]
+    fn in_context_entry_with_cached_token_count_shows_token_block() {
+        // Given a session with one user entry that has a cached token count.
+        let mut state = AppState::default();
+        let entry = ChatEntry::user("hello world this is a test");
+        let entry_id = entry.id.clone();
+        state.active_session_mut().push_entry(entry);
+
+        // Insert token count into cache.
+        state
+            .frontend
+            .caches
+            .entry_token_cache
+            .write()
+            .insert(entry_id, 500); // Large = red
+
+        // When rendering in a 10-row viewport (width 2 for 2-column minimap).
+        let (arrow, rows) = render_to_buffer(&state, 2, 10);
+
+        // Then a block is rendered at midpoint.
+        assert!(arrow.is_some());
+        // Row 5 should have 2 full blocks (category + token).
+        let row5 = &rows[5];
+        let block_count = row5.chars().filter(|&c| c == '\u{2588}').count();
+        assert_eq!(
+            block_count, 2,
+            "expected 2 blocks (category + token) in row 5, got: {row5}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn entry_without_cached_token_count_shows_single_block() {
+        // Given a session with one user entry but no cached token count.
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("hello"));
+
+        // When rendering (no token cache populated).
+        let (arrow, rows) = render_to_buffer(&state, 2, 10);
+
+        // Then only 1 block at midpoint (category only, token column empty).
+        assert!(arrow.is_some());
+        let row5 = &rows[5];
+        let block_count = row5.chars().filter(|&c| c == '\u{2588}').count();
+        assert_eq!(
+            block_count, 1,
+            "expected 1 block (category only, no token) in row 5, got: {row5}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn ignored_entry_shows_no_token_block() {
+        // Given an ignored entry with a cached count (should still not show token).
+        let mut state = AppState::default();
+        let entry = ChatEntry::user("old").with_ignored(true);
+        let entry_id = entry.id.clone();
+        state.active_session_mut().push_entry(entry);
+
+        // Insert token count into cache.
+        state
+            .frontend
+            .caches
+            .entry_token_cache
+            .write()
+            .insert(entry_id, 500);
+
+        // When rendering.
+        let (_arrow, rows) = render_to_buffer(&state, 2, 10);
+
+        // Then only 1 block (category, darkened) at midpoint — no token block.
+        let row5 = &rows[5];
+        let block_count = row5.chars().filter(|&c| c == '\u{2588}').count();
+        assert_eq!(
+            block_count, 1,
+            "expected 1 block for ignored entry (no token), got: {row5}"
+        );
     }
 }
