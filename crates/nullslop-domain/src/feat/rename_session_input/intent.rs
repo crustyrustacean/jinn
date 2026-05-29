@@ -3,8 +3,9 @@
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
+use crate::feat::session_lifecycle::protocol::command::PersistSession;
 use crate::feat::ui::sidebar::sessions::sorted_open_sessions;
-use crate::protocol::IntentResult;
+use crate::protocol::{Command, IntentResult};
 
 /// Opens the rename session input popup.
 ///
@@ -62,15 +63,16 @@ pub fn handle_rename_session_confirm(state: &mut AppState) -> IntentResult {
     };
     let session_id = entry.id.clone();
 
-    // Update the session title.
+    // Update the session title and mark as interacted.
     state.session_mut(&session_id).set_title(text);
     state.session_mut(&session_id).touch();
+    state.session_mut(&session_id).mark_interacted();
 
     // Pop scope and clear state.
     state.frontend.scope_stack.pop();
     state.frontend.rename_session_input = RenameSessionInputState::default();
 
-    IntentResult::empty()
+    IntentResult::with_commands(vec![Command::PersistSession(PersistSession { session_id })])
 }
 
 /// Cancels the rename session input popup.
@@ -267,8 +269,14 @@ mod tests {
         ));
         // And input state is cleared.
         assert!(state.frontend.rename_session_input.input.is_empty());
-        // And no commands are emitted.
-        assert!(result.commands.is_empty());
+        // And a PersistSession command is emitted.
+        assert!(
+            result
+                .commands
+                .iter()
+                .any(|c| matches!(c, Command::PersistSession(p) if p.session_id == session_id)),
+            "expected PersistSession command for the renamed session"
+        );
     }
 
     #[rstest::rstest]
@@ -295,6 +303,44 @@ mod tests {
             state.frontend.scope_stack.current(),
             FocusScope::RenameSessionInput
         ));
+    }
+
+    #[rstest::rstest]
+    fn confirm_marks_interacted_and_persists_non_interacted_session() {
+        // Given a fresh session that has never been interacted with.
+        let mut state = AppState::default();
+        let session_id = state.session.active_session_id().clone();
+        assert!(
+            !state.session.get(&session_id).expect("session exists").has_interacted(),
+            "fresh session should not be interacted"
+        );
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::RenameSessionInput);
+        state.frontend.sessions_section.selected_index = Some(0);
+        state.frontend.rename_session_input = RenameSessionInputState {
+            input: "Fresh Title".to_owned(),
+            cursor_pos: 11,
+        };
+
+        // When handling RenameSessionConfirm.
+        let result = handle_rename_session_confirm(&mut state);
+
+        // Then the session is marked as interacted.
+        assert!(
+            state.session.get(&session_id).expect("session exists").has_interacted(),
+            "session should be marked as interacted after rename"
+        );
+        // And a PersistSession command is emitted.
+        assert!(
+            result
+                .commands
+                .iter()
+                .any(|c| matches!(c, Command::PersistSession(p) if p.session_id == session_id)),
+            "expected PersistSession command for non-interacted session after rename"
+        );
     }
 
     #[rstest::rstest]

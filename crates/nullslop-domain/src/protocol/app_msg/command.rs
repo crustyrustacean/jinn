@@ -32,7 +32,6 @@ use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
-use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 use crate::feat::session_lifecycle::protocol::command::{
@@ -88,8 +87,6 @@ pub enum Command {
     ExecuteWebFetch(ExecuteWebFetch),
     /// Proceed with shutdown after actor coordination.
     ProceedWithShutdown(ProceedWithShutdown),
-    /// Session data loaded from disk by the persistence actor.
-    SessionLoadCompleted(SessionLoadCompleted),
     /// Load entries for the provider/model picker.
     LoadProviderPickerEntries(LoadProviderPickerEntries),
     /// Load entries for the compaction model picker.
@@ -177,7 +174,6 @@ impl Command {
             Self::CancelToolBatch(..) => Some(CancelToolBatch::NAME),
             Self::ExecuteWebFetch(..) => Some(ExecuteWebFetch::NAME),
             Self::ProceedWithShutdown(..) => Some(ProceedWithShutdown::NAME),
-            Self::SessionLoadCompleted(..) => Some(SessionLoadCompleted::NAME),
             Self::LoadProviderPickerEntries(..) => Some(LoadProviderPickerEntries::NAME),
             Self::LoadCompactionModelPickerEntries(..) => Some(
                 crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries::NAME,
@@ -302,7 +298,6 @@ impl std::fmt::Display for Command {
                     payload.timed_out.len()
                 )
             }
-            Command::SessionLoadCompleted(..) => write!(f, "session load completed"),
             Command::LoadProviderPickerEntries(..) => write!(f, "load provider picker entries"),
             Command::LoadCompactionModelPickerEntries(..) => {
                 write!(f, "load compaction model picker entries")

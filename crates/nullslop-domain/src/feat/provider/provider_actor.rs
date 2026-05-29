@@ -109,7 +109,6 @@ impl ProviderActor {
             | Command::ExecuteTool(..)
             | Command::CancelToolBatch(..)
             | Command::ProceedWithShutdown(..)
-            | Command::SessionLoadCompleted(..)
             | Command::SessionLoadRequested(..)
             | Command::LoadSessionPickerEntries(..)
             | Command::ScanSkills

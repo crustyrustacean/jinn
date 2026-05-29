@@ -11,6 +11,7 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 
 use error_stack::Report;
 use wherror::Error;
@@ -21,10 +22,14 @@ use crate::tool_schema::ToolSchema;
 pub mod code;
 pub mod delay;
 pub mod dynamic;
+pub mod loop_node;
+pub mod router;
 
 pub use code::CodeNode;
 pub use delay::DelayNode;
 pub use dynamic::DynamicNode;
+pub use loop_node::LoopNode;
+pub use router::RouterNode;
 
 /// Execution context passed to nodes during execution.
 ///
@@ -67,6 +72,14 @@ pub trait NodeContext: Send + Sync {
 
     /// Called by the engine after node execution completes.
     fn clear_node_name(&self) {}
+
+    /// Clones this context into an `Arc` for recursive engine execution.
+    ///
+    /// Used by nodes like `LoopNode` that need to run a sub-graph via the engine.
+    /// Returns `None` by default. Domain implementations override this.
+    fn clone_arc(&self) -> Option<Arc<dyn NodeContext>> {
+        None
+    }
 }
 
 /// Error type for node execution failures.

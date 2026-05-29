@@ -329,6 +329,18 @@ async fn run_main_loop(
                     tx,
                     &execution,
                 )?;
+
+                // Detect deadlocked nodes (Pending nodes whose all upstream
+                // neighbors are terminal — they can never receive data).
+                let deadlocked = detect_deadlocks(
+                    statuses,
+                    pending_count,
+                    inner,
+                    name_to_index,
+                    node_names,
+                    &execution,
+                );
+                completed_count += deadlocked;
             }
             Some(panic_name) = check_panics_async(handles, statuses) => {
                 if let Some(handle) = handles.remove(&panic_name) {
@@ -572,35 +584,37 @@ fn handle_completion(
                         .attach("downstream node not found in pending_inputs")
                     })?;
                     inputs.insert(target_port.clone(), value);
-                }
 
-                // Decrement pending count.
-                let count = pending_count.get_mut(tgt_name).ok_or_else(|| {
-                    Report::new(EngineError::NodeNotFound {
-                        name: tgt_name.clone(),
-                    })
-                    .attach("downstream node not found in pending_count")
-                })?;
-                *count = count.saturating_sub(1);
-
-                // If all inputs satisfied, spawn the downstream node.
-                if *count == 0 && statuses.get(tgt_name) == Some(&NodeStatus::Pending) {
-                    let inputs = pending_inputs.remove(tgt_name).ok_or_else(|| {
-                        Report::new(EngineError::MissingInputs {
-                            node: tgt_name.clone(),
+                    // Only decrement pending count when a value was actually propagated.
+                    // If the source port produced no value, the downstream node
+                    // is still waiting for this input.
+                    let count = pending_count.get_mut(tgt_name).ok_or_else(|| {
+                        Report::new(EngineError::NodeNotFound {
+                            name: tgt_name.clone(),
                         })
-                        .attach("pending inputs disappeared before spawn")
+                        .attach("downstream node not found in pending_count")
                     })?;
-                    spawn_node(
-                        tgt_name.clone(),
-                        node_map,
-                        statuses,
-                        inputs,
-                        ctx,
-                        tx,
-                        handles,
-                        execution,
-                    );
+                    *count = count.saturating_sub(1);
+
+                    // If all inputs satisfied, spawn the downstream node.
+                    if *count == 0 && statuses.get(tgt_name) == Some(&NodeStatus::Pending) {
+                        let inputs = pending_inputs.remove(tgt_name).ok_or_else(|| {
+                            Report::new(EngineError::MissingInputs {
+                                node: tgt_name.clone(),
+                            })
+                            .attach("pending inputs disappeared before spawn")
+                        })?;
+                        spawn_node(
+                            tgt_name.clone(),
+                            node_map,
+                            statuses,
+                            inputs,
+                            ctx,
+                            tx,
+                            handles,
+                            execution,
+                        );
+                    }
                 }
             }
         }
@@ -675,6 +689,74 @@ fn spawn_node(
     });
 
     handles.insert(name, handle);
+}
+
+/// Detects deadlocked Pending nodes and marks them Skipped.
+///
+/// A node is deadlocked if it is Pending with `pending_count > 0` and ALL
+/// upstream neighbors are in terminal states (Completed, Failed, or Skipped).
+/// Such a node can never receive its missing inputs.
+///
+/// Cascades: skipping one node may deadlock its downstream nodes.
+/// Loops until no new deadlocks are found.
+///
+/// Returns the number of newly skipped nodes.
+fn detect_deadlocks(
+    statuses: &mut HashMap<String, NodeStatus>,
+    pending_count: &HashMap<String, usize>,
+    inner: &petgraph::graph::DiGraph<crate::graph::NodeData, crate::graph::EdgeData>,
+    name_to_index: &HashMap<String, petgraph::graph::NodeIndex>,
+    node_names: &HashMap<petgraph::graph::NodeIndex, String>,
+    execution: &Arc<WorkflowExecution>,
+) -> usize {
+    let mut total_skipped = 0;
+
+    loop {
+        let mut newly_deadlocked: Vec<String> = Vec::new();
+
+        for (name, &remaining) in pending_count {
+            if remaining > 0
+                && statuses.get(name.as_str()) == Some(&NodeStatus::Pending)
+            {
+                let Some(&idx) = name_to_index.get(name) else {
+                    continue;
+                };
+                let all_upstream_terminal = inner
+                    .edges_directed(idx, petgraph::Direction::Incoming)
+                    .all(|edge| {
+                        let src_idx = edge.source();
+                        let Some(src_name) = node_names.get(&src_idx) else {
+                            return false;
+                        };
+                        matches!(
+                            statuses.get(src_name.as_str()),
+                            Some(
+                                NodeStatus::Completed
+                                    | NodeStatus::Failed
+                                    | NodeStatus::Skipped
+                            )
+                        )
+                    });
+
+                if all_upstream_terminal {
+                    newly_deadlocked.push(name.clone());
+                }
+            }
+        }
+
+        if newly_deadlocked.is_empty() {
+            break;
+        }
+
+        for name in &newly_deadlocked {
+            statuses.insert(name.clone(), NodeStatus::Skipped);
+            execution.set_status(name, NodeStatus::Skipped);
+        }
+
+        total_skipped += newly_deadlocked.len();
+    }
+
+    total_skipped
 }
 
 /// Finds all transitive downstream node names from a given node index.
@@ -1553,5 +1635,176 @@ mod tests {
         assert_eq!(status(&result, "merge"), NodeStatus::Completed);
         let merge_out = outputs(&result, "merge").get_text("out").unwrap();
         assert_eq!(merge_out, "DATA+data!", "merge must have both inputs");
+    }
+
+    // --- Deadlock detection tests ---
+
+    /// Creates a node that only outputs on the "yes" port, leaving "no" unpopulated.
+    /// Simulates what a RouterNode would do.
+    fn selective_output_node() -> Box<dyn WorkflowNode> {
+        struct SelectiveNode;
+
+        #[async_trait::async_trait]
+        impl WorkflowNode for SelectiveNode {
+            fn name(&self) -> &str {
+                "selective"
+            }
+            fn input_ports(&self) -> Vec<PortDef> {
+                vec![PortDef::text("in")]
+            }
+            fn output_ports(&self) -> Vec<PortDef> {
+                vec![PortDef::text("yes"), PortDef::text("no")]
+            }
+            async fn execute(
+                &self,
+                mut inputs: PortValues,
+                _ctx: &dyn NodeContext,
+            ) -> Result<PortValues, Report<NodeError>> {
+                let val = inputs
+                    .take_text("in")
+                    .map_err(|_e| Report::new(NodeError))?;
+                let mut out = PortValues::new();
+                out.insert("yes".to_owned(), PortValue::Single(ScalarValue::Text(val)));
+                // "no" port is intentionally left unpopulated.
+                Ok(out)
+            }
+            fn clone_box(&self) -> Box<dyn WorkflowNode> {
+                Box::new(SelectiveNode)
+            }
+        }
+
+        Box::new(SelectiveNode)
+    }
+
+    #[tokio::test]
+    async fn linear_graph_has_no_deadlocks() {
+        // Given A → B → C (all nodes run).
+        let ctx = Arc::new(TestContext);
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node("a".to_owned(), source_node("hello"))
+            .add_node("b".to_owned(), uppercase_node())
+            .add_node("c".to_owned(), suffix_node("!"));
+        builder.connect("a", "out", "b", "in").expect("a→b");
+        builder.connect("b", "out", "c", "in").expect("b→c");
+        let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
+
+        // When executing.
+        let result = execute(execution, ctx).await.expect("execute");
+
+        // Then all nodes completed — no deadlocks.
+        assert_eq!(status(&result, "a"), NodeStatus::Completed);
+        assert_eq!(status(&result, "b"), NodeStatus::Completed);
+        assert_eq!(status(&result, "c"), NodeStatus::Completed);
+    }
+
+    #[tokio::test]
+    async fn unpopulated_branch_is_skipped_by_deadlock_detection() {
+        // Given: source → selective (outputs "yes" only) → yes_branch (on "yes")
+        //                                            → no_branch (on "no")
+        let ctx = Arc::new(TestContext);
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node("source".to_owned(), source_node("data"))
+            .add_node("router".to_owned(), selective_output_node())
+            .add_node("yes_branch".to_owned(), uppercase_node())
+            .add_node("no_branch".to_owned(), suffix_node("!"));
+        builder.connect("source", "out", "router", "in").expect("src→router");
+        builder.connect("router", "yes", "yes_branch", "in").expect("router→yes");
+        builder.connect("router", "no", "no_branch", "in").expect("router→no");
+        let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
+
+        // When executing.
+        let result = execute(execution, ctx).await.expect("execute");
+
+        // Then yes_branch completed, no_branch was skipped (deadlocked).
+        assert_eq!(status(&result, "source"), NodeStatus::Completed);
+        assert_eq!(status(&result, "router"), NodeStatus::Completed);
+        assert_eq!(status(&result, "yes_branch"), NodeStatus::Completed);
+        assert_eq!(status(&result, "no_branch"), NodeStatus::Skipped);
+    }
+
+    #[tokio::test]
+    async fn deadlock_cascades_to_downstream() {
+        // Given: source → selective → no_branch → downstream
+        // selective only outputs on "yes", leaving "no" unpopulated.
+        // Both no_branch and downstream should be skipped.
+        let ctx = Arc::new(TestContext);
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node("source".to_owned(), source_node("data"))
+            .add_node("router".to_owned(), selective_output_node())
+            .add_node("dead_branch".to_owned(), uppercase_node())
+            .add_node("downstream".to_owned(), suffix_node("!"));
+        builder.connect("source", "out", "router", "in").expect("src→router");
+        builder.connect("router", "no", "dead_branch", "in").expect("router→dead");
+        builder.connect("dead_branch", "out", "downstream", "in").expect("dead→down");
+        let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
+
+        // When executing.
+        let result = execute(execution, ctx).await.expect("execute");
+
+        // Then both dead_branch and downstream are skipped (cascade).
+        assert_eq!(status(&result, "router"), NodeStatus::Completed);
+        assert_eq!(status(&result, "dead_branch"), NodeStatus::Skipped);
+        assert_eq!(status(&result, "downstream"), NodeStatus::Skipped);
+    }
+
+    #[tokio::test]
+    async fn diamond_deadlock_with_one_dead_path() {
+        // Given: source → router (outputs "yes" only) → B (on "yes") → merge
+        //                                   router → C (on "no") ──────→ merge
+        // C is deadlocked (no data on "no" port), so merge is also deadlocked.
+        let ctx = Arc::new(TestContext);
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node("source".to_owned(), source_node("data"))
+            .add_node("router".to_owned(), selective_output_node())
+            .add_node("b".to_owned(), uppercase_node())
+            .add_node("c".to_owned(), suffix_node("!"))
+            .add_node("merge".to_owned(), concat_node());
+        builder.connect("source", "out", "router", "in").expect("src→router");
+        builder.connect("router", "yes", "b", "in").expect("router→b");
+        builder.connect("router", "no", "c", "in").expect("router→c");
+        builder.connect("b", "out", "merge", "left").expect("b→merge");
+        builder.connect("c", "out", "merge", "right").expect("c→merge");
+        let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
+
+        // When executing.
+        let result = execute(execution, ctx).await.expect("execute");
+
+        // Then B completed, C is skipped (deadlocked), merge is also skipped.
+        assert_eq!(status(&result, "source"), NodeStatus::Completed);
+        assert_eq!(status(&result, "router"), NodeStatus::Completed);
+        assert_eq!(status(&result, "b"), NodeStatus::Completed);
+        assert_eq!(status(&result, "c"), NodeStatus::Skipped);
+        assert_eq!(status(&result, "merge"), NodeStatus::Skipped);
+    }
+
+    #[tokio::test]
+    async fn fan_out_with_all_branches_completing_has_no_skips() {
+        // Given normal fan-out: source → B and source → C. All branches complete.
+        let ctx = Arc::new(TestContext);
+        let mut builder = WorkflowGraphBuilder::new();
+        builder
+            .add_node("source".to_owned(), source_node("data"))
+            .add_node("b".to_owned(), uppercase_node())
+            .add_node("c".to_owned(), suffix_node("!"));
+        builder.connect("source", "out", "b", "in").expect("src→b");
+        builder.connect("source", "out", "c", "in").expect("src→c");
+        let graph = builder.build().expect("build");
+        let execution = Arc::new(WorkflowExecution::new(graph));
+
+        // When executing.
+        let result = execute(execution, ctx).await.expect("execute");
+
+        // Then all nodes completed — no deadlocks or skips.
+        assert_eq!(status(&result, "source"), NodeStatus::Completed);
+        assert_eq!(status(&result, "b"), NodeStatus::Completed);
+        assert_eq!(status(&result, "c"), NodeStatus::Completed);
     }
 }
