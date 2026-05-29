@@ -246,10 +246,10 @@ impl WorkflowActor {
     /// When a workflow session transitions to `Idle`, extracts the last assistant
     /// message from the session history and resolves the pending oneshot channel.
     fn handle_session_phase_changed(&mut self, payload: &SessionPhaseChanged) {
-        use crate::feat::session::chat_session::SessionPhase;
+        use crate::feat::session::phase_machine::PhaseKind;
 
         // Only care about Idle transitions (session finished all work).
-        if payload.new_phase != SessionPhase::Idle {
+        if payload.new_phase != PhaseKind::Idle {
             return;
         }
 
@@ -409,7 +409,8 @@ mod tests {
     use crate::common::services::test_services::TestServices;
     use crate::common::state::State;
     use crate::feat::session::chat_entry::ChatEntry;
-    use crate::feat::session::chat_session::{ChatSessionState, SessionPhase};
+    use crate::feat::session::chat_session::ChatSessionState;
+    use crate::feat::session::phase_machine::PhaseKind;
     use crate::feat::workflow::WorkflowId;
     use crate::feat::workflow::example::add_numbers;
     use crate::protocol::SessionId;
@@ -586,8 +587,8 @@ mod tests {
         // When receiving a Streaming phase change.
         h.actor.handle_session_phase_changed(&SessionPhaseChanged {
             session_id: session_id.clone(),
-            old_phase: SessionPhase::Idle,
-            new_phase: SessionPhase::Streaming,
+            old_phase: PhaseKind::Idle,
+            new_phase: PhaseKind::Streaming,
         });
 
         // Then the pending entry is still there (not resolved).
@@ -618,8 +619,8 @@ mod tests {
         // When receiving an Idle phase change.
         h.actor.handle_session_phase_changed(&SessionPhaseChanged {
             session_id: session_id.clone(),
-            old_phase: SessionPhase::Streaming,
-            new_phase: SessionPhase::Idle,
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
         });
 
         // Then the oneshot is resolved with the assistant message.
@@ -644,8 +645,8 @@ mod tests {
         // When receiving an Idle phase change (no pending oneshot).
         h.actor.handle_session_phase_changed(&SessionPhaseChanged {
             session_id: session_id.clone(),
-            old_phase: SessionPhase::Streaming,
-            new_phase: SessionPhase::Idle,
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
         });
 
         // Then nothing panicked and no response was sent.

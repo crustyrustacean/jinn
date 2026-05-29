@@ -34,6 +34,7 @@ use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry};
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::protocol::{Command, Event, SessionId};
 
@@ -145,7 +146,7 @@ impl JudgeCoordinatorActor {
     /// 4. Record the expected count in the pending map.
     fn handle_session_phase_changed(&mut self, payload: &SessionPhaseChanged, ctx: &ActorContext) {
         // Only care about Idle transitions.
-        if payload.new_phase != SessionPhase::Idle {
+        if payload.new_phase != PhaseKind::Idle {
             return;
         }
 
@@ -616,8 +617,8 @@ mod tests {
     fn idle_event(session_id: SessionId) -> ActorEnvelope<NoDirectMsg> {
         ActorEnvelope::Event(Event::SessionPhaseChanged(SessionPhaseChanged {
             session_id,
-            old_phase: SessionPhase::Sending,
-            new_phase: SessionPhase::Idle,
+            old_phase: PhaseKind::Sending,
+            new_phase: PhaseKind::Idle,
         }))
     }
 
@@ -717,8 +718,8 @@ mod tests {
             .handle(
                 ActorEnvelope::Event(Event::SessionPhaseChanged(SessionPhaseChanged {
                     session_id: judge_id,
-                    old_phase: SessionPhase::Sending,
-                    new_phase: SessionPhase::Idle,
+                    old_phase: PhaseKind::Sending,
+                    new_phase: PhaseKind::Idle,
                 })),
                 &ctx,
             )
@@ -1013,8 +1014,8 @@ mod tests {
             .handle(
                 ActorEnvelope::Event(Event::SessionPhaseChanged(SessionPhaseChanged {
                     session_id: origin_id,
-                    old_phase: SessionPhase::Sending,
-                    new_phase: SessionPhase::Streaming,
+                    old_phase: PhaseKind::Sending,
+                    new_phase: PhaseKind::Streaming,
                 })),
                 &ctx,
             )
@@ -1649,8 +1650,8 @@ mod tests {
         let teardown_event = ActorEnvelope::Event(Event::SessionPhaseChanged(
             SessionPhaseChanged {
                 session_id: origin_id.clone(),
-                old_phase: SessionPhase::Sending,
-                new_phase: SessionPhase::TearingDown,
+                old_phase: PhaseKind::Sending,
+                new_phase: PhaseKind::TearingDown,
             },
         ));
         actor.handle(teardown_event, &ctx).await;
@@ -1683,8 +1684,8 @@ mod tests {
         let sending_event = ActorEnvelope::Event(Event::SessionPhaseChanged(
             SessionPhaseChanged {
                 session_id: origin_id.clone(),
-                old_phase: SessionPhase::Idle,
-                new_phase: SessionPhase::Sending,
+                old_phase: PhaseKind::Idle,
+                new_phase: PhaseKind::Sending,
             },
         ));
         actor.handle(sending_event, &ctx).await;

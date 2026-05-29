@@ -79,6 +79,17 @@ impl From<crate::feat::session::phase_machine::PhaseKind> for SessionPhase {
     }
 }
 
+impl From<SessionPhase> for crate::feat::session::phase_machine::PhaseKind {
+    fn from(phase: SessionPhase) -> Self {
+        match phase {
+            SessionPhase::Idle => Self::Idle,
+            SessionPhase::Sending => Self::Sending,
+            SessionPhase::Streaming => Self::Streaming,
+            SessionPhase::TearingDown => Self::TearingDown,
+        }
+    }
+}
+
 /// Error returned when a streaming operation fails.
 #[derive(Debug, wherror::Error)]
 pub enum StreamingError {

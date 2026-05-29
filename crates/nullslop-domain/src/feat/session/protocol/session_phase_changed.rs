@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::feat::session::chat_session::SessionPhase;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::protocol::{EventMsg, SessionId};
 
 /// Session phase transitioned to a new state.
@@ -18,7 +18,7 @@ pub struct SessionPhaseChanged {
     /// The session whose phase changed.
     pub session_id: SessionId,
     /// The phase before the transition.
-    pub old_phase: SessionPhase,
+    pub old_phase: PhaseKind,
     /// The new phase after the transition.
-    pub new_phase: SessionPhase,
+    pub new_phase: PhaseKind,
 }
