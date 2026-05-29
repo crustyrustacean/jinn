@@ -8,6 +8,8 @@ pub mod app_state;
 #[cfg(test)]
 mod app_state_tests;
 pub mod core;
+pub mod focus;
+pub mod frontend_state;
 pub mod frontmatter;
 pub mod services;
 pub mod session_map;
