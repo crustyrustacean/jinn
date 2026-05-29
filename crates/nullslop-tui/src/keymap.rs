@@ -269,7 +269,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         })
         .scope(Scope::PickerSkill, |b| {
             add_picker_base(b);
-            b.bind("<Tab>", Intent::SkillToggleSelected, KeyCategory::General);
+            b.bind("<Tab>", Intent::SkillToggleSelected, KeyCategory::General)
+             .bind("<pgup>", Intent::PreviewScrollUp, KeyCategory::Navigation)
+             .bind("<pgdn>", Intent::PreviewScrollDown, KeyCategory::Navigation);
         });
 
     // ArgInput scope — typing positional args for a lifecycle command.

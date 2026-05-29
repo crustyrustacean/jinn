@@ -12,6 +12,8 @@ pub mod item;
 pub mod picker_ops;
 #[cfg(test)]
 mod picker_ops_tests;
+pub mod preview_content;
+pub mod preview_widget;
 pub mod state;
 #[cfg(test)]
 mod state_tests;
@@ -31,6 +33,8 @@ pub use highlight::{
 };
 pub use item::{MatchRanges, PickerItem};
 pub use picker_ops::PickerOps;
+pub use preview_content::PreviewContent;
+pub use preview_widget::PreviewSelectionWidget;
 pub use state::SelectionState;
 pub use tree_item::TreeItem;
 pub use tree_state::{TreePickerState, VisibleEntry};
