@@ -9,9 +9,11 @@
 
 mod machine;
 mod phase;
+mod transition;
 
-pub use machine::{CancelOutcome, SessionPhaseMachine, TransitionOutcome};
+pub use machine::{CancelOutcome, SessionPhaseMachine, TransitionError, TransitionOutcome};
 pub use phase::{IdlePhase, Phase, PhaseKind, SendingPhase, StreamingPhase, TearingDownPhase};
+pub use transition::PhaseTransitions;
 
 #[cfg(test)]
 mod tests;

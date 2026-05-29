@@ -8,8 +8,10 @@
 
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
+
 /// Discriminant of [`Phase`] — used for event emission where phase data is not needed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PhaseKind {
     Idle,
     Sending,
@@ -18,24 +20,20 @@ pub enum PhaseKind {
 }
 
 /// No per-phase data needed for Idle.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct IdlePhase;
 
-/// Carries the `tool_loop_disabled` flag, set by judge verdict tools
-/// (`task_complete`, `task_incomplete`) to stop the tool loop after
-/// the current batch.
-#[derive(Debug, Clone, Default)]
-pub struct SendingPhase {
-    /// When `true`, `on_tool_batch_completed` transitions to `Idle`
-    /// instead of continuing the tool loop. Self-clearing on transition.
-    pub tool_loop_disabled: bool,
-}
+/// Per-phase data for the Sending phase.
+///
+/// Carries no state — exists for type-level consistency with the phase enum.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SendingPhase;
 
 /// Carries all streaming tracking state — ephemeral indices and maps
 /// that are only meaningful while the LLM is actively streaming tokens.
 ///
 /// All fields are cleared when transitioning away from `Streaming`.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct StreamingPhase {
     /// Index into history for the entry currently receiving stream tokens.
     pub streaming_entry_index: Option<usize>,
@@ -51,14 +49,14 @@ pub struct StreamingPhase {
 }
 
 /// No per-phase data needed for TearingDown.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TearingDownPhase;
 
 /// The current session phase with per-phase state.
 ///
 /// Each variant carries its own state struct. Transitioning away from a variant
 /// drops its data automatically — no manual cleanup of streaming indices or flags.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Phase {
     /// Session is idle — no LLM request in flight.
     Idle(IdlePhase),
@@ -78,6 +76,14 @@ impl Phase {
             Self::Sending(_) => PhaseKind::Sending,
             Self::Streaming(_) => PhaseKind::Streaming,
             Self::TearingDown(_) => PhaseKind::TearingDown,
+        }
+    }
+
+    /// Mutable access to inner `SendingPhase`, if this is `Sending`.
+    pub fn as_sending_mut(&mut self) -> Option<&mut SendingPhase> {
+        match self {
+            Self::Sending(s) => Some(s),
+            _ => None,
         }
     }
 }

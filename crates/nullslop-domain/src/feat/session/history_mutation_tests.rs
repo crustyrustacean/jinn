@@ -202,7 +202,9 @@ fn insert_entry_shifts_streaming_entry_index() {
     session.push_entry(ChatEntry::user("first"));
     session.push_entry(ChatEntry::user("second"));
     let first_id = session.history()[0].id.clone();
-    session.core.ephemeral.streaming_entry_index = Some(1);
+    session.begin_sending();
+    session.begin_streaming();
+    session.core.ephemeral.machine.set_streaming_entry_index(1);
 
     // When inserting before the streaming entry.
     session.apply_mutations(vec![HistoryMutation::InsertEntry {
@@ -211,7 +213,7 @@ fn insert_entry_shifts_streaming_entry_index() {
     }]);
 
     // Then streaming_entry_index is shifted to 2.
-    assert_eq!(session.core.ephemeral.streaming_entry_index, Some(2));
+    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(2));
 }
 
 #[test]
@@ -221,7 +223,9 @@ fn insert_entry_shifts_streaming_thinking_entry_index() {
     session.push_entry(ChatEntry::user("first"));
     session.push_entry(ChatEntry::user("second"));
     let first_id = session.history()[0].id.clone();
-    session.core.ephemeral.streaming_thinking_entry_index = Some(1);
+    session.begin_sending();
+    session.begin_streaming();
+    session.core.ephemeral.machine.set_streaming_thinking_entry_index(1);
 
     // When inserting before the thinking entry.
     session.apply_mutations(vec![HistoryMutation::InsertEntry {
@@ -231,7 +235,7 @@ fn insert_entry_shifts_streaming_thinking_entry_index() {
 
     // Then streaming_thinking_entry_index is shifted to 2.
     assert_eq!(
-        session.core.ephemeral.streaming_thinking_entry_index,
+        session.core.ephemeral.machine.streaming_thinking_entry_index(),
         Some(2)
     );
 }
@@ -243,10 +247,14 @@ fn insert_entry_shifts_streaming_tool_call_indices() {
     session.push_entry(ChatEntry::user("first"));
     session.push_entry(ChatEntry::user("second"));
     let first_id = session.history()[0].id.clone();
+    session.begin_sending();
+    session.begin_streaming();
     session
         .core
         .ephemeral
-        .streaming_tool_call_indices
+        .machine
+        .streaming_tool_call_indices_mut()
+        .expect("streaming")
         .insert(0, 1);
 
     // When inserting before the tool call entry.
@@ -256,7 +264,7 @@ fn insert_entry_shifts_streaming_tool_call_indices() {
     }]);
 
     // Then the tool call index is shifted to 2.
-    assert_eq!(session.core.ephemeral.streaming_tool_call_indices[&0], 2);
+    assert_eq!(session.core.ephemeral.machine.streaming_tool_call_indices()[&0], 2);
 }
 
 #[test]
@@ -266,10 +274,14 @@ fn insert_entry_shifts_streaming_tool_result_indices() {
     session.push_entry(ChatEntry::user("first"));
     session.push_entry(ChatEntry::user("second"));
     let first_id = session.history()[0].id.clone();
+    session.begin_sending();
+    session.begin_streaming();
     session
         .core
         .ephemeral
-        .streaming_tool_result_indices
+        .machine
+        .streaming_tool_result_indices_mut()
+        .expect("streaming")
         .insert("call_123".to_owned(), 1);
 
     // When inserting before the tool result entry.
@@ -280,7 +292,7 @@ fn insert_entry_shifts_streaming_tool_result_indices() {
 
     // Then the tool result index is shifted to 2.
     assert_eq!(
-        session.core.ephemeral.streaming_tool_result_indices["call_123"],
+        session.core.ephemeral.machine.streaming_tool_result_indices()["call_123"],
         2
     );
 }

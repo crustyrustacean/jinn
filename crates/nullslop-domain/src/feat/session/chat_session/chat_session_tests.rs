@@ -539,8 +539,8 @@ fn finish_streaming_returns_to_idle() {
     let mut session = ChatSessionState::new();
     session.begin_sending();
     session.begin_streaming();
-    session.core.ephemeral.streaming_entry_index =
-        Some(session.push_entry(ChatEntry::assistant("")));
+    let idx = session.push_entry(ChatEntry::assistant(""));
+    session.core.ephemeral.machine.set_streaming_entry_index(idx);
 
     // When finishing streaming.
     session.finish_streaming(true);
@@ -1885,8 +1885,10 @@ fn is_empty_false_after_pushing_entry() {
 
 #[test]
 fn begin_tool_result_creates_pending_entry() {
-    // Given a default session.
+    // Given a session in streaming state.
     let mut session = ChatSessionState::new();
+    session.begin_sending();
+    session.begin_streaming();
 
     // When beginning a tool result.
     session.begin_tool_result("call_1", "bash");
@@ -1913,9 +1915,11 @@ fn begin_tool_result_creates_pending_entry() {
 
 #[test]
 fn begin_tool_result_tracks_history_index() {
-    // Given a session with one entry.
+    // Given a session in streaming state with one entry.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
+    session.begin_sending();
+    session.begin_streaming();
 
     // When beginning a tool result.
     session.begin_tool_result("call_1", "bash");
@@ -1925,19 +1929,22 @@ fn begin_tool_result_tracks_history_index() {
         session
             .core
             .ephemeral
-            .streaming_tool_result_indices
+            .machine
+            .streaming_tool_result_indices()
             .contains_key("call_1")
     );
     assert_eq!(
-        session.core.ephemeral.streaming_tool_result_indices["call_1"],
+        session.core.ephemeral.machine.streaming_tool_result_indices()["call_1"],
         1
     );
 }
 
 #[test]
 fn append_tool_result_output_appends_to_pending_entry() {
-    // Given a session with a pending tool result.
+    // Given a session in streaming state with a pending tool result.
     let mut session = ChatSessionState::new();
+    session.begin_sending();
+    session.begin_streaming();
     session.begin_tool_result("call_1", "bash");
 
     // When appending output.
@@ -1977,8 +1984,10 @@ fn append_tool_result_output_ignores_unknown_call_id() {
 
 #[test]
 fn finalize_tool_result_completes_pending_entry() {
-    // Given a session with a pending tool result.
+    // Given a session in streaming state with a pending tool result.
     let mut session = ChatSessionState::new();
+    session.begin_sending();
+    session.begin_streaming();
     session.begin_tool_result("call_1", "bash");
     session.append_tool_result_output(
         "call_1",
@@ -2005,7 +2014,8 @@ fn finalize_tool_result_completes_pending_entry() {
         !session
             .core
             .ephemeral
-            .streaming_tool_result_indices
+            .machine
+            .streaming_tool_result_indices()
             .contains_key("call_1")
     );
 }
@@ -3250,7 +3260,9 @@ fn insert_entry_at_shifts_streaming_entry_index() {
     session.push_entry(ChatEntry::user("b")); // idx 1
     session.push_entry(ChatEntry::user("c")); // idx 2
     session.push_entry(ChatEntry::assistant("streaming")); // idx 3
-    session.core.ephemeral.streaming_entry_index = Some(3);
+    session.begin_sending();
+    session.begin_streaming();
+    session.core.ephemeral.machine.set_streaming_entry_index(3);
 
     // When inserting at index 1 (before the streaming entry).
     let result = session.insert_entry_at(1, ChatEntry::system("inserted"));
@@ -3259,7 +3271,7 @@ fn insert_entry_at_shifts_streaming_entry_index() {
     assert_eq!(result, 1);
     assert_eq!(session.history().len(), 5);
     // And streaming_entry_index was shifted from 3 to 4.
-    assert_eq!(session.core.ephemeral.streaming_entry_index, Some(4));
+    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(4));
 }
 
 #[rstest::rstest]
@@ -3268,13 +3280,15 @@ fn insert_entry_at_does_not_shift_streaming_index_before_insertion() {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // idx 0
     session.push_entry(ChatEntry::assistant("streaming")); // idx 1
-    session.core.ephemeral.streaming_entry_index = Some(1);
+    session.begin_sending();
+    session.begin_streaming();
+    session.core.ephemeral.machine.set_streaming_entry_index(1);
 
     // When inserting at index 2 (after the streaming entry).
     session.insert_entry_at(2, ChatEntry::system("inserted"));
 
     // Then streaming_entry_index stays at 1.
-    assert_eq!(session.core.ephemeral.streaming_entry_index, Some(1));
+    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(1));
 }
 
 #[rstest::rstest]
@@ -3284,14 +3298,16 @@ fn insert_entry_at_shifts_thinking_entry_index() {
     session.push_entry(ChatEntry::user("a")); // idx 0
     session.push_entry(ChatEntry::user("b")); // idx 1
     session.push_entry(ChatEntry::assistant("thinking")); // idx 2
-    session.core.ephemeral.streaming_thinking_entry_index = Some(2);
+    session.begin_sending();
+    session.begin_streaming();
+    session.core.ephemeral.machine.set_streaming_thinking_entry_index(2);
 
     // When inserting at index 0.
     session.insert_entry_at(0, ChatEntry::system("inserted"));
 
     // Then thinking index shifted from 2 to 3.
     assert_eq!(
-        session.core.ephemeral.streaming_thinking_entry_index,
+        session.core.ephemeral.machine.streaming_thinking_entry_index(),
         Some(3)
     );
 }
@@ -3301,14 +3317,16 @@ fn insert_entry_at_does_not_shift_thinking_index_before_insertion() {
     // Given a session with thinking entry at index 0.
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::assistant("thinking")); // idx 0
-    session.core.ephemeral.streaming_thinking_entry_index = Some(0);
+    session.begin_sending();
+    session.begin_streaming();
+    session.core.ephemeral.machine.set_streaming_thinking_entry_index(0);
 
     // When inserting at index 1 (after thinking).
     session.insert_entry_at(1, ChatEntry::system("inserted"));
 
     // Then thinking index stays at 0.
     assert_eq!(
-        session.core.ephemeral.streaming_thinking_entry_index,
+        session.core.ephemeral.machine.streaming_thinking_entry_index(),
         Some(0)
     );
 }
@@ -3327,10 +3345,14 @@ fn insert_entry_at_shifts_tool_result_indices() {
         "ok",
         ToolResultStatus::Success,
     )); // idx 4
+    session.begin_sending();
+    session.begin_streaming();
     session
         .core
         .ephemeral
-        .streaming_tool_result_indices
+        .machine
+        .streaming_tool_result_indices_mut()
+        .expect("streaming")
         .insert("tr-1".to_owned(), 4);
 
     // When inserting at index 2.
@@ -3341,7 +3363,8 @@ fn insert_entry_at_shifts_tool_result_indices() {
         session
             .core
             .ephemeral
-            .streaming_tool_result_indices
+            .machine
+            .streaming_tool_result_indices()
             .get("tr-1"),
         Some(&5)
     );
@@ -3358,10 +3381,14 @@ fn insert_entry_at_does_not_shift_tool_result_indices_before_insertion() {
         "ok",
         ToolResultStatus::Success,
     )); // idx 1
+    session.begin_sending();
+    session.begin_streaming();
     session
         .core
         .ephemeral
-        .streaming_tool_result_indices
+        .machine
+        .streaming_tool_result_indices_mut()
+        .expect("streaming")
         .insert("tr-1".to_owned(), 1);
 
     // When inserting at index 2 (after the tool result).
@@ -3372,7 +3399,8 @@ fn insert_entry_at_does_not_shift_tool_result_indices_before_insertion() {
         session
             .core
             .ephemeral
-            .streaming_tool_result_indices
+            .machine
+            .streaming_tool_result_indices()
             .get("tr-1"),
         Some(&1)
     );
@@ -3386,10 +3414,14 @@ fn insert_entry_at_shifts_tool_call_indices() {
     session.push_entry(ChatEntry::user("b")); // idx 1
     session.push_entry(ChatEntry::user("c")); // idx 2
     session.push_entry(ChatEntry::tool_call("tc-1", "bash", "{}")); // idx 3
+    session.begin_sending();
+    session.begin_streaming();
     session
         .core
         .ephemeral
-        .streaming_tool_call_indices
+        .machine
+        .streaming_tool_call_indices_mut()
+        .expect("streaming")
         .insert(0, 3);
 
     // When inserting at index 1.
@@ -3397,7 +3429,7 @@ fn insert_entry_at_shifts_tool_call_indices() {
 
     // Then tool call history index shifted from 3 to 4.
     assert_eq!(
-        session.core.ephemeral.streaming_tool_call_indices.get(&0),
+        session.core.ephemeral.machine.streaming_tool_call_indices().get(&0),
         Some(&4)
     );
 }
@@ -3408,10 +3440,14 @@ fn insert_entry_at_does_not_shift_tool_call_indices_before_insertion() {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // idx 0
     session.push_entry(ChatEntry::tool_call("tc-1", "bash", "{}")); // idx 1
+    session.begin_sending();
+    session.begin_streaming();
     session
         .core
         .ephemeral
-        .streaming_tool_call_indices
+        .machine
+        .streaming_tool_call_indices_mut()
+        .expect("streaming")
         .insert(0, 1);
 
     // When inserting at index 3 (after the tool call).
@@ -3419,7 +3455,7 @@ fn insert_entry_at_does_not_shift_tool_call_indices_before_insertion() {
 
     // Then tool call history index stays at 1.
     assert_eq!(
-        session.core.ephemeral.streaming_tool_call_indices.get(&0),
+        session.core.ephemeral.machine.streaming_tool_call_indices().get(&0),
         Some(&1)
     );
 }
@@ -3432,13 +3468,15 @@ fn insert_entry_at_shifts_at_exact_boundary() {
     session.push_entry(ChatEntry::user("a")); // idx 0
     session.push_entry(ChatEntry::user("b")); // idx 1
     session.push_entry(ChatEntry::assistant("streaming")); // idx 2
-    session.core.ephemeral.streaming_entry_index = Some(2);
+    session.begin_sending();
+    session.begin_streaming();
+    session.core.ephemeral.machine.set_streaming_entry_index(2);
 
     // When inserting at index 2 (exact boundary).
     session.insert_entry_at(2, ChatEntry::system("inserted"));
 
     // Then streaming_entry_index was shifted (>= check, not just >).
-    assert_eq!(session.core.ephemeral.streaming_entry_index, Some(3));
+    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(3));
 }
 
 #[rstest::rstest]
@@ -3467,25 +3505,29 @@ fn insert_entry_at_shifts_multiple_indices() {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("a")); // idx 0
     session.push_entry(ChatEntry::assistant("streaming")); // idx 1
-    session.core.ephemeral.streaming_entry_index = Some(1);
-    session.core.ephemeral.streaming_thinking_entry_index = Some(1);
+    session.begin_sending();
+    session.begin_streaming();
+    session.core.ephemeral.machine.set_streaming_entry_index(1);
+    session.core.ephemeral.machine.set_streaming_thinking_entry_index(1);
     session
         .core
         .ephemeral
-        .streaming_tool_call_indices
+        .machine
+        .streaming_tool_call_indices_mut()
+        .expect("streaming")
         .insert(0, 1);
 
     // When inserting at index 0.
     session.insert_entry_at(0, ChatEntry::system("inserted"));
 
     // Then ALL indices at or after insertion point are shifted.
-    assert_eq!(session.core.ephemeral.streaming_entry_index, Some(2));
+    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(2));
     assert_eq!(
-        session.core.ephemeral.streaming_thinking_entry_index,
+        session.core.ephemeral.machine.streaming_thinking_entry_index(),
         Some(2)
     );
     assert_eq!(
-        session.core.ephemeral.streaming_tool_call_indices.get(&0),
+        session.core.ephemeral.machine.streaming_tool_call_indices().get(&0),
         Some(&2)
     );
 }
