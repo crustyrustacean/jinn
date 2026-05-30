@@ -140,6 +140,8 @@ pub enum Event {
     JudgesLoaded(crate::feat::judge::JudgesLoaded),
     /// A judge rendered a verdict on its origin session.
     JudgeVerdict(crate::feat::judge::JudgeVerdict),
+    /// A task list was updated by a mutation tool.
+    TaskListUpdated(crate::feat::session::protocol::task_list_updated::TaskListUpdated),
     /// A dynamic event from a plugin, carrying an arbitrary JSON payload.
     ///
     /// Broadcast by the runtime [`name`](DynamicEvent::name) field, not the
@@ -223,6 +225,9 @@ impl Event {
             }
             Self::JudgeVerdict(..) => {
                 Some(crate::feat::judge::JudgeVerdict::TYPE_NAME)
+            }
+            Self::TaskListUpdated(..) => {
+                Some(crate::feat::session::protocol::task_list_updated::TaskListUpdated::TYPE_NAME)
             }
             Self::Dynamic(..) => Some(DynamicEvent::TYPE_NAME),
         }
