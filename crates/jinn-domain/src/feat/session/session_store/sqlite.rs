@@ -516,6 +516,10 @@ struct PersistableCore {
     lifecycle_name: Option<String>,
     lifecycle_args: Vec<String>,
     lifecycle_script_state: LifecycleScriptState,
+    /// Phased task list for agent session planning.
+    /// OWNER: tools-actor (mutated by task list tools).
+    #[serde(default)]
+    task_list: crate::feat::todo_list::TaskList,
 }
 
 impl From<&SessionCore> for PersistableCore {
@@ -533,6 +537,7 @@ impl From<&SessionCore> for PersistableCore {
             lifecycle_name: core.lifecycle_name.clone(),
             lifecycle_args: core.lifecycle_args.clone(),
             lifecycle_script_state: core.lifecycle_script_state,
+            task_list: core.task_list.clone(),
         }
     }
 }
@@ -560,7 +565,7 @@ impl From<PersistableCore> for SessionCore {
             judge: None,              // set from DB column after deserialization
             workflow_overrides: None, // runtime-only, never persisted
             has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
-            task_list: crate::feat::todo_list::TaskList::default(), // not persisted via this path
+            task_list: core.task_list,
         }
     }
 }
@@ -595,7 +600,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     judge,
                     workflow_overrides: _workflow_overrides, // runtime-only, not persisted
                     has_interacted: _has_interacted, // deserialized from DB, restored by handle_session_load_completed
-                    task_list: _task_list,           // persisted via session JSON column, not here
+                    task_list: _task_list,           // included in metadata blob via PersistableCore
                 },
             ui: _ui, // runtime-only UI state, not persisted
         } = session;
@@ -731,7 +736,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 judge: None,
                 workflow_overrides: None, // runtime-only, set later if needed
                 has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
-                task_list: crate::feat::todo_list::TaskList::default(), // restored from JSON column
+                task_list: crate::feat::todo_list::TaskList::default(), // no metadata blob available for legacy sessions
             }
         };
 
