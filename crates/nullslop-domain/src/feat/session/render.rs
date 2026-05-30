@@ -17,7 +17,7 @@ pub fn render_session_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState
         "CTRL+N to create a new session",
         Style::default().fg(Color::Rgb(255, 165, 0)),
     );
-    let widget = TreePickerWidget::new(&state.frontend.session_picker())
+    let widget = TreePickerWidget::new(state.frontend.session_picker())
         .title(Line::from(" Sessions "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .tree_prefix_color(state.frontend.theme.muted_text)

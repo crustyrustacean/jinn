@@ -108,7 +108,7 @@ impl SessionPersistenceActor {
             // Remove the frozen node snapshot — the live session replaces it.
             state.session.remove_frozen_node(&session_id);
         }
-        let _ = ctx.send_event(Event::SessionLoadCompleted(CompletedPayload { session }));
+        let _ = ctx.send_event(Event::SessionLoadCompleted(Box::new(CompletedPayload { session })));
     }
 
     /// Creates an empty session with the given ID and emits a `SessionLoadCompleted` command.
@@ -124,7 +124,7 @@ impl SessionPersistenceActor {
 
         let mut session = crate::feat::session::chat_session::ChatSessionState::new();
         session.set_session_id(session_id.clone());
-        let _ = ctx.send_event(Event::SessionLoadCompleted(CompletedPayload { session }));
+        let _ = ctx.send_event(Event::SessionLoadCompleted(Box::new(CompletedPayload { session })));
     }
 
     /// Loads all judge sessions belonging to the given origin from the store,

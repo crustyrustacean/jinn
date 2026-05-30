@@ -882,7 +882,7 @@ mod tests {
 
             // Receiver node that records its input.
             let received_inner = Arc::clone(&received);
-            let receiver = CodeNode::new(
+            let receiver_node = CodeNode::new(
                 "receiver".to_owned(),
                 vec![PortDef::text("in")],
                 vec![PortDef::text("out")],
@@ -931,7 +931,7 @@ mod tests {
 
             let mut builder = WorkflowGraphBuilder::new();
             builder.add_node("source".to_owned(), Box::new(source));
-            builder.add_node("receiver".to_owned(), Box::new(receiver));
+            builder.add_node("receiver".to_owned(), Box::new(receiver_node));
             builder.add_node("judge".to_owned(), Box::new(judge));
             builder
                 .connect("source", "text", "receiver", "in")
@@ -983,6 +983,7 @@ mod tests {
     /// The router routes to "path_a" for iterations 1-2 and "path_b" for iteration 3+.
     /// Deadlock detection should skip the non-matching branch inside each loop iteration.
     /// The loop exits when the counter reaches 3.
+    #[expect(clippy::too_many_lines, reason = "test function with inline graph construction")]
     #[tokio::test]
     async fn router_inside_loop_body_graph() {
         let iteration_count: Arc<Mutex<u32>> = Arc::new(Mutex::new(0u32));
@@ -1027,8 +1028,8 @@ mod tests {
                 PortDef::text("input"),
                 vec![PortDef::text("path_a"), PortDef::text("path_b")],
             )
-            .with_route("path_a".to_owned(), r"(?i)^low$")
-            .with_route("path_b".to_owned(), r"(?i)^high$");
+            .with_route("path_a".to_owned(), "(?i)^low$")
+            .with_route("path_b".to_owned(), "(?i)^high$");
 
             // Path A handler: records that it ran.
             let path_a = CodeNode::new(

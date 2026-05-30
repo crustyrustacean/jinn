@@ -67,6 +67,7 @@ mod tests {
     #![allow(
         clippy::expect_used,
         clippy::indexing_slicing,
+        clippy::panic,
         reason = "test code, panics are acceptable"
     )]
     use super::*;
@@ -141,7 +142,9 @@ mod tests {
             } => {
                 assert_eq!(initial_content, "second");
             }
-            SuspendAction::ChangeCwd { .. } => panic!("expected Edit action"),
+            SuspendAction::ChangeCwd { .. } => {
+                panic!("expected Edit action");
+            }
         }
     }
 }
