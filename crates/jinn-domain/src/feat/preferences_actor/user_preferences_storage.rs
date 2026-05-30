@@ -220,7 +220,7 @@ mod tests {
     use crate::feat::preferences_actor::RequestRetryConfig;
     use crate::feat::preferences_actor::user_preferences::{
         CompactionConfig, ContextSlidingWindowConfig, CwdSelectorConfig,
-        OpenrouterWebSearchConfig, WebFetchConfig,
+        MinimapConfig, OpenrouterWebSearchConfig, WebFetchConfig,
     };
 
     #[rstest::rstest]
@@ -256,6 +256,7 @@ mod tests {
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
+            minimap: MinimapConfig::default(),
         };
 
         // When saving and reloading.
@@ -307,6 +308,7 @@ mod tests {
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
+            minimap: MinimapConfig::default(),
         };
 
         // When saving and reloading.
@@ -341,6 +343,7 @@ mod tests {
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
+            minimap: MinimapConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -375,6 +378,7 @@ mod tests {
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
+            minimap: MinimapConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -396,6 +400,7 @@ mod tests {
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
+            minimap: MinimapConfig::default(),
         };
         service.save(&updated).expect("save updated");
 
@@ -426,6 +431,7 @@ mod tests {
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
+            minimap: MinimapConfig::default(),
         };
         service.save(&prefs).expect("save");
 

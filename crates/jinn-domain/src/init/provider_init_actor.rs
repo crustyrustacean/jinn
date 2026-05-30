@@ -160,7 +160,7 @@ mod tests {
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::feat::preferences_actor::user_preferences::{
         CompactionConfig, ContextSlidingWindowConfig, CwdSelectorConfig,
-        OpenrouterWebSearchConfig, RequestRetryConfig, WebFetchConfig,
+        MinimapConfig, OpenrouterWebSearchConfig, RequestRetryConfig, WebFetchConfig,
     };
     use crate::feat::provider_infra::ProviderEntry;
     use crate::init::EnvironmentLoaded;
@@ -214,6 +214,7 @@ mod tests {
                 web_fetch: WebFetchConfig::default(),
                 openrouter_web_search: OpenrouterWebSearchConfig::default(),
                 cwd_selector: CwdSelectorConfig::default(),
+            minimap: MinimapConfig::default(),
             })
             .expect("save prefs");
 
@@ -436,6 +437,7 @@ mod tests {
                 web_fetch: WebFetchConfig::default(),
                 openrouter_web_search: OpenrouterWebSearchConfig::default(),
                 cwd_selector: CwdSelectorConfig::default(),
+            minimap: MinimapConfig::default(),
             })
             .expect("save prefs");
 

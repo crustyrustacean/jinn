@@ -25,22 +25,34 @@ use crate::feat::ui::chat_log::visual_item::{
 /// Full block character for minimap entries.
 const FULL_BLOCK: &str = "\u{2588}";
 
-/// Token count thresholds for minimap coloring.
-const TOKEN_THRESHOLD_SMALL: u32 = 100;
-const TOKEN_THRESHOLD_MEDIUM: u32 = 500;
-const TOKEN_THRESHOLD_LARGE: u32 = 1000;
+/// Number of color bands in the minimap gradient.
+const MINIMAP_BANDS: usize = 8;
 
-/// Returns the color for a token-count block based on size thresholds.
-fn token_threshold_color(count: u32) -> Color {
-    if count < TOKEN_THRESHOLD_SMALL {
-        Color::Green
-    } else if count < TOKEN_THRESHOLD_MEDIUM {
-        Color::Yellow
-    } else if count < TOKEN_THRESHOLD_LARGE {
-        Color::Red
-    } else {
-        Color::Rgb(255, 0, 255) // bright magenta
+/// Colorblind-friendly palette — 8 colors ramping from perceptually dark to bright.
+/// Order: smallest token count → largest token count.
+/// Theme-independent: designed for high contrast on dark backgrounds.
+const MINIMAP_PALETTE: [Color; MINIMAP_BANDS] = [
+    Color::Rgb(39, 12, 77),    // band 0: deep indigo
+    Color::Rgb(39, 12, 77),    // band 1: deep indigo
+    Color::Rgb(100, 20, 108),  // band 2: violet
+    Color::Rgb(156, 43, 99),   // band 3: magenta-rose
+    Color::Rgb(208, 74, 67),   // band 4: warm red
+    Color::Rgb(243, 125, 22),  // band 5: orange
+    Color::Rgb(251, 197, 51),  // band 6: gold
+    Color::Rgb(252, 255, 164), // band 7: pale yellow
+];
+
+/// Returns the color for a token-count block using linear banding.
+///
+/// Divides `[0, max_tokens]` into `MINIMAP_BANDS` equal-width bands.
+/// Counts exceeding `max_tokens` get the last band color.
+fn token_threshold_color(count: u32, max_tokens: u32) -> Color {
+    if max_tokens == 0 {
+        return MINIMAP_PALETTE[0];
     }
+    let band = (u64::from(count) * MINIMAP_BANDS as u64 / u64::from(max_tokens))
+        .min((MINIMAP_BANDS - 1) as u64) as usize;
+    MINIMAP_PALETTE[band]
 }
 
 /// Extension trait for determining whether a visual item should produce
@@ -165,7 +177,7 @@ pub fn render_vertical_minimap(
             let span = match entry.token_count {
                 Some(count) => Span::styled(
                     FULL_BLOCK.to_owned(),
-                    Style::default().fg(token_threshold_color(count)),
+                    Style::default().fg(token_threshold_color(count, state.frontend.preferences.minimap.max_tokens)),
                 ),
                 None => Span::raw(" "),
             };
@@ -455,26 +467,74 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn token_threshold_small_is_green() {
-        assert_eq!(token_threshold_color(0), Color::Green);
-        assert_eq!(token_threshold_color(99), Color::Green);
+    fn token_threshold_band_0_is_blue() {
+        // Band 0: [0, 250) — deep indigo
+        assert_eq!(token_threshold_color(0, 2000), Color::Rgb(39, 12, 77));
+        assert_eq!(token_threshold_color(249, 2000), Color::Rgb(39, 12, 77));
     }
 
     #[rstest::rstest]
-    fn token_threshold_medium_is_yellow() {
-        assert_eq!(token_threshold_color(100), Color::Yellow);
-        assert_eq!(token_threshold_color(499), Color::Yellow);
+    fn token_threshold_band_1_is_cyan() {
+        // Band 1: [250, 500) — deep indigo
+        assert_eq!(token_threshold_color(250, 2000), Color::Rgb(39, 12, 77));
+        assert_eq!(token_threshold_color(499, 2000), Color::Rgb(39, 12, 77));
     }
 
     #[rstest::rstest]
-    fn token_threshold_large_is_red() {
-        assert_eq!(token_threshold_color(500), Color::Red);
-        assert_eq!(token_threshold_color(999), Color::Red);
+    fn token_threshold_band_2_is_green() {
+        // Band 2: [500, 750) — violet
+        assert_eq!(token_threshold_color(500, 2000), Color::Rgb(100, 20, 108));
+        assert_eq!(token_threshold_color(749, 2000), Color::Rgb(100, 20, 108));
     }
 
     #[rstest::rstest]
-    fn token_threshold_extra_large_is_magenta() {
-        assert_eq!(token_threshold_color(1000), Color::Rgb(255, 0, 255));
+    fn token_threshold_band_3_is_yellow_green() {
+        // Band 3: [750, 1000) — magenta-rose
+        assert_eq!(token_threshold_color(750, 2000), Color::Rgb(156, 43, 99));
+        assert_eq!(token_threshold_color(999, 2000), Color::Rgb(156, 43, 99));
+    }
+
+    #[rstest::rstest]
+    fn token_threshold_band_4_is_gold() {
+        // Band 4: [1000, 1250) — warm red
+        assert_eq!(token_threshold_color(1000, 2000), Color::Rgb(208, 74, 67));
+        assert_eq!(token_threshold_color(1249, 2000), Color::Rgb(208, 74, 67));
+    }
+
+    #[rstest::rstest]
+    fn token_threshold_band_5_is_red_orange() {
+        // Band 5: [1250, 1500) — orange
+        assert_eq!(token_threshold_color(1250, 2000), Color::Rgb(243, 125, 22));
+        assert_eq!(token_threshold_color(1499, 2000), Color::Rgb(243, 125, 22));
+    }
+
+    #[rstest::rstest]
+    fn token_threshold_band_6_is_dark_red() {
+        // Band 6: [1500, 1750) — gold
+        assert_eq!(token_threshold_color(1500, 2000), Color::Rgb(251, 197, 51));
+        assert_eq!(token_threshold_color(1749, 2000), Color::Rgb(251, 197, 51));
+    }
+
+    #[rstest::rstest]
+    fn token_threshold_band_7_is_crimson() {
+        // Band 7: [1750, ∞) — pale yellow
+        assert_eq!(token_threshold_color(1750, 2000), Color::Rgb(252, 255, 164));
+        assert_eq!(token_threshold_color(2000, 2000), Color::Rgb(252, 255, 164));
+        assert_eq!(token_threshold_color(9999, 2000), Color::Rgb(252, 255, 164));
+    }
+
+    #[rstest::rstest]
+    fn token_threshold_custom_max_tokens_adjusts_bands() {
+        // With max_tokens=1000, each band is 125 tokens wide.
+        assert_eq!(token_threshold_color(0, 1000), Color::Rgb(39, 12, 77));
+        assert_eq!(token_threshold_color(124, 1000), Color::Rgb(39, 12, 77));
+        assert_eq!(token_threshold_color(125, 1000), Color::Rgb(39, 12, 77));
+        assert_eq!(token_threshold_color(999, 1000), Color::Rgb(252, 255, 164));
+    }
+
+    #[rstest::rstest]
+    fn token_threshold_zero_max_returns_first_band() {
+        assert_eq!(token_threshold_color(100, 0), MINIMAP_PALETTE[0]);
     }
 
     #[rstest::rstest]
