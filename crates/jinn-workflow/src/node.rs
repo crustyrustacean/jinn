@@ -99,24 +99,7 @@ pub struct NodeError;
 ///
 /// # Implementing a node
 ///
-/// ```rust,ignore
-/// struct MyNode;
-///
-/// #[async_trait::async_trait]
-/// impl WorkflowNode for MyNode {
-///     fn name(&self) -> &str { "my-node" }
-///     fn input_ports(&self) -> Vec<PortDef> { vec![PortDef::text("input")] }
-///     fn output_ports(&self) -> Vec<PortDef> { vec![PortDef::text("output")] }
-///
-///     async fn execute(
-///         &self,
-///         mut inputs: PortValues,
-///         _ctx: &dyn NodeContext,
-///     ) -> Result<PortValues, NodeError> {
-///         let input = inputs.take_string("input").change_context(NodeError)?;
-///         let output = input.to_uppercase();
-///         Ok(PortValues::from([("output".to_owned(), PortValue::String(output))]))
-///     }
+/// See the tests in this crate for full implementation examples.
 /// }
 /// ```
 #[async_trait::async_trait]
