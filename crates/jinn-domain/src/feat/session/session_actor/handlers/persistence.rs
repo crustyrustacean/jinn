@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::super::SessionPersistenceActor;
 use crate::SessionLoadRequested;
+use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session::tree_aggregate::snapshot_frozen_node;
 use crate::protocol::{Event, SessionId};
 
@@ -488,6 +489,12 @@ impl SessionPersistenceActor {
 
                 // Insert into state and emit SessionLoadCompleted for subscribers.
                 self.load_and_insert(session, ctx);
+
+                // Run the full restore flow (CWD validation, context size, persist).
+                let session_id = evt.session_id.clone();
+                let session = self.state.read().session.get(&session_id).expect("just inserted").clone();
+                let payload = SessionLoadCompleted { session };
+                self.handle_session_load_completed(&payload, ctx).await;
 
                 // Load judge sessions that belong to this origin.
                 // They may have been cascade-archived alongside the origin.
