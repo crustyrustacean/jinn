@@ -28,17 +28,18 @@ const FULL_BLOCK: &str = "\u{2588}";
 /// Number of color bands in the minimap gradient.
 const MINIMAP_BANDS: usize = 8;
 
-/// Turbo colormap palette — 8 colors sampled from blue to crimson.
+/// Colorblind-friendly palette — 8 colors ramping from perceptually dark to bright.
+/// Order: smallest token count → largest token count.
 /// Theme-independent: designed for high contrast on dark backgrounds.
 const MINIMAP_PALETTE: [Color; MINIMAP_BANDS] = [
-    Color::Rgb(66, 75, 192),  // band 0: blue
-    Color::Rgb(59, 163, 196), // band 1: cyan
-    Color::Rgb(57, 191, 131), // band 2: green/teal
-    Color::Rgb(162, 218, 54), // band 3: yellow-green
-    Color::Rgb(249, 206, 40), // band 4: gold/yellow
-    Color::Rgb(247, 98, 25),  // band 5: red-orange
-    Color::Rgb(176, 18, 14),  // band 6: dark red
-    Color::Rgb(114, 4, 6),    // band 7: crimson
+    Color::Rgb(0, 0, 4),       // band 0: near-black blue
+    Color::Rgb(39, 12, 77),    // band 1: deep indigo
+    Color::Rgb(100, 20, 108),  // band 2: violet
+    Color::Rgb(156, 43, 99),   // band 3: magenta-rose
+    Color::Rgb(208, 74, 67),   // band 4: warm red
+    Color::Rgb(243, 125, 22),  // band 5: orange
+    Color::Rgb(251, 197, 51),  // band 6: gold
+    Color::Rgb(252, 255, 164), // band 7: pale yellow
 ];
 
 /// Returns the color for a token-count block using linear banding.
@@ -467,68 +468,68 @@ mod tests {
 
     #[rstest::rstest]
     fn token_threshold_band_0_is_blue() {
-        // Band 0: [0, 250) — blue
-        assert_eq!(token_threshold_color(0, 2000), Color::Rgb(66, 75, 192));
-        assert_eq!(token_threshold_color(249, 2000), Color::Rgb(66, 75, 192));
+        // Band 0: [0, 250) — near-black blue
+        assert_eq!(token_threshold_color(0, 2000), Color::Rgb(0, 0, 4));
+        assert_eq!(token_threshold_color(249, 2000), Color::Rgb(0, 0, 4));
     }
 
     #[rstest::rstest]
     fn token_threshold_band_1_is_cyan() {
-        // Band 1: [250, 500) — cyan
-        assert_eq!(token_threshold_color(250, 2000), Color::Rgb(59, 163, 196));
-        assert_eq!(token_threshold_color(499, 2000), Color::Rgb(59, 163, 196));
+        // Band 1: [250, 500) — deep indigo
+        assert_eq!(token_threshold_color(250, 2000), Color::Rgb(39, 12, 77));
+        assert_eq!(token_threshold_color(499, 2000), Color::Rgb(39, 12, 77));
     }
 
     #[rstest::rstest]
     fn token_threshold_band_2_is_green() {
-        // Band 2: [500, 750) — green/teal
-        assert_eq!(token_threshold_color(500, 2000), Color::Rgb(57, 191, 131));
-        assert_eq!(token_threshold_color(749, 2000), Color::Rgb(57, 191, 131));
+        // Band 2: [500, 750) — violet
+        assert_eq!(token_threshold_color(500, 2000), Color::Rgb(100, 20, 108));
+        assert_eq!(token_threshold_color(749, 2000), Color::Rgb(100, 20, 108));
     }
 
     #[rstest::rstest]
     fn token_threshold_band_3_is_yellow_green() {
-        // Band 3: [750, 1000) — yellow-green
-        assert_eq!(token_threshold_color(750, 2000), Color::Rgb(162, 218, 54));
-        assert_eq!(token_threshold_color(999, 2000), Color::Rgb(162, 218, 54));
+        // Band 3: [750, 1000) — magenta-rose
+        assert_eq!(token_threshold_color(750, 2000), Color::Rgb(156, 43, 99));
+        assert_eq!(token_threshold_color(999, 2000), Color::Rgb(156, 43, 99));
     }
 
     #[rstest::rstest]
     fn token_threshold_band_4_is_gold() {
-        // Band 4: [1000, 1250) — gold/yellow
-        assert_eq!(token_threshold_color(1000, 2000), Color::Rgb(249, 206, 40));
-        assert_eq!(token_threshold_color(1249, 2000), Color::Rgb(249, 206, 40));
+        // Band 4: [1000, 1250) — warm red
+        assert_eq!(token_threshold_color(1000, 2000), Color::Rgb(208, 74, 67));
+        assert_eq!(token_threshold_color(1249, 2000), Color::Rgb(208, 74, 67));
     }
 
     #[rstest::rstest]
     fn token_threshold_band_5_is_red_orange() {
-        // Band 5: [1250, 1500) — red-orange
-        assert_eq!(token_threshold_color(1250, 2000), Color::Rgb(247, 98, 25));
-        assert_eq!(token_threshold_color(1499, 2000), Color::Rgb(247, 98, 25));
+        // Band 5: [1250, 1500) — orange
+        assert_eq!(token_threshold_color(1250, 2000), Color::Rgb(243, 125, 22));
+        assert_eq!(token_threshold_color(1499, 2000), Color::Rgb(243, 125, 22));
     }
 
     #[rstest::rstest]
     fn token_threshold_band_6_is_dark_red() {
-        // Band 6: [1500, 1750) — dark red
-        assert_eq!(token_threshold_color(1500, 2000), Color::Rgb(176, 18, 14));
-        assert_eq!(token_threshold_color(1749, 2000), Color::Rgb(176, 18, 14));
+        // Band 6: [1500, 1750) — gold
+        assert_eq!(token_threshold_color(1500, 2000), Color::Rgb(251, 197, 51));
+        assert_eq!(token_threshold_color(1749, 2000), Color::Rgb(251, 197, 51));
     }
 
     #[rstest::rstest]
     fn token_threshold_band_7_is_crimson() {
-        // Band 7: [1750, ∞) — crimson
-        assert_eq!(token_threshold_color(1750, 2000), Color::Rgb(114, 4, 6));
-        assert_eq!(token_threshold_color(2000, 2000), Color::Rgb(114, 4, 6));
-        assert_eq!(token_threshold_color(9999, 2000), Color::Rgb(114, 4, 6));
+        // Band 7: [1750, ∞) — pale yellow
+        assert_eq!(token_threshold_color(1750, 2000), Color::Rgb(252, 255, 164));
+        assert_eq!(token_threshold_color(2000, 2000), Color::Rgb(252, 255, 164));
+        assert_eq!(token_threshold_color(9999, 2000), Color::Rgb(252, 255, 164));
     }
 
     #[rstest::rstest]
     fn token_threshold_custom_max_tokens_adjusts_bands() {
         // With max_tokens=1000, each band is 125 tokens wide.
-        assert_eq!(token_threshold_color(0, 1000), Color::Rgb(66, 75, 192));
-        assert_eq!(token_threshold_color(124, 1000), Color::Rgb(66, 75, 192));
-        assert_eq!(token_threshold_color(125, 1000), Color::Rgb(59, 163, 196));
-        assert_eq!(token_threshold_color(999, 1000), Color::Rgb(114, 4, 6));
+        assert_eq!(token_threshold_color(0, 1000), Color::Rgb(0, 0, 4));
+        assert_eq!(token_threshold_color(124, 1000), Color::Rgb(0, 0, 4));
+        assert_eq!(token_threshold_color(125, 1000), Color::Rgb(39, 12, 77));
+        assert_eq!(token_threshold_color(999, 1000), Color::Rgb(252, 255, 164));
     }
 
     #[rstest::rstest]
