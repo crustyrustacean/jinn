@@ -115,13 +115,7 @@ pub fn compute_popup_rect(area: Rect) -> Rect {
 ///
 /// # Examples
 ///
-/// ```ignore
-/// let state = SelectionState::with_items(my_items);
-/// let widget = SelectionWidget::new(&state)
-///     .title(" Model ")
-///     .footer(Line::from("CTRL+R to refresh"));
-/// widget.render(frame, area);
-/// ```
+/// See the tests in this crate for usage patterns.
 pub struct SelectionWidget<'a, T>
 where
     T: PickerItem,
