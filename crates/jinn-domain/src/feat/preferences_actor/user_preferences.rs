@@ -78,6 +78,34 @@ impl Default for CwdSelectorConfig {
     }
 }
 
+/// Default maximum token count for minimap color banding.
+const DEFAULT_MINIMAP_MAX_TOKENS: u32 = 2000;
+
+/// Minimap configuration.
+///
+/// Serialized as `[minimap]` in `jinn.toml`.
+/// Controls the token-count range used for the vertical minimap color gradient.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MinimapConfig {
+    /// Maximum token count for the top band of the minimap gradient.
+    /// Entries with more tokens than this get the last band color.
+    /// Default: 2000.
+    #[serde(default = "default_minimap_max_tokens")]
+    pub max_tokens: u32,
+}
+
+fn default_minimap_max_tokens() -> u32 {
+    DEFAULT_MINIMAP_MAX_TOKENS
+}
+
+impl Default for MinimapConfig {
+    fn default() -> Self {
+        Self {
+            max_tokens: DEFAULT_MINIMAP_MAX_TOKENS,
+        }
+    }
+}
+
 /// Default token threshold for auto-compaction.
 const DEFAULT_COMPACTION_THRESHOLD: f64 = 0.7;
 
@@ -362,6 +390,9 @@ pub struct UserPreferences {
     /// CWD selector configuration.
     #[serde(default)]
     pub cwd_selector: CwdSelectorConfig,
+    /// Minimap configuration.
+    #[serde(default)]
+    pub minimap: MinimapConfig,
 }
 
 /// Returns the path to the user preferences file.
@@ -500,6 +531,7 @@ mod tests {
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
+            minimap: MinimapConfig::default(),
         };
 
         // When saving and reloading.
@@ -572,6 +604,7 @@ last_strategy = "sliding_window""#,
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
+            minimap: MinimapConfig::default(),
         };
 
         // When saving.
@@ -603,6 +636,7 @@ last_strategy = "sliding_window""#,
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
+            minimap: MinimapConfig::default(),
         };
 
         // When saving and reloading.
@@ -648,6 +682,7 @@ last_strategy = "sliding_window""#,
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
+            minimap: MinimapConfig::default(),
         };
 
         // When saving and reloading.
@@ -693,6 +728,7 @@ last_strategy = "sliding_window""#,
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
+            minimap: MinimapConfig::default(),
         };
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
@@ -807,6 +843,7 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
+            minimap: MinimapConfig::default(),
         };
 
         save_preferences_to(&prefs, &path).expect("save");
@@ -1007,5 +1044,82 @@ excluded_domains = ["spam.com"]
         );
         assert_eq!(prefs.openrouter_web_search.allowed_domains, defaults.allowed_domains);
         assert_eq!(prefs.openrouter_web_search.excluded_domains, defaults.excluded_domains);
+    }
+
+    // --- MinimapConfig tests ---
+
+    #[rstest::rstest]
+    fn default_minimap_config_has_max_tokens_2000() {
+        // Given default minimap config.
+        let config = MinimapConfig::default();
+
+        // Then max_tokens is 2000.
+        assert_eq!(config.max_tokens, 2000);
+    }
+
+    #[rstest::rstest]
+    fn default_preferences_has_default_minimap_config() {
+        // Given default preferences.
+        let prefs = UserPreferences::default();
+
+        // Then minimap config uses defaults.
+        assert_eq!(prefs.minimap.max_tokens, 2000);
+    }
+
+    #[rstest::rstest]
+    fn load_parses_minimap_config() {
+        // Given a TOML file with a minimap section.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[minimap]
+max_tokens = 5000
+"#,
+        )
+        .expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then minimap config is parsed.
+        assert_eq!(prefs.minimap.max_tokens, 5000);
+    }
+
+    #[rstest::rstest]
+    fn save_then_load_round_trips_minimap_config() {
+        // Given preferences with a custom minimap config.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let prefs = UserPreferences {
+            minimap: MinimapConfig { max_tokens: 5000 },
+            ..UserPreferences::default()
+        };
+
+        // When saving and reloading.
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+
+        // Then the round-tripped value matches.
+        assert_eq!(reloaded.minimap.max_tokens, 5000);
+    }
+
+    #[rstest::rstest]
+    fn load_without_minimap_section_uses_defaults() {
+        // Given a TOML file without a minimap section.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"last_model = "ollama/llama3"
+"#,
+        )
+        .expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then minimap uses defaults.
+        assert_eq!(prefs.minimap.max_tokens, 2000);
     }
 }
