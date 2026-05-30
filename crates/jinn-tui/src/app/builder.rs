@@ -15,11 +15,7 @@ use crate::{AppStatus, MsgHandler};
 ///
 /// All fields default to fake/noop implementations. Override only what the test needs.
 ///
-/// ```ignore
-/// let app = TuiApp::test_builder()
-///     .services(custom_services)
-///     .build();
-/// ```
+/// See the tests in this crate for usage patterns.
 #[derive(Default)]
 pub struct TuiAppBuilder {
     /// Optional services override (defaults to fake services).

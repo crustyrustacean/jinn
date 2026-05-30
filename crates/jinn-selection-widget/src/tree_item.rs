@@ -25,22 +25,7 @@ use ratatui::text::Line;
 ///
 /// # Examples
 ///
-/// ```ignore
-/// struct FileEntry {
-///     path: String,
-///     parent_path: Option<String>,
-///     name: String,
-/// }
-///
-/// impl TreeItem for FileEntry {
-///     fn id(&self) -> &str { &self.path }
-///     fn parent_id(&self) -> Option<&str> { self.parent_path.as_deref() }
-///     fn display_label(&self) -> &str { &self.name }
-///     fn render_row(&self, is_selected: bool) -> Line<'static> {
-///         Line::from(self.name.clone())
-///     }
-/// }
-/// ```
+/// See the tests in this crate for full implementation examples.
 pub trait TreeItem: std::fmt::Debug + 'static {
     /// Returns the unique identifier for this item.
     ///
