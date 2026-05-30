@@ -1,0 +1,71 @@
+[package]
+name = "jinn-domain"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Internal deps
+jinn-provider = { workspace = true }
+jinn-web-fetch = { workspace = true }
+jinn-selection-widget = { workspace = true }
+jinn-protocol-derive = { workspace = true }
+jinn-workflow = { workspace = true }
+jinn-theme = { workspace = true }
+ratatui-markdown = { workspace = true }
+
+# External deps
+serde = { workspace = true }
+serde_json = { workspace = true }
+jiff = { workspace = true }
+derive_more = { workspace = true }
+ratatui-which-key = { workspace = true }
+uuid = { workspace = true }
+ratatui = { workspace = true }
+async-trait = { workspace = true }
+wherror = { workspace = true }
+error-stack = { workspace = true }
+dirs = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+unicode-segmentation = { workspace = true }
+unicode-width = { workspace = true }
+strip-ansi-escapes = { workspace = true }
+tiktoken = { workspace = true }
+textwrap = { workspace = true }
+throbber-widgets-tui = { workspace = true }
+humantime = { workspace = true }
+fuzzy-matcher = { workspace = true }
+parking_lot = { workspace = true }
+libc = { workspace = true }
+kanal = { workspace = true }
+futures = { workspace = true }
+rand = { workspace = true }
+toml = { workspace = true }
+anstyle-lossy = { workspace = true }
+anstyle = { workspace = true }
+reasoning-parser = "1.2"
+regex = { workspace = true }
+diesel = { workspace = true }
+tempfile = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+jinn-testutil = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+result_large_err = "allow"
+field_scoped_visibility_modifiers = "allow"
+module_inception = "allow"
+must_use_candidate = "allow"
+missing_docs_in_private_items = "allow"
+doc_markdown = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+return_self_not_must_use = "allow"
+single_match = "allow"
+struct_excessive_bools = "allow"
+needless_raw_string_hashes = "allow"

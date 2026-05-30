@@ -1,6 +1,6 @@
-# Default — the built-in nullslop theme
+# Default — the built-in jinn theme
 # This file is the single source of truth for the default theme colors.
-# Installed to ~/.config/nullslop/themes/default.toml
+# Installed to ~/.config/jinn/themes/default.toml
 
 # Borders & focus
 focus_accent = "yellow"

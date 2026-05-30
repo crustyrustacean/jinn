@@ -7,8 +7,8 @@ fossil-branch NAME:
     fossil commit -m "Open {{NAME}}" --branch {{NAME}} --allow-empty
 
 test:
-    cargo test --workspace --exclude nullslop-e2e
-    cargo test --test e2e -p nullslop-e2e
+    cargo test --workspace --exclude jinn-e2e
+    cargo test --test e2e -p jinn-e2e
 
 check:
     cargo check --workspace
@@ -35,26 +35,26 @@ ci: lint test
 
 # Run all cucumber tests
 cucumber:
-    cargo test --test e2e -p nullslop-e2e
+    cargo test --test e2e -p jinn-e2e
 
 # Create a new diesel migration
 diesel-create NAME:
-    diesel migration generate {{NAME}} --migration-dir crates/nullslop-domain/migrations
+    diesel migration generate {{NAME}} --migration-dir crates/jinn-domain/migrations
 
 # Run pending diesel migrations and regenerate schema.rs
 diesel-run:
-    DATABASE_URL="crates/nullslop-domain/migrations/db.sqlite" diesel migration run --migration-dir crates/nullslop-domain/migrations
-    rm -f crates/nullslop-domain/migrations/db.sqlite
+    DATABASE_URL="crates/jinn-domain/migrations/db.sqlite" diesel migration run --migration-dir crates/jinn-domain/migrations
+    rm -f crates/jinn-domain/migrations/db.sqlite
 
 # Rollback the last diesel migration and regenerate schema.rs
 diesel-rollback:
-    DATABASE_URL="crates/nullslop-domain/migrations/db.sqlite" diesel migration rollback --migration-dir crates/nullslop-domain/migrations
-    rm -f crates/nullslop-domain/migrations/db.sqlite
+    DATABASE_URL="crates/jinn-domain/migrations/db.sqlite" diesel migration rollback --migration-dir crates/jinn-domain/migrations
+    rm -f crates/jinn-domain/migrations/db.sqlite
 
 # Redo (rollback + re-run) the last diesel migration
 diesel-redo:
-    DATABASE_URL="crates/nullslop-domain/migrations/db.sqlite" diesel migration redo --migration-dir crates/nullslop-domain/migrations
-    rm -f crates/nullslop-domain/migrations/db.sqlite
+    DATABASE_URL="crates/jinn-domain/migrations/db.sqlite" diesel migration redo --migration-dir crates/jinn-domain/migrations
+    rm -f crates/jinn-domain/migrations/db.sqlite
 
 # Build and open documentation
 docs:
@@ -177,18 +177,18 @@ lint-testlength:
 
 # Copy plugins, themes, personas, and prompts to user config directory
 install-defaults:
-    mkdir -p ~/.config/nullslop/themes
-    cp -r res/themes/*.toml ~/.config/nullslop/themes/
-    mkdir -p ~/.config/nullslop/personas
-    cp -r res/personas/*.md ~/.config/nullslop/personas/
-    mkdir -p ~/.config/nullslop/prompts
-    cp -r res/prompts/*.md ~/.config/nullslop/prompts/
-    mkdir -p ~/.config/nullslop/plugins
-    cp -r res/plugins/* ~/.config/nullslop/plugins/
-    @echo "Themes installed to ~/.config/nullslop/themes/"
-    @echo "Personas installed to ~/.config/nullslop/personas/"
-    @echo "Prompts installed to ~/.config/nullslop/prompts/"
-    @echo "Plugins installed to ~/.config/nullslop/plugins/"
+    mkdir -p ~/.config/jinn/themes
+    cp -r res/themes/*.toml ~/.config/jinn/themes/
+    mkdir -p ~/.config/jinn/personas
+    cp -r res/personas/*.md ~/.config/jinn/personas/
+    mkdir -p ~/.config/jinn/prompts
+    cp -r res/prompts/*.md ~/.config/jinn/prompts/
+    mkdir -p ~/.config/jinn/plugins
+    cp -r res/plugins/* ~/.config/jinn/plugins/
+    @echo "Themes installed to ~/.config/jinn/themes/"
+    @echo "Personas installed to ~/.config/jinn/personas/"
+    @echo "Prompts installed to ~/.config/jinn/prompts/"
+    @echo "Plugins installed to ~/.config/jinn/plugins/"
 
 # Report stale Fossil locks (hung processes + stale journal files)
 fossil-unlock:
@@ -313,9 +313,9 @@ sync-github:
    #!/bin/bash
    set -euo pipefail
 
-   FOSSIL_REPO="/mnt/zed/repos/nullslop/nullslop.fossil"
-   MIRROR_DIR="/mnt/zed/repos/nullslop/.github-mirror"
-   GITHUB_REMOTE="git@github.com:jayson-lennon/nullslop.git"
+   FOSSIL_REPO="/mnt/zed/repos/jinn/jinn.fossil"
+   MIRROR_DIR="/mnt/zed/repos/jinn/.github-mirror"
+   GITHUB_REMOTE="git@github.com:jayson-lennon/jinn.git"
 
    fossil git export "$MIRROR_DIR" \
        --repository "$FOSSIL_REPO" \

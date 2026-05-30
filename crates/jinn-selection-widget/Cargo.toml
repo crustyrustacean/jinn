@@ -1,0 +1,16 @@
+[package]
+name = "jinn-selection-widget"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ratatui = { workspace = true }
+unicode-segmentation = { workspace = true }
+fuzzy-matcher = { workspace = true }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+rstest = { workspace = true }
+jinn-testutil = { workspace = true }

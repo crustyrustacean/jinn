@@ -1,0 +1,1755 @@
+//! Command template parser — extracts positional and named parameters from shell commands.
+//!
+//! A [`CommandTemplate`] parses a command string like `script.sh $1 $2 $1` or
+//! `./foo.sh <branch> <target>` and extracts the unique parameters in order of
+//! first appearance. It can then:
+//!
+//! - **Render** the command with concrete arguments
+//! - **Display** the command with human-readable tokens
+//!
+//! # Parameter syntax
+//!
+//! - `<name>` — named parameter (positional, filled by arg in same position)
+//! - `$1` through `$9` — numeric positional parameters (backward compatibility)
+//! - `$@` and `$*` — "all args" sentinel (accepts variable number of args)
+//!
+//! Parameters are deduplicated by identity. `$1 <foo> $1` produces `[Positional(1), Named("foo")]`
+//! and substitutes both `$1` occurrences with the same arg.
+
+use regex::Regex;
+use std::fmt;
+use unicode_segmentation::UnicodeSegmentation;
+
+/// A segment of a displayed command line, tagged with its parameter index.
+///
+/// Used by [`CommandTemplate::display_line_segments`] to produce structured
+/// output suitable for styled rendering. Static text has `param_index = None`;
+/// parameter placeholders and their substituted values have `Some(idx)` where
+/// `idx` is the index into the template's params list.
+///
+/// This design enables future per-argument color schemes (gradient, rainbow)
+/// by only changing the color-assignment logic in the renderer — the data
+/// structure already knows which arg each segment belongs to.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DisplaySegment {
+    /// The text to display (placeholder like `<branch>` or substituted value).
+    pub text: String,
+    /// Index into the template's `params` list, or `None` for static text.
+    pub param_index: Option<usize>,
+}
+
+impl DisplaySegment {
+    /// Creates a static (non-parameter) segment.
+    fn static_text(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            param_index: None,
+        }
+    }
+
+    /// Creates a parameter segment with the given param index.
+    fn param(text: impl Into<String>, index: usize) -> Self {
+        Self {
+            text: text.into(),
+            param_index: Some(index),
+        }
+    }
+}
+
+/// A classified span from tokenizing a display-form command line.
+#[derive(Debug, Clone, PartialEq)]
+enum Span {
+    /// Static text between (or surrounding) placeholders.
+    Static(String),
+    /// A `<...>` placeholder. Contains the inner text (e.g., `"branch"` from `<branch>`).
+    Placeholder(String),
+}
+
+/// A single parameter extracted from a command template.
+///
+/// Parameters are deduplicated — each unique token appears at most once.
+/// During rendering, *all* occurrences (including duplicates) in the source
+/// string are replaced with the corresponding argument value.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Param {
+    /// A named parameter like `<foo>` — filled by positional args.
+    Named(String),
+    /// A numeric positional parameter like `$1`.
+    Positional(usize),
+    /// The "all args" splat (`$@`, `$*`).
+    Splat,
+}
+
+impl fmt::Display for Param {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Named(name) => write!(f, "<{name}>"),
+            Self::Positional(n) => write!(f, "${n}"),
+            Self::Splat => write!(f, "$@"),
+        }
+    }
+}
+
+/// A parsed shell command template with extracted parameters.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CommandTemplate {
+    /// The original command string.
+    source: String,
+    /// Unique parameters in order of first appearance.
+    /// E.g., `script.sh $1 <branch> $@` → `[Positional(1), Named("branch"), Splat]`.
+    params: Vec<Param>,
+}
+
+/// Try to parse a `$N`, `$@`, or `$*` token at position `i` in `graphemes`.
+///
+/// Returns `Some((Param, graphemes_consumed))` on success, `None` if position `i`
+/// is not a recognized dollar token.
+fn try_parse_dollar(graphemes: &[&str], i: usize) -> Option<(Param, usize)> {
+    if graphemes[i] != "$" || i + 1 >= graphemes.len() {
+        return None;
+    }
+    let next = graphemes[i + 1];
+    if next.len() == 1 && next.as_bytes()[0].is_ascii_digit() && next != "0" {
+        let n = (next.as_bytes()[0] - b'0') as usize;
+        Some((Param::Positional(n), 2))
+    } else if next == "@" || next == "*" {
+        Some((Param::Splat, 2))
+    } else {
+        None
+    }
+}
+
+/// Try to parse a `<name>` token at position `i` in `graphemes`.
+///
+/// Returns `Some((Param::Named(name), graphemes_consumed))` if a well-formed
+/// `<name>` token is found (non-empty name, closing `>` present).
+/// Returns `None` otherwise.
+fn try_parse_named(graphemes: &[&str], i: usize) -> Option<(Param, usize)> {
+    if graphemes[i] != "<" {
+        return None;
+    }
+    let start = i + 1;
+    let mut end = start;
+    while end < graphemes.len() && graphemes[end] != ">" {
+        end += 1;
+    }
+    if end > start && end < graphemes.len() {
+        let name: String = graphemes[start..end].join("");
+        Some((Param::Named(name), end - i + 1))
+    } else {
+        None
+    }
+}
+
+impl CommandTemplate {
+    /// Parse a command string and extract parameters.
+    ///
+    /// Recognizes three token types:
+    /// - `<name>` — a named parameter
+    /// - `$1`–`$9` — a numeric positional parameter
+    /// - `$@` / `$*` — the "all args" splat
+    ///
+    /// Parameters are deduplicated: if the same token appears multiple times,
+    /// only the first occurrence is recorded. The order of first appearance
+    /// defines the parameter order for arg assignment.
+    #[must_use]
+    pub fn parse(command: &str) -> Self {
+        let mut params: Vec<Param> = Vec::new();
+        let graphemes: Vec<&str> = command.graphemes(true).collect();
+        let mut i = 0;
+
+        while i < graphemes.len() {
+            if let Some((param, consumed)) =
+                try_parse_dollar(&graphemes, i).or_else(|| try_parse_named(&graphemes, i))
+            {
+                if !params.contains(&param) {
+                    params.push(param);
+                }
+                i += consumed;
+                continue;
+            }
+            i += 1;
+        }
+
+        Self {
+            source: command.to_owned(),
+            params,
+        }
+    }
+
+    /// Whether this template requires any arguments.
+    pub fn has_params(&self) -> bool {
+        !self.params.is_empty()
+    }
+
+    /// The number of non-splat parameters.
+    ///
+    /// For `$1 $2 $@` this returns 2 — the number of positional-or-named slots
+    /// that consume one argument each. Splat consumes all remaining args.
+    #[must_use]
+    pub fn param_count(&self) -> usize {
+        self.params
+            .iter()
+            .filter(|p| !matches!(p, Param::Splat))
+            .count()
+    }
+
+    /// Whether `$@` or `$*` was found in the command.
+    #[must_use]
+    pub fn has_splat(&self) -> bool {
+        self.params.iter().any(|p| matches!(p, Param::Splat))
+    }
+
+    /// The unique parameters in order of first appearance.
+    #[must_use]
+    pub fn params(&self) -> &[Param] {
+        &self.params
+    }
+
+    /// Render the command with concrete arguments substituted.
+    ///
+    /// Args are assigned positionally: `params[0]` → `args[0]`, `params[1]` → `args[1]`, etc.
+    /// Splat (`$@` / `$*`) is replaced with all args joined by spaces.
+    /// Named params (`<name>`) receive the positional arg at their index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there aren't enough args for the non-splat params.
+    pub fn render(&self, args: &[String]) -> String {
+        let mut result = self.source.clone();
+
+        // Build a map: for each non-splat param, which arg index it uses.
+        // Splat is handled separately.
+
+        // Replace non-splat params in order, assigning args sequentially.
+        // Each non-splat param gets the next available arg (args[0], args[1], ...).
+        // If an arg is missing, substitute empty string instead of panicking.
+        let mut arg_idx = 0usize;
+        for param in &self.params {
+            match param {
+                Param::Named(name) => {
+                    let search = format!("<{name}>");
+                    let replacement = if arg_idx < args.len() {
+                        shell_quote(&args[arg_idx])
+                    } else {
+                        String::new()
+                    };
+                    result = result.replace(&search, &replacement);
+                    arg_idx += 1;
+                }
+                Param::Positional(_n) => {
+                    let search = format!("{param}");
+                    let replacement = if arg_idx < args.len() {
+                        shell_quote(&args[arg_idx])
+                    } else {
+                        String::new()
+                    };
+                    result = result.replace(&search, &replacement);
+                    arg_idx += 1;
+                }
+                Param::Splat => {
+                    // Handled below after non-slot args are consumed.
+                }
+            }
+        }
+
+        // Replace $@ and $* with remaining args (those not consumed by non-splat params).
+        if self.has_splat() {
+            let joined = args[arg_idx..]
+                .iter()
+                .map(|a| shell_quote(a))
+                .collect::<Vec<_>>()
+                .join(" ");
+            result = result.replace("$@", &joined);
+            result = result.replace("$*", &joined);
+        }
+
+        result
+    }
+
+    /// Render the command with display tokens.
+    ///
+    /// - `<name>` stays as `<name>` (already display-ready)
+    /// - `$1` → `<1>`, `$2` → `<2>` etc.
+    /// - `$@` / `$*` → `<args>`
+    ///
+    /// Used in the arg-input popup UI.
+    #[must_use]
+    pub fn display(&self) -> String {
+        let mut result = self.source.clone();
+
+        // Replace in reverse order by source occurrence to avoid offset issues.
+        // Since we're doing string.replace, order doesn't matter for correctness,
+        // but we do non-splat first, then splat.
+        for param in self.params.iter().rev() {
+            match param {
+                Param::Named(_name) => {
+                    // <name> is already display-ready, no conversion needed.
+                }
+                Param::Positional(n) => {
+                    let search = format!("${n}");
+                    result = result.replace(&search, &format!("<{n}>"));
+                }
+                Param::Splat => {
+                    result = result.replace("$@", "<args>");
+                    result = result.replace("$*", "<args>");
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Produce structured display lines with parameter substitution for the arg-input popup.
+    ///
+    /// Splits the display form of the command on ` && `, producing one
+    /// [`Vec<DisplaySegment>`] per line. Each segment is tagged with its parameter
+    /// index (or `None` for static text). When a user-provided arg is available
+    /// for a parameter, the placeholder is replaced with the arg value.
+    ///
+    /// The first line is bare; subsequent lines are prefixed with `&& ` in a static
+    /// segment. Non-last lines are suffixed with ` \` in a static segment.
+    ///
+    /// This is render-time only — it does not affect command execution.
+    #[must_use]
+    pub fn display_line_segments(&self, args: &[String]) -> Vec<Vec<DisplaySegment>> {
+        // Build the display form of the command (same logic as display()).
+        let display_str = self.display();
+
+        // Split on " && " to get the raw segments.
+        let raw_parts: Vec<&str> = display_str.split(" && ").collect();
+
+        // For each raw part, tokenize into DisplaySegments.
+        let mut lines = Vec::with_capacity(raw_parts.len());
+        for (line_idx, raw) in raw_parts.iter().enumerate() {
+            let mut segments = Vec::new();
+
+            // Prefix for non-first lines.
+            if line_idx > 0 {
+                segments.push(DisplaySegment::static_text("  && "));
+            }
+
+            // Parse the raw text for <...> placeholders.
+            segments.extend(self.tokenize_display_line(raw, args));
+
+            // Suffix for non-last lines.
+            if line_idx < raw_parts.len() - 1 {
+                segments.push(DisplaySegment::static_text(" \\"));
+            }
+
+            lines.push(segments);
+        }
+
+        lines
+    }
+
+    /// Tokenize a display-form line into `DisplaySegment`s.
+    ///
+    /// Decomposes the line into [`Span`]s, then substitutes any args that are
+    /// available for the corresponding parameters.
+    fn tokenize_display_line(&self, line: &str, args: &[String]) -> Vec<DisplaySegment> {
+        let spans = tokenize_spans(line);
+        substitute_spans(spans, &self.params, args)
+    }
+}
+
+/// Tokenize a display-form line into [`Span`]s by finding all `<...>` patterns.
+///
+/// Pure function — no `&self`, no args, no param lookup.
+/// Unclosed `<` without a matching `>` is treated as static text (not a placeholder).
+fn tokenize_spans(line: &str) -> Vec<Span> {
+    static RE: std::sync::LazyLock<Regex> =
+        std::sync::LazyLock::new(|| Regex::new(r"<([^>]+)>").expect("invalid regex"));
+
+    let mut spans = Vec::new();
+    let mut last_end = 0;
+
+    for caps in RE.captures_iter(line) {
+        let m = caps.get(0).expect("capture group 0 always exists");
+        // Emit preceding static text if any.
+        if m.start() > last_end {
+            spans.push(Span::Static(line[last_end..m.start()].to_owned()));
+        }
+        let inner = caps
+            .get(1)
+            .expect("capture group 1 exists")
+            .as_str()
+            .to_owned();
+        spans.push(Span::Placeholder(inner));
+        last_end = m.end();
+    }
+
+    // Emit trailing static text if any.
+    if last_end < line.len() {
+        spans.push(Span::Static(line[last_end..].to_owned()));
+    }
+
+    spans
+}
+
+/// Substitute args into classified [`Span`]s, producing display-ready [`DisplaySegment`]s.
+///
+/// For [`Span::Placeholder`], looks up the corresponding param. If an arg is
+/// available, substitutes the arg value; otherwise keeps the placeholder text.
+/// [`Span::Static`] passes through as a static [`DisplaySegment`].
+fn substitute_spans(spans: Vec<Span>, params: &[Param], args: &[String]) -> Vec<DisplaySegment> {
+    // Build lookup: (display_token, param_index, arg_offset).
+    let mut arg_offset = 0usize;
+    let mut token_map: Vec<(String, usize, usize)> = Vec::new();
+    for (pidx, param) in params.iter().enumerate() {
+        match param {
+            Param::Named(name) => {
+                token_map.push((format!("<{name}>"), pidx, arg_offset));
+                arg_offset += 1;
+            }
+            Param::Positional(n) => {
+                token_map.push((format!("<{n}>"), pidx, arg_offset));
+                arg_offset += 1;
+            }
+            Param::Splat => {
+                token_map.push(("<args>".to_owned(), pidx, arg_offset));
+            }
+        }
+    }
+
+    spans
+        .into_iter()
+        .map(|span| match span {
+            Span::Static(text) => DisplaySegment::static_text(text),
+            Span::Placeholder(inner) => {
+                let full_token = format!("<{inner}>");
+                match token_map.iter().find(|(tok, _, _)| *tok == full_token) {
+                    Some((_, param_idx, arg_off)) => {
+                        let display_text = if *arg_off < args.len() {
+                            match &params[*param_idx] {
+                                Param::Splat => args[*arg_off..].join(" "),
+                                _ => args[*arg_off].clone(),
+                            }
+                        } else {
+                            full_token.clone()
+                        };
+                        DisplaySegment::param(display_text, *param_idx)
+                    }
+                    None => DisplaySegment::static_text(full_token),
+                }
+            }
+        })
+        .collect()
+}
+
+/// Shell-quote a value for safe interpolation into a `$SHELL -c` command.
+///
+/// Uses single-quote wrapping with `\'\'\'` escape for embedded single quotes.
+/// Only applies quoting when the value contains spaces or shell-special characters.
+/// Safe values pass through unchanged.
+#[must_use]
+pub fn shell_quote(s: &str) -> String {
+    /// Characters that require shell quoting.
+    const SHELL_SPECIAL: &[char] = &[
+        ' ', '\t', '\n', '\r', '|', '&', ';', '<', '>', '$', '`', '\\', '"', '\'', '(', ')', '*',
+        '?', '[', ']', '~', '#', '!', '{', '}', '=', ':',
+    ];
+
+    if s.is_empty() {
+        return "''".to_owned();
+    }
+
+    if !s.contains(SHELL_SPECIAL) {
+        return s.to_owned();
+    }
+
+    // Wrap in single quotes, escaping embedded single quotes as '\'\''.
+    let escaped = s.replace('\'', "'\\''");
+    format!("'{escaped}'")
+}
+
+/// Parse a user input string into arguments, preserving quote characters.
+///
+/// Same splitting logic as [`parse_quoted_args`] (splits on unquoted whitespace,
+/// respects backslash escapes) but keeps the double-quote characters in the tokens.
+/// Used for display purposes so users see their literal input including quotes.
+#[must_use]
+pub fn split_preserving_quotes(input: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let graphemes: Vec<&str> = input.graphemes(true).collect();
+    let mut i = 0;
+
+    while i < graphemes.len() {
+        let g = graphemes[i];
+        if in_quotes {
+            if g == "\\" {
+                // Backslash escape inside quotes: next grapheme is literal (skip backslash).
+                current.push('\\');
+                i += 1;
+                if i < graphemes.len() {
+                    current.push_str(graphemes[i]);
+                }
+            } else if g == "\"" {
+                // End of quoted section — keep the quote char.
+                current.push('"');
+                in_quotes = false;
+            } else {
+                current.push_str(g);
+            }
+        } else if g == "\\" {
+            // Backslash escape outside quotes.
+            current.push('\\');
+            i += 1;
+            if i < graphemes.len() {
+                current.push_str(graphemes[i]);
+            }
+        } else if g == "\"" {
+            // Start of quoted section — keep the quote char.
+            current.push('"');
+            in_quotes = true;
+        } else if g.chars().next().is_some_and(char::is_whitespace) {
+            if !current.is_empty() {
+                args.push(current.clone());
+                current.clear();
+            }
+        } else {
+            current.push_str(g);
+        }
+        i += 1;
+    }
+
+    if !current.is_empty() {
+        args.push(current);
+    }
+
+    args
+}
+
+/// Parse a user input string into arguments, respecting double quotes and backslash escapes.
+///
+/// Rules:
+/// - Outside quotes, whitespace separates tokens.
+/// - Inside `"..."`, everything (including spaces) is one token; the quotes are stripped.
+/// - Backslash escapes: `\"` → `"`, `\\` → `\`, `\x` → `x` for any other char.
+/// - An unterminated quote treats the remaining input as the content of the quote.
+///
+/// # Examples
+///
+/// ```text
+/// foo bar        → ["foo", "bar"]
+/// "foo bar"      → ["foo bar"]
+/// a "b c" d      → ["a", "b c", "d"]
+/// foo\"bar       → ["foo\"bar"]
+/// ```
+#[must_use]
+pub fn parse_quoted_args(input: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let graphemes: Vec<&str> = input.graphemes(true).collect();
+    let mut i = 0;
+
+    while i < graphemes.len() {
+        let g = graphemes[i];
+        if in_quotes {
+            if g == "\\" {
+                // Backslash escape inside quotes: next grapheme is literal.
+                i += 1;
+                if i < graphemes.len() {
+                    current.push_str(graphemes[i]);
+                } else {
+                    // Trailing backslash — treat as literal.
+                    current.push('\\');
+                }
+            } else if g == "\"" {
+                // End of quoted section.
+                in_quotes = false;
+            } else {
+                current.push_str(g);
+            }
+        } else if g == "\\" {
+            // Backslash escape outside quotes.
+            i += 1;
+            if i < graphemes.len() {
+                current.push_str(graphemes[i]);
+            } else {
+                current.push('\\');
+            }
+        } else if g == "\"" {
+            in_quotes = true;
+        } else if g.chars().next().is_some_and(char::is_whitespace) {
+            if !current.is_empty() {
+                args.push(current.clone());
+                current.clear();
+            }
+        } else {
+            current.push_str(g);
+        }
+        i += 1;
+    }
+
+    if !current.is_empty() {
+        args.push(current);
+    }
+
+    args
+}
+
+impl fmt::Display for CommandTemplate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.display())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    use super::*;
+
+    // --- Parsing: $N syntax (backward compat) ---
+
+    #[rstest::rstest]
+    fn parse_no_params() {
+        let tmpl = CommandTemplate::parse("echo hello");
+        assert!(!tmpl.has_params());
+        assert!(tmpl.params().is_empty());
+        assert_eq!(tmpl.param_count(), 0);
+    }
+
+    #[rstest::rstest]
+    fn parse_one_param() {
+        let tmpl = CommandTemplate::parse("script.sh $1");
+        assert!(tmpl.has_params());
+        assert_eq!(tmpl.params(), &[Param::Positional(1)]);
+        assert_eq!(tmpl.param_count(), 1);
+    }
+
+    #[rstest::rstest]
+    fn parse_multiple_params() {
+        let tmpl = CommandTemplate::parse("script.sh $1 $2");
+        assert_eq!(tmpl.params(), &[Param::Positional(1), Param::Positional(2)]);
+        assert_eq!(tmpl.param_count(), 2);
+    }
+
+    #[rstest::rstest]
+    fn parse_deduplicates_repeated_params() {
+        let tmpl = CommandTemplate::parse("script.sh $1 $2 $1");
+        assert_eq!(tmpl.params(), &[Param::Positional(1), Param::Positional(2)]);
+        assert_eq!(tmpl.param_count(), 2);
+    }
+
+    #[rstest::rstest]
+    fn parse_splat_at() {
+        let tmpl = CommandTemplate::parse("script.sh $@");
+        assert!(tmpl.has_splat());
+        assert!(tmpl.has_params());
+    }
+
+    #[rstest::rstest]
+    fn parse_splat_star() {
+        let tmpl = CommandTemplate::parse("script.sh $*");
+        assert!(tmpl.has_splat());
+    }
+
+    #[rstest::rstest]
+    fn parse_mixed_numbered_and_splat() {
+        let tmpl = CommandTemplate::parse("script.sh $1 $@");
+        assert_eq!(tmpl.params(), &[Param::Positional(1), Param::Splat]);
+        assert!(tmpl.has_splat());
+        assert_eq!(tmpl.param_count(), 1);
+    }
+
+    #[rstest::rstest]
+    fn parse_skips_dollar_zero() {
+        let tmpl = CommandTemplate::parse("echo $0");
+        assert!(!tmpl.has_params());
+    }
+
+    #[rstest::rstest]
+    fn parse_non_consecutive_params() {
+        let tmpl = CommandTemplate::parse("script.sh $1 $3");
+        assert_eq!(tmpl.params(), &[Param::Positional(1), Param::Positional(3)]);
+        assert_eq!(tmpl.param_count(), 2);
+    }
+
+    // --- Parsing: <name> syntax ---
+
+    #[rstest::rstest]
+    fn parse_named_param() {
+        let tmpl = CommandTemplate::parse("script.sh <branch>");
+        assert!(tmpl.has_params());
+        assert_eq!(tmpl.params(), &[Param::Named("branch".to_owned())]);
+        assert_eq!(tmpl.param_count(), 1);
+    }
+
+    #[rstest::rstest]
+    fn parse_multiple_named_params() {
+        let tmpl = CommandTemplate::parse("script.sh <branch> <target>");
+        assert_eq!(
+            tmpl.params(),
+            &[
+                Param::Named("branch".to_owned()),
+                Param::Named("target".to_owned()),
+            ]
+        );
+        assert_eq!(tmpl.param_count(), 2);
+    }
+
+    #[rstest::rstest]
+    fn parse_deduplicates_named_params() {
+        let tmpl = CommandTemplate::parse("script.sh <branch> <target> <branch>");
+        assert_eq!(
+            tmpl.params(),
+            &[
+                Param::Named("branch".to_owned()),
+                Param::Named("target".to_owned()),
+            ]
+        );
+        assert_eq!(tmpl.param_count(), 2);
+    }
+
+    #[rstest::rstest]
+    fn parse_mixed_named_and_positional() {
+        let tmpl = CommandTemplate::parse("script.sh <branch> $1");
+        assert_eq!(
+            tmpl.params(),
+            &[Param::Named("branch".to_owned()), Param::Positional(1)]
+        );
+        assert_eq!(tmpl.param_count(), 2);
+    }
+
+    #[rstest::rstest]
+    fn parse_named_with_splat() {
+        let tmpl = CommandTemplate::parse("script.sh <branch> $@");
+        assert_eq!(
+            tmpl.params(),
+            &[Param::Named("branch".to_owned()), Param::Splat]
+        );
+        assert!(tmpl.has_splat());
+        assert_eq!(tmpl.param_count(), 1);
+    }
+
+    #[rstest::rstest]
+    fn parse_multiple_named_same_value() {
+        let tmpl = CommandTemplate::parse("script.sh <foo> <bar> <foo>");
+        assert_eq!(
+            tmpl.params(),
+            &[
+                Param::Named("foo".to_owned()),
+                Param::Named("bar".to_owned())
+            ]
+        );
+        assert_eq!(tmpl.param_count(), 2);
+    }
+
+    // --- Rendering: $N syntax ---
+
+    #[rstest::rstest]
+    fn render_no_params() {
+        let tmpl = CommandTemplate::parse("echo hello");
+        assert_eq!(tmpl.render(&[]), "echo hello");
+    }
+
+    #[rstest::rstest]
+    fn render_one_param() {
+        let tmpl = CommandTemplate::parse("script.sh $1");
+        assert_eq!(
+            tmpl.render(&["my-branch".to_owned()]),
+            "script.sh my-branch"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_multiple_params() {
+        let tmpl = CommandTemplate::parse("script.sh $1 $2");
+        assert_eq!(
+            tmpl.render(&["foo".to_owned(), "bar".to_owned()]),
+            "script.sh foo bar"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_repeated_param() {
+        let tmpl = CommandTemplate::parse("script.sh $1 $2 $1");
+        assert_eq!(
+            tmpl.render(&["branch".to_owned(), "dir".to_owned()]),
+            "script.sh branch dir branch"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_splat() {
+        let tmpl = CommandTemplate::parse("script.sh $@");
+        assert_eq!(
+            tmpl.render(&["a".to_owned(), "b".to_owned(), "c".to_owned()]),
+            "script.sh a b c"
+        );
+    }
+
+    // --- Rendering: <name> syntax ---
+
+    #[rstest::rstest]
+    fn render_one_named_param() {
+        let tmpl = CommandTemplate::parse("script.sh <branch>");
+        assert_eq!(
+            tmpl.render(&["my-feature".to_owned()]),
+            "script.sh my-feature"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_multiple_named_params() {
+        let tmpl = CommandTemplate::parse("script.sh <branch> <target>");
+        assert_eq!(
+            tmpl.render(&["my-feature".to_owned(), "/tmp/workdir".to_owned()]),
+            "script.sh my-feature /tmp/workdir"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_named_with_splat() {
+        let tmpl = CommandTemplate::parse("script.sh <branch> $@");
+        assert_eq!(
+            tmpl.render(&["my-feature".to_owned(), "a".to_owned(), "b".to_owned()]),
+            "script.sh my-feature a b"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_repeated_named_param() {
+        let tmpl = CommandTemplate::parse("script.sh <branch> $2 <branch>");
+        assert_eq!(
+            tmpl.render(&["my-feature".to_owned(), "other".to_owned()]),
+            "script.sh my-feature other my-feature"
+        );
+    }
+
+    #[rstest::rstest]
+    fn render_mixed_named_and_positional() {
+        let tmpl = CommandTemplate::parse("script.sh <branch> $1");
+        assert_eq!(
+            tmpl.render(&["my-feature".to_owned(), "dup".to_owned()]),
+            // <branch> gets args[0]="my-feature", $1 gets args[1]="dup"
+            "script.sh my-feature dup"
+        );
+    }
+
+    // --- Display ---
+
+    #[rstest::rstest]
+    fn display_no_params() {
+        let tmpl = CommandTemplate::parse("echo hello");
+        assert_eq!(tmpl.display(), "echo hello");
+    }
+
+    #[rstest::rstest]
+    fn display_with_params() {
+        let tmpl = CommandTemplate::parse("script.sh $1 $2");
+        assert_eq!(tmpl.display(), "script.sh <1> <2>");
+    }
+
+    #[rstest::rstest]
+    fn display_with_splat() {
+        let tmpl = CommandTemplate::parse("script.sh $@");
+        assert_eq!(tmpl.display(), "script.sh <args>");
+    }
+
+    #[rstest::rstest]
+    fn display_repeated_params() {
+        let tmpl = CommandTemplate::parse("script.sh $1 $2 $1");
+        assert_eq!(tmpl.display(), "script.sh <1> <2> <1>");
+    }
+
+    #[rstest::rstest]
+    fn display_named_params() {
+        let tmpl = CommandTemplate::parse("script.sh <branch> <target>");
+        // Named params are already displayed as `<branch> <target>`.
+        assert_eq!(tmpl.display(), "script.sh <branch> <target>");
+    }
+
+    #[rstest::rstest]
+    fn display_named_with_positional() {
+        let tmpl = CommandTemplate::parse("script.sh <branch> $1");
+        assert_eq!(tmpl.display(), "script.sh <branch> <1>");
+    }
+
+    // --- Shell redirection safety ---
+
+    #[rstest::rstest]
+    fn display_does_not_confuse_redirection_with_params() {
+        let tmpl = CommandTemplate::parse("echo $1 > output.txt");
+        assert_eq!(tmpl.display(), "echo <1> > output.txt");
+    }
+
+    #[rstest::rstest]
+    fn render_preserves_redirection() {
+        let tmpl = CommandTemplate::parse("echo $1 > output.txt");
+        assert_eq!(
+            tmpl.render(&["hello".to_owned()]),
+            "echo hello > output.txt"
+        );
+    }
+
+    // --- Edge cases ---
+
+    #[rstest::rstest]
+    fn parse_unclosed_angle_bracket_is_not_a_param() {
+        let tmpl = CommandTemplate::parse("script.sh <unclosed");
+        assert!(!tmpl.has_params());
+    }
+
+    #[rstest::rstest]
+    fn parse_empty_angle_bracket_is_not_a_param() {
+        let tmpl = CommandTemplate::parse("script.sh <>");
+        assert!(!tmpl.has_params());
+    }
+
+    // --- Display trait ---
+
+    #[rstest::rstest]
+    fn display_trait_delegates_to_display_method() {
+        let tmpl = CommandTemplate::parse("script.sh $1 $2");
+        assert_eq!(format!("{tmpl}"), tmpl.display());
+    }
+
+    // --- display_line_segments ---
+
+    #[rstest::rstest]
+    fn display_line_segments_no_params() {
+        // Given a simple command with no params and no &&.
+        let tmpl = CommandTemplate::parse("echo hello");
+
+        // When getting display line segments with no args.
+        let lines = tmpl.display_line_segments(&[]);
+
+        // Then it produces a single line with one static segment.
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0], vec![DisplaySegment::static_text("echo hello")]);
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_no_params_single_arg_ignored() {
+        // Given a command with no params.
+        let tmpl = CommandTemplate::parse("echo hello");
+
+        // When passing args (should be ignored since no placeholders).
+        let lines = tmpl.display_line_segments(&["ignored".to_owned()]);
+
+        // Then same as no args.
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0], vec![DisplaySegment::static_text("echo hello")]);
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_splits_on_and_and() {
+        // Given a command with && and no params.
+        let tmpl = CommandTemplate::parse("echo hello && echo world");
+
+        // When getting display line segments.
+        let lines = tmpl.display_line_segments(&[]);
+
+        // Then it produces two lines with continuation markers.
+        assert_eq!(lines.len(), 2);
+        // Line 1: "echo hello \"
+        assert_eq!(
+            lines[0],
+            vec![
+                DisplaySegment::static_text("echo hello"),
+                DisplaySegment::static_text(" \\"),
+            ]
+        );
+        // Line 2: "&& echo world"
+        assert_eq!(
+            lines[1],
+            vec![
+                DisplaySegment::static_text("  && "),
+                DisplaySegment::static_text("echo world"),
+            ]
+        );
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_five_parts() {
+        // Given a long command split into 5 parts by &&.
+        let tmpl = CommandTemplate::parse(
+            "mkdir <branch> && cd <branch> && fossil open ../jinn.fossil && fossil commit -m 'Open <branch>' --branch <branch> --allow-empty && echo ./<branch>",
+        );
+
+        // When getting display line segments with no args.
+        let lines = tmpl.display_line_segments(&[]);
+
+        // Then it produces 5 lines.
+        assert_eq!(lines.len(), 5);
+
+        // First line: "mkdir <branch> \"
+        assert!(lines[0].last().unwrap().text.ends_with('\\'));
+        // Last line: "&& echo ./<branch>" (no trailing \).
+        assert!(!lines[4].last().unwrap().text.ends_with('\\'));
+        // Lines 2-4 start with "  && ".
+        assert_eq!(lines[1][0].text, "  && ");
+        assert_eq!(lines[2][0].text, "  && ");
+        assert_eq!(lines[3][0].text, "  && ");
+        assert_eq!(lines[4][0].text, "  && ");
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_last_line_no_trailing_backslash() {
+        // Given a two-part command.
+        let tmpl = CommandTemplate::parse("echo hello && echo world");
+
+        // When getting display line segments.
+        let lines = tmpl.display_line_segments(&[]);
+
+        // Then the first line has trailing \ but the last doesn't.
+        let first_line_text: String = lines[0].iter().map(|s| s.text.as_str()).collect();
+        let last_line_text: String = lines[1].iter().map(|s| s.text.as_str()).collect();
+        assert!(first_line_text.ends_with('\\'));
+        assert!(!last_line_text.ends_with('\\'));
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_substitutes_named_params() {
+        // Given a command with named params and &&.
+        let tmpl = CommandTemplate::parse("mkdir <branch> && cd <branch>");
+
+        // When getting display line segments with an arg.
+        let lines = tmpl.display_line_segments(&["my-feature".to_owned()]);
+
+        // Then <branch> is replaced with "my-feature" and tagged with param index.
+        // Line 1: static("mkdir "), param("my-feature", 0), static(" \\").
+        assert_eq!(lines[0].len(), 3);
+        assert_eq!(lines[0][0], DisplaySegment::static_text("mkdir "));
+        assert_eq!(lines[0][1], DisplaySegment::param("my-feature", 0));
+        assert_eq!(lines[0][2], DisplaySegment::static_text(" \\"));
+
+        // Line 2: static("  && "), static("cd "), param("my-feature", 0).
+        assert_eq!(lines[1][0], DisplaySegment::static_text("  && "));
+        assert_eq!(lines[1][1], DisplaySegment::static_text("cd "));
+        assert_eq!(lines[1][2], DisplaySegment::param("my-feature", 0));
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_substitutes_positional_params() {
+        // Given a command with $1 $2 and &&.
+        let tmpl = CommandTemplate::parse("script.sh $1 && other.sh $2");
+
+        // When getting display line segments with args.
+        let lines = tmpl.display_line_segments(&["foo".to_owned(), "bar".to_owned()]);
+
+        // Then params are replaced in display form (<1> and <2> substituted).
+        // Line 1: static("script.sh "), param("foo", 0), static(" \\").
+        assert_eq!(lines[0].len(), 3);
+        assert_eq!(lines[0][0], DisplaySegment::static_text("script.sh "));
+        assert_eq!(lines[0][1], DisplaySegment::param("foo", 0));
+
+        // Line 2: static("  && "), static("other.sh "), param("bar", 1).
+        assert_eq!(lines[1][1], DisplaySegment::static_text("other.sh "));
+        assert_eq!(lines[1][2], DisplaySegment::param("bar", 1));
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_unfilled_params_keep_placeholder() {
+        // Given a command with two named params but only one arg provided.
+        let tmpl = CommandTemplate::parse("mkdir <branch> && cd <target>");
+
+        // When getting display line segments with only one arg.
+        let lines = tmpl.display_line_segments(&["my-feature".to_owned()]);
+
+        // Then the first param is substituted and the second keeps its placeholder.
+        // Line 1: static("mkdir "), param("my-feature", 0).
+        assert_eq!(lines[0][1], DisplaySegment::param("my-feature", 0));
+
+        // Line 2: static("  && "), static("cd "), param("<target>", 1).
+        assert_eq!(lines[1][1], DisplaySegment::static_text("cd "));
+        assert_eq!(lines[1][2], DisplaySegment::param("<target>", 1));
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_no_args_shows_all_placeholders() {
+        // Given a command with named params.
+        let tmpl = CommandTemplate::parse("mkdir <branch> && cd <branch>");
+
+        // When getting display line segments with no args.
+        let lines = tmpl.display_line_segments(&[]);
+
+        // Then all <branch> placeholders are preserved and tagged with param index.
+        assert_eq!(lines[0][1], DisplaySegment::param("<branch>", 0));
+        assert_eq!(lines[1][2], DisplaySegment::param("<branch>", 0));
+    }
+
+    #[rstest::rstest]
+    fn display_line_segments_mixed_named_and_positional() {
+        // Given a command with mixed param types.
+        let tmpl = CommandTemplate::parse("script.sh <branch> $1 && echo done");
+
+        // When getting display line segments with both args.
+        let lines = tmpl.display_line_segments(&["my-branch".to_owned(), "extra".to_owned()]);
+
+        // Then both params are substituted.
+        // Line 1: static("script.sh "), param("my-branch", 0), static(" "), param("extra", 1), ...
+        assert_eq!(lines[0][1], DisplaySegment::param("my-branch", 0));
+        assert_eq!(lines[0][3], DisplaySegment::param("extra", 1));
+    }
+
+    // --- Safe render: missing args ---
+
+    #[rstest::rstest]
+    fn render_missing_named_param_substitutes_empty() {
+        // Given a template with two named params but only one arg.
+        let tmpl = CommandTemplate::parse("script.sh <branch> <target>");
+
+        // When rendering with missing args.
+        let result = tmpl.render(&["my-branch".to_owned()]);
+
+        // Then the missing param is replaced with empty string (no panic).
+        assert_eq!(result, "script.sh my-branch ");
+    }
+
+    #[rstest::rstest]
+    fn render_missing_positional_param_substitutes_empty() {
+        // Given a template with $1 $2 but only one arg.
+        let tmpl = CommandTemplate::parse("script.sh $1 $2");
+
+        // When rendering with missing args.
+        let result = tmpl.render(&["first".to_owned()]);
+
+        // Then the missing param is replaced with empty string (no panic).
+        assert_eq!(result, "script.sh first ");
+    }
+
+    #[rstest::rstest]
+    fn render_empty_args_list_does_not_panic() {
+        // Given a template with params but no args.
+        let tmpl = CommandTemplate::parse("script.sh $1 $2");
+
+        // When rendering with empty args list.
+        let result = tmpl.render(&[]);
+
+        // Then no panic — missing params replaced with empty.
+        assert_eq!(result, "script.sh  ");
+    }
+
+    // --- Quoted arg parsing ---
+
+    #[rstest::rstest]
+    fn parse_quoted_args_empty_input() {
+        assert_eq!(parse_quoted_args(""), Vec::<String>::new());
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_whitespace_only() {
+        assert_eq!(parse_quoted_args("   "), Vec::<String>::new());
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_unquoted_single() {
+        assert_eq!(parse_quoted_args("foo"), vec!["foo".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_unquoted_multiple() {
+        assert_eq!(
+            parse_quoted_args("foo bar baz"),
+            vec!["foo".to_owned(), "bar".to_owned(), "baz".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_quoted_single() {
+        assert_eq!(parse_quoted_args("\"foo bar\""), vec!["foo bar".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_quoted_preserves_internal_spaces() {
+        assert_eq!(
+            parse_quoted_args("\"hello   world\""),
+            vec!["hello   world".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_mixed_quoted_and_unquoted() {
+        assert_eq!(
+            parse_quoted_args("a \"b c\" d"),
+            vec!["a".to_owned(), "b c".to_owned(), "d".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_quoted_at_start() {
+        assert_eq!(
+            parse_quoted_args("\"foo bar\" baz"),
+            vec!["foo bar".to_owned(), "baz".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_quoted_at_end() {
+        assert_eq!(
+            parse_quoted_args("foo \"bar baz\""),
+            vec!["foo".to_owned(), "bar baz".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_adjacent_quoted_tokens() {
+        assert_eq!(
+            parse_quoted_args("\"foo\"\"bar\""),
+            vec!["foobar".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_empty_quotes() {
+        assert_eq!(parse_quoted_args("\"\""), Vec::<String>::new());
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_empty_quotes_between_tokens() {
+        assert_eq!(
+            parse_quoted_args("foo \"\" bar"),
+            vec!["foo".to_owned(), "bar".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_unterminated_quote() {
+        // Unterminated quote captures the rest as the token content.
+        assert_eq!(parse_quoted_args("\"foo bar"), vec!["foo bar".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_unterminated_quote_with_spaces() {
+        // Unterminated quote: everything after " is one token.
+        assert_eq!(
+            parse_quoted_args("\"foo bar baz"),
+            vec!["foo bar baz".to_owned()]
+        );
+    }
+
+    // --- Backslash escape tests ---
+
+    #[rstest::rstest]
+    fn parse_quoted_args_escaped_quote_outside_quotes() {
+        // Input: foo\"bar → parser sees \" as escaped quote → foo"bar
+        assert_eq!(parse_quoted_args("foo\\\"bar"), vec!["foo\"bar".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_escaped_quote_inside_quotes() {
+        assert_eq!(
+            parse_quoted_args("\"foo\\\"bar\""),
+            vec!["foo\"bar".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_escaped_backslash_outside_quotes() {
+        assert_eq!(parse_quoted_args("foo\\\\bar"), vec!["foo\\bar".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_escaped_backslash_inside_quotes() {
+        assert_eq!(
+            parse_quoted_args("\"foo\\\\bar\""),
+            vec!["foo\\bar".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_escaped_other_char() {
+        // \\n → n (we don't interpret escape sequences, just strip the backslash).
+        assert_eq!(parse_quoted_args("foo\\nbar"), vec!["foonbar".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_trailing_backslash_outside_quotes() {
+        // Trailing backslash at end of input — treat as literal.
+        assert_eq!(parse_quoted_args("foo\\"), vec!["foo\\".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_trailing_backslash_inside_quotes() {
+        // Trailing backslash at end of input inside quotes — treat as literal.
+        assert_eq!(parse_quoted_args("\"foo\\"), vec!["foo\\".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_escaped_space_outside_quotes() {
+        assert_eq!(parse_quoted_args("foo\\ bar"), vec!["foo bar".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_complex_mixed() {
+        // Complex input mixing quotes, escapes, and unquoted tokens.
+        assert_eq!(
+            parse_quoted_args("branch \"my feature\" target\\ dir"),
+            vec![
+                "branch".to_owned(),
+                "my feature".to_owned(),
+                "target dir".to_owned(),
+            ]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_multiple_spaces_between_tokens() {
+        assert_eq!(
+            parse_quoted_args("foo    bar"),
+            vec!["foo".to_owned(), "bar".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn parse_quoted_args_leading_and_trailing_whitespace() {
+        assert_eq!(
+            parse_quoted_args("  foo bar  "),
+            vec!["foo".to_owned(), "bar".to_owned()]
+        );
+    }
+
+    // --- shell_quote ---
+
+    #[rstest::rstest]
+    fn shell_quote_safe_value_passes_through() {
+        assert_eq!(shell_quote("hello"), "hello");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_value_with_spaces_is_wrapped() {
+        assert_eq!(shell_quote("my branch"), "'my branch'");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_empty_string_is_empty_quotes() {
+        assert_eq!(shell_quote(""), "''");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_embedded_single_quote_is_escaped() {
+        assert_eq!(shell_quote("it's here"), "'it'\\''s here'");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_dollar_sign_is_quoted() {
+        assert_eq!(shell_quote("$HOME"), "'$HOME'");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_semicolon_is_quoted() {
+        assert_eq!(shell_quote("foo;bar"), "'foo;bar'");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_pipe_is_quoted() {
+        assert_eq!(shell_quote("foo|bar"), "'foo|bar'");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_path_with_slash_is_safe() {
+        // Forward slashes are not shell-special.
+        assert_eq!(shell_quote("/tmp/workdir"), "/tmp/workdir");
+    }
+
+    #[rstest::rstest]
+    fn shell_quote_hyphenated_value_is_safe() {
+        assert_eq!(shell_quote("my-branch"), "my-branch");
+    }
+
+    // --- split_preserving_quotes ---
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_keeps_quotes() {
+        assert_eq!(
+            split_preserving_quotes("\"my branch\" target"),
+            vec!["\"my branch\"".to_owned(), "target".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_no_quotes() {
+        assert_eq!(
+            split_preserving_quotes("foo bar"),
+            vec!["foo".to_owned(), "bar".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_empty_input() {
+        assert_eq!(split_preserving_quotes(""), Vec::<String>::new());
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_single_quoted_arg() {
+        assert_eq!(
+            split_preserving_quotes("\"hello world\""),
+            vec!["\"hello world\"".to_owned()]
+        );
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_unterminated_quote() {
+        assert_eq!(
+            split_preserving_quotes("\"foo bar"),
+            vec!["\"foo bar".to_owned()]
+        );
+    }
+
+    // --- tokenize_spans ---
+
+    #[rstest::rstest]
+    fn tokenize_spans_no_placeholders_returns_single_static() {
+        // Given plain text with no angle brackets.
+        // When tokenizing.
+        let spans = tokenize_spans("hello world");
+        // Then a single Static span is returned.
+        assert_eq!(spans, vec![Span::Static("hello world".to_owned())]);
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_single_placeholder_with_surrounding_text() {
+        // Given text with one placeholder.
+        // When tokenizing.
+        let spans = tokenize_spans("hello <branch> world");
+        // Then three spans: static, placeholder, static.
+        assert_eq!(
+            spans,
+            vec![
+                Span::Static("hello ".to_owned()),
+                Span::Placeholder("branch".to_owned()),
+                Span::Static(" world".to_owned()),
+            ]
+        );
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_adjacent_placeholders() {
+        // Given two placeholders with no gap.
+        // When tokenizing.
+        let spans = tokenize_spans("<a><b>");
+        // Then two Placeholder spans with no Static between them.
+        assert_eq!(
+            spans,
+            vec![
+                Span::Placeholder("a".to_owned()),
+                Span::Placeholder("b".to_owned()),
+            ]
+        );
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_unclosed_bracket_is_static() {
+        // Given text with an unclosed angle bracket.
+        // When tokenizing.
+        let spans = tokenize_spans("a <unclosed b");
+        // Then the whole string is static (no match).
+        assert_eq!(spans, vec![Span::Static("a <unclosed b".to_owned())]);
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_empty_angles_are_static() {
+        // Given text with empty angle brackets.
+        // When tokenizing.
+        let spans = tokenize_spans("a <> b");
+        // Then empty <> is not matched (regex requires at least one char).
+        assert_eq!(spans, vec![Span::Static("a <> b".to_owned())]);
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_empty_string_returns_empty() {
+        // Given an empty string.
+        // When tokenizing.
+        let spans = tokenize_spans("");
+        // Then no spans are produced.
+        assert!(spans.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_only_placeholder() {
+        // Given text that is only a placeholder.
+        // When tokenizing.
+        let spans = tokenize_spans("<branch>");
+        // Then a single Placeholder span.
+        assert_eq!(spans, vec![Span::Placeholder("branch".to_owned())]);
+    }
+
+    #[rstest::rstest]
+    fn tokenize_spans_placeholder_at_start_and_end() {
+        // Given text starting and ending with placeholders.
+        // When tokenizing.
+        let spans = tokenize_spans("<start> middle <end>");
+        // Then two placeholders with static in between.
+        assert_eq!(
+            spans,
+            vec![
+                Span::Placeholder("start".to_owned()),
+                Span::Static(" middle ".to_owned()),
+                Span::Placeholder("end".to_owned()),
+            ]
+        );
+    }
+
+    // --- substitute_spans ---
+
+    #[rstest::rstest]
+    fn substitute_spans_all_args_provided() {
+        // Given spans with two placeholders and both args available.
+        let spans = vec![
+            Span::Static("mkdir ".to_owned()),
+            Span::Placeholder("branch".to_owned()),
+        ];
+        let params = vec![Param::Named("branch".to_owned())];
+        let args = vec!["my-feature".to_owned()];
+
+        // When substituting.
+        let segments = substitute_spans(spans, &params, &args);
+
+        // Then the placeholder is replaced with the arg value.
+        assert_eq!(segments[0], DisplaySegment::static_text("mkdir "));
+        assert_eq!(segments[1], DisplaySegment::param("my-feature", 0));
+    }
+
+    #[rstest::rstest]
+    fn substitute_spans_missing_args_keep_placeholder() {
+        // Given spans with a placeholder but no args.
+        let spans = vec![
+            Span::Static("mkdir ".to_owned()),
+            Span::Placeholder("branch".to_owned()),
+        ];
+        let params = vec![Param::Named("branch".to_owned())];
+
+        // When substituting with no args.
+        let segments = substitute_spans(spans, &params, &[]);
+
+        // Then the placeholder text is preserved.
+        assert_eq!(segments[1], DisplaySegment::param("<branch>", 0));
+    }
+
+    #[rstest::rstest]
+    fn substitute_spans_splat_joins_remaining_args() {
+        // Given a Splat param and spans.
+        let spans = vec![Span::Placeholder("args".to_owned())];
+        let params = vec![Param::Splat];
+        let args = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
+
+        // When substituting.
+        let segments = substitute_spans(spans, &params, &args);
+
+        // Then all args are joined with spaces.
+        assert_eq!(segments[0], DisplaySegment::param("a b c", 0));
+    }
+
+    #[rstest::rstest]
+    fn substitute_spans_unknown_placeholder_is_static() {
+        // Given a placeholder that doesn't match any param.
+        let spans = vec![Span::Placeholder("unknown".to_owned())];
+        let params: Vec<Param> = vec![];
+
+        // When substituting.
+        let segments = substitute_spans(spans, &params, &[]);
+
+        // Then it's treated as static text.
+        assert_eq!(segments[0], DisplaySegment::static_text("<unknown>"));
+    }
+
+    // --- Phase 2: Mutation-killing tests ---
+
+    // try_parse_dollar edge cases
+    #[rstest::rstest]
+    fn try_parse_dollar_at_end_of_string_returns_none() {
+        // Given "$" as the last grapheme.
+        let graphemes: Vec<&str> = vec!["$"];
+
+        // When trying to parse at position 0.
+        let result = try_parse_dollar(&graphemes, 0);
+
+        // Then None is returned (no next grapheme to read).
+        assert!(result.is_none());
+    }
+
+    #[rstest::rstest]
+    fn try_parse_dollar_zero_returns_none() {
+        // Given "$0" graphemes.
+        let graphemes: Vec<&str> = vec!["$", "0"];
+
+        // When trying to parse.
+        let result = try_parse_dollar(&graphemes, 0);
+
+        // Then None is returned ($0 is excluded).
+        assert!(result.is_none());
+    }
+
+    #[rstest::rstest]
+    fn try_parse_dollar_digit_returns_positional() {
+        // Given "$5" graphemes.
+        let graphemes: Vec<&str> = vec!["$", "5"];
+
+        // When trying to parse.
+        let result = try_parse_dollar(&graphemes, 0);
+
+        // Then Positional(5) is returned, consuming 2 graphemes.
+        let (param, consumed) = result.expect("should parse");
+        assert_eq!(param, Param::Positional(5));
+        assert_eq!(consumed, 2);
+    }
+
+    #[rstest::rstest]
+    fn try_parse_dollar_at_returns_splat() {
+        // Given "$@" graphemes.
+        let graphemes: Vec<&str> = vec!["$", "@"];
+
+        // When trying to parse.
+        let result = try_parse_dollar(&graphemes, 0);
+
+        // Then Splat is returned.
+        let (param, consumed) = result.expect("should parse");
+        assert_eq!(param, Param::Splat);
+        assert_eq!(consumed, 2);
+    }
+
+    #[rstest::rstest]
+    fn try_parse_dollar_star_returns_splat() {
+        // Given "$*" graphemes.
+        let graphemes: Vec<&str> = vec!["$", "*"];
+
+        // When trying to parse.
+        let result = try_parse_dollar(&graphemes, 0);
+
+        // Then Splat is returned.
+        let (param, consumed) = result.expect("should parse");
+        assert_eq!(param, Param::Splat);
+        assert_eq!(consumed, 2);
+    }
+
+    #[rstest::rstest]
+    fn try_parse_dollar_non_digit_letter_returns_none() {
+        // Given "$a" graphemes.
+        let graphemes: Vec<&str> = vec!["$", "a"];
+
+        // When trying to parse.
+        let result = try_parse_dollar(&graphemes, 0);
+
+        // Then None is returned.
+        assert!(result.is_none());
+    }
+
+    #[rstest::rstest]
+    fn try_parse_dollar_at_non_dollar_position_returns_none() {
+        // Given graphemes where position 1 is not "$".
+        let graphemes: Vec<&str> = vec!["a", "$"];
+
+        // When trying to parse at position 0.
+        let result = try_parse_dollar(&graphemes, 0);
+
+        // Then None is returned.
+        assert!(result.is_none());
+    }
+
+    // try_parse_named edge cases
+    #[rstest::rstest]
+    fn try_parse_named_unclosed_angle_returns_none() {
+        // Given "<unclosed" (no closing ">".
+        let graphemes: Vec<&str> = "<unclosed".graphemes(true).collect();
+
+        // When trying to parse at position 0.
+        let result = try_parse_named(&graphemes, 0);
+
+        // Then None is returned.
+        assert!(result.is_none());
+    }
+
+    #[rstest::rstest]
+    fn try_parse_named_empty_angles_returns_none() {
+        // Given "<>" graphemes.
+        let graphemes: Vec<&str> = "<>".graphemes(true).collect();
+
+        // When trying to parse at position 0.
+        let result = try_parse_named(&graphemes, 0);
+
+        // Then None is returned (empty name).
+        assert!(result.is_none());
+    }
+
+    #[rstest::rstest]
+    fn try_parse_named_valid_returns_named_param() {
+        // Given "<branch>" graphemes.
+        let graphemes: Vec<&str> = "<branch>".graphemes(true).collect();
+
+        // When trying to parse at position 0.
+        let result = try_parse_named(&graphemes, 0);
+
+        // Then Named("branch") is returned, consuming all 8 graphemes.
+        let (param, consumed) = result.expect("should parse");
+        assert_eq!(param, Param::Named("branch".to_owned()));
+        assert_eq!(consumed, 8);
+    }
+
+    #[rstest::rstest]
+    fn try_parse_named_at_non_angle_position_returns_none() {
+        // Given "a<b>" graphemes.
+        let graphemes: Vec<&str> = "a<b>".graphemes(true).collect();
+
+        // When trying to parse at position 0.
+        let result = try_parse_named(&graphemes, 0);
+
+        // Then None is returned.
+        assert!(result.is_none());
+    }
+
+    #[rstest::rstest]
+    fn try_parse_named_adjacent_names() {
+        // Given "<a><b>" graphemes.
+        let graphemes: Vec<&str> = "<a><b>".graphemes(true).collect();
+
+        // When parsing both.
+        let first = try_parse_named(&graphemes, 0).expect("first");
+        let second = try_parse_named(&graphemes, first.1).expect("second");
+
+        // Then both are named params with correct consumed counts.
+        assert_eq!(first.0, Param::Named("a".to_owned()));
+        assert_eq!(second.0, Param::Named("b".to_owned()));
+    }
+
+    // split_preserving_quotes boundary cases
+    #[rstest::rstest]
+    fn split_preserving_quotes_backslash_at_end_inside_quotes() {
+        // Given a quoted string ending in backslash.
+        let result = split_preserving_quotes("\"foo\\");
+
+        // Then the backslash is preserved in the output.
+        assert_eq!(result, vec!["\"foo\\".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_backslash_escape_outside_quotes() {
+        // Given a backslash-escaped space outside quotes.
+        let result = split_preserving_quotes("foo\\ bar");
+
+        // Then it produces a single token with the backslash.
+        assert_eq!(result, vec!["foo\\ bar".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_adjacent_quotes() {
+        // Given two adjacent quoted sections.
+        let result = split_preserving_quotes("\"a\"\"b\"");
+
+        // Then they are merged into a single token with quotes preserved.
+        assert_eq!(result, vec!["\"a\"\"b\"".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn split_preserving_quotes_whitespace_separates_tokens() {
+        // Given multiple whitespace-separated tokens.
+        let result = split_preserving_quotes("a b c");
+
+        // Then three separate tokens are returned.
+        assert_eq!(result, vec!["a".to_owned(), "b".to_owned(), "c".to_owned()]);
+    }
+
+    #[rstest::rstest]
+    fn parse_command_template_adjacent_dollar_params() {
+        // Given "$1$2" — adjacent positional params.
+        let tmpl = CommandTemplate::parse("$1$2");
+
+        // Then both are extracted.
+        assert_eq!(tmpl.params(), &[Param::Positional(1), Param::Positional(2)]);
+    }
+}

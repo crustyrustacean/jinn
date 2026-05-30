@@ -8,11 +8,11 @@
 //! 1. Add a match arm in [`build_translator`]
 //! 2. Update the plugin's Lua script to use the new command name
 
-use nullslop_domain::ChatEntry;
-use nullslop_domain::Command;
-use nullslop_domain::SessionId;
-use nullslop_domain::feat::chat_input::protocol::command::PushChatEntry;
-use nullslop_plugin::TranslatorFn;
+use jinn_domain::ChatEntry;
+use jinn_domain::Command;
+use jinn_domain::SessionId;
+use jinn_domain::feat::chat_input::protocol::command::PushChatEntry;
+use jinn_plugin::TranslatorFn;
 
 /// Builds the concrete translator that maps plugin command names to typed Commands.
 ///
@@ -52,7 +52,7 @@ fn translate_push_chat_entry(
     let message = payload
         .get("message")
         .and_then(|v| v.as_str())
-        .unwrap_or("Welcome to nullslop!")
+        .unwrap_or("Welcome to jinn!")
         .to_owned();
 
     let entry = make_entry(message);
@@ -160,7 +160,7 @@ mod tests {
         let cmd = result.expect("should produce a command");
         match cmd {
             Command::PushChatEntry(pce) => {
-                assert!(pce.entry.text().contains("Welcome to nullslop!"));
+                assert!(pce.entry.text().contains("Welcome to jinn!"));
             }
             other => panic!("expected PushChatEntry, got {other:?}"),
         }

@@ -1,8 +1,8 @@
-//! Binary entry point for nullslop.
+//! Binary entry point for jinn.
 
 use clap::Parser;
-use nullslop::tracing::{TracingMode, init as init_tracing};
-use nullslop_cli::Cli;
+use jinn::tracing::{TracingMode, init as init_tracing};
+use jinn_cli::Cli;
 
 fn main() {
     // Load .env if present. Not fatal if missing.
@@ -11,15 +11,15 @@ fn main() {
     let cli = Cli::parse();
 
     let mode = match &cli.command {
-        None | Some(nullslop_cli::cli::Commands::Tui) => TracingMode::Tui {
+        None | Some(jinn_cli::cli::Commands::Tui) => TracingMode::Tui {
             log_dir: cli.log_dir.clone(),
         },
-        Some(nullslop_cli::cli::Commands::Headless { log_file, .. }) => TracingMode::Headless {
+        Some(jinn_cli::cli::Commands::Headless { log_file, .. }) => TracingMode::Headless {
             log_file: log_file.clone(),
         },
-        Some(nullslop_cli::cli::Commands::Completions { .. }) => TracingMode::Tui { log_dir: None },
-        Some(nullslop_cli::cli::Commands::Bench { .. }) => TracingMode::Tui { log_dir: None },
-        Some(nullslop_cli::cli::Commands::Fetch { .. }) => TracingMode::Headless { log_file: None },
+        Some(jinn_cli::cli::Commands::Completions { .. }) => TracingMode::Tui { log_dir: None },
+        Some(jinn_cli::cli::Commands::Bench { .. }) => TracingMode::Tui { log_dir: None },
+        Some(jinn_cli::cli::Commands::Fetch { .. }) => TracingMode::Headless { log_file: None },
     };
 
     if let Err(e) = init_tracing(cli.verbosity, mode) {
@@ -27,7 +27,7 @@ fn main() {
         std::process::exit(1);
     }
 
-    let mut app = match nullslop::App::new() {
+    let mut app = match jinn::App::new() {
         Ok(app) => app,
         Err(e) => {
             eprintln!("error: {e:?}");

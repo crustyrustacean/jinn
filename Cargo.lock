@@ -1746,6 +1746,299 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn"
+version = "0.44.0"
+dependencies = [
+ "clap",
+ "clap-verbosity-flag",
+ "clap_complete",
+ "dirs",
+ "dotenvy",
+ "error-stack",
+ "jiff",
+ "jinn-bench",
+ "jinn-cli",
+ "jinn-domain",
+ "jinn-plugin",
+ "jinn-tui",
+ "jinn-web-fetch",
+ "kanal",
+ "mockito",
+ "ratatui-spatial-splits",
+ "ratatui-which-key",
+ "reqwest",
+ "rstest",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-bench"
+version = "0.44.0"
+dependencies = [
+ "comfy-table",
+ "csv",
+ "error-stack",
+ "globset",
+ "humantime",
+ "include_dir",
+ "jiff",
+ "jinn-domain",
+ "jinn-provider",
+ "rstest",
+ "strip-ansi-escapes",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tree-sitter",
+ "tree-sitter-python",
+ "unicode-segmentation",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-cli"
+version = "0.44.0"
+dependencies = [
+ "clap",
+ "clap-verbosity-flag",
+ "clap_complete",
+]
+
+[[package]]
+name = "jinn-domain"
+version = "0.44.0"
+dependencies = [
+ "anstyle",
+ "anstyle-lossy",
+ "async-trait",
+ "derive_more",
+ "diesel",
+ "dirs",
+ "error-stack",
+ "futures",
+ "fuzzy-matcher",
+ "humantime",
+ "jiff",
+ "jinn-protocol-derive",
+ "jinn-provider",
+ "jinn-selection-widget",
+ "jinn-testutil",
+ "jinn-theme",
+ "jinn-web-fetch",
+ "jinn-workflow",
+ "kanal",
+ "libc",
+ "parking_lot",
+ "rand 0.9.4",
+ "ratatui",
+ "ratatui-markdown",
+ "ratatui-which-key",
+ "reasoning-parser",
+ "regex",
+ "rstest",
+ "serde",
+ "serde_json",
+ "strip-ansi-escapes",
+ "tempfile",
+ "textwrap",
+ "throbber-widgets-tui",
+ "tiktoken",
+ "tokio",
+ "tokio-util",
+ "toml",
+ "tracing",
+ "unicode-segmentation",
+ "unicode-width",
+ "uuid",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-e2e"
+version = "0.44.0"
+dependencies = [
+ "crossterm",
+ "cucumber",
+ "jinn",
+ "jinn-domain",
+ "jinn-plugin",
+ "jinn-tui",
+ "kanal",
+ "ratatui-spatial-splits",
+ "ratatui-which-key",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "jinn-plugin"
+version = "0.44.0"
+dependencies = [
+ "error-stack",
+ "jinn-domain",
+ "kanal",
+ "mlua",
+ "parking_lot",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-protocol-derive"
+version = "0.44.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "rstest",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "jinn-provider"
+version = "0.44.0"
+dependencies = [
+ "async-trait",
+ "error-stack",
+ "futures",
+ "jiff",
+ "mockito",
+ "parking_lot",
+ "rand 0.9.4",
+ "regex",
+ "reqwest",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-selection-widget"
+version = "0.44.0"
+dependencies = [
+ "fuzzy-matcher",
+ "jinn-testutil",
+ "ratatui",
+ "rstest",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "jinn-testutil"
+version = "0.44.0"
+dependencies = [
+ "ratatui",
+]
+
+[[package]]
+name = "jinn-theme"
+version = "0.44.0"
+dependencies = [
+ "anstyle",
+ "anstyle-lossy",
+ "error-stack",
+ "jinn-selection-widget",
+ "ratatui",
+ "rstest",
+ "serde",
+ "tempfile",
+ "toml",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-tui"
+version = "0.44.0"
+dependencies = [
+ "arboard",
+ "crossterm",
+ "derive_more",
+ "dialoguer",
+ "dirs",
+ "error-stack",
+ "jinn-domain",
+ "jinn-plugin",
+ "jinn-selection-widget",
+ "jinn-testutil",
+ "jinn-workflow",
+ "jinn-workflow-tui",
+ "kanal",
+ "parking_lot",
+ "ratatui",
+ "ratatui-which-key",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "unicode-segmentation",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-web-fetch"
+version = "0.44.0"
+dependencies = [
+ "async-trait",
+ "headless_chrome",
+ "htmd",
+ "mockito",
+ "reqwest",
+ "rstest",
+ "serde",
+ "tokio",
+ "tracing",
+ "url",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-workflow"
+version = "0.44.0"
+dependencies = [
+ "arc-swap",
+ "async-trait",
+ "derive_more",
+ "error-stack",
+ "petgraph",
+ "regex",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "wherror",
+]
+
+[[package]]
+name = "jinn-workflow-tui"
+version = "0.44.0"
+dependencies = [
+ "async-trait",
+ "crossterm",
+ "error-stack",
+ "jinn-workflow",
+ "ratatui",
+ "serde_json",
+ "tokio",
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "jpeg-decoder"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2128,299 +2421,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "nullslop"
-version = "0.43.0"
-dependencies = [
- "clap",
- "clap-verbosity-flag",
- "clap_complete",
- "dirs",
- "dotenvy",
- "error-stack",
- "jiff",
- "kanal",
- "mockito",
- "nullslop-bench",
- "nullslop-cli",
- "nullslop-domain",
- "nullslop-plugin",
- "nullslop-tui",
- "nullslop-web-fetch",
- "ratatui-spatial-splits",
- "ratatui-which-key",
- "reqwest",
- "rstest",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "wherror",
-]
-
-[[package]]
-name = "nullslop-bench"
-version = "0.43.0"
-dependencies = [
- "comfy-table",
- "csv",
- "error-stack",
- "globset",
- "humantime",
- "include_dir",
- "jiff",
- "nullslop-domain",
- "nullslop-provider",
- "rstest",
- "strip-ansi-escapes",
- "tempfile",
- "tokio",
- "tracing",
- "tree-sitter",
- "tree-sitter-python",
- "unicode-segmentation",
- "wherror",
-]
-
-[[package]]
-name = "nullslop-cli"
-version = "0.43.0"
-dependencies = [
- "clap",
- "clap-verbosity-flag",
- "clap_complete",
-]
-
-[[package]]
-name = "nullslop-domain"
-version = "0.43.0"
-dependencies = [
- "anstyle",
- "anstyle-lossy",
- "async-trait",
- "derive_more",
- "diesel",
- "dirs",
- "error-stack",
- "futures",
- "fuzzy-matcher",
- "humantime",
- "jiff",
- "kanal",
- "libc",
- "nullslop-protocol-derive",
- "nullslop-provider",
- "nullslop-selection-widget",
- "nullslop-testutil",
- "nullslop-theme",
- "nullslop-web-fetch",
- "nullslop-workflow",
- "parking_lot",
- "rand 0.9.4",
- "ratatui",
- "ratatui-markdown",
- "ratatui-which-key",
- "reasoning-parser",
- "regex",
- "rstest",
- "serde",
- "serde_json",
- "strip-ansi-escapes",
- "tempfile",
- "textwrap",
- "throbber-widgets-tui",
- "tiktoken",
- "tokio",
- "tokio-util",
- "toml",
- "tracing",
- "unicode-segmentation",
- "unicode-width",
- "uuid",
- "wherror",
-]
-
-[[package]]
-name = "nullslop-e2e"
-version = "0.43.0"
-dependencies = [
- "crossterm",
- "cucumber",
- "kanal",
- "nullslop",
- "nullslop-domain",
- "nullslop-plugin",
- "nullslop-tui",
- "ratatui-spatial-splits",
- "ratatui-which-key",
- "serde_json",
- "tempfile",
- "tokio",
-]
-
-[[package]]
-name = "nullslop-plugin"
-version = "0.43.0"
-dependencies = [
- "error-stack",
- "kanal",
- "mlua",
- "nullslop-domain",
- "parking_lot",
- "rstest",
- "serde",
- "serde_json",
- "tempfile",
- "tracing",
- "wherror",
-]
-
-[[package]]
-name = "nullslop-protocol-derive"
-version = "0.43.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "rstest",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "nullslop-provider"
-version = "0.43.0"
-dependencies = [
- "async-trait",
- "error-stack",
- "futures",
- "jiff",
- "mockito",
- "parking_lot",
- "rand 0.9.4",
- "regex",
- "reqwest",
- "rstest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "wherror",
-]
-
-[[package]]
-name = "nullslop-selection-widget"
-version = "0.43.0"
-dependencies = [
- "fuzzy-matcher",
- "nullslop-testutil",
- "ratatui",
- "rstest",
- "unicode-segmentation",
-]
-
-[[package]]
-name = "nullslop-testutil"
-version = "0.43.0"
-dependencies = [
- "ratatui",
-]
-
-[[package]]
-name = "nullslop-theme"
-version = "0.43.0"
-dependencies = [
- "anstyle",
- "anstyle-lossy",
- "error-stack",
- "nullslop-selection-widget",
- "ratatui",
- "rstest",
- "serde",
- "tempfile",
- "toml",
- "wherror",
-]
-
-[[package]]
-name = "nullslop-tui"
-version = "0.43.0"
-dependencies = [
- "arboard",
- "crossterm",
- "derive_more",
- "dialoguer",
- "dirs",
- "error-stack",
- "kanal",
- "nullslop-domain",
- "nullslop-plugin",
- "nullslop-selection-widget",
- "nullslop-testutil",
- "nullslop-workflow",
- "nullslop-workflow-tui",
- "parking_lot",
- "ratatui",
- "ratatui-which-key",
- "rstest",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
- "unicode-segmentation",
- "wherror",
-]
-
-[[package]]
-name = "nullslop-web-fetch"
-version = "0.43.0"
-dependencies = [
- "async-trait",
- "headless_chrome",
- "htmd",
- "mockito",
- "reqwest",
- "rstest",
- "serde",
- "tokio",
- "tracing",
- "url",
- "wherror",
-]
-
-[[package]]
-name = "nullslop-workflow"
-version = "0.43.0"
-dependencies = [
- "arc-swap",
- "async-trait",
- "derive_more",
- "error-stack",
- "petgraph",
- "regex",
- "rstest",
- "serde",
- "serde_json",
- "tokio",
- "tokio-util",
- "tracing",
- "wherror",
-]
-
-[[package]]
-name = "nullslop-workflow-tui"
-version = "0.43.0"
-dependencies = [
- "async-trait",
- "crossterm",
- "error-stack",
- "nullslop-workflow",
- "ratatui",
- "serde_json",
- "tokio",
- "unicode-segmentation",
 ]
 
 [[package]]

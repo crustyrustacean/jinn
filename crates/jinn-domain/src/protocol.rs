@@ -1,0 +1,54 @@
+//! Protocol types for the jinn actor system.
+//!
+//! This module defines cross-cutting types that are used across feature boundaries:
+//!
+//! - **[`app_msg`]** — `AppMsg` (processing loop message), `Command` (mega-enum),
+//!   `Event` (mega-enum)
+//! - **[`intent`]** — `Intent` (user-initiated action) and `IntentResult`
+//! - **[`key`]** — `Key`, `KeyEvent`, `Modifiers` (keyboard input types)
+//! - **[`mode`]** — `Mode` (application interaction mode)
+//! - **[`system`]** — `KeyDown`, `KeyUp`, `ModeChanged`
+//!
+//! Domain-specific types (session, provider, context, tools, chat input, etc.) live
+//! in their feature modules under `feat/` and are re-exported here for convenience.
+
+pub mod app_msg;
+pub mod intent;
+pub mod key;
+#[cfg(test)]
+mod key_tests;
+pub mod mode;
+pub mod system;
+pub mod tab;
+
+// Re-export primary types
+pub use crate::common::actor::{CommandMsg, CommandName, EventMsg, EventTypeName};
+pub use app_msg::AppMsg;
+pub use app_msg::Command;
+pub use app_msg::DynamicCommand;
+pub use app_msg::DynamicEvent;
+pub use app_msg::Event;
+pub use intent::CwdRoot;
+pub use intent::Intent;
+pub use intent::IntentResult;
+pub use key::{Key, KeyEvent, Modifiers};
+pub use mode::Mode;
+pub use jinn_protocol_derive::{CommandMsg, EventMsg};
+pub use tab::{ActiveTab, TabDirection};
+
+// Re-export domain types that are widely used as cross-cutting protocol concerns
+pub use crate::common::actor::actor_name::ActorName;
+pub use crate::feat::context::protocol::prompt_template::PromptTemplate;
+pub use crate::feat::context::protocol::strategy_id::PromptStrategyId;
+pub use crate::feat::picker::picker_kind::PickerKind;
+pub use crate::feat::provider::llm_message::LlmMessage;
+pub use crate::feat::session::protocol::session_id::SessionId;
+
+// Re-export domain types used by the picker and UI
+pub use crate::feat::provider::entries_to_messages::entries_to_messages;
+pub use crate::feat::provider::picker_entry::PickerEntry;
+pub use crate::feat::session::chat_entry::{
+    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition,
+};
+pub use crate::feat::session::picker_entry::SessionTreeEntry;
+pub use crate::feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};

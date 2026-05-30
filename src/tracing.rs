@@ -1,4 +1,4 @@
-//! Tracing initialization for nullslop.
+//! Tracing initialization for jinn.
 //!
 //! Sets up the global tracing subscriber based on the application's run mode.
 //! In TUI mode, traces are written exclusively to a file to avoid corrupting
@@ -9,7 +9,7 @@ use std::{env, fs::File, path::PathBuf, sync::Arc};
 
 use clap_verbosity_flag::{Verbosity, WarnLevel};
 use error_stack::{Report, ResultExt};
-use nullslop_domain::common::app_info::APP_NAME;
+use jinn_domain::common::app_info::APP_NAME;
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use wherror::Error;
 

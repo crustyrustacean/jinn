@@ -1,12 +1,12 @@
 [package]
-name = "nullslop"
+name = "jinn"
 version.workspace = true
 edition.workspace = true
 resolver = "3"
-default-run = "nullslop"
+default-run = "jinn"
 [features]
 default = ["headless-chrome"]
-headless-chrome = ["nullslop-web-fetch/headless-chrome"]
+headless-chrome = ["jinn-web-fetch/headless-chrome"]
 
 [workspace]
 members = ["crates/*", "tests/*", "vendor/*"]
@@ -26,12 +26,12 @@ panic = "abort"
 path = "src/lib.rs"
 
 [dependencies]
-nullslop-cli = { workspace = true }
-nullslop-tui = { workspace = true }
-nullslop-domain = { workspace = true }
-nullslop-bench = { workspace = true }
-nullslop-plugin = { workspace = true }
-nullslop-web-fetch = { workspace = true, features = ["headless-chrome"] }
+jinn-cli = { workspace = true }
+jinn-tui = { workspace = true }
+jinn-domain = { workspace = true }
+jinn-bench = { workspace = true }
+jinn-plugin = { workspace = true }
+jinn-web-fetch = { workspace = true, features = ["headless-chrome"] }
 clap_complete = { workspace = true }
 tokio = { workspace = true }
 kanal = { workspace = true }
@@ -58,20 +58,20 @@ tokio = { workspace = true, features = ["full"] }
 
 [workspace.dependencies]
 # Internal
-nullslop-domain = { path = "crates/nullslop-domain" }
-nullslop-plugin = { path = "crates/nullslop-plugin" }
+jinn-domain = { path = "crates/jinn-domain" }
+jinn-plugin = { path = "crates/jinn-plugin" }
 ratatui-markdown = { path = "vendor/ratatui-markdown", features = ["markdown", "highlight", "highlight-lang-all", "highlight-pest", "mermaid"] }
-nullslop-provider = { path = "crates/nullslop-provider" }
-nullslop-tui = { path = "crates/nullslop-tui" }
-nullslop-cli = { path = "crates/nullslop-cli" }
-nullslop-protocol-derive = { path = "crates/nullslop-protocol-derive" }
-nullslop-selection-widget = { path = "crates/nullslop-selection-widget" }
-nullslop-testutil = { path = "crates/nullslop-testutil" }
-nullslop-workflow = { path = "crates/nullslop-workflow" }
-nullslop-workflow-tui = { path = "crates/nullslop-workflow-tui" }
-nullslop-bench = { path = "crates/nullslop-bench" }
-nullslop-theme = { path = "crates/nullslop-theme" }
-nullslop-web-fetch = { path = "crates/nullslop-web-fetch" }
+jinn-provider = { path = "crates/jinn-provider" }
+jinn-tui = { path = "crates/jinn-tui" }
+jinn-cli = { path = "crates/jinn-cli" }
+jinn-protocol-derive = { path = "crates/jinn-protocol-derive" }
+jinn-selection-widget = { path = "crates/jinn-selection-widget" }
+jinn-testutil = { path = "crates/jinn-testutil" }
+jinn-workflow = { path = "crates/jinn-workflow" }
+jinn-workflow-tui = { path = "crates/jinn-workflow-tui" }
+jinn-bench = { path = "crates/jinn-bench" }
+jinn-theme = { path = "crates/jinn-theme" }
+jinn-web-fetch = { path = "crates/jinn-web-fetch" }
 
 # Error handling
 wherror = "2.3.1"

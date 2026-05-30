@@ -1,6 +1,6 @@
-# Sonokai — vivid dark theme for nullslop
+# Sonokai — vivid dark theme for jinn
 # Inspired by sainnhe/sonokai for Vim
-# Place in ~/.config/nullslop/themes/sonokai.toml
+# Place in ~/.config/jinn/themes/sonokai.toml
 
 # Borders & focus
 focus_accent = "#c4a7e7"       # Purple
