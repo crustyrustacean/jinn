@@ -80,7 +80,7 @@ pub fn arg_input_popup_rect(area: Rect, state: &AppState) -> Rect {
 /// Shows all available lifecycles (including the implicit blank) with
 /// descriptions and an args indicator.
 pub fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    let widget = SelectionWidget::new(&state.frontend.session_lifecycle_picker())
+    let widget = SelectionWidget::new(state.frontend.session_lifecycle_picker())
         .title(Line::from(" New Session (with scripted lifecycle) "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(Line::from(" Enter to select, ESC to cancel "));

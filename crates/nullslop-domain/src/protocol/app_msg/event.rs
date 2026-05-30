@@ -127,7 +127,7 @@ pub enum Event {
     /// A new entry was appended to a session's history.
     HistoryAppended(crate::feat::session::protocol::history_appended::HistoryAppended),
     /// A session has been fully loaded from persistent storage.
-    SessionLoadCompleted(SessionLoadCompleted),
+    SessionLoadCompleted(Box<SessionLoadCompleted>),
     /// A workflow has been loaded (initialized) but not yet started.
     WorkflowInitialized(crate::feat::workflow::protocol::event::WorkflowInitialized),
     /// A workflow execution started.

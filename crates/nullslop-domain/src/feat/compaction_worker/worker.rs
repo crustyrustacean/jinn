@@ -16,7 +16,7 @@ use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::compaction_worker::serializer::serialize_entries_for_compaction;
 use crate::feat::compaction_worker::algorithm::{
-    self, adjust_cut_to_boundary, compute_cut_index, find_start_boundary,
+    adjust_cut_to_boundary, compute_cut_index, find_start_boundary,
     gather_compactable_entries,
 };
 use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, TokenEstimator};
@@ -61,7 +61,7 @@ pub struct CompactionWorker {
 
 #[async_trait::async_trait]
 impl HistoryWorker for CompactionWorker {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "compaction"
     }
 
@@ -74,6 +74,10 @@ impl HistoryWorker for CompactionWorker {
 
 impl CompactionWorker {
     /// Full evaluation with session state access.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the LLM call fails or the response cannot be parsed.
     pub async fn evaluate_for_session(
         &self,
         trigger: &CompactionTrigger,
