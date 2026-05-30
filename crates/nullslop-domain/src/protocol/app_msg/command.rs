@@ -47,7 +47,7 @@ use crate::feat::tools_actor::protocol::command::{
 /// UI operations have been migrated to the Intent/IntentHandler pipeline.
 /// This enum contains only commands that require actor coordination
 /// or domain processing.
-#[expect(
+#[allow(
     clippy::large_enum_variant,
     reason = "boxing would cascade through all match arms"
 )]

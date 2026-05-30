@@ -144,7 +144,7 @@ impl StreamResponseParser {
             }
             if !found_reasoning {
                 // Log what fields the delta actually has for debugging.
-                let delta_keys: Vec<&str> = delta.as_object().map(|o| o.keys().map(|k| k.as_str()).collect()).unwrap_or_default();
+                let delta_keys: Vec<&str> = delta.as_object().map(|o| o.keys().map(std::string::String::as_str).collect()).unwrap_or_default();
                 tracing::trace!(
                     delta_keys = ?delta_keys,
                     "response parser: no reasoning field found in delta"

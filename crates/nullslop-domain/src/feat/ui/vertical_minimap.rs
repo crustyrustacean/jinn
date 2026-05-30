@@ -258,9 +258,8 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::common::app_state::AppState;
-    use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
+    use crate::feat::session::chat_entry::ChatEntry;
     use crate::feat::theme::default_theme;
-    use crate::protocol::ChatEntryId;
 
     #[rstest::rstest]
     fn find_block_index_returns_position_for_existing_entry() {
