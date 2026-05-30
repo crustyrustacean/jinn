@@ -32,9 +32,7 @@ pub use translator::TranslatorFn;
 ///
 /// # Example
 ///
-/// ```ignore
-/// plugin::emit(hooks::APP_STARTED, &registry, &AppStartedCtx { session_id });
-/// ```
+/// See the hook tests in this crate for usage patterns.
 pub fn emit<S>(event_name: &str, registry: &PluginRegistry, ctx: &S)
 where
     S: serde::Serialize,
@@ -50,9 +48,7 @@ where
 ///
 /// # Example
 ///
-/// ```ignore
-/// let items: Vec<MyItem> = plugin::for_hook("render_sidebar", &registry, &ctx);
-/// ```
+/// See the hook tests in this crate for usage patterns.
 pub fn for_hook<T, S>(hook_name: &str, registry: &PluginRegistry, ctx: &S) -> Vec<T>
 where
     T: serde::de::DeserializeOwned,

@@ -98,10 +98,7 @@ impl SessionStore for FakeSessionStore {
 ///
 /// # Example
 ///
-/// ```ignore
-/// let services = TestServices::builder().build();
-/// let state = AppState::default();
-/// ```
+/// See the tests in this crate for full usage patterns.
 pub struct TestServices {
     /// Provider configuration for the registry.
     providers: ProvidersConfig,

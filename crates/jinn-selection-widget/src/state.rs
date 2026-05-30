@@ -18,12 +18,7 @@ use crate::PickerItem;
 ///
 /// # Examples
 ///
-/// ```ignore
-/// let mut state = SelectionState::new();
-/// state.set_items(vec![MyItem::new("hello"), MyItem::new("world")]);
-/// state.insert_char('h');
-/// assert_eq!(state.filtered_count(), 1);
-/// ```
+/// See the tests in this crate for usage patterns.
 #[derive(Debug)]
 #[expect(
     clippy::field_scoped_visibility_modifiers,
