@@ -8,20 +8,20 @@ use std::path::Path;
 use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
-use nullslop_cli::Cli;
-use nullslop_domain::ApiKeys;
-use nullslop_domain::ApiKeysService;
-use nullslop_domain::ConfigStorageService;
-use nullslop_domain::FilesystemConfigStorage;
-use nullslop_domain::FilesystemUserPreferencesStorage;
-use nullslop_domain::LlmServiceFactoryService;
-use nullslop_domain::NoProvidersAvailableFactory;
-use nullslop_domain::ProviderRegistry;
-use nullslop_domain::ProviderRegistryService;
-use nullslop_domain::SessionStoreService;
-use nullslop_domain::SqliteSessionStore;
-use nullslop_domain::State;
-use nullslop_domain::UserPreferencesStorageService;
+use jinn_cli::Cli;
+use jinn_domain::ApiKeys;
+use jinn_domain::ApiKeysService;
+use jinn_domain::ConfigStorageService;
+use jinn_domain::FilesystemConfigStorage;
+use jinn_domain::FilesystemUserPreferencesStorage;
+use jinn_domain::LlmServiceFactoryService;
+use jinn_domain::NoProvidersAvailableFactory;
+use jinn_domain::ProviderRegistry;
+use jinn_domain::ProviderRegistryService;
+use jinn_domain::SessionStoreService;
+use jinn_domain::SqliteSessionStore;
+use jinn_domain::State;
+use jinn_domain::UserPreferencesStorageService;
 use tokio::runtime::Runtime;
 use wherror::Error;
 
@@ -69,7 +69,7 @@ impl App {
     ///
     /// Returns an error if the runner fails.
     pub fn dispatch(&mut self, cli: Cli) -> Result<(), Report<AppError>> {
-        use nullslop_cli::cli::{BenchCommands, Commands, HeadlessCommands};
+        use jinn_cli::cli::{BenchCommands, Commands, HeadlessCommands};
 
         // Load config from providers.toml (auto-creates on first run).
         let config_storage =
@@ -80,7 +80,7 @@ impl App {
         // Provider registry is populated by the provider-init actor.
         // Start with an empty registry.
         let provider_registry = ProviderRegistryService::new(
-            ProviderRegistry::from_config(nullslop_domain::ProvidersConfig {
+            ProviderRegistry::from_config(jinn_domain::ProvidersConfig {
                 providers: vec![],
                 aliases: vec![],
                 default_provider: None,
@@ -130,7 +130,7 @@ impl App {
                     None,
                     None,
                     None,
-                    nullslop_domain::AppPaths::default(),
+                    jinn_domain::AppPaths::default(),
                 );
                 let paths = &services.paths;
                 load_prompt_templates(
@@ -146,34 +146,34 @@ impl App {
                 load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
                 // Resolve mouse selection config from environment.
-                let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
+                let mouse_selection = !matches!(std::env::var("JINN_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
 
-                let tui_events = nullslop_tui::MsgHandler::new();
-                let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
-                let mut ui_registry = nullslop_domain::AppUiRegistry::new();
-                nullslop_domain::register_all_ui_elements(&mut ui_registry);
-                let which_key = nullslop_tui::app::WhichKeyInstance::new(
-                    nullslop_tui::keymap::init(),
-                    nullslop_tui::Scope::Normal,
+                let tui_events = jinn_tui::MsgHandler::new();
+                let tui_config = jinn_tui::config::TuiConfig::new(mouse_selection);
+                let mut ui_registry = jinn_domain::AppUiRegistry::new();
+                jinn_domain::register_all_ui_elements(&mut ui_registry);
+                let which_key = jinn_tui::app::WhichKeyInstance::new(
+                    jinn_tui::keymap::init(),
+                    jinn_tui::Scope::Normal,
                 );
 
-                let runner = Runner::Tui(Box::new(nullslop_tui::TuiApp {
+                let runner = Runner::Tui(Box::new(jinn_tui::TuiApp {
                     core,
                     services,
                     actor_host,
                     ui_registry,
                     events: tui_events,
                     which_key,
-                    suspend: nullslop_tui::suspend::Suspend::new(),
+                    suspend: jinn_tui::suspend::Suspend::new(),
                     event_thread: None,
-                    status: nullslop_tui::AppStatus::Starting,
-                    selection: nullslop_tui::selection::SelectionState::Idle,
+                    status: jinn_tui::AppStatus::Starting,
+                    selection: jinn_tui::selection::SelectionState::Idle,
                     selectable_rects: Default::default(),
                     pending_clipboard: false,
                     config: tui_config,
                     sidebar: {
-                        let mut s = nullslop_domain::feat::ui::sidebar::Sidebar::new();
-                        nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
+                        let mut s = jinn_domain::feat::ui::sidebar::Sidebar::new();
+                        jinn_domain::feat::ui::sidebar::register_sections(&mut s);
                         s
                     },
                 }));
@@ -193,7 +193,7 @@ impl App {
                     None,
                     None,
                     None,
-                    nullslop_domain::AppPaths::default(),
+                    jinn_domain::AppPaths::default(),
                 );
                 load_prompt_templates(
                     &core.state,
@@ -227,7 +227,7 @@ impl App {
                 runner.run().change_context(AppError)?;
             }
             Commands::Fetch { subcommand } => {
-                use nullslop_cli::cli::FetchCommands;
+                use jinn_cli::cli::FetchCommands;
 
                 match subcommand {
                     FetchCommands::Models => {
@@ -257,7 +257,7 @@ impl App {
                         }
 
                         // Build the bench plan from models × tasks.
-                        let plan = nullslop_bench::orchestrator::build_plan(&model, &task)
+                        let plan = jinn_bench::orchestrator::build_plan(&model, &task)
                             .change_context(AppError)
                             .attach("invalid task glob pattern")?;
                         tracing::info!(pairs = plan.pairs.len(), "built bench plan");
@@ -279,7 +279,7 @@ impl App {
                                 Some(csv),
                                 Some(plan),
                                 artifact_dir,
-                                nullslop_domain::AppPaths::default(),
+                                jinn_domain::AppPaths::default(),
                             );
                         let paths = &services.paths;
                         load_prompt_templates(
@@ -294,44 +294,44 @@ impl App {
                         )?;
                         load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
-                        let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
-                        let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
-                        let mut ui_registry = nullslop_domain::AppUiRegistry::new();
-                        nullslop_domain::register_all_ui_elements(&mut ui_registry);
-                        let which_key = nullslop_tui::app::WhichKeyInstance::new(
-                            nullslop_tui::keymap::init(),
-                            nullslop_tui::Scope::Normal,
+                        let mouse_selection = !matches!(std::env::var("JINN_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
+                        let tui_config = jinn_tui::config::TuiConfig::new(mouse_selection);
+                        let mut ui_registry = jinn_domain::AppUiRegistry::new();
+                        jinn_domain::register_all_ui_elements(&mut ui_registry);
+                        let which_key = jinn_tui::app::WhichKeyInstance::new(
+                            jinn_tui::keymap::init(),
+                            jinn_tui::Scope::Normal,
                         );
 
-                        let runner = Runner::Tui(Box::new(nullslop_tui::TuiApp {
+                        let runner = Runner::Tui(Box::new(jinn_tui::TuiApp {
                             core,
                             services,
                             actor_host,
                             ui_registry,
-                            events: nullslop_tui::MsgHandler::new(),
+                            events: jinn_tui::MsgHandler::new(),
                             which_key,
-                            suspend: nullslop_tui::suspend::Suspend::new(),
+                            suspend: jinn_tui::suspend::Suspend::new(),
                             event_thread: None,
-                            status: nullslop_tui::AppStatus::Starting,
-                            selection: nullslop_tui::selection::SelectionState::Idle,
+                            status: jinn_tui::AppStatus::Starting,
+                            selection: jinn_tui::selection::SelectionState::Idle,
                             selectable_rects: Default::default(),
                             pending_clipboard: false,
                             config: tui_config,
                             sidebar: {
-                                let mut s = nullslop_domain::feat::ui::sidebar::Sidebar::new();
-                                nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
+                                let mut s = jinn_domain::feat::ui::sidebar::Sidebar::new();
+                                jinn_domain::feat::ui::sidebar::register_sections(&mut s);
                                 s
                             },
                         }));
                         runner.run().change_context(AppError)?;
                     }
                     BenchCommands::Show { csv } => {
-                        nullslop_bench::show::show_results(&csv).map_err(|e| {
+                        jinn_bench::show::show_results(&csv).map_err(|e| {
                             error_stack::Report::new(AppError).attach(e.to_string())
                         })?;
                     }
                     BenchCommands::Compare { csv_a, csv_b } => {
-                        nullslop_bench::compare::compare_results(&csv_a, &csv_b).map_err(|e| {
+                        jinn_bench::compare::compare_results(&csv_a, &csv_b).map_err(|e| {
                             error_stack::Report::new(AppError).attach(e.to_string())
                         })?;
                     }
@@ -354,7 +354,7 @@ impl App {
                                 None,
                                 None,
                                 None,
-                                nullslop_domain::AppPaths::default(),
+                                jinn_domain::AppPaths::default(),
                             );
                         let paths = &services.paths;
                         load_prompt_templates(
@@ -369,32 +369,32 @@ impl App {
                         )?;
                         load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
-                        let mouse_selection = !matches!(std::env::var("NULLSLOP_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
-                        let tui_config = nullslop_tui::config::TuiConfig::new(mouse_selection);
-                        let mut ui_registry = nullslop_domain::AppUiRegistry::new();
-                        nullslop_domain::register_all_ui_elements(&mut ui_registry);
-                        let which_key = nullslop_tui::app::WhichKeyInstance::new(
-                            nullslop_tui::keymap::init(),
-                            nullslop_tui::Scope::Normal,
+                        let mouse_selection = !matches!(std::env::var("JINN_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
+                        let tui_config = jinn_tui::config::TuiConfig::new(mouse_selection);
+                        let mut ui_registry = jinn_domain::AppUiRegistry::new();
+                        jinn_domain::register_all_ui_elements(&mut ui_registry);
+                        let which_key = jinn_tui::app::WhichKeyInstance::new(
+                            jinn_tui::keymap::init(),
+                            jinn_tui::Scope::Normal,
                         );
 
-                        let runner = Runner::Tui(Box::new(nullslop_tui::TuiApp {
+                        let runner = Runner::Tui(Box::new(jinn_tui::TuiApp {
                             core,
                             services,
                             actor_host,
                             ui_registry,
-                            events: nullslop_tui::MsgHandler::new(),
+                            events: jinn_tui::MsgHandler::new(),
                             which_key,
-                            suspend: nullslop_tui::suspend::Suspend::new(),
+                            suspend: jinn_tui::suspend::Suspend::new(),
                             event_thread: None,
-                            status: nullslop_tui::AppStatus::Starting,
-                            selection: nullslop_tui::selection::SelectionState::Idle,
+                            status: jinn_tui::AppStatus::Starting,
+                            selection: jinn_tui::selection::SelectionState::Idle,
                             selectable_rects: Default::default(),
                             pending_clipboard: false,
                             config: tui_config,
                             sidebar: {
-                                let mut s = nullslop_domain::feat::ui::sidebar::Sidebar::new();
-                                nullslop_domain::feat::ui::sidebar::register_sections(&mut s);
+                                let mut s = jinn_domain::feat::ui::sidebar::Sidebar::new();
+                                jinn_domain::feat::ui::sidebar::register_sections(&mut s);
                                 s
                             },
                         }));
@@ -419,10 +419,10 @@ impl Default for App {
 /// Called once after core creation. Failures are logged but not fatal —
 /// an empty store is used when both directories are missing or unreadable.
 fn load_prompt_templates(state: &State, user_dir: &Path, system_dir: &Path) {
-    let store = nullslop_domain::PromptTemplateStore::load_from_dirs(user_dir, system_dir)
+    let store = jinn_domain::PromptTemplateStore::load_from_dirs(user_dir, system_dir)
         .unwrap_or_else(|e| {
             tracing::warn!("failed to load prompt templates: {e:?}");
-            nullslop_domain::PromptTemplateStore::new()
+            jinn_domain::PromptTemplateStore::new()
         });
     tracing::info!(count = store.len(), "loaded prompt templates");
     state.write().context.prompt_templates = store;
@@ -430,8 +430,8 @@ fn load_prompt_templates(state: &State, user_dir: &Path, system_dir: &Path) {
 
 /// Loads the compaction system prompt from user or system prompts directory.
 ///
-/// Searches the user prompts directory first (`~/.config/nullslop/prompts/_compaction.md`),
-/// then the system prompts directory (`/usr/share/nullslop/prompts/_compaction.md`).
+/// Searches the user prompts directory first (`~/.config/jinn/prompts/_compaction.md`),
+/// then the system prompts directory (`/usr/share/jinn/prompts/_compaction.md`).
 ///
 /// # Errors
 ///
@@ -442,7 +442,7 @@ fn load_compaction_prompt(
     user_dir: &Path,
     system_dir: &Path,
 ) -> Result<(), Report<AppError>> {
-    let prompt = nullslop_domain::common::system_resource::load_system_resource(
+    let prompt = jinn_domain::common::system_resource::load_system_resource(
         "_compaction.md",
         user_dir,
         system_dir,
@@ -465,7 +465,7 @@ fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
         let guard = state.read();
         guard.frontend.preferences.theme_name.clone()
     };
-    match nullslop_domain::feat::theme::resolve_theme(theme_name.as_deref(), user_dir, system_dir) {
+    match jinn_domain::feat::theme::resolve_theme(theme_name.as_deref(), user_dir, system_dir) {
         Ok(theme) => {
             tracing::info!(theme = ?theme_name, "loaded theme");
             state.write().frontend.theme = theme;
@@ -479,14 +479,14 @@ fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
 /// Fetches model metadata from models.dev and saves it to the user's cache directory.
 ///
 /// Makes an HTTP GET request to `https://models.dev/api.json`, validates the
-/// response as JSON, and writes it to `~/.cache/nullslop/models.dev.json`.
+/// response as JSON, and writes it to `~/.cache/jinn/models.dev.json`.
 ///
 /// # Errors
 ///
 /// Returns an error if the HTTP request fails, the response is not valid JSON,
 /// or the file cannot be written.
 async fn fetch_models() -> Result<(), Report<AppError>> {
-    use nullslop_domain::common::app_info::APP_NAME;
+    use jinn_domain::common::app_info::APP_NAME;
     let target_path = dirs::cache_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join(APP_NAME)
@@ -559,7 +559,7 @@ async fn fetch_models_from_url(url: &str, output_path: std::path::PathBuf) -> Re
 
 #[cfg(test)]
 mod tests {
-    use nullslop_domain::AppState;
+    use jinn_domain::AppState;
     use std::path::PathBuf;
 
     use super::*;

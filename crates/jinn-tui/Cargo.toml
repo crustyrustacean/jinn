@@ -1,0 +1,35 @@
+[package]
+name = "jinn-tui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+jinn-domain = { workspace = true }
+jinn-plugin = { workspace = true }
+wherror = { workspace = true }
+error-stack = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+ratatui-which-key = { workspace = true }
+tokio = { workspace = true }
+kanal = { workspace = true }
+parking_lot = { workspace = true }
+derive_more = { workspace = true }
+unicode-segmentation = { workspace = true }
+dialoguer = { workspace = true }
+arboard = { workspace = true }
+dirs = { workspace = true }
+tracing = { workspace = true }
+jinn-workflow = { workspace = true }
+jinn-workflow-tui = { workspace = true }
+jinn-selection-widget = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
+jinn-testutil = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

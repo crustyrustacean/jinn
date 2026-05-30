@@ -1,5 +1,5 @@
-# Catppuccin Mocha — warm pastel dark theme for nullslop
-# Place in ~/.config/nullslop/themes/catppuccin-mocha.toml
+# Catppuccin Mocha — warm pastel dark theme for jinn
+# Place in ~/.config/jinn/themes/catppuccin-mocha.toml
 
 # Borders & focus
 focus_accent = "#cba6f7"       # Mauve

@@ -11,7 +11,7 @@ use crate::headless::HeadlessApp;
 /// The [`Runner::run`] method delegates to the appropriate event loop.
 pub enum Runner {
     /// Terminal UI mode.
-    Tui(Box<nullslop_tui::TuiApp>),
+    Tui(Box<jinn_tui::TuiApp>),
     /// Headless (non-interactive) mode.
     Headless(Box<HeadlessApp>),
 }
@@ -28,7 +28,7 @@ impl Runner {
     pub fn run(self) -> Result<(), Report<AppError>> {
         match self {
             Runner::Tui(app) => {
-                nullslop_tui::run(*app).change_context(AppError)?;
+                jinn_tui::run(*app).change_context(AppError)?;
             }
             Runner::Headless(mut app) => {
                 app.shutdown();

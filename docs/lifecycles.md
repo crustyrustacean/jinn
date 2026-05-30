@@ -7,7 +7,7 @@ directory.
 
 ## How It Works
 
-1. You define lifecycle recipes in `~/.config/nullslop/nullslop.toml`.
+1. You define lifecycle recipes in `~/.config/jinn/jinn.toml`.
 2. When creating a new session, you pick a lifecycle from the picker.
 3. The **setup command** runs asynchronously — its last non-empty stdout line
    becomes the session's [CWD](./cwd.md).
@@ -27,7 +27,7 @@ the positional arguments before the session is created.
 
 ## Configuration Format
 
-Lifecycles are defined in `~/.config/nullslop/nullslop.toml` under `[[session_lifecycle]]`
+Lifecycles are defined in `~/.config/jinn/jinn.toml` under `[[session_lifecycle]]`
 table arrays:
 
 ```toml
@@ -36,8 +36,8 @@ last_model = "anthropic/claude-sonnet-4-20250514"
 [[session_lifecycle]]
 name = "fossil branch"
 description = "Open a fossil branch in a new worktree"
-setup_command = "~/.config/nullslop/scripts/fossil-branch.sh $1"
-teardown_command = "~/.config/nullslop/scripts/fossil-cleanup.sh $1"
+setup_command = "~/.config/jinn/scripts/fossil-branch.sh $1"
+teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
 ```
 
 ### Fields
@@ -86,30 +86,30 @@ only provides it once.
 
 Creates a fossil branch in a fresh worktree (one branch per session).
 
-**`~/.config/nullslop/nullslop.toml`:**
+**`~/.config/jinn/jinn.toml`:**
 
 ```toml
 [[session_lifecycle]]
 name = "fossil branch"
 description = "Create a fossil branch in a new worktree"
-setup_command = "~/.config/nullslop/scripts/fossil-branch.sh $1"
-teardown_command = "~/.config/nullslop/scripts/fossil-cleanup.sh $1"
+setup_command = "~/.config/jinn/scripts/fossil-branch.sh $1"
+teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
 ```
 
-**`~/.config/nullslop/scripts/fossil-branch.sh`:**
+**`~/.config/jinn/scripts/fossil-branch.sh`:**
 
 ```bash
 #!/bin/bash
 set -euo pipefail
 
 BRANCH="$1"
-WORKTREE="/tmp/nullslop-worktrees/$BRANCH"
+WORKTREE="/tmp/jinn-worktrees/$BRANCH"
 
 # Create a fresh checkout directory
 mkdir -p "$WORKTREE"
 
 # Navigate to the fossil repository root
-FOSSIL_REPO="/mnt/zed/repos/nullslop/nullslop.fossil"
+FOSSIL_REPO="/mnt/zed/repos/jinn/jinn.fossil"
 cd /tmp
 
 # Open the repository at the worktree path
@@ -122,14 +122,14 @@ fossil branch new "$BRANCH" trunk
 echo "$WORKTREE"
 ```
 
-**`~/.config/nullslop/scripts/fossil-cleanup.sh`:**
+**`~/.config/jinn/scripts/fossil-cleanup.sh`:**
 
 ```bash
 #!/bin/bash
 set -euo pipefail
 
 BRANCH="$1"
-WORKTREE="/tmp/nullslop-worktrees/$BRANCH"
+WORKTREE="/tmp/jinn-worktrees/$BRANCH"
 
 # Close the fossil checkout
 cd "$WORKTREE"
@@ -142,7 +142,7 @@ rm -rf "$WORKTREE"
 **Usage flow:**
 1. Open lifecycle picker → select "fossil branch"
 2. Enter branch name → `fix-bug-123`
-3. Session opens with CWD = `/tmp/nullslop-worktrees/fix-bug-123`
+3. Session opens with CWD = `/tmp/jinn-worktrees/fix-bug-123`
 4. All tool calls (bash, read, write) execute relative to that directory
 5. On session close: branch is closed and worktree is cleaned up
 
@@ -156,11 +156,11 @@ Creates a git feature branch from trunk and checks it out.
 [[session_lifecycle]]
 name = "git feature branch"
 description = "Create a feature branch and checkout"
-setup_command = "~/.config/nullslop/scripts/git-setup.sh <project> <branch>"
-teardown_command = "~/.config/nullslop/scripts/git-cleanup.sh <project> <branch>"
+setup_command = "~/.config/jinn/scripts/git-setup.sh <project> <branch>"
+teardown_command = "~/.config/jinn/scripts/git-cleanup.sh <project> <branch>"
 ```
 
-**`~/.config/nullslop/scripts/git-setup.sh`:**
+**`~/.config/jinn/scripts/git-setup.sh`:**
 
 ```bash
 #!/bin/bash
@@ -177,7 +177,7 @@ git checkout -b "$BRANCH"
 echo "$REPO_DIR"
 ```
 
-**`~/.config/nullslop/scripts/git-cleanup.sh`:**
+**`~/.config/jinn/scripts/git-cleanup.sh`:**
 
 ```bash
 #!/bin/bash
@@ -194,8 +194,8 @@ git branch -D "$BRANCH" 2>/dev/null || true
 
 **Usage flow:**
 1. Pick "git feature branch" from the lifecycle picker
-2. Enter: `nullslop fix-readme-typo`
-3. Session opens at `~/projects/nullslop/` with the `fix-readme-typo` branch checked out
+2. Enter: `jinn fix-readme-typo`
+3. Session opens at `~/projects/jinn/` with the `fix-readme-typo` branch checked out
 
 ---
 
@@ -207,7 +207,7 @@ Creates a temporary directory for each session with zero cleanup concerns.
 [[session_lifecycle]]
 name = "scratch dir"
 description = "Create a temp directory for the session"
-setup_command = "mktemp -d /tmp/nullslop-scratch-XXXXXXX"
+setup_command = "mktemp -d /tmp/jinn-scratch-XXXXXXX"
 teardown_command = "rm -rf $1"
 ```
 
@@ -217,7 +217,7 @@ as the session's lifecycle args, and the teardown command uses `$1` to reference
 **Usage flow:**
 1. Pick "scratch dir" from the lifecycle picker
 2. No args needed (the lifecycle has no explicit params)
-3. Session opens at a newly created temp directory like `/tmp/nullslop-scratch-aB3xY2z`
+3. Session opens at a newly created temp directory like `/tmp/jinn-scratch-aB3xY2z`
 4. On close: the directory is automatically deleted
 
 ---
@@ -230,11 +230,11 @@ Clones or pulls a repo, runs a build, and sets up environment variables.
 [[session_lifecycle]]
 name = "project setup"
 description = "Clone/pull and build a project"
-setup_command = "~/.config/nullslop/scripts/setup-project.sh $1"
-teardown_command = "~/.config/nullslop/scripts/cleanup-project.sh $1"
+setup_command = "~/.config/jinn/scripts/setup-project.sh $1"
+teardown_command = "~/.config/jinn/scripts/cleanup-project.sh $1"
 ```
 
-**`~/.config/nullslop/scripts/setup-project.sh`:**
+**`~/.config/jinn/scripts/setup-project.sh`:**
 
 ```bash
 #!/bin/bash
@@ -261,8 +261,8 @@ echo "$TARGET"
 
 **Usage flow:**
 1. Pick "project setup"
-2. Enter project name → `nullslop`
-3. Session opens at `~/worktrees/nullslop/` with the latest code built
+2. Enter project name → `jinn`
+3. Session opens at `~/worktrees/jinn/` with the latest code built
 4. If the build fails, the command errors and an error message appears in the
    session history (the session is still created but CWD falls back to default)
 
@@ -276,18 +276,18 @@ Spins up a Docker container for an isolated development environment.
 [[session_lifecycle]]
 name = "docker workspace"
 description = "Spin up a Docker container for development"
-setup_command = "~/.config/nullslop/scripts/docker-setup.sh $1"
-teardown_command = "~/.config/nullslop/scripts/docker-teardown.sh $1"
+setup_command = "~/.config/jinn/scripts/docker-setup.sh $1"
+teardown_command = "~/.config/jinn/scripts/docker-teardown.sh $1"
 ```
 
-**`~/.config/nullslop/scripts/docker-setup.sh`:**
+**`~/.config/jinn/scripts/docker-setup.sh`:**
 
 ```bash
 #!/bin/bash
 set -euo pipefail
 
 IMAGE="$1"
-CONTAINER_NAME="nullslop-$(date +%s)-$$"
+CONTAINER_NAME="jinn-$(date +%s)-$$"
 
 docker run -d \
     --name "$CONTAINER_NAME" \
@@ -299,19 +299,19 @@ docker run -d \
 WORKDIR=$(docker exec "$CONTAINER_NAME" pwd)
 
 # Save the container name for teardown (must be accessible later)
-echo "$CONTAINER_NAME" > /tmp/nullslop-container-$CONTAINER_NAME.txt
+echo "$CONTAINER_NAME" > /tmp/jinn-container-$CONTAINER_NAME.txt
 
 echo "$WORKDIR"
 ```
 
-**`~/.config/nullslop/scripts/docker-teardown.sh`:**
+**`~/.config/jinn/scripts/docker-teardown.sh`:**
 
 ```bash
 #!/bin/bash
 set -euo pipefail
 
 IMAGE="$1"
-CONTAINER_FILE="/tmp/nullslop-container-*.txt"
+CONTAINER_FILE="/tmp/jinn-container-*.txt"
 CONTAINER=$(cat $CONTAINER_FILE 2>/dev/null || echo "")
 
 if [ -n "$CONTAINER" ]; then
@@ -331,7 +331,7 @@ Runs tests from a specific directory with configurable flags.
 [[session_lifecycle]]
 name = "test runner"
 description = "Start a session in a test directory with flags"
-setup_command = "~/.config/nullslop/scripts/test-setup.sh <suite> <flags>"
+setup_command = "~/.config/jinn/scripts/test-setup.sh <suite> <flags>"
 ```
 
 **Usage flow:**
@@ -348,9 +348,9 @@ this lifecycle is setup-only.
 
 The "blank" lifecycle is the default when no lifecycle is selected. It creates a
 session with no setup command and no teardown. The session CWD is set to the
-global default CWD (the directory where nullslop was launched).
+global default CWD (the directory where jinn was launched).
 
-You don't need to define this in `nullslop.toml` — it's always available.
+You don't need to define this in `jinn.toml` — it's always available.
 
 ## Error Handling
 

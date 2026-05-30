@@ -6,11 +6,11 @@
 //! the registry is created on and never leaves a dedicated OS thread.
 //! The actor itself only holds a channel sender, forwarding events to that thread.
 
-use nullslop_domain::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
-use nullslop_domain::common::actor::protocol::event::AllActorsSpawned;
-use nullslop_domain::feat::session_lifecycle::protocol::event::SessionCreated;
-use nullslop_domain::protocol::app_msg::Event;
-use nullslop_plugin::PluginRegistry;
+use jinn_domain::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
+use jinn_domain::common::actor::protocol::event::AllActorsSpawned;
+use jinn_domain::feat::session_lifecycle::protocol::event::SessionCreated;
+use jinn_domain::protocol::app_msg::Event;
+use jinn_plugin::PluginRegistry;
 
 /// Messages sent from the PluginActor (on the tokio runtime) to the dedicated
 /// plugin thread (which owns the `!Send` `PluginRegistry`).
@@ -104,11 +104,11 @@ fn plugin_thread(rx: kanal::Receiver<PluginMsg>, registry: PluginRegistry, start
                 dispatch_event(&event, &registry);
             }
             Ok(PluginMsg::AppStarted) => {
-                let ctx = nullslop_plugin::ctx::AppStartedCtx {
+                let ctx = jinn_plugin::ctx::AppStartedCtx {
                     session_id: startup_session_id.clone(),
                 };
-                nullslop_plugin::emit(
-                    nullslop_plugin::hooks::APP_STARTED,
+                jinn_plugin::emit(
+                    jinn_plugin::hooks::APP_STARTED,
                     &registry,
                     &ctx,
                 );
@@ -124,11 +124,11 @@ fn plugin_thread(rx: kanal::Receiver<PluginMsg>, registry: PluginRegistry, start
 /// Maps a domain event to a plugin hook name and dispatches it.
 fn dispatch_event(event: &Event, registry: &PluginRegistry) {
     if let Event::SessionCreated(SessionCreated { session_id }) = event {
-        let ctx = nullslop_plugin::ctx::SessionCreatedCtx {
+        let ctx = jinn_plugin::ctx::SessionCreatedCtx {
             session_id: session_id.to_string(),
         };
-        nullslop_plugin::emit(
-            nullslop_plugin::hooks::SESSION_CREATED,
+        jinn_plugin::emit(
+            jinn_plugin::hooks::SESSION_CREATED,
             registry,
             &ctx,
         );

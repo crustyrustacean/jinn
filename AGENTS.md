@@ -1,6 +1,6 @@
 # Style Guide
 
-This document defines the _coding conventions_, _patterns_, and _architecture_ for the `nullslop` codebase.
+This document defines the _coding conventions_, _patterns_, and _architecture_ for the `jinn` codebase.
 
 - IGNORE ALL CODE IN `vendor/` UNLESS IT'S SPECIFICALLY RELATED TO THE TASK.
 
@@ -53,7 +53,7 @@ pub fn run(tick_rate: Duration) -> Result<(), Report<TuiRunError>>
 Each `Intent` variant has a dedicated validator function. Validators are plain functions — no registries or trait objects. Fallible validators return `Result<(), SpecificError>` with a custom error enum per intent.
 
 ```rust
-// Validator pattern — co-located per feature, e.g. nullslop-domain/src/feat/chat_input/validator.rs
+// Validator pattern — co-located per feature, e.g. jinn-domain/src/feat/chat_input/validator.rs
 pub fn validate_submit_message(state: &AppState) -> Result<(), SubmitMessageError> {
     if state.active_chat_input().is_empty() {
         return Err(SubmitMessageError::EmptyBuffer);
@@ -132,12 +132,12 @@ Actors are domain logic that spans the entire application, so they have specific
 
 ### Dependency Injection
 
-**Services container (in `nullslop-domain/src/common/services.rs`):**
+**Services container (in `jinn-domain/src/common/services.rs`):**
 
 ```rust
 #[derive(Debug, Clone)]
 pub struct Services {
-    // See nullslop-domain/src/common/services.rs for the current fields.
+    // See jinn-domain/src/common/services.rs for the current fields.
     // Services are added as the domain grows — the exact set of fields
     // changes over time. The pattern is what matters, not the specific list.
 }
@@ -466,7 +466,7 @@ async fn actor_host_loads_manifest() {
 
 **Shared test helpers:**
 
-- `RecordingSink` (in `nullslop-domain/src/common/actor.rs`) — records messages emitted by actors during tests.
+- `RecordingSink` (in `jinn-domain/src/common/actor.rs`) — records messages emitted by actors during tests.
 - Create domain-specific test builders as needed within each feature's test module.
 - Use ratatui's `TestBackend` directly for render tests.
 

@@ -5,11 +5,11 @@
 //! host gracefully.
 
 use error_stack::{Report, ResultExt};
-use nullslop_domain::ActorHostService;
-use nullslop_domain::Command;
-use nullslop_domain::EnqueueUserMessage;
-use nullslop_domain::IntentHandler;
-use nullslop_domain::{AppCore, AppMsg, ChatEntry};
+use jinn_domain::ActorHostService;
+use jinn_domain::Command;
+use jinn_domain::EnqueueUserMessage;
+use jinn_domain::IntentHandler;
+use jinn_domain::{AppCore, AppMsg, ChatEntry};
 use wherror::Error;
 
 /// Error type for headless operations.
@@ -83,14 +83,14 @@ impl HeadlessApp {
         R: std::io::Read,
     {
         let mut which_key = {
-            let keymap = nullslop_tui::keymap::init();
-            nullslop_tui::app::WhichKeyInstance::new(keymap, nullslop_tui::Scope::Normal)
+            let keymap = jinn_tui::keymap::init();
+            jinn_tui::app::WhichKeyInstance::new(keymap, jinn_tui::Scope::Normal)
         };
 
         let lines = {
-            let leader = nullslop_domain::KeyEvent {
-                key: nullslop_domain::Key::Char('\\'),
-                modifiers: nullslop_domain::Modifiers::none(),
+            let leader = jinn_domain::KeyEvent {
+                key: jinn_domain::Key::Char('\\'),
+                modifiers: jinn_domain::Modifiers::none(),
             };
             let mut content = String::new();
             reader
@@ -104,7 +104,7 @@ impl HeadlessApp {
             for key in keys {
                 let state_read = self.core.state.read();
                 let scope =
-                    nullslop_tui::app::scope_for_focus(state_read.frontend.scope_stack.current());
+                    jinn_tui::app::scope_for_focus(state_read.frontend.scope_stack.current());
                 drop(state_read);
                 which_key.set_scope(scope);
 
@@ -142,11 +142,11 @@ impl HeadlessApp {
 
     /// Shuts down the actor host gracefully.
     pub fn shutdown(&mut self) {
-        nullslop_domain::coordinated_shutdown(
+        jinn_domain::coordinated_shutdown(
             self.actor_host.backend(),
             &self.core.state,
             &self.handle,
-            nullslop_domain::SHUTDOWN_TIMEOUT,
+            jinn_domain::SHUTDOWN_TIMEOUT,
         );
     }
 }
@@ -158,8 +158,8 @@ impl HeadlessApp {
 /// with `#` are skipped. Returns one `Vec<KeyEvent>` per non-skipped line.
 pub fn parse_script(
     content: &str,
-    leader: &nullslop_domain::KeyEvent,
-) -> Vec<Vec<nullslop_domain::KeyEvent>> {
+    leader: &jinn_domain::KeyEvent,
+) -> Vec<Vec<jinn_domain::KeyEvent>> {
     content
         .lines()
         .map(|line| line.trim())
@@ -170,7 +170,7 @@ pub fn parse_script(
 
 #[cfg(test)]
 mod tests {
-    use nullslop_domain::{Key, KeyEvent, Modifiers};
+    use jinn_domain::{Key, KeyEvent, Modifiers};
 
     use super::*;
 

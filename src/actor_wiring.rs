@@ -19,30 +19,30 @@
 
 use std::sync::Arc;
 
-use nullslop_domain::ApiKeysService;
-use nullslop_domain::AppState;
-use nullslop_domain::ConfigStorageService;
-use nullslop_domain::Event;
-use nullslop_domain::LlmServiceFactoryService;
-use nullslop_domain::ProviderRegistryService;
-use nullslop_domain::Services;
-use nullslop_domain::SessionStoreService;
-use nullslop_domain::UserPreferencesStorageService;
-use nullslop_domain::actor_channel::ActorChannelService;
-use nullslop_domain::common::actor::protocol::event::{
+use jinn_domain::ApiKeysService;
+use jinn_domain::AppState;
+use jinn_domain::ConfigStorageService;
+use jinn_domain::Event;
+use jinn_domain::LlmServiceFactoryService;
+use jinn_domain::ProviderRegistryService;
+use jinn_domain::Services;
+use jinn_domain::SessionStoreService;
+use jinn_domain::UserPreferencesStorageService;
+use jinn_domain::actor_channel::ActorChannelService;
+use jinn_domain::common::actor::protocol::event::{
     ActorStarted, ActorStarting, AllActorsSpawned,
 };
-use nullslop_domain::feat::context::strategy::token_estimator::TiktokenCounter;
-use nullslop_domain::feat::workflow::workflow_actor::{WorkflowActor, WorkflowActorDeps};
-use nullslop_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
-use nullslop_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
-use nullslop_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
+use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
+use jinn_domain::feat::workflow::workflow_actor::{WorkflowActor, WorkflowActorDeps};
+use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
+use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
+use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
 
-use nullslop_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
-use nullslop_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
-use nullslop_web_fetch::{HttpFetcher, MarkdownExtractor, OutputFormat};
+use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
+use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
+use jinn_web_fetch::{HttpFetcher, MarkdownExtractor, OutputFormat};
 
-use nullslop_domain::{
+use jinn_domain::{
     ActorCounter, ActorHostService, ActorMessageSink, AppCore, AppMsg, InMemoryActorHost,
     MessageSink, ShutdownTracker, State, spawn, spawn_forwarding_task, system_spawn,
     wait_for_system_ready,
@@ -67,9 +67,9 @@ pub fn create_core_with_actor_host(
     session_store: SessionStoreService,
     user_preferences_storage: UserPreferencesStorageService,
     bench_csv_path: Option<std::path::PathBuf>,
-    bench_plan: Option<nullslop_bench::orchestrator::BenchPlan>,
+    bench_plan: Option<jinn_bench::orchestrator::BenchPlan>,
     bench_artifact_dir: Option<std::path::PathBuf>,
-    paths: nullslop_domain::AppPaths,
+    paths: jinn_domain::AppPaths,
 ) -> (AppCore, Services, ActorHostService) {
     // Create channel first — actors need the sender, but AppCore needs services
     // which needs the actor host which needs actors. Break the cycle by creating
@@ -174,23 +174,23 @@ pub fn create_core_with_actor_host(
 
     // Preferences: loads and persists user preferences.
     actors.push(spawn::<
-        nullslop_domain::feat::preferences_actor::preferences_actor::PreferencesActor,
+        jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActor,
     >(
         "preferences",
         &sink,
         handle,
         &counter,
         &shutdown_tracker,
-        nullslop_domain::feat::preferences_actor::preferences_actor::PreferencesActorDeps {
+        jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActorDeps {
             storage: user_preferences_storage.clone(),
         },
     ));
 
     // Preferences state sync: updates AppState from PreferencesUpdated events.
     actors.push(spawn::<
-        nullslop_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActor,
+        jinn_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActor,
     >("preferences-sync", &sink, handle, &counter, &shutdown_tracker,
-        nullslop_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActorDeps {
+        jinn_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActorDeps {
             state: state.clone(),
             paths: paths.clone(),
         },
@@ -199,13 +199,13 @@ pub fn create_core_with_actor_host(
     // ── Domain actors ────────────────────────────────────────────────────
 
     // LLM streaming actor.
-    actors.push(spawn::<nullslop_domain::feat::llm_actor::LlmActor>(
+    actors.push(spawn::<jinn_domain::feat::llm_actor::LlmActor>(
         "llm-streaming",
         &sink,
         handle,
         &counter,
         &shutdown_tracker,
-        nullslop_domain::feat::llm_actor::LlmActorDeps {
+        jinn_domain::feat::llm_actor::LlmActorDeps {
             factory: llm_service.clone(),
             services: Some(services.clone()),
             state: state.clone(),
@@ -214,14 +214,14 @@ pub fn create_core_with_actor_host(
 
     // Model discovery actor.
     actors.push(spawn::<
-        nullslop_domain::feat::provider::discover_actor::DiscoverActor,
+        jinn_domain::feat::provider::discover_actor::DiscoverActor,
     >(
         "llm-provider-listing",
         &sink,
         handle,
         &counter,
         &shutdown_tracker,
-        nullslop_domain::feat::provider::discover_actor::DiscoverActorDeps {
+        jinn_domain::feat::provider::discover_actor::DiscoverActorDeps {
             registry: provider_registry.clone(),
             api_keys: api_keys.clone(),
             state: state.clone(),
@@ -231,14 +231,14 @@ pub fn create_core_with_actor_host(
 
     // Tool orchestrator actor.
     actors.push(spawn::<
-        nullslop_domain::feat::tools_actor::ToolOrchestratorActor,
+        jinn_domain::feat::tools_actor::ToolOrchestratorActor,
     >(
         "tool-orchestrator",
         &sink,
         handle,
         &counter,
         &shutdown_tracker,
-        nullslop_domain::feat::tools_actor::ToolOrchestratorActorDeps {
+        jinn_domain::feat::tools_actor::ToolOrchestratorActorDeps {
             state: state.clone(),
             app_paths: paths.clone(),
             builtin_filter: None,
@@ -253,20 +253,20 @@ pub fn create_core_with_actor_host(
         .unwrap_or(WebFetchBackend::Http);
     tracing::info!(backend = ?web_fetch_backend, "constructing web fetcher");
     let extractors = {
-        let markdown: std::sync::Arc<dyn nullslop_web_fetch::Extractor> = std::sync::Arc::new(MarkdownExtractor);
+        let markdown: std::sync::Arc<dyn jinn_web_fetch::Extractor> = std::sync::Arc::new(MarkdownExtractor);
         std::collections::HashMap::from([
             (OutputFormat::Text, markdown.clone()),
             (OutputFormat::Markdown, markdown),
         ])
     };
-    let web_fetcher: std::sync::Arc<dyn nullslop_web_fetch::WebFetcher> = match web_fetch_backend {
+    let web_fetcher: std::sync::Arc<dyn jinn_web_fetch::WebFetcher> = match web_fetch_backend {
         WebFetchBackend::Http => {
             tracing::debug!("web-fetch: using HttpFetcher backend");
             std::sync::Arc::new(HttpFetcher::new(extractors.clone()))
         }
         WebFetchBackend::HeadlessChrome => {
             tracing::debug!("web-fetch: using HeadlessChromeFetcher backend");
-            std::sync::Arc::new(nullslop_web_fetch::HeadlessChromeFetcher::new(extractors.clone()))
+            std::sync::Arc::new(jinn_web_fetch::HeadlessChromeFetcher::new(extractors.clone()))
         }
     };
     actors.push(spawn::<WebFetchActor>(
@@ -281,22 +281,22 @@ pub fn create_core_with_actor_host(
     // Session persistence actor.
     let token_counter = TiktokenCounter::o200k_base();
     actors.push(spawn::<
-        nullslop_domain::feat::session::session_actor::SessionPersistenceActor,
+        jinn_domain::feat::session::session_actor::SessionPersistenceActor,
     >(
         "session-persistence",
         &sink,
         handle,
         &counter,
         &shutdown_tracker,
-        nullslop_domain::feat::session::session_actor::SessionPersistenceActorDeps {
+        jinn_domain::feat::session::session_actor::SessionPersistenceActorDeps {
             state: state.clone(),
             services: Some(services.clone()),
             store: Some(session_store.clone()),
             counter: token_counter,
             builtin_registry: {
                 let mut registry =
-                    nullslop_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new();
-                nullslop_bench::bench_tasks::register_bench_tasks(
+                    jinn_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new();
+                jinn_bench::bench_tasks::register_bench_tasks(
                     &mut registry,
                     bench_artifact_dir.as_deref(),
                 );
@@ -308,28 +308,28 @@ pub fn create_core_with_actor_host(
 
     // Prompt scan actor.
     actors.push(spawn::<
-        nullslop_domain::feat::context::prompt_scan_actor::PromptScanActor,
+        jinn_domain::feat::context::prompt_scan_actor::PromptScanActor,
     >(
         "prompt-scan",
         &sink,
         handle,
         &counter,
         &shutdown_tracker,
-        nullslop_domain::feat::context::prompt_scan_actor::PromptScanActorDeps {
+        jinn_domain::feat::context::prompt_scan_actor::PromptScanActorDeps {
             paths: services.paths.clone(),
         },
     ));
 
     // Skills scan actor.
     actors.push(spawn::<
-        nullslop_domain::feat::skills::skills_scan_actor::SkillsScanActor,
+        jinn_domain::feat::skills::skills_scan_actor::SkillsScanActor,
     >(
         "skills-scan",
         &sink,
         handle,
         &counter,
         &shutdown_tracker,
-        nullslop_domain::feat::skills::skills_scan_actor::SkillsScanActorDeps {
+        jinn_domain::feat::skills::skills_scan_actor::SkillsScanActorDeps {
             paths: services.paths.clone(),
             state: state.clone(),
         },
@@ -337,56 +337,56 @@ pub fn create_core_with_actor_host(
 
     // Persona scan actor.
     actors.push(spawn::<
-        nullslop_domain::feat::persona::persona_scan_actor::PersonaScanActor,
+        jinn_domain::feat::persona::persona_scan_actor::PersonaScanActor,
     >(
         "persona-scan",
         &sink,
         handle,
         &counter,
         &shutdown_tracker,
-        nullslop_domain::feat::persona::persona_scan_actor::PersonaScanActorDeps {
+        jinn_domain::feat::persona::persona_scan_actor::PersonaScanActorDeps {
             paths: services.paths.clone(),
         },
     ));
 
     // Judge scan actor.
     actors.push(spawn::<
-        nullslop_domain::feat::judge::judge_scan_actor::JudgeScanActor,
+        jinn_domain::feat::judge::judge_scan_actor::JudgeScanActor,
     >(
         "judge-scan",
         &sink,
         handle,
         &counter,
         &shutdown_tracker,
-        nullslop_domain::feat::judge::judge_scan_actor::JudgeScanActorDeps {
+        jinn_domain::feat::judge::judge_scan_actor::JudgeScanActorDeps {
             paths: services.paths.clone(),
         },
     ));
 
     // Judge coordinator actor.
     actors.push(spawn::<
-        nullslop_domain::feat::judge::judge_coordinator_actor::JudgeCoordinatorActor,
+        jinn_domain::feat::judge::judge_coordinator_actor::JudgeCoordinatorActor,
     >(
         "judge-coordinator",
         &sink,
         handle,
         &counter,
         &shutdown_tracker,
-        nullslop_domain::feat::judge::judge_coordinator_actor::JudgeCoordinatorActorDeps {
+        jinn_domain::feat::judge::judge_coordinator_actor::JudgeCoordinatorActorDeps {
             state: state.clone(),
         },
     ));
 
     // Provider actor.
     actors.push(spawn::<
-        nullslop_domain::feat::provider::provider_actor::ProviderActor,
+        jinn_domain::feat::provider::provider_actor::ProviderActor,
     >(
         "provider",
         &sink,
         handle,
         &counter,
         &shutdown_tracker,
-        nullslop_domain::feat::provider::provider_actor::ProviderActorDeps {
+        jinn_domain::feat::provider::provider_actor::ProviderActorDeps {
             state: state.clone(),
             services: services.clone(),
         },
@@ -394,26 +394,26 @@ pub fn create_core_with_actor_host(
 
     // Token count actor — computes tiktoken counts for chat entries.
     actors.push(spawn::<
-        nullslop_domain::feat::token_count_actor::TokenCountActor,
+        jinn_domain::feat::token_count_actor::TokenCountActor,
     >(
         "token-count",
         &sink,
         handle,
         &counter,
         &shutdown_tracker,
-        nullslop_domain::feat::token_count_actor::TokenCountActorDeps {
+        jinn_domain::feat::token_count_actor::TokenCountActorDeps {
             state: state.clone(),
         },
     ));
 
     // Queue actor — dispatches queued turns when sessions become idle.
-    actors.push(spawn::<nullslop_domain::feat::queue_actor::QueueActor>(
+    actors.push(spawn::<jinn_domain::feat::queue_actor::QueueActor>(
         "queue",
         &sink,
         handle,
         &counter,
         &shutdown_tracker,
-        nullslop_domain::feat::queue_actor::QueueActorDeps {
+        jinn_domain::feat::queue_actor::QueueActorDeps {
             state: state.clone(),
             counter: token_counter,
         },
@@ -424,10 +424,10 @@ pub fn create_core_with_actor_host(
     // To add a new history mutation worker:
     //
     //   1. Implement `HistoryWorker` for your heuristic type
-    //      (see `crates/nullslop-domain/src/feat/history_worker/worker_trait.rs`).
+    //      (see `crates/jinn-domain/src/feat/history_worker/worker_trait.rs`).
     //   2. Add a spawn call here:
     //
-    //   use nullslop_domain::feat::history_worker::{HistoryWorkerActor, HistoryWorkerActorDeps};
+    //   use jinn_domain::feat::history_worker::{HistoryWorkerActor, HistoryWorkerActorDeps};
     //
     //   actors.push(spawn::<HistoryWorkerActor<MyWorker>>(
     //       "history-worker-my-worker",
@@ -440,8 +440,8 @@ pub fn create_core_with_actor_host(
     //
     // Compaction worker — summarizes conversation history into structured checkpoints.
     {
-        use nullslop_domain::feat::compaction_worker::CompactionWorker;
-        use nullslop_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
+        use jinn_domain::feat::compaction_worker::CompactionWorker;
+        use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
 
         let config = state.read().frontend.preferences.compaction.clone();
         let compaction_prompt = state.read().context.compaction_prompt.clone();
@@ -464,7 +464,7 @@ pub fn create_core_with_actor_host(
 
     // Compaction trigger actor — handles /compact and /compact-all commands.
     {
-        use nullslop_domain::feat::compaction_worker::{CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker};
+        use jinn_domain::feat::compaction_worker::{CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker};
 
         let config = state.read().frontend.preferences.compaction.clone();
         let compaction_prompt = state.read().context.compaction_prompt.clone();
@@ -486,22 +486,22 @@ pub fn create_core_with_actor_host(
 
     // Sidebar state actor — keeps sidebar cursor in sync after session removal.
     actors.push(spawn::<
-        nullslop_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor,
+        jinn_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor,
     >(
         "sidebar-state",
         &sink,
         handle,
         &counter,
         &shutdown_tracker,
-        nullslop_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActorDeps {
+        jinn_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActorDeps {
             state: state.clone(),
         },
     ));
 
     // Build workflow registry and register built-in workflows.
     let workflow_registry = Arc::new({
-        let mut registry = nullslop_domain::feat::workflow::WorkflowRegistry::new();
-        nullslop_domain::feat::workflow::register_all_workflows(&mut registry);
+        let mut registry = jinn_domain::feat::workflow::WorkflowRegistry::new();
+        jinn_domain::feat::workflow::register_all_workflows(&mut registry);
         registry
     });
 
@@ -535,12 +535,12 @@ pub fn create_core_with_actor_host(
             registry_factory: Box::new(move || {
                 let translator = crate::plugin_wiring::build_translator();
                 let cmd_sender_sink = plugin_sink.clone();
-                let cmd_sender = nullslop_plugin::CommandSender::new(
-                    move |cmd: nullslop_domain::Command| {
+                let cmd_sender = jinn_plugin::CommandSender::new(
+                    move |cmd: jinn_domain::Command| {
                         let _ = cmd_sender_sink.send_command(cmd);
                     },
                 );
-                let registry = nullslop_plugin::PluginRegistry::new(translator, cmd_sender);
+                let registry = jinn_plugin::PluginRegistry::new(translator, cmd_sender);
 
                 // Load system plugins.
                 let mut plugin_count = 0usize;
@@ -569,13 +569,13 @@ pub fn create_core_with_actor_host(
 
     // ── Bench actor (conditional) ─────────────────────────────────────────
     if bench_csv_path.is_some() {
-        actors.push(spawn::<nullslop_bench::bench_actor::BenchActor>(
+        actors.push(spawn::<jinn_bench::bench_actor::BenchActor>(
             "bench",
             &sink,
             handle,
             &counter,
             &shutdown_tracker,
-            nullslop_bench::bench_actor::BenchActorDeps {
+            jinn_bench::bench_actor::BenchActorDeps {
                 state: state.clone(),
                 csv_path: bench_csv_path.clone(),
                 plan: bench_plan,
@@ -603,16 +603,16 @@ pub fn create_core_with_actor_host(
     };
 
     // Trigger initial skills scan.
-    let _ = sink.send_command(nullslop_domain::Command::ScanSkills);
+    let _ = sink.send_command(jinn_domain::Command::ScanSkills);
 
     // Trigger initial persona scan.
-    let _ = sink.send_command(nullslop_domain::Command::RescanPersonas(
-        nullslop_domain::feat::context::protocol::command::RescanPersonas,
+    let _ = sink.send_command(jinn_domain::Command::RescanPersonas(
+        jinn_domain::feat::context::protocol::command::RescanPersonas,
     ));
 
     // Trigger initial judge scan.
-    let _ = sink.send_command(nullslop_domain::Command::RescanJudges(
-        nullslop_domain::feat::judge::RescanJudges,
+    let _ = sink.send_command(jinn_domain::Command::RescanJudges(
+        jinn_domain::feat::judge::RescanJudges,
     ));
 
     (core, services, actor_host_service)

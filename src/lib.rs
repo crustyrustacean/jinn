@@ -1,4 +1,4 @@
-//! nullslop: a TUI agent harness with a component/actor system.
+//! jinn: a TUI agent harness with a component/actor system.
 
 pub mod actor_wiring;
 pub mod app;

@@ -1,0 +1,1080 @@
+//! Conversation data model for the chat log.
+//!
+//! Each [`ChatEntry`] records a timestamped message from the user,
+//! the system, or an actor.
+
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::feat::session::tool_result_status::ToolResultStatus;
+
+/// A unique identifier for a [`ChatEntry`].
+///
+/// Auto-generated as a UUID. Used by prompt assembly strategies
+/// to reference specific entries without positional coupling.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ChatEntryId(uuid::Uuid);
+
+impl ChatEntryId {
+    /// Generate a new unique ID.
+    #[must_use]
+    pub fn new() -> Self {
+        Self(uuid::Uuid::now_v7())
+    }
+
+    /// Returns the underlying UUID value.
+    #[must_use]
+    pub fn as_uuid(&self) -> &uuid::Uuid {
+        &self.0
+    }
+}
+
+impl Default for ChatEntryId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<String> for ChatEntryId {
+    fn from(s: String) -> Self {
+        Self(uuid::Uuid::parse_str(&s).unwrap_or_else(|_| uuid::Uuid::now_v7()))
+    }
+}
+
+impl std::fmt::Display for ChatEntryId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Where a pinned entry should appear in the assembled prompt.
+///
+/// Entries with a pin position are never discarded by prompt assembly strategies
+/// (sliding window, token budget, compaction). The position controls *where*
+/// they appear in the final assembled prompt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PinPosition {
+    /// Always appear at the very beginning of the assembled prompt.
+    Top,
+    /// Always appear just before the most recent message.
+    Bottom,
+    /// Stay at this entry's original position in history.
+    Relative,
+}
+
+impl std::fmt::Display for PinPosition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Top => write!(f, "TOP"),
+            Self::Bottom => write!(f, "BOTTOM"),
+            Self::Relative => write!(f, "RELATIVE"),
+        }
+    }
+}
+
+/// User-controlled override for whether an entry is included in LLM context.
+///
+/// Tri-state that replaces the old `ignored: bool` field, supporting both
+/// inclusion and exclusion overrides. The `x` key toggles between `Default`
+/// and the opposite of the kind's default behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextOverride {
+    /// Follow the entry kind's default inclusion rule.
+    #[default]
+    Default,
+    /// User has explicitly forced this entry into the LLM context.
+    ForcedInclude,
+    /// User has explicitly forced this entry out of the LLM context
+    /// (replaces old `ignored: true`).
+    ForcedExclude,
+}
+
+/// A single entry in the chat history.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatEntry {
+    /// Unique identifier for this entry.
+    pub id: ChatEntryId,
+    /// When this entry was created.
+    pub timestamp: jiff::Timestamp,
+    /// What kind of entry this is.
+    pub kind: ChatEntryKind,
+    /// Whether this entry is pinned to the context, and where.
+    ///
+    /// Pinned entries are never discarded by prompt assembly strategies.
+    /// `None` (default) means the entry is not pinned.
+    ///
+    /// OWNER: context-actor (individual mutations via PinChatEntry/UnpinChatEntry),
+    ///        session-actor (atomic bulk restore during SessionLoadCompleted via restore_history).
+    #[serde(default)]
+    pub pin_position: Option<PinPosition>,
+    /// User-controlled override for whether this entry is included in LLM context.
+    ///
+    /// Tri-state: `Default` follows the kind-level rule, `ForcedInclude` forces the
+    /// entry into context regardless of kind default, `ForcedExclude` forces it out.
+    ///
+    /// Pin overrides this field: if an entry is both pinned and `ForcedExclude`,
+    /// it is still included in prompt assembly.
+    ///
+    /// OWNER: compaction-actor (sets `ForcedExclude` during compaction),
+    ///        user (via `x` key toggle in `toggle_entry_ignored`).
+    #[serde(default)]
+    pub context_override: ContextOverride,
+}
+
+/// The kind of chat entry.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ChatEntryKind {
+    /// A message typed by the user.
+    ///
+    /// `display` is what the user typed (shown in the UI, used for session titles).
+    /// `expanded` is the token-expanded text (sent to the LLM).
+    /// When no prompt tokens are present, both fields are identical.
+    User {
+        /// What the user typed (shown in UI, used for session titles).
+        display: String,
+        /// Token-expanded text (sent to the LLM).
+        expanded: String,
+    },
+    /// A system-generated message (status updates, etc.).
+    System(String),
+    /// An error message displayed prominently (e.g., stream cancelled).
+    Error(String),
+    /// A response from an AI assistant.
+    Assistant(String),
+    /// A message from an actor, identified by source name.
+    Actor {
+        /// The name of the actor that produced this entry.
+        source: String,
+        /// The message text.
+        text: String,
+    },
+    /// Reasoning/thinking content extracted from the LLM response.
+    ///
+    /// Displayed in the chat log but excluded from context assembly.
+    /// Models like DeepSeek-R1 and Qwen3 embed reasoning in `<think>` tags;
+    /// the `reasoning-parser` crate extracts it during streaming.
+    Thinking(String),
+    /// A tool call requested by the LLM.
+    ToolCall {
+        /// Unique ID assigned by the LLM provider.
+        id: String,
+        /// The function name.
+        name: String,
+        /// The JSON arguments string.
+        arguments: String,
+    },
+    /// The result of executing a tool call.
+    ToolResult {
+        /// The ID of the tool call this result is for.
+        id: String,
+        /// The function name.
+        name: String,
+        /// The output content.
+        content: String,
+        /// Execution status (pending, success, or failure).
+        status: ToolResultStatus,
+        /// Full untruncated content, if truncation occurred.
+        full_content: Option<String>,
+        /// Truncation metadata, if truncation occurred.
+        truncation: Option<jinn_provider::tool_types::TruncationMeta>,
+    },
+    /// A skill loaded into the session context.
+    ///
+    /// Created when the `skill` built-in tool loads a SKILL.md file.
+    /// Always pinned to TOP. Renders as a collapsible entry showing
+    /// only the skill name by default.
+    Skill {
+        /// The skill name.
+        name: String,
+        /// Absolute path to the SKILL.md file.
+        location: String,
+        /// The full skill content (body of SKILL.md with frontmatter stripped).
+        content: String,
+    },
+    /// A transient UI-only message (not sent to the LLM).
+    ///
+    /// Used for welcome messages, status notifications, and other ephemeral
+    /// user-facing hints. Excluded from prompt assembly, token estimation,
+    /// LLM context, and session persistence. Cannot be pinned.
+    ///
+    /// Contains markdown text rendered at display time by the chat log renderer.
+    /// Supports markdown tables, inline formatting, and proper reflow on resize.
+    Transient(String),
+    /// A compaction summary entry created by the compaction actor.
+    ///
+    /// Contains a structured summary of previous conversation history
+    /// generated by an LLM. Acts as a delimiter in the chat history —
+    /// entries before a compaction that are not pinned or system messages
+    /// are marked `ignored` and skipped during prompt assembly.
+    ///
+    /// Multiple compactions are carried forward as-is; each new compaction
+    /// only summarizes entries between the previous compaction and now.
+    Compaction {
+        /// The LLM-generated structured summary text.
+        summary: String,
+        /// Estimated tokens in the compacted region before compaction.
+        tokens_before: usize,
+        /// Estimated tokens in the compaction summary (after compaction).
+        tokens_after: usize,
+        /// How many entries were compacted (marked as ignored).
+        entries_compacted: usize,
+        /// Which model was used to generate the summary.
+        model_used: String,
+    },
+}
+
+impl ChatEntry {
+    /// Create a new user chat entry with the current timestamp.
+    #[must_use]
+    pub fn user<T>(text: T) -> Self
+    where
+        T: Into<String>,
+    {
+        let t = text.into();
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::User {
+                display: t.clone(),
+                expanded: t,
+            },
+            pin_position: None,
+            context_override: ContextOverride::Default,
+        }
+    }
+
+    /// Create a user entry with separate display and expanded text.
+    ///
+    /// Use when prompt token expansion produces a different expanded text
+    /// than what the user typed.
+    #[must_use]
+    pub fn user_expanded<D, E>(display: D, expanded: E) -> Self
+    where
+        D: Into<String>,
+        E: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::User {
+                display: display.into(),
+                expanded: expanded.into(),
+            },
+            pin_position: None,
+            context_override: ContextOverride::Default,
+        }
+    }
+
+    /// Create a new system chat entry with the current timestamp.
+    #[must_use]
+    pub fn system<T>(text: T) -> Self
+    where
+        T: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::System(text.into()),
+            pin_position: None,
+            context_override: ContextOverride::Default,
+        }
+    }
+
+    /// Create a new error chat entry with the current timestamp.
+    #[must_use]
+    pub fn error<T>(text: T) -> Self
+    where
+        T: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::Error(text.into()),
+            pin_position: None,
+            context_override: ContextOverride::Default,
+        }
+    }
+
+    /// Create a new assistant chat entry with the current timestamp.
+    #[must_use]
+    pub fn assistant<T>(text: T) -> Self
+    where
+        T: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::Assistant(text.into()),
+            pin_position: None,
+            context_override: ContextOverride::Default,
+        }
+    }
+
+    /// Create a new actor chat entry with the current timestamp.
+    #[must_use]
+    pub fn actor<S, T>(source: S, text: T) -> Self
+    where
+        S: Into<String>,
+        T: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::Actor {
+                source: source.into(),
+                text: text.into(),
+            },
+            pin_position: None,
+            context_override: ContextOverride::Default,
+        }
+    }
+
+    /// Create a new thinking entry with the current timestamp.
+    #[must_use]
+    pub fn thinking<T>(text: T) -> Self
+    where
+        T: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::Thinking(text.into()),
+            pin_position: None,
+            context_override: ContextOverride::Default,
+        }
+    }
+
+    /// Create a new tool call entry with the current timestamp.
+    #[must_use]
+    pub fn tool_call<S1, S2, S3>(id: S1, name: S2, arguments: S3) -> Self
+    where
+        S1: Into<String>,
+        S2: Into<String>,
+        S3: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::ToolCall {
+                id: id.into(),
+                name: name.into(),
+                arguments: arguments.into(),
+            },
+            pin_position: None,
+            context_override: ContextOverride::Default,
+        }
+    }
+
+    /// Create a new tool result entry with the current timestamp.
+    #[must_use]
+    pub fn tool_result<S1, S2, S3>(id: S1, name: S2, content: S3, status: ToolResultStatus) -> Self
+    where
+        S1: Into<String>,
+        S2: Into<String>,
+        S3: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::ToolResult {
+                id: id.into(),
+                name: name.into(),
+                content: content.into(),
+                status,
+                full_content: None,
+                truncation: None,
+            },
+            pin_position: None,
+            context_override: ContextOverride::Default,
+        }
+    }
+
+    /// Create a new tool result entry with truncation metadata.
+    #[must_use]
+    pub fn tool_result_truncated<S1, S2>(
+        id: S1,
+        name: S2,
+        content: String,
+        full_content: String,
+        status: ToolResultStatus,
+        truncation: jinn_provider::tool_types::TruncationMeta,
+    ) -> Self
+    where
+        S1: Into<String>,
+        S2: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::ToolResult {
+                id: id.into(),
+                name: name.into(),
+                content,
+                status,
+                full_content: Some(full_content),
+                truncation: Some(truncation),
+            },
+            pin_position: None,
+            context_override: ContextOverride::Default,
+        }
+    }
+
+    /// Create a new skill entry with the current timestamp.
+    #[must_use]
+    pub fn skill<N, L, C>(name: N, location: L, content: C) -> Self
+    where
+        N: Into<String>,
+        L: Into<String>,
+        C: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::Skill {
+                name: name.into(),
+                location: location.into(),
+                content: content.into(),
+            },
+            pin_position: None,
+            context_override: ContextOverride::Default,
+        }
+    }
+
+    /// Create a new transient chat entry with the current timestamp.
+    ///
+    /// Transient entries are UI-only — they are excluded from prompt assembly,
+    /// token estimation, and LLM context. They cannot be pinned and
+    /// are not persisted.
+    ///
+    /// Accepts markdown text for rich formatting through the markdown renderer.
+    #[must_use]
+    pub fn transient<T>(text: T) -> Self
+    where
+        T: Into<String>,
+    {
+        Self {
+            id: ChatEntryId::new(),
+            timestamp: jiff::Timestamp::now(),
+            kind: ChatEntryKind::Transient(text.into()),
+            pin_position: None,
+            context_override: ContextOverride::Default,
+        }
+    }
+
+    /// Set the pin position on this entry, returning the modified entry.
+    ///
+    /// Used as a builder: `ChatEntry::user("instruction").with_pin(PinPosition::Top)`
+    #[must_use]
+    pub fn with_pin(mut self, position: PinPosition) -> Self {
+        self.pin_position = Some(position);
+        self
+    }
+
+    /// Set the context override on this entry, returning the modified entry.
+    ///
+    /// Used as a builder: `ChatEntry::user("hello").with_context_override(ContextOverride::ForcedExclude)`
+    #[must_use]
+    pub fn with_context_override(mut self, override_: ContextOverride) -> Self {
+        self.context_override = override_;
+        self
+    }
+
+    /// Set the ignored flag on this entry, returning the modified entry.
+    ///
+    /// Compatibility shim for `with_context_override`. Use that method instead.
+    ///
+    /// Used as a builder: `ChatEntry::user("hello").with_ignored(true)`
+    #[must_use]
+    pub fn with_ignored(mut self, ignored: bool) -> Self {
+        self.context_override = if ignored {
+            ContextOverride::ForcedExclude
+        } else {
+            ContextOverride::Default
+        };
+        self
+    }
+
+    /// Whether this entry is pinned to the context.
+    pub fn is_pinned(&self) -> bool {
+        self.pin_position.is_some()
+    }
+
+    /// Whether this entry will be included in the assembled LLM prompt.
+    ///
+    /// Single source of truth. All consumers (assembly, gutter, minimap,
+    /// token estimator, visual items) must use this method.
+    ///
+    /// Priority: pin > context_override > non-context defaults > kind default.
+    #[must_use]
+    pub fn is_in_context(&self) -> bool {
+        if self.is_pinned() {
+            return true;
+        }
+        match self.context_override {
+            ContextOverride::ForcedInclude => true,
+            ContextOverride::ForcedExclude => false,
+            ContextOverride::Default => {
+                // Certain entries are excluded by default even though their
+                // *kind* is included by default. They carry no useful context
+                // and should not split contiguous hidden blocks.
+                if self.is_empty_assistant() || self.is_pending_tool_result() {
+                    return false;
+                }
+                self.kind.is_included_by_default()
+            }
+        }
+    }
+
+    /// Compatibility accessor: whether this entry has been forced out of context.
+    ///
+    /// Equivalent to `context_override == ForcedExclude`. Used during migration
+    /// from `ignored: bool` to `context_override: ContextOverride`.
+    ///
+    /// Prefer `is_in_context()` or `context_override` directly.
+    #[must_use]
+    pub fn ignored(&self) -> bool {
+        self.context_override == ContextOverride::ForcedExclude
+    }
+
+    /// Whether this entry kind can be pinned to the context.
+    /// Whether this entry is a compaction summary.
+    ///
+    /// Compaction entries act as delimiters in the chat history. They are
+    /// never included in subsequent compaction ranges.
+    #[must_use]
+    pub fn is_compaction(&self) -> bool {
+        matches!(self.kind, ChatEntryKind::Compaction { .. })
+    }
+
+    /// Whether this entry is an Assistant entry with empty text.
+    ///
+    /// Empty assistant entries are created when the LLM responds with tool
+    /// calls but no text. They must remain in history for correct
+    /// `entries_to_messages` behavior (tool calls attach to the preceding
+    /// assistant message), but should be hidden from the UI.
+    #[must_use]
+    pub fn is_empty_assistant(&self) -> bool {
+        matches!(&self.kind, ChatEntryKind::Assistant(text) if text.is_empty())
+    }
+
+    /// Whether this is a ToolResult that never completed (Pending status).
+    ///
+    /// Pending results are created when a tool call starts but never
+    /// receives a success or failure status. They carry incomplete data
+    /// and should be treated as out-of-context.
+    #[must_use]
+    pub fn is_pending_tool_result(&self) -> bool {
+        matches!(
+            &self.kind,
+            ChatEntryKind::ToolResult { status: ToolResultStatus::Pending, .. }
+        )
+    }
+
+    /// The pin position, if this entry is pinned.
+    pub fn pin_position(&self) -> Option<PinPosition> {
+        self.pin_position
+    }
+
+    /// Returns a static string identifying the entry kind.
+    ///
+    /// Used by plugins to identify entry types without matching on the enum.
+    #[must_use]
+    pub fn kind_str(&self) -> &'static str {
+        match self.kind {
+            ChatEntryKind::User { .. } => "user",
+            ChatEntryKind::System(..) => "system",
+            ChatEntryKind::Error(..) => "error",
+            ChatEntryKind::Assistant(..) => "assistant",
+            ChatEntryKind::Actor { .. } => "actor",
+            ChatEntryKind::Thinking(..) => "thinking",
+            ChatEntryKind::ToolCall { .. } => "tool_call",
+            ChatEntryKind::ToolResult { .. } => "tool_result",
+            ChatEntryKind::Skill { .. } => "skill",
+            ChatEntryKind::Transient(..) => "transient",
+            ChatEntryKind::Compaction { .. } => "compaction",
+        }
+    }
+
+    /// Returns the text content of this entry.
+    ///
+    /// Returns the primary text for each variant. For `Table`, returns
+    /// the plain-text representation. For `ToolCall` and `ToolResult`,
+    /// returns a formatted summary.
+    #[must_use]
+    pub fn text(&self) -> String {
+        match &self.kind {
+            ChatEntryKind::User { display, .. } => display.clone(),
+            ChatEntryKind::System(t)
+            | ChatEntryKind::Error(t)
+            | ChatEntryKind::Assistant(t)
+            | ChatEntryKind::Thinking(t) => t.clone(),
+            ChatEntryKind::Transient(s) => s.clone(),
+            ChatEntryKind::Actor { text, .. } => text.clone(),
+            ChatEntryKind::ToolCall {
+                name, arguments, ..
+            } => {
+                format!("{name}: {arguments}")
+            }
+            ChatEntryKind::ToolResult { name, content, .. } => {
+                format!("{name}: {content}")
+            }
+            ChatEntryKind::Skill { content, .. } => content.clone(),
+            ChatEntryKind::Compaction { summary, .. } => summary.clone(),
+        }
+    }
+
+    /// Compute a cheap fingerprint of this entry's visual content.
+    ///
+    /// Two entries with the same visual content produce the same fingerprint.
+    /// Used by the line count cache to detect content changes without re-rendering.
+    /// The fingerprint changes when text content or entry kind changes.
+    #[must_use]
+    pub fn content_fingerprint(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        // Hash the kind discriminant + content.
+        std::mem::discriminant(&self.kind).hash(&mut hasher);
+        match &self.kind {
+            ChatEntryKind::User { display, .. } => display.hash(&mut hasher),
+            ChatEntryKind::System(t)
+            | ChatEntryKind::Error(t)
+            | ChatEntryKind::Assistant(t)
+            | ChatEntryKind::Thinking(t) => t.hash(&mut hasher),
+            ChatEntryKind::Transient(s) => s.hash(&mut hasher),
+            ChatEntryKind::Actor { text, .. } => text.hash(&mut hasher),
+            ChatEntryKind::ToolCall {
+                name, arguments, ..
+            } => {
+                name.hash(&mut hasher);
+                arguments.hash(&mut hasher);
+            }
+            ChatEntryKind::ToolResult {
+                name,
+                content,
+                status,
+                truncation,
+                ..
+            } => {
+                name.hash(&mut hasher);
+                status.hash(&mut hasher);
+                content.hash(&mut hasher);
+                // Include truncation presence so the line count cache
+                // invalidates when the indicator line is added or removed.
+                truncation.is_some().hash(&mut hasher);
+            }
+            ChatEntryKind::Skill { name, content, .. } => {
+                name.hash(&mut hasher);
+                content.hash(&mut hasher);
+            }
+            ChatEntryKind::Compaction {
+                summary,
+                tokens_after,
+                entries_compacted,
+                model_used,
+                ..
+            } => {
+                summary.hash(&mut hasher);
+                tokens_after.hash(&mut hasher);
+                entries_compacted.hash(&mut hasher);
+                model_used.hash(&mut hasher);
+            }
+        }
+        hasher.finish()
+    }
+}
+
+impl Serialize for ChatEntryKind {
+    #[allow(clippy::too_many_lines)]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeMap;
+        match self {
+            ChatEntryKind::User { display, expanded } => {
+                #[derive(Serialize)]
+                struct UserData {
+                    display: String,
+                    expanded: String,
+                }
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
+                    "User",
+                    &UserData {
+                        display: display.clone(),
+                        expanded: expanded.clone(),
+                    },
+                )?;
+                map.end()
+            }
+            ChatEntryKind::System(t) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("System", t)?;
+                map.end()
+            }
+            ChatEntryKind::Error(t) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("Error", t)?;
+                map.end()
+            }
+            ChatEntryKind::Assistant(t) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("Assistant", t)?;
+                map.end()
+            }
+            ChatEntryKind::Actor { source, text } => {
+                #[derive(Serialize)]
+                struct ActorData {
+                    source: String,
+                    text: String,
+                }
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
+                    "Actor",
+                    &ActorData {
+                        source: source.clone(),
+                        text: text.clone(),
+                    },
+                )?;
+                map.end()
+            }
+            ChatEntryKind::ToolCall {
+                id,
+                name,
+                arguments,
+            } => {
+                #[derive(Serialize)]
+                struct ToolCallData {
+                    id: String,
+                    name: String,
+                    arguments: String,
+                }
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
+                    "ToolCall",
+                    &ToolCallData {
+                        id: id.clone(),
+                        name: name.clone(),
+                        arguments: arguments.clone(),
+                    },
+                )?;
+                map.end()
+            }
+            ChatEntryKind::ToolResult {
+                id,
+                name,
+                content,
+                status,
+                full_content,
+                truncation,
+            } => {
+                #[derive(Serialize)]
+                struct ToolResultData {
+                    id: String,
+                    name: String,
+                    content: String,
+                    status: ToolResultStatus,
+                    #[serde(skip_serializing_if = "Option::is_none")]
+                    full_content: Option<String>,
+                    #[serde(skip_serializing_if = "Option::is_none")]
+                    truncation: Option<jinn_provider::tool_types::TruncationMeta>,
+                }
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
+                    "ToolResult",
+                    &ToolResultData {
+                        id: id.clone(),
+                        name: name.clone(),
+                        content: content.clone(),
+                        status: *status,
+                        full_content: full_content.clone(),
+                        truncation: truncation.clone(),
+                    },
+                )?;
+                map.end()
+            }
+            ChatEntryKind::Skill {
+                name,
+                location,
+                content,
+            } => {
+                #[derive(Serialize)]
+                struct SkillData {
+                    name: String,
+                    location: String,
+                    content: String,
+                }
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
+                    "Skill",
+                    &SkillData {
+                        name: name.clone(),
+                        location: location.clone(),
+                        content: content.clone(),
+                    },
+                )?;
+                map.end()
+            }
+            ChatEntryKind::Thinking(t) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("Thinking", t)?;
+                map.end()
+            }
+            ChatEntryKind::Transient(s) => {
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry("Transient", s)?;
+                map.end()
+            }
+            ChatEntryKind::Compaction {
+                summary,
+                tokens_before,
+                tokens_after,
+                entries_compacted,
+                model_used,
+            } => {
+                #[derive(Serialize)]
+                struct CompactionData {
+                    summary: String,
+                    tokens_before: usize,
+                    tokens_after: usize,
+                    entries_compacted: usize,
+                    model_used: String,
+                }
+                let mut map = serializer.serialize_map(Some(1))?;
+                map.serialize_entry(
+                    "Compaction",
+                    &CompactionData {
+                        summary: summary.clone(),
+                        tokens_before: *tokens_before,
+                        tokens_after: *tokens_after,
+                        entries_compacted: *entries_compacted,
+                        model_used: model_used.clone(),
+                    },
+                )?;
+                map.end()
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ChatEntryKind {
+    #[allow(clippy::too_many_lines)]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::{self, MapAccess, Visitor};
+        use std::fmt;
+
+        struct ChatEntryKindVisitor;
+
+        impl<'de> Visitor<'de> for ChatEntryKindVisitor {
+            type Value = ChatEntryKind;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a ChatEntryKind map")
+            }
+
+            #[allow(clippy::too_many_lines)]
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let key: String = map
+                    .next_key()?
+                    .ok_or_else(|| de::Error::missing_field("variant"))?;
+                match key.as_str() {
+                    "User" => {
+                        #[derive(Deserialize)]
+                        struct UserData {
+                            display: String,
+                            expanded: String,
+                        }
+                        let data: UserData = map.next_value()?;
+                        Ok(ChatEntryKind::User {
+                            display: data.display,
+                            expanded: data.expanded,
+                        })
+                    }
+                    "System" => {
+                        let text: String = map.next_value()?;
+                        Ok(ChatEntryKind::System(text))
+                    }
+                    "Error" => {
+                        let text: String = map.next_value()?;
+                        Ok(ChatEntryKind::Error(text))
+                    }
+                    "Assistant" => {
+                        let text: String = map.next_value()?;
+                        Ok(ChatEntryKind::Assistant(text))
+                    }
+                    "Actor" => {
+                        #[derive(Deserialize)]
+                        struct ActorData {
+                            source: String,
+                            text: String,
+                        }
+                        let data: ActorData = map.next_value()?;
+                        Ok(ChatEntryKind::Actor {
+                            source: data.source,
+                            text: data.text,
+                        })
+                    }
+                    "ToolCall" => {
+                        #[derive(Deserialize)]
+                        struct ToolCallData {
+                            id: String,
+                            name: String,
+                            arguments: String,
+                        }
+                        let data: ToolCallData = map.next_value()?;
+                        Ok(ChatEntryKind::ToolCall {
+                            id: data.id,
+                            name: data.name,
+                            arguments: data.arguments,
+                        })
+                    }
+                    "ToolResult" => {
+                        // Supports both new format (status: ToolResultStatus + truncation)
+                        // and old format (success: bool) for backward compat.
+                        #[derive(Deserialize)]
+                        struct ToolResultDataNew {
+                            id: String,
+                            name: String,
+                            content: String,
+                            status: ToolResultStatus,
+                            #[serde(default)]
+                            full_content: Option<String>,
+                            #[serde(default)]
+                            truncation: Option<jinn_provider::tool_types::TruncationMeta>,
+                        }
+                        #[derive(Deserialize)]
+                        struct ToolResultDataOld {
+                            id: String,
+                            name: String,
+                            content: String,
+                            success: bool,
+                        }
+                        // Try new format first, fall back to old format.
+                        let value: serde_json::Value = map.next_value()?;
+                        let result = serde_json::from_value::<ToolResultDataNew>(value.clone())
+                            .map(|data| ChatEntryKind::ToolResult {
+                                id: data.id,
+                                name: data.name,
+                                content: data.content,
+                                status: data.status,
+                                full_content: data.full_content,
+                                truncation: data.truncation,
+                            })
+                            .or_else(|_| {
+                                serde_json::from_value::<ToolResultDataOld>(value).map(|data| {
+                                    ChatEntryKind::ToolResult {
+                                        id: data.id,
+                                        name: data.name,
+                                        content: data.content,
+                                        status: if data.success {
+                                            ToolResultStatus::Success
+                                        } else {
+                                            ToolResultStatus::Failure
+                                        },
+                                        full_content: None,
+                                        truncation: None,
+                                    }
+                                })
+                            })
+                            .map_err(|e| {
+                                de::Error::custom(format!("failed to deserialize ToolResult: {e}"))
+                            })?;
+                        Ok(result)
+                    }
+                    "Skill" => {
+                        #[derive(Deserialize)]
+                        struct SkillData {
+                            name: String,
+                            location: String,
+                            content: String,
+                        }
+                        let data: SkillData = map.next_value()?;
+                        Ok(ChatEntryKind::Skill {
+                            name: data.name,
+                            location: data.location,
+                            content: data.content,
+                        })
+                    }
+                    "Thinking" => {
+                        let text: String = map.next_value()?;
+                        Ok(ChatEntryKind::Thinking(text))
+                    }
+                    "Info" | "Transient" => {
+                        // Transient entries are not persisted. If we encounter one in
+                        // deserialized data (e.g. from an older version), treat
+                        // it as System so we don't lose the text.
+                        let text: String = map.next_value()?;
+                        Ok(ChatEntryKind::System(text))
+                    }
+                    "Compaction" => {
+                        #[derive(Deserialize)]
+                        struct CompactionData {
+                            summary: String,
+                            tokens_before: usize,
+                            #[serde(default)]
+                            tokens_after: usize,
+                            entries_compacted: usize,
+                            model_used: String,
+                        }
+                        let data: CompactionData = map.next_value()?;
+                        Ok(ChatEntryKind::Compaction {
+                            summary: data.summary,
+                            tokens_before: data.tokens_before,
+                            tokens_after: data.tokens_after,
+                            entries_compacted: data.entries_compacted,
+                            model_used: data.model_used,
+                        })
+                    }
+                    other => Err(de::Error::unknown_variant(
+                        other,
+                        &[
+                            "User",
+                            "System",
+                            "Error",
+                            "Assistant",
+                            "Actor",
+                            "ToolCall",
+                            "ToolResult",
+                            "Thinking",
+                            "Skill",
+                            "Transient",
+                            "Compaction",
+                        ],
+                    )),
+                }
+            }
+        }
+
+        deserializer.deserialize_map(ChatEntryKindVisitor)
+    }
+}
+
+impl Eq for ChatEntryKind {}
+
+impl ChatEntryKind {
+    /// Whether this entry kind is included in LLM context by default
+    /// (before considering pin or user override).
+    ///
+    /// Kinds included by default: User, Assistant, ToolCall, ToolResult,
+    /// Skill, Compaction.
+    ///
+    /// Kinds excluded by default: Error, Thinking, Transient, System, Actor.
+    #[must_use]
+    pub fn is_included_by_default(&self) -> bool {
+        matches!(
+            self,
+            ChatEntryKind::User { .. }
+                | ChatEntryKind::Assistant(..)
+                | ChatEntryKind::ToolCall { .. }
+                | ChatEntryKind::ToolResult { .. }
+                | ChatEntryKind::Skill { .. }
+                | ChatEntryKind::Compaction { .. }
+        )
+    }
+}

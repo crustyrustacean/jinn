@@ -1,5 +1,5 @@
-# Gruvbox Dark — sample theme for nullslop
-# Place in ~/.config/nullslop/themes/gruvbox-dark.toml
+# Gruvbox Dark — sample theme for jinn
+# Place in ~/.config/jinn/themes/gruvbox-dark.toml
 
 # Borders & focus
 focus_accent = "#fe8019"       # orange

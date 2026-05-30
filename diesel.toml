@@ -1,2 +1,2 @@
 [print_schema]
-file = "crates/nullslop-domain/src/schema.rs"
+file = "crates/jinn-domain/src/schema.rs"

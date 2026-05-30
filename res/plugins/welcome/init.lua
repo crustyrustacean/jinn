@@ -1,4 +1,4 @@
--- Welcome plugin for nullslop.
+-- Welcome plugin for jinn.
 -- Shows a startup greeting when the app starts and tips on new sessions.
 
 local welcome_shown = false
@@ -8,7 +8,7 @@ ps.sub("app::started", function(ctx)
     welcome_shown = true
     ns.emit("push_chat_entry", {
         session_id = ctx.session_id or "",
-        message = "Welcome to nullslop! Press ? for keybindings.",
+        message = "Welcome to jinn! Press ? for keybindings.",
     })
 end)
 
