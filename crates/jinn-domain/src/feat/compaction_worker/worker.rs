@@ -14,17 +14,16 @@ use wherror::Error;
 
 use crate::common::services::Services;
 use crate::common::state::State;
-use crate::feat::compaction_worker::serializer::serialize_entries_for_compaction;
 use crate::feat::compaction_worker::algorithm::{
-    adjust_cut_to_boundary, compute_cut_index, find_start_boundary,
-    gather_compactable_entries,
+    adjust_cut_to_boundary, compute_cut_index, find_start_boundary, gather_compactable_entries,
 };
+use crate::feat::compaction_worker::serializer::serialize_entries_for_compaction;
 use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, TokenEstimator};
 
+use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::CompactionConfig;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
-use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::protocol::SessionId;
 
 /// Errors during compaction.
@@ -65,7 +64,11 @@ impl HistoryWorker for CompactionWorker {
         "compaction"
     }
 
-    async fn evaluate(&self, session_id: &SessionId, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
+    async fn evaluate(
+        &self,
+        session_id: &SessionId,
+        history: Vec<ChatEntry>,
+    ) -> Vec<HistoryMutation> {
         // Delegate to evaluate_history which needs state access.
         // The history worker actor provides the history snapshot.
         self.evaluate_history(session_id, &history).await
@@ -128,14 +131,17 @@ impl CompactionWorker {
     /// Compacts only when the session's tiktoken-based `context_size()` (the same
     /// value shown in the status bar) exceeds `config.threshold` of the model's
     /// `context_length`.
-    async fn evaluate_history(&self, session_id: &SessionId, _history: &[ChatEntry]) -> Vec<HistoryMutation> {
+    async fn evaluate_history(
+        &self,
+        session_id: &SessionId,
+        _history: &[ChatEntry],
+    ) -> Vec<HistoryMutation> {
         // Read live config, model, context_size, and context_length from shared state.
         let (config, model_name, compaction_prompt, retry_config, full_history) = {
             let state = self.state.read();
             let config = state.frontend.preferences.compaction.clone();
-            let session = match state.session.get(session_id) {
-                Some(s) => s,
-                None => return vec![],
+            let Some(session) = state.session.get(session_id) else {
+                return vec![];
             };
             let model_name = session.profile().model.clone();
             let compaction_prompt = state.context.compaction_prompt.clone();
@@ -146,21 +152,16 @@ impl CompactionWorker {
             //   - context_size() = tiktoken count from last prompt assembly
             //   - context_length = model's context window from provider/model cache
             // If either is unavailable, we skip compaction (can't determine threshold).
-            let context_size = match session.context_size() {
-                Some(size) => size,
-                None => {
-                    tracing::debug!(
-                        session_id = %session_id,
-                        "skipping compaction: context_size not yet calculated"
-                    );
-                    return vec![];
-                }
+            let Some(context_size) = session.context_size() else {
+                tracing::debug!(
+                    session_id = %session_id,
+                    "skipping compaction: context_size not yet calculated"
+                );
+                return vec![];
             };
 
-            let context_length = resolve_context_limit(
-                state.provider.model_cache.as_ref(),
-                &model_name,
-            );
+            let context_length =
+                resolve_context_limit(state.provider.model_cache.as_ref(), &model_name);
 
             let context_limit = match context_length {
                 Some(limit) => limit,
@@ -170,7 +171,7 @@ impl CompactionWorker {
                 }
             };
 
-            let usage_ratio = context_size as f64 / context_limit as f64;
+            let usage_ratio = f64::from(context_size) / f64::from(context_limit);
             if usage_ratio < config.threshold {
                 tracing::debug!(
                     session_id = %session_id,
@@ -320,9 +321,7 @@ impl CompactionWorker {
             context_override: ContextOverride::Default,
         };
 
-        let last_gathered_id = gathered_indices
-            .last()
-            .map(|&idx| history[idx].id.clone());
+        let last_gathered_id = gathered_indices.last().map(|&idx| history[idx].id.clone());
         mutations.push(HistoryMutation::InsertEntry {
             after_entry_id: last_gathered_id,
             entry: compaction_entry,
