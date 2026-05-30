@@ -32,7 +32,7 @@ const MINIMAP_BANDS: usize = 8;
 /// Order: smallest token count → largest token count.
 /// Theme-independent: designed for high contrast on dark backgrounds.
 const MINIMAP_PALETTE: [Color; MINIMAP_BANDS] = [
-    Color::Rgb(0, 0, 4),       // band 0: near-black blue
+    Color::Rgb(39, 12, 77),    // band 0: deep indigo
     Color::Rgb(39, 12, 77),    // band 1: deep indigo
     Color::Rgb(100, 20, 108),  // band 2: violet
     Color::Rgb(156, 43, 99),   // band 3: magenta-rose
@@ -468,9 +468,9 @@ mod tests {
 
     #[rstest::rstest]
     fn token_threshold_band_0_is_blue() {
-        // Band 0: [0, 250) — near-black blue
-        assert_eq!(token_threshold_color(0, 2000), Color::Rgb(0, 0, 4));
-        assert_eq!(token_threshold_color(249, 2000), Color::Rgb(0, 0, 4));
+        // Band 0: [0, 250) — deep indigo
+        assert_eq!(token_threshold_color(0, 2000), Color::Rgb(39, 12, 77));
+        assert_eq!(token_threshold_color(249, 2000), Color::Rgb(39, 12, 77));
     }
 
     #[rstest::rstest]
@@ -526,8 +526,8 @@ mod tests {
     #[rstest::rstest]
     fn token_threshold_custom_max_tokens_adjusts_bands() {
         // With max_tokens=1000, each band is 125 tokens wide.
-        assert_eq!(token_threshold_color(0, 1000), Color::Rgb(0, 0, 4));
-        assert_eq!(token_threshold_color(124, 1000), Color::Rgb(0, 0, 4));
+        assert_eq!(token_threshold_color(0, 1000), Color::Rgb(39, 12, 77));
+        assert_eq!(token_threshold_color(124, 1000), Color::Rgb(39, 12, 77));
         assert_eq!(token_threshold_color(125, 1000), Color::Rgb(39, 12, 77));
         assert_eq!(token_threshold_color(999, 1000), Color::Rgb(252, 255, 164));
     }
