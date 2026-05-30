@@ -16,7 +16,7 @@ impl SessionPersistenceActor {
     /// SessionLoadCompleted: restore session state and emit follow-up commands.
     ///
     /// Carries the fully loaded [`ChatSessionState`]. This handler inserts it
-    /// into state, adds a system message, restores model/CWD, and recalculates
+    /// into state, restores model/CWD, validates the CWD, and recalculates
     /// context size.
     pub(in crate::feat::session::session_actor) async fn handle_session_load_completed(
         &self,
@@ -42,8 +42,6 @@ impl SessionPersistenceActor {
                 loaded.model().to_owned()
             };
 
-            let title_text = loaded.title().unwrap_or("Untitled Session").to_owned();
-
             // Insert loaded session into HashMap.
             state.session.insert(loaded);
 
@@ -53,10 +51,8 @@ impl SessionPersistenceActor {
                 &session_id,
             );
 
-            // Add a system message about the restore.
             #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
             let session = state.session.get_mut(&session_id).expect("just inserted");
-            session.push_entry(ChatEntry::system(format!("Session restored: {title_text}")));
             session.set_model(model);
             // Mark loaded session as interacted — it came from disk (already persisted).
             session.mark_interacted();
@@ -109,7 +105,7 @@ impl SessionPersistenceActor {
             session.set_context_size(assembled.estimated_tokens());
         }
 
-        // Persist the restored session (includes the "Session restored" system entries).
+        // Persist the restored session.
         self.save_active_session(&session_id).await;
     }
 
