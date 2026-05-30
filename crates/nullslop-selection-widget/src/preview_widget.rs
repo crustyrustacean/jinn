@@ -159,14 +159,19 @@ where
 
 /// Borrowed rendering context used after the block/title are consumed.
 struct RenderCtx<'a, T: PickerItem + PreviewContent> {
+    /// Shared picker state.
     state: &'a SelectionState<T>,
     #[expect(dead_code, reason = "footer rendering to be added")]
+    /// Optional footer line.
     footer: Option<&'a Line<'a>>,
+    /// Color configuration.
     colors: &'a SelectionColors,
+    /// Scroll offset for the preview pane.
     preview_scroll: usize,
 }
 
 impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
+    /// Render with a vertical split layout (side-by-side list and preview).
     fn render_vertical_split(&self, frame: &mut Frame<'_>, inner: Rect) {
         let [list_area, preview_area] = Layout::horizontal([
             Constraint::Percentage(LIST_FRACTION),
@@ -191,6 +196,7 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
         self.render_preview(frame, preview_body);
     }
 
+    /// Render with a horizontal split layout (stacked list and preview).
     fn render_horizontal_split(&self, frame: &mut Frame<'_>, inner: Rect) {
         let list_height = HORIZONTAL_LIST_ROWS + 2;
         let [list_area, sep_area, preview_area] =
@@ -211,6 +217,7 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
         self.render_preview(frame, preview_area);
     }
 
+    /// Render the filter input and result list.
     fn render_list(&self, frame: &mut Frame<'_>, area: Rect) {
         let [input_area, sep_area, results_area] = Layout::vertical([
             Constraint::Length(1),
@@ -234,6 +241,7 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
         self.render_results(frame, results_area);
     }
 
+    /// Render the filtered result rows.
     fn render_results(&self, frame: &mut Frame<'_>, area: Rect) {
         let max_visible = area.height as usize;
         let scroll_offset = self.state.scroll_offset();
@@ -254,6 +262,7 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
         frame.render_widget(Paragraph::new(result_lines), area);
     }
 
+    /// Render the preview pane for the selected item.
     fn render_preview(&self, frame: &mut Frame<'_>, area: Rect) {
         let width = area.width as usize;
         let max_visible = area.height as usize;

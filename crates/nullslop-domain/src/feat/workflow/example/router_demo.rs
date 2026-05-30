@@ -156,6 +156,7 @@ pub fn build_router_demo() -> WorkflowGraph {
     clippy::expect_used,
     reason = "static graph definition should always be valid"
 )]
+#[expect(clippy::too_many_lines)]
 pub fn build_router_ternary() -> WorkflowGraph {
     // Node 1: Source — emits "medium" to route on.
     let source = CodeNode::new(

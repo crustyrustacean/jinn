@@ -11,14 +11,9 @@ use std::sync::Arc;
 use nullslop_provider::RetryConfig;
 
 use crate::common::services::test_services::TestServices;
-use crate::common::services::Services;
 use crate::common::state::State;
 use crate::common::app_state::AppState;
 use crate::feat::compaction_worker::worker::{CompactionTrigger, CompactionWorker};
-use crate::feat::compaction_worker::algorithm::{
-    adjust_cut_to_boundary, compute_cut_index, find_start_boundary,
-    gather_compactable_entries,
-};
 use crate::feat::preferences_actor::user_preferences::CompactionConfig;
 use crate::feat::provider_infra::{FakeLlmServiceFactory, LlmServiceFactoryService};
 use crate::feat::session::chat_entry::{
@@ -484,10 +479,9 @@ fn session_continues_after_background_compaction() {
     // And the session phase is still Sending (compaction doesn't change phase).
     let guard = worker.state.read();
     let session = guard.session(&session_id);
-    use crate::feat::session::phase_machine::PhaseKind;
     assert_eq!(
         session.phase(),
-        PhaseKind::Sending,
+        crate::feat::session::phase_machine::PhaseKind::Sending,
         "session should remain in Sending phase after background compaction"
     );
 }
