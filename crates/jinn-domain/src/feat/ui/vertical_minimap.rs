@@ -49,7 +49,7 @@ fn token_threshold_color(count: u32, max_tokens: u32) -> Color {
     if max_tokens == 0 {
         return MINIMAP_PALETTE[0];
     }
-    let band = (count as u64 * MINIMAP_BANDS as u64 / max_tokens as u64)
+    let band = (u64::from(count) * MINIMAP_BANDS as u64 / u64::from(max_tokens))
         .min((MINIMAP_BANDS - 1) as u64) as usize;
     MINIMAP_PALETTE[band]
 }
