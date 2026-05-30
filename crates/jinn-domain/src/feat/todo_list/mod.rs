@@ -143,6 +143,8 @@ pub enum TaskStatus {
     /// Task has been postponed to a later phase.
     #[serde(rename = "Deferred")]
     Postponed,
+    /// Task has been cancelled and will not be done.
+    Cancelled,
 }
 
 impl TaskStatus {
@@ -152,6 +154,7 @@ impl TaskStatus {
             Self::Pending => "\u{25CB}",
             Self::Completed => "\u{2713}",
             Self::Postponed => "\u{25BC}",
+            Self::Cancelled => "\u{2717}",
         }
     }
 }
@@ -199,6 +202,12 @@ pub enum TaskListError {
     /// The task is already postponed.
     #[error("task is already postponed: {0}")]
     AlreadyPostponed(TaskId),
+    /// The task is already cancelled.
+    #[error("task is already cancelled: {0}")]
+    AlreadyCancelled(TaskId),
+    /// Cannot complete a cancelled task.
+    #[error("cannot complete a cancelled task: {0}")]
+    TaskCancelled(TaskId),
     /// The phases list provided was empty.
     #[error("phases list must not be empty")]
     EmptyPhasesList,
@@ -393,7 +402,30 @@ impl TaskList {
     pub fn complete_task(&mut self, task_id: &TaskId) -> Result<(), TaskListError> {
         for phase in &mut self.phases {
             if let Some(task) = phase.tasks.iter_mut().find(|t| &t.id == task_id) {
+                if task.status == TaskStatus::Cancelled {
+                    return Err(TaskListError::TaskCancelled(task_id.clone()));
+                }
                 task.status = TaskStatus::Completed;
+                return Ok(());
+            }
+        }
+        Err(TaskListError::TaskNotFound(task_id.clone()))
+    }
+
+    /// Cancels a task — marks it as cancelled (not happening).
+    ///
+    /// Cancelled tasks remain in place with `Cancelled` status.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if not found, or if already cancelled.
+    pub fn cancel_task(&mut self, task_id: &TaskId) -> Result<(), TaskListError> {
+        for phase in &mut self.phases {
+            if let Some(task) = phase.tasks.iter_mut().find(|t| &t.id == task_id) {
+                if task.status == TaskStatus::Cancelled {
+                    return Err(TaskListError::AlreadyCancelled(task_id.clone()));
+                }
+                task.status = TaskStatus::Cancelled;
                 return Ok(());
             }
         }
@@ -457,6 +489,9 @@ impl TaskList {
         // Validate source is not already postponed.
         if src_status == TaskStatus::Postponed {
             return Err(TaskListError::AlreadyPostponed(source_task_id.clone()));
+        }
+        if src_status == TaskStatus::Cancelled {
+            return Err(TaskListError::TaskCancelled(source_task_id.clone()));
         }
 
         // Find reference task's phase.
@@ -548,6 +583,9 @@ impl TaskList {
         // Validate source is not already postponed.
         if src_status == TaskStatus::Postponed {
             return Err(TaskListError::AlreadyPostponed(source_task_id.clone()));
+        }
+        if src_status == TaskStatus::Cancelled {
+            return Err(TaskListError::TaskCancelled(source_task_id.clone()));
         }
 
         // Validate target phase exists.
@@ -662,12 +700,13 @@ impl TaskList {
                     lines.push("  (no tasks)".to_owned());
                 } else {
                     for task in visible {
-                        let check = match task.status {
-                            TaskStatus::Pending => " ",
-                            TaskStatus::Completed => "\u{2713}",
+                        let (check, desc) = match task.status {
+                            TaskStatus::Pending => (" ", task.description.clone()),
+                            TaskStatus::Completed => ("\u{2713}", task.description.clone()),
+                            TaskStatus::Cancelled => ("\u{2717}", format!("CANCELLED: {}", task.description)),
                             TaskStatus::Postponed => unreachable!(),
                         };
-                        lines.push(format!("- [{}] {} [{}]", check, task.description, task.id));
+                        lines.push(format!("- [{}] {} [{}]", check, desc, task.id));
                     }
                 }
             }
@@ -709,12 +748,13 @@ impl TaskList {
                 lines.push("  (no tasks)".to_owned());
             } else {
                 for task in visible {
-                    let check = match task.status {
-                        TaskStatus::Pending => " ",
-                        TaskStatus::Completed => "\u{2713}",
+                    let (check, desc) = match task.status {
+                        TaskStatus::Pending => (" ", task.description.clone()),
+                        TaskStatus::Completed => ("\u{2713}", task.description.clone()),
+                        TaskStatus::Cancelled => ("\u{2717}", format!("CANCELLED: {}", task.description)),
                         TaskStatus::Postponed => unreachable!(),
                     };
-                    lines.push(format!("- [{}] {} [{}]", check, task.description, task.id));
+                    lines.push(format!("- [{}] {} [{}]", check, desc, task.id));
                 }
             }
         }

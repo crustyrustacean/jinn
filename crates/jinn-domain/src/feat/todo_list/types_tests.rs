@@ -671,3 +671,151 @@ fn set_from_descriptions_errors_on_empty() {
     let result = list.set_from_descriptions(vec![]);
     assert!(matches!(result, Err(TaskListError::EmptyPhasesList)));
 }
+
+// ---------------------------------------------------------------------------
+// cancel_task
+// ---------------------------------------------------------------------------
+
+#[test]
+fn cancel_task_marks_as_cancelled() {
+    let mut list = TaskList::new();
+    let pid = list.add_phase("Build");
+    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
+
+    list.cancel_task(&t1).unwrap();
+
+    let task = list.get_task(&t1).unwrap();
+    assert_eq!(task.status(), TaskStatus::Cancelled);
+}
+
+#[test]
+fn cancel_task_errors_on_unknown_task() {
+    let mut list = TaskList::new();
+    list.add_phase("Build");
+    let bad_id = TaskId::new_for_test("t99");
+    let result = list.cancel_task(&bad_id);
+    assert!(matches!(result, Err(TaskListError::TaskNotFound(_))));
+}
+
+#[test]
+fn cancel_task_errors_on_already_cancelled() {
+    let mut list = TaskList::new();
+    let pid = list.add_phase("Build");
+    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
+
+    list.cancel_task(&t1).unwrap();
+    let result = list.cancel_task(&t1);
+    assert!(matches!(result, Err(TaskListError::AlreadyCancelled(_))));
+}
+
+#[test]
+fn cancel_task_can_cancel_postponed_task() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Research");
+    let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
+    let p2 = list.add_phase("Build");
+    let t2 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
+
+    list.postpone_task(&t1, TaskPosition::After(t2)).unwrap();
+
+    // Cancel the postponed source task.
+    list.cancel_task(&t1).unwrap();
+    let task = list.get_task(&t1).unwrap();
+    assert_eq!(task.status(), TaskStatus::Cancelled);
+}
+
+#[test]
+fn complete_task_errors_on_cancelled() {
+    let mut list = TaskList::new();
+    let pid = list.add_phase("Build");
+    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
+
+    list.cancel_task(&t1).unwrap();
+    let result = list.complete_task(&t1);
+    assert!(matches!(result, Err(TaskListError::TaskCancelled(_))));
+}
+
+#[test]
+fn postpone_task_errors_on_cancelled() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Build");
+    let t1 = list.add_task(&p1, "Write code", TaskPosition::End).unwrap();
+    let t2 = list.add_task(&p1, "Test code", TaskPosition::End).unwrap();
+
+    list.cancel_task(&t1).unwrap();
+    let result = list.postpone_task(&t1, TaskPosition::After(t2));
+    assert!(matches!(result, Err(TaskListError::TaskCancelled(_))));
+}
+
+#[test]
+fn postpone_to_phase_errors_on_cancelled() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Research");
+    let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
+    let p2 = list.add_phase("Build");
+
+    list.cancel_task(&t1).unwrap();
+    let result = list.postpone_to_phase(&t1, &p2);
+    assert!(matches!(result, Err(TaskListError::TaskCancelled(_))));
+}
+
+#[test]
+fn render_text_shows_cancelled_with_prefix() {
+    let mut list = TaskList::new();
+    let pid = list.add_phase("Build");
+    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
+    list.cancel_task(&t1).unwrap();
+
+    let rendered = list.render_text();
+    assert!(rendered.contains("CANCELLED: Write code"));
+    assert!(rendered.contains("[\u{2717}]"));
+}
+
+#[test]
+fn render_text_hides_postponed_shows_cancelled() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Research");
+    let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
+    let p2 = list.add_phase("Build");
+    let t2 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
+
+    list.postpone_task(&t1, TaskPosition::After(t2)).unwrap();
+
+    let t3 = list.add_task(&p1, "Extra task", TaskPosition::End).unwrap();
+    list.cancel_task(&t3).unwrap();
+
+    let rendered = list.render_text();
+    // Postponed should be hidden.
+    assert!(
+        !rendered.contains(&format!("- [ ] Read docs [{t1}]")),
+        "postponed task should not appear in render"
+    );
+    // Cancelled should be visible with prefix.
+    assert!(
+        rendered.contains("CANCELLED: Extra task"),
+        "cancelled task should appear with CANCELLED: prefix"
+    );
+}
+
+#[test]
+fn render_phase_text_handles_cancelled() {
+    let mut list = TaskList::new();
+    let pid = list.add_phase("Build");
+    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
+    list.cancel_task(&t1).unwrap();
+
+    let rendered = list.render_phase_text(&pid).unwrap();
+    assert!(rendered.contains("CANCELLED: Write code"));
+}
+
+#[test]
+fn serde_roundtrip_with_cancelled() {
+    let mut list = TaskList::new();
+    let pid = list.add_phase("Build");
+    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
+    list.cancel_task(&t1).unwrap();
+
+    let json = serde_json::to_string(&list).unwrap();
+    let restored: TaskList = serde_json::from_str(&json).unwrap();
+    assert_eq!(list, restored);
+}
