@@ -14,8 +14,8 @@ pub mod user_preferences_storage;
 mod preferences_actor_tests;
 
 pub use user_preferences::{
-    CompactionConfig, ContextSlidingWindowConfig, OpenrouterWebSearchConfig, RequestRetryConfig,
-    UserPreferences,
+    CompactionConfig, ContextSlidingWindowConfig, MinimapConfig, OpenrouterWebSearchConfig,
+    RequestRetryConfig, UserPreferences,
 };
 pub use user_preferences_storage::{
     FilesystemUserPreferencesStorage, InMemoryUserPreferencesStorage, UserPreferencesStorageService,
