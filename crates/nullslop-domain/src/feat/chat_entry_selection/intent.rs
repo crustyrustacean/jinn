@@ -232,6 +232,10 @@ pub fn handle_yank_selected(state: &mut AppState) -> IntentResult {
 ///
 /// The sweep state is cleared by either a >100ms gap or any non-
 /// `ChatEntryIgnoreSelected` intent.
+///
+/// # Panics
+///
+/// Calls `expect` on selected entry after validation; should never panic in practice.
 pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
     // Try to continue an existing sweep.
     if let Some(target) = state.active_session_mut().take_ignore_sweep() {
@@ -247,7 +251,7 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
             // Check if the currently selected entry is pinned.
             let is_pinned = session
                 .selected_entry()
-                .is_some_and(|e| e.is_pinned());
+                .is_some_and(crate::feat::session::chat_entry::ChatEntry::is_pinned);
 
             if is_pinned {
                 // Skip pinned — try advancing to the next entry.
@@ -1267,7 +1271,7 @@ mod tests {
 
         // Expire the sweep by setting a stale timestamp.
         state.active_session_mut().ui.ignore_sweep = Some((
-            std::time::Instant::now() - std::time::Duration::from_millis(200),
+            std::time::Instant::now().checked_sub(std::time::Duration::from_millis(200)).unwrap(),
             ContextOverride::ForcedExclude,
         ));
 

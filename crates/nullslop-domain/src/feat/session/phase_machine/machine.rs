@@ -100,8 +100,7 @@ impl SessionPhaseMachine {
     /// `Sending → Idle` — not a valid machine transition).
     ///
     /// Will be removed once all callers go through proper transitions.
-    // ── Transitions ─────────────────────────────────────────────────────
-
+    ///
     /// Disable the tool loop for this session's current turn.
     ///
     /// After the current tool batch completes, `on_tool_batch_completed`
@@ -220,8 +219,7 @@ impl SessionPhaseMachine {
         use std::sync::OnceLock;
         static EMPTY: OnceLock<std::collections::HashMap<usize, usize>> = OnceLock::new();
         self.streaming_phase()
-            .map(|sp| &sp.streaming_tool_call_indices)
-            .unwrap_or_else(|| EMPTY.get_or_init(std::collections::HashMap::new))
+            .map_or_else(|| EMPTY.get_or_init(std::collections::HashMap::new), |sp| &sp.streaming_tool_call_indices)
     }
 
     /// Mutable access to tool-call tracking map. Returns `None` if not streaming.
@@ -234,8 +232,7 @@ impl SessionPhaseMachine {
         use std::sync::OnceLock;
         static EMPTY: OnceLock<std::collections::HashMap<String, usize>> = OnceLock::new();
         self.streaming_phase()
-            .map(|sp| &sp.streaming_tool_result_indices)
-            .unwrap_or_else(|| EMPTY.get_or_init(std::collections::HashMap::new))
+            .map_or_else(|| EMPTY.get_or_init(std::collections::HashMap::new), |sp| &sp.streaming_tool_result_indices)
     }
 
     /// Mutable access to tool-result tracking map. Returns `None` if not streaming.
@@ -273,7 +270,7 @@ impl SessionPhaseMachine {
     }
 
     /// Read-only access to `SendingPhase` data, if currently sending.
-    #[expect(dead_code, reason = "will be used when SendingPhase carries state")]
+    #[allow(dead_code, reason = "will be used when SendingPhase carries state")]
     pub fn sending_phase(&self) -> Option<&SendingPhase> {
         match &self.phase {
             Phase::Sending(s) => Some(s),
@@ -282,7 +279,7 @@ impl SessionPhaseMachine {
     }
 
     /// Mutable access to `SendingPhase` data, if currently sending.
-    #[expect(dead_code, reason = "will be used when SendingPhase carries state")]
+    #[allow(dead_code, reason = "will be used when SendingPhase carries state")]
     pub fn sending_phase_mut(&mut self) -> Option<&mut SendingPhase> {
         match &mut self.phase {
             Phase::Sending(s) => Some(s),

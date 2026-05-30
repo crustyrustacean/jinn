@@ -31,7 +31,7 @@ pub fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState
             ),
         ])
     };
-    let widget = SelectionWidget::new(&state.frontend.persona_picker())
+    let widget = SelectionWidget::new(state.frontend.persona_picker())
         .title(Line::from(" Personas "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(footer);
@@ -43,7 +43,7 @@ pub fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState
 /// Telescope-style layout: bordered popup with filter input at top,
 /// horizontal separator, scrollable theme entries.
 pub fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    let widget = SelectionWidget::new(&state.frontend.theme_picker())
+    let widget = SelectionWidget::new(state.frontend.theme_picker())
         .title(Line::from(" Themes "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(Line::from(" ESC to cancel, Enter to apply "));
@@ -55,7 +55,7 @@ pub fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) 
 /// Telescope-style layout: bordered popup with filter input at top,
 /// horizontal separator, scrollable workflow entries.
 pub fn render_workflow_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    let widget = SelectionWidget::new(&state.frontend.workflow_picker())
+    let widget = SelectionWidget::new(state.frontend.workflow_picker())
         .title(Line::from(" Workflows "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(Line::from(" Enter to run, ESC to cancel "));
@@ -64,7 +64,7 @@ pub fn render_workflow_picker(frame: &mut Frame<'_>, area: Rect, state: &AppStat
 
 /// Renders the judge picker overlay using [`SelectionWidget`].
 pub fn render_judge_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    let widget = SelectionWidget::new(&state.frontend.judge_picker())
+    let widget = SelectionWidget::new(state.frontend.judge_picker())
         .title(Line::from(" Judges "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(Line::from(" Enter to attach, ESC to cancel "));
@@ -84,7 +84,7 @@ pub fn render_tool_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let footer = Line::from(format!(
         " TAB toggle \u{00b7} {enabled_count}/{total} enabled \u{00b7} Enter confirm \u{00b7} ESC cancel "
     ));
-    let widget = SelectionWidget::new(&state.frontend.tool_picker())
+    let widget = SelectionWidget::new(state.frontend.tool_picker())
         .title(Line::from(" Tools "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(footer);
@@ -107,7 +107,7 @@ pub fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) 
     let footer = Line::from(format!(
         " TAB toggle \u{00b7} {enabled_count}/{total} enabled \u{00b7} Enter confirm \u{00b7} ESC cancel "
     ));
-    let widget = PreviewSelectionWidget::new(&state.frontend.skill_picker())
+    let widget = PreviewSelectionWidget::new(state.frontend.skill_picker())
         .title(Line::from(" Skills "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .preview_scroll(state.frontend.skill_preview_scroll())

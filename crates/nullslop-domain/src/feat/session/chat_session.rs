@@ -861,15 +861,15 @@ impl ChatSessionState {
     pub fn begin_streaming(&mut self) {
         use crate::feat::session::phase_machine::PhaseTransitions;
         // If Idle, first transition to Sending (some callers skip begin_sending()).
-        if matches!(self.core.ephemeral.machine.kind(), PhaseKind::Idle) {
-            if let Err(e) = self.core.ephemeral.machine.on_dispatch_message() {
-                tracing::warn!(
-                    current_phase = ?self.core.ephemeral.machine.kind(),
-                    err = %e,
-                    "begin_streaming: on_dispatch_message rejected — ignoring"
-                );
-                return;
-            }
+        if matches!(self.core.ephemeral.machine.kind(), PhaseKind::Idle)
+            && let Err(e) = self.core.ephemeral.machine.on_dispatch_message()
+        {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.machine.kind(),
+                err = %e,
+                "begin_streaming: on_dispatch_message rejected — ignoring"
+            );
+            return;
         }
         if let Err(e) = self.core.ephemeral.machine.on_first_token() {
             tracing::warn!(
@@ -877,7 +877,6 @@ impl ChatSessionState {
                 err = %e,
                 "begin_streaming: machine rejected transition — ignoring"
             );
-            return;
         }
     }
 
@@ -997,17 +996,16 @@ impl ChatSessionState {
     // Phase 1 wiring: delegates to machine.on_stream_completed_finished()
     // and syncs legacy phase field.
     pub fn finish_streaming(&mut self, preserve_assistant: bool) {
+        use crate::feat::session::phase_machine::PhaseTransitions;
         if preserve_assistant {
             self.ensure_assistant_entry();
         }
-        use crate::feat::session::phase_machine::PhaseTransitions;
         if let Err(e) = self.core.ephemeral.machine.on_stream_completed_finished() {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
                 err = %e,
                 "finish_streaming: machine rejected transition"
             );
-            return;
         }
         // Streaming indices cleared automatically by Phase::Streaming drop.
     }
@@ -1391,7 +1389,6 @@ impl ChatSessionState {
                 err = %e,
                 "begin_sending: machine rejected transition — ignoring"
             );
-            return;
         }
     }
 
@@ -1428,7 +1425,6 @@ impl ChatSessionState {
                 err = %e,
                 "begin_tearing_down: machine rejected transition — ignoring"
             );
-            return;
         }
     }
 
@@ -1444,7 +1440,6 @@ impl ChatSessionState {
                 err = %e,
                 "finish_tearing_down: machine rejected transition — ignoring"
             );
-            return;
         }
     }
 

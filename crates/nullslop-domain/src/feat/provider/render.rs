@@ -31,7 +31,7 @@ pub fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &AppStat
 /// Shows all provider entries plus a "session default" sentinel at the top,
 /// allowing the user to select which model to use for context compaction.
 pub fn render_compaction_model_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    let widget = SelectionWidget::new(&state.frontend.compaction_model_picker())
+    let widget = SelectionWidget::new(state.frontend.compaction_model_picker())
         .title(ratatui::text::Line::from(" Compaction Model "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title));
     widget.render(frame, area);
