@@ -1,4 +1,4 @@
-//! Compaction worker — summarizes conversation history into structured checkpoints.
+//! Compaction worker — summarizes conversation history into brief checkpoints.
 //!
 //! Implements [`HistoryWorker`] to produce [`HistoryMutation`] batches that
 //! exclude old entries and insert a compaction summary. Runs asynchronously
@@ -30,6 +30,12 @@ use crate::protocol::SessionId;
 #[derive(Debug, Error)]
 #[error("compaction error")]
 pub struct CompactionError;
+
+/// Maximum estimated tokens for a compaction summary.
+///
+/// The streaming collection loop stops accepting tokens once this ceiling
+/// is reached, preventing runaway summaries (e.g., 25k+ tokens).
+const MAX_SUMMARY_TOKENS: usize = 4000;
 
 /// Compaction trigger for the worker.
 #[derive(Debug, Clone)]
@@ -397,12 +403,12 @@ async fn generate_summary(
         user_content.push_str("\n</previous-summary>\n\n");
         user_content.push_str(
             "The messages below are NEW conversation messages to incorporate into the existing summary. \
-             Update the existing structured summary to reflect the new information.\n\n",
+             Update the existing summary to reflect the new information.\n\n",
         );
     } else {
         user_content.push_str(
             "The messages below are a conversation to summarize. \
-             Create a structured context checkpoint summary.\n\n",
+             Create a brief summary.\n\n",
         );
     }
     user_content.push_str(serialized_entries);
@@ -430,11 +436,21 @@ async fn generate_summary(
     let handle = runtime_handle.clone();
     let summary = handle
         .spawn(async move {
+            let estimator = CharRatioEstimator;
             let mut full_response = String::new();
             pin_mut!(stream);
             while let Some(result) = stream.next().await {
                 match result {
-                    Ok(token) => full_response.push_str(&token),
+                    Ok(token) => {
+                        full_response.push_str(&token);
+                        if estimator.estimate(&full_response) >= MAX_SUMMARY_TOKENS {
+                            tracing::warn!(
+                                tokens = estimator.estimate(&full_response),
+                                "compaction summary hit token ceiling, truncating"
+                            );
+                            break;
+                        }
+                    }
                     Err(e) => {
                         tracing::warn!(error = %e, "error during compaction LLM stream");
                         break;
