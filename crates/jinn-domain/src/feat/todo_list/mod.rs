@@ -140,8 +140,9 @@ pub enum TaskStatus {
     Pending,
     /// Task has been completed.
     Completed,
-    /// Task has been deferred to a later phase.
-    Deferred,
+    /// Task has been postponed to a later phase.
+    #[serde(rename = "Deferred")]
+    Postponed,
 }
 
 impl TaskStatus {
@@ -150,7 +151,7 @@ impl TaskStatus {
         match self {
             Self::Pending => "\u{25CB}",
             Self::Completed => "\u{2713}",
-            Self::Deferred => "\u{25BC}",
+            Self::Postponed => "\u{25BC}",
         }
     }
 }
@@ -192,12 +193,12 @@ pub enum TaskListError {
         task_id: TaskId,
         phase_id: PhaseId,
     },
-    /// Cannot defer a task relative to itself.
-    #[error("cannot defer task relative to itself: {0}")]
+    /// Cannot postpone a task relative to itself.
+    #[error("cannot postpone task relative to itself: {0}")]
     SelfReference(TaskId),
-    /// The task is already deferred.
-    #[error("task is already deferred: {0}")]
-    AlreadyDeferred(TaskId),
+    /// The task is already postponed.
+    #[error("task is already postponed: {0}")]
+    AlreadyPostponed(TaskId),
     /// The phases list provided was empty.
     #[error("phases list must not be empty")]
     EmptyPhasesList,
@@ -399,9 +400,9 @@ impl TaskList {
         Err(TaskListError::TaskNotFound(task_id.clone()))
     }
 
-    /// Defers a task by marking it as deferred and creating a pending copy.
+    /// Postpones a task by marking it as postponed and creating a pending copy.
     ///
-    /// The source task is marked with `Deferred` status (▼) and remains in place.
+    /// The source task is marked with `Postponed` status (▼) and remains in place.
     /// A new `Pending` copy with the same description is created at the specified
     /// position relative to a reference task. The reference task determines the
     /// target phase.
@@ -410,7 +411,7 @@ impl TaskList {
     ///
     /// Returns an error if:
     /// - The source task does not exist (`TaskNotFound`)
-    /// - The source task is already deferred (`AlreadyDeferred`)
+    /// - The source task is already postponed (`AlreadyPostponed`)
     /// - The reference task does not exist (`TaskNotFound`)
     /// - The source and reference are the same task (`SelfReference`)
     ///
@@ -418,7 +419,7 @@ impl TaskList {
     ///
     /// Panics if internal invariants are violated (source/reference found but then missing).
     #[allow(clippy::needless_pass_by_value)]
-    pub fn defer_task(
+    pub fn postpone_task(
         &mut self,
         source_task_id: &TaskId,
         position: TaskPosition,
@@ -453,9 +454,9 @@ impl TaskList {
         let (src_pi, _src_ti, src_desc, src_status) =
             source_info.ok_or_else(|| TaskListError::TaskNotFound(source_task_id.clone()))?;
 
-        // Validate source is not already deferred.
-        if src_status == TaskStatus::Deferred {
-            return Err(TaskListError::AlreadyDeferred(source_task_id.clone()));
+        // Validate source is not already postponed.
+        if src_status == TaskStatus::Postponed {
+            return Err(TaskListError::AlreadyPostponed(source_task_id.clone()));
         }
 
         // Find reference task's phase.
@@ -470,9 +471,9 @@ impl TaskList {
         let target_pi =
             ref_phase_idx.ok_or_else(|| TaskListError::TaskNotFound(ref_task_id.clone()))?;
 
-        // Mark source task as deferred.
+        // Mark source task as postponed.
         self.phases[src_pi].tasks.iter_mut().find(|t| &t.id == source_task_id).expect("source was found above").status =
-            TaskStatus::Deferred;
+            TaskStatus::Postponed;
 
         // Generate new task ID.
         let existing: Vec<_> = self
@@ -506,9 +507,9 @@ impl TaskList {
         Ok(new_task_id)
     }
 
-    /// Defers a task to the end of a specific phase (or a new phase).
+    /// Postpones a task to the end of a specific phase (or a new phase).
     ///
-    /// The source task is marked with `Deferred` status and remains in place.
+    /// The source task is marked with `Postponed` status and remains in place.
     /// A new `Pending` copy with the same description is appended to the end
     /// of the target phase.
     ///
@@ -516,13 +517,13 @@ impl TaskList {
     ///
     /// Returns an error if:
     /// - The source task does not exist (`TaskNotFound`)
-    /// - The source task is already deferred (`AlreadyDeferred`)
+    /// - The source task is already postponed (`AlreadyPostponed`)
     /// - `target_phase_id` is provided but the phase does not exist (`PhaseNotFound`)
     ///
     /// # Panics
     ///
     /// Panics if internal invariants are violated (source found but then missing).
-    pub fn defer_to_phase(
+    pub fn postpone_to_phase(
         &mut self,
         source_task_id: &TaskId,
         target_phase_id: &PhaseId,
@@ -544,9 +545,9 @@ impl TaskList {
         let (src_pi, src_desc, src_status) =
             source_info.ok_or_else(|| TaskListError::TaskNotFound(source_task_id.clone()))?;
 
-        // Validate source is not already deferred.
-        if src_status == TaskStatus::Deferred {
-            return Err(TaskListError::AlreadyDeferred(source_task_id.clone()));
+        // Validate source is not already postponed.
+        if src_status == TaskStatus::Postponed {
+            return Err(TaskListError::AlreadyPostponed(source_task_id.clone()));
         }
 
         // Validate target phase exists.
@@ -556,9 +557,9 @@ impl TaskList {
             .position(|p| &p.id == target_phase_id)
             .ok_or_else(|| TaskListError::PhaseNotFound(target_phase_id.clone()))?;
 
-        // Mark source task as deferred.
+        // Mark source task as postponed.
         self.phases[src_pi].tasks.iter_mut().find(|t| &t.id == source_task_id).expect("source was found above").status =
-            TaskStatus::Deferred;
+            TaskStatus::Postponed;
 
         // Generate new task ID.
         let existing: Vec<_> = self
@@ -655,7 +656,7 @@ impl TaskList {
                 let visible: Vec<_> = phase
                     .tasks
                     .iter()
-                    .filter(|t| t.status != TaskStatus::Deferred)
+                    .filter(|t| t.status != TaskStatus::Postponed)
                     .collect();
                 if visible.is_empty() {
                     lines.push("  (no tasks)".to_owned());
@@ -664,7 +665,7 @@ impl TaskList {
                         let check = match task.status {
                             TaskStatus::Pending => " ",
                             TaskStatus::Completed => "\u{2713}",
-                            TaskStatus::Deferred => unreachable!(),
+                            TaskStatus::Postponed => unreachable!(),
                         };
                         lines.push(format!("- [{}] {} [{}]", check, task.description, task.id));
                     }
@@ -702,7 +703,7 @@ impl TaskList {
             let visible: Vec<_> = phase
                 .tasks
                 .iter()
-                .filter(|t| t.status != TaskStatus::Deferred)
+                .filter(|t| t.status != TaskStatus::Postponed)
                 .collect();
             if visible.is_empty() {
                 lines.push("  (no tasks)".to_owned());
@@ -711,7 +712,7 @@ impl TaskList {
                     let check = match task.status {
                         TaskStatus::Pending => " ",
                         TaskStatus::Completed => "\u{2713}",
-                        TaskStatus::Deferred => unreachable!(),
+                        TaskStatus::Postponed => unreachable!(),
                     };
                     lines.push(format!("- [{}] {} [{}]", check, task.description, task.id));
                 }
