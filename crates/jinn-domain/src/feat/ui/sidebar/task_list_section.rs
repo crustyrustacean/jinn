@@ -126,11 +126,11 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
                 let indicator = match task.status() {
                     TaskStatus::Pending => "\u{25CB} ",    // \u{25CB}  ○
                     TaskStatus::Completed => "\u{2713} ",  // \u{2713}  ✓
-                    TaskStatus::Deferred => "\u{25BC} ",   // \u{25BC}  ▼
+                    TaskStatus::Postponed => "\u{25BC} ",   // \u{25BC}  ▼
                 };
                 let style = match task.status() {
                     TaskStatus::Pending => Style::default().fg(theme.primary_text),
-                    TaskStatus::Completed | TaskStatus::Deferred => {
+                    TaskStatus::Completed | TaskStatus::Postponed => {
                         Style::default().fg(theme.muted_text)
                     }
                 };
@@ -318,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    fn build_render_lines_shows_deferred_indicator() {
+    fn build_render_lines_shows_postponed_indicator() {
         let mut app = AppState::default();
         let session = app.session.active_session_mut();
         let p1 = session.task_list_mut().add_phase("Research");
@@ -332,10 +332,10 @@ mod tests {
             .add_task(&p2, "Write code", TaskPosition::End)
             .unwrap();
 
-        // Defer t1 (Read docs) to after t2.
+        // Postpone t1 (Read docs) to after t2.
         session
             .task_list_mut()
-            .defer_task(&t1, crate::feat::todo_list::TaskPosition::After(t2))
+            .postpone_task(&t1, crate::feat::todo_list::TaskPosition::After(t2))
             .unwrap();
 
         let list = session.task_list().clone();
@@ -346,10 +346,10 @@ mod tests {
             .map(|s| s.content.to_string())
             .collect();
 
-        // Sidebar should show the deferred task with ▼ indicator.
+        // Sidebar should show the postponed task with ▼ indicator.
         assert!(
             combined.contains("\u{25BC}"),
-            "should contain deferred indicator ▼"
+            "should contain postponed indicator ▼"
         );
         // Sidebar should also show pending tasks.
         assert!(

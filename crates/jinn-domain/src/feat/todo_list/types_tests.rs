@@ -399,18 +399,18 @@ fn serde_backward_compat_with_counters() {
 }
 
 #[test]
-fn defer_task_marks_source_and_creates_copy() {
+fn postpone_task_marks_source_and_creates_copy() {
     let mut list = TaskList::new();
     let p1 = list.add_phase("Research");
     let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
     let p2 = list.add_phase("Build");
     let t2 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
 
-    let new_tid = list.defer_task(&t1, TaskPosition::After(t2.clone())).unwrap();
+    let new_tid = list.postpone_task(&t1, TaskPosition::After(t2.clone())).unwrap();
 
     // Source task should be deferred.
     let source = list.get_task(&t1).unwrap();
-    assert_eq!(source.status(), TaskStatus::Deferred);
+    assert_eq!(source.status(), TaskStatus::Postponed);
 
     // New task should be pending in phase 2.
     let copy = list.get_task(&new_tid).unwrap();
@@ -424,92 +424,92 @@ fn defer_task_marks_source_and_creates_copy() {
 }
 
 #[test]
-fn defer_task_same_phase() {
+fn postpone_task_same_phase() {
     let mut list = TaskList::new();
     let p1 = list.add_phase("Research");
     let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
     let t2 = list.add_task(&p1, "Call API", TaskPosition::End).unwrap();
 
-    let new_tid = list.defer_task(&t1, TaskPosition::Before(t2.clone())).unwrap();
+    let new_tid = list.postpone_task(&t1, TaskPosition::Before(t2.clone())).unwrap();
 
-    // Source deferred.
+    // Source postponed.
     let source = list.get_task(&t1).unwrap();
-    assert_eq!(source.status(), TaskStatus::Deferred);
+    assert_eq!(source.status(), TaskStatus::Postponed);
 
     // Copy is pending with same description.
     let copy = list.get_task(&new_tid).unwrap();
     assert_eq!(copy.status(), TaskStatus::Pending);
     assert_eq!(copy.description(), "Read docs");
 
-    // Same phase has 3 tasks now (deferred + pending copy + original pending).
+    // Same phase has 3 tasks now (postponed + pending copy + original pending).
     let phase = list.get_phase(&p1).unwrap();
     assert_eq!(phase.tasks().len(), 3);
 }
 
 #[test]
-fn defer_task_error_on_missing_source() {
+fn postpone_task_error_on_missing_source() {
     let mut list = TaskList::new();
     let p1 = list.add_phase("Build");
     let t1 = list.add_task(&p1, "Write code", TaskPosition::End).unwrap();
 
     let fake_id = TaskId::new_for_test("t99");
-    let result = list.defer_task(&fake_id, TaskPosition::After(t1));
+    let result = list.postpone_task(&fake_id, TaskPosition::After(t1));
     assert!(matches!(result, Err(TaskListError::TaskNotFound(_))));
 }
 
 #[test]
-fn defer_task_error_on_missing_reference() {
+fn postpone_task_error_on_missing_reference() {
     let mut list = TaskList::new();
     let p1 = list.add_phase("Build");
     let t1 = list.add_task(&p1, "Write code", TaskPosition::End).unwrap();
 
     let fake_ref = TaskId::new_for_test("t99");
-    let result = list.defer_task(&t1, TaskPosition::After(fake_ref));
+    let result = list.postpone_task(&t1, TaskPosition::After(fake_ref));
     assert!(matches!(result, Err(TaskListError::TaskNotFound(_))));
 }
 
 #[test]
-fn defer_task_error_on_self_reference() {
+fn postpone_task_error_on_self_reference() {
     let mut list = TaskList::new();
     let p1 = list.add_phase("Build");
     let t1 = list.add_task(&p1, "Write code", TaskPosition::End).unwrap();
 
-    let result = list.defer_task(&t1, TaskPosition::After(t1.clone()));
+    let result = list.postpone_task(&t1, TaskPosition::After(t1.clone()));
     assert!(matches!(result, Err(TaskListError::SelfReference(_))));
 }
 
 #[test]
-fn defer_task_error_on_already_deferred() {
+fn postpone_task_error_on_already_postponed() {
     let mut list = TaskList::new();
     let p1 = list.add_phase("Research");
     let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
     let p2 = list.add_phase("Build");
     let t2 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
 
-    // Defer once.
-    list.defer_task(&t1, TaskPosition::After(t2.clone())).unwrap();
+    // Postpone once.
+    list.postpone_task(&t1, TaskPosition::After(t2.clone())).unwrap();
 
-    // Try to defer again.
-    let result = list.defer_task(&t1, TaskPosition::After(t2));
-    assert!(matches!(result, Err(TaskListError::AlreadyDeferred(_))));
+    // Try to postpone again.
+    let result = list.postpone_task(&t1, TaskPosition::After(t2));
+    assert!(matches!(result, Err(TaskListError::AlreadyPostponed(_))));
 }
 
 #[test]
-fn render_text_excludes_deferred() {
+fn render_text_excludes_postponed() {
     let mut list = TaskList::new();
     let p1 = list.add_phase("Research");
     let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
     let p2 = list.add_phase("Build");
     let t2 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
 
-    let new_tid = list.defer_task(&t1, TaskPosition::After(t2.clone())).unwrap();
+    let new_tid = list.postpone_task(&t1, TaskPosition::After(t2.clone())).unwrap();
 
     let rendered = list.render_text();
 
     // The deferred source should NOT appear as a task line.
     assert!(
         !rendered.contains(&format!("- [ ] Read docs [{t1}]")),
-        "deferred task should not appear in render"
+        "postponed task should not appear in render"
     );
     // The copy should appear.
     assert!(
@@ -519,15 +519,15 @@ fn render_text_excludes_deferred() {
 }
 
 #[test]
-fn render_text_shows_no_tasks_when_all_deferred() {
+fn render_text_shows_no_tasks_when_all_postponed() {
     let mut list = TaskList::new();
     let p1 = list.add_phase("Research");
     let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
     let p2 = list.add_phase("Build");
     let t2 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
 
-    // Defer the only task in phase 1.
-    list.defer_task(&t1, TaskPosition::After(t2)).unwrap();
+    // Postpone the only task in phase 1.
+    list.postpone_task(&t1, TaskPosition::After(t2)).unwrap();
 
     let rendered = list.render_text();
 
@@ -536,39 +536,39 @@ fn render_text_shows_no_tasks_when_all_deferred() {
     let phase1_text = phase1_section.split("Phase 2").next().unwrap();
     assert!(
         phase1_text.contains("(no tasks)"),
-        "phase with all deferred tasks should show (no tasks)"
+        "phase with all postponed tasks should show (no tasks)"
     );
 }
 
 #[test]
-fn render_phase_text_excludes_deferred() {
+fn render_phase_text_excludes_postponed() {
     let mut list = TaskList::new();
     let p1 = list.add_phase("Research");
     let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
     let p2 = list.add_phase("Build");
     let t2 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
 
-    list.defer_task(&t1, TaskPosition::After(t2)).unwrap();
+    list.postpone_task(&t1, TaskPosition::After(t2)).unwrap();
 
     let rendered = list.render_phase_text(&p1).unwrap();
     assert!(
         rendered.contains("(no tasks)"),
-        "phase with only deferred task should show (no tasks)"
+        "phase with only postponed task should show (no tasks)"
     );
 }
 
 #[test]
-fn defer_to_phase_appends_to_existing_phase() {
+fn postpone_to_phase_appends_to_existing_phase() {
     let mut list = TaskList::new();
     let p1 = list.add_phase("Research");
     let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
     let p2 = list.add_phase("Build");
 
-    let new_tid = list.defer_to_phase(&t1, &p2).unwrap();
+    let new_tid = list.postpone_to_phase(&t1, &p2).unwrap();
 
-    // Source deferred.
+    // Source postponed.
     let source = list.get_task(&t1).unwrap();
-    assert_eq!(source.status(), TaskStatus::Deferred);
+    assert_eq!(source.status(), TaskStatus::Postponed);
 
     // Copy is pending in phase 2.
     let copy = list.get_task(&new_tid).unwrap();
@@ -581,39 +581,39 @@ fn defer_to_phase_appends_to_existing_phase() {
 }
 
 #[test]
-fn defer_to_phase_errors_on_missing_source() {
+fn postpone_to_phase_errors_on_missing_source() {
     let mut list = TaskList::new();
     let p1 = list.add_phase("Build");
 
     let fake_id = TaskId::new_for_test("t99");
-    let result = list.defer_to_phase(&fake_id, &p1);
+    let result = list.postpone_to_phase(&fake_id, &p1);
     assert!(matches!(result, Err(TaskListError::TaskNotFound(_))));
 }
 
 #[test]
-fn defer_to_phase_errors_on_missing_phase() {
+fn postpone_to_phase_errors_on_missing_phase() {
     let mut list = TaskList::new();
     let p1 = list.add_phase("Build");
     let t1 = list.add_task(&p1, "Write code", TaskPosition::End).unwrap();
 
     let fake_phase = PhaseId::new_for_test("p99");
-    let result = list.defer_to_phase(&t1, &fake_phase);
+    let result = list.postpone_to_phase(&t1, &fake_phase);
     assert!(matches!(result, Err(TaskListError::PhaseNotFound(_))));
 }
 
 #[test]
-fn defer_to_phase_errors_on_already_deferred() {
+fn postpone_to_phase_errors_on_already_postponed() {
     let mut list = TaskList::new();
     let p1 = list.add_phase("Research");
     let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
     let p2 = list.add_phase("Build");
 
-    // Defer once.
-    list.defer_to_phase(&t1, &p2).unwrap();
+    // Postpone once.
+    list.postpone_to_phase(&t1, &p2).unwrap();
 
-    // Try to defer again.
-    let result = list.defer_to_phase(&t1, &p2);
-    assert!(matches!(result, Err(TaskListError::AlreadyDeferred(_))));
+    // Try to postpone again.
+    let result = list.postpone_to_phase(&t1, &p2);
+    assert!(matches!(result, Err(TaskListError::AlreadyPostponed(_))));
 }
 
 #[test]
