@@ -1,4 +1,4 @@
-//! System-ready actor — counts `ActorStarted` events and signals the main thread.
+//! System-ready actor - counts `ActorStarted` events and signals the main thread.
 //!
 //! Subscribes to [`ActorStarted`] and [`AllActorsSpawned`] events. Tracks the
 //! running count of started actors. Only checks readiness after receiving
@@ -100,7 +100,7 @@ mod tests {
     use crate::common::actor::{ActorContext, MessageSink, SendResult};
     use crate::protocol::Event;
 
-    /// No-op sink for testing — records nothing.
+    /// No-op sink for testing - records nothing.
     struct TestSink;
     impl MessageSink for TestSink {
         fn name(&self) -> &'static str {

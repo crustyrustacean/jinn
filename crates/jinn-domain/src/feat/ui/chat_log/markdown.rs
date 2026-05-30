@@ -37,7 +37,7 @@ fn highlight_hooks(max_width: usize, theme: &Theme) -> Box<dyn RenderHooks> {
 /// Thin wrapper around [`Theme`] that implements [`RichTextTheme`].
 ///
 /// Needed because `Theme` is defined in `jinn-theme` and `RichTextTheme`
-/// is defined in `ratatui-markdown` — neither is local to this crate, so we
+/// is defined in `ratatui-markdown` - neither is local to this crate, so we
 /// can't write a bare `impl RichTextTheme for Theme` (orphan rule).
 struct MarkdownTheme<'a>(&'a Theme);
 

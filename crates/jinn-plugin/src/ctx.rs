@@ -1,4 +1,4 @@
-//! Per-hook context structs — the sole data contract with plugins.
+//! Per-hook context structs - the sole data contract with plugins.
 //!
 //! Each extension point has a dedicated Ctx struct carrying only the data
 //! available at that call site. Plugins receive this data as the payload
@@ -6,7 +6,7 @@
 //!
 //! # Design rules
 //!
-//! - Ctx structs are built from data the call site **already holds** — no
+//! - Ctx structs are built from data the call site **already holds** - no
 //!   new locks acquired, no AppState cloning.
 //! - All Ctx structs implement [`serde::Serialize`] so they can be converted
 //!   to Lua tables via the JSON→Lua bridge.

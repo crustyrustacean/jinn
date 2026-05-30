@@ -1,4 +1,4 @@
-//! Compaction session data — state that persists across assembly invocations.
+//! Compaction session data - state that persists across assembly invocations.
 //!
 //! In the full implementation, this will store compaction summaries keyed by
 //! `ChatEntryId` ranges. For the stub, it carries a compaction counter.

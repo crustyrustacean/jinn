@@ -1,7 +1,7 @@
 //! Terminal suspend/resume via RAII guard.
 //!
 //! [`TerminalGuard`] suspends the TUI when created (exits raw mode, leaves
-//! alternate screen) and automatically restores it when dropped — even if
+//! alternate screen) and automatically restores it when dropped - even if
 //! the closure passed to [`suspend_and_run`] panics.
 
 use std::io;

@@ -1,4 +1,4 @@
-//! Provider registry — holds all parsed provider configs.
+//! Provider registry - holds all parsed provider configs.
 //!
 //! [`ProviderRegistry`] is constructed from a [`ProvidersConfig`] and expands
 //! each provider block's `models` list into per-model [`ResolvedProvider`]
@@ -30,7 +30,7 @@ use super::service::{LlmServiceError, LlmServiceFactory};
 /// factory creation). Constructed via [`ProviderRegistry::from_config`].
 #[derive(Debug, Clone)]
 pub struct ProviderRegistry {
-    /// The original config (for persistence — `config()`, `config_snapshot()`).
+    /// The original config (for persistence - `config()`, `config_snapshot()`).
     config: ProvidersConfig,
     /// Expanded per-model entries, indexed by `ProviderId`.
     resolved_map: HashMap<ProviderId, ResolvedProvider>,

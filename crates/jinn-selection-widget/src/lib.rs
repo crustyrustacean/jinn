@@ -4,7 +4,7 @@
 //! Consumers bring their own item types, define how items display and render, and the widget
 //! handles fuzzy filtering, cursor navigation, and selection management.
 //!
-//! Commands, handlers, and keymap wiring live in consumer crates — this crate is purely
+//! Commands, handlers, and keymap wiring live in consumer crates - this crate is purely
 //! the state and types layer.
 
 pub mod highlight;

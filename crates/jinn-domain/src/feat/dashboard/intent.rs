@@ -1,4 +1,4 @@
-//! Dashboard intent handlers — selection navigation.
+//! Dashboard intent handlers - selection navigation.
 //!
 //! Handles the four dashboard navigation intents: move selection down, up,
 //! to the first entry, and to the last entry. All are infallible and return

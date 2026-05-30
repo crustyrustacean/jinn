@@ -30,7 +30,7 @@ pub struct SessionStoreError;
 /// Abstraction for session persistence.
 ///
 /// Every external dependency must have a trait abstraction (AGENTS.md §2).
-/// SQLite I/O is an external dependency — this trait abstracts it so
+/// SQLite I/O is an external dependency - this trait abstracts it so
 /// tests can swap in-memory storage.
 ///
 /// All methods are async. Implementations use `tokio::task::spawn_blocking`

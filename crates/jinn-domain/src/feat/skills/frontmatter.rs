@@ -1,7 +1,7 @@
 //! YAML frontmatter parser for SKILL.md files.
 //!
 //! Extracts the YAML block between `---` delimiters at the start of a markdown file.
-//! Uses a minimal hand-rolled parser instead of a full YAML library —
+//! Uses a minimal hand-rolled parser instead of a full YAML library -
 //! we only need `name` and `description` string fields.
 
 /// Parsed frontmatter fields from a SKILL.md file.

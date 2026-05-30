@@ -37,7 +37,7 @@ fn compute_arg_input_popup_rect(area: Rect, content_rows: u16) -> Rect {
     // border(2) + content rows.
     let popup_height = (content_rows + 2).min(area.height);
 
-    // Integer division is intentional — we're computing cell positions for centering.
+    // Integer division is intentional - we're computing cell positions for centering.
     #[expect(clippy::integer_division, reason = "cell positions are integers")]
     let popup_x = area.width.saturating_sub(popup_width) / 2;
     #[expect(clippy::integer_division, reason = "cell positions are integers")]
@@ -129,7 +129,7 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let popup_area = compute_arg_input_popup_rect(area, content_rows);
 
     let Some(template) = template else {
-        // No template found — render minimal popup anyway.
+        // No template found - render minimal popup anyway.
         let block = Block::default()
             .title(" New Session (set script args) ")
             .borders(Borders::ALL)
@@ -381,7 +381,7 @@ mod tests {
         let state = make_state_with_args("nonexistent", None, "foo", 3);
         let (mut terminal, area) = setup_term(80, 24);
 
-        // When rendering — should not panic.
+        // When rendering - should not panic.
         terminal
             .draw(|frame| {
                 render_arg_input(frame, area, &state);
@@ -605,7 +605,7 @@ mod tests {
         let inner_x = popup_area.x + 1;
         let line1_y = popup_area.y + 1;
 
-        // Find "<branch>" on first line — it should be colored.
+        // Find "<branch>" on first line - it should be colored.
         if line1_y < buffer.area().height {
             let mut found_colored_bracket = false;
             for x in inner_x..inner_x + 40 {

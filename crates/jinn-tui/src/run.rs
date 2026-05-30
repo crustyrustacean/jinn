@@ -85,7 +85,7 @@ pub fn run(mut app: TuiApp) -> Result<(), Report<TuiRunError>> {
         guard.stop();
     }
 
-    // Shut down actor host — coordinated shutdown.
+    // Shut down actor host - coordinated shutdown.
     jinn_domain::coordinated_shutdown(
         app.actor_host.backend(),
         &app.core.state,
@@ -116,7 +116,7 @@ pub fn run(mut app: TuiApp) -> Result<(), Report<TuiRunError>> {
     result
 }
 
-/// Runs the main TUI event loop — receives events, processes state, and renders frames.
+/// Runs the main TUI event loop - receives events, processes state, and renders frames.
 fn run_main_loop(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     app: &mut TuiApp,
@@ -248,7 +248,7 @@ fn handle_suspend_action(
                             .map(std::path::PathBuf::from)
                     } else {
                         // Non-zero exit = user cancelled (ESC in fzf) or error.
-                        // Log stderr as debug — user cancelled is not an error.
+                        // Log stderr as debug - user cancelled is not an error.
                         let stderr = String::from_utf8_lossy(&output.stderr);
                         if !stderr.is_empty() {
                             tracing::debug!(

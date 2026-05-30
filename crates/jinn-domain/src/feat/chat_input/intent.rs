@@ -2,16 +2,16 @@
 //!
 //! Handles 17 chat-input intents:
 //!
-//! - **InsertChar** — inserts a character, manages autocomplete triggering/filtering/expansion.
-//! - **PasteText** — bulk inserts pasted text, deactivates autocomplete.
-//! - **DeleteGrapheme** — backspace with autocomplete awareness.
-//! - **DeleteGraphemeForward** — forward delete with autocomplete awareness.
-//! - **SubmitMessage** — validates, extracts text, resets buffer, returns `EnqueueUserMessage`.
-//! - **AutocompleteConfirm** — confirms autocomplete selection or falls back to tab switch.
-//! - **Cursor movement** (8 intents) — move cursor, optionally deactivating autocomplete.
-//! - **EnterInsertMode** — switches to Input mode.
-//! - **EnterNormalMode** — cancels streams, clears picker, switches to Normal mode.
-//! - **NormalEscape** — clears chat entry selection.
+//! - **InsertChar** - inserts a character, manages autocomplete triggering/filtering/expansion.
+//! - **PasteText** - bulk inserts pasted text, deactivates autocomplete.
+//! - **DeleteGrapheme** - backspace with autocomplete awareness.
+//! - **DeleteGraphemeForward** - forward delete with autocomplete awareness.
+//! - **SubmitMessage** - validates, extracts text, resets buffer, returns `EnqueueUserMessage`.
+//! - **AutocompleteConfirm** - confirms autocomplete selection or falls back to tab switch.
+//! - **Cursor movement** (8 intents) - move cursor, optionally deactivating autocomplete.
+//! - **EnterInsertMode** - switches to Input mode.
+//! - **EnterNormalMode** - cancels streams, clears picker, switches to Normal mode.
+//! - **NormalEscape** - clears chat entry selection.
 
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::AutocompleteMatch;
@@ -31,7 +31,7 @@ use super::validator;
 
 // --- Character input ---
 
-/// Handles `InsertChar` — inserts a character and manages autocomplete.
+/// Handles `InsertChar` - inserts a character and manages autocomplete.
 pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
     let is_autocomplete_active = state.active_chat_input().autocomplete().is_some();
 
@@ -118,7 +118,7 @@ pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
 
 // --- Paste ---
 
-/// Handles `PasteText` — bulk inserts pasted text and deactivates autocomplete.
+/// Handles `PasteText` - bulk inserts pasted text and deactivates autocomplete.
 ///
 /// Pastes bypass the per-character insertion pipeline entirely, inserting the
 /// full string in one O(n) operation. Autocomplete is always deactivated on
@@ -131,7 +131,7 @@ pub fn handle_paste_text(text: &str, state: &mut AppState) -> IntentResult {
 
 // --- Deletion ---
 
-/// Handles `DeleteGrapheme` — backspace with autocomplete awareness.
+/// Handles `DeleteGrapheme` - backspace with autocomplete awareness.
 pub fn handle_delete_grapheme(state: &mut AppState) -> IntentResult {
     let should_deactivate =
         if let Some(token_start) = state.active_chat_input().autocomplete_token_start() {
@@ -172,7 +172,7 @@ pub fn handle_delete_grapheme(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Handles `DeleteGraphemeForward` — forward delete with autocomplete awareness.
+/// Handles `DeleteGraphemeForward` - forward delete with autocomplete awareness.
 pub fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
     let token_start = state.active_chat_input().autocomplete_token_start();
     let cursor = state.active_chat_input().cursor_pos();
@@ -213,10 +213,10 @@ pub fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
 
 // --- Submission ---
 
-/// Handles `SubmitMessage` — confirms autocomplete if active, executes slash commands,
+/// Handles `SubmitMessage` - confirms autocomplete if active, executes slash commands,
 /// or submits the message as chat input.
 pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
-    // Judge sessions are driven by the coordinator — no user input.
+    // Judge sessions are driven by the coordinator - no user input.
     if state.active_session().is_judge() {
         return IntentResult::empty();
     }
@@ -240,7 +240,7 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
             state.active_chat_input_mut().reset();
             return with_mark_interacted(session_id, execute_slash_command(cmd, &display, state));
         }
-        // Unknown /command — fall through to normal message.
+        // Unknown /command - fall through to normal message.
     }
 
     let expanded = crate::feat::context::prompt_template::expand_tokens(
@@ -258,7 +258,7 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
     )
 }
 
-/// Handles Enter when autocomplete is active — completes the selection and submits.
+/// Handles Enter when autocomplete is active - completes the selection and submits.
 ///
 /// For `Hash` trigger: completes the name into the buffer, then submits as a
 /// normal chat message (the completed name is just text in the message).
@@ -367,7 +367,7 @@ fn execute_slash_command(
 
 // --- Autocomplete ---
 
-/// Handles `AutocompleteConfirm` — confirms selection or falls back to tab switch.
+/// Handles `AutocompleteConfirm` - confirms selection or falls back to tab switch.
 pub fn handle_autocomplete_confirm(state: &mut AppState) -> IntentResult {
     if validator::validate_autocomplete_confirm(state).is_ok() {
         if let Some(selected) = state.active_chat_input().autocomplete_selected() {
@@ -390,14 +390,14 @@ pub fn handle_autocomplete_confirm(state: &mut AppState) -> IntentResult {
         }
         IntentResult::empty()
     } else {
-        // No autocomplete active — no-op.
+        // No autocomplete active - no-op.
         IntentResult::empty()
     }
 }
 
 // --- Cursor movement ---
 
-/// Handles `MoveCursorLeft` — moves cursor left, deactivates autocomplete if needed.
+/// Handles `MoveCursorLeft` - moves cursor left, deactivates autocomplete if needed.
 pub fn handle_move_cursor_left(state: &mut AppState) -> IntentResult {
     state.active_chat_input_mut().move_cursor_left();
     let should_deactivate = should_deactivate_on_cursor_move(state);
@@ -408,7 +408,7 @@ pub fn handle_move_cursor_left(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Handles `MoveCursorRight` — moves cursor right, deactivates autocomplete if needed.
+/// Handles `MoveCursorRight` - moves cursor right, deactivates autocomplete if needed.
 pub fn handle_move_cursor_right(state: &mut AppState) -> IntentResult {
     state.active_chat_input_mut().move_cursor_right();
     let should_deactivate = should_deactivate_on_cursor_move(state);
@@ -419,35 +419,35 @@ pub fn handle_move_cursor_right(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Handles `MoveCursorToStart` — moves cursor to start, deactivates autocomplete.
+/// Handles `MoveCursorToStart` - moves cursor to start, deactivates autocomplete.
 pub fn handle_move_cursor_to_start(state: &mut AppState) -> IntentResult {
     state.active_chat_input_mut().deactivate_autocomplete();
     state.active_chat_input_mut().move_cursor_to_start();
     IntentResult::empty()
 }
 
-/// Handles `MoveCursorToEnd` — moves cursor to end, deactivates autocomplete.
+/// Handles `MoveCursorToEnd` - moves cursor to end, deactivates autocomplete.
 pub fn handle_move_cursor_to_end(state: &mut AppState) -> IntentResult {
     state.active_chat_input_mut().deactivate_autocomplete();
     state.active_chat_input_mut().move_cursor_to_end();
     IntentResult::empty()
 }
 
-/// Handles `MoveCursorWordLeft` — moves cursor one word left, deactivates autocomplete.
+/// Handles `MoveCursorWordLeft` - moves cursor one word left, deactivates autocomplete.
 pub fn handle_move_cursor_word_left(state: &mut AppState) -> IntentResult {
     state.active_chat_input_mut().deactivate_autocomplete();
     state.active_chat_input_mut().move_cursor_word_left();
     IntentResult::empty()
 }
 
-/// Handles `MoveCursorWordRight` — moves cursor one word right, deactivates autocomplete.
+/// Handles `MoveCursorWordRight` - moves cursor one word right, deactivates autocomplete.
 pub fn handle_move_cursor_word_right(state: &mut AppState) -> IntentResult {
     state.active_chat_input_mut().deactivate_autocomplete();
     state.active_chat_input_mut().move_cursor_word_right();
     IntentResult::empty()
 }
 
-/// Handles `MoveCursorUp` — moves up in autocomplete or moves cursor up.
+/// Handles `MoveCursorUp` - moves up in autocomplete or moves cursor up.
 pub fn handle_move_cursor_up(state: &mut AppState) -> IntentResult {
     if state.active_chat_input().autocomplete().is_some() {
         state.active_chat_input_mut().autocomplete_move_up();
@@ -457,7 +457,7 @@ pub fn handle_move_cursor_up(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Handles `MoveCursorDown` — moves down in autocomplete or moves cursor down.
+/// Handles `MoveCursorDown` - moves down in autocomplete or moves cursor down.
 pub fn handle_move_cursor_down(state: &mut AppState) -> IntentResult {
     if state.active_chat_input().autocomplete().is_some() {
         state.active_chat_input_mut().autocomplete_move_down();
@@ -469,7 +469,7 @@ pub fn handle_move_cursor_down(state: &mut AppState) -> IntentResult {
 
 // --- Normal Escape ---
 
-/// Handles `NormalEscape` — no-op for selection (always-selected invariant).
+/// Handles `NormalEscape` - no-op for selection (always-selected invariant).
 ///
 /// If the session is busy (streaming/sending), activates the cancel stream
 /// confirmation prompt. Otherwise, does nothing.
@@ -477,7 +477,7 @@ pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
     super::validator::validate_normal_escape(state);
 
     if !matches!(state.active_session().phase(), PhaseKind::Idle) {
-        // Session is busy — show cancel confirmation prompt.
+        // Session is busy - show cancel confirmation prompt.
         state.frontend.cancel_stream_prompt = true;
     } else if state.active_session().is_busy() {
         // Session is Idle but busy (e.g., waiting for judge evaluation).
@@ -489,11 +489,11 @@ pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
 
 // --- Mode transitions ---
 
-/// Handles `EnterInsertMode` — pushes Input onto the scope stack.
+/// Handles `EnterInsertMode` - pushes Input onto the scope stack.
 pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
     use crate::common::app_state::FocusScope;
 
-    // Judge sessions are driven by the coordinator — no user input.
+    // Judge sessions are driven by the coordinator - no user input.
     if state.active_session().is_judge() {
         return IntentResult::empty();
     }
@@ -508,10 +508,10 @@ pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Handles `EnterNormalMode` — pops the scope stack (restores previous scope).
+/// Handles `EnterNormalMode` - pops the scope stack (restores previous scope).
 ///
 /// Simply switches out of the current mode. Does NOT cancel streams or drain
-/// queues — the cancel confirmation prompt handles that via `NormalEscape`.
+/// queues - the cancel confirmation prompt handles that via `NormalEscape`.
 pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
     // If autocomplete is active, dismiss it and stay in the current scope.
     // Two-level ESC: first press closes popup, second press exits mode.
@@ -542,7 +542,7 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
         state.active_session_mut().set_disabled_tools(snapshot);
     }
 
-    // Clear all overlay scopes — always returns to Normal.
+    // Clear all overlay scopes - always returns to Normal.
     // Using clear_overlays() instead of pop() ensures that ESC from Input mode
     // always lands in Normal, even when a sidebar scope is stacked below Input
     // (e.g., [Normal, SidebarPersona, Input] → [Normal]).
@@ -697,7 +697,7 @@ fn find_hash_token_at_cursor(input: &ChatInputBoxState) -> Option<(usize, String
             }
             return None;
         }
-        // If we hit whitespace going left, stop — no valid token.
+        // If we hit whitespace going left, stop - no valid token.
         let g = graphemes.get(i);
         if g.is_some_and(|c| c.trim().is_empty()) {
             return None;

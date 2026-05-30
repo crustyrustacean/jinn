@@ -33,7 +33,7 @@ impl std::fmt::Display for SidebarSectionId {
 
 /// Result of a section navigation attempt.
 ///
-/// Sections report `Exhausted` when they run out of entries — the sidebar
+/// Sections report `Exhausted` when they run out of entries - the sidebar
 /// then decides whether to switch sections or keep the cursor where it is.
 /// The section does NOT modify its cursor on exhaustion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,16 +41,16 @@ pub enum SectionNavResult {
     /// Cursor moved within the section. Section already updated its own state.
     Moved,
     /// No more entries in the requested direction. Section did NOT touch
-    /// its cursor — the sidebar decides what happens next.
+    /// its cursor - the sidebar decides what happens next.
     Exhausted,
 }
 
 /// Which end to place the cursor on when entering a section.
 #[derive(Debug, Clone, Copy)]
 pub enum EnterFrom {
-    /// Entering from above — select the first entry.
+    /// Entering from above - select the first entry.
     Top,
-    /// Entering from below — select the last entry.
+    /// Entering from below - select the last entry.
     Bottom,
 }
 

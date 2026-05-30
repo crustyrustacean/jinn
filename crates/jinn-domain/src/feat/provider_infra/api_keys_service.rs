@@ -14,7 +14,7 @@ use super::api_keys::ApiKeys;
 /// Shared service wrapper for resolved API keys.
 ///
 /// Wraps `ApiKeys` in an `Arc<RwLock<...>>` so that all clones
-/// share the same data. Cloning is cheap — only an Arc refcount bump.
+/// share the same data. Cloning is cheap - only an Arc refcount bump.
 ///
 /// Newtype for discoverability: makes it easy to locate API key usage
 /// across the codebase by searching for `ApiKeysService`.

@@ -1,4 +1,4 @@
-//! Bench execution plan — cartesian product of tasks × models.
+//! Bench execution plan - cartesian product of tasks × models.
 //!
 //! Provides [`BenchPlan`] which holds the ordered list of (task, model) pairs
 //! and a lookup from task name to task definition. Built from CLI arguments

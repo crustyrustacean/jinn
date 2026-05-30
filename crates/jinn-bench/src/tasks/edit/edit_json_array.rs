@@ -1,4 +1,4 @@
-//! edit-json-array bench task — remove one specific object from a JSON array of 20 similar ones.
+//! edit-json-array bench task - remove one specific object from a JSON array of 20 similar ones.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

@@ -771,7 +771,7 @@ fn pinned_thinking_entry_is_in_context() {
     // Given a Thinking entry pinned to Top.
     let entry = ChatEntry::thinking("reasoning").with_pin(PinPosition::Top);
 
-    // Then pin overrides kind default — it IS in context.
+    // Then pin overrides kind default - it IS in context.
     assert!(entry.is_in_context());
 }
 
@@ -780,7 +780,7 @@ fn pinned_system_entry_is_in_context() {
     // Given a System entry pinned to Top.
     let entry = ChatEntry::system("instruction").with_pin(PinPosition::Top);
 
-    // Then pin overrides kind default — it IS in context.
+    // Then pin overrides kind default - it IS in context.
     assert!(entry.is_in_context());
 }
 
@@ -800,7 +800,7 @@ fn ignored_but_pinned_entry_is_in_context() {
         .with_ignored(true)
         .with_pin(PinPosition::Top);
 
-    // Then pin overrides ignore — it IS in context.
+    // Then pin overrides ignore - it IS in context.
     assert!(entry.is_in_context());
 }
 
@@ -811,7 +811,7 @@ fn pinned_ignored_thinking_entry_is_in_context() {
         .with_ignored(true)
         .with_pin(PinPosition::Bottom);
 
-    // Then pin overrides both kind default and ignore — it IS in context.
+    // Then pin overrides both kind default and ignore - it IS in context.
     assert!(entry.is_in_context());
 }
 
@@ -883,7 +883,7 @@ fn empty_assistant_forced_include_is_in_context() {
     let entry =
         ChatEntry::assistant("").with_context_override(ContextOverride::ForcedInclude);
 
-    // Then ForcedInclude overrides the empty-assistant rule — it IS in context.
+    // Then ForcedInclude overrides the empty-assistant rule - it IS in context.
     assert!(entry.is_in_context());
 }
 
@@ -902,7 +902,7 @@ fn pinned_empty_assistant_default_is_in_context() {
     // Given an empty Assistant entry that is pinned.
     let entry = ChatEntry::assistant("").with_pin(PinPosition::Top);
 
-    // Then pin overrides the empty-assistant rule — it IS in context.
+    // Then pin overrides the empty-assistant rule - it IS in context.
     assert!(entry.is_in_context());
 }
 
@@ -941,7 +941,7 @@ fn pending_tool_result_forced_include_is_in_context() {
     let entry = ChatEntry::tool_result("tc-1", "bash", "", ToolResultStatus::Pending)
         .with_context_override(ContextOverride::ForcedInclude);
 
-    // Then ForcedInclude overrides the pending rule — it IS in context.
+    // Then ForcedInclude overrides the pending rule - it IS in context.
     assert!(entry.is_in_context());
 }
 
@@ -951,7 +951,7 @@ fn pinned_pending_tool_result_default_is_in_context() {
     let entry = ChatEntry::tool_result("tc-1", "bash", "", ToolResultStatus::Pending)
         .with_pin(PinPosition::Top);
 
-    // Then pin overrides the pending rule — it IS in context.
+    // Then pin overrides the pending rule - it IS in context.
     assert!(entry.is_in_context());
 }
 

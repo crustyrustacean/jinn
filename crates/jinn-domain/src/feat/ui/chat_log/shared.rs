@@ -29,7 +29,7 @@ pub struct RenderContext {
 
 /// Split text on `\n` and produce styled lines with the given prefix.
 ///
-/// Continuation lines (after the first `\n`) have no prefix — the `indent`
+/// Continuation lines (after the first `\n`) have no prefix - the `indent`
 /// parameter is accepted for API compatibility but currently unused.
 pub fn multiline_styled<T, P, I>(text: T, prefix: P, indent: I, style: Style) -> Vec<Line<'static>>
 where
@@ -128,7 +128,7 @@ pub fn unicode_segementation_display_width(s: &str) -> usize {
     s.graphemes(true)
         .map(|g| {
             // Emoji and wide characters take 2 columns; everything else takes 1.
-            // This is a simplified heuristic — full-width detection would need
+            // This is a simplified heuristic - full-width detection would need
             // unicode-width, but for our use case (provider names, counts, status)
             // this is sufficient.
             if g.chars().any(|c| c as u32 > 0x2000) {

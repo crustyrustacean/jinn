@@ -1,4 +1,4 @@
-//! Workflow registry — maps workflow names to builder functions.
+//! Workflow registry - maps workflow names to builder functions.
 //!
 //! Instance-based registry following the [`BuiltinRegistry`](crate::feat::session_lifecycle::builtin::BuiltinRegistry) pattern.
 //! Created during startup, populated via [`register_all_workflows`], and injected

@@ -87,7 +87,7 @@ fn child_match_includes_ancestors() {
     // When filtering for "Charlie".
     state.insert_text("Charlie");
 
-    // Then visible = [A, B, C] — ancestor chain included.
+    // Then visible = [A, B, C] - ancestor chain included.
     assert_eq!(state.filtered_count(), 3);
     assert_eq!(state.filtered_item(0).unwrap().id, "a");
     assert_eq!(state.filtered_item(1).unwrap().id, "b");
@@ -111,7 +111,7 @@ fn non_matching_siblings_excluded() {
     // When filtering for "Charlie".
     state.insert_text("Charlie");
 
-    // Then visible = [A, C] — B excluded.
+    // Then visible = [A, C] - B excluded.
     assert_eq!(state.filtered_count(), 2);
     assert_eq!(state.filtered_item(0).unwrap().id, "a");
     assert_eq!(state.filtered_item(1).unwrap().id, "c");
@@ -159,7 +159,7 @@ fn circular_reference_guard() {
     // When creating state with items.
     let state = TreePickerState::with_items(items);
 
-    // Then no infinite loop — both appear as roots (neither's parent is resolvable
+    // Then no infinite loop - both appear as roots (neither's parent is resolvable
     // since they reference each other but neither is a root initially).
     // Actually, A's parent is B (which is in items), so A is a child of B.
     // B's parent is A (which is in items), so B is a child of A.
@@ -262,7 +262,7 @@ fn set_items_rebuilds_index() {
 }
 
 // =========================================================================
-// Phase 2: HIGH severity — core state mutation tests
+// Phase 2: HIGH severity - core state mutation tests
 // =========================================================================
 
 // --- insert_char ---
@@ -649,7 +649,7 @@ fn tree_dfs_filtered_is_last_child_uses_root_count_minus_one() {
     // Then last visible root is C.
     let count = state.filtered_count();
     assert!(count >= 2);
-    // Find the last visible entry — should be the last root and have is_last_child = true.
+    // Find the last visible entry - should be the last root and have is_last_child = true.
     let last_entry = state.visible_entry(count - 1).unwrap();
     assert!(last_entry.is_last_child);
 }

@@ -73,7 +73,7 @@ fn idle_throbber() -> ThrobberState {
 }
 
 // ---------------------------------------------------------------------------
-// tree_prefix — root entries
+// tree_prefix - root entries
 // ---------------------------------------------------------------------------
 
 #[rstest::rstest]
@@ -89,7 +89,7 @@ fn tree_prefix_is_empty_for_root_entry() {
 }
 
 // ---------------------------------------------------------------------------
-// tree_prefix — depth 1
+// tree_prefix - depth 1
 // ---------------------------------------------------------------------------
 
 #[rstest::rstest]
@@ -117,7 +117,7 @@ fn tree_prefix_not_last_child_at_depth_1() {
 }
 
 // ---------------------------------------------------------------------------
-// tree_prefix — depth 2
+// tree_prefix - depth 2
 // ---------------------------------------------------------------------------
 
 #[rstest::rstest]
@@ -157,7 +157,7 @@ fn tree_prefix_not_last_child_with_continuing_ancestor() {
 }
 
 // ---------------------------------------------------------------------------
-// tree_prefix — deep chains
+// tree_prefix - deep chains
 // ---------------------------------------------------------------------------
 
 #[rstest::rstest]
@@ -185,7 +185,7 @@ fn tree_prefix_deep_chain_last() {
 }
 
 // ---------------------------------------------------------------------------
-// assemble_entry_line — tree prefix inclusion
+// assemble_entry_line - tree prefix inclusion
 // ---------------------------------------------------------------------------
 
 #[rstest::rstest]
@@ -284,7 +284,7 @@ fn assembled_line_has_tree_prefix_span_for_child() {
 }
 
 // ---------------------------------------------------------------------------
-// assemble_entry_line — title truncation with tree prefix
+// assemble_entry_line - title truncation with tree prefix
 // ---------------------------------------------------------------------------
 
 #[rstest::rstest]
@@ -339,7 +339,7 @@ fn title_is_truncated_more_at_higher_depth() {
 }
 
 // ---------------------------------------------------------------------------
-// assemble_entry_line — active arrow at depth > 0
+// assemble_entry_line - active arrow at depth > 0
 // ---------------------------------------------------------------------------
 
 #[rstest::rstest]
@@ -375,7 +375,7 @@ fn active_arrow_shows_at_depth_greater_than_zero() {
 }
 
 // ---------------------------------------------------------------------------
-// assemble_entry_line — tree prefix color
+// assemble_entry_line - tree prefix color
 // ---------------------------------------------------------------------------
 
 #[rstest::rstest]
@@ -411,7 +411,7 @@ fn tree_prefix_uses_muted_text_color() {
 }
 
 // ---------------------------------------------------------------------------
-// assemble_entry_line — grapheme-level counting for judge and tree prefixes
+// assemble_entry_line - grapheme-level counting for judge and tree prefixes
 // ---------------------------------------------------------------------------
 
 #[rstest::rstest]

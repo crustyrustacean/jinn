@@ -274,7 +274,7 @@ fn compute_x_offset(
 ///    Ties broken by smallest cross-axis delta.
 /// 5. If no overlapping candidates exist, fall back to all candidates in
 ///    the primary direction, but require the primary-axis delta ≥ cross-axis
-///    delta (angle constraint — not too steep).
+///    delta (angle constraint - not too steep).
 /// 6. Among those, pick by smallest primary-axis delta, then cross-axis.
 /// 7. If still nothing, return `None` (no-op).
 #[must_use]

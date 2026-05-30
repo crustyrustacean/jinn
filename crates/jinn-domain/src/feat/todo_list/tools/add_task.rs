@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! `add_task` built-in tool — adds a new task to a phase.
+//! `add_task` built-in tool - adds a new task to a phase.
 
 use crate::feat::todo_list::{PhaseId, TaskId, TaskPosition};
 use crate::feat::tools_actor::BoxedToolFuture;
@@ -32,7 +32,7 @@ pub fn definition() -> ToolDefinition {
         prompt_guidelines: vec![
             "Specify after_task to insert after a specific task, or before_task to insert before one."
                 .to_owned(),
-            "Do not specify both after_task and before_task — they are mutually exclusive."
+            "Do not specify both after_task and before_task - they are mutually exclusive."
                 .to_owned(),
             "When neither is specified, the task is appended to the end of the phase.".to_owned(),
         ],

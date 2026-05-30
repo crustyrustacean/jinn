@@ -1,4 +1,4 @@
-//! edit-config-value bench task — change a single port number in a YAML config.
+//! edit-config-value bench task - change a single port number in a YAML config.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

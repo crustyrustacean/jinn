@@ -1,4 +1,4 @@
-//! edit-json-nested bench task — change a deeply nested timeout value in a JSON config.
+//! edit-json-nested bench task - change a deeply nested timeout value in a JSON config.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

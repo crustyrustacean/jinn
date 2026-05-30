@@ -52,7 +52,7 @@ pub struct SendToLlmProvider {
     #[serde(default)]
     pub tool_definitions: Vec<ToolDefinition>,
     /// Optional provider override for per-message routing (future).
-    /// Currently always `None` — uses the active provider.
+    /// Currently always `None` - uses the active provider.
     #[serde(default)]
     pub provider_id: Option<String>,
     /// Estimated token count of all messages + tool schemas.

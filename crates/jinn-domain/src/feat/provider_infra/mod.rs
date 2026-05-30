@@ -1,4 +1,4 @@
-//! LLM service abstraction — streaming chat completions.
+//! LLM service abstraction - streaming chat completions.
 //!
 //! Defines the [`LlmService`] trait for streaming LLM responses and
 //! [`LlmServiceFactory`] for creating per-call service instances.

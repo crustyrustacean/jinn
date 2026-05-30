@@ -1,4 +1,4 @@
-//! Status bar — displays the session CWD, active prompt strategy, and current model.
+//! Status bar - displays the session CWD, active prompt strategy, and current model.
 //!
 //! A 2-line display-only component at the bottom of the screen showing the
 //! session's working directory (line 1) and status info (line 2).

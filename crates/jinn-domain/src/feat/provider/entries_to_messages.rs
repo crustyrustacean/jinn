@@ -65,7 +65,7 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                         tool_calls.get_or_insert_with(Vec::new).push(tool_call);
                     }
                     _ => {
-                        // Orphaned tool call — create an empty assistant message.
+                        // Orphaned tool call - create an empty assistant message.
                         messages.push(LlmMessage::Assistant {
                             content: String::new(),
                             tool_calls: Some(vec![tool_call]),

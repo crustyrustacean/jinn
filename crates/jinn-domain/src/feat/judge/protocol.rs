@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! Judge protocol types — commands and events for judge scanning and verdicts.
+//! Judge protocol types - commands and events for judge scanning and verdicts.
 
 use serde::{Deserialize, Serialize};
 

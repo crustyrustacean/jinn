@@ -1,4 +1,4 @@
-//! Generic `HistoryWorkerActor` — wraps any [`HistoryWorker`] as a bus actor.
+//! Generic `HistoryWorkerActor` - wraps any [`HistoryWorker`] as a bus actor.
 //!
 //! Subscribes to [`HistoryAppended`] events. On each event:
 //! 1. Checks exclusion criteria (judge session)
@@ -23,7 +23,7 @@ use crate::protocol::{Command, Event, SessionId};
 pub struct HistoryWorkerActor<H: HistoryWorker> {
     worker: H,
     state: State,
-    /// Sessions currently being evaluated — prevents concurrent compaction.
+    /// Sessions currently being evaluated - prevents concurrent compaction.
     in_flight: HashSet<SessionId>,
 }
 

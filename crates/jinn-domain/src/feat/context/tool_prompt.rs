@@ -1,4 +1,4 @@
-//! Tool prompt context builder — assembles "Available tools" and "Tool guidelines"
+//! Tool prompt context builder - assembles "Available tools" and "Tool guidelines"
 //! sections for the system prompt from registered tool definitions.
 //!
 //! Each tool can optionally carry a [`prompt_snippet`](jinn_provider::ToolDefinition::prompt_snippet)

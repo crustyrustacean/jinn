@@ -585,7 +585,7 @@ fn entering_pins_saves_history_position() {
     assert_eq!(saved.scroll_offset, Some(42));
     assert_eq!(saved.selected_cursor_id, Some(entry_id_0));
     // And the selected entry was changed by sync_chat_log_cursor
-    // (or stayed at 0 if the pin is at index 0 — what matters is that save captured pre-change).
+    // (or stayed at 0 if the pin is at index 0 - what matters is that save captured pre-change).
     assert!(state.active_session().has_saved_history_position());
 }
 
@@ -670,11 +670,11 @@ fn full_cycle_saves_and_restores() {
     // sync_chat_log_cursor changes selected_entry_index to the pin's history index
     // (which may be 0 if the pin is the first entry).
 
-    // When navigating within pins (second pin) — does NOT restore.
+    // When navigating within pins (second pin) - does NOT restore.
     navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
     assert!(state.active_session().has_saved_history_position());
 
-    // When navigating within pins (third pin, last) — does NOT restore.
+    // When navigating within pins (third pin, last) - does NOT restore.
     navigate_sidebar(&SidebarIntent::MoveDown, &mut state);
     assert!(state.active_session().has_saved_history_position());
 
@@ -713,7 +713,7 @@ fn jump_to_pins_with_retained_cursor_syncs_chat_log_cursor() {
     // puts the cursor on a different entry than the pin.
     let mut state = AppState::default();
     state.active_session_mut().push_entry(ChatEntry::user("a")); // hist 0
-    state.active_session_mut().push_entry(ChatEntry::user("b")); // hist 1 — will be pinned
+    state.active_session_mut().push_entry(ChatEntry::user("b")); // hist 1 - will be pinned
     state.active_session_mut().push_entry(ChatEntry::user("c")); // hist 2
     let pinned_id = state.active_session().history()[1].id.clone();
     state
@@ -732,7 +732,7 @@ fn jump_to_pins_with_retained_cursor_syncs_chat_log_cursor() {
         "precondition: cursor should be on pinned entry"
     );
 
-    // Jump to Persona (away from pins) — restores cursor to "c".
+    // Jump to Persona (away from pins) - restores cursor to "c".
     jump_to_section(&SidebarIntent::MoveUp, &mut state);
     assert_ne!(
         state.active_session().selected_cursor_id(),

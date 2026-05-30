@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! Queue actor — sole owner of turn dispatch queue consumption.
+//! Queue actor - sole owner of turn dispatch queue consumption.
 //!
 //! Subscribes to [`SessionPhaseChanged`] events.
 //! When a session transitions to `Idle`, pops the next item from the turn queue
@@ -83,7 +83,7 @@ impl Actor for QueueActor {
 }
 
 impl QueueActor {
-    /// Handle `SessionPhaseChanged` — dispatch on phase transitions.
+    /// Handle `SessionPhaseChanged` - dispatch on phase transitions.
     async fn handle_session_phase_changed(
         &self,
         payload: &SessionPhaseChanged,
@@ -97,7 +97,7 @@ impl QueueActor {
         }
     }
 
-    /// Handle Idle transition — pop and dispatch the next queued item.
+    /// Handle Idle transition - pop and dispatch the next queued item.
     async fn handle_idle_transition(
         &self,
         session_id: &crate::protocol::SessionId,

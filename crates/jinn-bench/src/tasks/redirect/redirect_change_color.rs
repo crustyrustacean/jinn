@@ -1,4 +1,4 @@
-//! redirect-change-color bench task — change background color, then redirect to different color.
+//! redirect-change-color bench task - change background color, then redirect to different color.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 
@@ -18,7 +18,7 @@ pub fn task() -> BenchTask {
         category: "redirect",
         messages: vec![
             "Change the background color of index.html from blue to red.",
-            "Actually, I changed my mind — make the background dark gray (#333333) \
+            "Actually, I changed my mind - make the background dark gray (#333333) \
              instead and change the heading color to orange.",
         ],
         fixture_dir: Some(&FIXTURES),

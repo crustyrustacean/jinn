@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! `defer_task` built-in tool — defers a task to a new location.
+//! `defer_task` built-in tool - defers a task to a new location.
 
 use crate::feat::todo_list::{TaskId, TaskPosition};
 use crate::feat::tools_actor::BoxedToolFuture;

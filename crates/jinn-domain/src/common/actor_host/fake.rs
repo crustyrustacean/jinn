@@ -85,7 +85,7 @@ impl ActorHost for FakeActorHost {
     }
 
     fn begin_shutdown(&self, completion_tx: tokio::sync::oneshot::Sender<()>) {
-        // Fake host has no real actors — immediately signal completion.
+        // Fake host has no real actors - immediately signal completion.
         let _ = completion_tx.send(());
     }
 

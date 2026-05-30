@@ -1,4 +1,4 @@
-//! Preferences updated event — carries the full preferences after a save.
+//! Preferences updated event - carries the full preferences after a save.
 
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +7,7 @@ use crate::protocol::EventMsg;
 
 /// Emitted after preferences have been persisted to disk.
 ///
-/// Carries the full [`UserPreferences`] — the source of truth after save.
+/// Carries the full [`UserPreferences`] - the source of truth after save.
 /// Listeners replace their cached copy wholesale.
 #[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
 #[event_msg("preferences")]

@@ -1,4 +1,4 @@
-//! Preferences update command — carries a batch of atomic preference diffs.
+//! Preferences update command - carries a batch of atomic preference diffs.
 
 use serde::{Deserialize, Serialize};
 

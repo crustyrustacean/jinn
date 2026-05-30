@@ -1,4 +1,4 @@
-//! Session management — session lifecycle, persistence, and loading.
+//! Session management - session lifecycle, persistence, and loading.
 //!
 //! Provides persistence types ([`ChatSessionState`], [`SessionStore`], etc.)
 //! used by the session actor, services container, and component crate.

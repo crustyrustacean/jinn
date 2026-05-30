@@ -1,4 +1,4 @@
-//! Error entry rendering — red text.
+//! Error entry rendering - red text.
 
 use ratatui::style::Style;
 use ratatui::text::Line;

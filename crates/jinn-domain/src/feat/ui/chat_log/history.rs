@@ -128,13 +128,13 @@ fn render_loading(frame: &mut Frame<'_>, area: Rect, theme: &Theme) {
 /// Accumulates state across the two-pass render pipeline.
 ///
 /// The render pipeline is:
-/// 1. `build_tool_result_map` — pair tool calls with their result status
-/// 2. `compute_line_ranges` — cache-aware entry line counting (pass 1)
-/// 3. `compute_scroll` — blank count, max offset, clamp, scroll-to-selected
-/// 4. `find_visible_indices` — determine which entries overlap the viewport
-/// 5. `build_blank_lines` — push blank spacer lines above content
-/// 6. `render_visible_entries` — build content + gutter lines for visible entries (pass 2)
-/// 7. `paint` — render the final paragraph widgets to the frame
+/// 1. `build_tool_result_map` - pair tool calls with their result status
+/// 2. `compute_line_ranges` - cache-aware entry line counting (pass 1)
+/// 3. `compute_scroll` - blank count, max offset, clamp, scroll-to-selected
+/// 4. `find_visible_indices` - determine which entries overlap the viewport
+/// 5. `build_blank_lines` - push blank spacer lines above content
+/// 6. `render_visible_entries` - build content + gutter lines for visible entries (pass 2)
+/// 7. `paint` - render the final paragraph widgets to the frame
 struct HistoryRender<'a> {
     // Inputs (set once at construction)
     history: &'a [ChatEntry],
@@ -243,7 +243,7 @@ impl<'a> HistoryRender<'a> {
     }
 
     // -----------------------------------------------------------------------
-    // Step 2: Pass 1 — compute entry line ranges
+    // Step 2: Pass 1 - compute entry line ranges
     // -----------------------------------------------------------------------
 
     /// Walk all entries, compute wrapped line counts (using cache where possible),
@@ -390,7 +390,7 @@ impl<'a> HistoryRender<'a> {
     }
 
     // -----------------------------------------------------------------------
-    // Step 6: Pass 2 — render visible entries
+    // Step 6: Pass 2 - render visible entries
     // -----------------------------------------------------------------------
 
     /// Build content and gutter lines for all visible entries.
@@ -418,7 +418,7 @@ impl<'a> HistoryRender<'a> {
                         .tool_entry_max_lines
                         .unwrap_or(DEFAULT_TOOL_ENTRY_MAX_LINES);
 
-                    // Get content lines — cached lines → miss lines → render fresh.
+                    // Get content lines - cached lines → miss lines → render fresh.
                     let entry_content_lines = if let Some(lines) = self.cached_lines.remove(&vi_idx)
                     {
                         Arc::unwrap_or_clone(lines)
@@ -533,7 +533,7 @@ impl<'a> HistoryRender<'a> {
 /// Convert a chat entry into one or more visual lines, splitting on `\n`.
 ///
 /// Each entry type is delegated to its own submodule. Lines returned here are
-/// content-width only — the gutter is rendered as a separate column.
+/// content-width only - the gutter is rendered as a separate column.
 pub fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext) -> Vec<Line<'static>> {
     match &entry.kind {
         ChatEntryKind::User { display, .. } => user::to_lines(display, ctx),

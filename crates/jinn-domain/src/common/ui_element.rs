@@ -2,7 +2,7 @@
 //!
 //! Elements draw within an allocated area on the frame. They are
 //! separate from command/event handlers and communicate through
-//! `AppState` — handlers mutate state during processing, elements
+//! `AppState` - handlers mutate state during processing, elements
 //! read state during rendering.
 
 use ratatui::{Frame, layout::Rect};
@@ -14,7 +14,7 @@ use ratatui::{Frame, layout::Rect};
 /// anywhere on the frame if needed.
 ///
 /// UI elements are separate from command/event handlers. They communicate
-/// through state — handlers mutate state during processing, elements
+/// through state - handlers mutate state during processing, elements
 /// read state during rendering.
 ///
 /// # Type parameter
@@ -43,7 +43,7 @@ pub trait UiElement<S>: 'static + std::fmt::Debug {
     /// allocated `Rect` as a selectable region. Mouse clicks and drags
     /// within that rect will trigger application-level selection.
     ///
-    /// Default is `false` — most elements don't need selection.
+    /// Default is `false` - most elements don't need selection.
     fn is_selectable(&self) -> bool {
         false
     }

@@ -1,12 +1,12 @@
 //! Shared truncation utilities for tool outputs.
 //
-//! Truncation is based on two independent limits — whichever is hit first wins:
+//! Truncation is based on two independent limits - whichever is hit first wins:
 //! - Line limit (default: 2000 lines)
 //! - Byte limit (default: 50KB)
 //!
 //! Two strategies are provided:
-//! - [`truncate_head`] — keeps the beginning of content (for `read`)
-//! - [`truncate_tail`] — keeps the end of content (for `bash`)
+//! - [`truncate_head`] - keeps the beginning of content (for `read`)
+//! - [`truncate_tail`] - keeps the end of content (for `bash`)
 //!
 //! Both return a [`TruncationResult`] carrying the truncated content and
 //! optional metadata about what was removed.

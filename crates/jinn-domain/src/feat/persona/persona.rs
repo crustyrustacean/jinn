@@ -9,7 +9,7 @@ pub struct Persona {
     pub name: String,
     /// Short description for the picker UI.
     pub description: String,
-    /// The persona body — the actual system prompt text.
+    /// The persona body - the actual system prompt text.
     pub body: String,
     /// File path this persona was loaded from.
     pub file_path: PathBuf,

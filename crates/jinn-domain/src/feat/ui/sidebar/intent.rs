@@ -1,12 +1,12 @@
 //! Sidebar-level intent handlers.
 //!
 //! Handles entering and leaving the sidebar scope. These are sidebar-panel
-//! concerns, not section-specific — sections never handle ESC.
+//! concerns, not section-specific - sections never handle ESC.
 
 use crate::IntentResult;
 use crate::common::app_state::AppState;
 
-/// Handles `SidebarFocus` — enters sidebar scope.
+/// Handles `SidebarFocus` - enters sidebar scope.
 ///
 /// Defaults focus to the Persona section (topmost section).
 pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
@@ -37,17 +37,17 @@ pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
             state.active_session_mut().save_history_position();
         }
     } else {
-        // First entry — default to Persona at top.
+        // First entry - default to Persona at top.
         crate::feat::ui::sidebar::persona_section::receive_cursor(state, EnterFrom::Top);
     }
 
     IntentResult::empty()
 }
 
-/// Handles `SidebarLeave` — returns to Normal mode.
+/// Handles `SidebarLeave` - returns to Normal mode.
 ///
 /// Always clears all overlay scopes, landing in Normal.
-/// Does NOT set the cancel stream prompt — cancel confirmation
+/// Does NOT set the cancel stream prompt - cancel confirmation
 /// is handled exclusively by `NormalEscape`.
 pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
     state.active_session_mut().discard_saved_history_position();
@@ -322,7 +322,7 @@ mod tests {
         state.active_session().set_last_max_offset(5); // 10 lines - 5 viewport
         state.active_session().set_rendered_scroll_offset(5); // viewport at bottom
 
-        // Enter sidebar pins — this saves history position and syncs cursor to pin.
+        // Enter sidebar pins - this saves history position and syncs cursor to pin.
         state.frontend.scope_stack.push(FocusScope::SidebarPins);
         crate::feat::ui::sidebar::pins::pins_section::receive_cursor(
             &mut state,

@@ -41,23 +41,23 @@ pub enum KeyCategory {
 /// pane navigation, sidebar resize, and input mode entry.
 fn add_sidebar_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Intent, KeyCategory>) {
     b
-        // General — app control
+        // General - app control
         .bind("q", Intent::Quit, KeyCategory::General)
         .bind("<c-c>", Intent::Quit, KeyCategory::General)
         .bind("?", Intent::ToggleWhichkey, KeyCategory::General)
-        // Navigation — within section and between sections
+        // Navigation - within section and between sections
         .bind("j", Intent::SidebarMoveDown, KeyCategory::Navigation)
         .bind("k", Intent::SidebarMoveUp, KeyCategory::Navigation)
         .bind("J", Intent::SidebarSectionNext, KeyCategory::Navigation)
         .bind("K", Intent::SidebarSectionPrev, KeyCategory::Navigation)
         .bind("<esc>", Intent::SidebarLeave, KeyCategory::General)
-        // Pane navigation — focus back to chat
+        // Pane navigation - focus back to chat
         .bind("<c-h>", Intent::SidebarLeave, KeyCategory::Navigation)
         // Sidebar resize
         .bind("<c-w>", Intent::SidebarResizeEnter, KeyCategory::Navigation)
-        // Input — external editor
+        // Input - external editor
         .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
-        // Input — enter input mode
+        // Input - enter input mode
         .bind("i", Intent::EnterInsertMode, KeyCategory::Input)
         // Direct jump to Sessions section
         .bind(
@@ -100,7 +100,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         // Normal scope: navigation and commands
         .scope(Scope::Normal, |b| {
             b
-            // General — app control
+            // General - app control
             .bind("q", Intent::Quit, KeyCategory::General)
             .bind("<c-c>", Intent::Quit, KeyCategory::General)
             .bind("?", Intent::ToggleWhichkey, KeyCategory::General)
@@ -112,22 +112,22 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<leader>sk", Intent::OpenPicker { kind: PickerKind::Skill }, KeyCategory::General)
             .bind("<leader>sh", Intent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
             .bind("<leader>sw", Intent::OpenPicker { kind: PickerKind::Workflow }, KeyCategory::General)
-            // Input — enter input mode
+            // Input - enter input mode
             .bind("i", Intent::EnterInsertMode, KeyCategory::Input)
             .bind("<c-j>", Intent::EnterInsertMode, KeyCategory::Input)
-            // Navigation — scrolling and tab switching
+            // Navigation - scrolling and tab switching
             .bind("k", Intent::ChatEntrySelectPrev, KeyCategory::Navigation)
             .bind("j", Intent::ChatEntrySelectNext, KeyCategory::Navigation)
             .bind("<Tab>", Intent::SwitchTab, KeyCategory::Navigation)
             .bind("<c-u>", Intent::ScrollUp, KeyCategory::Navigation)
             .bind("<c-d>", Intent::ScrollDown, KeyCategory::Navigation)
-            // Input — external editor
+            // Input - external editor
             .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
-            // Change CWD — search from session CWD
+            // Change CWD - search from session CWD
             .bind("<M-c>", Intent::ChangeCwd { root: CwdRoot::Session }, KeyCategory::Navigation)
-            // Change CWD — search from home directory
+            // Change CWD - search from home directory
             .bind("<M-d>", Intent::ChangeCwd { root: CwdRoot::Home }, KeyCategory::Navigation)
-            // g prefix — general commands and model management
+            // g prefix - general commands and model management
             .describe_group_with_category("g", "general", KeyCategory::General)
             .describe_group_with_category("gm", "model", KeyCategory::Model)
             .describe_group_with_category("gc", "context", KeyCategory::Context)
@@ -161,14 +161,14 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Escape: cancel selection
             .bind("<esc>", Intent::NormalEscape, KeyCategory::General);
         })
-        // Sidebar — Persona section
+        // Sidebar - Persona section
         .scope(Scope::SidebarPersona, |b| {
             add_sidebar_base(b);
             b
             // Persona-specific actions
             .bind("c", Intent::SidebarPersonaEdit, KeyCategory::Context);
         })
-        // Sidebar — Pins section
+        // Sidebar - Pins section
         .scope(Scope::SidebarPins, |b| {
             add_sidebar_base(b);
             b
@@ -179,7 +179,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("r", Intent::PinsPinRelative, KeyCategory::Context)
             .bind("m", Intent::PinsPinCycle, KeyCategory::Context);
         })
-        // Sidebar — Sessions section
+        // Sidebar - Sessions section
         .scope(Scope::SidebarSessions, |b| {
             add_sidebar_base(b);
             b
@@ -209,9 +209,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<c-k>", Intent::EnterNormalMode, KeyCategory::General)
             .bind("<c-c>", Intent::Interrupt { session_id: None }, KeyCategory::General)
             .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
-            // Change CWD — search from session CWD
+            // Change CWD - search from session CWD
             .bind("<M-c>", Intent::ChangeCwd { root: CwdRoot::Session }, KeyCategory::Navigation)
-            // Change CWD — search from home directory
+            // Change CWD - search from home directory
             .bind("<M-d>", Intent::ChangeCwd { root: CwdRoot::Home }, KeyCategory::Navigation)
             .bind("<f1>", Intent::ToggleWhichkey, KeyCategory::General)
             .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
@@ -239,7 +239,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             });
         });
 
-    // Picker scopes — each picker kind has its own scope for kind-specific bindings.
+    // Picker scopes - each picker kind has its own scope for kind-specific bindings.
     // Shared bindings (navigation, confirm, escape, char input) are in add_picker_base.
     keymap
         .scope(Scope::PickerProvider, |b| {
@@ -278,7 +278,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             add_picker_base(b);
         });
 
-    // ArgInput scope — typing positional args for a lifecycle command.
+    // ArgInput scope - typing positional args for a lifecycle command.
     keymap.scope(Scope::ArgInput, |b| {
         b.bind("<esc>", Intent::EnterNormalMode, KeyCategory::General)
         .bind("<enter>", Intent::ArgInputConfirm, KeyCategory::Input)
@@ -296,7 +296,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         });
     });
 
-    // SidebarResize scope — adjusting sidebar width.
+    // SidebarResize scope - adjusting sidebar width.
     keymap.scope(Scope::SidebarResize, |b| {
         b
         .bind("h", Intent::SidebarResizeExpand, KeyCategory::Navigation)
@@ -305,7 +305,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("<c-c>", Intent::Quit, KeyCategory::General);
     });
 
-    // RenameSessionInput scope — editing a session title.
+    // RenameSessionInput scope - editing a session title.
     keymap.scope(Scope::RenameSessionInput, |b| {
         b
         .bind("<esc>", Intent::RenameSessionLeave, KeyCategory::General)
@@ -324,7 +324,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         });
     });
 
-    // Workflow scope — workflow tab browsing.
+    // Workflow scope - workflow tab browsing.
     keymap.scope(Scope::Workflow, |b| {
         b
         .bind("<Tab>", Intent::SwitchTab, KeyCategory::Navigation)
@@ -355,7 +355,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("r", Intent::WorkflowRerunNode, KeyCategory::General);
     });
 
-    // WorkflowInput scope — editing source node data.
+    // WorkflowInput scope - editing source node data.
     keymap.scope(Scope::WorkflowInput, |b| {
         b
         .bind("<esc>", Intent::WorkflowInputCancel, KeyCategory::General)

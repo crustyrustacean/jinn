@@ -34,7 +34,7 @@ impl SelectableRects {
 
     /// Returns the smallest rect containing `(x, y)`, or `None`.
     ///
-    /// "Smallest" means the rect with the least area — this picks the most
+    /// "Smallest" means the rect with the least area - this picks the most
     /// specific pane when rects are nested (e.g. a popup inside the content area).
     /// Ties are broken by first-registered wins (stable iteration order).
     #[must_use]
@@ -226,17 +226,17 @@ impl SelectionState {
 
         for y in top_y..=bot_y {
             let (start_x, end_x) = if top_y == bot_y {
-                // Single line — column selection.
+                // Single line - column selection.
                 (anchor_x.min(focus_x), anchor_x.max(focus_x))
             } else if y == top_y {
-                // Top row — from top_x to last non-whitespace.
+                // Top row - from top_x to last non-whitespace.
                 let end = find_last_nonws_in_row(buffer, y, top_x, bounds_right).unwrap_or(top_x);
                 (top_x, end)
             } else if y == bot_y {
-                // Bottom row — from bounds.x to bot_x.
+                // Bottom row - from bounds.x to bot_x.
                 (bounds.x, bot_x)
             } else {
-                // Middle line — from bounds.x to last non-whitespace.
+                // Middle line - from bounds.x to last non-whitespace.
                 let end =
                     find_last_nonws_in_row(buffer, y, bounds.x, bounds_right).unwrap_or(bounds.x);
                 (bounds.x, end)

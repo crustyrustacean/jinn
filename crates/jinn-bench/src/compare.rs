@@ -1,4 +1,4 @@
-//! `compare` subcommand — diff two bench CSVs and show deltas.
+//! `compare` subcommand - diff two bench CSVs and show deltas.
 
 #![allow(clippy::print_stdout, reason = "CLI output")]
 #![allow(clippy::cast_precision_loss, reason = "display formatting")]
@@ -117,7 +117,7 @@ pub fn compare_results(csv_a: &Path, csv_b: &Path) -> Result<(), Box<dyn std::er
                 ]);
             }
             (None, None) => {
-                // unreachable — keys come from the union of both maps
+                // unreachable - keys come from the union of both maps
             }
         }
     }
@@ -438,7 +438,7 @@ mod tests {
 
         // When comparing (captures stdout).
         // The compare_results function prints the table.
-        // We just need it to succeed — the mutation is in the == vs != for passed.
+        // We just need it to succeed - the mutation is in the == vs != for passed.
         let result = compare_results(&csv_a_path, &csv_b_path);
 
         // Then it should succeed (the passed field comparison uses ==, not !=).

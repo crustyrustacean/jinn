@@ -1,4 +1,4 @@
-//! Hook name constants — the single source of truth for all extension points.
+//! Hook name constants - the single source of truth for all extension points.
 //!
 //! Every event name that plugins can subscribe to via `ps.sub` or `ps.hook`
 //! is defined here as a `pub const`. Grepping this file shows every extension

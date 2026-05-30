@@ -1811,7 +1811,7 @@ fn update_visual_parents_on_removal_reparents_only_children_of_removed_session()
     assert_eq!(
         state.frontend.sessions_section.visual_parents.get(&unrelated_child_id),
         None,
-        "unrelated child should not be reparented — its parent is not being removed"
+        "unrelated child should not be reparented - its parent is not being removed"
     );
 }
 

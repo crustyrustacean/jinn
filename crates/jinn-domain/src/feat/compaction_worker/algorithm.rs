@@ -1,4 +1,4 @@
-//! Compaction algorithm — boundary finding, token accumulation, entry gathering.
+//! Compaction algorithm - boundary finding, token accumulation, entry gathering.
 //!
 //! Extracted from the old `CompactionActor` for reuse by `CompactionWorker`.
 
@@ -74,7 +74,7 @@ pub fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize 
         }
     }
 
-    // If all tool calls have matching results, the loop is complete — safe to cut here.
+    // If all tool calls have matching results, the loop is complete - safe to cut here.
     if tool_call_ids.is_empty()
         || tool_call_ids
             .iter()
@@ -83,7 +83,7 @@ pub fn adjust_cut_to_boundary(history: &[ChatEntry], cut_index: usize) -> usize 
         return cut_index;
     }
 
-    // Incomplete tool loop — walk forward past the entire group and re-check.
+    // Incomplete tool loop - walk forward past the entire group and re-check.
     adjust_cut_to_boundary(history, group_end)
 }
 
@@ -154,7 +154,7 @@ pub fn resolve_context_window(context_length: Option<u32>, fallback: usize) -> u
 /// Estimate total tokens for all entries from `start_index` to end.
 ///
 /// Excludes `Compaction` entries (they are boundaries, not content).
-/// Includes System entries — they consume context window budget even though
+/// Includes System entries - they consume context window budget even though
 /// they're excluded from compaction by `gather_compactable_entries()`.
 pub fn estimate_total_tokens(history: &[ChatEntry], start_index: usize) -> usize {
     let estimator = CharRatioEstimator;
@@ -236,7 +236,7 @@ mod tests {
     #[test]
     fn adjust_cut_walks_past_tool_call_group() {
         // Given history: [User, Assistant, ToolCall, ToolResult, Assistant, ToolCall]
-        // Cut at index 2 lands on ToolCall — should walk forward past entire tool loop group.
+        // Cut at index 2 lands on ToolCall - should walk forward past entire tool loop group.
         // The Assistant at index 4 starts an incomplete tool loop (ToolCall at 5 has no result),
         // so the adjustment walks past it to index 6 (history.len()).
         let entries = vec![
@@ -265,9 +265,9 @@ mod tests {
     #[test]
     fn adjust_cut_stops_at_complete_tool_loop() {
         // Given history: [User, Assistant, ToolCall, ToolResult, Assistant("done")]
-        // Cut at index 2 lands on ToolCall — the tool loop IS complete (result present).
+        // Cut at index 2 lands on ToolCall - the tool loop IS complete (result present).
         // Pass 1 walks to index 4 (Assistant). Pass 2 finds no tool calls, so the
-        // Assistant at 4 is clean — cut stays at 4.
+        // Assistant at 4 is clean - cut stays at 4.
         let entries = vec![
             ChatEntry::user("do something"),
             ChatEntry::assistant("let me check"),
@@ -284,14 +284,14 @@ mod tests {
         // When adjusting cut at index 2.
         let adjusted = adjust_cut_to_boundary(&entries, 2);
 
-        // Then it stops at the Assistant at index 4 — the tool loop is complete.
+        // Then it stops at the Assistant at index 4 - the tool loop is complete.
         assert_eq!(adjusted, 4, "should stop at Assistant after complete tool loop");
     }
 
     #[test]
     fn adjust_cut_walks_past_incomplete_tool_loop() {
         // Given history: [User, Assistant, ToolCall] (no ToolResult yet)
-        // Cut at index 2 lands on ToolCall — incomplete loop should skip it.
+        // Cut at index 2 lands on ToolCall - incomplete loop should skip it.
         let entries = vec![
             ChatEntry::user("do something"),
             ChatEntry::assistant("let me check"),
@@ -321,7 +321,7 @@ mod tests {
         // When computing cut with a tiny reserve that can only hold ~2 entries.
         let cut = compute_cut_index(&entries, 0, 30, false);
 
-        // Then the cut is past the start — older entries don't fit in reserve.
+        // Then the cut is past the start - older entries don't fit in reserve.
         assert!(cut > 0, "cut should be past start when entries exceed reserve");
         assert!(cut < entries.len(), "cut should be before end when some entries fit");
     }

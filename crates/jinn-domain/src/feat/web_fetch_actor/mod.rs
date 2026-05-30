@@ -1,4 +1,4 @@
-//! Web fetch actor — owns a WebFetcher backend and handles web-fetch tool calls.
+//! Web fetch actor - owns a WebFetcher backend and handles web-fetch tool calls.
 //!
 //! Subscribes to [`ExecuteWebFetch`] commands dispatched by the tool orchestrator.
 //! On activation, registers the `web-fetch` tool definition. On command, parses

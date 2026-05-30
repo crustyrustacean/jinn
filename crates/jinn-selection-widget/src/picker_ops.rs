@@ -13,7 +13,7 @@ pub trait PickerOps {
 
     /// Bulk inserts text into the filter at the cursor position.
     ///
-    /// Newlines are stripped — the picker filter is a single line.
+    /// Newlines are stripped - the picker filter is a single line.
     fn insert_text(&mut self, text: &str);
 
     /// Removes the character before the cursor.

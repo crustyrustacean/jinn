@@ -35,7 +35,7 @@ pub trait MessageSink: Send + Sync + 'static {
 
 /// A message sink for testing that records sent commands and events.
 ///
-/// Shared across the workspace — actor tests, host tests, and integration tests
+/// Shared across the workspace - actor tests, host tests, and integration tests
 /// all use this instead of defining local duplicates.
 pub struct RecordingSink {
     /// Recorded commands.

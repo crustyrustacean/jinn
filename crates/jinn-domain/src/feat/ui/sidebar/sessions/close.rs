@@ -52,7 +52,7 @@ pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError>
     Ok(())
 }
 
-/// Handles `SidebarSessionClose` — closes the selected session.
+/// Handles `SidebarSessionClose` - closes the selected session.
 ///
 /// Removes the session from the in-memory HashMap (keeps it in SQLite).
 /// Activates the next session in the sorted list, clamping the index.
@@ -79,7 +79,7 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
     // Remove and replace if last session.
     let was_last = state.session.session_count() == 1;
     if was_last {
-        // Last session — create a new one with the last-used model/strategy.
+        // Last session - create a new one with the last-used model/strategy.
         let new_session = {
             let model = state
                 .frontend
@@ -115,7 +115,7 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
     crate::protocol::IntentResult::empty()
 }
 
-/// Handles `SidebarSessionClose` — closes the selected session.
+/// Handles `SidebarSessionClose` - closes the selected session.
 ///
 /// Validates that the close can proceed, gets the selected session ID,
 /// then emits a `CloseSession` command. The session actor handles teardown,
@@ -138,7 +138,7 @@ pub fn handle_session_close_with_lifecycle(state: &mut AppState) -> crate::proto
     let sessions = sorted_open_sessions(state);
     let closing_id = sessions[index].id.clone();
 
-    // Emit CloseSession — the actor handles teardown, archive, and removal.
+    // Emit CloseSession - the actor handles teardown, archive, and removal.
     crate::protocol::IntentResult::with_commands(vec![Command::CloseSession(CloseSession {
         session_id: closing_id,
     })])

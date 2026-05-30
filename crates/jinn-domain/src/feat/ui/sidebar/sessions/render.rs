@@ -1,4 +1,4 @@
-//! [`SessionsSection`] — the open sessions sidebar section.
+//! [`SessionsSection`] - the open sessions sidebar section.
 //!
 //! Implements [`SidebarSection`] for listing all sessions currently loaded
 //! into memory. The active session (currently displayed) is highlighted with
@@ -160,7 +160,7 @@ impl SidebarSection for SessionsSection {
         let widget = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
         frame.render_widget(widget, area);
 
-        // Close session confirmation prompt — overlay 1 row above the cursor.
+        // Close session confirmation prompt - overlay 1 row above the cursor.
         if state.frontend.close_session_prompt && section_focused
             && let Some(sel) = selected_index
         {

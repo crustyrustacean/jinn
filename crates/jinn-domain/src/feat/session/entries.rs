@@ -1,4 +1,4 @@
-//! Session entries — loading and formatting for the tree-structured picker.
+//! Session entries - loading and formatting for the tree-structured picker.
 //!
 //! Contains loader functions for session picker entries.
 //! The [`SessionTreeEntry`] struct and [`TreeItem`] implementation live

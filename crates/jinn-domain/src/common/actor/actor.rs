@@ -9,7 +9,7 @@
 //!
 //! When the application shuts down:
 //! 1. The run loop intercepts `ApplicationShuttingDown`
-//! 2. `on_shutdown()` is called — override for cleanup (flush to disk, etc.)
+//! 2. `on_shutdown()` is called - override for cleanup (flush to disk, etc.)
 //! 3. The run loop auto-announces `ActorShutdownCompleted`
 //! 4. Remaining channel messages are drained and discarded
 //! 5. `shutdown()` is called after the loop exits
@@ -26,8 +26,8 @@ use super::envelope::ActorEnvelope;
 /// 2. Each actor's [`activate`](Actor::activate) is called with an [`ActorContext`]
 ///    pre-loaded with peer `ActorRef` handles.
 ///
-/// After activation, the actor receives all messages — bus events, bus commands,
-/// direct messages from other actors, and shutdown — through a single
+/// After activation, the actor receives all messages - bus events, bus commands,
+/// direct messages from other actors, and shutdown - through a single
 /// [`ActorEnvelope`] in the [`handle`](Actor::handle) method.
 pub trait Actor {
     /// The direct message type this actor accepts from other actors.
@@ -36,7 +36,7 @@ pub trait Actor {
     /// Dependencies required by this actor at activation.
     ///
     /// Each actor declares its dependencies as a concrete struct.
-    /// The `spawn` function passes `A::Deps` directly — no type erasure.
+    /// The `spawn` function passes `A::Deps` directly - no type erasure.
     type Deps: Send + 'static;
 
     /// Activates the actor with injected dependencies.
@@ -44,7 +44,7 @@ pub trait Actor {
     /// Use `deps` to extract typed dependencies, and `ctx` to subscribe
     /// to events/commands and extract peer `ActorRef` handles.
     ///
-    /// This is an associated function (not a method) — it returns `Self`,
+    /// This is an associated function (not a method) - it returns `Self`,
     /// constructing the actor during activation.
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self;
 

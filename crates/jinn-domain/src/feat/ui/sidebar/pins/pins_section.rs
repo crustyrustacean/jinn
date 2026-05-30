@@ -1,4 +1,4 @@
-//! [`PinsSection`] — the pinned entries sidebar section.
+//! [`PinsSection`] - the pinned entries sidebar section.
 //!
 //! Implements [`SidebarSection`] for pinned context entries.
 //! Also provides handler functions that the `IntentHandler` calls
@@ -34,7 +34,7 @@ pub struct PinsSection;
 ///
 /// Moves the cursor within the pins list, or returns `Exhausted` when
 /// at a boundary or when the list is empty. Does NOT modify cursor state
-/// on exhaustion — the sidebar decides what to do.
+/// on exhaustion - the sidebar decides what to do.
 pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResult {
     let sorted_ids = state.sorted_pinned_ids();
     if sorted_ids.is_empty() {
@@ -149,7 +149,7 @@ impl SidebarSection for PinsSection {
 // Intent handler functions (called by IntentHandler)
 // ---------------------------------------------------------------------------
 
-/// Handles `SidebarPersonaEdit` — opens the persona picker when persona section is focused.
+/// Handles `SidebarPersonaEdit` - opens the persona picker when persona section is focused.
 ///
 /// No-op if the pins section is focused.
 pub fn handle_sidebar_persona_edit(state: &mut AppState) -> IntentResult {

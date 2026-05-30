@@ -16,7 +16,7 @@ use crate::protocol::{Command, IntentResult};
 /// System message shown when reset is rejected because the judge is busy.
 const BUSY_REJECTION_MESSAGE: &str = "Cannot reset judge while it is working.";
 
-/// Handles `ResetJudge` — truncates the judge session's history to pinned entries only.
+/// Handles `ResetJudge` - truncates the judge session's history to pinned entries only.
 ///
 /// Guards:
 /// - Must be in the Sessions sidebar section.

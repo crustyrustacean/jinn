@@ -1,4 +1,4 @@
-//! Lifecycle event structs — completion callbacks for setup/teardown.
+//! Lifecycle event structs - completion callbacks for setup/teardown.
 
 use std::path::PathBuf;
 
