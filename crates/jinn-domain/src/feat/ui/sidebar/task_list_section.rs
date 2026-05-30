@@ -126,10 +126,18 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
                 let indicator = match task.status() {
                     TaskStatus::Pending => "\u{25CB} ",    // \u{25CB}  ○
                     TaskStatus::Completed => "\u{2713} ",  // \u{2713}  ✓
+                    TaskStatus::Cancelled => {
+                        // Cancelled tasks are hidden from sidebar.
+                        continue;
+                    }
                     TaskStatus::Postponed => "\u{25BC} ",   // \u{25BC}  ▼
                 };
                 let style = match task.status() {
                     TaskStatus::Pending => Style::default().fg(theme.primary_text),
+                    TaskStatus::Cancelled => {
+                        // Cancelled tasks are hidden (continued above), but rust needs this arm
+                        Style::default().fg(theme.muted_text)
+                    }
                     TaskStatus::Completed | TaskStatus::Postponed => {
                         Style::default().fg(theme.muted_text)
                     }

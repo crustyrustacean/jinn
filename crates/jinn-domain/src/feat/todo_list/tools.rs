@@ -21,6 +21,7 @@
 pub mod add_phase;
 pub mod add_task;
 pub mod complete_task;
+pub mod cancel_task;
 pub mod postpone_task;
 pub mod postpone_to_phase;
 pub mod get_phase;
@@ -45,6 +46,10 @@ pub fn tool_entries() -> Vec<BuiltinToolEntry> {
         (
             add_task::definition(),
             add_task::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
+        ),
+        (
+            cancel_task::definition(),
+            cancel_task::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
         ),
         (
             complete_task::definition(),
@@ -78,6 +83,7 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
     vec![
         add_phase::definition(),
         add_task::definition(),
+        cancel_task::definition(),
         complete_task::definition(),
         postpone_task::definition(),
         postpone_to_phase::definition(),
