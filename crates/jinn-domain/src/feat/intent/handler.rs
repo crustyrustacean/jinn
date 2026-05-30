@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! The [`IntentHandler`] — a single decision point for all user input.
+//! The [`IntentHandler`] - a single decision point for all user input.
 //!
 //! Processes every [`Intent`] variant: call the validator, then act.
 //! On validation failure, the handler does nothing (no-op). On success,
@@ -22,7 +22,7 @@
 
 #![allow(
     clippy::missing_docs_in_private_items,
-    reason = "Phase 2 transitional — Phase 4 refactors handler into per-intent modules"
+    reason = "Phase 2 transitional - Phase 4 refactors handler into per-intent modules"
 )]
 #![allow(
     clippy::doc_markdown,
@@ -39,12 +39,12 @@ use crate::feat;
 use crate::IntentResult;
 use jinn_workflow::spatial_layout::SpatialDirection;
 
-/// Processes user intents — the single decision point for all user input.
+/// Processes user intents - the single decision point for all user input.
 ///
 /// For each [`Intent`] variant: call the validator, then act.
 /// On validation failure, the handler does nothing (no-op).
 ///
-/// Some intents set "TUI signals" on `state.frontend.tui_signals` — flags that the
+/// Some intents set "TUI signals" on `state.frontend.tui_signals` - flags that the
 /// outer platform layer reads after `handle()` returns and acts upon
 /// (e.g., opening an external editor, toggling a popup).
 pub struct IntentHandler;
@@ -131,7 +131,7 @@ impl IntentHandler {
                     crate::common::app_state::FocusScope::ArgInput
                 ) =>
             {
-                // ESC cancels arg input — pop scope, clear state.
+                // ESC cancels arg input - pop scope, clear state.
                 state.frontend.scope_stack.pop();
                 state.frontend.arg_input = crate::common::app_state::ArgInputState::default();
                 crate::protocol::IntentResult::empty()
@@ -283,7 +283,7 @@ impl IntentHandler {
                 feat::picker::intent::handle_open_picker(state, PickerKind::SessionLifecycle)
             }
             Intent::SidebarSessionClose => {
-                // First press — show confirmation prompt.
+                // First press - show confirmation prompt.
                 // The interceptor (try_handle_close_session_prompt) handles the second press.
                 state.frontend.close_session_prompt = true;
                 IntentResult::empty()
@@ -512,7 +512,7 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
     state.frontend.cancel_stream_prompt = false;
 
     if !matches!(intent, Intent::NormalEscape) {
-        // Any other key — dismiss prompt, fall through to normal processing.
+        // Any other key - dismiss prompt, fall through to normal processing.
         return None;
     }
 
@@ -568,11 +568,11 @@ fn try_handle_close_session_prompt(intent: &Intent, state: &mut AppState) -> Opt
     state.frontend.close_session_prompt = false;
 
     if !matches!(intent, Intent::SidebarSessionClose) {
-        // Any other key — dismiss prompt, fall through to normal processing.
+        // Any other key - dismiss prompt, fall through to normal processing.
         return None;
     }
 
-    // Second x press — perform the close.
+    // Second x press - perform the close.
     // Re-validates in case session became busy between taps.
     Some(feat::ui::sidebar::sessions::handle_session_close_with_lifecycle(state))
 }
@@ -678,14 +678,14 @@ fn handle_workflow_escape(state: &mut AppState) -> IntentResult {
     });
 
     if !has_running {
-        // Workflow is idle or completed — ESC just resets any stale prompt state.
+        // Workflow is idle or completed - ESC just resets any stale prompt state.
         state.frontend.workflow_ui.cancel_prompt = false;
         return IntentResult::empty();
     }
 
-    // Workflow has running nodes — use two-press cancel confirmation.
+    // Workflow has running nodes - use two-press cancel confirmation.
     if state.frontend.workflow_ui.cancel_prompt {
-        // Second ESC — confirm cancel.
+        // Second ESC - confirm cancel.
         state.frontend.workflow_ui.cancel_prompt = false;
         let Some(workflow) = state.workflow.active() else {
             return IntentResult::empty();
@@ -695,7 +695,7 @@ fn handle_workflow_escape(state: &mut AppState) -> IntentResult {
             crate::feat::workflow::protocol::command::CancelWorkflow { workflow_id },
         )])
     } else {
-        // First ESC — show prompt.
+        // First ESC - show prompt.
         state.frontend.workflow_ui.cancel_prompt = true;
         IntentResult::empty()
     }
@@ -715,7 +715,7 @@ fn handle_workflow_run(state: &mut AppState) -> IntentResult {
 
     let snapshot = workflow.execution.snapshot();
 
-    // Check if any node is currently Running — if so, no-op (already executing).
+    // Check if any node is currently Running - if so, no-op (already executing).
     let has_running = snapshot
         .statuses()
         .any(|(_, s)| s == jinn_workflow::engine::NodeStatus::Running);

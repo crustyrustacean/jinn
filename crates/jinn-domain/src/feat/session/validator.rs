@@ -50,7 +50,7 @@ pub fn validate_rescan_prompt_templates(
 
 /// Validates the SessionNew intent.
 ///
-/// Always succeeds — there are currently no conditions that prevent session creation.
+/// Always succeeds - there are currently no conditions that prevent session creation.
 pub fn validate_session_new(_state: &AppState) {
     // No validation needed.
 }

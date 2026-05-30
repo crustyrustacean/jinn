@@ -2,7 +2,7 @@
 //!
 //! [`ActorRef<M>`] wraps a shared \[`ActorCell<M>`] containing a
 //! [`parking_lot::RwLock`] around a [`kanal::Sender`]. The swappable sender
-//! enables actor restart without breaking peer references — all holders of the
+//! enables actor restart without breaking peer references - all holders of the
 //! same `ActorRef` see the new channel after a swap.
 
 use std::sync::Arc;
@@ -51,7 +51,7 @@ struct ActorCell<M> {
 /// not the actor type itself. This decouples the sender from the actor's
 /// concrete implementation.
 ///
-/// Cheaply cloneable — clones the inner [`Arc`].
+/// Cheaply cloneable - clones the inner [`Arc`].
 pub struct ActorRef<M>
 where
     M: Send + 'static,

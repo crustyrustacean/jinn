@@ -345,7 +345,7 @@ fn render_cursor_on_wrapped_continuation() {
     // The cursor should be visible on the second visual line.
     // Cursor at pos 11 (end). Wrapped lines: "> hello " and "  world".
     // Row 0 = "> hello " (8 graphemes), Row 1 = "  world" (5 graphemes).
-    // cursor_row_col returns (1, 5) — row 1, col 5.
+    // cursor_row_col returns (1, 5) - row 1, col 5.
     // visual_row = 1, cursor_y = inner.y + 1 = 1.
     // cursor_x = inner.x + 2 + 5 = 7.
     terminal

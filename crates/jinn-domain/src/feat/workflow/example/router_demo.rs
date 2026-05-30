@@ -1,19 +1,19 @@
-//! Router demonstration examples — conditional branching.
+//! Router demonstration examples - conditional branching.
 //!
 //! Two workflows demonstrating the RouterNode:
 //!
 //! **router_demo** (binary):
-//! 1. **source** — emits "yes" or "no"
-//! 2. **router** — routes to "yes" or "no" output port based on input
-//! 3. **upper** — uppercases the input (on "yes" branch)
-//! 4. **reverse** — reverses the input (on "no" branch)
+//! 1. **source** - emits "yes" or "no"
+//! 2. **router** - routes to "yes" or "no" output port based on input
+//! 3. **upper** - uppercases the input (on "yes" branch)
+//! 4. **reverse** - reverses the input (on "no" branch)
 //!
 //! **router_ternary** (three-way):
-//! 1. **source** — emits "low", "medium", or "high"
-//! 2. **router** — routes to one of three output ports
-//! 3. **double** — doubles the value (on "low" branch)
-//! 4. **shout** — uppercases and adds "!" (on "medium" branch)
-//! 5. **reverse** — reverses the value (on "high" branch)
+//! 1. **source** - emits "low", "medium", or "high"
+//! 2. **router** - routes to one of three output ports
+//! 3. **double** - doubles the value (on "low" branch)
+//! 4. **shout** - uppercases and adds "!" (on "medium" branch)
+//! 5. **reverse** - reverses the value (on "high" branch)
 //!
 //! Only the matching branch executes. The other branches' nodes are `Skipped`.
 
@@ -28,7 +28,7 @@ use crate::feat::workflow::workflow_registry::WorkflowRegistry;
 ///
 /// # Panics
 ///
-/// Never panics — registration is infallible.
+/// Never panics - registration is infallible.
 pub fn register(registry: &mut WorkflowRegistry) {
     registry.register("router_demo", build_router_demo);
     registry.register("router_ternary", build_router_ternary);
@@ -49,7 +49,7 @@ pub fn register(registry: &mut WorkflowRegistry) {
     reason = "static graph definition should always be valid"
 )]
 pub fn build_router_demo() -> WorkflowGraph {
-    // Node 1: Source — emits a fixed value to route on.
+    // Node 1: Source - emits a fixed value to route on.
     let source = CodeNode::new(
         "source".to_owned(),
         vec![],
@@ -66,7 +66,7 @@ pub fn build_router_demo() -> WorkflowGraph {
         },
     );
 
-    // Node 2: Router — routes based on the source value.
+    // Node 2: Router - routes based on the source value.
     let router = RouterNode::new(
         "router".to_owned(),
         PortDef::text("input"),
@@ -75,7 +75,7 @@ pub fn build_router_demo() -> WorkflowGraph {
     .with_route("yes".to_owned(), r"(?i)^yes$")
     .with_route("no".to_owned(), r"(?i)^no$");
 
-    // Node 3: Upper — uppercases the value on the "yes" branch.
+    // Node 3: Upper - uppercases the value on the "yes" branch.
     let upper = CodeNode::new(
         "upper".to_owned(),
         vec![PortDef::text("in")],
@@ -95,7 +95,7 @@ pub fn build_router_demo() -> WorkflowGraph {
         },
     );
 
-    // Node 4: Reverse — reverses the value on the "no" branch.
+    // Node 4: Reverse - reverses the value on the "no" branch.
     let reverse = CodeNode::new(
         "reverse".to_owned(),
         vec![PortDef::text("in")],
@@ -158,7 +158,7 @@ pub fn build_router_demo() -> WorkflowGraph {
 )]
 #[expect(clippy::too_many_lines)]
 pub fn build_router_ternary() -> WorkflowGraph {
-    // Node 1: Source — emits "medium" to route on.
+    // Node 1: Source - emits "medium" to route on.
     let source = CodeNode::new(
         "source".to_owned(),
         vec![],
@@ -175,7 +175,7 @@ pub fn build_router_ternary() -> WorkflowGraph {
         },
     );
 
-    // Node 2: Router — routes based on "low", "medium", or "high".
+    // Node 2: Router - routes based on "low", "medium", or "high".
     let router = RouterNode::new(
         "router".to_owned(),
         PortDef::text("input"),
@@ -189,7 +189,7 @@ pub fn build_router_ternary() -> WorkflowGraph {
     .with_route("medium".to_owned(), r"(?i)^medium$")
     .with_route("high".to_owned(), r"(?i)^high$");
 
-    // Node 3: Double — repeats the value twice on the "low" branch.
+    // Node 3: Double - repeats the value twice on the "low" branch.
     let double = CodeNode::new(
         "double".to_owned(),
         vec![PortDef::text("in")],
@@ -209,7 +209,7 @@ pub fn build_router_ternary() -> WorkflowGraph {
         },
     );
 
-    // Node 4: Shout — uppercases and adds "!" on the "medium" branch.
+    // Node 4: Shout - uppercases and adds "!" on the "medium" branch.
     let shout = CodeNode::new(
         "shout".to_owned(),
         vec![PortDef::text("in")],
@@ -229,7 +229,7 @@ pub fn build_router_ternary() -> WorkflowGraph {
         },
     );
 
-    // Node 5: Reverse — reverses the value on the "high" branch.
+    // Node 5: Reverse - reverses the value on the "high" branch.
     let reverse = CodeNode::new(
         "reverse".to_owned(),
         vec![PortDef::text("in")],

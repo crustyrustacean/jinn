@@ -1,4 +1,4 @@
-//! User preferences storage abstraction — trait for user preferences I/O.
+//! User preferences storage abstraction - trait for user preferences I/O.
 //!
 //! Defines [`UserPreferencesStorage`] as the abstraction for loading and saving
 //! user preferences. [`FilesystemUserPreferencesStorage`] is the production
@@ -15,7 +15,7 @@ use super::user_preferences::{UserPreferences, UserPreferencesError, preferences
 /// Trait for user preferences I/O.
 ///
 /// Every external dependency must have a trait abstraction.
-/// Filesystem I/O is an external dependency — this trait abstracts it so
+/// Filesystem I/O is an external dependency - this trait abstracts it so
 /// tests can use in-memory storage instead of touching the real filesystem.
 pub trait UserPreferencesStorage: Send + Sync + 'static {
     /// Returns the storage backend name (for debugging).

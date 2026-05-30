@@ -1,4 +1,4 @@
-//! edit-large-replace-small-file bench task — rewrite procedural Python into class-based.
+//! edit-large-replace-small-file bench task - rewrite procedural Python into class-based.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 
@@ -38,7 +38,7 @@ pub fn task() -> BenchTask {
 fn verify(dir: &Path) -> VerificationReport {
     let mut checks: Vec<CheckResult> = Vec::new();
 
-    // Structural checks (AST) — verify the required class and methods exist.
+    // Structural checks (AST) - verify the required class and methods exist.
     checks.push(checks::check_python_class_exists(
         dir,
         "main.py",
@@ -54,7 +54,7 @@ fn verify(dir: &Path) -> VerificationReport {
         dir, "main.py", "main",
     ));
 
-    // Behavioral checks — run the program and verify output.
+    // Behavioral checks - run the program and verify output.
     checks.push(checks::check_python_run(dir, "main.py"));
     checks.push(checks::check_python_run_contains(
         dir,
@@ -135,7 +135,7 @@ if __name__ == "__main__":
     main()
 "#;
 
-    /// The original fixture — no class, wrong structure.
+    /// The original fixture - no class, wrong structure.
     const WRONG_STRUCTURE: &str = include_str!("edit_large_replace_small_file/fixtures/main.py");
 
     fn write_and_verify(content: &str) -> VerificationReport {
@@ -163,7 +163,7 @@ if __name__ == "__main__":
         // When verifying.
         let report = write_and_verify(CODE_WITH_EXTRAS);
 
-        // Then all checks pass — extras are ignored.
+        // Then all checks pass - extras are ignored.
         for check in &report.checks {
             assert!(check.passed, "{} failed: {}", check.name, check.detail);
         }

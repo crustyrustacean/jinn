@@ -1,4 +1,4 @@
-//! Environment initialization actor — reads env vars and populates API keys.
+//! Environment initialization actor - reads env vars and populates API keys.
 //!
 //! Self-schedules an [`EnvInitDirectMsg::Initialize`] message during activation.
 //! On receipt: loads `providers.toml`, resolves API keys from environment
@@ -61,7 +61,7 @@ impl Actor for EnvInitActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.set_description("Loads environment variables and API keys");
 
-        // Self-schedule initialization — the message buffers until the run loop starts.
+        // Self-schedule initialization - the message buffers until the run loop starts.
         #[expect(
             clippy::expect_used,
             reason = "self-ref is injected by spawn before activate"

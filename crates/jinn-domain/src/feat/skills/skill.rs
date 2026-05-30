@@ -15,7 +15,7 @@ pub struct Skill {
     /// Human-readable description of what the skill does.
     pub description: String,
     /// The markdown body content (after stripping YAML frontmatter).
-    /// Not serialized — loaded fresh from disk on each scan.
+    /// Not serialized - loaded fresh from disk on each scan.
     #[serde(skip)]
     pub body: String,
     /// Absolute path to the SKILL.md file.

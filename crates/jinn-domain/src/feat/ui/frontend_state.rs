@@ -1,4 +1,4 @@
-//! Frontend / UI state — owned by the IntentHandler (main thread).
+//! Frontend / UI state - owned by the IntentHandler (main thread).
 
 use parking_lot::RwLock;
 
@@ -42,10 +42,10 @@ impl FrontendCaches {
     }
 }
 
-/// Frontend / UI state — owned by the IntentHandler (main thread).
+/// Frontend / UI state - owned by the IntentHandler (main thread).
 ///
 /// Written to by `IntentHandler` and various UI elements (read-only).
-/// Actors should NOT write to these fields — they are for the frontend only.
+/// Actors should NOT write to these fields - they are for the frontend only.
 #[derive(Debug)]
 pub struct FrontendState {
     /// Set to `true` when the user has requested to quit.
@@ -53,19 +53,19 @@ pub struct FrontendState {
     ///        shutdown-tracker (ProceedWithShutdown command).
     pub should_quit: bool,
 
-    /// Pins sidebar section state — selection index within the pinned entries list.
+    /// Pins sidebar section state - selection index within the pinned entries list.
     /// OWNER: IntentHandler (pins navigation).
     pub pins: PinsState,
 
-    /// Sidebar state — focus tracking.
+    /// Sidebar state - focus tracking.
     /// OWNER: IntentHandler (sidebar focus/leave).
     pub sidebar: SidebarState,
 
-    /// Persona sidebar section state — cursor tracking.
+    /// Persona sidebar section state - cursor tracking.
     /// OWNER: IntentHandler (sidebar navigation).
     pub persona_section: PersonaSectionState,
 
-    /// Sessions sidebar section state — cursor tracking.
+    /// Sessions sidebar section state - cursor tracking.
     /// OWNER: IntentHandler (sidebar navigation).
     pub sessions_section: SessionsSectionState,
 
@@ -75,10 +75,10 @@ pub struct FrontendState {
 
     /// Cached copy of user preferences from `jinn.toml`.
     /// Updated exclusively by `PreferencesStateSyncActor` on `PreferencesUpdated` events.
-    /// This is a cache — the file is the authoritative source.
+    /// This is a cache - the file is the authoritative source.
     pub preferences: UserPreferences,
 
-    /// Focus scope stack — single source of truth for what the user is focused on.
+    /// Focus scope stack - single source of truth for what the user is focused on.
     /// OWNER: IntentHandler (push/pop on scope transitions).
     pub scope_stack: ScopeStack,
 
@@ -100,7 +100,7 @@ pub struct FrontendState {
     ///         SidebarSessionClose or dismissed on any other key).
     pub close_session_prompt: bool,
 
-    /// All picker state — grouped for independent evolution.
+    /// All picker state - grouped for independent evolution.
     /// Use [`PickerExt`](super::picker_states::PickerExt) to access picker fields.
     pub pickers: PickerStates,
 
@@ -114,11 +114,11 @@ pub struct FrontendState {
     /// OWNER: Init code (set once at startup).
     pub system_themes_dir: std::path::PathBuf,
 
-    /// Arg input popup state — active when `FocusScope::ArgInput` is on the scope stack.
+    /// Arg input popup state - active when `FocusScope::ArgInput` is on the scope stack.
     /// OWNER: IntentHandler (arg input editing, confirmation).
     pub arg_input: ArgInputState,
 
-    /// Rename session input popup state — active when `FocusScope::RenameSessionInput` is on the scope stack.
+    /// Rename session input popup state - active when `FocusScope::RenameSessionInput` is on the scope stack.
     /// OWNER: IntentHandler (rename input editing, confirmation).
     pub rename_session_input: RenameSessionInputState,
 
@@ -130,7 +130,7 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (SwitchTab intent).
     pub active_tab: ActiveTab,
 
-    /// Workflow tab UI state — selection, viewport, inspector, cancel prompt.
+    /// Workflow tab UI state - selection, viewport, inspector, cancel prompt.
     /// OWNER: IntentHandler (all workflow UI interactions).
     pub workflow_ui: WorkflowUiState,
 }

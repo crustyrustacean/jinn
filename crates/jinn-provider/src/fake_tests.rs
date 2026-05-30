@@ -350,14 +350,14 @@ async fn tool_loop_second_call_returns_text_only() {
         content: "__tool_loop_test__".to_owned(),
     }];
 
-    // First call — consume the tool_use response.
+    // First call - consume the tool_use response.
     let stream = service
         .chat_stream_with_tools(messages.clone(), vec![])
         .await
         .expect("first call");
     let _events: Vec<StreamEvent> = stream.map(|r| r.expect("event")).collect().await;
 
-    // Second call — should return text only.
+    // Second call - should return text only.
     let stream = service
         .chat_stream_with_tools(messages, vec![])
         .await

@@ -1,4 +1,4 @@
-//! Session lifecycle intent handlers — setup, close, and arg input confirmation.
+//! Session lifecycle intent handlers - setup, close, and arg input confirmation.
 //!
 //! These handlers bridge the Intent-driven architecture with the session lifecycle
 //! system. The IntentHandler calls these functions directly; they mutate `AppState`
@@ -171,7 +171,7 @@ pub fn handle_session_lifecycle_setup(
         );
     }
 
-    // No setup command — use default CWD immediately.
+    // No setup command - use default CWD immediately.
     let default_cwd = state.session.default_cwd().clone();
     state.session_mut(&new_id).set_cwd(default_cwd);
 
@@ -287,7 +287,7 @@ pub fn handle_arg_input_cursor_right(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Handles `PasteText` in arg input scope — bulk inserts pasted text at the cursor.
+/// Handles `PasteText` in arg input scope - bulk inserts pasted text at the cursor.
 pub fn handle_arg_input_paste(state: &mut AppState, text: &str) -> IntentResult {
     if text.is_empty() {
         return IntentResult::empty();

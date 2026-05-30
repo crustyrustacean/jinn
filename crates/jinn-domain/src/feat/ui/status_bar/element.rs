@@ -1,4 +1,4 @@
-//! Status bar — displays the session CWD, active prompt strategy, and current model.
+//! Status bar - displays the session CWD, active prompt strategy, and current model.
 //!
 //! Shows the session's working directory on line 1, and status information
 //! on line 2: strategy, pinned count, token stats, turn count, and model.

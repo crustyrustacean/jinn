@@ -1,4 +1,4 @@
-//! Skill entry rendering — collapsible block showing skill name and content.
+//! Skill entry rendering - collapsible block showing skill name and content.
 //!
 //! Format (collapsed):
 //! ```text

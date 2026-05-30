@@ -1,4 +1,4 @@
-//! Echo actor — reference actor for jinn.
+//! Echo actor - reference actor for jinn.
 //!
 //! Implements [`Actor`] for in-memory hosting. Echoes user messages as ALL CAPS
 //! actor entries after a 1-second delay. Lifecycle announcements

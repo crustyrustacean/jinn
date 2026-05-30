@@ -13,7 +13,7 @@
 /// Extracts structured content from raw HTML.
 ///
 /// Implementations define a specific extraction strategy (e.g., markdown,
-/// plain text, readability). The trait is format-agnostic — callers select
+/// plain text, readability). The trait is format-agnostic - callers select
 /// which extractor to use based on the desired output format.
 pub trait Extractor: Send + Sync {
     /// Extracts content from the given HTML string.

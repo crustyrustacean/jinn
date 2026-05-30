@@ -1,4 +1,4 @@
-//! Actor channel service — sends commands and events into the actor system.
+//! Actor channel service - sends commands and events into the actor system.
 //!
 //! Wraps a [`kanal::Sender<AppMsg>`] so any holder of [`Services`] can submit
 //! messages to the actor system without needing direct access to [`AppCore`].

@@ -1,4 +1,4 @@
-//! fix-syntax-broken-rust bench task — fix a syntax error in Rust code.
+//! fix-syntax-broken-rust bench task - fix a syntax error in Rust code.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

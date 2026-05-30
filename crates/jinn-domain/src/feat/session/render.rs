@@ -1,4 +1,4 @@
-//! Session picker rendering — renders the tree-structured session picker overlay.
+//! Session picker rendering - renders the tree-structured session picker overlay.
 
 use crate::common::app_state::AppState;
 use crate::feat::ui::picker_states::PickerExt;

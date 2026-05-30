@@ -12,6 +12,6 @@ use serde::{Deserialize, Serialize};
 pub enum QueueItem {
     /// A user-submitted message to send to the LLM.
     UserMessage(ChatEntry),
-    /// Continue after a tool batch — re-assemble prompt with updated history.
+    /// Continue after a tool batch - re-assemble prompt with updated history.
     ToolContinuation,
 }

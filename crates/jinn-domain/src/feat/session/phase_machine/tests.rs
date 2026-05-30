@@ -1,10 +1,10 @@
 //! Transition test matrix for [`SessionPhaseMachine`].
 //!
 //! Tests are organized into sections:
-//! 1. Valid transitions — each from/to/side-effects verified
-//! 2. Invalid transitions — each returns `TransitionError`
-//! 3. Tool loop cycles — multi-step sequences
-//! 4. Side effects — data tracking within phases
+//! 1. Valid transitions - each from/to/side-effects verified
+//! 2. Invalid transitions - each returns `TransitionError`
+//! 3. Tool loop cycles - multi-step sequences
+//! 4. Side effects - data tracking within phases
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
@@ -491,7 +491,7 @@ fn full_tool_loop_cycle() {
     m.on_stream_completed_tool_use().expect("tool use 1");
     assert_eq!(m.kind(), PhaseKind::Sending);
 
-    // Tool batch completes — continue to second stream.
+    // Tool batch completes - continue to second stream.
     m.on_tool_batch_completed().expect("tool batch");
     assert_eq!(m.kind(), PhaseKind::Streaming);
 

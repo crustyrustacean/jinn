@@ -12,7 +12,7 @@
 //! allowing usage data from any intermediate chunk to be attached before emission.
 //!
 //! For providers that send `finish_reason` and `usage` in the same chunk, the enrichment
-//! happens inline — the pending `Done` is created and enriched in a single `parse_data` call,
+//! happens inline - the pending `Done` is created and enriched in a single `parse_data` call,
 //! then emitted by `handle_done`.
 
 use std::collections::HashMap;
@@ -105,7 +105,7 @@ impl StreamResponseParser {
         let choices = if let Some(c) = chunk.get("choices").and_then(|c| c.as_array()) {
             c
         } else {
-            // No choices — but we can still enrich pending_done with usage.
+            // No choices - but we can still enrich pending_done with usage.
             self.try_enrich_pending_usage(&chunk);
             return results;
         };
@@ -158,7 +158,7 @@ impl StreamResponseParser {
                 }
             }
 
-            // Finish reason — only handle the first one.
+            // Finish reason - only handle the first one.
             if let Some(finish_reason) = choice.get("finish_reason").and_then(|f| f.as_str()) {
                 if !finish_reason.is_empty() && self.pending_done.is_none() && !self.done_finalized
                 {
@@ -299,7 +299,7 @@ impl StreamResponseParser {
             }];
         }
 
-        // No finish_reason was ever received — create a fallback Done.
+        // No finish_reason was ever received - create a fallback Done.
         let mut results = self.drain_pending_tool_calls();
         let stop_reason = if results.is_empty() {
             StopReason::EndTurn
@@ -414,7 +414,7 @@ mod tests {
         let mut parser = StreamResponseParser::new();
         let json = r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#;
         let events_data = parser.parse_data(json);
-        // Done is deferred — parse_data returns no Done event.
+        // Done is deferred - parse_data returns no Done event.
         assert!(events_data.is_empty());
 
         // When [DONE] sentinel arrives.
@@ -474,7 +474,7 @@ mod tests {
         let json = r#"{"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#;
         parser.parse_data(json);
 
-        // [DONE] sentinel — flushes pending Done.
+        // [DONE] sentinel - flushes pending Done.
         let events = parser.handle_done();
         assert_eq!(events.len(), 1);
 
@@ -649,13 +649,13 @@ mod tests {
         // Chunk 1: finish_reason "stop" without usage.
         let chunk1 = r#"{"id":"x","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":null},"finish_reason":"stop","native_finish_reason":"stop"}]}"#;
         let events1 = parser.parse_data(chunk1);
-        // Done is deferred — no events from parse_data.
+        // Done is deferred - no events from parse_data.
         assert!(events1.is_empty());
 
         // Chunk 2: second finish_reason with usage.cost (OpenRouter sends both).
         let chunk2 = r#"{"id":"x","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"stop","native_finish_reason":"stop"}],"usage":{"prompt_tokens":6,"completion_tokens":56,"total_tokens":62,"cost":0.00001308384}}"#;
         let events2 = parser.parse_data(chunk2);
-        // No new events — pending_done is enriched with usage from this chunk.
+        // No new events - pending_done is enriched with usage from this chunk.
         assert!(events2.is_empty());
 
         // [DONE] sentinel flushes the enriched pending Done.
@@ -747,7 +747,7 @@ mod tests {
         })
         .to_string();
         let events1 = parser.parse_data(&chunk1);
-        // Done is deferred — no events from parse_data.
+        // Done is deferred - no events from parse_data.
         assert!(events1.is_empty());
 
         // Second chunk also has finish_reason (should be ignored).

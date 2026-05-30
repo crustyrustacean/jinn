@@ -140,7 +140,7 @@ mod tests {
 
     #[rstest::rstest]
     fn validate_open_picker_allows_when_no_picker_active() {
-        // Verifies the positive case — opening a picker when none is active.
+        // Verifies the positive case - opening a picker when none is active.
         let state = AppState::default();
 
         let result = validate_open_picker(&state, &PickerKind::Provider);

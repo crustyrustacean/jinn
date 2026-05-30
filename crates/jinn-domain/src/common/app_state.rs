@@ -35,15 +35,15 @@ pub type SessionState = SessionMap;
 /// A snapshot of everything the application is doing right now.
 #[derive(Debug, Default)]
 pub struct AppState {
-    /// Session lifecycle state — owned by session-actor.
+    /// Session lifecycle state - owned by session-actor.
     pub session: SessionState,
-    /// Context assembly state — owned by context-actor.
+    /// Context assembly state - owned by context-actor.
     pub context: ContextAssemblyState,
-    /// Provider selection state — owned by provider-actor.
+    /// Provider selection state - owned by provider-actor.
     pub provider: ProviderState,
-    /// Frontend / UI state — owned by IntentHandler.
+    /// Frontend / UI state - owned by IntentHandler.
     pub frontend: FrontendState,
-    /// Workflow execution state — owned by workflow-actor.
+    /// Workflow execution state - owned by workflow-actor.
     pub workflow: crate::feat::workflow::workflow_state::WorkflowMap,
 }
 
@@ -72,14 +72,14 @@ impl AppState {
 
     /// Read-only access to the active chat session.
     ///
-    /// Infallible — `SessionMap` guarantees the active session exists.
+    /// Infallible - `SessionMap` guarantees the active session exists.
     pub fn active_session(&self) -> &ChatSessionState {
         self.session.active_session()
     }
 
     /// Mutable access to the active chat session.
     ///
-    /// Infallible — `SessionMap` guarantees the active session exists.
+    /// Infallible - `SessionMap` guarantees the active session exists.
     pub fn active_session_mut(&mut self) -> &mut ChatSessionState {
         self.session.active_session_mut()
     }

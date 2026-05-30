@@ -349,7 +349,7 @@ fn create_factory_succeeds_for_keyless_openai_backend() {
     let api_keys = ApiKeys::new();
 
     // When creating a factory with no API keys resolved.
-    // Note: create() only builds the provider struct — no network request is made.
+    // Note: create() only builds the provider struct - no network request is made.
     let factory = registry.create_factory(
         &ProviderId::new("lmstudio/local-model".to_owned()),
         &api_keys,

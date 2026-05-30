@@ -2,12 +2,12 @@
 //!
 //! This module defines cross-cutting types that are used across feature boundaries:
 //!
-//! - **[`app_msg`]** — `AppMsg` (processing loop message), `Command` (mega-enum),
+//! - **[`app_msg`]** - `AppMsg` (processing loop message), `Command` (mega-enum),
 //!   `Event` (mega-enum)
-//! - **[`intent`]** — `Intent` (user-initiated action) and `IntentResult`
-//! - **[`key`]** — `Key`, `KeyEvent`, `Modifiers` (keyboard input types)
-//! - **[`mode`]** — `Mode` (application interaction mode)
-//! - **[`system`]** — `KeyDown`, `KeyUp`, `ModeChanged`
+//! - **[`intent`]** - `Intent` (user-initiated action) and `IntentResult`
+//! - **[`key`]** - `Key`, `KeyEvent`, `Modifiers` (keyboard input types)
+//! - **[`mode`]** - `Mode` (application interaction mode)
+//! - **[`system`]** - `KeyDown`, `KeyUp`, `ModeChanged`
 //!
 //! Domain-specific types (session, provider, context, tools, chat input, etc.) live
 //! in their feature modules under `feat/` and are re-exported here for convenience.

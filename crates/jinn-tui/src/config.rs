@@ -2,14 +2,14 @@
 //!
 //! Plain data struct passed into [`TuiApp`](crate::TuiApp) at construction time.
 //! Environment variables are read **only** in the binary crate (`src/app.rs`)
-//! at program startup and fed into this struct — library crates never access
+//! at program startup and fed into this struct - library crates never access
 //! the environment directly.
 
 /// Configuration for the TUI application.
 ///
 /// Controls whether mouse capture is enabled. When enabled (default),
 /// the application captures all mouse events and provides application-level
-/// text selection. When disabled, mouse events are not captured — the
+/// text selection. When disabled, mouse events are not captured - the
 /// terminal's native text selection works, but scroll wheel and click-based
 /// features are unavailable.
 #[derive(Debug, Clone)]

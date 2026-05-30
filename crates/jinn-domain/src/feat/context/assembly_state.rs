@@ -1,4 +1,4 @@
-//! Context assembly state — owned by the context-actor.
+//! Context assembly state - owned by the context-actor.
 
 use std::collections::HashMap;
 
@@ -9,7 +9,7 @@ use crate::feat::persona::Persona;
 use crate::feat::skills::Skill;
 use crate::protocol::ToolDefinition;
 
-/// Context assembly state — owned by the context-actor.
+/// Context assembly state - owned by the context-actor.
 ///
 /// Written to exclusively by `SessionActor` and `IntentHandler`.
 /// No other actor should mutate these fields.

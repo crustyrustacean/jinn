@@ -1,4 +1,4 @@
-//! Actor entry rendering — yellow with source name.
+//! Actor entry rendering - yellow with source name.
 
 use ratatui::style::Style;
 use ratatui::text::Line;

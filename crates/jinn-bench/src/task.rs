@@ -1,4 +1,4 @@
-//! Bench task definitions — what to run and how to verify results.
+//! Bench task definitions - what to run and how to verify results.
 
 use std::future::Future;
 use std::path::Path;

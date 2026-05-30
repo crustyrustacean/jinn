@@ -1,4 +1,4 @@
-//! Shared infrastructure — actor framework, services, core coordination, state.
+//! Shared infrastructure - actor framework, services, core coordination, state.
 
 pub mod actor;
 pub mod actor_host;

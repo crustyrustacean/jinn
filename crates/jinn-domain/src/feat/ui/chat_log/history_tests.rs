@@ -909,7 +909,7 @@ fn expand_collapse_invalidates_and_rerenders() {
 
     let (mut terminal, area) = setup_term(80, 30);
 
-    // When rendering (truncated — max_lines=5 by default).
+    // When rendering (truncated - max_lines=5 by default).
     terminal
         .draw(|frame| {
             element.render(frame, area, &state);

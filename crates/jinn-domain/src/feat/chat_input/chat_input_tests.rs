@@ -257,7 +257,7 @@ fn move_cursor_up_clamps_col_to_shorter_line() {
     // Given "hello\nxy" with cursor at end of line 2 (col=2).
     let mut state = ChatInputBoxState::new();
     state.insert_text("hello\nxy");
-    // Move cursor to col=5 on line 2 — impossible since line 2 has length 2.
+    // Move cursor to col=5 on line 2 - impossible since line 2 has length 2.
     // Instead, move to col=2 on line 2, then go up.
     // Actually: cursor is at end (8), row=1, col=2. Go up → row=0, col=2.
 
@@ -290,7 +290,7 @@ fn move_cursor_down_clamps_col_to_shorter_line() {
     // Given "xy\nhello" with cursor at col 4 on line 1.
     let mut state = ChatInputBoxState::new();
     state.insert_text("xy\nhello");
-    // cursor at end (8), row=1, col=5. Move to row=0, col=5 — impossible (line 0 has length 2).
+    // cursor at end (8), row=1, col=5. Move to row=0, col=5 - impossible (line 0 has length 2).
     // Let's set up: cursor at start, move right 1 → row=0, col=1.
     state.move_cursor_to_start();
     state.move_cursor_right(); // col=1
@@ -492,7 +492,7 @@ fn visual_line_count_wraps_long_line() {
 
     // When reading visual line count.
     // "hello world" (11 graphemes) at width 5 wraps to "hello" and " world"
-    // Actually: "hello" (5), " world" (6) — " world" exceeds 5, so wraps further.
+    // Actually: "hello" (5), " world" (6) - " world" exceeds 5, so wraps further.
     // Let's trace: h(0)e(1)l(2)l(3)o(4) = col 5, then ' ' at col 6 > 5 → wrap
     // Actually the break: at i=5 (space), col=6 > 5. last_word_break was set when
     // space at col=6 but there's no previous word break. Let's just check > 1.

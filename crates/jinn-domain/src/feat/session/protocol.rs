@@ -1,4 +1,4 @@
-//! Session protocol — session identity and lifecycle types.
+//! Session protocol - session identity and lifecycle types.
 
 pub mod archive_session;
 pub mod close_session;

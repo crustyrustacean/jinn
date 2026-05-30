@@ -1,4 +1,4 @@
-//! Compaction worker — summarizes conversation history into structured checkpoints.
+//! Compaction worker - summarizes conversation history into structured checkpoints.
 //!
 //! Implements [`HistoryWorker`] to produce [`HistoryMutation`] batches that
 //! exclude old entries and insert a compaction summary. Runs asynchronously
@@ -219,7 +219,7 @@ impl CompactionWorker {
 
     /// Core evaluation algorithm.
     ///
-    /// `pub(crate)` for testing — the real entry points are [`evaluate`] (trait)
+    /// `pub(crate)` for testing - the real entry points are [`evaluate`] (trait)
     /// and [`evaluate_for_session`] (trigger-based).
     #[allow(clippy::too_many_lines)]
     pub(crate) async fn evaluate_with_config(
@@ -243,7 +243,7 @@ impl CompactionWorker {
             gather_compactable_entries(history, start_index, cut_index);
 
         if gathered_indices.is_empty() {
-            // Nothing to compact — all tokens fit within the reserve.
+            // Nothing to compact - all tokens fit within the reserve.
             return Ok(vec![]);
         }
 

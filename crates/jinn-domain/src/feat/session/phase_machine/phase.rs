@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-/// Discriminant of [`Phase`] — used for event emission where phase data is not needed.
+/// Discriminant of [`Phase`] - used for event emission where phase data is not needed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PhaseKind {
     Idle,
@@ -25,11 +25,11 @@ pub struct IdlePhase;
 
 /// Per-phase data for the Sending phase.
 ///
-/// Carries no state — exists for type-level consistency with the phase enum.
+/// Carries no state - exists for type-level consistency with the phase enum.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SendingPhase;
 
-/// Carries all streaming tracking state — ephemeral indices and maps
+/// Carries all streaming tracking state - ephemeral indices and maps
 /// that are only meaningful while the LLM is actively streaming tokens.
 ///
 /// All fields are cleared when transitioning away from `Streaming`.
@@ -55,10 +55,10 @@ pub struct TearingDownPhase;
 /// The current session phase with per-phase state.
 ///
 /// Each variant carries its own state struct. Transitioning away from a variant
-/// drops its data automatically — no manual cleanup of streaming indices or flags.
+/// drops its data automatically - no manual cleanup of streaming indices or flags.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Phase {
-    /// Session is idle — no LLM request in flight.
+    /// Session is idle - no LLM request in flight.
     Idle(IdlePhase),
     /// A message has been dispatched to the LLM but no tokens have arrived yet.
     Sending(SendingPhase),

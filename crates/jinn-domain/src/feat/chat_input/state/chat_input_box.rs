@@ -122,7 +122,7 @@ impl ChatInputBoxState {
     /// Insert text at the current cursor position and advance the cursor by the
     /// number of graphemes in the text.
     ///
-    /// Performs a single bulk insertion — O(n) overall instead of O(n²) when
+    /// Performs a single bulk insertion - O(n) overall instead of O(n²) when
     /// inserting many characters one at a time via
     /// [`insert_grapheme_at_cursor`](Self::insert_grapheme_at_cursor).
     /// Newlines are preserved in the buffer.
@@ -551,7 +551,7 @@ impl ChatInputBoxState {
         let replacement = format!("{prefix}{name}");
         self.replace_grapheme_range(token_start, self.cursor_pos, &replacement);
         // Cursor is now after the replacement text.
-        // Autocomplete stays active — the filter is now the exact name.
+        // Autocomplete stays active - the filter is now the exact name.
     }
 
     /// Expands a double-`#` token: replaces `#name#` with the template body.

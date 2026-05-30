@@ -1,4 +1,4 @@
-//! Picker intent handlers — navigation, filtering, confirmation, and scope toggling.
+//! Picker intent handlers - navigation, filtering, confirmation, and scope toggling.
 //!
 //! Handles all picker intents: open, insert char, backspace, confirm, move up/down,
 //! cursor movement, and keymap scope filter toggle. The `handle_picker_confirm`
@@ -219,7 +219,7 @@ pub fn handle_insert_char(state: &mut AppState, ch: char) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Handles `PasteText` in picker scope — bulk inserts pasted text into the filter.
+/// Handles `PasteText` in picker scope - bulk inserts pasted text into the filter.
 ///
 /// Newlines are stripped by the picker's `insert_text` method since the filter
 /// is a single-line input.
@@ -480,7 +480,7 @@ fn confirm_session_lifecycle(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
 
-    // No args — proceed directly.
+    // No args - proceed directly.
     crate::feat::session_lifecycle::intent::handle_session_lifecycle_setup(
         state,
         &lifecycle_name,
@@ -592,7 +592,7 @@ fn confirm_judge(state: &mut AppState) -> IntentResult {
     let mut judge_session = ChatSessionState::new();
     let judge_id = judge_session.session_id().clone();
 
-    // Set judge metadata — link to origin, mark as attached.
+    // Set judge metadata - link to origin, mark as attached.
     judge_session.set_judge(crate::feat::judge::JudgeMeta {
         origin_session: active_id.clone(),
         is_attached: true,

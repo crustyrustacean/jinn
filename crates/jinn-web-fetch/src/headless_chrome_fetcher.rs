@@ -1,4 +1,4 @@
-//! Headless Chrome fetcher — fetches JS-rendered pages via Chromium.
+//! Headless Chrome fetcher - fetches JS-rendered pages via Chromium.
 //!
 //! Uses [`headless_chrome::Browser`] to launch a headless Chromium process on
 //! first use (lazy launch), reuses it across requests, and cleanly shuts it
@@ -163,7 +163,7 @@ impl WebFetcher for HeadlessChromeFetcher {
         tracing::info!("HeadlessChromeFetcher: shutting down");
         if let Some(browser) = self.take_browser() {
             tracing::debug!("HeadlessChromeFetcher: dropping browser (kills Chromium process)");
-            // Drop the browser — this kills the Chromium process.
+            // Drop the browser - this kills the Chromium process.
             drop(browser);
         }
         tracing::info!("HeadlessChromeFetcher: shutdown complete");

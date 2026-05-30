@@ -1,4 +1,4 @@
-//! Prompt template scan actor — scans and reloads prompt templates on command.
+//! Prompt template scan actor - scans and reloads prompt templates on command.
 //!
 //! Subscribes to [`RescanPromptTemplates`] commands, scans user and system
 //! prompts directories, and emits [`PromptTemplatesLoaded`] events with the results.

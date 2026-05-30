@@ -1,4 +1,4 @@
-//! Turn counter — counts conversation turns for the status bar.
+//! Turn counter - counts conversation turns for the status bar.
 //!
 //! A "turn" is when a participant gives up control:
 //! - User sends a message → 1 turn
@@ -15,7 +15,7 @@ use crate::feat::session::tool_result_status::ToolResultStatus;
 /// Computes the number of conversation turns in the given chat history.
 ///
 /// A user entry always counts as a turn. An assistant entry counts as a turn
-/// only if it is the last entry or is NOT followed by a `ToolCall` — intermediate
+/// only if it is the last entry or is NOT followed by a `ToolCall` - intermediate
 /// tool-loop assistant messages are part of the same turn.
 #[must_use]
 pub fn compute_turn_count(history: &[ChatEntry]) -> u32 {

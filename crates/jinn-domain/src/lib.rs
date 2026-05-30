@@ -1,12 +1,12 @@
-//! The domain layer — protocol types, actors, intents, and UI elements.
+//! The domain layer - protocol types, actors, intents, and UI elements.
 //!
 //! This crate consolidates all domain types and logic into a single crate:
 //!
-//! - **Protocol types** (`protocol/`) — re-exports from `jinn-protocol`:
+//! - **Protocol types** (`protocol/`) - re-exports from `jinn-protocol`:
 //!   Command/Event mega-enums, foundational value types (ChatEntry, SessionId,
 //!   Key, Mode, etc.)
-//! - **Component UI** (`component_ui/`) — UiElement trait and registry
-//! - **Domain slices** — actors, intents, UI elements, and state for each
+//! - **Component UI** (`component_ui/`) - UiElement trait and registry
+//! - **Domain slices** - actors, intents, UI elements, and state for each
 //!   domain (provider, session, context, tools, etc.)
 //!
 //! Protocol types are re-exported at the crate root for convenience.

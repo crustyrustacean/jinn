@@ -1,4 +1,4 @@
-//! Session lifecycle management — setup/teardown command templates for sessions.
+//! Session lifecycle management - setup/teardown command templates for sessions.
 //!
 //! Provides [`CommandTemplate`] for parsing and rendering shell command strings
 //! that contain positional parameters (`$1`, `$2`, `$@`). Used by session
