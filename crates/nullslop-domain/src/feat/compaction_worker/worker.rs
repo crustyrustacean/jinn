@@ -121,29 +121,80 @@ impl CompactionWorker {
     /// Evaluate history using just the history snapshot (for HistoryWorker trait).
     ///
     /// This is the auto-compaction path (triggered by `HistoryAppended`).
-    async fn evaluate_history(&self, session_id: &SessionId, history: &[ChatEntry]) -> Vec<HistoryMutation> {
-        // Read live config, model from the triggering session.
-        let (config, model_name, compaction_prompt, retry_config) = {
+    /// Compacts only when the session's tiktoken-based `context_size()` (the same
+    /// value shown in the status bar) exceeds `config.threshold` of the model's
+    /// `context_length`.
+    async fn evaluate_history(&self, session_id: &SessionId, _history: &[ChatEntry]) -> Vec<HistoryMutation> {
+        // Read live config, model, context_size, and context_length from shared state.
+        let (config, model_name, compaction_prompt, retry_config, full_history) = {
             let state = self.state.read();
             let config = state.frontend.preferences.compaction.clone();
-            let session = state.session.get(session_id);
-            let model_name = session
-                .map(|s| s.profile().model.clone())
-                .unwrap_or_default();
+            let session = match state.session.get(session_id) {
+                Some(s) => s,
+                None => return vec![],
+            };
+            let model_name = session.profile().model.clone();
             let compaction_prompt = state.context.compaction_prompt.clone();
             let retry_config = state.frontend.preferences.request_retry.to_retry_config();
-            (config, model_name, compaction_prompt, retry_config)
-        };
 
-        // No premature threshold gate — the algorithm itself determines if there's
-        // anything to compact. The old gate used `cached_context_size` (tiktoken count
-        // of the entire assembled context including system messages and compaction
-        // summaries), which can't be reduced by compaction. The algorithm only considers
-        // compactable entries after the last compaction boundary.
+            // --- Threshold gate ---
+            // Uses the exact same values displayed in the status bar:
+            //   - context_size() = tiktoken count from last prompt assembly
+            //   - context_length = model's context window from provider/model cache
+            // If either is unavailable, we skip compaction (can't determine threshold).
+            let context_size = match session.context_size() {
+                Some(size) => size,
+                None => {
+                    tracing::debug!(
+                        session_id = %session_id,
+                        "skipping compaction: context_size not yet calculated"
+                    );
+                    return vec![];
+                }
+            };
+
+            let context_length = resolve_context_limit(
+                state.provider.model_cache.as_ref(),
+                &model_name,
+            );
+
+            let context_limit = match context_length {
+                Some(limit) => limit,
+                None => {
+                    // No model context_length available. Use fallback from config.
+                    config.fallback_context_window as u32
+                }
+            };
+
+            let usage_ratio = context_size as f64 / context_limit as f64;
+            if usage_ratio < config.threshold {
+                tracing::debug!(
+                    session_id = %session_id,
+                    context_size,
+                    context_limit,
+                    usage_ratio,
+                    threshold = config.threshold,
+                    "skipping compaction: below threshold"
+                );
+                return vec![];
+            }
+
+            tracing::info!(
+                session_id = %session_id,
+                context_size,
+                context_limit,
+                usage_ratio,
+                threshold = config.threshold,
+                "context exceeds threshold, proceeding with compaction"
+            );
+
+            let history = session.history().to_vec();
+            (config, model_name, compaction_prompt, retry_config, history)
+        };
 
         let result = self
             .evaluate_with_config(
-                history,
+                &full_history,
                 &config,
                 &model_name,
                 &compaction_prompt,
@@ -275,6 +326,25 @@ impl CompactionWorker {
 
         Ok(mutations)
     }
+}
+
+/// Look up the context_length for the active model from the model cache.
+///
+/// Mirrors the same lookup used by the status bar display so the compaction
+/// threshold gate and the status bar percentage are always consistent.
+fn resolve_context_limit(
+    model_cache: Option<&crate::feat::provider_infra::ModelCache>,
+    active_model: &str,
+) -> Option<u32> {
+    model_cache.and_then(|cache| {
+        let provider_name = active_model.split('/').next()?;
+        let models = cache.entries.get(provider_name)?;
+        let model_suffix = &active_model[(provider_name.len() + 1)..];
+        models
+            .iter()
+            .find(|m| m.id == model_suffix)
+            .and_then(|m| m.context_length)
+    })
 }
 
 /// Generate a summary using the LLM.
