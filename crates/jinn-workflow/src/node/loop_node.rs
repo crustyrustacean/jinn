@@ -108,18 +108,7 @@ pub struct OutputMapping {
 ///
 /// # Builder API
 ///
-/// ```rust,ignore
-/// let loop_node = LoopNode::new(
-///     "refine",
-///     vec![PortDef::text("prompt")],
-///     vec![PortDef::text("result")],
-///     || build_body_graph(),
-/// )
-/// .with_exit_condition("judge", "verdict", r"pass|approved")
-/// .with_max_iterations(5)
-/// .with_feedback("generator", "draft", "generator", "previous_draft")
-/// .with_output_mapping("result", "generator", "final_output");
-/// ```
+/// See the tests in this crate for full construction examples.
 pub struct LoopNode {
     /// Human-readable name for this loop node.
     name: String,

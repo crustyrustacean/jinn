@@ -32,24 +32,7 @@ type ExecuteFn = Arc<
 ///
 /// # Examples
 ///
-/// ```rust,ignore
-/// use jinn_workflow::node::CodeNode;
-/// use jinn_workflow::port::{PortDef, PortValues, PortValue, ScalarValue};
-///
-/// let node = CodeNode::new(
-///     "uppercase",
-///     vec![PortDef::text("in")],
-///     vec![PortDef::text("out")],
-///     |mut inputs, _ctx| {
-///         Box::pin(async move {
-///             let val = inputs.take_text("in").map_err(|_| Report::new(NodeError))?;
-///             let mut out = PortValues::new();
-///             out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text(val.to_uppercase())));
-///             Ok(out)
-///         })
-///     },
-/// );
-/// ```
+/// See the tests in this crate for full construction examples.
 pub struct CodeNode {
     /// Human-readable name for debugging.
     name: String,

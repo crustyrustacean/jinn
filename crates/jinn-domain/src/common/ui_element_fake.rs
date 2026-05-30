@@ -7,12 +7,7 @@
 //!
 //! # Usage
 //!
-//! ```ignore
-//! let (element, calls) = FakeUiElement::new("chat-input");
-//! registry.register(Box::new(element));
-//! // ... render ...
-//! assert_eq!(calls.borrow().len(), 1);
-//! ```
+//! See the tests in this crate for usage patterns.
 
 use std::cell::RefCell;
 use std::marker::PhantomData;
