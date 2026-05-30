@@ -5,37 +5,15 @@
 //!
 //! # `#[derive(EventMsg)]`
 //!
-//! Requires a `#[event_msg("module")]` helper attribute:
+//! Requires a `#[event_msg("module")]` helper attribute. Generates:
 //!
-//! ```ignore
-//! #[derive(EventMsg)]
-//! #[event_msg("chat_input")]
-//! struct ChatEntrySubmitted;
-//! ```
-//!
-//! Generates:
-//! ```ignore
-//! impl EventMsg for ChatEntrySubmitted {
-//!     const TYPE_NAME: &'static str = "chat_input::ChatEntrySubmitted";
-//! }
-//! ```
+//! `impl EventMsg for ChatEntrySubmitted { const TYPE_NAME: &'static str = "chat_input::ChatEntrySubmitted"; }`
 //!
 //! # `#[derive(CommandMsg)]`
 //!
-//! Requires a `#[cmd("module")]` helper attribute:
+//! Requires a `#[cmd("module")]` helper attribute. Generates:
 //!
-//! ```ignore
-//! #[derive(CommandMsg)]
-//! #[cmd("chat_input")]
-//! struct InsertChar;
-//! ```
-//!
-//! Generates:
-//! ```ignore
-//! impl CommandMsg for InsertChar {
-//!     const NAME: &'static str = "chat_input::InsertChar";
-//! }
-//! ```
+//! `impl CommandMsg for InsertChar { const NAME: &'static str = "chat_input::InsertChar"; }`
 
 use proc_macro::TokenStream;
 use proc_macro2::Span;

@@ -23,20 +23,7 @@ pub type MatchRanges = Vec<Range<usize>>;
 ///
 /// # Examples
 ///
-/// ```ignore
-/// struct MyItem { name: String }
-///
-/// impl PickerItem for MyItem {
-///     fn display_label(&self) -> &str { &self.name }
-///     fn render_row(&self, is_selected: bool) -> Line<'static> {
-///         if is_selected {
-///             Line::from(format!("> {}", self.name))
-///         } else {
-///             Line::from(self.name.clone())
-///         }
-///     }
-/// }
-/// ```
+/// See the tests in this crate for full implementation examples.
 pub trait PickerItem: std::fmt::Debug + 'static {
     /// Returns searchable text used for fuzzy matching.
     ///

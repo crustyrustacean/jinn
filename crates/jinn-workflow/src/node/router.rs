@@ -7,18 +7,7 @@
 //!
 //! # Example
 //!
-//! ```rust,ignore
-//! use jinn_workflow::node::RouterNode;
-//! use jinn_workflow::port::PortDef;
-//!
-//! let router = RouterNode::new(
-//!     "router",
-//!     PortDef::text("in"),
-//!     vec![PortDef::text("yes"), PortDef::text("no")],
-//! )
-//! .with_route("yes".to_owned(), r"(?i)^yes")
-//! .with_route("no".to_owned(), r"(?i)^no");
-//! ```
+//! See the tests in this crate for full construction examples.
 
 use error_stack::Report;
 use regex::Regex;
