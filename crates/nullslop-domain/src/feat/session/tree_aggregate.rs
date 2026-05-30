@@ -78,9 +78,9 @@ pub fn snapshot_frozen_node(session: &ChatSessionState) -> FrozenTreeNode {
 /// cycles with a visited set.
 ///
 /// Returns `session_id` itself if it has no parent (single session or root).
-pub fn find_tree_root(
-    sessions: &HashMap<SessionId, ChatSessionState>,
-    frozen_nodes: &HashMap<SessionId, FrozenTreeNode>,
+pub fn find_tree_root<S: ::std::hash::BuildHasher>(
+    sessions: &HashMap<SessionId, ChatSessionState, S>,
+    frozen_nodes: &HashMap<SessionId, FrozenTreeNode, S>,
     session_id: &SessionId,
 ) -> SessionId {
     let mut visited = HashSet::new();
@@ -122,9 +122,9 @@ pub fn find_tree_root(
 /// 1. Finds the tree root via [`find_tree_root`].
 /// 2. Collects ALL sessions in the tree (BFS from root), including frozen nodes.
 /// 3. Sums token stats, cost, and turns.
-pub fn aggregate_tree_stats(
-    sessions: &HashMap<SessionId, ChatSessionState>,
-    frozen_nodes: &HashMap<SessionId, FrozenTreeNode>,
+pub fn aggregate_tree_stats<S: ::std::hash::BuildHasher>(
+    sessions: &HashMap<SessionId, ChatSessionState, S>,
+    frozen_nodes: &HashMap<SessionId, FrozenTreeNode, S>,
     session_id: &SessionId,
 ) -> TreeAggregateStats {
     let root = find_tree_root(sessions, frozen_nodes, session_id);

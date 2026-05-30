@@ -11,7 +11,7 @@ pub use event::Event;
 use crate::protocol::ActorName;
 
 /// An application message for the core processing loop.
-#[expect(
+#[allow(
     clippy::large_enum_variant,
     reason = "boxing would cascade through all match arms"
 )]

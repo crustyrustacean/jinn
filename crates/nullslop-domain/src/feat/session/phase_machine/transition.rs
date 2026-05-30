@@ -83,7 +83,7 @@ pub trait PhaseTransitions {
 
 impl PhaseTransitions for SessionPhaseMachine {
     fn on_dispatch_message(&mut self) -> Result<TransitionOutcome, TransitionError> {
-        self.transition(PhaseKind::Idle, Phase::Sending(SendingPhase::default()))
+        self.transition(PhaseKind::Idle, Phase::Sending(SendingPhase))
     }
 
     fn on_first_token(&mut self) -> Result<TransitionOutcome, TransitionError> {
@@ -101,7 +101,7 @@ impl PhaseTransitions for SessionPhaseMachine {
         let next = if soft_cancel {
             Phase::Idle(IdlePhase)
         } else {
-            Phase::Sending(SendingPhase::default())
+            Phase::Sending(SendingPhase)
         };
         self.transition(PhaseKind::Streaming, next)
     }
