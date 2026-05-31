@@ -114,7 +114,7 @@ impl ProviderActor {
             | Command::LoadSessionPickerEntries(..)
             | Command::ScanSkills
             | Command::RescanPersonas(..)
-            | Command::RescanJudges(..)
+
             | Command::LoadPersonaPickerEntries(..)
             | Command::UpdatePreferences(..)
             | Command::SessionForkRequested(..)
@@ -132,7 +132,7 @@ impl ProviderActor {
             | Command::RerunFromNode(..)
             | Command::LoadWorkflowPickerEntries(..)
             | Command::MarkSessionInteracted(..)
-            | Command::CancelPendingJudgeEvaluation(..)
+
             | Command::SubmitHistoryMutations(..)
             | Command::TriggerCompaction(..)
             | Command::Dynamic(..)

@@ -349,34 +349,7 @@ pub fn create_core_with_actor_host(
         },
     ));
 
-    // Judge scan actor.
-    actors.push(spawn::<
-        jinn_domain::feat::judge::judge_scan_actor::JudgeScanActor,
-    >(
-        "judge-scan",
-        &sink,
-        handle,
-        &counter,
-        &shutdown_tracker,
-        jinn_domain::feat::judge::judge_scan_actor::JudgeScanActorDeps {
-            paths: services.paths.clone(),
-        },
-    ));
 
-    // Judge coordinator actor.
-    // DISABLED: transitioning to a different architecture.
-    // actors.push(spawn::<
-    //     jinn_domain::feat::judge::judge_coordinator_actor::JudgeCoordinatorActor,
-    // >(
-    //     "judge-coordinator",
-    //     &sink,
-    //     handle,
-    //     &counter,
-    //     &shutdown_tracker,
-    //     jinn_domain::feat::judge::judge_coordinator_actor::JudgeCoordinatorActorDeps {
-    //         state: state.clone(),
-    //     },
-    // ));
 
     // Provider actor.
     actors.push(spawn::<
@@ -624,10 +597,6 @@ pub fn create_core_with_actor_host(
         jinn_domain::feat::context::protocol::command::RescanPersonas,
     ));
 
-    // Trigger initial judge scan.
-    let _ = sink.send_command(jinn_domain::Command::RescanJudges(
-        jinn_domain::feat::judge::RescanJudges,
-    ));
 
     (core, services, actor_host_service)
 }

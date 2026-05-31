@@ -18,9 +18,7 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState)
         Some(PickerKind::Workflow) => {
             render_workflow_picker(frame, area, state);
         }
-        Some(PickerKind::Judge) => {
-            render_judge_picker(frame, area, state);
-        }
+
         Some(PickerKind::CompactionModel) => {
             jinn_domain::feat::provider::render::render_compaction_model_picker(
                 frame, area, state,
@@ -68,10 +66,6 @@ fn render_workflow_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     jinn_domain::feat::picker::render::render_workflow_picker(frame, area, state);
 }
 
-/// Renders the judge picker overlay (delegates to domain render).
-fn render_judge_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    jinn_domain::feat::picker::render::render_judge_picker(frame, area, state);
-}
 
 /// Renders the arg input popup (delegates to domain render).
 pub(super) fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {

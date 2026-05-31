@@ -109,17 +109,6 @@ impl SessionStoreService {
 
     /// Loads all non-archived judge sessions targeting the given origin.
     ///
-    /// # Errors
-    ///
-    /// Returns [`SessionStoreError`] if the database cannot be read.
-    pub async fn load_judge_sessions_for_origin(
-        &self,
-        origin_session_id: &SessionId,
-    ) -> Result<Vec<ChatSessionState>, Report<SessionStoreError>> {
-        self.svc
-            .load_judge_sessions_for_origin(origin_session_id)
-            .await
-    }
 
     /// Shut down the store, performing any cleanup or flush operations.
     ///

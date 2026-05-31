@@ -146,7 +146,7 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_event::<crate::feat::tools_actor::protocol::event::ToolsRegistered>();
         ctx.subscribe_event::<crate::feat::provider::protocol::event::PromptTemplatesLoaded>();
         ctx.subscribe_event::<crate::feat::context::protocol::event::PersonasLoaded>();
-        ctx.subscribe_event::<crate::feat::judge::JudgesLoaded>();
+
 
         ctx.set_description("Session lifecycle and persistence");
 
@@ -221,13 +221,6 @@ impl SessionPersistenceActor {
             Event::PersonasLoaded(payload) => {
                 self.on_personas_loaded(payload);
             }
-            Event::JudgesLoaded(payload) => {
-                self.on_judges_loaded(payload);
-            }
-
-            // JudgeVerdict is handled by JudgeCoordinatorActor, not session actor.
-            #[allow(clippy::match_same_arms)]
-            Event::JudgeVerdict(..) => {}
 
             _ => {}
         }
@@ -314,9 +307,9 @@ impl SessionPersistenceActor {
             | Command::CancelWorkflow(..)
             | Command::RerunFromNode(..)
             | Command::LoadWorkflowPickerEntries(..)
-            | Command::RescanJudges(..)
+
             | Command::LoadCompactionModelPickerEntries(..)
-            | Command::CancelPendingJudgeEvaluation(..)
+
             | Command::TriggerCompaction(..)
             | Command::Dynamic(..)
             | Command::ExecuteWebFetch(..) => {}

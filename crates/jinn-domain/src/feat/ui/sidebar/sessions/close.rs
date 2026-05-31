@@ -45,14 +45,13 @@ pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError>
         .session
         .get(&entry.id)
         .ok_or(SessionCloseError::NoSelection)?;
-    if !matches!(session.phase(), PhaseKind::Idle) {
+    if session.is_busy() || !matches!(session.phase(), PhaseKind::Idle) {
         return Err(SessionCloseError::SessionBusy);
-
     }
+
 
     Ok(())
 }
-
 /// Handles `SidebarSessionClose` - closes the selected session.
 ///
 /// Removes the session from the in-memory HashMap (keeps it in SQLite).

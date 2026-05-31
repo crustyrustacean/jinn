@@ -7,7 +7,7 @@ pub mod context;
 pub mod global;
 pub mod history_worker;
 pub mod intent;
-pub mod judge;
+
 pub mod llm_actor;
 pub mod navigation;
 pub mod persona;

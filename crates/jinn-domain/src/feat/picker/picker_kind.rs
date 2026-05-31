@@ -24,8 +24,6 @@ pub enum PickerKind {
     Workflow,
     /// Compaction model picker - select a model for context compaction summarization.
     CompactionModel,
-    /// Judge picker - select a judge definition to attach.
-    Judge,
     /// Tool picker - toggle which tools are enabled for the session.
     Tool,
     /// Skill picker - toggle which skills are enabled for the session.
@@ -43,7 +41,7 @@ impl std::fmt::Display for PickerKind {
             Self::SessionLifecycle => write!(f, "session-lifecycle"),
             Self::Workflow => write!(f, "workflows"),
             Self::CompactionModel => write!(f, "compaction model"),
-            Self::Judge => write!(f, "judges"),
+
             Self::Tool => write!(f, "tools"),
             Self::Skill => write!(f, "skills"),
         }
