@@ -1,4 +1,4 @@
-//! Model discovery actor — discovers available models from configured providers.
+//! Model discovery actor - discovers available models from configured providers.
 //!
 //! Subscribes to `RefreshModels` commands and iterates over all configured
 //! providers, calling each provider's `list_models()` endpoint for each.
@@ -106,7 +106,7 @@ impl DiscoverActor {
         );
 
         for entry in &entries {
-            // Need a placeholder model for the builder — use the first static model.
+            // Need a placeholder model for the builder - use the first static model.
             let Some(placeholder_model) = entry.models.first() else {
                 errors.insert(
                     entry.name.clone(),

@@ -1,4 +1,4 @@
-//! Provider initialization actor — loads static config, merges cache, resolves `last_model`.
+//! Provider initialization actor - loads static config, merges cache, resolves `last_model`.
 //!
 //! Subscribes to [`EnvironmentLoaded`](super::EnvironmentLoaded) emitted by the
 //! env init actor. On receipt: builds the `ProviderRegistry` from the config,

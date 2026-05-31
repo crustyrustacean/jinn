@@ -1,4 +1,4 @@
-//! Navigation intent handlers — scroll, tab, and editor.
+//! Navigation intent handlers - scroll, tab, and editor.
 
 use crate::common::app_state::AppState;
 use crate::feat::ui::chat_log::visual_item::VisualItem;

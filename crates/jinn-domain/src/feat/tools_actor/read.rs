@@ -1,4 +1,4 @@
-//! Read built-in tool — reads file contents with offset/limit support.
+//! Read built-in tool - reads file contents with offset/limit support.
 //!
 //! Supports reading text files with optional line-based pagination via
 //! `offset` (1-indexed) and `limit` parameters. Relative paths are resolved
@@ -136,7 +136,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     truncation: Some(meta),
                 }
             } else {
-                // truncated but no meta — return unformatted truncated content
+                // truncated but no meta - return unformatted truncated content
                 ToolResult {
                     tool_call_id: call.id,
                     name: call.name,

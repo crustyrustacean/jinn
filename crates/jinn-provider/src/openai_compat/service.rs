@@ -272,7 +272,7 @@ impl LlmService for OpenAiCompatibleService {
                                     }
                                 }
                                 SseEvent::Done => {
-                                    // Done is the stream terminator — no action needed for text-only.
+                                    // Done is the stream terminator - no action needed for text-only.
                                 }
                             }
                         }

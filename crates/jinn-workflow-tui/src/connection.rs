@@ -629,7 +629,7 @@ mod tests {
     // --- Mutant-killing tests for connection.rs ---
 
     // Kills: render_merged_grid >= -> ==, >= -> <=, >= -> <
-    // The boundary check is `x >= area.x + area.width` — we verify it excludes the right edge.
+    // The boundary check is `x >= area.x + area.width` - we verify it excludes the right edge.
     #[test]
     fn render_merged_grid_excludes_cells_at_right_boundary() {
         let area = Rect::new(0, 0, 10, 5);

@@ -205,7 +205,7 @@ fn load_provider_entries_alias_inherits_availability() {
         None,
     );
     let registry = ProviderRegistry::from_config(config).expect("registry");
-    let api_keys = ApiKeys::new(); // No keys — openrouter is unavailable.
+    let api_keys = ApiKeys::new(); // No keys - openrouter is unavailable.
 
     // When loading provider entries.
     let entries = load_provider_entries(&registry, &api_keys, None, &default_theme());
@@ -420,7 +420,7 @@ fn load_provider_entries_includes_all_remote_models() {
         ],
     );
 
-    // When loading entries (no filter — returns everything).
+    // When loading entries (no filter - returns everything).
     let entries = load_provider_entries(&registry, &api_keys, Some(&cache), &default_theme());
 
     // Then all 3 entries are present (1 static + 2 remote).

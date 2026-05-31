@@ -1,4 +1,4 @@
-//! Centralized plugin registry — owns one sandboxed Lua VM per plugin.
+//! Centralized plugin registry - owns one sandboxed Lua VM per plugin.
 //!
 //! [`PluginRegistry`] is the single entry point for all plugin operations.
 //! Each plugin gets its own Lua VM so global state never leaks between plugins.
@@ -157,7 +157,7 @@ impl PluginInstance {
             Report::new(PluginError).attach("Lua table creation failed")
         })?;
 
-        // ps.sub — fire-and-forget subscription.
+        // ps.sub - fire-and-forget subscription.
         {
             let subs = subscriptions.clone();
             let ps_sub = lua
@@ -176,7 +176,7 @@ impl PluginInstance {
             })?;
         }
 
-        // ps.hook — data-returning hook registration.
+        // ps.hook - data-returning hook registration.
         {
             let hooks_ref = hooks.clone();
             let ps_hook = lua
@@ -195,7 +195,7 @@ impl PluginInstance {
             })?;
         }
 
-        // ps.pub — plugin-internal publish (fires ps.sub callbacks in same VM).
+        // ps.pub - plugin-internal publish (fires ps.sub callbacks in same VM).
         {
             let subs = subscriptions.clone();
             let ps_pub = lua
@@ -221,7 +221,7 @@ impl PluginInstance {
             })?;
         }
 
-        // ps.unsub — unsubscribe from both subscriptions and hooks.
+        // ps.unsub - unsubscribe from both subscriptions and hooks.
         {
             let subs = subscriptions.clone();
             let hooks_ref = hooks.clone();
@@ -261,7 +261,7 @@ impl PluginInstance {
 
 // ── PluginRegistry ─────────────────────────────────────────────────────────
 
-/// Centralized plugin registry — owns all plugin VMs.
+/// Centralized plugin registry - owns all plugin VMs.
 ///
 /// Each loaded plugin runs in its own sandboxed Lua VM. The registry
 /// provides [`emit`](Self::emit) for fire-and-forget events and

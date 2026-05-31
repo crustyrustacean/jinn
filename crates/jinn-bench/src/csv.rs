@@ -8,7 +8,7 @@ use std::path::Path;
 
 use csv::Writer;
 
-/// One row of bench output — the result of running a single task against a single model.
+/// One row of bench output - the result of running a single task against a single model.
 #[derive(Debug, Clone)]
 pub struct BenchResult {
     /// Task name.

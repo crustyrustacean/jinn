@@ -1,4 +1,4 @@
-//! Noop bench task for testing — completes instantly, no fixtures, no subprocesses.
+//! Noop bench task for testing - completes instantly, no fixtures, no subprocesses.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

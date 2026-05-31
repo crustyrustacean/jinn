@@ -138,7 +138,7 @@ impl TuiApp {
                         self.route_intent(intent);
                     }
                     crossterm::event::Event::Mouse(mouse) => {
-                        // Selection handling — intercept before keymap
+                        // Selection handling - intercept before keymap
                         // (only when mouse capture is enabled).
                         if self.config.mouse_selection && self.handle_selection_mouse(mouse) {
                             return; // consumed by selection

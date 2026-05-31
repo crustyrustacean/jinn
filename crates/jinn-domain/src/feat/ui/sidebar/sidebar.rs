@@ -1,4 +1,4 @@
-//! [`Sidebar`] — the sidebar container that manages section registration,
+//! [`Sidebar`] - the sidebar container that manages section registration,
 //! focus delegation, section-crossing navigation, and rendering.
 
 use ratatui::Frame;
@@ -112,7 +112,7 @@ impl Default for Sidebar {
 }
 
 // ---------------------------------------------------------------------------
-// Sidebar topology — section-crossing navigation
+// Sidebar topology - section-crossing navigation
 // ---------------------------------------------------------------------------
 
 /// Navigate the sidebar, handling section-crossing when a section exhausts its entries.
@@ -197,7 +197,7 @@ fn section_has_content(id: SidebarSectionId, state: &AppState) -> bool {
     match id {
         SidebarSectionId::Persona => true,
         SidebarSectionId::Pins => !state.sorted_pinned_ids().is_empty(),
-        // TaskList is always skipped by navigation — render-only.
+        // TaskList is always skipped by navigation - render-only.
         SidebarSectionId::TaskList => false,
         SidebarSectionId::Sessions => !state.session.is_empty(),
     }
@@ -276,7 +276,7 @@ pub fn jump_to_section(direction: &SidebarIntent, state: &mut AppState) {
                 };
                 receive_cursor(target, enter_from, state);
             } else if target == SidebarSectionId::Pins {
-                // Pins has a retained cursor — sync chat log to show it.
+                // Pins has a retained cursor - sync chat log to show it.
                 pins::pins_section::sync_chat_log_cursor(state);
             } else if target == SidebarSectionId::Sessions {
                 // Ensure scroll offset is valid for sessions.

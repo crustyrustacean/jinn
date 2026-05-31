@@ -18,7 +18,7 @@ const DEFAULT_PERSONA_NAME: &str = "coding-assistant";
 /// Default sliding window size for the sliding-window strategy.
 pub const DEFAULT_SLIDING_WINDOW_SIZE: usize = 5;
 
-/// Serde default for `persona_name` — ensures old serialized sessions deserialize correctly.
+/// Serde default for `persona_name` - ensures old serialized sessions deserialize correctly.
 fn default_persona_name() -> String {
     DEFAULT_PERSONA_NAME.to_owned()
 }
@@ -36,11 +36,11 @@ fn default_sliding_window_size() -> usize {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionProfile {
     /// The model/provider for this session (e.g., "ollama/llama3").
-    /// Defaults to `NO_PROVIDER_ID` — the user must select a model.
+    /// Defaults to `NO_PROVIDER_ID` - the user must select a model.
     pub model: String,
     /// The active prompt strategy for this session.
     pub strategy: PromptStrategyId,
-    /// The persona name for this session. Always populated — defaults to `"coding-assistant"`.
+    /// The persona name for this session. Always populated - defaults to `"coding-assistant"`.
     /// Old serialized sessions without this field deserialize to the default.
     #[serde(default = "default_persona_name")]
     pub persona_name: String,

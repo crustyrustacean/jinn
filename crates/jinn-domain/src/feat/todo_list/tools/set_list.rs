@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! `set_list` built-in tool — replaces the entire task list in one call.
+//! `set_list` built-in tool - replaces the entire task list in one call.
 
 use crate::feat::tools_actor::BoxedToolFuture;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
@@ -30,7 +30,7 @@ pub fn definition() -> ToolDefinition {
             .to_owned(),
         prompt_snippet: Some("Create a new task list".to_owned()),
         prompt_guidelines: vec![
-            "Provide the full plan — all phases and tasks — in a single call. \
+            "Provide the full plan - all phases and tasks - in a single call. \
              Existing phases and tasks are replaced entirely."
                 .to_owned(),
             "Each phase must have a description. Tasks within a phase are optional."
@@ -139,14 +139,23 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         };
 
         match result {
-            Ok(content) => ToolResult {
-                tool_call_id: call.id,
-                name: call.name,
-                content,
-                success: true,
-                full_content: None,
-                truncation: None,
-            },
+            Ok(content) => {
+                if let Some(sink) = &ctx.sink {
+                    let _ = sink.send_event(crate::protocol::Event::TaskListUpdated(
+                        crate::feat::session::protocol::task_list_updated::TaskListUpdated {
+                            session_id: session_id.clone(),
+                        },
+                    ));
+                }
+                ToolResult {
+                    tool_call_id: call.id,
+                    name: call.name,
+                    content,
+                    success: true,
+                    full_content: None,
+                    truncation: None,
+                }
+            }
             Err(content) => ToolResult {
                 tool_call_id: call.id,
                 name: call.name,

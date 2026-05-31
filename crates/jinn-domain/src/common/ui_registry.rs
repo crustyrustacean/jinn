@@ -9,7 +9,7 @@ use super::ui_element::UiElement;
 /// Registry of UI elements available for rendering.
 ///
 /// Elements are registered during startup and queried by name during
-/// the TUI render loop. Registration order is preserved — iteration
+/// the TUI render loop. Registration order is preserved - iteration
 /// yields elements in the order they were added.
 #[derive(Debug)]
 pub struct UiRegistry<S> {

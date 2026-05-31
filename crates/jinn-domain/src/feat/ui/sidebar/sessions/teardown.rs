@@ -4,7 +4,7 @@ use crate::common::app_state::AppState;
 use crate::feat::ui::sidebar::sessions::close::validate_session_close;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 
-/// Handles `SidebarSessionTeardown` — re-runs teardown without closing the session.
+/// Handles `SidebarSessionTeardown` - re-runs teardown without closing the session.
 ///
 /// Validates that the close can proceed, looks up the selected session's
 /// teardown command, and emits `RunSessionTeardown` for the session actor to execute.
@@ -15,7 +15,7 @@ use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 pub fn handle_session_teardown(state: &mut AppState) -> crate::protocol::IntentResult {
     use crate::feat::session_lifecycle::command_template::CommandTemplate;
 
-    // Validate — same preconditions as session close.
+    // Validate - same preconditions as session close.
     if validate_session_close(state).is_err() {
         return crate::protocol::IntentResult::empty();
     }

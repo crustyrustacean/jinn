@@ -5,13 +5,15 @@ description = "Generate a context-rich implementation specification from an appr
 
 <instructions>
 
-The user has approved the High-Level Pitch discussed previously. Your task is to write the **Context-Rich Specification** to disk.
+The user has approved the plan discussed previously. Your task is to write the **Context-Rich Specification** to disk, review it, and then create the implementation task list.
 
 ## Instructions
 
-1.  **Synthesize History:** Review the entire Socratic dialogue and the approved High-Level Pitch. Extract all technical decisions, code references, and algorithms discussed.
-2.  **Generate Specification:** Write a comprehensive, standalone technical specification to `.plans/<task>/plan.md` (where `<task>` is a slugified version of the task name).
-3.  **Report:** Reply to the user with "Plan created at .plans/<task>/plan.md".
+1.  **Synthesize History:** Review the entire Socratic dialogue and the approved plan. Extract all technical decisions, code references, and algorithms discussed.
+2.  **Generate Specification:** Write a comprehensive, standalone technical specification to `.plans/<task>/plan.md` (where `<task>` is a slugified version of the task name). The specification is the "spec" — the authoritative reference for what to implement.
+3.  **Review Specification:** Re-read the generated spec end-to-end. Verify that every phase from the approved plan is covered, that all mandatory sections are present, and that a fresh agent could implement the feature using only this document. Fix any gaps, inconsistencies, or ambiguities you find.
+4.  **Create Task List:** Call `todo_set_list` to populate the task list with the phases and tasks from the approved plan. Each phase should have a short description (e.g., "Research", "Build", "Test") and an ordered list of task descriptions. Use the same phases that appear in the spec. **Append a final phase called "Verification"** with each acceptance criterion from the approved plan as a separate task in that phase. This ensures the agent verifies all acceptance criteria before declaring the task complete.
+5.  **Report:** Reply to the user with "Plan created at .plans/<task>/plan.md and task list initialized."
 
 ## Mandatory Elements
 
@@ -29,9 +31,9 @@ The specification must be a **standalone technical document**. A fresh agent wit
 
 ## Structure
 
-- The document **must** begin with the "Problem" and "Solution" from the Pitch.
-- The document **must** include the "Acceptance Criteria" from the Pitch.
-- The document **must** include the "Phases" (with checkboxes) from the Pitch, but expanded with implementation specifics.
+- The document **must** begin with the "Problem" and "Solution" from the approved plan.
+- The document **must** include the "Acceptance Criteria" from the approved plan.
+- The document **must** include the "Phases" from the approved plan, expanded with implementation specifics describing what each phase covers. Do not use checkboxes for status tracking — the task list handles that.
 - The document **must** have dedicated headers for all Mandatory Elements listed above.
 
 </instructions>

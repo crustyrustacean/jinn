@@ -38,7 +38,7 @@ fn grapheme_safe_end(text: &str, max_bytes: usize) -> usize {
 /// - `[Tool result]: <content>` (truncated to ~2000 bytes)
 ///
 /// System, Error, Thinking, Transient, Table, Skill, and Compaction entries
-/// are skipped — they are not relevant to the summarization prompt.
+/// are skipped - they are not relevant to the summarization prompt.
 pub fn serialize_entries_for_compaction(entries: &[ChatEntry]) -> String {
     let mut lines = Vec::new();
 
@@ -181,9 +181,9 @@ mod tests {
     #[test]
     fn truncates_tool_result_with_multibyte_at_boundary() {
         // Given content where byte 2000 falls in the middle of an em-dash (3 bytes).
-        // 1999 ASCII 'x' chars + "—" (em-dash, 3 bytes) + more text.
+        // 1999 ASCII 'x' chars + "-" (em-dash, 3 bytes) + more text.
         let mut content = "x".repeat(1999);
-        content.push('—');
+        content.push('-');
         content.push_str("more text");
 
         let entries = vec![ChatEntry::tool_result(
@@ -254,7 +254,7 @@ mod tests {
         // When max_bytes is 4 (falls in the middle of é).
         let end = grapheme_safe_end(text, 4);
 
-        // Then it returns 3 ("abc" — the last full grapheme before byte 4).
+        // Then it returns 3 ("abc" - the last full grapheme before byte 4).
         assert_eq!(end, 3);
     }
 

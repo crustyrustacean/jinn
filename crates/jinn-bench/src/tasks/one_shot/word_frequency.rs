@@ -1,4 +1,4 @@
-//! word-frequency bench task — count word frequencies and print top 5.
+//! word-frequency bench task - count word frequencies and print top 5.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

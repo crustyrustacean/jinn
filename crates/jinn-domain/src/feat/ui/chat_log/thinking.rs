@@ -1,4 +1,4 @@
-//! Thinking entry rendering — dark gray.
+//! Thinking entry rendering - dark gray.
 
 use ratatui::style::Style;
 use ratatui::text::Line;

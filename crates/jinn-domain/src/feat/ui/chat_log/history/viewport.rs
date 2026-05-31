@@ -1,4 +1,4 @@
-//! Viewport computation — scroll math and visible entry determination.
+//! Viewport computation - scroll math and visible entry determination.
 
 /// Accumulated scroll computation results.
 pub(crate) struct ScrollState {

@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! `add_phase` built-in tool — adds a new phase to the task list.
+//! `add_phase` built-in tool - adds a new phase to the task list.
 
 use crate::feat::tools_actor::BoxedToolFuture;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
@@ -100,6 +100,14 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             let list = session.task_list_mut();
             phase_id = list.add_phase(&description);
             rendered = list.render_text();
+        }
+
+        if let Some(sink) = &ctx.sink {
+            let _ = sink.send_event(crate::protocol::Event::TaskListUpdated(
+                crate::feat::session::protocol::task_list_updated::TaskListUpdated {
+                    session_id: session_id.clone(),
+                },
+            ));
         }
 
         ToolResult {

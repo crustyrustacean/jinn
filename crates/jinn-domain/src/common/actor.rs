@@ -5,11 +5,11 @@
 //!
 //! # Core types
 //!
-//! - [`Actor`] — async trait that actor authors implement
-//! - [`ActorRef<M>`] — typed, cloneable handle for sending messages to an actor
-//! - [`ActorEnvelope<M>`] — wrapper for all messages an actor can receive
-//! - [`ActorContext`] — subscriptions, peer refs, and message sink
-//! - [`MessageSink`] — trait for sending bus messages from actors to the application
+//! - [`Actor`] - async trait that actor authors implement
+//! - [`ActorRef<M>`] - typed, cloneable handle for sending messages to an actor
+//! - [`ActorEnvelope<M>`] - wrapper for all messages an actor can receive
+//! - [`ActorContext`] - subscriptions, peer refs, and message sink
+//! - [`MessageSink`] - trait for sending bus messages from actors to the application
 
 pub mod actor;
 pub mod actor_counter;

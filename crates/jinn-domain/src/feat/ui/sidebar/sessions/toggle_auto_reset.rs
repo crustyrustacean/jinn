@@ -6,7 +6,7 @@ use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use crate::protocol::IntentResult;
 
-/// Handles `ToggleJudgeAutoReset` — toggles the per-session `auto_reset` override
+/// Handles `ToggleJudgeAutoReset` - toggles the per-session `auto_reset` override
 /// on the judge session under the sidebar cursor.
 ///
 /// The effective auto-reset is resolved (per-session override → judge file default).

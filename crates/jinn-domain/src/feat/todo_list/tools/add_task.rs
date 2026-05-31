@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! `add_task` built-in tool — adds a new task to a phase.
+//! `add_task` built-in tool - adds a new task to a phase.
 
 use crate::feat::todo_list::{PhaseId, TaskId, TaskPosition};
 use crate::feat::tools_actor::BoxedToolFuture;
@@ -32,7 +32,7 @@ pub fn definition() -> ToolDefinition {
         prompt_guidelines: vec![
             "Specify after_task to insert after a specific task, or before_task to insert before one."
                 .to_owned(),
-            "Do not specify both after_task and before_task — they are mutually exclusive."
+            "Do not specify both after_task and before_task - they are mutually exclusive."
                 .to_owned(),
             "When neither is specified, the task is appended to the end of the phase.".to_owned(),
         ],
@@ -120,14 +120,23 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         };
 
         match result {
-            Ok(content) => ToolResult {
-                tool_call_id: call.id,
-                name: call.name,
-                content,
-                success: true,
-                full_content: None,
-                truncation: None,
-            },
+            Ok(content) => {
+                if let Some(sink) = &ctx.sink {
+                    let _ = sink.send_event(crate::protocol::Event::TaskListUpdated(
+                        crate::feat::session::protocol::task_list_updated::TaskListUpdated {
+                            session_id: session_id.clone(),
+                        },
+                    ));
+                }
+                ToolResult {
+                    tool_call_id: call.id,
+                    name: call.name,
+                    content,
+                    success: true,
+                    full_content: None,
+                    truncation: None,
+                }
+            }
             Err(content) => ToolResult {
                 tool_call_id: call.id,
                 name: call.name,

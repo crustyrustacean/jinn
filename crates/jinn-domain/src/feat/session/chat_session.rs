@@ -1,4 +1,4 @@
-//! Chat session protocol — state types for a single conversation.
+//! Chat session protocol - state types for a single conversation.
 //!
 //! [`ChatSessionState`] owns the history and streaming state for one chat session.
 //! Multiple sessions can exist concurrently in the application, each identified
@@ -29,16 +29,16 @@ use crate::protocol::{
     SessionId,
 };
 
-/// Ephemeral session state — lost on application restart.
+/// Ephemeral session state - lost on application restart.
 ///
 /// The current phase of a chat session's lifecycle.
 ///
-/// Phases are mutually exclusive — a session is in exactly one phase at a time.
+/// Phases are mutually exclusive - a session is in exactly one phase at a time.
 /// Transitions are enforced by the `begin_*`/`finish_*` methods with assertions
 /// that document the valid state machine edges.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum SessionPhase {
-    /// Session is completely idle — not sending, streaming, or compacting.
+    /// Session is completely idle - not sending, streaming, or compacting.
     #[default]
     Idle,
     /// A message has been dispatched to the LLM but no tokens have arrived yet.
@@ -200,7 +200,7 @@ pub struct SessionCoreEphemeral {
     /// Validated phase transition machine.
     /// The single source of truth for phase state.
     pub(crate) machine: crate::feat::session::phase_machine::SessionPhaseMachine,
-    /// Turn dispatch queue — drives all turn transitions through a single processor.
+    /// Turn dispatch queue - drives all turn transitions through a single processor.
     pub(crate) message_queue: crate::feat::session::turn_queue::TurnQueue,
     /// Cached context size in tokens (assembled prompt size).
     /// Updated when context is assembled. Not persisted across restarts.
@@ -217,7 +217,7 @@ pub struct SessionCoreEphemeral {
     pub(crate) pending_mutations: Vec<Vec<crate::feat::session::history_mutation::HistoryMutation>>,
 }
 
-// Core session state — owned by session-actor and context-actor.
+// Core session state - owned by session-actor and context-actor.
 //
 // IntentHandler is exempt and may read/write any field.
 // No other actor should mutate these fields.
@@ -225,7 +225,7 @@ pub struct SessionCoreEphemeral {
 // Fields without `#[serde(skip)]` are persisted across restarts.
 // All ephemeral (non-persisted) state lives in [`SessionCoreEphemeral`].
 
-/// Serde default for the `cwd` field — resolves to the current directory.
+/// Serde default for the `cwd` field - resolves to the current directory.
 fn default_cwd() -> std::path::PathBuf {
     std::path::PathBuf::from(".")
 }
@@ -253,7 +253,7 @@ pub struct SessionCore {
     /// OWNER: IntentHandler (set on session creation and cd commands)
     #[serde(default = "default_cwd")]
     pub(crate) cwd: std::path::PathBuf,
-    /// Token usage ledger — one immutable record per request/response pair.
+    /// Token usage ledger - one immutable record per request/response pair.
     /// OWNER: session-actor (records tokens on assembly and StreamCompleted).
     #[serde(default)]
     pub(crate) token_ledger: Vec<TokenRecord>,
@@ -284,7 +284,7 @@ pub struct SessionCore {
     /// OWNER: session-actor (transitions on close/archive/unarchive).
     #[serde(default)]
     pub(crate) session_state: SessionState,
-    /// Lifecycle script progression — one-way: NothingRan → SetupRan → TeardownRan.
+    /// Lifecycle script progression - one-way: NothingRan → SetupRan → TeardownRan.
     /// OWNER: session-actor (advances only after script success).
     #[serde(default)]
     pub(crate) lifecycle_script_state: LifecycleScriptState,
@@ -292,7 +292,7 @@ pub struct SessionCore {
     /// OWNER: workflow-actor (set on creation).
     #[serde(default)]
     pub(crate) is_workflow: bool,
-    /// Judge metadata — `None` for regular sessions, `Some` for judge sessions.
+    /// Judge metadata - `None` for regular sessions, `Some` for judge sessions.
     ///
     /// Presence is the single flag: `is_judge() == self.judge.is_some()`.
     /// No separate `is_judge` boolean exists in application logic.
@@ -306,7 +306,7 @@ pub struct SessionCore {
     #[serde(default)]
     pub(crate) has_interacted: bool,
     /// Prompt overrides for workflow sessions. When set, these replace global
-    /// defaults in `assemble_prompt`. Runtime-only — not persisted.
+    /// defaults in `assemble_prompt`. Runtime-only - not persisted.
     /// OWNER: workflow-actor (set before first message).
     #[serde(skip)]
     pub(crate) workflow_overrides: Option<crate::feat::context::assemble::AssemblyOverrides>,
@@ -314,7 +314,7 @@ pub struct SessionCore {
     /// OWNER: tools-actor (mutated by task list tools).
     #[serde(default)]
     pub(crate) task_list: crate::feat::todo_list::TaskList,
-    /// Runtime-only state — not persisted across restarts.
+    /// Runtime-only state - not persisted across restarts.
     #[serde(skip)]
     pub(crate) ephemeral: SessionCoreEphemeral,
 }
@@ -361,7 +361,7 @@ pub(crate) struct SavedHistoryPosition {
     pub(crate) selected_cursor_id: Option<ChatEntryId>,
 }
 
-/// UI state for a session — owned by IntentHandler (exempt from ownership restrictions).
+/// UI state for a session - owned by IntentHandler (exempt from ownership restrictions).
 ///
 /// These fields control visual presentation: scroll position, selection, input text.
 #[derive(Debug)]
@@ -405,7 +405,7 @@ pub struct SessionUi {
     /// The set of chat entry IDs whose tool result content is expanded.
     ///
     /// When a tool result entry is expanded, its full content is shown
-    /// instead of being truncated. This is ephemeral UI state — not persisted.
+    /// instead of being truncated. This is ephemeral UI state - not persisted.
     pub(crate) expanded_entries: HashSet<ChatEntryId>,
     /// Snapshot of chat log position before entering Pins sidebar section.
     ///
@@ -417,7 +417,7 @@ pub struct SessionUi {
     ///
     /// Default: empty (all ignored blocks are collapsed).
     /// Key: the ID of the first entry in the contiguous ignored block.
-    /// Ephemeral — not persisted across restarts.
+    /// Ephemeral - not persisted across restarts.
     pub(crate) shown_ignored_blocks: HashSet<ChatEntryId>,
     /// The visual items list computed from flat history during render.
     ///
@@ -492,7 +492,7 @@ impl Default for SessionUi {
 ///
 /// Owns the conversation history and tracks whether an LLM response is
 /// currently streaming in. The streaming entry is an in-progress `Assistant`
-/// entry at a known index — tokens are appended to it until the stream
+/// entry at a known index - tokens are appended to it until the stream
 /// completes or is cancelled.
 ///
 /// Fields are grouped into [`SessionCore`] (session-actor / context-actor)
@@ -639,7 +639,7 @@ impl ChatSessionState {
 
     /// Returns the sweep target state if an active sweep exists and has not
     /// expired (>100ms since last press). Consumes (clears) the sweep state
-    /// regardless of expiry — the caller must re-store it if continuing.
+    /// regardless of expiry - the caller must re-store it if continuing.
     pub fn take_ignore_sweep(&mut self) -> Option<ContextOverride> {
         let (instant, override_state) = self.ui.ignore_sweep.take()?;
         if instant.elapsed() < std::time::Duration::from_millis(100) {
@@ -661,7 +661,7 @@ impl ChatSessionState {
 
     /// Whether this session has no history entries.
     ///
-    /// A session is "empty" when it has never had any entries pushed —
+    /// A session is "empty" when it has never had any entries pushed -
     /// no user messages, no system messages, nothing.
     /// Not to be confused with [`Self::is_idle`] which checks
     /// streaming/sending/assembling state.
@@ -679,7 +679,7 @@ impl ChatSessionState {
     /// Whether this session is a judge session.
     ///
     /// True when `judge` metadata is present. The single flag for all
-    /// judge-specific behavior — no separate `is_judge` boolean in logic.
+    /// judge-specific behavior - no separate `is_judge` boolean in logic.
     #[must_use]
     pub fn is_judge(&self) -> bool {
         self.core.judge.is_some()
@@ -743,11 +743,11 @@ impl ChatSessionState {
             self.push_entry(entry);
         }
 
-        // Reset machine to Idle — drops all StreamingPhase data.
+        // Reset machine to Idle - drops all StreamingPhase data.
         self.core.ephemeral.machine = crate::feat::session::phase_machine::SessionPhaseMachine::new();
         self.core.ephemeral.busy_counter = BusyCounter::default();
 
-        // Drain the turn queue — discard any queued items.
+        // Drain the turn queue - discard any queued items.
         self.drain_queue();
     }
 
@@ -787,7 +787,7 @@ impl ChatSessionState {
     ///
     /// Implements smart auto-scroll: only resets scroll and advances cursor
     /// to the new entry if the cursor was on the previous last entry (or history
-    /// was empty). Otherwise, appends silently — preserving the user's scroll
+    /// was empty). Otherwise, appends silently - preserving the user's scroll
     /// position and selection.
     /// Push a chat entry onto the history.
     ///
@@ -851,7 +851,7 @@ impl ChatSessionState {
     //
     // Phase 1 wiring: delegates to machine.on_first_token() and syncs the
     // legacy phase field. If the machine rejects the transition (e.g. not in
-    // Sending), logs a warning and returns without changing state — matching
+    // Sending), logs a warning and returns without changing state - matching
     // the old soft-guard behavior.
     //
     // Note: The old code accepted both `Sending` and `Idle` phases. The machine
@@ -867,7 +867,7 @@ impl ChatSessionState {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
                 err = %e,
-                "begin_streaming: on_dispatch_message rejected — ignoring"
+                "begin_streaming: on_dispatch_message rejected - ignoring"
             );
             return;
         }
@@ -875,7 +875,7 @@ impl ChatSessionState {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
                 err = %e,
-                "begin_streaming: machine rejected transition — ignoring"
+                "begin_streaming: machine rejected transition - ignoring"
             );
         }
     }
@@ -900,7 +900,7 @@ impl ChatSessionState {
         if !matches!(self.core.ephemeral.machine.kind(), PhaseKind::Streaming) {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
-                "append_stream_token called while not streaming — ignoring"
+                "append_stream_token called while not streaming - ignoring"
             );
             return Err(StreamingError::NoStreamingEntry);
         }
@@ -935,12 +935,12 @@ impl ChatSessionState {
         if !matches!(self.core.ephemeral.machine.kind(), PhaseKind::Streaming) {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
-                "begin_thinking called while not streaming — ignoring"
+                "begin_thinking called while not streaming - ignoring"
             );
             return;
         }
         if self.core.ephemeral.machine.streaming_thinking_entry_index().is_some() {
-            tracing::warn!("begin_thinking called while already thinking — ignoring");
+            tracing::warn!("begin_thinking called while already thinking - ignoring");
             return;
         }
         let entry = ChatEntry::thinking("");
@@ -1061,7 +1061,7 @@ impl ChatSessionState {
 
     /// Create a placeholder `ToolCall` entry and record its history index.
     ///
-    /// Called when `ToolUseStarted` arrives — the tool name is known but arguments
+    /// Called when `ToolUseStarted` arrives - the tool name is known but arguments
     /// are still streaming in.
     pub fn begin_tool_call(&mut self, index: usize, id: &str, name: &str) {
         self.ensure_assistant_entry();
@@ -1071,7 +1071,7 @@ impl ChatSessionState {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
                 index,
-                "begin_tool_call called while not streaming — ignoring"
+                "begin_tool_call called while not streaming - ignoring"
             );
             return;
         };
@@ -1080,7 +1080,7 @@ impl ChatSessionState {
 
     /// Append an incremental delta to a streaming tool call's arguments.
     ///
-    /// `partial_json` is appended to the existing arguments string — it is *not*
+    /// `partial_json` is appended to the existing arguments string - it is *not*
     /// the accumulated total.
     ///
     /// # Panics
@@ -1157,7 +1157,7 @@ impl ChatSessionState {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
                 tool_call_id,
-                "begin_tool_result called while not streaming — ignoring"
+                "begin_tool_result called while not streaming - ignoring"
             );
             return;
         };
@@ -1244,7 +1244,7 @@ impl ChatSessionState {
                 _ => {}
             }
         } else if let Some(meta) = truncation {
-            // Non-streaming tool with truncation — push a truncated entry.
+            // Non-streaming tool with truncation - push a truncated entry.
             let full = full_content.unwrap_or_default();
             self.push_entry(ChatEntry::tool_result_truncated(
                 tool_call_id,
@@ -1255,7 +1255,7 @@ impl ChatSessionState {
                 meta,
             ));
         } else {
-            // Non-streaming tool — push a new completed entry.
+            // Non-streaming tool - push a new completed entry.
             self.push_entry(ChatEntry::tool_result(tool_call_id, name, content, status));
         }
     }
@@ -1387,7 +1387,7 @@ impl ChatSessionState {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
                 err = %e,
-                "begin_sending: machine rejected transition — ignoring"
+                "begin_sending: machine rejected transition - ignoring"
             );
         }
     }
@@ -1408,7 +1408,7 @@ impl ChatSessionState {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
                 err = %e,
-                "finish_sending_via_machine: machine rejected transition — ignoring"
+                "finish_sending_via_machine: machine rejected transition - ignoring"
             );
         }
     }
@@ -1423,7 +1423,7 @@ impl ChatSessionState {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
                 err = %e,
-                "begin_tearing_down: machine rejected transition — ignoring"
+                "begin_tearing_down: machine rejected transition - ignoring"
             );
         }
     }
@@ -1438,7 +1438,7 @@ impl ChatSessionState {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
                 err = %e,
-                "finish_tearing_down: machine rejected transition — ignoring"
+                "finish_tearing_down: machine rejected transition - ignoring"
             );
         }
     }
@@ -1538,23 +1538,23 @@ impl ChatSessionState {
         let current_offset = self.ui.rendered_scroll_offset.load(Ordering::Relaxed);
 
         let new_offset = if entry_height <= viewport_height {
-            // Entry fits in viewport — adjust only if it's outside.
+            // Entry fits in viewport - adjust only if it's outside.
             if abs_start < current_offset {
                 abs_start
             } else if abs_end > current_offset.saturating_add(viewport_height) {
                 abs_end.saturating_sub(viewport_height)
             } else {
-                // Already visible — no change needed.
+                // Already visible - no change needed.
                 return;
             }
         } else {
-            // Entry is taller than viewport — align top.
+            // Entry is taller than viewport - align top.
             if abs_start >= current_offset.saturating_add(viewport_height) {
                 abs_start
             } else if abs_end <= current_offset {
                 abs_end.saturating_sub(viewport_height)
             } else {
-                // Already overlapping — no change needed.
+                // Already overlapping - no change needed.
                 return;
             }
         };
@@ -1794,7 +1794,7 @@ impl ChatSessionState {
 
         let block_representative = self.core.history[block_start].id.clone();
         if !self.ui.shown_ignored_blocks.contains(&block_representative) {
-            return; // Block was collapsed — nothing to propagate.
+            return; // Block was collapsed - nothing to propagate.
         }
 
         // Scan forward from the pinned entry to find the new forward sub-block.
@@ -1917,7 +1917,7 @@ impl ChatSessionState {
     /// Set the selected entry index directly.
     ///
     /// Use for programmatic selection (e.g., sidebar pin sync).
-    /// Does not validate bounds — caller must ensure index is valid.
+    /// Does not validate bounds - caller must ensure index is valid.
     pub fn set_selected_entry_index(&mut self, index: usize) {
         let id = {
             let items = self.visual_items();
@@ -2005,7 +2005,7 @@ impl ChatSessionState {
 
     /// Discards the saved position without restoring.
     ///
-    /// Used when leaving the sidebar to Normal scope — the pin's position
+    /// Used when leaving the sidebar to Normal scope - the pin's position
     /// should persist in the chat log.
     pub(crate) fn discard_saved_history_position(&mut self) {
         self.ui.saved_history_position = None;
@@ -2207,7 +2207,7 @@ impl ChatSessionState {
 
     /// Push a token record onto the ledger.
     ///
-    /// Records are immutable once pushed — this is the only way to add them.
+    /// Records are immutable once pushed - this is the only way to add them.
     pub fn push_token_record(&mut self, record: TokenRecord) {
         self.core.token_ledger.push(record);
     }
@@ -2495,7 +2495,7 @@ impl ChatSessionState {
     /// Apply a batch of mutations. Resolves IDs to current positions.
     ///
     /// Silently skips mutations targeting nonexistent entries.
-    /// Processing order within a batch is preserved — earlier mutations
+    /// Processing order within a batch is preserved - earlier mutations
     /// are visible to later ones in the same batch.
     pub fn apply_mutations(&mut self, batch: Vec<crate::feat::session::history_mutation::HistoryMutation>) {
         use crate::feat::session::history_mutation::HistoryMutation;

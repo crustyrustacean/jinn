@@ -51,7 +51,7 @@ impl SseParser {
 
     /// Feed bytes into the parser and return any complete events.
     ///
-    /// Bytes may arrive in arbitrary chunks — the parser handles partial lines
+    /// Bytes may arrive in arbitrary chunks - the parser handles partial lines
     /// by buffering until a complete event boundary (`\n\n`) is found.
     pub fn feed(&mut self, bytes: &[u8]) -> Vec<SseEvent> {
         let text = String::from_utf8_lossy(bytes);
@@ -215,7 +215,7 @@ mod tests {
         // The parser only processes events separated by \n\n, so without
         // the second newline, the buffered content sits. finish() calls
         // drain_events() which still needs \n\n boundaries.
-        // This is correct behavior — the stream should always end with \n\n.
+        // This is correct behavior - the stream should always end with \n\n.
         assert!(events.is_empty());
     }
 }

@@ -1,4 +1,4 @@
-//! Focus scope and scope stack — tracking what the user is focused on.
+//! Focus scope and scope stack - tracking what the user is focused on.
 
 use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
 use crate::protocol::{Mode, PickerKind};
@@ -13,23 +13,23 @@ pub enum FocusScope {
     Normal,
     /// Typing into the input buffer.
     Input,
-    /// Sidebar — Persona section focused.
+    /// Sidebar - Persona section focused.
     SidebarPersona,
-    /// Sidebar — Pins section focused.
+    /// Sidebar - Pins section focused.
     SidebarPins,
-    /// Sidebar — Sessions section focused.
+    /// Sidebar - Sessions section focused.
     SidebarSessions,
-    /// Picker overlay active — kind distinguishes Provider/Session/Keymap/etc.
+    /// Picker overlay active - kind distinguishes Provider/Session/Keymap/etc.
     Picker { kind: PickerKind },
-    /// Arg input popup — collecting positional args for a lifecycle command.
+    /// Arg input popup - collecting positional args for a lifecycle command.
     ArgInput,
-    /// Rename session input popup — editing a session title.
+    /// Rename session input popup - editing a session title.
     RenameSessionInput,
-    /// Sidebar resize mode — adjusting sidebar width with h/l keys.
+    /// Sidebar resize mode - adjusting sidebar width with h/l keys.
     SidebarResize,
-    /// Workflow tab — browsing workflow node status.
+    /// Workflow tab - browsing workflow node status.
     Workflow,
-    /// Workflow input editing — typing into the source node output buffer.
+    /// Workflow input editing - typing into the source node output buffer.
     WorkflowInput,
 }
 

@@ -1,7 +1,7 @@
-//! [`TaskListSection`] — the task list sidebar section.
+//! [`TaskListSection`] - the task list sidebar section.
 //!
 //! Render-only section that displays the phased task list for the active session.
-//! Navigation is always `Exhausted` — the cursor skips over this section.
+//! Navigation is always `Exhausted` - the cursor skips over this section.
 //! The section is hidden when the task list is empty.
 
 use std::borrow::Cow;
@@ -21,13 +21,13 @@ use textwrap::Options;
 /// The task list sidebar section.
 ///
 /// Renders phases and tasks from the active session's task list.
-/// This section is non-interactive — the cursor always skips over it.
+/// This section is non-interactive - the cursor always skips over it.
 #[derive(Debug)]
 pub struct TaskListSection;
 
 /// Navigate within the task list section.
 ///
-/// Always returns `Exhausted` — the section is non-interactive.
+/// Always returns `Exhausted` - the section is non-interactive.
 pub fn navigate(_intent: &SidebarIntent, _state: &mut AppState) -> SectionNavResult {
     SectionNavResult::Exhausted
 }
@@ -102,7 +102,7 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
     lines.push(Line::from(""));
 
     for phase in list.phases() {
-        // Phase header — word-wrapped.
+        // Phase header - word-wrapped.
         let phase_width = sidebar_width.saturating_sub(PHASE_INDENT);
         let phase_style = Style::default()
             .fg(theme.muted_text)
@@ -126,11 +126,19 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
                 let indicator = match task.status() {
                     TaskStatus::Pending => "\u{25CB} ",    // \u{25CB}  ○
                     TaskStatus::Completed => "\u{2713} ",  // \u{2713}  ✓
-                    TaskStatus::Deferred => "\u{25BC} ",   // \u{25BC}  ▼
+                    TaskStatus::Cancelled => {
+                        // Cancelled tasks are hidden from sidebar.
+                        continue;
+                    }
+                    TaskStatus::Postponed => "\u{25BC} ",   // \u{25BC}  ▼
                 };
                 let style = match task.status() {
                     TaskStatus::Pending => Style::default().fg(theme.primary_text),
-                    TaskStatus::Completed | TaskStatus::Deferred => {
+                    TaskStatus::Cancelled => {
+                        // Cancelled tasks are hidden (continued above), but rust needs this arm
+                        Style::default().fg(theme.muted_text)
+                    }
+                    TaskStatus::Completed | TaskStatus::Postponed => {
                         Style::default().fg(theme.muted_text)
                     }
                 };
@@ -172,7 +180,7 @@ fn compute_height(list: &TaskList, sidebar_width: u16) -> u16 {
     height += 2;
 
     for phase in list.phases() {
-        // Phase header — count wrapped lines.
+        // Phase header - count wrapped lines.
         let phase_width = sidebar_width.saturating_sub(PHASE_INDENT);
         height += wrap_description(phase.description(), phase_width).len();
 
@@ -318,7 +326,7 @@ mod tests {
     }
 
     #[test]
-    fn build_render_lines_shows_deferred_indicator() {
+    fn build_render_lines_shows_postponed_indicator() {
         let mut app = AppState::default();
         let session = app.session.active_session_mut();
         let p1 = session.task_list_mut().add_phase("Research");
@@ -332,10 +340,10 @@ mod tests {
             .add_task(&p2, "Write code", TaskPosition::End)
             .unwrap();
 
-        // Defer t1 (Read docs) to after t2.
+        // Postpone t1 (Read docs) to after t2.
         session
             .task_list_mut()
-            .defer_task(&t1, crate::feat::todo_list::TaskPosition::After(t2))
+            .postpone_task(&t1, crate::feat::todo_list::TaskPosition::After(t2))
             .unwrap();
 
         let list = session.task_list().clone();
@@ -346,10 +354,10 @@ mod tests {
             .map(|s| s.content.to_string())
             .collect();
 
-        // Sidebar should show the deferred task with ▼ indicator.
+        // Sidebar should show the postponed task with ▼ indicator.
         assert!(
             combined.contains("\u{25BC}"),
-            "should contain deferred indicator ▼"
+            "should contain postponed indicator ▼"
         );
         // Sidebar should also show pending tasks.
         assert!(
@@ -510,7 +518,7 @@ mod tests {
             .unwrap();
         let list = session.task_list().clone();
 
-        // When computing height — should not panic.
+        // When computing height - should not panic.
         let height = compute_height(&list, 15);
 
         // Then height is positive.
@@ -529,7 +537,7 @@ mod tests {
             .unwrap();
         let list = session.task_list().clone();
 
-        // When rendering and computing height — should not panic.
+        // When rendering and computing height - should not panic.
         let lines = build_render_lines(&list, &app);
         let height = compute_height(&list, app.frontend.sidebar_width);
 

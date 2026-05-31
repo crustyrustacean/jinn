@@ -1,4 +1,4 @@
-//! History mutation types — declarative mutations for background workers.
+//! History mutation types - declarative mutations for background workers.
 //!
 //! Workers produce [`Vec<HistoryMutation>`] batches. The session actor resolves
 //! [`ChatEntryId`](crate::feat::session::chat_entry::ChatEntryId) → current

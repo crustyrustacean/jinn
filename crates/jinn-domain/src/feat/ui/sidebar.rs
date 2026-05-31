@@ -1,4 +1,4 @@
-//! Generic pluggable sidebar — hosts multiple sections with hybrid navigation.
+//! Generic pluggable sidebar - hosts multiple sections with hybrid navigation.
 //!
 //! The sidebar is a persistent panel on the right side of the chat tab.
 //! It contains pluggable sections (e.g., pinned entries, future features)

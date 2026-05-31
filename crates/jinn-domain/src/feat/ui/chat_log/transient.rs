@@ -1,4 +1,4 @@
-//! Transient entry rendering — markdown-rendered text with padding.
+//! Transient entry rendering - markdown-rendered text with padding.
 //!
 //! Transient entries are UI-only messages (welcome hints, status notifications, etc.)
 //! that are excluded from prompt assembly and LLM context. They carry markdown text

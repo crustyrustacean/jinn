@@ -1,4 +1,4 @@
-//! LLM provider abstraction — streaming chat completions and model discovery.
+//! LLM provider abstraction - streaming chat completions and model discovery.
 //!
 //! Defines the [`LlmService`] trait for streaming LLM responses and
 //! [`LlmServiceFactory`] for creating per-call service instances.

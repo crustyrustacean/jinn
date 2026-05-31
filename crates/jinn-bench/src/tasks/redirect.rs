@@ -1,4 +1,4 @@
-//! Redirect bench tasks — multi-turn, model is asked to do X, then told to do Y instead.
+//! Redirect bench tasks - multi-turn, model is asked to do X, then told to do Y instead.
 
 use crate::task::BenchTask;
 

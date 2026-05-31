@@ -1,4 +1,4 @@
-//! Picker overlay rendering — dispatches to domain-specific picker renderers.
+//! Picker overlay rendering - dispatches to domain-specific picker renderers.
 
 use jinn_domain::AppState;
 use jinn_domain::PickerKind;

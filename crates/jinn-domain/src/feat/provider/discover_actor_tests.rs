@@ -1,4 +1,4 @@
-//! Tests for DiscoverActor — command dispatch and handle routing.
+//! Tests for DiscoverActor - command dispatch and handle routing.
 //!
 //! These tests kill mutants related to the actor's command dispatch
 //! (handle, handle_command, RefreshModels match arm) by verifying
@@ -53,7 +53,7 @@ async fn handle_processes_command_envelope() {
         .handle(ActorEnvelope::Command(Command::RefreshModels), &ctx)
         .await;
 
-    // Then the actor processed the command — it should emit a ModelsRefreshed event
+    // Then the actor processed the command - it should emit a ModelsRefreshed event
     // (with empty results since there are no configured providers).
     let events = sink.take_events();
     assert_eq!(events.len(), 1, "handle should dispatch RefreshModels and emit event");

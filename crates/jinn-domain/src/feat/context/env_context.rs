@@ -1,4 +1,4 @@
-//! Environment context builder — assembles the default system prompt for the LLM.
+//! Environment context builder - assembles the default system prompt for the LLM.
 //!
 //! Combines the active persona, project context files (AGENTS.md/CLAUDE.md),
 //! current date, and working directory into a single string that is injected
@@ -330,7 +330,7 @@ mod tests {
     #[rstest::rstest]
     fn date_from_days_year_2000() {
         // Given 10957 days = 2000-01-01 (30 years including leap days).
-        // 365 * 30 + 8 leap days (72,76,80,84,88,92,96,00 — 00 is leap in Gregorian) = 10957 + 7 = 10958?
+        // 365 * 30 + 8 leap days (72,76,80,84,88,92,96,00 - 00 is leap in Gregorian) = 10957 + 7 = 10958?
         // Actually 10957 = 2000-01-01.
         let date = date_from_days(10957);
 

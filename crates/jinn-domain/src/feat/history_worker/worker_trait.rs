@@ -1,4 +1,4 @@
-//! The `HistoryWorker` trait — pluggable heuristics for history mutation.
+//! The `HistoryWorker` trait - pluggable heuristics for history mutation.
 //!
 //! Each worker inspects a snapshot of the session history and optionally
 //! produces a batch of mutations. Workers run outside any lock.

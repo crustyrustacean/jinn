@@ -22,7 +22,7 @@ pub enum UserPreferencesError {
     Parse,
 }
 
-/// A named session lifecycle recipe — paired setup and teardown commands.
+/// A named session lifecycle recipe - paired setup and teardown commands.
 ///
 /// Defined in `jinn.toml` under `[[session_lifecycle]]`. The setup command
 /// runs when creating a new session; the teardown command runs when closing it.
@@ -225,7 +225,7 @@ impl Default for WebFetchConfig {
 ///
 /// Serialized as `[openrouter_web_search]` in `jinn.toml`.
 /// Controls parameters sent to the `openrouter:web_search` server tool.
-/// All fields are optional — when `None`, the parameter is omitted from
+/// All fields are optional - when `None`, the parameter is omitted from
 /// the request and OpenRouter uses its default.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenrouterWebSearchConfig {
@@ -327,7 +327,7 @@ impl RequestRetryConfig {
 /// User preferences persisted in `jinn.toml`.
 ///
 /// This file stores user behavior preferences that should survive
-/// app restarts — e.g., the last model and strategy selected from pickers.
+/// app restarts - e.g., the last model and strategy selected from pickers.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UserPreferences {
     /// The provider ID of the last model selected from the model picker.
@@ -354,7 +354,7 @@ pub struct UserPreferences {
     /// Corresponds to a file in `~/.config/jinn/personas/<name>.md`.
     #[serde(default)]
     pub persona_name: Option<String>,
-    /// Named session lifecycle recipes — paired setup/teardown commands.
+    /// Named session lifecycle recipes - paired setup/teardown commands.
     /// The implicit "blank" lifecycle (no commands) is always available and
     /// does not need to be listed here.
     #[serde(default)]
@@ -811,7 +811,7 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
 
         let prefs = load_preferences_from(&path).expect("load");
 
-        // Then the loaded prefs are NOT defaults — they reflect the file.
+        // Then the loaded prefs are NOT defaults - they reflect the file.
         assert_eq!(
             prefs.last_model.as_deref(),
             Some("openrouter/anthropic/claude-sonnet-4-20250514")

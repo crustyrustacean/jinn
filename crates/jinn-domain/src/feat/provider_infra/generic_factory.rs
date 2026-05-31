@@ -1,4 +1,4 @@
-//! Generic LLM service factory — works for any [`Backend`].
+//! Generic LLM service factory - works for any [`Backend`].
 //!
 //! [`GenericLlmServiceFactory`] stores a provider configuration and a resolved
 //! API key. It delegates to the appropriate provider factory from
@@ -14,7 +14,7 @@ use jinn_provider::{Backend, LlmService, LlmServiceError, LlmServiceFactory, Pro
 ///
 /// Stores the backend, model, optional base URL, a resolved API key,
 /// and optional extra body parameters. The key is provided at construction
-/// time — environment access belongs at application startup, not in the factory.
+/// time - environment access belongs at application startup, not in the factory.
 #[derive(Debug)]
 pub struct GenericLlmServiceFactory {
     /// Display name for this factory.
@@ -144,7 +144,7 @@ mod tests {
         // that the Anthropic code path is taken (not OpenAI-compatible).
         // We verify by checking that the factory name is set correctly.
         assert_eq!(factory.name(), "test-anthropic");
-        // The create() call exercises the match arm — even if it fails,
+        // The create() call exercises the match arm - even if it fails,
         // the test verifies that the factory routes correctly.
         let _ = result;
     }

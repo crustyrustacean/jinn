@@ -5,10 +5,10 @@
 //!
 //! # Ports
 //!
-//! - Input `system` (optional, string) — system prompt override.
-//! - Input `prompt` (optional, string) — template/context from upstream.
-//! - Input `user` (required, string) — the user message body.
-//! - Output `response` (string) — the final assistant response.
+//! - Input `system` (optional, string) - system prompt override.
+//! - Input `prompt` (optional, string) - template/context from upstream.
+//! - Input `user` (required, string) - the user message body.
+//! - Output `response` (string) - the final assistant response.
 //!
 //! If both `prompt` and `user` are connected, their values are concatenated
 //! (`prompt` first, then `user`). If only `user` is connected, only the user
@@ -20,7 +20,7 @@
 //! When configured with [`with_validation`](LlmNode::with_validation), the node
 //! validates the LLM response against a regex pattern. If the response doesn't
 //! match, the node retries up to `max_retries` times, appending a correction
-//! prompt on each retry. All retrying happens inside `execute()` — the engine
+//! prompt on each retry. All retrying happens inside `execute()` - the engine
 //! sees a single node execution.
 
 use error_stack::Report;
@@ -33,13 +33,13 @@ use regex::Regex;
 ///
 /// # Configuration
 ///
-/// - `system_prompt` — default system prompt. Overridden by the `system` input
+/// - `system_prompt` - default system prompt. Overridden by the `system` input
 ///   port when connected.
-/// - `provider_id` — optional provider ID. `None` uses the global default.
-/// - `tool_schemas` — tool definitions available to the LLM during this call.
-/// - `validation_regex` — optional regex for response validation.
-/// - `max_retries` — maximum number of retries when validation fails (default 0).
-/// - `retry_prompt` — correction prompt appended on retry.
+/// - `provider_id` - optional provider ID. `None` uses the global default.
+/// - `tool_schemas` - tool definitions available to the LLM during this call.
+/// - `validation_regex` - optional regex for response validation.
+/// - `max_retries` - maximum number of retries when validation fails (default 0).
+/// - `retry_prompt` - correction prompt appended on retry.
 ///
 /// # Port design
 ///
@@ -176,7 +176,7 @@ impl WorkflowNode for LlmNode {
             None => user_text,
         };
 
-        // No validation configured — single call, pass through.
+        // No validation configured - single call, pass through.
         let Some(ref regex_pattern) = self.validation_regex else {
             let response = ctx
                 .send_llm_request(
@@ -195,7 +195,7 @@ impl WorkflowNode for LlmNode {
             return Ok(output);
         };
 
-        // Validation configured — retry loop.
+        // Validation configured - retry loop.
         let validation =
             Regex::new(regex_pattern).map_err(|_| Report::new(NodeError).attach("invalid validation regex"))?;
         let retry_prompt = self
@@ -224,7 +224,7 @@ impl WorkflowNode for LlmNode {
                 return Ok(output);
             }
 
-            // Validation failed — build retry prompt if we have attempts left.
+            // Validation failed - build retry prompt if we have attempts left.
             if attempt < self.max_retries {
                 current_prompt = format!(
                     "{original_message}\n\n---\n\

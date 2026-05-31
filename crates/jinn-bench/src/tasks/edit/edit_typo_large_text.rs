@@ -1,4 +1,4 @@
-//! edit-typo-large-text bench task — fix a single typo in a large prose file.
+//! edit-typo-large-text bench task - fix a single typo in a large prose file.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

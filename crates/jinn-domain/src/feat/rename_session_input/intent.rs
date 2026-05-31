@@ -1,4 +1,4 @@
-//! Rename session input intent handlers — enter, confirm, leave, and text editing.
+//! Rename session input intent handlers - enter, confirm, leave, and text editing.
 
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -152,7 +152,7 @@ pub fn handle_cursor_right(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Handles `PasteText` — bulk inserts pasted text at the cursor.
+/// Handles `PasteText` - bulk inserts pasted text at the cursor.
 pub fn handle_paste(state: &mut AppState, text: &str) -> IntentResult {
     if text.is_empty() {
         return IntentResult::empty();

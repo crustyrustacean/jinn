@@ -129,7 +129,7 @@ impl GeminiStreamParser {
         ])
     }
 
-    /// Handle the `[DONE]` sentinel — emits Done if not already emitted.
+    /// Handle the `[DONE]` sentinel - emits Done if not already emitted.
     pub fn handle_done(&mut self) -> Vec<StreamEvent> {
         if self.done_emitted {
             return vec![];

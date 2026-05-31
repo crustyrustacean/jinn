@@ -1,4 +1,4 @@
-//! Builtin lifecycle commands — extending session lifecycles with compiled Rust handlers.
+//! Builtin lifecycle commands - extending session lifecycles with compiled Rust handlers.
 //!
 //! Provides [`LifecycleCommand`] enum that supports both shell commands (backward compatible)
 //! and builtin handlers identified by [`BuiltinId`]. The serde implementation ensures existing
@@ -26,7 +26,7 @@ impl fmt::Display for BuiltinId {
     }
 }
 
-/// A lifecycle command — either a shell string or a builtin handler reference.
+/// A lifecycle command - either a shell string or a builtin handler reference.
 ///
 /// # Serde behavior
 ///

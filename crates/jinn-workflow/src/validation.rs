@@ -7,7 +7,7 @@
 /// Severity of a validation diagnostic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValidationSeverity {
-    /// A warning — the graph is valid but may not behave as intended.
+    /// A warning - the graph is valid but may not behave as intended.
     Warning,
 }
 

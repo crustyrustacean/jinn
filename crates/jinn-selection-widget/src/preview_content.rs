@@ -1,4 +1,4 @@
-//! Preview content trait — provides renderable lines for a preview pane.
+//! Preview content trait - provides renderable lines for a preview pane.
 //!
 //! Items that want to show a preview in the picker implement this trait.
 //! The preview widget calls [`PreviewContent::preview_lines`] to get styled

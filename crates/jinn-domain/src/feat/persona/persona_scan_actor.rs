@@ -1,4 +1,4 @@
-//! Persona scan actor — scans and loads persona files on command.
+//! Persona scan actor - scans and loads persona files on command.
 //!
 //! Subscribes to [`RescanPersonas`](crate::protocol::Command::RescanPersonas) commands,
 //! scans the personas directory, and emits [`PersonasLoaded`] events with the results.

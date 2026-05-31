@@ -1,4 +1,4 @@
-//! Autocomplete popup rendering — renders the prompt template and slash command autocomplete overlay.
+//! Autocomplete popup rendering - renders the prompt template and slash command autocomplete overlay.
 
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::AutocompleteTrigger;
@@ -15,7 +15,7 @@ pub const AUTOCOMPLETE_MIN_WIDTH: u16 = 20;
 /// Maximum popup width as fraction of terminal width.
 pub const AUTOCOMPLETE_MAX_WIDTH_FRAC: f32 = 0.60;
 /// Separator between name and description.
-pub const AUTOCOMPLETE_NAME_DESC_SEP: &str = " — ";
+pub const AUTOCOMPLETE_NAME_DESC_SEP: &str = " - ";
 /// Text shown when no prompt template matches found.
 const NO_PROMPTS_FOUND: &str = "<no prompts found>";
 /// Text shown when no slash command matches found.
@@ -23,7 +23,7 @@ const NO_COMMANDS_FOUND: &str = "<no commands found>";
 
 /// Renders the autocomplete popup overlay above the input box.
 ///
-/// The popup is a transient visual element — not a `UiElement`. It reads autocomplete
+/// The popup is a transient visual element - not a `UiElement`. It reads autocomplete
 /// state directly from `AppState` and renders a bordered box with match entries.
 /// The popup is horizontally anchored at the trigger token's screen column and sits
 /// directly above the input box.

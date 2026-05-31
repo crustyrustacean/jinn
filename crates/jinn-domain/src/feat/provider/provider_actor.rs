@@ -1,4 +1,4 @@
-//! Provider actor — manages active provider, LLM factory, model cache, and picker entries.
+//! Provider actor - manages active provider, LLM factory, model cache, and picker entries.
 //!
 //! Subscribes to provider-related commands and events, mutates the corresponding
 //! [`AppState`](crate::common::app_state::AppState) fields, and emits events for
@@ -94,7 +94,7 @@ impl ProviderActor {
             Command::LoadCompactionModelPickerEntries(payload) => {
                 self.handle_load_compaction_model_picker_entries(payload);
             }
-            // Commands NOT subscribed to — these should not arrive.
+            // Commands NOT subscribed to - these should not arrive.
             Command::SendMessage(..)
             | Command::PinChatEntry(..)
             | Command::UnpinChatEntry(..)

@@ -245,7 +245,7 @@ mod tests {
     #[rstest::rstest]
     fn render_row_with_highlight_highlights_name_and_description() {
         // Given a tool entry where the filter matches both name and description.
-        // search_text = "bash run shell" — name="bash" (len 4), desc="run shell"
+        // search_text = "bash run shell" - name="bash" (len 4), desc="run shell"
         let entry = make_entry("bash", "run shell", true);
 
         // Match "sh" in name at offsets 2..4, and "sh" in description at offsets 7..9
