@@ -1,5 +1,5 @@
 use super::machine::{SessionPhaseMachine, TransitionError, TransitionOutcome};
-use super::phase::{IdlePhase, Phase, PhaseKind, SendingPhase, StreamingPhase, WorkingPhase};
+use super::phase::{IdlePhase, Phase, PhaseKind, SendingPhase, StreamingPhase};
 
 /// Transition methods for [`SessionPhaseMachine`].
 ///
@@ -65,30 +65,6 @@ pub trait PhaseTransitions {
     ///
     /// Returns [`TransitionError`] if not in `Sending`.
     fn on_tool_batch_completed(&mut self) -> Result<TransitionOutcome, TransitionError>;
-
-    /// `Idle → Working` or `Working → Working` (increment) - a background operation started.
-    ///
-    /// If currently `Idle`, transitions to `Working` with count = 1.
-    /// If already `Working`, increments the count (stays in `Working`).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TransitionError`] if not in `Idle` or `Working`.
-    fn on_start_working(&mut self) -> Result<TransitionOutcome, TransitionError>;
-
-    /// `Working → Working` (decrement) or `Working → Idle` (count hits zero) - one operation completed.
-    ///
-    /// Returns `None` if not currently `Working`.
-    /// Returns `Some(TransitionOutcome)` with `new_phase == Idle` when the count reaches zero.
-    /// Returns `Some(TransitionOutcome)` with `new_phase == Working` when count is still > 0.
-    fn on_working_complete(&mut self) -> Option<TransitionOutcome>;
-
-    /// `Working → Idle` - hard cancel, resets count to zero.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TransitionError`] if not in `Working`.
-    fn cancel_working(&mut self) -> Result<TransitionOutcome, TransitionError>;
 }
 
 impl PhaseTransitions for SessionPhaseMachine {
@@ -137,58 +113,5 @@ impl PhaseTransitions for SessionPhaseMachine {
             Phase::Streaming(StreamingPhase::default())
         };
         self.transition(PhaseKind::Sending, next)
-    }
-
-    fn on_start_working(&mut self) -> Result<TransitionOutcome, TransitionError> {
-        match self.kind() {
-            PhaseKind::Idle => self.transition(
-                PhaseKind::Idle,
-                Phase::Working(WorkingPhase { count: 1 }),
-            ),
-            PhaseKind::Working => {
-                if let Phase::Working(ref mut wp) = self.phase {
-                    wp.count += 1;
-                }
-                Ok(TransitionOutcome {
-                    old_phase: PhaseKind::Working,
-                    new_phase: PhaseKind::Working,
-                })
-            }
-            other => Err(TransitionError { from: other }),
-        }
-    }
-
-    fn on_working_complete(&mut self) -> Option<TransitionOutcome> {
-        if self.kind() != PhaseKind::Working {
-            return None;
-        }
-        if let Phase::Working(ref mut wp) = self.phase {
-            if wp.count == 0 {
-                tracing::warn!("on_working_complete called with count already zero");
-            } else {
-                wp.count -= 1;
-            }
-            if wp.count == 0 {
-                let old_phase = PhaseKind::Working;
-                self.phase = Phase::Idle(IdlePhase);
-                return Some(TransitionOutcome {
-                    old_phase,
-                    new_phase: PhaseKind::Idle,
-                });
-            }
-        }
-        Some(TransitionOutcome {
-            old_phase: PhaseKind::Working,
-            new_phase: PhaseKind::Working,
-        })
-    }
-
-    fn cancel_working(&mut self) -> Result<TransitionOutcome, TransitionError> {
-        let old = self.validate(PhaseKind::Working)?;
-        self.phase = Phase::Idle(IdlePhase);
-        Ok(TransitionOutcome {
-            old_phase: old,
-            new_phase: PhaseKind::Idle,
-        })
     }
 }

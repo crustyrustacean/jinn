@@ -62,8 +62,7 @@ impl SessionPersistenceActor {
                     )
                 }
                 PhaseKind::Sending
-                | PhaseKind::Streaming
-                | PhaseKind::Working => {
+                | PhaseKind::Streaming => {
                     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
                         payload.entry.clone(),
                     ));
