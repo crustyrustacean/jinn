@@ -2,7 +2,7 @@
 //!
 //! [`EntryTokenCache`] maps chat entry IDs to their estimated token counts.
 //! Populated by the token count actor, read by the minimap render pipeline.
-//! Not invalidated on theme change — token counts are theme-independent.
+//! Not invalidated on theme change - token counts are theme-independent.
 
 use std::collections::HashMap;
 
@@ -12,7 +12,7 @@ use crate::protocol::ChatEntryId;
 ///
 /// Stored in [`FrontendCaches`](crate::common::app_state::FrontendCaches) as
 /// `RwLock<EntryTokenCache>`. The token count actor writes counts; the minimap
-/// render pipeline reads them. Counts are not persisted — re-computed on session load.
+/// render pipeline reads them. Counts are not persisted - re-computed on session load.
 #[derive(Debug, Clone, Default)]
 pub struct EntryTokenCache {
     entries: HashMap<ChatEntryId, u32>,

@@ -1,4 +1,4 @@
-//! Preferences state sync actor — keeps `AppState.frontend.preferences` in sync.
+//! Preferences state sync actor - keeps `AppState.frontend.preferences` in sync.
 //!
 //! Subscribes to [`PreferencesUpdated`] events emitted by [`PreferencesActor`].
 //! On each event, replaces `state.frontend.preferences` with the full payload.

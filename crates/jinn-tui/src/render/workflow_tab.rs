@@ -1,4 +1,4 @@
-//! Workflow tab rendering — displays the workflow visualization.
+//! Workflow tab rendering - displays the workflow visualization.
 //!
 //! Renders the graph widget, status line, inspector popup, and cancel prompt.
 
@@ -75,7 +75,7 @@ pub fn render_workflow_tab(frame: &mut Frame<'_>, area: Rect, state: &AppState, 
         render_inspector(frame, graph_area, state);
     }
 
-    // Workflow input buffer — bottom area.
+    // Workflow input buffer - bottom area.
     if state.frontend.workflow_ui.editing_node.is_some() && input_area.height > 0 {
         render_workflow_input(frame, input_area, state);
     }
@@ -94,7 +94,7 @@ fn viewport_from_ui(ui: &WorkflowUiState) -> jinn_workflow_tui::viewport::Viewpo
 fn render_no_workflow_placeholder(frame: &mut Frame<'_>, area: Rect) {
     let line = Line::from(vec![
         Span::styled(
-            " No workflow active — use ",
+            " No workflow active - use ",
             Style::default().add_modifier(Modifier::DIM),
         ),
         Span::styled(
@@ -139,7 +139,7 @@ fn render_status_line(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
             ])
         }
         None => Line::from(Span::styled(
-            " No node selected — use j/k to navigate",
+            " No node selected - use j/k to navigate",
             Style::default().add_modifier(Modifier::DIM),
         )),
     };
@@ -256,7 +256,7 @@ fn build_inspector_lines(
         }
     }
 
-    // Session section — render using the chat log's per-entry renderer.
+    // Session section - render using the chat log's per-entry renderer.
     if let Some(session) = lookup_node_session(state, node_name) {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
@@ -313,14 +313,14 @@ fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         .and_then(|id| state.session.get(id))
         .is_some();
 
-    // Compute popup dimensions — expand for session history.
+    // Compute popup dimensions - expand for session history.
     let popup_width = if has_session {
         (area.width * 70 / 100).clamp(40, 80)
     } else {
         (area.width * 50 / 100).clamp(30, 60)
     };
 
-    // Build lines — pass inner content width.
+    // Build lines - pass inner content width.
     let inner_width = popup_width.saturating_sub(2); // inside borders
     let lines = build_inspector_lines(node_name, node_state, &status, inner_width, state);
 
@@ -389,7 +389,7 @@ fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         .inspector_scroll_rendered
         .store(scroll_offset, std::sync::atomic::Ordering::Relaxed);
 
-    // Render scrollable content (no Wrap — lines are pre-wrapped to content_width).
+    // Render scrollable content (no Wrap - lines are pre-wrapped to content_width).
     let content = Paragraph::new(lines).scroll((scroll_offset, 0));
     frame.render_widget(content, content_area);
 

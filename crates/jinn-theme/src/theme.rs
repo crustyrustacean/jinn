@@ -1,4 +1,4 @@
-//! Theme struct — the resolved set of semantic colors used by the renderer.
+//! Theme struct - the resolved set of semantic colors used by the renderer.
 
 use ratatui::style::Color;
 
@@ -7,7 +7,7 @@ use crate::default_theme;
 
 /// Resolved theme with all semantic color fields.
 ///
-/// Every field is a [`Color`] — fully resolved from whatever format the
+/// Every field is a [`Color`] - fully resolved from whatever format the
 /// TOML file specified. Missing TOML fields fall back to the default theme.
 ///
 /// The theme is stored in `AppState.frontend` and read by all render sites.

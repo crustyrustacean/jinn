@@ -1,4 +1,4 @@
-//! Command template parser — extracts positional and named parameters from shell commands.
+//! Command template parser - extracts positional and named parameters from shell commands.
 //!
 //! A [`CommandTemplate`] parses a command string like `script.sh $1 $2 $1` or
 //! `./foo.sh <branch> <target>` and extracts the unique parameters in order of
@@ -9,9 +9,9 @@
 //!
 //! # Parameter syntax
 //!
-//! - `<name>` — named parameter (positional, filled by arg in same position)
-//! - `$1` through `$9` — numeric positional parameters (backward compatibility)
-//! - `$@` and `$*` — "all args" sentinel (accepts variable number of args)
+//! - `<name>` - named parameter (positional, filled by arg in same position)
+//! - `$1` through `$9` - numeric positional parameters (backward compatibility)
+//! - `$@` and `$*` - "all args" sentinel (accepts variable number of args)
 //!
 //! Parameters are deduplicated by identity. `$1 <foo> $1` produces `[Positional(1), Named("foo")]`
 //! and substitutes both `$1` occurrences with the same arg.
@@ -28,7 +28,7 @@ use unicode_segmentation::UnicodeSegmentation;
 /// `idx` is the index into the template's params list.
 ///
 /// This design enables future per-argument color schemes (gradient, rainbow)
-/// by only changing the color-assignment logic in the renderer — the data
+/// by only changing the color-assignment logic in the renderer - the data
 /// structure already knows which arg each segment belongs to.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DisplaySegment {
@@ -67,12 +67,12 @@ enum Span {
 
 /// A single parameter extracted from a command template.
 ///
-/// Parameters are deduplicated — each unique token appears at most once.
+/// Parameters are deduplicated - each unique token appears at most once.
 /// During rendering, *all* occurrences (including duplicates) in the source
 /// string are replaced with the corresponding argument value.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Param {
-    /// A named parameter like `<foo>` — filled by positional args.
+    /// A named parameter like `<foo>` - filled by positional args.
     Named(String),
     /// A numeric positional parameter like `$1`.
     Positional(usize),
@@ -145,9 +145,9 @@ impl CommandTemplate {
     /// Parse a command string and extract parameters.
     ///
     /// Recognizes three token types:
-    /// - `<name>` — a named parameter
-    /// - `$1`–`$9` — a numeric positional parameter
-    /// - `$@` / `$*` — the "all args" splat
+    /// - `<name>` - a named parameter
+    /// - `$1`–`$9` - a numeric positional parameter
+    /// - `$@` / `$*` - the "all args" splat
     ///
     /// Parameters are deduplicated: if the same token appears multiple times,
     /// only the first occurrence is recorded. The order of first appearance
@@ -184,7 +184,7 @@ impl CommandTemplate {
 
     /// The number of non-splat parameters.
     ///
-    /// For `$1 $2 $@` this returns 2 — the number of positional-or-named slots
+    /// For `$1 $2 $@` this returns 2 - the number of positional-or-named slots
     /// that consume one argument each. Splat consumes all remaining args.
     #[must_use]
     pub fn param_count(&self) -> usize {
@@ -310,7 +310,7 @@ impl CommandTemplate {
     /// The first line is bare; subsequent lines are prefixed with `&& ` in a static
     /// segment. Non-last lines are suffixed with ` \` in a static segment.
     ///
-    /// This is render-time only — it does not affect command execution.
+    /// This is render-time only - it does not affect command execution.
     #[must_use]
     pub fn display_line_segments(&self, args: &[String]) -> Vec<Vec<DisplaySegment>> {
         // Build the display form of the command (same logic as display()).
@@ -355,7 +355,7 @@ impl CommandTemplate {
 
 /// Tokenize a display-form line into [`Span`]s by finding all `<...>` patterns.
 ///
-/// Pure function — no `&self`, no args, no param lookup.
+/// Pure function - no `&self`, no args, no param lookup.
 /// Unclosed `<` without a matching `>` is treated as static text (not a placeholder).
 fn tokenize_spans(line: &str) -> Vec<Span> {
     static RE: std::sync::LazyLock<Regex> =
@@ -487,7 +487,7 @@ pub fn split_preserving_quotes(input: &str) -> Vec<String> {
                     current.push_str(graphemes[i]);
                 }
             } else if g == "\"" {
-                // End of quoted section — keep the quote char.
+                // End of quoted section - keep the quote char.
                 current.push('"');
                 in_quotes = false;
             } else {
@@ -501,7 +501,7 @@ pub fn split_preserving_quotes(input: &str) -> Vec<String> {
                 current.push_str(graphemes[i]);
             }
         } else if g == "\"" {
-            // Start of quoted section — keep the quote char.
+            // Start of quoted section - keep the quote char.
             current.push('"');
             in_quotes = true;
         } else if g.chars().next().is_some_and(char::is_whitespace) {
@@ -555,7 +555,7 @@ pub fn parse_quoted_args(input: &str) -> Vec<String> {
                 if i < graphemes.len() {
                     current.push_str(graphemes[i]);
                 } else {
-                    // Trailing backslash — treat as literal.
+                    // Trailing backslash - treat as literal.
                     current.push('\\');
                 }
             } else if g == "\"" {
@@ -1122,7 +1122,7 @@ mod tests {
         // When rendering with empty args list.
         let result = tmpl.render(&[]);
 
-        // Then no panic — missing params replaced with empty.
+        // Then no panic - missing params replaced with empty.
         assert_eq!(result, "script.sh  ");
     }
 
@@ -1261,13 +1261,13 @@ mod tests {
 
     #[rstest::rstest]
     fn parse_quoted_args_trailing_backslash_outside_quotes() {
-        // Trailing backslash at end of input — treat as literal.
+        // Trailing backslash at end of input - treat as literal.
         assert_eq!(parse_quoted_args("foo\\"), vec!["foo\\".to_owned()]);
     }
 
     #[rstest::rstest]
     fn parse_quoted_args_trailing_backslash_inside_quotes() {
-        // Trailing backslash at end of input inside quotes — treat as literal.
+        // Trailing backslash at end of input inside quotes - treat as literal.
         assert_eq!(parse_quoted_args("\"foo\\"), vec!["foo\\".to_owned()]);
     }
 
@@ -1746,7 +1746,7 @@ mod tests {
 
     #[rstest::rstest]
     fn parse_command_template_adjacent_dollar_params() {
-        // Given "$1$2" — adjacent positional params.
+        // Given "$1$2" - adjacent positional params.
         let tmpl = CommandTemplate::parse("$1$2");
 
         // Then both are extracted.

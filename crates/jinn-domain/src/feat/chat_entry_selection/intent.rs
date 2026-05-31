@@ -1,4 +1,4 @@
-//! Chat entry selection intent handlers — navigate and pin entries.
+//! Chat entry selection intent handlers - navigate and pin entries.
 
 use crate::common::app_state::AppState;
 use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
@@ -22,7 +22,7 @@ pub(crate) fn advance_selection_one(session: &mut ChatSessionState) -> bool {
     };
 
     let Some(cur) = current else {
-        // No selection — select first entry if history exists.
+        // No selection - select first entry if history exists.
         if !session.history().is_empty() {
             session.select_next_entry();
             return true;
@@ -31,7 +31,7 @@ pub(crate) fn advance_selection_one(session: &mut ChatSessionState) -> bool {
     };
 
     if cur >= max {
-        return false; // At bottom — no-op.
+        return false; // At bottom - no-op.
     }
 
     let last_visible = if visible.is_empty() {
@@ -51,7 +51,7 @@ pub(crate) fn advance_selection_one(session: &mut ChatSessionState) -> bool {
 ///
 /// If the cursor is on the last visible entry, pages the viewport down first,
 /// then advances the cursor by exactly 1 (not jump to first visible in new viewport).
-/// Clamps at the last entry in history — no wrapping.
+/// Clamps at the last entry in history - no wrapping.
 pub fn handle_select_next(state: &mut AppState) -> IntentResult {
     validator::validate_chat_entry_select_next(state);
     advance_selection_one(state.active_session_mut());
@@ -61,7 +61,7 @@ pub fn handle_select_next(state: &mut AppState) -> IntentResult {
 /// Selects the previous chat entry in the active session.
 ///
 /// If the cursor is on the first visible entry, pages the viewport up first,
-/// then moves the cursor back by exactly 1. Clamps at entry 0 — no wrapping.
+/// then moves the cursor back by exactly 1. Clamps at entry 0 - no wrapping.
 pub fn handle_select_prev(state: &mut AppState) -> IntentResult {
     validator::validate_chat_entry_select_prev(state);
     let session = state.active_session_mut();
@@ -70,7 +70,7 @@ pub fn handle_select_prev(state: &mut AppState) -> IntentResult {
 
     if let Some(cur) = current {
         if cur == 0 {
-            // Already at first entry — no-op.
+            // Already at first entry - no-op.
             return IntentResult::empty();
         }
         // Check if cursor is at first visible entry.
@@ -80,7 +80,7 @@ pub fn handle_select_prev(state: &mut AppState) -> IntentResult {
             Some(visible.start)
         };
         if first_visible == Some(cur) {
-            // At first visible — page up, then move back by exactly 1.
+            // At first visible - page up, then move back by exactly 1.
             let viewport_height = session.viewport_height_value().max(1);
             session.scroll_up(viewport_height);
             session.select_prev_entry();
@@ -183,7 +183,7 @@ pub fn handle_toggle_ignored_block(state: &mut AppState) -> IntentResult {
 /// # Panics
 ///
 /// Panics if `selected_entry_index()` returns `None` after validation
-/// succeeds. This should never happen — the validator guarantees a
+/// succeeds. This should never happen - the validator guarantees a
 /// selection exists.
 pub fn handle_fork_from_entry(state: &mut AppState) -> IntentResult {
     if super::validator::validate_fork_from_entry(state).is_err() {
@@ -239,7 +239,7 @@ pub fn handle_yank_selected(state: &mut AppState) -> IntentResult {
 pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
     // Try to continue an existing sweep.
     if let Some(target) = state.active_session_mut().take_ignore_sweep() {
-        // Sweep continuation — apply fixed state, skip pinned entries.
+        // Sweep continuation - apply fixed state, skip pinned entries.
         loop {
             let session = state.active_session_mut();
 
@@ -254,9 +254,9 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
                 .is_some_and(crate::feat::session::chat_entry::ChatEntry::is_pinned);
 
             if is_pinned {
-                // Skip pinned — try advancing to the next entry.
+                // Skip pinned - try advancing to the next entry.
                 if !advance_selection_one(session) {
-                    // At bottom, pinned is the last entry — stop.
+                    // At bottom, pinned is the last entry - stop.
                     return IntentResult::empty();
                 }
                 // Loop to check the new entry.
@@ -279,7 +279,7 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
         }
     }
 
-    // Fresh press (no active sweep) — validate and toggle.
+    // Fresh press (no active sweep) - validate and toggle.
     if validator::validate_chat_entry_ignore_selected(state).is_err() {
         return IntentResult::empty();
     }
@@ -297,7 +297,7 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
     // Advance cursor.
     advance_selection_one(state.active_session_mut());
 
-    // Store sweep state for potential continuation — only when the result
+    // Store sweep state for potential continuation - only when the result
     // is a forced override. A Default result means the user reverted an entry
     // to its kind default; that's not a sweep action.
     if captured != ContextOverride::Default {
@@ -910,7 +910,7 @@ mod tests {
             "block should be expanded"
         );
 
-        // Rebuild visual items (now expanded — individual Entry items).
+        // Rebuild visual items (now expanded - individual Entry items).
         let items = build_visual_items(
             state.active_session().history(),
             &state.active_session().ui.shown_ignored_blocks,
@@ -1185,7 +1185,7 @@ mod tests {
         state.active_session_mut().select_prev_entry();
         state.active_session_mut().select_prev_entry();
 
-        // First press — toggles entry 0, advances to 1.
+        // First press - toggles entry 0, advances to 1.
         let _result = handle_ignore_selected(&mut state);
         assert_eq!(state.active_session().selected_entry_index(), Some(1));
 
@@ -1265,7 +1265,7 @@ mod tests {
         state.active_session_mut().push_entry(ChatEntry::user("b"));
         state.active_session_mut().select_prev_entry();
 
-        // First press — toggles entry 0, advances to 1.
+        // First press - toggles entry 0, advances to 1.
         let _result = handle_ignore_selected(&mut state);
         assert_eq!(state.active_session().selected_entry_index(), Some(1));
 
@@ -1303,7 +1303,7 @@ mod tests {
         state.active_session_mut().select_prev_entry();
         assert_eq!(state.active_session().selected_entry_index(), Some(0));
 
-        // First press — toggles entry 0, advances to entry 1 (pinned).
+        // First press - toggles entry 0, advances to entry 1 (pinned).
         let _result = handle_ignore_selected(&mut state);
         assert_eq!(state.active_session().selected_entry_index(), Some(1));
         assert_eq!(
@@ -1338,7 +1338,7 @@ mod tests {
         );
         state.active_session_mut().select_prev_entry();
 
-        // First press — toggles entry 0, advances to entry 1 (pinned).
+        // First press - toggles entry 0, advances to entry 1 (pinned).
         let _result = handle_ignore_selected(&mut state);
         assert_eq!(state.active_session().selected_entry_index(), Some(1));
 

@@ -86,7 +86,7 @@ fn entries_to_messages_empty_input() {
 
 #[rstest::rstest]
 fn orphaned_tool_call_produces_assistant_message() {
-    // Given a tool call entry (orphaned — no preceding assistant).
+    // Given a tool call entry (orphaned - no preceding assistant).
     let entries = vec![ChatEntry::tool_call("call_1", "echo", r#"{"input":"hi"}"#)];
 
     // When converting to messages.
@@ -327,7 +327,7 @@ fn pinned_user_and_assistant_entries_unaffected() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then pinning does not change their conversion — they are included as normal.
+    // Then pinning does not change their conversion - they are included as normal.
     assert_eq!(messages.len(), 2);
     assert_eq!(
         messages[0],
@@ -754,7 +754,7 @@ fn forced_exclude_dangling_tool_call_produces_valid_messages() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then only the User message is produced — no dangling tool_calls.
+    // Then only the User message is produced - no dangling tool_calls.
     assert_eq!(messages.len(), 1, "expected only User message, got: {messages:?}");
     assert!(matches!(&messages[0], LlmMessage::User { .. }));
 
@@ -916,7 +916,7 @@ fn complete_tool_batch_produces_valid_messages() {
 #[rstest::rstest]
 fn orphan_tool_call_after_excluded_empty_assistant_creates_synthetic() {
     // Given an empty assistant (excluded by default) followed by a tool call
-    // and a tool result — simulating the user having excluded entries.
+    // and a tool result - simulating the user having excluded entries.
     let entries = vec![
         ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#),
         ChatEntry::tool_result("tc-1", "bash", "file.txt", ToolResultStatus::Success),

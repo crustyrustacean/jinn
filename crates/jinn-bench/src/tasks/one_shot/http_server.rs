@@ -1,4 +1,4 @@
-//! http-server bench task — write a minimal HTTP server (compile-check only).
+//! http-server bench task - write a minimal HTTP server (compile-check only).
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 
@@ -31,7 +31,7 @@ pub fn task() -> BenchTask {
 fn verify(dir: &Path) -> VerificationReport {
     let checks = vec![
         checks::check_file_exists(dir, "src/main.rs"),
-        // Just needs to compile — we told it NOT to run.
+        // Just needs to compile - we told it NOT to run.
         checks::check_cargo_check(dir),
     ];
     VerificationReport::new("http-server", checks)

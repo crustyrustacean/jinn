@@ -18,7 +18,7 @@ pub enum AutocompleteTrigger {
 /// Lives inside [`ChatInputBoxState`](super::chat_input_box::ChatInputBoxState) as `Option<AutocompleteState>`.
 /// `None` means autocomplete is not active.
 ///
-/// The filter text is NOT stored here — it is always derived from the buffer
+/// The filter text is NOT stored here - it is always derived from the buffer
 /// content (graphemes from `token_start + 1` to `cursor_pos`) to prevent
 /// cache-drift bugs.
 #[derive(Debug, Clone)]

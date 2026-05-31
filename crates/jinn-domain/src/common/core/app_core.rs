@@ -62,7 +62,7 @@ impl AppCore {
 /// Spawns a background task that continuously drains the `AppMsg` channel
 /// and forwards to the actor host.
 ///
-/// No tick dependency — messages are forwarded immediately as they arrive.
+/// No tick dependency - messages are forwarded immediately as they arrive.
 /// The task ends when the `receiver` channel is dropped (happens when
 /// `AppCore` is dropped).
 pub fn spawn_forwarding_task(
@@ -93,7 +93,7 @@ pub fn spawn_forwarding_task(
 /// 4. Sets `should_quit` on state.
 /// 5. Joins actor tasks via `actor_host.shutdown()`.
 ///
-/// The main thread owns the timeout — if the actor system doesn't signal
+/// The main thread owns the timeout - if the actor system doesn't signal
 /// back within `timeout`, we force quit.
 pub fn coordinated_shutdown(
     actor_host: &dyn crate::ActorHost,

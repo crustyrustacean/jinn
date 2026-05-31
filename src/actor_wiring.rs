@@ -1,4 +1,4 @@
-//! Actor wiring — spawns all actors and assembles the actor host.
+//! Actor wiring - spawns all actors and assembles the actor host.
 //!
 //! This module encapsulates the one-time startup wiring: creating shared state,
 //! spawning each actor via the unified [`spawn`]/[`system_spawn`] functions,
@@ -8,12 +8,12 @@
 //! # Spawn order
 //!
 //! 1. Infrastructure actors via [`system_spawn`] (no lifecycle events):
-//!    - `system-ready` — counts `ActorStarted`, signals main thread
+//!    - `system-ready` - counts `ActorStarted`, signals main thread
 //! 2. Lifecycle events emitted for both infrastructure actors
 //! 3. Init actors via [`spawn`] (self-schedule on startup):
-//!    - `env-init` — loads config, resolves API keys
-//!    - `provider-init` — builds registry, merges cache, resolves `last_model`
-//!    - `preferences` — loads user preferences
+//!    - `env-init` - loads config, resolves API keys
+//!    - `provider-init` - builds registry, merges cache, resolves `last_model`
+//!    - `preferences` - loads user preferences
 //! 4. Domain actors via [`spawn`]:
 //!    - All remaining actors
 
@@ -71,7 +71,7 @@ pub fn create_core_with_actor_host(
     bench_artifact_dir: Option<std::path::PathBuf>,
     paths: jinn_domain::AppPaths,
 ) -> (AppCore, Services, ActorHostService) {
-    // Create channel first — actors need the sender, but AppCore needs services
+    // Create channel first - actors need the sender, but AppCore needs services
     // which needs the actor host which needs actors. Break the cycle by creating
     // the channel independently.
     let (sender, receiver) = kanal::unbounded::<AppMsg>();
@@ -79,13 +79,13 @@ pub fn create_core_with_actor_host(
     // Create the message sink that bridges actor output to AppCore's channel.
     let sink: Arc<dyn MessageSink> = Arc::new(ActorMessageSink::new(sender.clone()));
 
-    // Create the actor counter — incremented by every spawn/system_spawn call.
+    // Create the actor counter - incremented by every spawn/system_spawn call.
     let counter = ActorCounter::new();
 
-    // Create the shutdown tracker — shared across all actors for coordinated shutdown.
+    // Create the shutdown tracker - shared across all actors for coordinated shutdown.
     let shutdown_tracker = ShutdownTracker::new();
 
-    // Create shared State FIRST — injected into multiple actors.
+    // Create shared State FIRST - injected into multiple actors.
     let state = State::new(AppState::default());
 
     // Set default CWD for sessions (inherited from shell).
@@ -246,7 +246,7 @@ pub fn create_core_with_actor_host(
         },
     ));
 
-    // Web fetch actor — reads backend from preferences, constructs fetcher.
+    // Web fetch actor - reads backend from preferences, constructs fetcher.
     let web_fetch_backend = user_preferences_storage
         .load()
         .map(|p| p.web_fetch.backend)
@@ -392,7 +392,7 @@ pub fn create_core_with_actor_host(
         },
     ));
 
-    // Token count actor — computes tiktoken counts for chat entries.
+    // Token count actor - computes tiktoken counts for chat entries.
     actors.push(spawn::<
         jinn_domain::feat::token_count_actor::TokenCountActor,
     >(
@@ -406,7 +406,7 @@ pub fn create_core_with_actor_host(
         },
     ));
 
-    // Queue actor — dispatches queued turns when sessions become idle.
+    // Queue actor - dispatches queued turns when sessions become idle.
     actors.push(spawn::<jinn_domain::feat::queue_actor::QueueActor>(
         "queue",
         &sink,
@@ -438,7 +438,7 @@ pub fn create_core_with_actor_host(
     //       },
     //   ));
     //
-    // Compaction worker — summarizes conversation history into structured checkpoints.
+    // Compaction worker - summarizes conversation history into structured checkpoints.
     {
         use jinn_domain::feat::compaction_worker::CompactionWorker;
         use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
@@ -462,7 +462,7 @@ pub fn create_core_with_actor_host(
         ));
     }
 
-    // Compaction trigger actor — handles /compact and /compact-all commands.
+    // Compaction trigger actor - handles /compact and /compact-all commands.
     {
         use jinn_domain::feat::compaction_worker::{CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker};
 
@@ -484,7 +484,7 @@ pub fn create_core_with_actor_host(
         ));
     }
 
-    // Sidebar state actor — keeps sidebar cursor in sync after session removal.
+    // Sidebar state actor - keeps sidebar cursor in sync after session removal.
     actors.push(spawn::<
         jinn_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor,
     >(
@@ -505,7 +505,7 @@ pub fn create_core_with_actor_host(
         registry
     });
 
-    // Workflow actor — bridges workflow engine to actor bus.
+    // Workflow actor - bridges workflow engine to actor bus.
     actors.push(spawn::<WorkflowActor>(
         "workflow",
         &sink,
@@ -583,7 +583,7 @@ pub fn create_core_with_actor_host(
         ));
     }
 
-    // Spawn the async forwarding task — continuously drains AppMsg channel → actor host.
+    // Spawn the async forwarding task - continuously drains AppMsg channel → actor host.
     let actor_host_service = ActorHostService::new(Arc::new(
         InMemoryActorHost::from_actors_with_handle(actors, handle.clone(), shutdown_tracker),
     ));

@@ -1,16 +1,16 @@
 //! Actor envelope wrapping all message types into a single channel.
 //!
-//! Every message an actor processes arrives inside an [`ActorEnvelope`] —
+//! Every message an actor processes arrives inside an [`ActorEnvelope`] -
 //! whether it originated as a bus event, a bus command, a direct typed message
 //! from another actor, or a system lifecycle message.
 //!
 //! Note: [`SystemMessage::ApplicationShuttingDown`] is intercepted by the
-//! actor run loop — actors never see it in their `handle()` method.
+//! actor run loop - actors never see it in their `handle()` method.
 //! See [`Actor::on_shutdown`](crate::Actor::on_shutdown) for the shutdown hook.
 
 /// System-level lifecycle messages delivered to every actor.
 ///
-/// These messages bypass the event bus — the actor host sends them directly
+/// These messages bypass the event bus - the actor host sends them directly
 /// to all actors regardless of subscriptions.
 ///
 /// Note: `ApplicationShuttingDown` is intercepted by the run loop and never

@@ -44,7 +44,7 @@ pub struct ActorContext {
 impl ActorContext {
     /// Creates a new actor context with the given name and message sink.
     ///
-    /// Called by the actor host during startup — actor authors typically
+    /// Called by the actor host during startup - actor authors typically
     /// don't construct this directly.
     #[must_use]
     pub fn new<S>(name: S, sink: Arc<dyn MessageSink>) -> Self
@@ -144,7 +144,7 @@ impl ActorContext {
     /// Removes and returns the [`ActorRef<M>`] for message type `M`.
     ///
     /// Returns `None` if no `ActorRef` was stored for this message type.
-    /// This is a take (not a clone) — subsequent calls return `None`.
+    /// This is a take (not a clone) - subsequent calls return `None`.
     pub fn take_actor_ref<M>(&mut self) -> Option<ActorRef<M>>
     where
         M: Send + 'static,
@@ -204,7 +204,7 @@ impl ActorContext {
 
     /// Announces that this actor has finished starting up.
     ///
-    /// Sends `Event::ActorStarted` with the actor's name. Fire-and-forget —
+    /// Sends `Event::ActorStarted` with the actor's name. Fire-and-forget -
     /// logs a warning on send failure but does not propagate the error.
     pub fn announce_started(&self) {
         if let Err(e) = self.send_event(Event::ActorStarted(ActorStarted {
@@ -217,7 +217,7 @@ impl ActorContext {
 
     /// Announces that this actor has completed shutdown.
     ///
-    /// Sends `Event::ActorShutdownCompleted` with the actor's name. Fire-and-forget —
+    /// Sends `Event::ActorShutdownCompleted` with the actor's name. Fire-and-forget -
     /// logs a warning on send failure but does not propagate the error.
     pub fn announce_shutdown_completed(&self) {
         if let Err(e) = self.send_event(Event::ActorShutdownCompleted(ActorShutdownCompleted {

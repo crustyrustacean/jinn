@@ -1,4 +1,4 @@
-//! Provider configuration — TOML schema and I/O.
+//! Provider configuration - TOML schema and I/O.
 //!
 //! Defines [`ProvidersConfig`] as the root of `providers.toml`,
 //! along with loading, saving, and auto-creation logic. The config file
@@ -435,7 +435,7 @@ tool_stream = true
         // Verifies that a provider entry without requires_key in TOML defaults to true.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
-        // No requires_key field — should default to true.
+        // No requires_key field - should default to true.
         std::fs::write(
             &path,
             "[[providers]]\nname = \"openai\"\nbackend = \"openai\"\nmodels = [\"gpt-4\"]\napi_key_env = \"OPENAI_API_KEY\"\n",

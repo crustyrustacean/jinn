@@ -1,4 +1,4 @@
-//! Provider picker loader — loads provider entries into picker state.
+//! Provider picker loader - loads provider entries into picker state.
 
 use crate::common::app_state::AppState;
 use crate::common::services::Services;

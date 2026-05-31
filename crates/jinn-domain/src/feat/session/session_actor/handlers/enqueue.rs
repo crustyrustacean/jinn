@@ -1,4 +1,4 @@
-//! Message enqueuing handlers — manage user message input, queuing, and dispatch.
+//! Message enqueuing handlers - manage user message input, queuing, and dispatch.
 //!
 //! Handles the flow from user input through to prompt assembly: enqueuing messages
 //! (with queueing when session is busy), updating the input buffer, pushing arbitrary
@@ -19,9 +19,9 @@ use crate::feat::session::phase_machine::PhaseKind;
 
 /// Decision returned after inspecting session state in `EnqueueUserMessage`.
 enum EnqueueAction {
-    /// Session is idle — dispatch directly via assemble_prompt().
+    /// Session is idle - dispatch directly via assemble_prompt().
     DispatchDirectly,
-    /// Session is busy — message was queued.
+    /// Session is busy - message was queued.
     Queued,
 }
 
@@ -183,7 +183,7 @@ impl SessionPersistenceActor {
         self.save_active_session(&payload.session_id).await;
     }
 
-    /// SendMessage: backward compat — emit EnqueueUserMessage.
+    /// SendMessage: backward compat - emit EnqueueUserMessage.
     pub(in crate::feat::session::session_actor) fn handle_send_message(
         payload: &SendMessage,
         ctx: &ActorContext,
@@ -301,7 +301,7 @@ mod tests {
             )
             .await;
 
-        // Then the message is queued (not dispatched — phase stays Streaming).
+        // Then the message is queued (not dispatched - phase stays Streaming).
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
         assert_eq!(session.phase(), PhaseKind::Streaming);

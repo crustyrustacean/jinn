@@ -121,7 +121,7 @@ impl BuiltinHandler for BenchTaskHandler {
         // set during setup. The session actor passes the CWD as part of its
         // lifecycle tracking, but the handler doesn't receive it directly.
         //
-        // For now, teardown always returns true — the actual verification
+        // For now, teardown always returns true - the actual verification
         // will be performed by the bench actor in Phase 4, which has access
         // to the session's CWD from state.
         //

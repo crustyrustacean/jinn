@@ -1,4 +1,4 @@
-//! Streaming lifecycle handlers — manage token streaming and stream completion.
+//! Streaming lifecycle handlers - manage token streaming and stream completion.
 //!
 //! Handles appending individual tokens to the assistant entry (including
 //! reasoning/thinking tokens), and finalizing the stream with token accounting
@@ -52,7 +52,7 @@ impl SessionPersistenceActor {
     ///
     /// For `ToolUse` reason, transitions to sending state instead of fully idle,
     /// so the streaming indicator remains visible while the followup response
-    /// is awaited. The queue is NOT drained — the turn hasn't ended.
+    /// is awaited. The queue is NOT drained - the turn hasn't ended.
     #[expect(clippy::too_many_lines, reason = "1 line over limit")]
     pub(in crate::feat::session::session_actor) async fn on_stream_completed(
         &self,
@@ -149,7 +149,7 @@ impl SessionPersistenceActor {
                 }
             }
 
-            // Tool use means the conversation continues — always transition to sending
+            // Tool use means the conversation continues - always transition to sending
             // so the tool loop runs.
             if event.reason == StreamCompletedReason::ToolUse {
                 session.begin_sending();
@@ -1013,7 +1013,7 @@ mod tests {
         };
         actor.on_stream_completed(&event, &ctx).await;
 
-        // Then the mutation was applied — the assistant entry is now ForcedExclude.
+        // Then the mutation was applied - the assistant entry is now ForcedExclude.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let assistant = session
@@ -1274,7 +1274,7 @@ mod tests {
         assert_eq!(ledger.len(), 1);
         assert!(
             ledger[0].tokens_received > 2,
-            "expected tokens_received > 2 (text only), got {} — thinking not counted",
+            "expected tokens_received > 2 (text only), got {} - thinking not counted",
             ledger[0].tokens_received
         );
     }

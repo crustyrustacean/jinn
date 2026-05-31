@@ -1,4 +1,4 @@
-//! Preview selection widget — picker with a split-pane preview area.
+//! Preview selection widget - picker with a split-pane preview area.
 //!
 //! [`PreviewSelectionWidget`] renders a telescope-style popup overlay with a list
 //! on one side and a preview pane on the other. On wide terminals the split is

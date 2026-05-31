@@ -168,8 +168,8 @@ impl WorkflowGraph {
     ///
     /// Current checks:
     ///
-    /// - **Isolated nodes** — nodes with no incoming or outgoing edges.
-    /// - **Dead output ports** — output ports with no outgoing edge.
+    /// - **Isolated nodes** - nodes with no incoming or outgoing edges.
+    /// - **Dead output ports** - output ports with no outgoing edge.
     #[must_use]
     pub fn validate(&self) -> Vec<ValidationDiagnostic> {
         let mut diagnostics = Vec::new();
@@ -499,7 +499,7 @@ impl WorkflowGraphBuilder {
                     .any(|e| e.weight().target_port == port_def.name);
 
                 if !port_def.required && !has_edge {
-                    // Optional port — allowed to be disconnected.
+                    // Optional port - allowed to be disconnected.
                     continue;
                 }
 
@@ -971,7 +971,7 @@ mod tests {
             )
             .add_node("b".to_owned(), Box::new(TestNode::source("b")));
 
-        // Only connect the required port — optional port left disconnected.
+        // Only connect the required port - optional port left disconnected.
         builder.connect("b", "out", "a", "required").expect("b→a");
 
         // When building.
@@ -1000,7 +1000,7 @@ mod tests {
             )),
         );
 
-        // Connect nothing — required port is disconnected.
+        // Connect nothing - required port is disconnected.
         // When building.
         let result = builder.build();
 
@@ -1068,7 +1068,7 @@ mod tests {
     #[test]
     fn validate_warns_on_dead_output_port() {
         // Given A → B where A has an output port "out" but B is a sink.
-        // A's output is connected, but B has no outputs — that's fine.
+        // A's output is connected, but B has no outputs - that's fine.
         // But if we have a node with an unconnected output...
         let mut builder = WorkflowGraphBuilder::new();
         builder

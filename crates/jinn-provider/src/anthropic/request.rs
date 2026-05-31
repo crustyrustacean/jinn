@@ -84,7 +84,7 @@ pub fn build_request(
 fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
     match msg {
         LlmMessage::System { .. } => {
-            // System messages are handled separately — should never reach here.
+            // System messages are handled separately - should never reach here.
             serde_json::json!({"role": "user", "content": []})
         }
         LlmMessage::User { content } => serde_json::json!({

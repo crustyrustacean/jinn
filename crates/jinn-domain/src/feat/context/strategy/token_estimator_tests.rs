@@ -236,7 +236,7 @@ fn estimate_entry_tokens_for_ignored_pinned_entry_is_nonzero() {
     // When estimating entry tokens.
     let tokens = estimate_entry_tokens(&estimator, &entry);
 
-    // Then pin overrides ignored — tokens are still counted.
+    // Then pin overrides ignored - tokens are still counted.
     assert!(tokens > 0);
 }
 

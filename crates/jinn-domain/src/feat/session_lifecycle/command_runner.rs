@@ -1,8 +1,8 @@
-//! Lifecycle command runner — executes setup and teardown commands.
+//! Lifecycle command runner - executes setup and teardown commands.
 //!
 //! Two entry points:
-//! - [`run_setup_command`] — expects stdout output (last line becomes the session CWD)
-//! - [`run_teardown_command`] — only checks exit code, output is irrelevant
+//! - [`run_setup_command`] - expects stdout output (last line becomes the session CWD)
+//! - [`run_teardown_command`] - only checks exit code, output is irrelevant
 
 use std::path::PathBuf;
 
@@ -116,7 +116,7 @@ pub async fn run_setup_command(
     Ok(canonical)
 }
 
-/// Runs a teardown command. Only checks the exit code — output is ignored.
+/// Runs a teardown command. Only checks the exit code - output is ignored.
 ///
 /// Spawns the command via the provided shell.
 ///

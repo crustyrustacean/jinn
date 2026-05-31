@@ -2,7 +2,7 @@
 //!
 //! When sessions form a tree (parent/child via `parent_session`), this module
 //! provides functions to find the tree root and compute aggregate stats across
-//! the entire tree — not just the active session's descendants.
+//! the entire tree - not just the active session's descendants.
 //!
 //! Archived sessions are represented as lightweight [`FrozenTreeNode`] snapshots
 //! that preserve tree structure and stats without holding full session state.
@@ -41,7 +41,7 @@ pub struct TreeAggregateStats {
 pub struct FrozenTreeNode {
     /// The archived session's ID.
     pub session_id: SessionId,
-    /// Parent session ID — `None` for root sessions.
+    /// Parent session ID - `None` for root sessions.
     pub parent_session_id: Option<SessionId>,
     /// Total tokens sent across all requests in this session.
     pub total_sent: u64,
@@ -98,18 +98,18 @@ pub fn find_tree_root<S: ::std::hash::BuildHasher>(
         } else if let Some(frozen) = frozen_nodes.get(&current) {
             frozen.parent_session_id.clone()
         } else {
-            // Not found anywhere — treat as root.
+            // Not found anywhere - treat as root.
             return current;
         };
 
         let Some(parent_id) = parent_id else {
-            // No parent — this is the root.
+            // No parent - this is the root.
             return current;
         };
 
         // Check that the parent exists in either live sessions or frozen nodes.
         if !sessions.contains_key(&parent_id) && !frozen_nodes.contains_key(&parent_id) {
-            // Orphan — parent was removed. This node is the root.
+            // Orphan - parent was removed. This node is the root.
             return current;
         }
 

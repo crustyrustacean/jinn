@@ -3,7 +3,7 @@
 //! Caches the wrapped line count *and rendered lines* per entry so the renderer
 //! can cheaply determine which entries are visible without calling
 //! `entry_to_lines()` for the entire history. On a cache hit, the pre-rendered
-//! `Vec<Line>` is reused in Pass 2 — skipping both parsing and rendering.
+//! `Vec<Line>` is reused in Pass 2 - skipping both parsing and rendering.
 //!
 //! The cache is invalidated on content changes (streaming tokens),
 //! expand/collapse toggles, and content width changes (terminal resize).
@@ -43,7 +43,7 @@ pub struct CacheHit {
 
 /// Cache mapping entry IDs to their cached wrapped line counts and rendered lines.
 ///
-/// Owned by [`FrontendCaches`] — populated during the render pass, used
+/// Owned by [`FrontendCaches`] - populated during the render pass, used
 /// to determine which entries overlap the viewport without re-rendering
 /// the entire history.
 ///

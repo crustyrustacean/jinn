@@ -51,17 +51,17 @@ pub(super) fn apply_selection_highlight(app: &TuiApp, buf: &mut Buffer) {
 
     for y in top_y..=bot_y {
         let (start_x, end_x) = if top_y == bot_y {
-            // Single line — column selection.
+            // Single line - column selection.
             (anchor_x.min(focus_x), anchor_x.max(focus_x))
         } else if y == top_y {
-            // Top row — from top_x to last non-whitespace.
+            // Top row - from top_x to last non-whitespace.
             let end = find_last_nonws_in_row(buf, y, top_x, bounds_right).unwrap_or(top_x);
             (top_x, end)
         } else if y == bot_y {
-            // Bottom row — from bounds.x to bot_x.
+            // Bottom row - from bounds.x to bot_x.
             (bounds.x, bot_x)
         } else {
-            // Middle line — from bounds.x to last non-whitespace.
+            // Middle line - from bounds.x to last non-whitespace.
             let end = find_last_nonws_in_row(buf, y, bounds.x, bounds_right).unwrap_or(bounds.x);
             (bounds.x, end)
         };
@@ -129,7 +129,7 @@ mod tests {
         // Paint cell inside bounds (will be in clamped selection).
         buf.cell_mut((7, 7)).unwrap().set_fg(Color::Cyan);
         buf.cell_mut((7, 7)).unwrap().set_bg(Color::Magenta);
-        // Paint cell at raw anchor position (0, 0) — outside bounds.
+        // Paint cell at raw anchor position (0, 0) - outside bounds.
         buf.cell_mut((0, 0)).unwrap().set_fg(Color::White);
         buf.cell_mut((0, 0)).unwrap().set_bg(Color::Black);
 
@@ -169,7 +169,7 @@ mod tests {
         // When applying selection highlight.
         apply_selection_highlight(&app, &mut buf);
 
-        // Then no cells are inverted — colors remain unchanged.
+        // Then no cells are inverted - colors remain unchanged.
         let cell = buf.cell((5, 5)).expect("colored cell");
         assert_eq!(cell.fg, Color::Yellow); // unchanged
         assert_eq!(cell.bg, Color::Blue); // unchanged

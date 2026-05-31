@@ -94,7 +94,7 @@ impl SessionStore for FakeSessionStore {
 /// All services default to empty/noop implementations. Use the builder methods
 /// to customize specific services when needed.
 ///
-/// Uses a leaked tokio runtime — acceptable for unit tests.
+/// Uses a leaked tokio runtime - acceptable for unit tests.
 ///
 /// # Example
 ///
@@ -182,7 +182,7 @@ impl TestServices {
 
     /// Build the [`Services`] instance.
     ///
-    /// Leaks a tokio runtime if no custom handle is provided — acceptable for unit tests.
+    /// Leaks a tokio runtime if no custom handle is provided - acceptable for unit tests.
     ///
     /// # Panics
     ///

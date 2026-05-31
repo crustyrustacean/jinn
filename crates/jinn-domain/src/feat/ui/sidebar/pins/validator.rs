@@ -1,4 +1,4 @@
-//! Pins section validators — validate pin/unpin actions for the sidebar pins section.
+//! Pins section validators - validate pin/unpin actions for the sidebar pins section.
 //!
 //! Pin/unpin actions are fallible; navigation intents within the sidebar
 //! are handled by the section itself and are infallible.

@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! `add_phase` built-in tool — adds a new phase to the task list.
+//! `add_phase` built-in tool - adds a new phase to the task list.
 
 use crate::feat::tools_actor::BoxedToolFuture;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};

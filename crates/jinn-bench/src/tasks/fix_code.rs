@@ -1,4 +1,4 @@
-//! Fix-code bench tasks — model receives broken code and must fix it.
+//! Fix-code bench tasks - model receives broken code and must fix it.
 
 use crate::task::BenchTask;
 

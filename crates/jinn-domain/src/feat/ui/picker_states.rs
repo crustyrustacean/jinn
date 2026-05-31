@@ -18,7 +18,7 @@ use crate::feat::tools_actor::tool_entry::ToolEntry;
 use crate::feat::workflow::picker_entry::WorkflowPickerEntry;
 use crate::protocol::PickerEntry;
 
-/// All picker state — grouped so the picker subsystem can evolve independently.
+/// All picker state - grouped so the picker subsystem can evolve independently.
 ///
 /// Each picker has its own selection state and optional companion fields
 /// (snapshots, scroll offsets) used during the picker's open/close lifecycle.
@@ -36,23 +36,23 @@ pub struct PickerStates {
     /// OWNER: IntentHandler (theme picker navigation).
     pub theme_picker: jinn_selection_widget::SelectionState<ThemeEntry>,
 
-    /// Saved theme before preview — restored on ESC.
+    /// Saved theme before preview - restored on ESC.
     /// OWNER: IntentHandler (set on theme picker open, consumed on confirm/cancel).
     pub theme_preview_original: Option<Theme>,
 
-    /// Tool picker state — shows all registered tools with toggle state.
+    /// Tool picker state - shows all registered tools with toggle state.
     /// OWNER: IntentHandler (populated on tool picker open).
     pub tool_picker: jinn_selection_widget::SelectionState<ToolEntry>,
 
-    /// Snapshot of disabled tools before picker opens — restored on ESC.
+    /// Snapshot of disabled tools before picker opens - restored on ESC.
     /// OWNER: IntentHandler (set on tool picker open, consumed on confirm/cancel).
     pub tool_picker_snapshot: Option<HashSet<String>>,
 
-    /// Skill picker state — shows all discovered skills with toggle state.
+    /// Skill picker state - shows all discovered skills with toggle state.
     /// OWNER: IntentHandler (populated on skill picker open).
     pub skill_picker: jinn_selection_widget::SelectionState<SkillEntry>,
 
-    /// Snapshot of disabled skills before picker opens — restored on ESC.
+    /// Snapshot of disabled skills before picker opens - restored on ESC.
     /// OWNER: IntentHandler (set on skill picker open, consumed on confirm/cancel).
     pub skill_picker_snapshot: Option<HashSet<String>>,
 

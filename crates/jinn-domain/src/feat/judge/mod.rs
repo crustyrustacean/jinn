@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! Judges — attachable evaluation sessions that review origin session output.
+//! Judges - attachable evaluation sessions that review origin session output.
 //!
 //! Judges are markdown files with TOML frontmatter discovered from
 //! both user (`~/.config/jinn/judges/`) and system (`/usr/share/jinn/judges/`)

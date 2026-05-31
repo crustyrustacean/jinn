@@ -1,4 +1,4 @@
-//! edit-insert-function bench task — insert a new function between two existing ones.
+//! edit-insert-function bench task - insert a new function between two existing ones.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

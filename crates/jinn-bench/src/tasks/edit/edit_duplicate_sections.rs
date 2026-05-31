@@ -1,4 +1,4 @@
-//! edit-duplicate-sections bench task — change one field type in one of 5 similar structs.
+//! edit-duplicate-sections bench task - change one field type in one of 5 similar structs.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

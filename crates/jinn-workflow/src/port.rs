@@ -1,4 +1,4 @@
-//! Port types — the data model for workflow node I/O.
+//! Port types - the data model for workflow node I/O.
 //!
 //! Every node declares its input and output ports as [`PortDef`]s with a
 //! [`PortType`]. Data flows between ports as [`PortValue`]s collected in
@@ -8,8 +8,8 @@
 //!
 //! The type system has two levels:
 //!
-//! - **[`ScalarType`]** — the fundamental data kinds: `Text`, `Number`, `Boolean`, `Json`.
-//! - **[`PortType`]** — containers wrapping scalar types: `Single`, `Vector`, `Map`.
+//! - **[`ScalarType`]** - the fundamental data kinds: `Text`, `Number`, `Boolean`, `Json`.
+//! - **[`PortType`]** - containers wrapping scalar types: `Single`, `Vector`, `Map`.
 //!
 //! Containers are homogeneous: `Vector(Number)` holds only numbers,
 //! `Map(Text)` holds only text values. Mixed-type data uses the `Json`
@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use derive_more::Display;
 use wherror::Error;
 
-/// Semantic scalar types — the fundamental data kinds.
+/// Semantic scalar types - the fundamental data kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ScalarType {
     /// A text string.
@@ -29,7 +29,7 @@ pub enum ScalarType {
     Number,
     /// A boolean value.
     Boolean,
-    /// A JSON value (object, array, number, bool, string, null) — escape hatch.
+    /// A JSON value (object, array, number, bool, string, null) - escape hatch.
     Json,
 }
 
@@ -62,7 +62,7 @@ impl ScalarType {
 /// Container types wrapping scalar types.
 ///
 /// Each variant parameterizes the inner [`ScalarType`]. Containers are
-/// homogeneous — all elements share the same scalar type.
+/// homogeneous - all elements share the same scalar type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PortType {
     /// A single scalar value.
@@ -112,7 +112,7 @@ impl PortType {
 
 /// A named, typed port definition on a node.
 ///
-/// Ports are the connection points — think of them as pins on a
+/// Ports are the connection points - think of them as pins on a
 /// blueprint node. Each port has a name (for routing), a type
 /// (for validation), and a `required` flag.
 ///
@@ -207,7 +207,7 @@ impl PortDef {
     }
 }
 
-/// Runtime scalar values — native Rust payloads.
+/// Runtime scalar values - native Rust payloads.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScalarValue {
     /// A text string.
@@ -216,7 +216,7 @@ pub enum ScalarValue {
     Number(f64),
     /// A boolean value.
     Boolean(bool),
-    /// A JSON value — escape hatch for structured data.
+    /// A JSON value - escape hatch for structured data.
     Json(serde_json::Value),
 }
 
@@ -292,7 +292,7 @@ impl ScalarValue {
     }
 }
 
-/// Runtime port values — containers of scalar values.
+/// Runtime port values - containers of scalar values.
 ///
 /// Containers are homogeneous: all elements in a `Vector` share the
 /// same [`ScalarType`], and all values in a `Map` share the same

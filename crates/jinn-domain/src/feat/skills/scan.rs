@@ -1,4 +1,4 @@
-//! Skill scanning — discovers SKILL.md files in a directory tree.
+//! Skill scanning - discovers SKILL.md files in a directory tree.
 
 use std::path::Path;
 

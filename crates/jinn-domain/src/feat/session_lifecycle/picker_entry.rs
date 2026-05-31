@@ -1,4 +1,4 @@
-//! Session lifecycle picker entry — one row in the lifecycle selection picker.
+//! Session lifecycle picker entry - one row in the lifecycle selection picker.
 
 use jinn_selection_widget::PickerItem;
 use ratatui::text::{Line, Span};
@@ -81,7 +81,7 @@ fn render_lifecycle_row(
     }
 
     if let Some(desc) = description {
-        spans.push(Span::styled(format!(" — {desc}"), desc_style));
+        spans.push(Span::styled(format!(" - {desc}"), desc_style));
     }
 
     Line::from(spans)

@@ -1,4 +1,4 @@
-//! Tool orchestrator actor — dispatches tool calls and aggregates batch results.
+//! Tool orchestrator actor - dispatches tool calls and aggregates batch results.
 //!
 //! This actor maintains a registry of available tools (built-in and actor-provided),
 //! dispatches [`ExecuteToolBatch`] requests, and emits [`ToolBatchCompleted`] when
@@ -216,7 +216,7 @@ impl Actor for ToolOrchestratorActor {
             ToolRegistration::Builtin {
                 definition: web_search_def.clone(),
                 execute: |_call, _ctx| {
-                    // Server tool — handled by OpenRouter, never dispatched locally.
+                    // Server tool - handled by OpenRouter, never dispatched locally.
                     Box::pin(std::future::ready(ToolResult {
                         tool_call_id: String::new(),
                         name: "openrouter:web_search".to_owned(),
@@ -364,7 +364,7 @@ impl ToolOrchestratorActor {
             }
             tracing::trace!(
                 session_id = ?session_id,
-                "handle_cancel_tool_batch — aborted {} tasks",
+                "handle_cancel_tool_batch - aborted {} tasks",
                 handle_count
             );
         }

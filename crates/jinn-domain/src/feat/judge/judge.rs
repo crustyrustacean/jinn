@@ -33,7 +33,7 @@ pub struct Judge {
     pub name: String,
     /// Short description for the picker UI.
     pub description: String,
-    /// The judge body — the actual system prompt text.
+    /// The judge body - the actual system prompt text.
     pub body: String,
     /// Optional model override for the judge session.
     pub model: Option<String>,

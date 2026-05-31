@@ -22,7 +22,7 @@ use super::service::{LlmServiceError, LlmServiceFactory};
 /// Shared service wrapper for the provider registry.
 ///
 /// Wraps `ProviderRegistry` in an `Arc<RwLock<...>>` so that all clones
-/// share the same data. Cloning is cheap — only an Arc refcount bump.
+/// share the same data. Cloning is cheap - only an Arc refcount bump.
 ///
 /// Follows the project's service wrapper pattern.
 #[derive(Debug, Clone)]

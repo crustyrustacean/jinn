@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! History appended event — emitted when a new entry is added to session history.
+//! History appended event - emitted when a new entry is added to session history.
 //!
 //! The compaction actor subscribes to this event to evaluate whether
 //! auto-compaction should be triggered. Unlike `StreamCompleted`, which
@@ -27,7 +27,7 @@ use crate::protocol::{EventMsg, SessionId};
 
 /// Emitted when a new entry is appended to the session history.
 ///
-/// Carries no token count — the compaction actor reads `context_size()`
+/// Carries no token count - the compaction actor reads `context_size()`
 /// directly from session state, which uses the tiktoken-based count
 /// from the last prompt assembly. This ensures the threshold check
 /// and the status bar display use the same value.

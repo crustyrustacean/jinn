@@ -1,9 +1,9 @@
-//! Trivial example workflow — add two numbers.
+//! Trivial example workflow - add two numbers.
 //!
 //! A 3-node pipeline using `CodeNode`s:
-//! 1. **source** — emits two numbers (3 and 7)
-//! 2. **add** — sums the two numbers
-//! 3. **sink** — outputs the result
+//! 1. **source** - emits two numbers (3 and 7)
+//! 2. **add** - sums the two numbers
+//! 3. **sink** - outputs the result
 //!
 //! This verifies the pipeline works end-to-end without LLM complexity.
 
@@ -21,9 +21,9 @@ pub fn register(registry: &mut WorkflowRegistry) {
 /// Builds the "add-numbers" workflow graph.
 ///
 /// A trivial 3-node pipeline:
-/// 1. **source** — emits two hard-coded numbers via "a" and "b" output ports
-/// 2. **add** — reads "a" and "b", outputs "sum" = a + b
-/// 3. **sink** — reads "sum" and outputs "result"
+/// 1. **source** - emits two hard-coded numbers via "a" and "b" output ports
+/// 2. **add** - reads "a" and "b", outputs "sum" = a + b
+/// 3. **sink** - reads "sum" and outputs "result"
 ///
 /// # Errors
 ///

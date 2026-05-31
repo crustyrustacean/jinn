@@ -11,7 +11,7 @@ use ratatui::style::Color;
 ///
 /// Below this threshold the colors are considered "too similar" and the
 /// foreground will be adjusted. The value `1500` corresponds to a
-/// per-channel distance of roughly 22 units — enough to be visually
+/// per-channel distance of roughly 22 units - enough to be visually
 /// distinct without being jarring.
 const MIN_DISTANCE_SQ: u32 = 1500;
 
@@ -38,7 +38,7 @@ fn to_rgb(color: Color) -> (u8, u8, u8) {
         Color::LightMagenta => (255, 0, 255),
         Color::LightCyan => (0, 255, 255),
         Color::White => (229, 229, 229),
-        // Indexed colors — approximate via simple hash. These are rare
+        // Indexed colors - approximate via simple hash. These are rare
         // in themes. The adjustment logic will still work correctly even
         // if the RGB isn't pixel-perfect for the terminal's palette.
         Color::Indexed(i) => indexed_to_rgb(i),
@@ -53,7 +53,7 @@ fn to_rgb(color: Color) -> (u8, u8, u8) {
 /// - 232–255: 24-step grayscale ramp
 fn indexed_to_rgb(i: u8) -> (u8, u8, u8) {
     match i {
-        // Standard 16 — delegate to named color mappings.
+        // Standard 16 - delegate to named color mappings.
         0 => (0, 0, 0),
         1 => (205, 0, 0),
         2 => (0, 205, 0),
@@ -210,7 +210,7 @@ mod tests {
 
     #[rstest::rstest]
     fn different_colors_pass_through() {
-        // Given White on Black — obviously distinct.
+        // Given White on Black - obviously distinct.
         let fg = Color::White;
         let bg = Color::Black;
 

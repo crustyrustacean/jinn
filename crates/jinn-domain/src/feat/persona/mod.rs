@@ -1,4 +1,4 @@
-//! Personas — customizable system prompt profiles for the LLM.
+//! Personas - customizable system prompt profiles for the LLM.
 //!
 //! Personas are markdown files with TOML frontmatter discovered from
 //! both user (`~/.config/jinn/personas/`) and system (`/usr/share/jinn/personas/`)

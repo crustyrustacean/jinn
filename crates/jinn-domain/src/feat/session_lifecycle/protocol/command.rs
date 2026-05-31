@@ -1,4 +1,4 @@
-//! Lifecycle command structs — async execution requests for setup/teardown.
+//! Lifecycle command structs - async execution requests for setup/teardown.
 
 use serde::{Deserialize, Serialize};
 

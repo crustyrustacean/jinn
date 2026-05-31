@@ -1,4 +1,4 @@
-//! Loop node — iterative sub-graph execution.
+//! Loop node - iterative sub-graph execution.
 //!
 //! [`LoopNode`] wraps a body graph and runs it repeatedly via the engine.
 //! Each iteration:
@@ -332,7 +332,7 @@ impl WorkflowNode for LoopNode {
         // a factory closure and Regex. The engine should not need to
         // clone LoopNode since it's not used inside itself.
         unimplemented!(
-            "LoopNode::clone_box is not supported — loop nodes cannot be cloned"
+            "LoopNode::clone_box is not supported - loop nodes cannot be cloned"
         )
     }
 
@@ -435,7 +435,7 @@ impl WorkflowNode for LoopNode {
                 return Ok(loop_outputs);
             }
 
-            // Exit condition not met — store outputs for feedback and continue.
+            // Exit condition not met - store outputs for feedback and continue.
             prev_body_outputs = Some(result.outputs);
         }
 
@@ -625,7 +625,7 @@ mod tests {
         builder
             .connect("source", "text", "echo", "in")
             .expect("source → echo edge should be valid");
-        // judge is a source node (no inputs) — it outputs "pass" directly.
+        // judge is a source node (no inputs) - it outputs "pass" directly.
         builder.build().expect("graph should build")
     }
 

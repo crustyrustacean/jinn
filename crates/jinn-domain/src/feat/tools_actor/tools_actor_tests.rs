@@ -1006,7 +1006,7 @@ async fn build_tool_context_uses_session_default_cwd_when_not_overridden() {
     let session_id = {
         let mut guard = actor.state.write();
         let _session = guard.active_session_mut();
-        // Don't set cwd — it defaults to ".".
+        // Don't set cwd - it defaults to ".".
         guard.session.active_session_id().clone()
     };
 

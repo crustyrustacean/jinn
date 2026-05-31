@@ -661,7 +661,7 @@ fn multi_term_filter_with_multiple_spaces_splits_on_whitespace() {
 }
 
 // =========================================================================
-// Phase 1: HIGH severity — core state mutation tests
+// Phase 1: HIGH severity - core state mutation tests
 // =========================================================================
 
 // --- insert_text newline stripping and cursor advancement ---

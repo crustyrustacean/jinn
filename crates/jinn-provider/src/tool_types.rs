@@ -1,4 +1,4 @@
-//! Tool calling types — definitions, calls, and results.
+//! Tool calling types - definitions, calls, and results.
 
 use serde::{Deserialize, Serialize};
 

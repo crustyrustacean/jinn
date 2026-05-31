@@ -204,7 +204,7 @@ fn render_autocomplete_popup_positioned_above_input() {
 
 #[rstest::rstest]
 fn render_autocomplete_popup_anchored_at_hash() {
-    // Given a buffer "foo #co" — the # is at grapheme index 4.
+    // Given a buffer "foo #co" - the # is at grapheme index 4.
 
     let matches = vec![AutocompleteMatch {
         name: "code".to_owned(),
@@ -264,7 +264,7 @@ fn render_autocomplete_popup_width_based_on_content() {
     // Then the popup width accommodates the longest line plus borders.
     let buffer = terminal.backend().buffer().clone();
     let popup_top = 20 - 4; // 2 matches + 2 borders
-    // The longest line: "a-very-long-template-name — A very long description indeed"
+    // The longest line: "a-very-long-template-name - A very long description indeed"
     // Check that the longer match text is visible in the buffer.
     let long_line = buffer_line(&buffer, popup_top + 2, 1, 60);
     assert!(
@@ -288,7 +288,7 @@ fn render_autocomplete_popup_does_not_render_when_inactive() {
         })
         .unwrap();
 
-    // Then no popup renders — the buffer should remain empty (default space chars).
+    // Then no popup renders - the buffer should remain empty (default space chars).
     let buffer = terminal.backend().buffer().clone();
     // Check an area above the input where the popup would be.
     let cell = buffer.cell((0, 15)).expect("cell should exist");
@@ -393,7 +393,7 @@ fn render_autocomplete_popup_clears_background() {
         })
         .unwrap();
 
-    // Then the popup area background is cleared — cells outside the content
+    // Then the popup area background is cleared - cells outside the content
     // text but inside the popup should not contain the filler 'X' characters.
     let buffer = terminal.backend().buffer().clone();
     // Popup: anchor_x = 0 + 2 + 0 = 2. 1 match => height = 3.

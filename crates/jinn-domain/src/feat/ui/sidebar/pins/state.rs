@@ -1,4 +1,4 @@
-//! Pins section state — ID-based selection within the pinned entries list.
+//! Pins section state - ID-based selection within the pinned entries list.
 
 use crate::ChatEntryId;
 
@@ -323,7 +323,7 @@ mod tests {
         let mut state = PinsState::default();
         state.select_by_id(ids[2].clone());
 
-        // When clamping on new list [A, B, C] — C is still present.
+        // When clamping on new list [A, B, C] - C is still present.
         state.clamp_to_nearest(&ids, 2);
 
         // Then C remains selected (kept because it's still in the list).
