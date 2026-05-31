@@ -472,7 +472,7 @@ pub fn handle_move_cursor_down(state: &mut AppState) -> IntentResult {
 pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
     super::validator::validate_normal_escape(state);
 
-    if !matches!(state.active_session().phase(), PhaseKind::Idle) {
+    if state.active_session().is_busy() || !matches!(state.active_session().phase(), PhaseKind::Idle) {
         // Session is busy - show cancel confirmation prompt.
         state.frontend.cancel_stream_prompt = true;
     }

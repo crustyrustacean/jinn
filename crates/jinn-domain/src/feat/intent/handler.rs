@@ -510,12 +510,28 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
 
     let session_id = state.session.active_session_id().clone();
 
+    // Check busy state before resetting.
+    let was_busy = state.active_session().is_busy();
 
-    // Existing stream cancel behavior (Streaming, Sending, Assembling, Idle).
+    // Cancel busy background operations (lifecycle, etc.).
+    if was_busy {
+        state.active_session_mut().cancel_busy();
+    }
+
+    // Cancel stream.
     state.active_session_mut().cancel_stream_and_drain();
-    Some(IntentResult::with_commands(vec![Command::CancelStream(
-        crate::feat::provider::protocol::command::CancelStream { session_id },
-    )]))
+    let mut commands = vec![Command::CancelStream(
+        crate::feat::provider::protocol::command::CancelStream { session_id: session_id.clone() },
+    )];
+
+    // Also cancel any running lifecycle command.
+    if was_busy {
+        commands.push(Command::CancelLifecycleCommand(
+            crate::feat::session_lifecycle::protocol::CancelLifecycleCommand { session_id },
+        ));
+    }
+
+    Some(IntentResult::with_commands(commands))
 }
 
 /// Close session confirmation prompt intercept.
