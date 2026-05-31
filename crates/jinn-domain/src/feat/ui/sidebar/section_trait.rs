@@ -14,7 +14,7 @@ pub enum SidebarSectionId {
     Pins,
     /// The active persona display section.
     Persona,
-    /// The task list section (render-only, non-interactive).
+    /// The task list section (collapsible phases, expandable when focused).
     TaskList,
     /// The open sessions section.
     Sessions,

@@ -19,6 +19,8 @@ pub enum FocusScope {
     SidebarPins,
     /// Sidebar - Sessions section focused.
     SidebarSessions,
+    /// Sidebar - Task list section focused.
+    SidebarTaskList,
     /// Picker overlay active - kind distinguishes Provider/Session/Keymap/etc.
     Picker { kind: PickerKind },
     /// Arg input popup - collecting positional args for a lifecycle command.
@@ -42,6 +44,7 @@ impl FocusScope {
             | Self::SidebarPersona
             | Self::SidebarPins
             | Self::SidebarSessions
+            | Self::SidebarTaskList
             | Self::SidebarResize
             | Self::Workflow => Mode::Normal,
             Self::Input | Self::ArgInput | Self::RenameSessionInput | Self::WorkflowInput => {
@@ -60,6 +63,7 @@ impl std::fmt::Display for FocusScope {
             Self::SidebarPersona => write!(f, "SidebarPersona"),
             Self::SidebarPins => write!(f, "SidebarPins"),
             Self::SidebarSessions => write!(f, "SidebarSessions"),
+            Self::SidebarTaskList => write!(f, "SidebarTaskList"),
             Self::Picker { kind } => write!(f, "Picker({kind})"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
@@ -159,7 +163,10 @@ impl ScopeStack {
     pub fn is_sidebar(&self) -> bool {
         matches!(
             self.current(),
-            FocusScope::SidebarPersona | FocusScope::SidebarPins | FocusScope::SidebarSessions
+            FocusScope::SidebarPersona
+                | FocusScope::SidebarPins
+                | FocusScope::SidebarSessions
+                | FocusScope::SidebarTaskList
         )
     }
 
@@ -170,6 +177,7 @@ impl ScopeStack {
             FocusScope::SidebarPersona => Some(SidebarSectionId::Persona),
             FocusScope::SidebarPins => Some(SidebarSectionId::Pins),
             FocusScope::SidebarSessions => Some(SidebarSectionId::Sessions),
+            FocusScope::SidebarTaskList => Some(SidebarSectionId::TaskList),
             _ => None,
         }
     }
@@ -182,7 +190,7 @@ impl ScopeStack {
             let scope = match section {
                 SidebarSectionId::Persona => FocusScope::SidebarPersona,
                 SidebarSectionId::Pins => FocusScope::SidebarPins,
-                SidebarSectionId::TaskList => return, // non-interactive section
+                SidebarSectionId::TaskList => FocusScope::SidebarTaskList,
                 SidebarSectionId::Sessions => FocusScope::SidebarSessions,
             };
             self.stack.pop();
