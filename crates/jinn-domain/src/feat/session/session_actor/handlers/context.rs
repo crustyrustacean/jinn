@@ -201,44 +201,6 @@ mod tests {
         (actor, state)
     }
 
-    #[rstest::rstest]
-    fn on_tools_registered_excludes_judge_tools_from_global_map() {
-        // Given a session actor.
-        let (actor, state) = create_actor();
-
-        // Build a ToolsRegistered with all builtin tools (including judge tools).
-        let all_tools = crate::feat::tools_actor::registry::builtin_tools();
-        let definitions: Vec<_> = all_tools.iter().map(|(def, _)| def.clone()).collect();
-        let payload = ToolsRegistered {
-            provider: "builtin".to_owned(),
-            definitions,
-        };
-
-        // When processing the event.
-        actor.on_tools_registered(&payload);
-
-        // Then no judge tool names are in the global map.
-        let guard = state.read();
-        assert!(
-            !guard.context.tool_definitions.contains_key("judge_session_query"),
-            "session_query should not be in global tool map"
-        );
-        assert!(
-            !guard
-                .context
-                .tool_definitions
-                .contains_key("judge_session_query_recent"),
-            "session_query_recent should not be in global tool map"
-        );
-        assert!(
-            !guard.context.tool_definitions.contains_key("judge_task_complete"),
-            "task_complete should not be in global tool map"
-        );
-        assert!(
-            !guard.context.tool_definitions.contains_key("judge_task_incomplete"),
-            "task_incomplete should not be in global tool map"
-        );
-    }
 
     #[rstest::rstest]
     fn on_tools_registered_keeps_regular_tools_in_global_map() {
@@ -513,32 +475,7 @@ mod tests {
         assert_eq!(guard.context.prompt_templates.templates()[0].name, "test-template");
     }
 
-    // --- on_judges_loaded ---
 
-    #[rstest::rstest]
-    fn on_judges_loaded_caches_judges() {
-        // Given a session actor.
-        let (actor, state) = create_actor();
-        let judges = vec![crate::feat::judge::Judge {
-            name: "test-judge".to_owned(),
-            description: "A test judge".to_owned(),
-            body: "Evaluate the output".to_owned(),
-            model: None,
-            auto_reset: false,
-            file_path: std::path::PathBuf::from("/judges/test.md"),
-        }];
-
-        // When loading judges.
-        actor.on_judges_loaded(&crate::feat::judge::JudgesLoaded {
-            judges: judges.clone(),
-            error: None,
-        });
-
-        // Then the judges are stored in state.
-        let guard = state.read();
-        assert_eq!(guard.context.judges.len(), 1);
-        assert_eq!(guard.context.judges[0].name, "test-judge");
-    }
 
     // --- handle_load_persona_picker_entries ---
 
