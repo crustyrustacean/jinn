@@ -110,8 +110,8 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown>();
         ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::FinishSessionSetup>();
         ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand>();
-        ctx.subscribe_command::<RunSessionTeardown>();
-        ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown>();
+
+
         ctx.subscribe_command::<PersistSession>();
         ctx.subscribe_command::<CloseSession>();
         ctx.subscribe_command::<crate::feat::session::protocol::archive_session::ArchiveSession>();
