@@ -201,14 +201,7 @@ pub struct SessionCore {
     /// OWNER: workflow-actor (set on creation).
     #[serde(default)]
     pub(crate) is_workflow: bool,
-    /// Judge metadata - `None` for regular sessions, `Some` for judge sessions.
-    ///
-    /// Presence is the single flag: `is_judge() == self.judge.is_some()`.
-    /// No separate `is_judge` boolean exists in application logic.
-    /// OWNER: intent handler (set on picker creation), judge tools (set is_attached).
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) judge: Option<crate::feat::judge::JudgeMeta>,
+
     /// Whether the user has meaningfully interacted with this session.
     /// Sessions with `has_interacted = false` are not persisted to disk.
     /// OWNER: session-actor (set via MarkSessionInteracted command).
@@ -247,7 +240,7 @@ impl Default for SessionCore {
             session_state: SessionState::Loaded,
             lifecycle_script_state: LifecycleScriptState::NothingRan,
             is_workflow: false,
-            judge: None,
+
             workflow_overrides: None,
             task_list: crate::feat::todo_list::TaskList::default(),
             has_interacted: false,
@@ -585,80 +578,6 @@ impl ChatSessionState {
         self.core.is_workflow
     }
 
-    /// Whether this session is a judge session.
-    ///
-    /// True when `judge` metadata is present. The single flag for all
-    /// judge-specific behavior - no separate `is_judge` boolean in logic.
-    #[must_use]
-    pub fn is_judge(&self) -> bool {
-        self.core.judge.is_some()
-    }
-
-    /// The judge metadata for this session, if it's a judge session.
-    #[must_use]
-    pub fn judge(&self) -> &Option<crate::feat::judge::JudgeMeta> {
-        &self.core.judge
-    }
-
-    /// Set the judge metadata on this session.
-    pub fn set_judge(&mut self, meta: crate::feat::judge::JudgeMeta) {
-        self.core.judge = Some(meta);
-    }
-
-    /// Restore judge metadata (e.g., after DB load or fork).
-    pub fn restore_judge(&mut self, judge: Option<crate::feat::judge::JudgeMeta>) {
-        self.core.judge = judge;
-    }
-
-    /// Update the `is_attached` flag on the judge metadata.
-    ///
-    /// No-op if this session is not a judge.
-    pub fn set_judge_attached(&mut self, attached: bool) {
-        if let Some(ref mut meta) = self.core.judge {
-            meta.is_attached = attached;
-        }
-    }
-
-    /// Update the per-session `auto_reset` override on the judge metadata.
-    ///
-    /// No-op if this session is not a judge.
-    pub fn set_judge_auto_reset(&mut self, auto_reset: Option<bool>) {
-        if let Some(ref mut meta) = self.core.judge {
-            meta.auto_reset = auto_reset;
-        }
-    }
-
-    /// Reset this session's history to only its pinned entries.
-    ///
-    /// Used by the judge reset feature to clear stale context while
-    /// preserving the judge definition (pinned system prompt).
-    /// Resets ephemeral streaming state and drains the turn queue.
-    ///
-    /// Does **not** reset: token ledger, strategy state, profile,
-    /// `has_interacted`, or `JudgeMeta`.
-    pub fn reset_judge_history(&mut self) {
-        // Collect pinned entries before clearing.
-        let pinned: Vec<ChatEntry> = self
-            .core
-            .history
-            .iter()
-            .filter(|e| e.is_pinned())
-            .cloned()
-            .collect();
-
-        // Replace history with empty, then re-push pinned entries.
-        self.core.history = ChatHistory::new();
-        for entry in pinned {
-            self.push_entry(entry);
-        }
-
-        // Reset machine to Idle - drops all StreamingPhase data.
-        self.core.ephemeral.machine = crate::feat::session::phase_machine::SessionPhaseMachine::new();
-
-
-        // Drain the turn queue - discard any queued items.
-        self.drain_queue();
-    }
 
     /// Mark this session as having been meaningfully interacted with by the user.
     /// Once set, the session becomes eligible for persistence.

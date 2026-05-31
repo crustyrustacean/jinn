@@ -142,10 +142,7 @@ pub enum Command {
     RerunFromNode(crate::feat::workflow::protocol::command::RerunFromNode),
     /// Load entries for the workflow picker.
     LoadWorkflowPickerEntries(crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries),
-    /// Rescan the judges directory and reload judge definitions.
-    RescanJudges(crate::feat::judge::RescanJudges),
-    /// Cancel a pending judge evaluation cycle (ESC on Idle+busy origin).
-    CancelPendingJudgeEvaluation(crate::feat::judge::CancelPendingJudgeEvaluation),
+
     /// A dynamic command from a plugin, carrying an arbitrary JSON payload.
     ///
     /// Routed by the runtime [`name`](DynamicCommand::name) field, not the
@@ -217,10 +214,7 @@ impl Command {
             Self::LoadWorkflowPickerEntries(..) => {
                 Some(crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries::NAME)
             }
-            Self::RescanJudges(..) => Some(crate::feat::judge::RescanJudges::NAME),
-            Self::CancelPendingJudgeEvaluation(..) => {
-                Some(crate::feat::judge::CancelPendingJudgeEvaluation::NAME)
-            }
+
             Self::Dynamic(..) => Some(DynamicCommand::NAME),
             Self::TriggerCompaction(..) => Some(
                 crate::feat::session::protocol::trigger_compaction::TriggerCompaction::NAME,
@@ -386,16 +380,7 @@ impl std::fmt::Display for Command {
             Command::LoadWorkflowPickerEntries(..) => {
                 write!(f, "load workflow picker entries")
             }
-            Command::RescanJudges(..) => {
-                write!(f, "rescan judges")
-            }
-            Command::CancelPendingJudgeEvaluation(payload) => {
-                write!(
-                    f,
-                    "cancel pending judge evaluation for {}",
-                    payload.origin_session_id
-                )
-            }
+
             Command::Dynamic(d) => {
                 write!(f, "dynamic command '{}'", d.name)
             }

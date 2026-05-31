@@ -200,24 +200,6 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
         Ok(self.summaries.clone())
     }
 
-    async fn load_judge_sessions_for_origin(
-        &self,
-        origin_session_id: &crate::protocol::SessionId,
-    ) -> Result<
-        Vec<crate::feat::session::chat_session::ChatSessionState>,
-        error_stack::Report<crate::feat::session::session_store::SessionStoreError>,
-    > {
-        Ok(self
-            .sessions
-            .iter()
-            .filter(|s| {
-                s.judge()
-                    .as_ref()
-                    .is_some_and(|m| m.origin_session == *origin_session_id)
-            })
-            .cloned()
-            .collect())
-    }
 }
 
 /// Builds a test actor with services and a populated store.

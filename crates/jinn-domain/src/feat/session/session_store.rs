@@ -126,12 +126,6 @@ pub trait SessionStore: Send + Sync + 'static {
     /// Queries by `json_extract(judge_meta, '$.origin_session')`.
     ///
     /// # Errors
-    ///
-    /// Returns [`SessionStoreError`] if the database cannot be read.
-    async fn load_judge_sessions_for_origin(
-        &self,
-        origin_session_id: &SessionId,
-    ) -> Result<Vec<ChatSessionState>, Report<SessionStoreError>>;
 
     /// Shut down the store, performing any cleanup or flush operations.
     ///

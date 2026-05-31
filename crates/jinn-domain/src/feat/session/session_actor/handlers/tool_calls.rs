@@ -145,7 +145,7 @@ impl SessionPersistenceActor {
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
-            if !session.is_judge() {
+            {
                 let count = session.drain_and_apply_pending_mutations();
                 if count > 0 {
                     tracing::debug!(

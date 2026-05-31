@@ -216,10 +216,6 @@ pub fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
 /// Handles `SubmitMessage` - confirms autocomplete if active, executes slash commands,
 /// or submits the message as chat input.
 pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
-    // Judge sessions are driven by the coordinator - no user input.
-    if state.active_session().is_judge() {
-        return IntentResult::empty();
-    }
 
     if state.active_chat_input().autocomplete().is_some() {
         return handle_submit_message_with_autocomplete(state);
@@ -490,12 +486,7 @@ pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
 pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
     use crate::common::app_state::FocusScope;
 
-    // Judge sessions are driven by the coordinator - no user input.
-    if state.active_session().is_judge() {
-        return IntentResult::empty();
-    }
 
-    // If entering from pins, restore the viewport to its pre-pin position.
     // The pin cursor jump is only for pin → Normal, not pin → Insert.
     if state.active_session().has_saved_history_position() {
         state.active_session_mut().restore_history_position();
