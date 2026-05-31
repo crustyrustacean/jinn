@@ -12,7 +12,7 @@ mod phase;
 mod transition;
 
 pub use machine::{CancelOutcome, SessionPhaseMachine, TransitionError, TransitionOutcome};
-pub use phase::{IdlePhase, Phase, PhaseKind, SendingPhase, StreamingPhase, TearingDownPhase};
+pub use phase::{IdlePhase, Phase, PhaseKind, PhaseKindParseError, SendingPhase, StreamingPhase, WorkingPhase};
 pub use transition::PhaseTransitions;
 
 #[cfg(test)]

@@ -124,6 +124,8 @@ impl ProviderActor {
             | Command::ArchiveSession(..)
             | Command::PersistSession(..)
             | Command::FinishSessionTeardown(..)
+            | Command::FinishSessionSetup(..)
+            | Command::CancelLifecycleCommand(..)
             | Command::InitWorkflow(..)
             | Command::StartWorkflow(..)
             | Command::CancelWorkflow(..)

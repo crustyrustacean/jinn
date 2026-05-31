@@ -70,3 +70,30 @@ pub struct FinishSessionTeardown {
     /// Error message if teardown failed.
     pub error: Option<String>,
 }
+
+/// Result of an async setup shell command, sent back to the session actor.
+///
+/// Emitted by the tokio task spawned during `handle_run_session_setup`.
+/// The session actor processes this to set the CWD, advance lifecycle state,
+/// and emit `SessionSetupCompleted`.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("session")]
+pub struct FinishSessionSetup {
+    /// The session that was being set up.
+    pub session_id: SessionId,
+    /// The CWD path on success, or `None` on error.
+    pub cwd: Option<std::path::PathBuf>,
+    /// Error message if setup failed.
+    pub error: Option<String>,
+}
+
+/// Request to cancel a running lifecycle command (setup or teardown).
+///
+/// Kills the spawned shell process if one is running, transitions
+/// the session from `Working` back to `Idle`, and pushes a system entry.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("session")]
+pub struct CancelLifecycleCommand {
+    /// The session whose lifecycle command should be cancelled.
+    pub session_id: SessionId,
+}

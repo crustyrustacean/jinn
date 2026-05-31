@@ -132,6 +132,201 @@ pub async fn run_teardown_command(
     Ok(())
 }
 
+/// Shared child handle that can be killed from outside the spawned task.
+pub type SharedChild = std::sync::Arc<tokio::sync::Mutex<Option<tokio::process::Child>>>;
+
+/// Kill the process inside a [`SharedChild`], if it is still present.
+pub fn kill_shared_child(child_arc: &SharedChild) {
+    // blocking_lock is OK here because this is called from a synchronous handler.
+    let mut guard = child_arc.blocking_lock();
+    if let Some(mut child) = guard.take() {
+        let _ = child.kill();
+    }
+}
+
+/// Spawns a setup command and returns a shared child handle and a joinable task.
+///
+/// The [`SharedChild`] can be used to kill the process via [`kill_shared_child`].
+/// The reader task awaits exit, reads stdout/stderr, and produces the
+/// canonicalized CWD path.
+pub fn spawn_setup_command(
+    command: &str,
+    shell: &str,
+) -> Result<(
+    SharedChild,
+    tokio::task::JoinHandle<Result<PathBuf, Report<LifecycleCommandError>>>,
+), Report<LifecycleCommandError>> {
+    use error_stack::ResultExt as _;
+
+    let mut child = tokio::process::Command::new(shell)
+        .arg("-c")
+        .arg(command)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .change_context(LifecycleCommandError::ExecutionFailed)
+        .attach("failed to spawn lifecycle command")?;
+
+    // Take pipes before wrapping child.
+    let stdout_pipe = child.stdout.take();
+    let stderr_pipe = child.stderr.take();
+
+    let child_arc = std::sync::Arc::new(tokio::sync::Mutex::new(Some(child)));
+    let child_arc_clone = child_arc.clone();
+
+    let handle = tokio::spawn(async move {
+        use tokio::io::AsyncReadExt;
+
+        // Read stdout.
+        let stdout_bytes = if let Some(mut pipe) = stdout_pipe {
+            let mut buf = Vec::new();
+            let _ = pipe.read_to_end(&mut buf).await;
+            buf
+        } else {
+            Vec::new()
+        };
+
+        // Read stderr.
+        let stderr_bytes = if let Some(mut pipe) = stderr_pipe {
+            let mut buf = Vec::new();
+            let _ = pipe.read_to_end(&mut buf).await;
+            buf
+        } else {
+            Vec::new()
+        };
+
+        // Wait for exit.
+        let status = {
+            let mut guard = child_arc_clone.lock().await;
+            let Some(child) = guard.as_mut() else {
+                return Err(Report::new(LifecycleCommandError::ExecutionFailed)
+                    .attach("child was killed before wait"));
+            };
+            let status = child.wait().await
+                .change_context(LifecycleCommandError::ExecutionFailed)
+                .attach("failed to wait for lifecycle command")?;
+            // Child has exited, clear it.
+            *guard = None;
+            status
+        };
+
+        let stdout = String::from_utf8_lossy(&stdout_bytes).to_string();
+        let stderr = String::from_utf8_lossy(&stderr_bytes).to_string();
+
+        if !status.success() {
+            return Err(Report::new(LifecycleCommandError::CommandFailed {
+                exit_code: status.code(),
+                stdout,
+                stderr,
+            }));
+        }
+
+        let last_line = stdout
+            .lines()
+            .map(str::trim)
+            .rfind(|line| !line.is_empty())
+            .ok_or_else(|| Report::new(LifecycleCommandError::NoOutput))?;
+
+        let raw_path = PathBuf::from(last_line);
+
+        let canonical = tokio::fs::canonicalize(&raw_path)
+            .await
+            .change_context(LifecycleCommandError::InvalidPath {
+                path: raw_path.clone(),
+            })
+            .attach("setup command output is not a valid path")?;
+
+        if !canonical.is_dir() {
+            return Err(Report::new(LifecycleCommandError::NotADirectory {
+                path: canonical,
+            }));
+        }
+
+        Ok(canonical)
+    });
+
+    Ok((child_arc, handle))
+}
+
+/// Spawns a teardown command and returns a shared child handle and a joinable task.
+///
+/// Same pattern as [`spawn_setup_command`] but only checks the exit code.
+pub fn spawn_teardown_command(
+    command: &str,
+    shell: &str,
+) -> Result<(
+    SharedChild,
+    tokio::task::JoinHandle<Result<(), Report<LifecycleCommandError>>>,
+), Report<LifecycleCommandError>> {
+    use error_stack::ResultExt as _;
+
+    let mut child = tokio::process::Command::new(shell)
+        .arg("-c")
+        .arg(command)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .change_context(LifecycleCommandError::ExecutionFailed)
+        .attach("failed to spawn lifecycle command")?;
+
+    // Take pipes before wrapping child.
+    let stdout_pipe = child.stdout.take();
+    let stderr_pipe = child.stderr.take();
+
+    let child_arc = std::sync::Arc::new(tokio::sync::Mutex::new(Some(child)));
+    let child_arc_clone = child_arc.clone();
+
+    let handle = tokio::spawn(async move {
+        use tokio::io::AsyncReadExt;
+
+        // Read stdout.
+        let stdout_bytes = if let Some(mut pipe) = stdout_pipe {
+            let mut buf = Vec::new();
+            let _ = pipe.read_to_end(&mut buf).await;
+            buf
+        } else {
+            Vec::new()
+        };
+
+        // Read stderr.
+        let stderr_bytes = if let Some(mut pipe) = stderr_pipe {
+            let mut buf = Vec::new();
+            let _ = pipe.read_to_end(&mut buf).await;
+            buf
+        } else {
+            Vec::new()
+        };
+
+        // Wait for exit.
+        let status = {
+            let mut guard = child_arc_clone.lock().await;
+            let Some(child) = guard.as_mut() else {
+                return Err(Report::new(LifecycleCommandError::ExecutionFailed)
+                    .attach("child was killed before wait"));
+            };
+            let status = child.wait().await
+                .change_context(LifecycleCommandError::ExecutionFailed)
+                .attach("failed to wait for lifecycle command")?;
+            *guard = None;
+            status
+        };
+
+        if !status.success() {
+            let stdout = String::from_utf8_lossy(&stdout_bytes).to_string();
+            let stderr = String::from_utf8_lossy(&stderr_bytes).to_string();
+            return Err(Report::new(LifecycleCommandError::CommandFailed {
+                exit_code: status.code(),
+                stdout,
+                stderr,
+            }));
+        }
+
+        Ok(())
+    });
+
+    Ok((child_arc, handle))
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
