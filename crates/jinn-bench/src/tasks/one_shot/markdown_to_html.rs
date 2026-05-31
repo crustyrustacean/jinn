@@ -1,4 +1,4 @@
-//! markdown-to-html bench task — convert markdown to HTML with file I/O.
+//! markdown-to-html bench task - convert markdown to HTML with file I/O.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

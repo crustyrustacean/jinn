@@ -1,4 +1,4 @@
-//! edit-html-table bench task — swap two specific rows in a 20-row HTML table.
+//! edit-html-table bench task - swap two specific rows in a 20-row HTML table.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

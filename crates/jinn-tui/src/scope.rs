@@ -10,48 +10,48 @@
 /// [`ratatui_which_key::WhichKeyState::set_scope`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Scope {
-    /// Normal mode — navigation and commands.
+    /// Normal mode - navigation and commands.
     Normal,
-    /// Sidebar — Persona section.
+    /// Sidebar - Persona section.
     SidebarPersona,
-    /// Sidebar — Pins section.
+    /// Sidebar - Pins section.
     SidebarPins,
-    /// Sidebar — Sessions section.
+    /// Sidebar - Sessions section.
     SidebarSessions,
-    /// Picker — Provider/model selection.
+    /// Picker - Provider/model selection.
     PickerProvider,
-    /// Picker — Session browser.
+    /// Picker - Session browser.
     PickerSession,
-    /// Picker — Persona selection.
+    /// Picker - Persona selection.
     PickerPersona,
-    /// Picker — Theme selection.
+    /// Picker - Theme selection.
     PickerTheme,
-    /// Picker — Session lifecycle recipe selection.
+    /// Picker - Session lifecycle recipe selection.
     PickerLifecycle,
-    /// Picker — Workflow selection.
+    /// Picker - Workflow selection.
     PickerWorkflow,
     /// Judge picker scope.
     PickerJudge,
-    /// Picker — Compaction model selection.
+    /// Picker - Compaction model selection.
     PickerCompactionModel,
-    /// Picker — Tool toggle selection.
+    /// Picker - Tool toggle selection.
     PickerTool,
-    /// Picker — Skill toggle selection.
+    /// Picker - Skill toggle selection.
     PickerSkill,
-    /// Input mode — typing into the input buffer.
+    /// Input mode - typing into the input buffer.
     Input,
-    /// Arg input mode — typing positional args for a lifecycle command.
+    /// Arg input mode - typing positional args for a lifecycle command.
     ArgInput,
-    /// Token budget input mode — typing a numeric budget value.
+    /// Token budget input mode - typing a numeric budget value.
     TokenBudgetInput,
-    /// Sliding window input mode — typing a numeric window size.
-    /// Rename session input mode — editing a session title.
+    /// Sliding window input mode - typing a numeric window size.
+    /// Rename session input mode - editing a session title.
     RenameSessionInput,
-    /// Sidebar resize mode — adjusting sidebar width.
+    /// Sidebar resize mode - adjusting sidebar width.
     SidebarResize,
-    /// Workflow tab — browsing workflow node status.
+    /// Workflow tab - browsing workflow node status.
     Workflow,
-    /// Workflow input editing — typing into the source node output buffer.
+    /// Workflow input editing - typing into the source node output buffer.
     WorkflowInput,
 }
 

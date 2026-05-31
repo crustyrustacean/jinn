@@ -1,4 +1,4 @@
-//! Scroll indicator tag rendering — DRY helper for ↑/↓ indicators.
+//! Scroll indicator tag rendering - DRY helper for ↑/↓ indicators.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;

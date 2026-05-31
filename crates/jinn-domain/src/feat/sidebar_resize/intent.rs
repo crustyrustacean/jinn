@@ -1,4 +1,4 @@
-//! Sidebar resize intent handlers — enter/expand/contract/leave.
+//! Sidebar resize intent handlers - enter/expand/contract/leave.
 
 use crate::common::app_state::{AppState, FocusScope};
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
@@ -7,7 +7,7 @@ use crate::protocol::{Command, IntentResult};
 /// The number of columns to change per resize step.
 const RESIZE_STEP: u16 = 2;
 
-/// Minimum sidebar width — must match `MIN_SIDEBAR_WIDTH` in app_layout.
+/// Minimum sidebar width - must match `MIN_SIDEBAR_WIDTH` in app_layout.
 const MIN_SIDEBAR_WIDTH: u16 = 15;
 
 /// Enters sidebar resize mode by pushing `FocusScope::SidebarResize`.

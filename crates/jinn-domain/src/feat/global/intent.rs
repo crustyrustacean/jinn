@@ -1,4 +1,4 @@
-//! Global intent handlers — quit, toggle which-key, and interrupt.
+//! Global intent handlers - quit, toggle which-key, and interrupt.
 
 use crate::common::app_state::AppState;
 use crate::feat::provider::protocol::command::CancelStream;

@@ -1,4 +1,4 @@
-//! Compaction entry rendering — collapsible block with summary.
+//! Compaction entry rendering - collapsible block with summary.
 //!
 //! Renders a compaction entry as a full-width light-purple block.
 //!

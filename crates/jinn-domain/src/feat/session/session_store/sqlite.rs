@@ -1,12 +1,12 @@
 //! SQLite-backed session store implementation.
 //!
 //! Stores session data in normalized tables with a junction table for entries.
-//! This eliminates duplication — each chat entry is stored once and shared
+//! This eliminates duplication - each chat entry is stored once and shared
 //! across sessions. The junction table enables fork support by copying only
 //! small junction rows, not entry data.
 //!
 //! Uses Diesel's type-safe query DSL for compile-time column verification
-//! against the generated schema. All queries are checked at compile time —
+//! against the generated schema. All queries are checked at compile time -
 //! if a column is added to a migration but missing from an INSERT or SELECT,
 //! the code will not compile.
 
@@ -494,7 +494,7 @@ struct NewTokenLedgerRow {
 
 // ── Conversions ──────────────────────────────────────────────────────────
 
-// ── PersistableCore — JSON blob for session metadata ─────────────────────
+// ── PersistableCore - JSON blob for session metadata ─────────────────────
 
 /// A subset of [`SessionCore`] fields suitable for JSON blob persistence.
 ///
@@ -575,7 +575,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
 
     #[deny(unused_variables)]
     fn try_from(session: &ChatSessionState) -> Result<Self, Self::Error> {
-        // Exhaustive destructuring — adding a field to SessionCore
+        // Exhaustive destructuring - adding a field to SessionCore
         // without updating this pattern is a compile error.
         let ChatSessionState {
             core:
@@ -665,7 +665,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
 
     #[deny(unused_variables)]
     fn try_from(ctx: SessionLoadContext) -> Result<Self, Self::Error> {
-        // Exhaustive destructuring of SessionRow — adding a column to the
+        // Exhaustive destructuring of SessionRow - adding a column to the
         // sessions table without updating this pattern is a compile error.
         let SessionRow {
             id,
@@ -695,7 +695,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 .attach("failed to deserialize session metadata blob")?;
             SessionCore::from(persistable)
         } else {
-            // Legacy path — reconstruct from individual columns (pre-v8 data).
+            // Legacy path - reconstruct from individual columns (pre-v8 data).
             let profile = serde_json::from_str(&profile)
                 .change_context(SessionStoreError)
                 .attach("failed to deserialize profile")?;
@@ -827,7 +827,7 @@ fn save_blocking(
             .execute(txn)?;
 
         // Insert entries and junction rows.
-        // Transient entries are runtime-only UI hints — skip them during persistence.
+        // Transient entries are runtime-only UI hints - skip them during persistence.
         for (ordinal, entry) in session
             .history()
             .iter()
@@ -840,7 +840,7 @@ fn save_blocking(
                 .map_err(|e| diesel::result::Error::SerializationError(Box::new(e)))?;
             let pin_str = entry.pin_position.map(|p| p.to_string());
 
-            // Insert entry (ignore if already exists — shared across sessions).
+            // Insert entry (ignore if already exists - shared across sessions).
             insert_into(entries::table)
                 .values(&NewEntryRow {
                     id: entry_id_str.clone(),
@@ -1101,7 +1101,7 @@ fn fork_blocking(
                 id: new_id_str.clone(),
                 title: source_meta.title,
                 updated_at: now.clone(),
-                created_at: now, // fresh created_at — it's a new session
+                created_at: now, // fresh created_at - it's a new session
                 profile: source_meta.profile,
                 strategy_state: source_meta.strategy_state,
                 blobs: source_meta.blobs,

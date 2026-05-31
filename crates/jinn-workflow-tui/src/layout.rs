@@ -1,4 +1,4 @@
-//! Graph layout — computes 2D positions for all nodes in a workflow graph.
+//! Graph layout - computes 2D positions for all nodes in a workflow graph.
 //!
 //! Uses topological column assignment: source nodes in column 0, each downstream
 //! node in `max(parent_columns) + 1`. Nodes within a column are stacked vertically.

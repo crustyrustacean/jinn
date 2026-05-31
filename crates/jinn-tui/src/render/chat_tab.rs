@@ -1,4 +1,4 @@
-//! Chat tab rendering — dispatches to individual chat sub-components.
+//! Chat tab rendering - dispatches to individual chat sub-components.
 
 pub mod autocomplete;
 pub mod border;
@@ -21,7 +21,7 @@ use ratatui::widgets::Paragraph;
 
 use super::app_layout::AppLayout;
 
-/// Renders the full Chat tab — border, sidebar, chat log, streaming indicator,
+/// Renders the full Chat tab - border, sidebar, chat log, streaming indicator,
 /// queue, bottom line, input box, and autocomplete popup.
 ///
 /// Computes sub-areas from the layout and delegates to individual render functions.
@@ -95,7 +95,7 @@ pub(super) fn render_chat_tab(
     };
     streaming_indicator::render_streaming_indicator(ui_registry, frame, indicator_area, state);
 
-    // Queue display — rendered as overlay anchored at bottom of chat log area.
+    // Queue display - rendered as overlay anchored at bottom of chat log area.
     // This paints over the last N lines of the chat log instead of pushing
     // the chat log up.
     if queue_len > 0 {
@@ -108,7 +108,7 @@ pub(super) fn render_chat_tab(
         queue_display::render_queue_display(ui_registry, frame, queue_area, state);
     }
 
-    // Cancel stream prompt — overlay at bottom of chat log area.
+    // Cancel stream prompt - overlay at bottom of chat log area.
     // Paints over whatever is behind it (including the queue display).
     if state.frontend.cancel_stream_prompt {
         let prompt_area = Rect {

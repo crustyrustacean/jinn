@@ -1,11 +1,11 @@
-//! Context-related handlers — pinning, caching, and persona management.
+//! Context-related handlers - pinning, caching, and persona management.
 //!
 //! Handles entry pinning (PinChatEntry/UnpinChatEntry), tool definition caching
 //! (ToolsRegistered), prompt template caching (PromptTemplatesLoaded),
 //! persona selection (PersonasLoaded), and persona picker population
 //! (LoadPersonaPickerEntries).
 //!
-//! Relocated from `PromptAssemblyActor` — these concerns are session-related
+//! Relocated from `PromptAssemblyActor` - these concerns are session-related
 //! mutations of `AppState`, not part of prompt assembly.
 
 use crate::common::actor::ActorContext;
@@ -57,7 +57,7 @@ impl SessionPersistenceActor {
 
     /// Caches tool definitions from a [`ToolsRegistered`] event into shared state.
     ///
-    /// Judge-specific tools are excluded — they are injected into judge sessions
+    /// Judge-specific tools are excluded - they are injected into judge sessions
     /// during prompt assembly, not stored in the global tool map.
     pub(in crate::feat::session::session_actor) fn on_tools_registered(
         &self,

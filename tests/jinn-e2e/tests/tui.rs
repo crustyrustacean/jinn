@@ -375,7 +375,7 @@ fn then_which_key_scope_input(world: &mut TuiWorld) {
 }
 
 // ---------------------------------------------------------------------------
-// Step definitions — Headless Script Execution (Phase 3)
+// Step definitions - Headless Script Execution (Phase 3)
 // ---------------------------------------------------------------------------
 
 /// Runs a headless script through the keymap pipeline.

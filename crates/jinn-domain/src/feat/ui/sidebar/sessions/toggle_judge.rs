@@ -5,7 +5,7 @@ use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use crate::protocol::IntentResult;
 
-/// Handles `ToggleJudgeAttached` — toggles `is_attached` on the judge session
+/// Handles `ToggleJudgeAttached` - toggles `is_attached` on the judge session
 /// under the sidebar cursor.
 ///
 /// If the selected session is not a judge session, this is a silent no-op.

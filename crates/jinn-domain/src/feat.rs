@@ -1,4 +1,4 @@
-//! Feature modules — domain-specific logic, actors, and UI elements.
+//! Feature modules - domain-specific logic, actors, and UI elements.
 
 pub mod chat_entry_selection;
 pub mod chat_input;

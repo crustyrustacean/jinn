@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! `complete_task` built-in tool — marks a task as completed.
+//! `complete_task` built-in tool - marks a task as completed.
 
 use crate::feat::todo_list::TaskId;
 use crate::feat::tools_actor::BoxedToolFuture;

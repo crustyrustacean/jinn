@@ -1,4 +1,4 @@
-//! 1-shot bench tasks — single message, model produces output from scratch.
+//! 1-shot bench tasks - single message, model produces output from scratch.
 
 use crate::task::BenchTask;
 

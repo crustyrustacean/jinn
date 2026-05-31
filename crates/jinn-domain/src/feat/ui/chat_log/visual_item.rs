@@ -1,4 +1,4 @@
-//! Visual item model — represents collapsed and expanded entries in the chat log.
+//! Visual item model - represents collapsed and expanded entries in the chat log.
 //!
 //! The chat log renders a [`Vec<VisualItem>`] computed from the flat history at
 //! each render pass. Ignored entries outside the proximity zone are collapsed
@@ -85,12 +85,12 @@ pub fn build_visual_items(
             // Check if the user has expanded this block.
             let block_representative_id = &history[block_start].id;
             if shown_ignored_blocks.contains(block_representative_id) {
-                // User expanded — show individually.
+                // User expanded - show individually.
                 for j in block_start..block_start + block_count {
                     items.push(VisualItem::Entry(j));
                 }
             } else if block_count < min_collapse_count {
-                // Below threshold — show individually, don't collapse.
+                // Below threshold - show individually, don't collapse.
                 for j in block_start..block_start + block_count {
                     items.push(VisualItem::Entry(j));
                 }
@@ -530,7 +530,7 @@ mod tests {
         // When building visual items with min_collapse_count=3.
         let items = build_visual_items(&history, &HashSet::new(), 10, 3);
 
-        // Then no CollapsedIgnoredBlock exists — all sub-threshold.
+        // Then no CollapsedIgnoredBlock exists - all sub-threshold.
         assert!(
             items
                 .iter()

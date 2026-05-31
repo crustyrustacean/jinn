@@ -1,4 +1,4 @@
-//! edit-rename-all bench task — rename variable `counter` to `item_count` everywhere.
+//! edit-rename-all bench task - rename variable `counter` to `item_count` everywhere.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

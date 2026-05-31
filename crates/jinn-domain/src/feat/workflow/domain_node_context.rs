@@ -28,7 +28,7 @@ use crate::protocol::{Command, SessionId};
 /// Domain-specific implementation of [`NodeContext`].
 ///
 /// Provides:
-/// - `send_llm_request` — creates a workflow session, enqueues a user message,
+/// - `send_llm_request` - creates a workflow session, enqueues a user message,
 ///   and returns the full response once the session returns to `Idle`.
 pub struct DomainNodeContext {
     /// Shared services for accessing the actor bus.

@@ -69,7 +69,7 @@ impl Services {
     /// Creates a new `Services` with all fake/noop implementations.
     ///
     /// Suitable for unit tests that need a `Services` but don't test
-    /// specific service behavior. Leaks a tokio runtime — acceptable for tests.
+    /// specific service behavior. Leaks a tokio runtime - acceptable for tests.
     ///
     /// # Panics
     ///

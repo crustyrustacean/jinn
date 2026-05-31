@@ -1,4 +1,4 @@
-//! Tool call entry rendering — supports streaming, collapsed, and expanded modes.
+//! Tool call entry rendering - supports streaming, collapsed, and expanded modes.
 //!
 //! **Bash tools** always render as a single line: `$ <command>`, extracted from
 //! JSON arguments, truncated to content width.

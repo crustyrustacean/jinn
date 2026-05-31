@@ -417,7 +417,7 @@ fn backward_selection_extracts_same_text_as_forward() {
 
 #[rstest::rstest]
 fn selectable_rects_find_returns_smallest_matching() {
-    // Given overlapping rects — a large screen and a smaller pane.
+    // Given overlapping rects - a large screen and a smaller pane.
     let screen = Rect::new(0, 0, 80, 24);
     let pane = Rect::new(10, 5, 20, 10);
     let mut rects = SelectableRects::new();
@@ -479,7 +479,7 @@ fn selectable_rects_rebuild_replaces_previous_rects() {
 fn find_for_position_excludes_right_and_bottom_edges() {
     // Rect at (0,0) with width=10, height=5.
     // right()=10, bottom()=5.
-    // Point (10, 2) is on the right edge — must NOT match (x < right is false when x==right).
+    // Point (10, 2) is on the right edge - must NOT match (x < right is false when x==right).
     // With <= it would incorrectly match.
     let mut rects = SelectableRects::new();
     let rect = Rect::new(0, 0, 10, 5);

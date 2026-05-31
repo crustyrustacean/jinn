@@ -31,7 +31,7 @@ pub enum NodeStatus {
     Skipped,
     /// Waiting for user input before execution can proceed.
     /// This is a pre-execution state for source nodes.
-    /// It is NOT terminal — the engine never sees this status during execution.
+    /// It is NOT terminal - the engine never sees this status during execution.
     AwaitingInput,
 }
 
@@ -138,7 +138,7 @@ fn initialize_tracking(
         statuses.insert(name.clone(), status);
 
         // Seed pending inputs from cached snapshot data.
-        // Count actual incoming edges — each edge delivers one value.
+        // Count actual incoming edges - each edge delivers one value.
         // This is the true "waiting for" count: optional ports that are
         // connected still need to receive their data before the node runs.
         let Some(&idx) = name_to_index.get(name) else {
@@ -175,7 +175,7 @@ fn initialize_tracking(
                 pending_count.insert(name.clone(), input_port_count);
             }
         } else {
-            // Not pending — still need entries for downstream propagation.
+            // Not pending - still need entries for downstream propagation.
             pending_inputs.insert(name.clone(), PortValues::new());
             pending_count.insert(name.clone(), 0);
         }
@@ -309,7 +309,7 @@ async fn run_main_loop(
         tokio::select! {
             msg = rx.recv() => {
                 let Some(msg) = msg else {
-                    // Channel closed — all senders dropped.
+                    // Channel closed - all senders dropped.
                     // This should only happen when all nodes are done or errored.
                     break;
                 };
@@ -331,7 +331,7 @@ async fn run_main_loop(
                 )?;
 
                 // Detect deadlocked nodes (Pending nodes whose all upstream
-                // neighbors are terminal — they can never receive data).
+                // neighbors are terminal - they can never receive data).
                 let deadlocked = detect_deadlocks(
                     statuses,
                     pending_count,
@@ -492,7 +492,7 @@ pub async fn execute_with_cancel(
 /// Executes a validated workflow graph.
 ///
 /// Takes a [`WorkflowExecution`] shared reference. The execution tracks
-/// node statuses atomically — consumers can read snapshots at any time.
+/// node statuses atomically - consumers can read snapshots at any time.
 /// Returns when all reachable nodes have completed or failed.
 ///
 /// # Errors
@@ -1517,7 +1517,7 @@ mod tests {
             .add_node("src".to_owned(), source_node("hello"))
             .add_node("opt".to_owned(), Box::new(OptionalNode));
 
-        // Only connect the required port — optional port is disconnected.
+        // Only connect the required port - optional port is disconnected.
         builder
             .connect("src", "out", "opt", "required")
             .expect("src→opt");
@@ -1631,7 +1631,7 @@ mod tests {
 
         let result = execute(execution, ctx).await.expect("execute");
 
-        // merge must receive both inputs — concatenated result proves both arrived.
+        // merge must receive both inputs - concatenated result proves both arrived.
         assert_eq!(status(&result, "merge"), NodeStatus::Completed);
         let merge_out = outputs(&result, "merge").get_text("out").unwrap();
         assert_eq!(merge_out, "DATA+data!", "merge must have both inputs");
@@ -1693,7 +1693,7 @@ mod tests {
         // When executing.
         let result = execute(execution, ctx).await.expect("execute");
 
-        // Then all nodes completed — no deadlocks.
+        // Then all nodes completed - no deadlocks.
         assert_eq!(status(&result, "a"), NodeStatus::Completed);
         assert_eq!(status(&result, "b"), NodeStatus::Completed);
         assert_eq!(status(&result, "c"), NodeStatus::Completed);
@@ -1802,7 +1802,7 @@ mod tests {
         // When executing.
         let result = execute(execution, ctx).await.expect("execute");
 
-        // Then all nodes completed — no deadlocks or skips.
+        // Then all nodes completed - no deadlocks or skips.
         assert_eq!(status(&result, "source"), NodeStatus::Completed);
         assert_eq!(status(&result, "b"), NodeStatus::Completed);
         assert_eq!(status(&result, "c"), NodeStatus::Completed);

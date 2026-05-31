@@ -1,4 +1,4 @@
-//! Picker item trait — the consumer-facing contract.
+//! Picker item trait - the consumer-facing contract.
 //!
 //! Consumers implement [`PickerItem`] for their domain type (e.g., `ProviderEntry`,
 //! `ActorEntry`). The widget uses [`PickerItem::display_label`] for fuzzy matching and
@@ -33,7 +33,7 @@ pub trait PickerItem: std::fmt::Debug + 'static {
     /// Renders this item as a styled line for display in the picker.
     ///
     /// `is_selected` indicates whether this row is currently highlighted.
-    /// The consumer controls all styling — colors, markers, icons, dimming, etc.
+    /// The consumer controls all styling - colors, markers, icons, dimming, etc.
     fn render_row(&self, is_selected: bool) -> Line<'static>;
 
     /// Renders this item with fuzzy match highlighting.

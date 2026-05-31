@@ -1,4 +1,4 @@
-//! Skill built-in tool — loads a skill's content and pins it as TOP context.
+//! Skill built-in tool - loads a skill's content and pins it as TOP context.
 
 use crate::feat::skills::frontmatter::strip_frontmatter;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};

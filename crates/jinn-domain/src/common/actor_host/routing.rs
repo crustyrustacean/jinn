@@ -10,7 +10,7 @@ use crate::protocol::{Command, CommandName, Event, EventTypeName};
 ///
 /// Created during [`spawn_actor_impl`](crate::spawn_actor_impl) by capturing a cloned
 /// [`ActorRef<M>`](crate::common::actor::ActorRef). Stored in
-/// `HashMap<String, Vec<RoutingEntry>>` — no type parameter, enabling
+/// `HashMap<String, Vec<RoutingEntry>>` - no type parameter, enabling
 /// heterogeneous collections of actors with different message types.
 pub struct RoutingEntry {
     /// The actor's unique name (for source filtering).

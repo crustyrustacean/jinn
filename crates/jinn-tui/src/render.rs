@@ -59,7 +59,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         state.frontend.sidebar_width,
     );
 
-    // Tab bar — renders at top of main area.
+    // Tab bar - renders at top of main area.
     tab_bar::render_tab_bar(frame, layout.tab_bar, state.frontend.active_tab);
 
     let mut rects = vec![];
@@ -80,7 +80,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         }
     }
 
-    // Session preview popup — when sidebar sessions section is focused.
+    // Session preview popup - when sidebar sessions section is focused.
     jinn_domain::feat::ui::sidebar::sessions::render_session_preview_for_state(
         frame,
         layout.sidebar,
@@ -88,7 +88,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         &state,
     );
 
-    // Status bar — always visible at bottom.
+    // Status bar - always visible at bottom.
     status_bar::render_status_bar(&mut app.ui_registry, frame, layout.status_bar, &state);
 
     // Which-key popup overlay.

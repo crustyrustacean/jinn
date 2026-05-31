@@ -1,4 +1,4 @@
-//! Session preview popup — shows the last few entries of a highlighted session.
+//! Session preview popup - shows the last few entries of a highlighted session.
 //!
 //! Rendered as a bordered overlay when the sidebar sessions section is focused.
 //! The popup is anchored bottom-right: its right edge aligns with the right
@@ -345,7 +345,7 @@ fn build_preview_lines(
         return lines.clone();
     }
 
-    // Cache miss — render.
+    // Cache miss - render.
     let start = history_len.saturating_sub(PREVIEW_ENTRY_COUNT);
     let entries = &history[start..];
 

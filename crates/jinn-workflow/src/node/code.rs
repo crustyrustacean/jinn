@@ -1,4 +1,4 @@
-//! CodeNode — a closure-based workflow node.
+//! CodeNode - a closure-based workflow node.
 //!
 //! [`CodeNode`] wraps an async closure, making it easy to define custom
 //! workflow nodes without implementing the full [`WorkflowNode`](crate::node::WorkflowNode) trait.
@@ -27,7 +27,7 @@ type ExecuteFn = Arc<
 /// The closure receives [`PortValues`] and `&dyn `[`NodeContext`],
 /// and returns `Result<`[`PortValues`]`, `[`Report`]`<`[`NodeError`]`>>`.
 ///
-/// The closure is wrapped in `Arc` so that `CodeNode` is clonable — the
+/// The closure is wrapped in `Arc` so that `CodeNode` is clonable - the
 /// execution engine clones nodes when spawning tasks.
 ///
 /// # Examples

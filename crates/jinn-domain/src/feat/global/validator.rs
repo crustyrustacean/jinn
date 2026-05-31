@@ -1,4 +1,4 @@
-//! Global intent validators — quit, toggle which-key, and interrupt.
+//! Global intent validators - quit, toggle which-key, and interrupt.
 
 use crate::common::app_state::AppState;
 use crate::feat::session::phase_machine::PhaseKind;
@@ -6,7 +6,7 @@ use wherror::Error;
 
 /// Validates the Quit intent.
 ///
-/// Quit can always proceed — it has no preconditions.
+/// Quit can always proceed - it has no preconditions.
 pub fn validate_quit(_state: &AppState) {}
 
 /// Validates the ToggleWhichkey intent.
@@ -18,7 +18,7 @@ pub fn validate_toggle_whichkey(_state: &AppState) {}
 #[derive(Debug, Error)]
 #[error(debug)]
 pub enum InterruptError {
-    /// Nothing to interrupt — buffer is empty and session is idle.
+    /// Nothing to interrupt - buffer is empty and session is idle.
     NothingToInterrupt,
 }
 

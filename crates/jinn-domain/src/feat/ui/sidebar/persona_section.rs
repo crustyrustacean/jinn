@@ -1,4 +1,4 @@
-//! [`PersonaSection`] — the persona sidebar section.
+//! [`PersonaSection`] - the persona sidebar section.
 //!
 //! Implements [`SidebarSection`] for displaying the active persona.
 //! Shows a header line and a single selectable entry with the persona name.
@@ -19,7 +19,7 @@ const SELECTED_INDICATOR: &str = "\u{2588}";
 /// One space used as the unselected border (same as pins section).
 const UNSELECTED_BORDER: &str = " ";
 
-/// Persona section cursor state — stored on `FrontendState`.
+/// Persona section cursor state - stored on `FrontendState`.
 ///
 /// Tracks whether the persona section currently has the cursor.
 /// `None` means no cursor (section not focused). `Some(0)` means
@@ -33,7 +33,7 @@ pub struct PersonaSectionState {
 /// Navigate within the persona section.
 ///
 /// Persona has a single entry, so any directional move exhausts immediately.
-/// The section does NOT modify its cursor — the sidebar decides what to do.
+/// The section does NOT modify its cursor - the sidebar decides what to do.
 pub fn navigate(intent: &SidebarIntent, _state: &mut AppState) -> SectionNavResult {
     match intent {
         SidebarIntent::MoveDown | SidebarIntent::MoveUp => SectionNavResult::Exhausted,

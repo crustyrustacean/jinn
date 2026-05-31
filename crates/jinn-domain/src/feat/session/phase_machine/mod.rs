@@ -1,4 +1,4 @@
-//! Session phase machine — validated phase transitions with per-phase state.
+//! Session phase machine - validated phase transitions with per-phase state.
 //!
 //! The [`SessionPhaseMachine`] owns the current [`Phase`] and enforces
 //! that all transitions are valid. Each transition method is named after

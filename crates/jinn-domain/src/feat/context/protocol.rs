@@ -1,4 +1,4 @@
-//! Context protocol — commands, events, strategy identification, and prompt templates.
+//! Context protocol - commands, events, strategy identification, and prompt templates.
 
 pub mod command;
 pub mod event;

@@ -1,4 +1,4 @@
-//! Sidebar state — focus tracking.
+//! Sidebar state - focus tracking.
 //!
 //! The focused section is now derived from the `FocusScope` variant on the
 //! scope stack, so this struct is currently empty. Kept as a placeholder

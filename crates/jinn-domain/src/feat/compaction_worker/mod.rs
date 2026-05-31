@@ -1,4 +1,4 @@
-//! Compaction worker — summarizes conversation history into structured checkpoints.
+//! Compaction worker - summarizes conversation history into structured checkpoints.
 //!
 //! Implements [`HistoryWorker`] to produce [`HistoryMutation`] batches.
 //! The compaction algorithm:

@@ -1,4 +1,4 @@
-//! No-provider factory — streams a help message when no provider is configured.
+//! No-provider factory - streams a help message when no provider is configured.
 //!
 //! Used as the initial factory when no provider is available at startup.
 //! The streamed message explains how to configure providers.
@@ -17,7 +17,7 @@ const HELP_MESSAGE: &str = "No LLM provider is configured. To get started:\n\
     3. Set the API key environment variable referenced by api_key_env\n\
     4. Open the provider picker (press p) and select a provider\n\
     \n\
-    For local providers like Ollama, no API key is needed — just uncomment and select.";
+    For local providers like Ollama, no API key is needed - just uncomment and select.";
 
 /// Sentinel provider ID used when no real provider is configured.
 pub const NO_PROVIDER_ID: &str = "__no_provider__";

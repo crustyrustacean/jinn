@@ -1,4 +1,4 @@
-//! Gutter line construction — pin icons, selection highlights, wrap padding.
+//! Gutter line construction - pin icons, selection highlights, wrap padding.
 
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
@@ -21,7 +21,7 @@ pub(crate) struct GutterStyle<'a> {
 /// Build gutter lines for a single entry.
 ///
 /// Each line is two spans: the indicator character (col 0, context fg) and a
-/// cursor bar in col 1. The bar only appears when selected+focused — otherwise
+/// cursor bar in col 1. The bar only appears when selected+focused - otherwise
 /// col 1 is a plain space. The pin icon first line is an exception: when
 /// selected+focused, it gets yellow bg and the pin emoji occupies both columns
 /// as a single span.

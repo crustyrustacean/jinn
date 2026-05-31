@@ -1,9 +1,9 @@
-//! Pure-logic loop example — iterative counter with judge validation.
+//! Pure-logic loop example - iterative counter with judge validation.
 //!
 //! A 3-node body graph inside a LoopNode:
-//! 1. **source** — emits a starting text value
-//! 2. **transform** — appends ".X" to the text each iteration
-//! 3. **judge** — outputs "pass" when the text has 3+ ".X" suffixes, "fail" otherwise
+//! 1. **source** - emits a starting text value
+//! 2. **transform** - appends ".X" to the text each iteration
+//! 3. **judge** - outputs "pass" when the text has 3+ ".X" suffixes, "fail" otherwise
 //!
 //! The LoopNode runs the body graph up to 5 times. Feedback from the transform's
 //! output overrides the source node's output on subsequent iterations.
@@ -19,7 +19,7 @@ use crate::feat::workflow::workflow_registry::WorkflowRegistry;
 ///
 /// # Panics
 ///
-/// Never panics — registration is infallible.
+/// Never panics - registration is infallible.
 pub fn register(registry: &mut WorkflowRegistry) {
     registry.register("loop_pure", build_loop_pure);
 }

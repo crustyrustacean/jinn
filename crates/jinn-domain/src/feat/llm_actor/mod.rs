@@ -4,7 +4,7 @@
 //! [`StreamCompleted`] events. On send, creates an
 //! LLM service via the factory and streams tokens and tool call events back
 //! as bus commands. When the LLM requests tool use, emits [`ExecuteToolBatch`]
-//! — the session actor handles the continuation via context assembly.
+//! - the session actor handles the continuation via context assembly.
 
 mod session;
 
@@ -215,7 +215,7 @@ impl LlmActor {
                     }
                 }
             } else {
-                // No services — fall through to global factory
+                // No services - fall through to global factory
                 self.factory.clone()
             }
         } else {
@@ -409,7 +409,7 @@ impl LlmActor {
                                     thinking_content,
                                 }));
                             } else {
-                                // Normal end_turn — emit StreamCompleted.
+                                // Normal end_turn - emit StreamCompleted.
                                 let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
                                     session_id: sid.clone(),
                                     reason: StreamCompletedReason::Finished,
@@ -507,7 +507,7 @@ impl LlmActor {
     ///
     /// Removes the session from tracking for [`Finished`] and [`Error`] reasons.
     /// For [`ToolUse`], the session stays tracked until cancellation or the next
-    /// stream starts — the session actor handles the continuation.
+    /// stream starts - the session actor handles the continuation.
     fn handle_stream_completed(&mut self, payload: &StreamCompleted) {
         if !self.sessions.contains_key(&payload.session_id) {
             return;
@@ -515,20 +515,20 @@ impl LlmActor {
 
         match payload.reason {
             StreamCompletedReason::ToolUse => {
-                // Session stays tracked — the continuation is handled by the
+                // Session stays tracked - the continuation is handled by the
                 // session actor when ToolBatchCompleted arrives. The next
                 // start_stream call will reset this session.
                 tracing::trace!(
                     session_id = ?payload.session_id,
                     reason = "ToolUse",
-                    "handle_stream_completed — keeping session for continuation"
+                    "handle_stream_completed - keeping session for continuation"
                 );
             }
             StreamCompletedReason::Error | StreamCompletedReason::Finished => {
                 tracing::trace!(
                     session_id = ?payload.session_id,
                     reason = ?payload.reason,
-                    "handle_stream_completed — removing session"
+                    "handle_stream_completed - removing session"
                 );
                 self.sessions.remove(&payload.session_id);
             }
@@ -702,7 +702,7 @@ mod tests {
         };
         actor.handle_stream_completed(&payload);
 
-        // Then nothing happens — no panic.
+        // Then nothing happens - no panic.
         assert!(actor.sessions.is_empty());
     }
 

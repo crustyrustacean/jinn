@@ -1,4 +1,4 @@
-//! Token expansion — replaces `#name` tokens using templates from the store.
+//! Token expansion - replaces `#name` tokens using templates from the store.
 
 use std::sync::LazyLock;
 

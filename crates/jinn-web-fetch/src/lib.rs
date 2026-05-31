@@ -1,4 +1,4 @@
-//! Web page fetching abstraction — trait, types, and error definitions.
+//! Web page fetching abstraction - trait, types, and error definitions.
 //!
 //! Defines the [`WebFetcher`] trait for fetching web page content with
 //! multiple output formats. Implementations are provided by separate modules
@@ -35,7 +35,7 @@ pub enum OutputFormat {
 
 /// Options for a web fetch request.
 ///
-/// Extensible struct — new fields (headers, cookies, timeouts) can be
+/// Extensible struct - new fields (headers, cookies, timeouts) can be
 /// added here without breaking the trait signature.
 #[derive(Debug, Clone, Default)]
 pub struct FetchOptions {

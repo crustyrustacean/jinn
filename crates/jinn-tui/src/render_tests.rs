@@ -37,7 +37,7 @@ fn render_registers_content_rect_for_selectable_chat_log() {
         .unwrap();
 
     // Then the chat area rect is registered as selectable, excluding the gutter.
-    // Chat log is selectable — the selectable area starts after the gutter column.
+    // Chat log is selectable - the selectable area starts after the gutter column.
     let layout = AppLayout::new(frame_area(80, 24), 1, 12, 30);
     let content = layout.content;
     let expected = Rect {

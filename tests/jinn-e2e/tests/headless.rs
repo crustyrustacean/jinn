@@ -94,7 +94,7 @@ impl HeadlessWorld {
                 SqliteSessionStore::new_in(&paths.sessions_dir()).expect("store"),
             ));
 
-            // Call production wiring — spawns all 16 actors.
+            // Call production wiring - spawns all 16 actors.
             let (core, _services, actor_host) = actor_wiring::create_core_with_actor_host(
                 &handle,
                 llm_service,
@@ -158,7 +158,7 @@ fn when_script_from_missing_file(world: &mut HeadlessWorld) {
             world.headless = Some(headless);
         }
         Err(_) => {
-            // File::open failed — same as the production dispatch path.
+            // File::open failed - same as the production dispatch path.
             world.last_ok = Some(false);
         }
     }

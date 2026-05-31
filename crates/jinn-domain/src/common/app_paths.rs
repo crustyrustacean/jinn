@@ -1,11 +1,11 @@
-//! Application filesystem paths — single source of truth for all directory locations.
+//! Application filesystem paths - single source of truth for all directory locations.
 //!
 //! [`AppPaths`] holds every base directory the application needs. It is computed
 //! once at init time: [`AppPaths::default()`] for production (from `dirs::*`),
 //! [`AppPaths::new_in()`] for tests (from a temp root).
 //!
 //! All domain code that needs a filesystem path must read it from the injected
-//! `AppPaths` instance — never from `dirs::*` free functions directly.
+//! `AppPaths` instance - never from `dirs::*` free functions directly.
 
 use std::path::{Path, PathBuf};
 
@@ -20,15 +20,15 @@ use super::app_info::APP_NAME;
 #[derive(Debug, Clone)]
 #[allow(clippy::struct_field_names)]
 pub struct AppPaths {
-    /// `~/.config/jinn` — providers.toml, prompts/, personas/, plugins/, themes/, jinn.toml
+    /// `~/.config/jinn` - providers.toml, prompts/, personas/, plugins/, themes/, jinn.toml
     config_dir: PathBuf,
-    /// `~/.local/share/jinn` — sessions.db
+    /// `~/.local/share/jinn` - sessions.db
     data_dir: PathBuf,
-    /// `~/.cache/jinn` — model_cache.json
+    /// `~/.cache/jinn` - model_cache.json
     cache_dir: PathBuf,
-    /// `~/` — home directory (skills live at `~/.agents/skills`)
+    /// `~/` - home directory (skills live at `~/.agents/skills`)
     home_dir: PathBuf,
-    /// `/usr/share/jinn` — system-wide defaults (themes, personas, prompts).
+    /// `/usr/share/jinn` - system-wide defaults (themes, personas, prompts).
     ///
     /// User files in `~/.config/jinn/` override system files of the same name.
     system_data_dir: PathBuf,
