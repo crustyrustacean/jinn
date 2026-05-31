@@ -213,7 +213,7 @@ impl JudgeCoordinatorActor {
         {
             let mut guard = self.state.write();
             if let Some(origin) = guard.session.get_mut(origin_id) {
-                origin.mark_busy();
+                origin.begin_working();
             }
         }
 
@@ -326,14 +326,14 @@ impl JudgeCoordinatorActor {
             return;
         };
 
-        // Safety check: don't retry if the origin has left Idle.
+        // Safety check: don't retry if the origin has left Working phase.
         {
             let guard = self.state.read();
             if let Some(origin_session) = guard.session.get(&origin_id) {
-                if origin_session.phase() != PhaseKind::Idle {
+                if origin_session.phase() != PhaseKind::Working {
                     tracing::debug!(
                         origin = %origin_id,
-                        "origin left idle during judge retry, skipping"
+                        "origin left working phase during judge retry, skipping"
                     );
                     return;
                 }
@@ -407,15 +407,15 @@ impl JudgeCoordinatorActor {
             return;
         };
 
-        // Safety check: if the origin is no longer Idle, discard pending results.
+        // Safety check: if the origin is no longer Working, discard pending results.
         {
             let guard = self.state.read();
             if let Some(session) = guard.session.get(origin_id) {
-                if session.phase() != PhaseKind::Idle {
+                if session.phase() != PhaseKind::Working {
                     tracing::warn!(
                         origin = %origin_id,
                         phase = ?session.phase(),
-                        "origin left idle before all verdicts collected, discarding pending"
+                        "origin left working phase before all verdicts collected, discarding pending"
                     );
                     drop(guard);
                     self.pending.remove(origin_id);
@@ -482,7 +482,7 @@ impl JudgeCoordinatorActor {
         {
             let mut guard = self.state.write();
             if let Some(origin) = guard.session.get_mut(origin_id) {
-                origin.mark_busy_complete();
+                origin.complete_working();
             }
         }
 
@@ -556,7 +556,7 @@ impl JudgeCoordinatorActor {
         {
             let mut guard = self.state.write();
             if let Some(origin) = guard.session.get_mut(origin_id) {
-                origin.mark_busy_complete();
+                origin.complete_working();
             }
         }
 
@@ -926,7 +926,13 @@ mod tests {
         actor.handle(idle_event(origin_id.clone()), &ctx).await;
         sink.clear();
 
-        // Origin starts a new turn (leaves Idle).
+        // Origin completes working and starts a new turn.
+        state
+            .write()
+            .session
+            .get_mut(&origin_id)
+            .expect("origin exists")
+            .complete_working();
         state
             .write()
             .session
@@ -1088,7 +1094,7 @@ mod tests {
         let guard = state.read();
         let origin = guard.session.get(&origin_id).expect("origin exists");
         assert!(
-            origin.is_busy(),
+            origin.phase() == PhaseKind::Working,
             "origin should be marked busy after triggering judges"
         );
     }
@@ -1119,7 +1125,7 @@ mod tests {
         let guard = state.read();
         let origin = guard.session.get(&origin_id).expect("origin exists");
         assert!(
-            !origin.is_busy(),
+            !(origin.phase() == PhaseKind::Working),
             "origin should not be busy after consolidation"
         );
     }
@@ -1217,7 +1223,7 @@ mod tests {
         let guard = state.read();
         let origin_session = guard.session.get(&origin_id).expect("origin exists");
         assert!(
-            !origin_session.is_busy(),
+            !(origin_session.phase() == PhaseKind::Working),
             "origin should not be busy after judge retries exhausted"
         );
         drop(guard);
@@ -1272,7 +1278,7 @@ mod tests {
         let guard = state.read();
         let origin_session = guard.session.get(&origin_id).expect("origin exists");
         assert!(
-            origin_session.is_busy(),
+            origin_session.phase() == PhaseKind::Working,
             "origin should still be busy while other judge is pending"
         );
         drop(guard);
@@ -1297,7 +1303,7 @@ mod tests {
         let guard = state.read();
         let origin_session = guard.session.get(&origin_id).expect("origin exists");
         assert!(
-            !origin_session.is_busy(),
+            !(origin_session.phase() == PhaseKind::Working),
             "origin should not be busy after all judges report"
         );
     }
@@ -1421,7 +1427,7 @@ mod tests {
         {
             let guard = state.read();
             let origin_session = guard.session.get(&origin_id).expect("origin exists");
-            assert!(origin_session.is_busy(), "origin should be busy before cancel");
+            assert!((origin_session.phase() == PhaseKind::Working), "origin should be busy before cancel");
         }
 
         // When cancelling the pending evaluation.
@@ -1438,7 +1444,7 @@ mod tests {
         let guard = state.read();
         let origin_session = guard.session.get(&origin_id).expect("origin exists");
         assert!(
-            !origin_session.is_busy(),
+            !(origin_session.phase() == PhaseKind::Working),
             "origin should not be busy after cancel"
         );
         drop(guard);
@@ -1540,7 +1546,7 @@ mod tests {
         let guard = state.read();
         let origin_session = guard.session.get(&origin_id).expect("origin exists");
         assert!(
-            !origin_session.is_busy(),
+            !(origin_session.phase() == PhaseKind::Working),
             "origin should not be busy after verdict after retry"
         );
     }
@@ -1561,7 +1567,13 @@ mod tests {
         actor.handle(idle_event(origin_id.clone()), &ctx).await;
         sink.clear();
 
-        // Origin starts a new turn (leaves Idle).
+        // Origin completes working and starts a new turn.
+        state
+            .write()
+            .session
+            .get_mut(&origin_id)
+            .expect("origin exists")
+            .complete_working();
         state
             .write()
             .session
@@ -1603,7 +1615,7 @@ mod tests {
         {
             let guard = state.read();
             let origin_session = guard.session.get(&origin_id).expect("origin exists");
-            assert!(!origin_session.is_busy());
+            assert!(origin_session.phase() != PhaseKind::Working);
         }
 
         sink.clear();
@@ -1647,7 +1659,7 @@ mod tests {
             SessionPhaseChanged {
                 session_id: origin_id.clone(),
                 old_phase: PhaseKind::Sending,
-                new_phase: PhaseKind::TearingDown,
+                new_phase: PhaseKind::Working,
             },
         ));
         actor.handle(teardown_event, &ctx).await;
@@ -1660,7 +1672,7 @@ mod tests {
         );
         assert!(
             judge_commands.is_empty(),
-            "expected no judge trigger on TearingDown phase"
+            "expected no judge trigger on Working phase"
         );
     }
 
