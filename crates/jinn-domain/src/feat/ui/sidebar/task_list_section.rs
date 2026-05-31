@@ -161,6 +161,7 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
 
     for (phase_idx, phase) in list.phases().iter().enumerate() {
         let is_expanded = expanded == Some(phase_idx);
+        let is_selected = expanded == Some(phase_idx);
 
         // Phase header with collapse indicator.
         let indicator = if is_expanded {
@@ -169,9 +170,13 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
             "\u{25B8} " // ▸ collapsed
         };
         let phase_width = sidebar_width.saturating_sub(PHASE_INDENT + indicator.len());
-        let phase_style = Style::default()
+        let mut phase_style = Style::default()
             .fg(theme.muted_text)
             .add_modifier(Modifier::BOLD);
+        // Highlight the selected phase header with reversed colors.
+        if is_selected {
+            phase_style = phase_style.add_modifier(Modifier::REVERSED);
+        }
         let wrapped = wrap_description(phase.description(), phase_width);
         for (i, segment) in wrapped.iter().enumerate() {
             let prefix = if i == 0 {
@@ -230,18 +235,10 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
             }
         }
 
-        // Blank line between phases.
-        lines.push(Line::from(""));
-    }
-
-    // Remove trailing blank.
-    if lines.last() == Some(&Line::from("")) {
-        lines.pop();
     }
 
     lines
 }
-
 /// Computes the content height for a non-empty task list.
 fn compute_height(list: &TaskList, state: &AppState) -> u16 {
     let sidebar_width = state.frontend.sidebar_width as usize;
@@ -272,12 +269,9 @@ fn compute_height(list: &TaskList, state: &AppState) -> u16 {
             }
         }
 
-        // Blank line between phases.
-        height += 1;
     }
 
-    // Subtract trailing blank + add trailing gap.
-    height.saturating_sub(1) as u16 + 1
+    height as u16
 }
 
 #[cfg(test)]
@@ -443,6 +437,47 @@ mod tests {
         );
     }
 
+    #[test]
+    fn no_blank_lines_between_phases() {
+        let app = setup_with_tasks();
+        let list = app.session.active_session().task_list().clone();
+        let lines = build_render_lines(&list, &app);
+        // No line should be empty (blank) - every line should have content.
+        for (i, line) in lines.iter().enumerate() {
+            // The header separator blank (line index 1) is OK.
+            // But between phases there should be no blank lines.
+            if i == 1 {
+                continue; // blank after header is expected
+            }
+            let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
+            assert!(
+                !text.trim().is_empty(),
+                "line {i} should not be blank between phases: {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn selected_phase_header_has_reversed_modifier() {
+        let mut app = setup_with_tasks();
+        setup_focused_on_phase(&mut app, 0);
+        let list = app.session.active_session().task_list().clone();
+        let lines = build_render_lines(&list, &app);
+        // Find a line containing the first phase name.
+        let has_reversed = lines.iter().any(|line| {
+            let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
+            text.contains("Research")
+                && line.spans.iter().any(|s| {
+                    s.style.add_modifier.contains(Modifier::REVERSED)
+                })
+        });
+        assert!(
+            has_reversed,
+            "selected phase header should have REVERSED modifier for cursor highlight"
+        );
+    }
+
+    // --- Expanded rendering tests ---
     // --- Expanded rendering tests ---
 
     #[test]
@@ -761,8 +796,8 @@ mod tests {
         let list = session.task_list().clone();
 
         let height = compute_height(&list, &app);
-        // Collapsed: header(1) + blank(1) + phase(1) + trailing_gap(1) = 4.
-        assert_eq!(height, 4, "expected no wrapping for exact-fit description");
+        // Collapsed: header(1) + blank(1) + phase(1) = 3.
+        assert_eq!(height, 3, "expected no wrapping for exact-fit description");
     }
 
     #[test]
