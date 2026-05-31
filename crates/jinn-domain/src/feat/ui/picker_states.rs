@@ -7,7 +7,7 @@
 
 use std::collections::HashSet;
 
-use crate::feat::judge::JudgePickerEntry;
+
 use crate::feat::persona::PersonaEntry;
 use crate::feat::session::picker_entry::SessionTreeEntry;
 use crate::feat::session_lifecycle::picker_entry::SessionLifecycleEntry;
@@ -68,9 +68,6 @@ pub struct PickerStates {
     /// OWNER: IntentHandler (workflow picker navigation) + WorkflowActor (entry population).
     pub workflow_picker: jinn_selection_widget::SelectionState<WorkflowPickerEntry>,
 
-    /// Judge picker state (items, filter text, selection index).
-    /// OWNER: IntentHandler (judge picker navigation, confirm creates judge session).
-    pub judge_picker: jinn_selection_widget::SelectionState<JudgePickerEntry>,
 
     /// Compaction model picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (compaction model picker navigation).
@@ -147,12 +144,6 @@ pub trait PickerExt {
     /// Mutable access to the workflow picker state.
     fn workflow_picker_mut(&mut self) -> &mut jinn_selection_widget::SelectionState<WorkflowPickerEntry>;
 
-    // --- Judge picker ---
-
-    /// Read-only access to the judge picker state.
-    fn judge_picker(&self) -> &jinn_selection_widget::SelectionState<JudgePickerEntry>;
-    /// Mutable access to the judge picker state.
-    fn judge_picker_mut(&mut self) -> &mut jinn_selection_widget::SelectionState<JudgePickerEntry>;
 
     // --- Compaction model picker ---
 
@@ -251,13 +242,6 @@ impl PickerExt for super::frontend_state::FrontendState {
         &mut self.pickers.workflow_picker
     }
 
-    fn judge_picker(&self) -> &jinn_selection_widget::SelectionState<JudgePickerEntry> {
-        &self.pickers.judge_picker
-    }
-
-    fn judge_picker_mut(&mut self) -> &mut jinn_selection_widget::SelectionState<JudgePickerEntry> {
-        &mut self.pickers.judge_picker
-    }
 
     fn compaction_model_picker(&self) -> &jinn_selection_widget::SelectionState<PickerEntry> {
         &self.pickers.compaction_model_picker

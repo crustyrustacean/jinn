@@ -5,7 +5,7 @@
 //! point in its history.
 
 use crate::common::actor::ActorContext;
-use crate::feat::context::assemble::assemble_prompt;
+
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::protocol::{ChatEntry, Event};
 
@@ -92,18 +92,7 @@ impl SessionPersistenceActor {
             ));
         }
 
-        // Recalculate context size for the status bar.
-        // cached_context_size is ephemeral (not persisted), so it's None after load.
-        // Running assemble_prompt once gives an accurate current context size.
-        let assembled = {
-            let guard = self.state.read();
-            assemble_prompt(&guard, &session_id, &self.counter, None)
-        };
-        {
-            let mut state = self.state.write();
-            let session = state.session.get_mut(&session_id).expect("just inserted");
-            session.set_context_size(assembled.estimated_tokens());
-        }
+
 
         // Persist the restored session.
         self.save_active_session(&session_id).await;
@@ -185,7 +174,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn session_load_populates_context_size() {
+    async fn session_load_does_not_set_context_size() {
         // Given a session with chat history.
         let mut session = ChatSessionState::new();
         session.push_entry(ChatEntry::user("hello world"));
@@ -199,19 +188,14 @@ mod tests {
         // When handling SessionLoadCompleted.
         actor.handle_session_load_completed(&payload, &ctx).await;
 
-        // Then context_size is populated (not None).
+        // Then context_size is NOT set by the session actor (ContextSizeActor handles this).
         let state = actor.state.read();
         let active = state.active_session();
         assert!(
-            active.context_size().is_some(),
-            "context_size should be populated after session load"
-        );
-        assert!(
-            active.context_size().unwrap() > 0,
-            "context_size should be positive"
+            active.context_size().is_none(),
+            "context_size should NOT be set by session actor (ContextSizeActor owns this)"
         );
     }
-
     #[tokio::test]
     async fn handle_session_load_completed_marks_session_as_interacted() {
         // Given a session loaded from disk.

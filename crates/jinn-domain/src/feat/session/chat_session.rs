@@ -119,6 +119,12 @@ pub struct SessionCoreEphemeral {
     /// OWNER: session-actor.
     pub(crate) cached_context_size: Option<u32>,
 
+    /// Number of active background operations (e.g., lifecycle tasks).
+    /// Ephemeral: not persisted, not serialized.
+    /// OWNER: session-actor.
+    #[serde(skip)]
+    pub(crate) busy_count: usize,
+
     /// Pending history mutation batches from background workers.
     /// Drained and applied at safe application points (tool batch completion,
     /// stream completion). Not persisted across restarts.
@@ -201,14 +207,7 @@ pub struct SessionCore {
     /// OWNER: workflow-actor (set on creation).
     #[serde(default)]
     pub(crate) is_workflow: bool,
-    /// Judge metadata - `None` for regular sessions, `Some` for judge sessions.
-    ///
-    /// Presence is the single flag: `is_judge() == self.judge.is_some()`.
-    /// No separate `is_judge` boolean exists in application logic.
-    /// OWNER: intent handler (set on picker creation), judge tools (set is_attached).
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) judge: Option<crate::feat::judge::JudgeMeta>,
+
     /// Whether the user has meaningfully interacted with this session.
     /// Sessions with `has_interacted = false` are not persisted to disk.
     /// OWNER: session-actor (set via MarkSessionInteracted command).
@@ -247,7 +246,7 @@ impl Default for SessionCore {
             session_state: SessionState::Loaded,
             lifecycle_script_state: LifecycleScriptState::NothingRan,
             is_workflow: false,
-            judge: None,
+
             workflow_overrides: None,
             task_list: crate::feat::todo_list::TaskList::default(),
             has_interacted: false,
@@ -585,80 +584,6 @@ impl ChatSessionState {
         self.core.is_workflow
     }
 
-    /// Whether this session is a judge session.
-    ///
-    /// True when `judge` metadata is present. The single flag for all
-    /// judge-specific behavior - no separate `is_judge` boolean in logic.
-    #[must_use]
-    pub fn is_judge(&self) -> bool {
-        self.core.judge.is_some()
-    }
-
-    /// The judge metadata for this session, if it's a judge session.
-    #[must_use]
-    pub fn judge(&self) -> &Option<crate::feat::judge::JudgeMeta> {
-        &self.core.judge
-    }
-
-    /// Set the judge metadata on this session.
-    pub fn set_judge(&mut self, meta: crate::feat::judge::JudgeMeta) {
-        self.core.judge = Some(meta);
-    }
-
-    /// Restore judge metadata (e.g., after DB load or fork).
-    pub fn restore_judge(&mut self, judge: Option<crate::feat::judge::JudgeMeta>) {
-        self.core.judge = judge;
-    }
-
-    /// Update the `is_attached` flag on the judge metadata.
-    ///
-    /// No-op if this session is not a judge.
-    pub fn set_judge_attached(&mut self, attached: bool) {
-        if let Some(ref mut meta) = self.core.judge {
-            meta.is_attached = attached;
-        }
-    }
-
-    /// Update the per-session `auto_reset` override on the judge metadata.
-    ///
-    /// No-op if this session is not a judge.
-    pub fn set_judge_auto_reset(&mut self, auto_reset: Option<bool>) {
-        if let Some(ref mut meta) = self.core.judge {
-            meta.auto_reset = auto_reset;
-        }
-    }
-
-    /// Reset this session's history to only its pinned entries.
-    ///
-    /// Used by the judge reset feature to clear stale context while
-    /// preserving the judge definition (pinned system prompt).
-    /// Resets ephemeral streaming state and drains the turn queue.
-    ///
-    /// Does **not** reset: token ledger, strategy state, profile,
-    /// `has_interacted`, or `JudgeMeta`.
-    pub fn reset_judge_history(&mut self) {
-        // Collect pinned entries before clearing.
-        let pinned: Vec<ChatEntry> = self
-            .core
-            .history
-            .iter()
-            .filter(|e| e.is_pinned())
-            .cloned()
-            .collect();
-
-        // Replace history with empty, then re-push pinned entries.
-        self.core.history = ChatHistory::new();
-        for entry in pinned {
-            self.push_entry(entry);
-        }
-
-        // Reset machine to Idle - drops all StreamingPhase data.
-        self.core.ephemeral.machine = crate::feat::session::phase_machine::SessionPhaseMachine::new();
-
-
-        // Drain the turn queue - discard any queued items.
-        self.drain_queue();
-    }
 
     /// Mark this session as having been meaningfully interacted with by the user.
     /// Once set, the session becomes eligible for persistence.
@@ -1324,45 +1249,36 @@ impl ChatSessionState {
 
     /// Transition to Working phase (a background operation started).
     ///
-    /// Delegates to `machine.on_start_working()`. Logs a warning if the
-    /// machine rejects the transition.
-    pub fn begin_working(&mut self) {
-        use crate::feat::session::phase_machine::PhaseTransitions;
-        if let Err(e) = self.core.ephemeral.machine.on_start_working() {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.machine.kind(),
-                err = %e,
-                "begin_working: machine rejected transition - ignoring"
-            );
-        }
+
+
+    // ── Busy count ──────────────────────────────────────────────────────────
+
+    /// Increment the busy counter. Called when a background operation starts.
+    /// The count is ephemeral (not persisted).
+    pub fn begin_busy(&mut self) {
+        self.core.ephemeral.busy_count += 1;
     }
 
-    /// Complete one working operation.
-    ///
-    /// Delegates to `machine.on_working_complete()`. Returns `true` if the
-    /// session transitioned back to `Idle` (all pending operations complete).
-    /// Returns `false` if still in `Working` (more operations pending) or
-    /// if the machine was not in `Working`.
-    pub fn complete_working(&mut self) -> bool {
-        use crate::feat::session::phase_machine::PhaseTransitions;
-        self.core.ephemeral.machine.on_working_complete().is_some_and(|outcome| {
-            outcome.new_phase == crate::feat::session::phase_machine::PhaseKind::Idle
-        })
+    /// Decrement the busy counter (floor at 0). Called when one background
+    /// operation completes. Returns the new count.
+    pub fn complete_busy(&mut self) -> usize {
+        self.core.ephemeral.busy_count = self.core.ephemeral.busy_count.saturating_sub(1);
+        self.core.ephemeral.busy_count
     }
 
-    /// Hard cancel all working operations and return to Idle.
-    ///
-    /// Delegates to `machine.cancel_working()`. Logs a warning if the
-    /// machine rejects the transition.
-    pub fn cancel_working(&mut self) {
-        use crate::feat::session::phase_machine::PhaseTransitions;
-        if let Err(e) = self.core.ephemeral.machine.cancel_working() {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.machine.kind(),
-                err = %e,
-                "cancel_working: machine rejected transition - ignoring"
-            );
-        }
+    /// Hard-reset the busy counter to zero. Cancels all tracked operations.
+    pub fn cancel_busy(&mut self) {
+        self.core.ephemeral.busy_count = 0;
+    }
+
+    /// Returns the current number of active background operations.
+    pub fn busy_count(&self) -> usize {
+        self.core.ephemeral.busy_count
+    }
+
+    /// Returns `true` when any background operation is in progress.
+    pub fn is_busy(&self) -> bool {
+        self.core.ephemeral.busy_count > 0
     }
 
     /// The current scroll offset (lines to skip from top).

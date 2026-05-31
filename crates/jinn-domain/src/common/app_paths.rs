@@ -90,11 +90,6 @@ impl AppPaths {
         self.config_dir.join(APP_NAME).join("personas")
     }
 
-    /// Judges directory (`~/.config/jinn/judges`).
-    #[must_use]
-    pub fn judges_dir(&self) -> PathBuf {
-        self.config_dir.join(APP_NAME).join("judges")
-    }
 
     /// Model cache file (`~/.cache/jinn/model_cache.json`).
     #[must_use]
@@ -145,11 +140,6 @@ impl AppPaths {
         self.system_data_dir.join("personas")
     }
 
-    /// System judges directory (`/usr/share/jinn/judges`).
-    #[must_use]
-    pub fn system_judges_dir(&self) -> PathBuf {
-        self.system_data_dir.join("judges")
-    }
 
     /// System prompts directory (`/usr/share/jinn/prompts`).
     #[must_use]
@@ -215,13 +205,6 @@ impl AppPaths {
         resolve_resource_paths(&self.system_prompts_dir(), &self.prompts_dir(), "md")
     }
 
-    /// Returns merged judge file paths from system and user directories.
-    ///
-    /// Same merge semantics as [`resolve_theme_paths`].
-    #[must_use]
-    pub fn resolve_judge_paths(&self) -> Vec<(String, PathBuf)> {
-        resolve_resource_paths(&self.system_judges_dir(), &self.judges_dir(), "md")
-    }
 }
 
 /// Scans two directories for files with the given extension, merging by filename stem.

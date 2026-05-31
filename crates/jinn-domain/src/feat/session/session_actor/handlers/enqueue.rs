@@ -62,8 +62,7 @@ impl SessionPersistenceActor {
                     )
                 }
                 PhaseKind::Sending
-                | PhaseKind::Streaming
-                | PhaseKind::Working => {
+                | PhaseKind::Streaming => {
                     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
                         payload.entry.clone(),
                     ));
@@ -100,7 +99,7 @@ impl SessionPersistenceActor {
                         tokens_received: 0,
                         cost: None,
                     });
-                    session.set_context_size(assembled.estimated_tokens());
+
                     (old_phase, session.phase())
                 };
                 super::super::helpers::emit_phase_changed(

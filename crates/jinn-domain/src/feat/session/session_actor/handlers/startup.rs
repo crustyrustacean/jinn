@@ -124,12 +124,9 @@ impl SessionPersistenceActor {
             tracing::warn!(err = ?e, "session-actor failed to send UpdatePreferences on startup");
         }
 
-        // Trigger initial judge scan.
-        if let Err(e) = ctx.send_command(Command::RescanJudges(crate::feat::judge::RescanJudges)) {
-            tracing::warn!(err = ?e, "session-actor failed to send RescanJudges on startup");
-        }
     }
 }
+
 
 #[cfg(test)]
 mod tests {

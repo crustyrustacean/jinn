@@ -36,7 +36,7 @@ diesel::table! {
         lifecycle_script_state -> Text,
         metadata -> Nullable<Text>,
         is_workflow -> Bool,
-        judge_meta -> Nullable<Text>,
+
     }
 }
 
