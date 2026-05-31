@@ -16,12 +16,14 @@
 //!   │                               │
 //!   └───────────────────────────────┘ (if tool_loop_disabled)
 //!
-//! Idle ──on_request_teardown()──► TearingDown ──on_teardown_complete()──► Idle
+//! Idle ──on_start_working()──► Working ──on_working_complete()──► Idle
+//!   ▲                                                               │
+//!   └─────────────────────── cancel_working() ──────────────────────┘
 //! ```
 
 use serde::{Deserialize, Serialize};
 
-use super::phase::{IdlePhase, Phase, PhaseKind, SendingPhase, StreamingPhase};
+use super::phase::{IdlePhase, Phase, PhaseKind, SendingPhase, StreamingPhase, WorkingPhase};
 
 /// Result of a successful phase transition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,7 +67,8 @@ pub struct TransitionError {
 /// per-phase data without transitioning.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SessionPhaseMachine {
-    phase: Phase,
+    /// The current phase.
+    pub(in crate::feat::session::phase_machine) phase: Phase,
     /// When `true`, `on_tool_batch_completed` transitions to `Idle`
     /// instead of continuing the tool loop. Set by judge verdict tools
     /// (`task_complete`, `task_incomplete`) during `Streaming` or `Sending`.
@@ -285,6 +288,29 @@ impl SessionPhaseMachine {
             Phase::Sending(s) => Some(s),
             _ => None,
         }
+    }
+
+    // ── Working phase accessors ──────────────────────────────────────────
+
+    /// Read-only access to `WorkingPhase` data, if currently working.
+    pub fn working_phase(&self) -> Option<&WorkingPhase> {
+        match &self.phase {
+            Phase::Working(wp) => Some(wp),
+            _ => None,
+        }
+    }
+
+    /// Mutable access to `WorkingPhase` data, if currently working.
+    pub fn working_phase_mut(&mut self) -> Option<&mut WorkingPhase> {
+        match &mut self.phase {
+            Phase::Working(wp) => Some(wp),
+            _ => None,
+        }
+    }
+
+    /// The current working count, or 0 if not in Working phase.
+    pub fn working_count(&self) -> usize {
+        self.working_phase().map_or(0, |wp| wp.count)
     }
 
     // ── Internal helpers ────────────────────────────────────────────────

@@ -35,7 +35,8 @@ use crate::feat::session::protocol::session_fork_requested::SessionForkRequested
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 use crate::feat::session_lifecycle::protocol::command::{
-    FinishSessionTeardown, PersistSession, RunSessionSetup, RunSessionTeardown,
+    CancelLifecycleCommand, FinishSessionSetup, FinishSessionTeardown, PersistSession,
+    RunSessionSetup, RunSessionTeardown,
 };
 use crate::feat::skills::skills_scan_actor::ScanSkills;
 use crate::feat::tools_actor::protocol::command::{
@@ -127,6 +128,10 @@ pub enum Command {
     SubmitHistoryMutations(SubmitHistoryMutations),
     /// Finish an async teardown shell command (result from spawned task).
     FinishSessionTeardown(FinishSessionTeardown),
+    /// Finish an async setup shell command (result from spawned task).
+    FinishSessionSetup(FinishSessionSetup),
+    /// Request to cancel a running lifecycle command.
+    CancelLifecycleCommand(CancelLifecycleCommand),
     /// Request to load (initialize) a named workflow without executing it.
     InitWorkflow(crate::feat::workflow::protocol::command::InitWorkflow),
     /// Request to start a named workflow.
@@ -195,6 +200,8 @@ impl Command {
             Self::PersistSession(..) => Some(PersistSession::NAME),
             Self::SubmitHistoryMutations(..) => Some(SubmitHistoryMutations::NAME),
             Self::FinishSessionTeardown(..) => Some(FinishSessionTeardown::NAME),
+            Self::FinishSessionSetup(..) => Some(FinishSessionSetup::NAME),
+            Self::CancelLifecycleCommand(..) => Some(CancelLifecycleCommand::NAME),
             Self::InitWorkflow(..) => {
                 Some(crate::feat::workflow::protocol::command::InitWorkflow::NAME)
             }
@@ -336,6 +343,14 @@ impl std::fmt::Display for Command {
             Command::FinishSessionTeardown(payload) => {
                 write!(f, "finish session teardown for {}", payload.session_id)
             }
+            Command::FinishSessionSetup(payload) => {
+                write!(f, "finish session setup for {}", payload.session_id)
+            }
+            Command::CancelLifecycleCommand(payload) => {
+                write!(f, "cancel lifecycle command for {}", payload.session_id)
+            }
+
+
             Command::SubmitHistoryMutations(payload) => {
                 write!(
                     f,

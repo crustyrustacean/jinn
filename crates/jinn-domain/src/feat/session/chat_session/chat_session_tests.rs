@@ -3039,42 +3039,42 @@ fn force_exclude_no_tool_calls_is_noop() {
 
 
 
-// --- begin_tearing_down happy path & guards ---
+// --- begin_working happy path & guards ---
 
 #[rstest::rstest]
-fn begin_tearing_down_transitions_idle_to_tearing_down() {
+fn begin_working_transitions_idle_to_working() {
     // Given a session that is idle.
     let mut session = ChatSessionState::new();
     assert_eq!(session.phase(), PhaseKind::Idle);
 
     // When beginning teardown.
-    session.begin_tearing_down();
+    session.begin_working();
 
-    // Then phase is TearingDown.
-    assert_eq!(session.phase(), PhaseKind::TearingDown);
+    // Then phase is Working.
+    assert_eq!(session.phase(), PhaseKind::Working);
 }
 
 #[rstest::rstest]
-fn begin_tearing_down_is_noop_when_sending() {
+fn begin_working_is_noop_when_sending() {
     // Given a session in Sending phase.
     let mut session = ChatSessionState::new();
     session.begin_sending();
 
-    // When calling begin_tearing_down.
-    session.begin_tearing_down();
+    // When calling begin_working.
+    session.begin_working();
 
     // Then phase stays Sending.
     assert_eq!(session.phase(), PhaseKind::Sending);
 }
 
 #[rstest::rstest]
-fn begin_tearing_down_is_noop_when_streaming() {
+fn begin_working_is_noop_when_streaming() {
     // Given a session in Streaming phase.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
 
-    // When calling begin_tearing_down.
-    session.begin_tearing_down();
+    // When calling begin_working.
+    session.begin_working();
 
     // Then phase stays Streaming.
     assert_eq!(session.phase(), PhaseKind::Streaming);
@@ -3085,67 +3085,67 @@ fn begin_tearing_down_is_noop_when_streaming() {
 
 
 #[rstest::rstest]
-fn begin_tearing_down_is_noop_when_already_tearing_down() {
+fn begin_working_is_noop_when_already_working() {
     // Given a session already tearing down.
     let mut session = ChatSessionState::new();
-    session.begin_tearing_down();
+    session.begin_working();
 
-    // When calling begin_tearing_down again.
-    session.begin_tearing_down();
+    // When calling begin_working again.
+    session.begin_working();
 
-    // Then phase stays TearingDown (no panic, no double-transition).
-    assert_eq!(session.phase(), PhaseKind::TearingDown);
+    // Then phase stays Working (no panic, no double-transition).
+    assert_eq!(session.phase(), PhaseKind::Working);
 }
 
-// --- finish_tearing_down happy path & guards ---
+// --- complete_working happy path & guards ---
 
 #[rstest::rstest]
-fn finish_tearing_down_transitions_to_idle() {
-    // Given a session in TearingDown phase.
+fn complete_working_transitions_to_idle() {
+    // Given a session in Working phase.
     let mut session = ChatSessionState::new();
-    session.begin_tearing_down();
-    assert_eq!(session.phase(), PhaseKind::TearingDown);
+    session.begin_working();
+    assert_eq!(session.phase(), PhaseKind::Working);
 
     // When finishing teardown.
-    session.finish_tearing_down();
+    session.complete_working();
 
     // Then phase is Idle.
     assert_eq!(session.phase(), PhaseKind::Idle);
 }
 
 #[rstest::rstest]
-fn finish_tearing_down_is_noop_when_idle() {
+fn complete_working_is_noop_when_idle() {
     // Given a session that is idle.
     let mut session = ChatSessionState::new();
 
-    // When calling finish_tearing_down.
-    session.finish_tearing_down();
+    // When calling complete_working.
+    session.complete_working();
 
     // Then phase stays Idle.
     assert_eq!(session.phase(), PhaseKind::Idle);
 }
 
 #[rstest::rstest]
-fn finish_tearing_down_is_noop_when_sending() {
+fn complete_working_is_noop_when_sending() {
     // Given a session in Sending phase.
     let mut session = ChatSessionState::new();
     session.begin_sending();
 
-    // When calling finish_tearing_down.
-    session.finish_tearing_down();
+    // When calling complete_working.
+    session.complete_working();
 
     // Then phase stays Sending.
     assert_eq!(session.phase(), PhaseKind::Sending);
 }
 
 #[rstest::rstest]
-fn finish_tearing_down_is_noop_when_streaming() {
+fn complete_working_is_noop_when_streaming() {
     // Given a session in Streaming phase.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
 
-    // When calling finish_tearing_down.
-    session.finish_tearing_down();
+    // When calling complete_working.
+    session.complete_working();
 
     // Then phase stays Streaming.
     assert_eq!(session.phase(), PhaseKind::Streaming);
@@ -3534,45 +3534,45 @@ fn insert_entry_at_shifts_multiple_indices() {
 }
 
 // ===========================================================================
-// Phase 3: SessionPhase::from_str & SessionSummary serde defaults
+// Phase 3: PhaseKind::from_str
 // ===========================================================================
 
 #[rstest::rstest]
 #[case::idle("idle", PhaseKind::Idle)]
 #[case::sending("sending", PhaseKind::Sending)]
 #[case::streaming("streaming", PhaseKind::Streaming)]
-#[case::tearing_down("tearing_down", PhaseKind::TearingDown)]
-fn session_phase_from_str_roundtrips(#[case] input: &str, #[case] expected: PhaseKind) {
+#[case::working("working", PhaseKind::Working)]
+fn phase_kind_from_str_roundtrips(#[case] input: &str, #[case] expected: PhaseKind) {
     // Given a phase string.
     // When parsing.
-    let result: Result<SessionPhase, _> = input.parse();
+    let result: Result<PhaseKind, _> = input.parse();
     // Then it matches the expected phase.
-    assert_eq!(PhaseKind::from(result.unwrap()), expected);
+    assert_eq!(result.unwrap(), expected);
 }
 
 #[rstest::rstest]
 #[case::uppercase("IDLE")]
 #[case::mixed_case("Streaming")]
-fn session_phase_from_str_is_case_insensitive(#[case] input: &str) {
+fn phase_kind_from_str_is_case_insensitive(#[case] input: &str) {
     // Given a phase string with non-lowercase.
     // When parsing.
-    let result: Result<SessionPhase, _> = input.parse();
+    let result: Result<PhaseKind, _> = input.parse();
     // Then it still parses correctly.
     assert!(result.is_ok());
 }
 
 #[rstest::rstest]
-fn session_phase_from_str_rejects_unknown() {
+fn phase_kind_from_str_rejects_unknown() {
     // Given an unknown string.
-    let result: Result<SessionPhase, _> = "unknown_phase".parse();
+    let result: Result<PhaseKind, _> = "unknown_phase".parse();
     // Then it returns an error.
     assert!(result.is_err());
 }
 
 #[rstest::rstest]
-fn session_phase_from_str_rejects_empty() {
+fn phase_kind_from_str_rejects_empty() {
     // Given an empty string.
-    let result: Result<SessionPhase, _> = "".parse();
+    let result: Result<PhaseKind, _> = "".parse();
     // Then it returns an error.
     assert!(result.is_err());
 }

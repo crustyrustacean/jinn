@@ -63,7 +63,7 @@ impl SessionPersistenceActor {
                 }
                 PhaseKind::Sending
                 | PhaseKind::Streaming
-                | PhaseKind::TearingDown => {
+                | PhaseKind::Working => {
                     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
                         payload.entry.clone(),
                     ));

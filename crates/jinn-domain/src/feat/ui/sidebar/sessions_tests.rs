@@ -333,10 +333,10 @@ fn sorted_sessions_count_matches_hashmap() {
 }
 
 #[rstest::rstest]
-fn mark_busy_makes_session_not_idle() {
-    // Given a session that is Idle but has mark_busy() called.
+fn working_phase_makes_session_not_idle() {
+    // Given a session that is in Working phase.
     let mut state = AppState::default();
-    state.active_session_mut().mark_busy();
+    state.active_session_mut().begin_working();
 
     // When collecting sorted open sessions.
     let sessions = sorted_open_sessions(&state);
@@ -347,11 +347,11 @@ fn mark_busy_makes_session_not_idle() {
 }
 
 #[rstest::rstest]
-fn mark_busy_complete_returns_to_idle() {
-    // Given a session that was busy but completed.
+fn working_complete_returns_to_idle() {
+    // Given a session that was working but completed.
     let mut state = AppState::default();
-    state.active_session_mut().mark_busy();
-    state.active_session_mut().mark_busy_complete();
+    state.active_session_mut().begin_working();
+    state.active_session_mut().complete_working();
 
     // When collecting sorted open sessions.
     let sessions = sorted_open_sessions(&state);
@@ -732,12 +732,12 @@ fn close_session_rejected_when_streaming() {
 }
 
 #[rstest::rstest]
-fn close_session_rejected_when_busy_counter_nonzero() {
-    // Given state with a session that has mark_busy() called but is Idle.
+fn close_session_rejected_when_working_phase() {
+    // Given state with a session in Working phase.
     let mut state = AppState::default();
     state.frontend.scope_stack.push(FocusScope::SidebarSessions);
     state.frontend.sessions_section.selected_index = Some(0);
-    state.active_session_mut().mark_busy();
+    state.active_session_mut().begin_working();
 
     // When validating close.
     let result = validate_session_close(&state);
