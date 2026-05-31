@@ -308,7 +308,8 @@ async fn execute_builtin_read_tool() {
     let result = read::execute(call, tool_ctx).await;
     assert_eq!(result.tool_call_id, "call_4");
     assert!(result.success);
-    assert_eq!(result.content, "file contents here");
+    assert!(result.content.contains("file contents here"));
+    assert!(result.content.contains('#'), "expected LINE#HASH annotation");
 }
 
 #[rstest::rstest]
