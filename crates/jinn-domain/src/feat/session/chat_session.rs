@@ -29,66 +29,7 @@ use crate::protocol::{
     SessionId,
 };
 
-/// Ephemeral session state - lost on application restart.
-///
-/// The current phase of a chat session's lifecycle.
-///
-/// Phases are mutually exclusive - a session is in exactly one phase at a time.
-/// Transitions are enforced by the `begin_*`/`finish_*` methods with assertions
-/// that document the valid state machine edges.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum SessionPhase {
-    /// Session is completely idle - not sending, streaming, or compacting.
-    #[default]
-    Idle,
-    /// A message has been dispatched to the LLM but no tokens have arrived yet.
-    Sending,
-    /// LLM tokens are actively streaming into the session.
-    Streaming,
-    /// A lifecycle teardown script is running.
-    TearingDown,
-}
 
-impl std::str::FromStr for SessionPhase {
-    type Err = SessionPhaseParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "idle" => Ok(Self::Idle),
-            "sending" => Ok(Self::Sending),
-            "streaming" => Ok(Self::Streaming),
-            "tearing_down" => Ok(Self::TearingDown),
-            _ => Err(SessionPhaseParseError(s.to_owned())),
-        }
-    }
-}
-
-/// Error returned when a string does not match any [`SessionPhase`] variant.
-#[derive(Debug, wherror::Error)]
-#[error("unknown session phase: {0}")]
-pub struct SessionPhaseParseError(String);
-
-impl From<crate::feat::session::phase_machine::PhaseKind> for SessionPhase {
-    fn from(kind: crate::feat::session::phase_machine::PhaseKind) -> Self {
-        match kind {
-            crate::feat::session::phase_machine::PhaseKind::Idle => Self::Idle,
-            crate::feat::session::phase_machine::PhaseKind::Sending => Self::Sending,
-            crate::feat::session::phase_machine::PhaseKind::Streaming => Self::Streaming,
-            crate::feat::session::phase_machine::PhaseKind::TearingDown => Self::TearingDown,
-        }
-    }
-}
-
-impl From<SessionPhase> for crate::feat::session::phase_machine::PhaseKind {
-    fn from(phase: SessionPhase) -> Self {
-        match phase {
-            SessionPhase::Idle => Self::Idle,
-            SessionPhase::Sending => Self::Sending,
-            SessionPhase::Streaming => Self::Streaming,
-            SessionPhase::TearingDown => Self::TearingDown,
-        }
-    }
-}
 
 /// Error returned when a streaming operation fails.
 #[derive(Debug, wherror::Error)]
@@ -160,36 +101,7 @@ impl LifecycleScriptState {
     }
 }
 
-/// Reference-counted busy indicator for tracking concurrent async operations.
-///
-/// Callers increment with [`Self::set_busy`] before starting an operation
-/// and decrement with [`Self::busy_complete`] when it finishes.
-/// [`Self::is_busy`] returns true while any operation is in flight.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct BusyCounter {
-    count: u32,
-}
 
-impl BusyCounter {
-    /// Increment the busy counter. Represents one more in-flight operation.
-    pub fn set_busy(&mut self) {
-        self.count = self.count.saturating_add(1);
-    }
-
-    /// Decrement the busy counter. Floors at zero with a warning log on underflow.
-    pub fn busy_complete(&mut self) {
-        if self.count == 0 {
-            tracing::warn!("busy_complete called with no outstanding busy tokens");
-            return;
-        }
-        self.count -= 1;
-    }
-
-    /// Returns `true` while any operation is in flight (counter > 0).
-    pub fn is_busy(&self) -> bool {
-        self.count > 0
-    }
-}
 
 /// Groups runtime-only fields that are specific to the current running instance
 /// and have no meaning across restarts (stream indices, queues, in-progress flags).
@@ -206,10 +118,7 @@ pub struct SessionCoreEphemeral {
     /// Updated when context is assembled. Not persisted across restarts.
     /// OWNER: session-actor.
     pub(crate) cached_context_size: Option<u32>,
-    /// Reference-counted busy counter for lifecycle scripts and other async operations.
-    /// Rendered as the animated "Working..." spinner when non-zero.
-    #[serde(default)]
-    pub(crate) busy_counter: BusyCounter,
+
     /// Pending history mutation batches from background workers.
     /// Drained and applied at safe application points (tool batch completion,
     /// stream completion). Not persisted across restarts.
@@ -745,7 +654,7 @@ impl ChatSessionState {
 
         // Reset machine to Idle - drops all StreamingPhase data.
         self.core.ephemeral.machine = crate::feat::session::phase_machine::SessionPhaseMachine::new();
-        self.core.ephemeral.busy_counter = BusyCounter::default();
+
 
         // Drain the turn queue - discard any queued items.
         self.drain_queue();
@@ -1413,32 +1322,45 @@ impl ChatSessionState {
         }
     }
 
-    /// Mark the session as tearing down.
-    //
-    // Phase 1 wiring: delegates to machine.on_request_teardown() and syncs
-    // legacy phase field.
-    pub fn begin_tearing_down(&mut self) {
+    /// Transition to Working phase (a background operation started).
+    ///
+    /// Delegates to `machine.on_start_working()`. Logs a warning if the
+    /// machine rejects the transition.
+    pub fn begin_working(&mut self) {
         use crate::feat::session::phase_machine::PhaseTransitions;
-        if let Err(e) = self.core.ephemeral.machine.on_request_teardown() {
+        if let Err(e) = self.core.ephemeral.machine.on_start_working() {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
                 err = %e,
-                "begin_tearing_down: machine rejected transition - ignoring"
+                "begin_working: machine rejected transition - ignoring"
             );
         }
     }
 
-    /// Finish tearing down, return to idle.
-    //
-    // Phase 1 wiring: delegates to machine.on_teardown_complete() and syncs
-    // legacy phase field.
-    pub fn finish_tearing_down(&mut self) {
+    /// Complete one working operation.
+    ///
+    /// Delegates to `machine.on_working_complete()`. Returns `true` if the
+    /// session transitioned back to `Idle` (all pending operations complete).
+    /// Returns `false` if still in `Working` (more operations pending) or
+    /// if the machine was not in `Working`.
+    pub fn complete_working(&mut self) -> bool {
         use crate::feat::session::phase_machine::PhaseTransitions;
-        if let Err(e) = self.core.ephemeral.machine.on_teardown_complete() {
+        self.core.ephemeral.machine.on_working_complete().is_some_and(|outcome| {
+            outcome.new_phase == crate::feat::session::phase_machine::PhaseKind::Idle
+        })
+    }
+
+    /// Hard cancel all working operations and return to Idle.
+    ///
+    /// Delegates to `machine.cancel_working()`. Logs a warning if the
+    /// machine rejects the transition.
+    pub fn cancel_working(&mut self) {
+        use crate::feat::session::phase_machine::PhaseTransitions;
+        if let Err(e) = self.core.ephemeral.machine.cancel_working() {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
                 err = %e,
-                "finish_tearing_down: machine rejected transition - ignoring"
+                "cancel_working: machine rejected transition - ignoring"
             );
         }
     }
@@ -2388,21 +2310,7 @@ impl ChatSessionState {
         self.core.lifecycle_script_state.advance_after_teardown();
     }
 
-    /// Whether the session has any in-flight async operations that should
-    /// show the "Working..." spinner.
-    pub fn is_busy(&self) -> bool {
-        self.core.ephemeral.busy_counter.is_busy()
-    }
 
-    /// Mark the session as busy (increment the counter).
-    pub fn mark_busy(&mut self) {
-        self.core.ephemeral.busy_counter.set_busy();
-    }
-
-    /// Mark one busy operation as complete (decrement the counter).
-    pub fn mark_busy_complete(&mut self) {
-        self.core.ephemeral.busy_counter.busy_complete();
-    }
 
     /// Force-exclude any `ToolCall` entries that lack matching `ToolResult` entries,
     /// and their empty parent `Assistant` entry.

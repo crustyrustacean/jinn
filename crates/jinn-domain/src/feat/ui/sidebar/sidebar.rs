@@ -197,8 +197,7 @@ fn section_has_content(id: SidebarSectionId, state: &AppState) -> bool {
     match id {
         SidebarSectionId::Persona => true,
         SidebarSectionId::Pins => !state.sorted_pinned_ids().is_empty(),
-        // TaskList is always skipped by navigation - render-only.
-        SidebarSectionId::TaskList => false,
+        SidebarSectionId::TaskList => !state.active_session().task_list().is_empty(),
         SidebarSectionId::Sessions => !state.session.is_empty(),
     }
 }
@@ -207,7 +206,7 @@ pub(crate) fn clear_cursor(id: SidebarSectionId, state: &mut AppState) {
     match id {
         SidebarSectionId::Persona => state.frontend.persona_section.cursor = None,
         SidebarSectionId::Pins => state.frontend.pins.clear_selection(),
-        SidebarSectionId::TaskList => { /* no-op: non-interactive section */ }
+        SidebarSectionId::TaskList => state.frontend.task_list_section.selected_phase_index = None,
         SidebarSectionId::Sessions => state.frontend.sessions_section.selected_index = None,
     }
 }
@@ -226,7 +225,7 @@ fn section_has_cursor(id: SidebarSectionId, state: &AppState) -> bool {
     match id {
         SidebarSectionId::Persona => state.frontend.persona_section.cursor.is_some(),
         SidebarSectionId::Pins => state.frontend.pins.selected_id().is_some(),
-        SidebarSectionId::TaskList => false,
+        SidebarSectionId::TaskList => state.frontend.task_list_section.selected_phase_index.is_some(),
         SidebarSectionId::Sessions => state.frontend.sessions_section.selected_index.is_some(),
     }
 }

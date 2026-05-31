@@ -61,23 +61,17 @@ impl UiElement<AppState> for StreamingIndicatorElement {
         let phase = session.phase();
         let queue_len = session.queue_len();
 
-        let is_lifecycle_busy = session.is_busy();
-
         let is_phase_busy = matches!(
             phase,
             PhaseKind::Sending
                 | PhaseKind::Streaming
-                | PhaseKind::TearingDown
+                | PhaseKind::Working
         );
-        if !is_lifecycle_busy && !is_phase_busy {
+        if !is_phase_busy {
             return;
         }
 
-        let label = if is_lifecycle_busy {
-            " Working...".to_owned()
-        } else if matches!(phase, PhaseKind::TearingDown) {
-            " Tearing down...".to_owned()
-        } else if queue_len > 0 {
+        let label = if queue_len > 0 {
             format!(" Working... ({queue_len} queued)")
         } else {
             " Working...".to_owned()
@@ -171,7 +165,7 @@ mod tests {
 
         let mut element = StreamingIndicatorElement::new();
         let mut state = AppState::default();
-        state.active_session_mut().mark_busy();
+        state.active_session_mut().begin_working();
         let (mut terminal, area) = setup_term(30, 1);
         terminal
             .draw(|frame| {

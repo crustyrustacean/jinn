@@ -518,15 +518,18 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
 
     let session_id = state.session.active_session_id().clone();
 
-    // Idle but busy → cancel pending judge evaluation.
-    if state.active_session().phase() == PhaseKind::Idle
-        && state.active_session().is_busy()
-    {
+    // Working phase → cancel pending judge evaluation.
+    if state.active_session().phase() == PhaseKind::Working {
         state.active_session_mut().cancel_stream_and_drain();
         return Some(IntentResult::with_commands(vec![
             Command::CancelPendingJudgeEvaluation(
                 crate::feat::judge::CancelPendingJudgeEvaluation {
-                    origin_session_id: session_id,
+                    origin_session_id: session_id.clone(),
+                },
+            ),
+            Command::CancelLifecycleCommand(
+                crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand {
+                    session_id,
                 },
             ),
         ]));
@@ -1402,11 +1405,10 @@ mod tests {
 
     #[test]
     fn origin_idle_busy_cancel_emits_pending_cancel() {
-        // Given an origin session that is Idle but busy (judges evaluating).
+        // Given an origin session that is in Working phase (judges evaluating).
         let mut state = AppState::default();
         state.frontend.cancel_stream_prompt = true;
-        state.active_session_mut().mark_busy();
-        // Phase is already Idle by default.
+        state.active_session_mut().begin_working();
 
         // When handling NormalEscape.
         let result = IntentHandler::handle(&Intent::NormalEscape, &mut state);
@@ -1416,6 +1418,11 @@ mod tests {
         assert!(
             result.commands.iter().any(|c| matches!(c, crate::protocol::Command::CancelPendingJudgeEvaluation(cmd) if cmd.origin_session_id == session_id)),
             "should emit CancelPendingJudgeEvaluation for origin: {:?}",
+            result.commands
+        );
+        assert!(
+            result.commands.iter().any(|c| matches!(c, crate::protocol::Command::CancelLifecycleCommand(_))),
+            "should emit CancelLifecycleCommand: {:?}",
             result.commands
         );
     }

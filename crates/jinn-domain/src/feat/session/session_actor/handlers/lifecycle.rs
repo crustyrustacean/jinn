@@ -14,7 +14,7 @@ use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::session_archived::SessionArchived;
 use crate::feat::session::protocol::session_closed::SessionClosed;
 use crate::feat::session_lifecycle::command_runner::LifecycleCommandError;
-use crate::feat::session_lifecycle::command_runner::run_setup_command;
+
 use crate::feat::session_lifecycle::protocol::command::{
     PersistSession, RunSessionSetup, RunSessionTeardown,
 };
@@ -131,47 +131,130 @@ impl SessionPersistenceActor {
     /// On success, sets the session's CWD to the command's output.
     /// On failure, sets the default CWD and pushes an error entry.
     pub(in crate::feat::session::session_actor) async fn handle_run_session_setup(
-        &self,
+        &mut self,
         payload: &RunSessionSetup,
         ctx: &ActorContext,
     ) {
-        // Mark session as busy (spinner) before the .await.
+        // Transition to Working phase.
         {
             let mut state = self.state.write();
             if let Some(session) = state.session.get_mut(&payload.session_id) {
-                session.mark_busy();
+                session.begin_working();
             }
         }
 
         match payload.lifecycle_command {
             Some(ref cmd) => match cmd {
                 crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => {
+                    // Builtin: run inline, then complete Working.
                     self.run_builtin_setup(&payload.session_id, id, &payload.args, ctx);
+                    // Complete Working phase.
+                    {
+                        let mut state = self.state.write();
+                        if let Some(session) = state.session.get_mut(&payload.session_id) {
+                            session.complete_working();
+                        }
+                    }
                 }
                 crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(_) => {
-                    self.run_shell_setup(payload, ctx).await;
+                    self.spawn_shell_setup(payload, ctx);
                 }
             },
             None => {
-                self.run_shell_setup(payload, ctx).await;
+                self.spawn_shell_setup(payload, ctx);
             }
         }
     }
 
-    /// Runs a shell-based setup command via `run_setup_command`.
-    async fn run_shell_setup(&self, payload: &RunSessionSetup, ctx: &ActorContext) {
-        let result = run_setup_command(&payload.command, &self.shell).await;
+    fn spawn_shell_setup(&mut self, payload: &RunSessionSetup, ctx: &ActorContext) {
+        use crate::feat::session_lifecycle::command_runner::spawn_setup_command;
 
-        // Clear busy flag in all code paths.
+        let (child_arc, handle) = match spawn_setup_command(&payload.command, &self.shell) {
+            Ok(pair) => pair,
+            Err(e) => {
+                // Failed to even start the command.
+                let error_msg = format!("Failed to start setup command: {e}");
+                let mut state = self.state.write();
+                let default = state.session.default_cwd().clone();
+                if let Some(session) = state.session.get_mut(&payload.session_id) {
+                    session.set_cwd(default);
+                    session.complete_working();
+                }
+                drop(state);
+                let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                    session_id: payload.session_id.clone(),
+                    entry: ChatEntry::error(&error_msg),
+                }));
+                let _ = ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
+                    session_id: payload.session_id.clone(),
+                    cwd: std::path::PathBuf::new(),
+                    error: Some(error_msg),
+                }));
+                return;
+            }
+        };
+
+        let session_id = payload.session_id.clone();
+        let sink = ctx.sink();
+
+        let _handle = tokio::spawn(async move {
+            let result = handle.await;
+            let (cwd, error) = match result {
+                Ok(Ok(path)) => (Some(path), None as Option<String>),
+                Ok(Err(report)) => {
+                    let error_msg =
+                        if let Some(cmd_err) = report.downcast_ref::<crate::feat::session_lifecycle::command_runner::LifecycleCommandError>() {
+                            crate::feat::session::session_actor::handlers::lifecycle::format_lifecycle_error(cmd_err)
+                        } else {
+                            crate::feat::session::session_actor::handlers::lifecycle::strip_ansi(&format!("{report:#?}"))
+                        };
+                    (None, Some(error_msg))
+                }
+                Err(_) => {
+                    // Task was cancelled (abort).
+                    (None, Some("Setup command was cancelled".to_owned()))
+                }
+            };
+            let _ = sink.send_command(
+                crate::protocol::Command::FinishSessionSetup(
+                    crate::feat::session_lifecycle::protocol::command::FinishSessionSetup {
+                        session_id,
+                        cwd,
+                        error,
+                    },
+                ),
+            );
+        });
+
+        self.lifecycle_child = Some(child_arc);
+    }
+
+    /// Handle `FinishSessionSetup` - completion of an async setup shell command.
+    ///
+    /// Called by the spawned tokio task after the setup shell command finishes.
+    /// Clears the lifecycle child, completes the Working phase, sets CWD,
+    /// advances lifecycle state, and emits events.
+    pub(in crate::feat::session::session_actor) async fn handle_finish_session_setup(
+        &mut self,
+        payload: &crate::feat::session_lifecycle::protocol::command::FinishSessionSetup,
+        ctx: &ActorContext,
+    ) {
+        // Clear lifecycle child handle.
+        self.lifecycle_child = None;
+
+
+
+        // Complete Working phase.
         {
             let mut state = self.state.write();
             if let Some(session) = state.session.get_mut(&payload.session_id) {
-                session.mark_busy_complete();
+                session.complete_working();
             }
         }
 
-        match result {
-            Ok(cwd) => {
+        match (&payload.cwd, &payload.error) {
+            (Some(cwd), None) => {
+                // Success.
                 {
                     let mut state = self.state.write();
                     if let Some(session) = state.session.get_mut(&payload.session_id) {
@@ -180,10 +263,9 @@ impl SessionPersistenceActor {
                     }
                 }
 
-                // Emit the completion entry via PushChatEntry (persists automatically).
                 if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
                     session_id: payload.session_id.clone(),
-                    entry: setup_complete_msg(&cwd),
+                    entry: setup_complete_msg(cwd),
                 })) {
                     tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for setup complete");
                 }
@@ -191,24 +273,16 @@ impl SessionPersistenceActor {
                 if let Err(e) =
                     ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
                         session_id: payload.session_id.clone(),
-                        cwd,
+                        cwd: cwd.clone(),
                         error: None,
                     }))
                 {
                     tracing::warn!(err = ?e, "session-actor failed to emit SessionSetupCompleted");
                 }
             }
-            Err(report) => {
-                let is_no_output = matches!(
-                    report.downcast_ref::<LifecycleCommandError>(),
-                    Some(LifecycleCommandError::NoOutput)
-                );
-                let error_msg =
-                    if let Some(cmd_err) = report.downcast_ref::<LifecycleCommandError>() {
-                        format_lifecycle_error(cmd_err)
-                    } else {
-                        strip_ansi(&format!("{report:#?}"))
-                    };
+            (_, Some(error_msg)) => {
+                // Error.
+                let is_no_output = error_msg.contains("Command produced no output");
                 let default_cwd = {
                     let mut state = self.state.write();
                     let default = state.session.default_cwd().clone();
@@ -221,10 +295,9 @@ impl SessionPersistenceActor {
                 let entry = if is_no_output {
                     no_output_info(&default_cwd)
                 } else {
-                    ChatEntry::error(&error_msg)
+                    ChatEntry::error(error_msg)
                 };
 
-                // Emit the error entry via PushChatEntry (persists automatically).
                 if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
                     session_id: payload.session_id.clone(),
                     entry,
@@ -236,7 +309,33 @@ impl SessionPersistenceActor {
                     ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
                         session_id: payload.session_id.clone(),
                         cwd: default_cwd,
-                        error: Some(error_msg),
+                        error: Some(error_msg.clone()),
+                    }))
+                {
+                    tracing::warn!(err = ?e, "session-actor failed to emit SessionSetupCompleted");
+                }
+            }
+            (None, None) => {
+                // No CWD and no error - treat as no output.
+                let default_cwd = {
+                    let mut state = self.state.write();
+                    let default = state.session.default_cwd().clone();
+                    if let Some(session) = state.session.get_mut(&payload.session_id) {
+                        session.set_cwd(default.clone());
+                    }
+                    default
+                };
+                if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                    session_id: payload.session_id.clone(),
+                    entry: no_output_info(&default_cwd),
+                })) {
+                    tracing::warn!(err = ?e, "session-actor failed to emit PushChatEntry for setup no-output");
+                }
+                if let Err(e) =
+                    ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
+                        session_id: payload.session_id.clone(),
+                        cwd: default_cwd,
+                        error: None,
                     }))
                 {
                     tracing::warn!(err = ?e, "session-actor failed to emit SessionSetupCompleted");
@@ -317,7 +416,6 @@ impl SessionPersistenceActor {
                     let default = state.session.default_cwd().clone();
                     if let Some(session) = state.session.get_mut(session_id) {
                         session.set_cwd(default.clone());
-                        session.mark_busy_complete();
                     }
                     default
                 };
@@ -344,14 +442,14 @@ impl SessionPersistenceActor {
 
     /// RunSessionTeardown: teardown-only handler (`t` key).
     ///
-    /// For shell teardowns: sets `TearingDown` phase, spawns a tokio task
+    /// For shell teardowns: sets `Working` phase, spawns a tokio task
     /// to run the shell command, and returns immediately. The spawned task
     /// sends `FinishSessionTeardown` back when complete.
     ///
     /// For builtin teardowns: runs inline (synchronous, no blocking).
     #[allow(clippy::too_many_lines, clippy::items_after_statements)]
     pub(in crate::feat::session::session_actor) async fn handle_run_session_teardown(
-        &self,
+        &mut self,
         payload: &RunSessionTeardown,
         ctx: &ActorContext,
     ) {
@@ -381,15 +479,14 @@ impl SessionPersistenceActor {
 
         match teardown_cmd {
             crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(shell_cmd) => {
-                // Set TearingDown phase + mark busy.
+                // Set Working phase.
                 let (old_phase, rendered) = {
                     let mut state = self.state.write();
                     let Some(session) = state.session.get_mut(&payload.session_id) else {
                         return;
                     };
                     let old_phase = session.phase();
-                    session.begin_tearing_down();
-                    session.mark_busy();
+                    session.begin_working();
                     use crate::feat::session_lifecycle::command_template::CommandTemplate;
                     let template = CommandTemplate::parse(shell_cmd);
                     let rendered = if lifecycle_args.is_empty() {
@@ -407,38 +504,59 @@ impl SessionPersistenceActor {
                     ctx,
                     &payload.session_id,
                     old_phase,
-                    crate::feat::session::phase_machine::PhaseKind::TearingDown,
+                    crate::feat::session::phase_machine::PhaseKind::Working,
                 );
 
                 // Spawn tokio task to run the shell command.
                 let session_id = payload.session_id.clone();
                 let sink = ctx.sink();
                 let shell = self.shell.clone();
-                tokio::spawn(async move {
-                    let result =
-                        crate::feat::session_lifecycle::command_runner::run_teardown_command(
-                            &rendered, &shell,
-                        )
-                        .await;
-                    let error = result.err().map(|report| {
-                        if let Some(cmd_err) =
-                            report.downcast_ref::<crate::feat::session_lifecycle::command_runner::LifecycleCommandError>()
-                        {
-                            crate::feat::session::session_actor::handlers::lifecycle::format_lifecycle_error(cmd_err)
-                        } else {
-                            crate::feat::session::session_actor::handlers::lifecycle::strip_ansi(&format!(
-                                "{report:#?}"
-                            ))
-                        }
-                    });
-                    let _ = sink.send_command(crate::protocol::Command::FinishSessionTeardown(
-                        crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
-                            session_id,
-                            close_after: false,
-                            error,
-                        },
-                    ));
-                });
+
+                let spawn_result =
+                    crate::feat::session_lifecycle::command_runner::spawn_teardown_command(
+                        &rendered, &shell,
+                    );
+
+                match spawn_result {
+                    Ok((child_arc, join_handle)) => {
+                        self.lifecycle_child = Some(child_arc);
+                        let _handle = tokio::spawn(async move {
+                            let result = join_handle.await;
+                            let error = match result {
+                                Ok(Ok(())) => None,
+                                Ok(Err(report)) => {
+                                    if let Some(cmd_err) =
+                                        report.downcast_ref::<crate::feat::session_lifecycle::command_runner::LifecycleCommandError>()
+                                    {
+                                        Some(crate::feat::session::session_actor::handlers::lifecycle::format_lifecycle_error(cmd_err))
+                                    } else {
+                                        Some(crate::feat::session::session_actor::handlers::lifecycle::strip_ansi(&format!(
+                                            "{report:#?}"
+                                        )))
+                                    }
+                                }
+                                Err(_) => Some("Teardown command was cancelled".to_owned()),
+                            };
+                            let _ = sink.send_command(crate::protocol::Command::FinishSessionTeardown(
+                                crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
+                                    session_id,
+                                    close_after: false,
+                                    error,
+                                },
+                            ));
+                        });
+                    }
+                    Err(report) => {
+                        let error_msg = format!("Failed to start teardown command: {report}");
+                        let _ = sink.send_command(crate::protocol::Command::FinishSessionTeardown(
+                            crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
+                                session_id,
+                                close_after: false,
+                                error: Some(error_msg),
+                            },
+                        ));
+                    }
+                }
             }
             crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => {
                 // Builtin teardown is synchronous - run inline.
@@ -536,7 +654,7 @@ impl SessionPersistenceActor {
     /// The session remains in memory with `SetupRan`.
     #[allow(clippy::too_many_lines)]
     pub(in crate::feat::session::session_actor) async fn handle_close_session(
-        &self,
+        &mut self,
         payload: &CloseSession,
         ctx: &ActorContext,
     ) {
@@ -572,7 +690,7 @@ impl SessionPersistenceActor {
             if let Some(teardown_cmd) = teardown_cmd {
                 match teardown_cmd {
                     crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(shell_cmd) => {
-                        // For shell teardowns: set TearingDown phase, spawn tokio task,
+                        // For shell teardowns: set Working phase, spawn tokio task,
                         // then return immediately. The spawned task signals completion
                         // via FinishSessionTeardown with close_after: true.
                         let (old_phase, rendered) = {
@@ -583,8 +701,7 @@ impl SessionPersistenceActor {
                                 return;
                             };
                             let old_phase = session.phase();
-                            session.begin_tearing_down();
-                            session.mark_busy();
+                            session.begin_working();
                             let template = CommandTemplate::parse(&shell_cmd);
                             let rendered = if lifecycle_args.is_empty() {
                                 shell_cmd.clone()
@@ -600,39 +717,62 @@ impl SessionPersistenceActor {
                             ctx,
                             &payload.session_id,
                             old_phase,
-                            crate::feat::session::phase_machine::PhaseKind::TearingDown,
+                            crate::feat::session::phase_machine::PhaseKind::Working,
                         );
 
                         let session_id = payload.session_id.clone();
                         let sink = ctx.sink();
                         let shell = self.shell.clone();
-                        tokio::spawn(async move {
-                            let result = crate::feat::session_lifecycle::command_runner::run_teardown_command(
-                                &rendered,
-                                &shell,
-                            )
-                            .await;
-                            let error = result.err().map(|report| {
-                                if let Some(cmd_err) =
-                                    report.downcast_ref::<crate::feat::session_lifecycle::command_runner::LifecycleCommandError>()
-                                {
-                                    crate::feat::session::session_actor::handlers::lifecycle::format_lifecycle_error(cmd_err)
-                                } else {
-                                    crate::feat::session::session_actor::handlers::lifecycle::strip_ansi(&format!(
-                                        "{report:#?}"
-                                    ))
-                                }
-                            });
-                            let _ = sink.send_command(
-                                crate::protocol::Command::FinishSessionTeardown(
-                                    crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
-                                        session_id,
-                                        close_after: true,
-                                        error,
-                                    },
-                                ),
+
+                        let spawn_result =
+                            crate::feat::session_lifecycle::command_runner::spawn_teardown_command(
+                                &rendered, &shell,
                             );
-                        });
+
+                        match spawn_result {
+                            Ok((child_arc, join_handle)) => {
+                                self.lifecycle_child = Some(child_arc);
+                                let _handle = tokio::spawn(async move {
+                                    let result = join_handle.await;
+                                    let error = match result {
+                                        Ok(Ok(())) => None,
+                                        Ok(Err(report)) => {
+                                            if let Some(cmd_err) =
+                                                report.downcast_ref::<crate::feat::session_lifecycle::command_runner::LifecycleCommandError>()
+                                            {
+                                                Some(crate::feat::session::session_actor::handlers::lifecycle::format_lifecycle_error(cmd_err))
+                                            } else {
+                                                Some(crate::feat::session::session_actor::handlers::lifecycle::strip_ansi(&format!(
+                                                    "{report:#?}"
+                                                )))
+                                            }
+                                        }
+                                        Err(_) => Some("Teardown command was cancelled".to_owned()),
+                                    };
+                                    let _ = sink.send_command(
+                                        crate::protocol::Command::FinishSessionTeardown(
+                                            crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
+                                                session_id,
+                                                close_after: true,
+                                                error,
+                                            },
+                                        ),
+                                    );
+                                });
+                            }
+                            Err(report) => {
+                                let error_msg = format!("Failed to start teardown command: {report}");
+                                let _ = sink.send_command(
+                                    crate::protocol::Command::FinishSessionTeardown(
+                                        crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
+                                            session_id,
+                                            close_after: true,
+                                            error: Some(error_msg),
+                                        },
+                                    ),
+                                );
+                            }
+                        }
 
                         return; // Return immediately - async result handled via FinishSessionTeardown
                     }
@@ -695,23 +835,26 @@ impl SessionPersistenceActor {
     ///
     /// On error, an error entry is pushed and the session returns to `Idle` phase.
     pub(in crate::feat::session::session_actor) async fn handle_finish_session_teardown(
-        &self,
+        &mut self,
         payload: &crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown,
         ctx: &ActorContext,
     ) {
         use crate::feat::session::chat_session::SessionState;
 
-        // Clear busy flag.
+        // Clear lifecycle child handle.
+        self.lifecycle_child = None;
+
+        // Complete Working phase.
         {
             let mut state = self.state.write();
             let Some(session) = state.session.get_mut(&payload.session_id) else {
                 return;
             };
-            session.mark_busy_complete();
+            session.complete_working();
         }
 
         if let Some(ref error_msg) = payload.error {
-            // Teardown failed - push error entry, emit failure, reset phase.
+            // Teardown failed - push error entry, emit failure, cancel working.
             let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
                 session_id: payload.session_id.clone(),
                 entry: ChatEntry::error(format!("Teardown failed: {error_msg}")),
@@ -722,16 +865,8 @@ impl SessionPersistenceActor {
                 error: Some(error_msg.clone()),
             }));
 
-            // Reset phase to Idle so any queued messages drain via QueueActor.
-            let old_phase = {
-                let mut state = self.state.write();
-                let Some(session) = state.session.get_mut(&payload.session_id) else {
-                    return;
-                };
-                let old_phase = session.phase();
-                session.finish_tearing_down();
-                old_phase
-            };
+            // Phase already reset by complete_working(). Emit phase change.
+            let old_phase = crate::feat::session::phase_machine::PhaseKind::Working;
             super::super::helpers::emit_phase_changed(
                 ctx,
                 &payload.session_id,
@@ -750,7 +885,6 @@ impl SessionPersistenceActor {
                     return;
                 };
                 session.advance_lifecycle_after_teardown();
-                session.finish_tearing_down();
             }
 
             // Persist the lifecycle state change.
@@ -796,7 +930,6 @@ impl SessionPersistenceActor {
                     return;
                 };
                 session.advance_lifecycle_after_teardown();
-                session.finish_tearing_down();
             }
 
             // Persist the lifecycle state change.
@@ -815,7 +948,7 @@ impl SessionPersistenceActor {
             }));
 
             // Emit phase change so QueueActor drains queued messages.
-            let old_phase = crate::feat::session::phase_machine::PhaseKind::TearingDown;
+            let old_phase = crate::feat::session::phase_machine::PhaseKind::Working;
             super::super::helpers::emit_phase_changed(
                 ctx,
                 &payload.session_id,
@@ -823,6 +956,46 @@ impl SessionPersistenceActor {
                 crate::feat::session::phase_machine::PhaseKind::Idle,
             );
         }
+    }
+
+    /// Handle `CancelLifecycleCommand` - kill a running lifecycle process.
+    ///
+    /// Kills the child process (if any), cancels the Working phase,
+    /// and pushes a system entry.
+    pub(in crate::feat::session::session_actor) fn handle_cancel_lifecycle_command(
+        &mut self,
+        payload: &crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand,
+        ctx: &ActorContext,
+    ) {
+        // Kill the child process if one is running.
+        if let Some(child_arc) = self.lifecycle_child.take() {
+            crate::feat::session_lifecycle::command_runner::kill_shared_child(&child_arc);
+        }
+
+        // Cancel Working phase -> Idle.
+        let old_phase = {
+            let mut state = self.state.write();
+            let Some(session) = state.session.get_mut(&payload.session_id) else {
+                return;
+            };
+            let old_phase = session.phase();
+            session.cancel_working();
+            old_phase
+        };
+
+        // Push cancellation entry.
+        let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            session_id: payload.session_id.clone(),
+            entry: ChatEntry::system("Lifecycle command cancelled."),
+        }));
+
+        // Emit phase change.
+        super::super::helpers::emit_phase_changed(
+            ctx,
+            &payload.session_id,
+            old_phase,
+            crate::feat::session::phase_machine::PhaseKind::Idle,
+        );
     }
 
     /// ArchiveSession: archive without running teardown.
@@ -930,15 +1103,6 @@ impl SessionPersistenceActor {
         }
     }
 
-    /// Runs the teardown command and advances lifecycle state.
-    ///
-    /// This is the shared teardown helper used by both the close (`x`) and
-    /// teardown-only (`t`) flows. On success, it:
-    /// 1. Runs the teardown command
-    /// 2. Advances `lifecycle_script_state` to `TeardownRan`
-    /// 3. Persists the session via `save_active_session`
-    ///
-    /// Returns `true` on success, `false` on failure (error entry pushed to session).
     /// Remove session from HashMap, create replacement if empty, reconcile cursor.
     ///
     /// Pure state mutation helper. Does NOT emit events - callers handle notifications.
@@ -1131,7 +1295,7 @@ mod tests {
         // Given a session actor with two sessions, second is targeted for teardown.
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (sink, ctx) = test_context();
         let (target_id, original_active) = {
             let mut state = actor.state.write();
@@ -1195,7 +1359,7 @@ mod tests {
         // Given a session actor in Normal scope with a lifecycle.
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1241,7 +1405,7 @@ mod tests {
         // Given a session actor with a session and a lifecycle.
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1298,7 +1462,7 @@ mod tests {
         // Given a session actor with a session and a lifecycle.
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1359,7 +1523,7 @@ mod tests {
     #[tokio::test]
     async fn remove_session_removes_session_from_hashmap() {
         // Given a session actor with two sessions.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (sink, ctx) = test_context();
         let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
@@ -1403,7 +1567,7 @@ mod tests {
     #[tokio::test]
     async fn remove_session_creates_new_session_when_last_removed() {
         // Given a session actor with only one session.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (sink, ctx) = test_context();
         let only_id = {
             let state = actor.state.read();
@@ -1445,7 +1609,7 @@ mod tests {
     #[tokio::test]
     async fn remove_session_switches_active_when_active_is_removed() {
         // Given a session actor with two sessions, active is the second.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (_sink, ctx) = test_context();
         let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
@@ -1474,7 +1638,7 @@ mod tests {
     #[tokio::test]
     async fn remove_session_emits_session_removed_event() {
         // Given a session actor with two sessions.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (sink, ctx) = test_context();
         let second = ChatSessionState::new();
         let second_id = second.session_id().clone();
@@ -1514,7 +1678,7 @@ mod tests {
     #[tokio::test]
     async fn remove_session_is_noop_if_session_does_not_exist() {
         // Given a session actor with one session.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (sink, ctx) = test_context();
         let fake_id = crate::protocol::SessionId::new();
         let original_len = {
@@ -1560,7 +1724,7 @@ mod tests {
     #[tokio::test]
     async fn teardown_only_success_does_not_remove_session() {
         // Given a session actor with a session.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (_sink, ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
@@ -1592,7 +1756,7 @@ mod tests {
     #[tokio::test]
     async fn teardown_only_success_does_not_emit_session_removed() {
         // Given a session actor with a session.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (sink, ctx) = test_context();
         let session_id = {
             let state = actor.state.read();
@@ -1631,7 +1795,7 @@ mod tests {
         // Given a session actor with a session and a lifecycle.
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1693,7 +1857,7 @@ mod tests {
         // Given a session actor with a session and a lifecycle.
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1754,7 +1918,7 @@ mod tests {
     #[tokio::test]
     async fn close_session_with_nothing_ran_skips_teardown_and_archives() {
         // Given a session with LifecycleScriptState::NothingRan and history.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -1800,7 +1964,7 @@ mod tests {
     #[tokio::test]
     async fn archive_session_without_lifecycle_removes_from_memory() {
         // Given a session with history and no lifecycle.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (sink, ctx) = test_context();
         let second = ChatSessionState::new();
         let _second_id = second.session_id().clone();
@@ -1864,7 +2028,7 @@ mod tests {
     #[tokio::test]
     async fn archive_empty_session_removes_and_archives() {
         // Given an empty session.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (sink, ctx) = test_context();
         let second = ChatSessionState::new();
         let _second_id = second.session_id().clone();
@@ -1910,7 +2074,7 @@ mod tests {
     #[tokio::test]
     async fn archive_active_session_switches_to_next() {
         // Given two sessions, archiving the active one.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (_sink, ctx) = test_context();
         let second = ChatSessionState::new();
         let _second_id = second.session_id().clone();
@@ -1942,7 +2106,7 @@ mod tests {
     #[tokio::test]
     async fn archive_last_session_creates_new_one() {
         // Given one non-empty session.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (_sink, ctx) = test_context();
         let only_id = {
             let mut state = actor.state.write();
@@ -1977,7 +2141,7 @@ mod tests {
         use crate::feat::session::chat_session::LifecycleScriptState;
 
         // Given a session with SetupRan, a lifecycle, and a failing teardown command.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -2033,7 +2197,7 @@ mod tests {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 
         // Given a session with SetupRan and a failing teardown.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -2089,7 +2253,7 @@ mod tests {
         use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
 
         // Given a session with SetupRan and a succeeding teardown command.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (sink, ctx) = test_context();
         let second_session = ChatSessionState::new();
         let session_id = {
@@ -2158,7 +2322,7 @@ mod tests {
         // Given an actor with an empty (non-interacted) session and a recording store.
         use super::super::super::helpers::{test_actor_with_store, test_context};
 
-        let (actor, store) = test_actor_with_store(vec![]);
+        let (mut actor, store) = test_actor_with_store(vec![]);
         let session_id = actor.state.read().session.active_session_id().clone();
         let (_sink, ctx) = test_context();
 
@@ -2184,7 +2348,7 @@ mod tests {
         // Given an actor with an empty (non-interacted) session and a recording store.
         use super::super::super::helpers::{test_actor_with_store, test_context};
 
-        let (actor, store) = test_actor_with_store(vec![]);
+        let (mut actor, store) = test_actor_with_store(vec![]);
         let session_id = actor.state.read().session.active_session_id().clone();
         let (_sink, ctx) = test_context();
 
@@ -2213,7 +2377,7 @@ mod tests {
         use crate::feat::session::chat_session::LifecycleScriptState;
 
         // Given a session with SetupRan and a succeeding teardown command.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
@@ -2272,7 +2436,7 @@ mod tests {
         use crate::feat::session::chat_session::LifecycleScriptState;
 
         // Given a session with SetupRan, a succeeding teardown, and a recording store.
-        let (actor, store) = test_actor_with_store(vec![]);
+        let (mut actor, store) = test_actor_with_store(vec![]);
         let second = ChatSessionState::new();
         let session_id = {
             let mut state = actor.state.write();
@@ -2330,7 +2494,7 @@ mod tests {
         use crate::feat::judge::JudgeMeta;
 
         // Given an origin session with two judge sessions.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (_sink, ctx) = test_context();
         let origin_id = actor.state.read().session.active_session_id().clone();
 
@@ -2391,7 +2555,7 @@ auto_reset: None,
         use crate::feat::judge::JudgeMeta;
 
         // Given an origin session with two judge sessions.
-        let actor = test_actor();
+        let mut actor = test_actor();
         let (sink, ctx) = test_context();
         let origin_id = actor.state.read().session.active_session_id().clone();
 
