@@ -364,18 +364,19 @@ pub fn create_core_with_actor_host(
     ));
 
     // Judge coordinator actor.
-    actors.push(spawn::<
-        jinn_domain::feat::judge::judge_coordinator_actor::JudgeCoordinatorActor,
-    >(
-        "judge-coordinator",
-        &sink,
-        handle,
-        &counter,
-        &shutdown_tracker,
-        jinn_domain::feat::judge::judge_coordinator_actor::JudgeCoordinatorActorDeps {
-            state: state.clone(),
-        },
-    ));
+    // DISABLED: transitioning to a different architecture.
+    // actors.push(spawn::<
+    //     jinn_domain::feat::judge::judge_coordinator_actor::JudgeCoordinatorActor,
+    // >(
+    //     "judge-coordinator",
+    //     &sink,
+    //     handle,
+    //     &counter,
+    //     &shutdown_tracker,
+    //     jinn_domain::feat::judge::judge_coordinator_actor::JudgeCoordinatorActorDeps {
+    //         state: state.clone(),
+    //     },
+    // ));
 
     // Provider actor.
     actors.push(spawn::<
