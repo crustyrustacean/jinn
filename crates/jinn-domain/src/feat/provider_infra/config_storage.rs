@@ -1,4 +1,4 @@
-//! Config storage abstraction — trait for provider config I/O.
+//! Config storage abstraction - trait for provider config I/O.
 //!
 //! Defines [`ConfigStorage`] as the abstraction for loading and saving
 //! provider configuration. [`FilesystemConfigStorage`] is the production
@@ -15,7 +15,7 @@ use super::config::{ConfigError, ProvidersConfig, config_path};
 /// Trait for provider config I/O.
 ///
 /// Every external dependency must have a trait abstraction (AGENTS.md §2).
-/// Filesystem I/O is an external dependency — this trait abstracts it so
+/// Filesystem I/O is an external dependency - this trait abstracts it so
 /// tests can use in-memory storage instead of touching the real filesystem.
 pub trait ConfigStorage: Send + Sync + 'static {
     /// Returns the storage backend name (for debugging).
@@ -105,7 +105,7 @@ impl InMemoryConfigStorage {
     #[must_use]
     #[expect(
         clippy::expect_used,
-        reason = "convenience for tests — serializing a valid ProvidersConfig cannot fail"
+        reason = "convenience for tests - serializing a valid ProvidersConfig cannot fail"
     )]
     pub fn with_config(config: &ProvidersConfig) -> Self {
         let toml = toml::to_string_pretty(config).expect("serialize config");
@@ -133,7 +133,7 @@ impl ConfigStorage for InMemoryConfigStorage {
                 .change_context(ConfigError::Parse)
                 .attach("failed to parse in-memory config"),
             None => {
-                // No config saved — return defaults (empty).
+                // No config saved - return defaults (empty).
                 Ok(ProvidersConfig {
                     providers: vec![],
                     aliases: vec![],

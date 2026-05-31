@@ -51,7 +51,7 @@ pub fn handle_workflow_edit_node(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Submits the workflow input buffer — writes the text to the source node's
+/// Submits the workflow input buffer - writes the text to the source node's
 /// output and exits edit mode.
 pub fn handle_workflow_input_submit(state: &mut AppState) -> IntentResult {
     let Some(node_name) = state.frontend.workflow_ui.editing_node.clone() else {
@@ -106,7 +106,7 @@ pub fn handle_workflow_input_submit(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Cancels workflow input editing — discards the buffer and exits edit mode.
+/// Cancels workflow input editing - discards the buffer and exits edit mode.
 pub fn handle_workflow_input_cancel(state: &mut AppState) -> IntentResult {
     state.frontend.workflow_ui.input_buffer.reset();
     state.frontend.workflow_ui.editing_node = None;

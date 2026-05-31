@@ -1,4 +1,4 @@
-//! hello-world bench task — write and run a Rust hello world program.
+//! hello-world bench task - write and run a Rust hello world program.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

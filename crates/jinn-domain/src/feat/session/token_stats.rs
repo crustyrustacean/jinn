@@ -1,6 +1,6 @@
 //! Token statistics types for session-level tracking.
 //!
-//! [`TokenRecord`] is an immutable entry in the session's token ledger — one per
+//! [`TokenRecord`] is an immutable entry in the session's token ledger - one per
 //! request/response pair. [`TokenStats`] summarizes totals. [`AggregatedTokenStats`]
 //! extends totals to include descendant sessions in the session tree.
 
@@ -17,7 +17,7 @@ use crate::protocol::SessionId;
 /// Each LLM request/response pair produces one record. The record is created
 /// when the request is counted (tokens_sent) and finalized when the response
 /// completes (tokens_received). Once both fields are set, the record is never
-/// mutated — even if the model or tokenizer changes later.
+/// mutated - even if the model or tokenizer changes later.
 ///
 /// Design note: we use a single struct for both phases of the lifecycle.
 /// `tokens_received` starts at 0 and is set once when the response completes.
@@ -37,7 +37,7 @@ pub struct TokenRecord {
 
 /// Summary statistics derived from a token ledger.
 ///
-/// Computed from `Vec<TokenRecord>` — not stored directly. Use
+/// Computed from `Vec<TokenRecord>` - not stored directly. Use
 /// `TokenStats::from_ledger` to derive.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TokenStats {

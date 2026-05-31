@@ -1,4 +1,4 @@
-//! Session management intent handlers — session creation, model refresh, and prompt template rescan.
+//! Session management intent handlers - session creation, model refresh, and prompt template rescan.
 
 use crate::common::app_state::AppState;
 use crate::protocol::{ChatEntry, Command, IntentResult};

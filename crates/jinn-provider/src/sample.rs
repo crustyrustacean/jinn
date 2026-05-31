@@ -5,10 +5,10 @@
 //!
 //! # Commands
 //!
-//! - `!response` — streams a plain canned response with inter-token delays.
-//! - `!think` — streams a thinking block followed by a canned response,
+//! - `!response` - streams a plain canned response with inter-token delays.
+//! - `!think` - streams a thinking block followed by a canned response,
 //!   both with inter-token delays.
-//! - anything else — streams a help message instantly (no delays).
+//! - anything else - streams a help message instantly (no delays).
 
 use std::time::Duration;
 
@@ -32,10 +32,10 @@ const THINK_RESPONSE_TEXT: &str = "Here is my response after thinking. \
     This demonstrates how a model with a thinking phase would stream output.";
 
 /// Help text shown for unrecognized commands.
-const HELP_TEXT: &str = "Sample LLM Provider — Available commands:\n\
+const HELP_TEXT: &str = "Sample LLM Provider - Available commands:\n\
     \n\
-    !response — Stream a sample response with delays\n\
-    !think    — Stream a thinking block followed by a response\n\
+    !response - Stream a sample response with delays\n\
+    !think    - Stream a thinking block followed by a response\n\
     \n\
     Any other input shows this help message.";
 

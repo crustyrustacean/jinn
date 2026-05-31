@@ -13,36 +13,36 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! `defer_task` built-in tool — defers a task to a new location.
+//! `postpone_task` built-in tool — postpones a task to a new location.
 
 use crate::feat::todo_list::{TaskId, TaskPosition};
 use crate::feat::tools_actor::BoxedToolFuture;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 
-/// Returns the tool definition for `defer_task`.
+/// Returns the tool definition for `postpone_task`.
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
-        name: "todo_defer_task".to_owned(),
-        description: "Defer a task by marking it as deferred (\u{25bc}) and creating a \
+        name: "todo_postpone_task".to_owned(),
+        description: "Postpone a task by marking it as postponed (\u{25bc}) and creating a \
             pending copy at a new location. The source task remains in place but \
             is excluded from agent-facing task list output. The new copy is placed \
             relative to a reference task, which determines the target phase."
             .to_owned(),
-        prompt_snippet: Some("Defer a task to a different location".to_owned()),
+        prompt_snippet: Some("Postpone a task to a different location".to_owned()),
         prompt_guidelines: vec![
-            "Exactly one of after_task or before_task is required to position the deferred copy."
+            "Exactly one of after_task or before_task is required to position the postponed copy."
                 .to_owned(),
-            "The source task is marked as deferred (\u{25bc}) and will not appear in agent-facing \
+            "The source task is marked as postponed (\u{25bc}) and will not appear in agent-facing \
              task list queries."
                 .to_owned(),
-            "Use todo_add_phase first if you need to defer into a new phase.".to_owned(),
+            "Use todo_add_phase first if you need to postpone into a new phase.".to_owned(),
         ],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {
                 "task_id": {
                     "type": "string",
-                    "description": "ID of the task to defer"
+                    "description": "ID of the task to postpone"
                 },
                 "after_task": {
                     "type": "string",
@@ -60,7 +60,7 @@ pub fn definition() -> ToolDefinition {
     }
 }
 
-/// Executes the `defer_task` tool.
+/// Executes the `postpone_task` tool.
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let Some(state) = ctx.state else {
@@ -92,7 +92,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         if after_task.is_none() && before_task.is_none() {
             return tool_error(
                 call,
-                "must specify either after_task or before_task to position the deferred copy",
+                "must specify either after_task or before_task to position the postponed copy",
             );
         }
 
@@ -108,24 +108,33 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             let mut w = state.write();
             let session = w.session_mut(&session_id);
             let list = session.task_list_mut();
-            match list.defer_task(&source_id, position) {
+            match list.postpone_task(&source_id, position) {
                 Ok(new_task_id) => {
                     let rendered = list.render_text();
-                    Ok(format!("Deferred task [{source_id}] \u{2192} created copy [{new_task_id}].\n\n{rendered}"))
+                    Ok(format!("Postponed task [{source_id}] \u{2192} created copy [{new_task_id}].\n\n{rendered}"))
                 }
                 Err(e) => Err(format!("Error: {e}")),
             }
         };
 
         match result {
-            Ok(content) => ToolResult {
-                tool_call_id: call.id,
-                name: call.name,
-                content,
-                success: true,
-                full_content: None,
-                truncation: None,
-            },
+            Ok(content) => {
+                if let Some(sink) = &ctx.sink {
+                    let _ = sink.send_event(crate::protocol::Event::TaskListUpdated(
+                        crate::feat::session::protocol::task_list_updated::TaskListUpdated {
+                            session_id: session_id.clone(),
+                        },
+                    ));
+                }
+                ToolResult {
+                    tool_call_id: call.id,
+                    name: call.name,
+                    content,
+                    success: true,
+                    full_content: None,
+                    truncation: None,
+                }
+            }
             Err(content) => ToolResult {
                 tool_call_id: call.id,
                 name: call.name,
@@ -199,11 +208,11 @@ mod tests {
     }
 
     #[test]
-    fn defer_task_creates_copy_after_reference() {
+    fn postpone_task_creates_copy_after_reference() {
         let (state, session_id, _p1, t1, _p2, t2) = setup_with_two_phases();
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_defer_task".to_owned(),
+            name: "todo_postpone_task".to_owned(),
             arguments: serde_json::json!({"task_id": t1, "after_task": t2}).to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
@@ -211,17 +220,17 @@ mod tests {
         let result = futures::executor::block_on(result);
         assert!(result.success, "expected success: {:?}", result.content);
         assert!(
-            result.content.contains("Deferred task"),
-            "should mention deferred task"
+            result.content.contains("Postponed task"),
+            "should mention postponed task"
         );
     }
 
     #[test]
-    fn defer_task_creates_copy_before_reference() {
+    fn postpone_task_creates_copy_before_reference() {
         let (state, session_id, _p1, t1, _p2, t2) = setup_with_two_phases();
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_defer_task".to_owned(),
+            name: "todo_postpone_task".to_owned(),
             arguments: serde_json::json!({"task_id": t1, "before_task": t2}).to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
@@ -231,11 +240,11 @@ mod tests {
     }
 
     #[test]
-    fn defer_task_requires_after_or_before() {
+    fn postpone_task_requires_after_or_before() {
         let (state, session_id, _p1, t1, _p2, _t2) = setup_with_two_phases();
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_defer_task".to_owned(),
+            name: "todo_postpone_task".to_owned(),
             arguments: serde_json::json!({"task_id": t1}).to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
@@ -252,11 +261,11 @@ mod tests {
     }
 
     #[test]
-    fn defer_task_rejects_both_after_and_before() {
+    fn postpone_task_rejects_both_after_and_before() {
         let (state, session_id, _p1, t1, _p2, t2) = setup_with_two_phases();
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_defer_task".to_owned(),
+            name: "todo_postpone_task".to_owned(),
             arguments: serde_json::json!({"task_id": t1, "after_task": t2, "before_task": t2})
                 .to_string(),
         };
@@ -272,11 +281,11 @@ mod tests {
     }
 
     #[test]
-    fn defer_task_errors_on_unknown_task() {
+    fn postpone_task_errors_on_unknown_task() {
         let (state, session_id, _p1, _t1, _p2, t2) = setup_with_two_phases();
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_defer_task".to_owned(),
+            name: "todo_postpone_task".to_owned(),
             arguments: serde_json::json!({"task_id": "t99", "after_task": t2}).to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
@@ -287,11 +296,11 @@ mod tests {
     }
 
     #[test]
-    fn defer_task_errors_on_unknown_reference() {
+    fn postpone_task_errors_on_unknown_reference() {
         let (state, session_id, _p1, t1, _p2, _t2) = setup_with_two_phases();
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_defer_task".to_owned(),
+            name: "todo_postpone_task".to_owned(),
             arguments: serde_json::json!({"task_id": t1, "after_task": "t99"}).to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
@@ -302,11 +311,11 @@ mod tests {
     }
 
     #[test]
-    fn defer_task_errors_on_self_reference() {
+    fn postpone_task_errors_on_self_reference() {
         let (state, session_id, _p1, t1, _p2, _t2) = setup_with_two_phases();
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_defer_task".to_owned(),
+            name: "todo_postpone_task".to_owned(),
             arguments: serde_json::json!({"task_id": t1, "after_task": t1}).to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
@@ -321,10 +330,10 @@ mod tests {
     }
 
     #[test]
-    fn defer_task_requires_state() {
+    fn postpone_task_requires_state() {
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_defer_task".to_owned(),
+            name: "todo_postpone_task".to_owned(),
             arguments: r#"{"task_id": "t1", "after_task": "t2"}"#.to_owned(),
         };
         let ctx = make_context(None, Some(SessionId::new()));

@@ -10,21 +10,21 @@ use super::phase::{IdlePhase, Phase, PhaseKind, SendingPhase, StreamingPhase, Te
 /// `cancel()` and `soft_cancel()` are on the machine itself because they
 /// need direct access to private phase data.
 pub trait PhaseTransitions {
-    /// `Idle → Sending` — a message has been dispatched to the LLM.
+    /// `Idle → Sending` - a message has been dispatched to the LLM.
     ///
     /// # Errors
     ///
     /// Returns [`TransitionError`] if not in `Idle`.
     fn on_dispatch_message(&mut self) -> Result<TransitionOutcome, TransitionError>;
 
-    /// `Sending → Streaming` — the first token has arrived from the LLM.
+    /// `Sending → Streaming` - the first token has arrived from the LLM.
     ///
     /// # Errors
     ///
     /// Returns [`TransitionError`] if not in `Sending`.
     fn on_first_token(&mut self) -> Result<TransitionOutcome, TransitionError>;
 
-    /// `Streaming → Sending` — stream ended with tool use (continue tool loop).
+    /// `Streaming → Sending` - stream ended with tool use (continue tool loop).
     ///
     /// If `soft_cancel_requested` was set on the `StreamingPhase`, transitions
     /// to `Idle` instead of continuing the tool loop.
@@ -34,21 +34,21 @@ pub trait PhaseTransitions {
     /// Returns [`TransitionError`] if not in `Streaming`.
     fn on_stream_completed_tool_use(&mut self) -> Result<TransitionOutcome, TransitionError>;
 
-    /// `Streaming → Idle` — stream ended normally (no tool use).
+    /// `Streaming → Idle` - stream ended normally (no tool use).
     ///
     /// # Errors
     ///
     /// Returns [`TransitionError`] if not in `Streaming`.
     fn on_stream_completed_finished(&mut self) -> Result<TransitionOutcome, TransitionError>;
 
-    /// `Streaming → Idle` — stream ended with an error.
+    /// `Streaming → Idle` - stream ended with an error.
     ///
     /// # Errors
     ///
     /// Returns [`TransitionError`] if not in `Streaming`.
     fn on_stream_completed_error(&mut self) -> Result<TransitionOutcome, TransitionError>;
 
-    /// `Streaming → Idle` — stream was canceled by the user.
+    /// `Streaming → Idle` - stream was canceled by the user.
     ///
     /// # Errors
     ///
@@ -66,14 +66,14 @@ pub trait PhaseTransitions {
     /// Returns [`TransitionError`] if not in `Sending`.
     fn on_tool_batch_completed(&mut self) -> Result<TransitionOutcome, TransitionError>;
 
-    /// `Idle → TearingDown` — a lifecycle teardown script has started.
+    /// `Idle → TearingDown` - a lifecycle teardown script has started.
     ///
     /// # Errors
     ///
     /// Returns [`TransitionError`] if not in `Idle`.
     fn on_request_teardown(&mut self) -> Result<TransitionOutcome, TransitionError>;
 
-    /// `TearingDown → Idle` — teardown script completed.
+    /// `TearingDown → Idle` - teardown script completed.
     ///
     /// # Errors
     ///

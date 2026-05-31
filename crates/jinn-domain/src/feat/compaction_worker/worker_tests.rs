@@ -411,7 +411,7 @@ fn no_double_compaction_after_first() {
     // When evaluating.
     let mutations = run_evaluate(&worker, &history, &config);
 
-    // Then no mutations are produced — the 3 turns after the compaction
+    // Then no mutations are produced - the 3 turns after the compaction
     // boundary fit within the reserve.
     assert!(
         mutations.is_empty(),
@@ -504,7 +504,7 @@ fn threshold_uses_fresh_history_not_stale_context_size() {
     let config_small = small_reserve_config();
     let mutations_long = run_evaluate(&worker, &long_history, &config_small);
 
-    // Then the results differ — proving the worker uses the passed-in history,
+    // Then the results differ - proving the worker uses the passed-in history,
     // not some stale cached value.
     assert!(mutations_short.is_empty(), "short history should not compact");
     assert!(!mutations_long.is_empty(), "long history should compact");
@@ -639,7 +639,7 @@ fn threshold_config(threshold: f64, fallback: usize) -> CompactionConfig {
 #[test]
 fn gate_skips_when_context_size_is_none() {
     let env = ThresholdTestEnv::new();
-    // context_size defaults to None — don't set it.
+    // context_size defaults to None - don't set it.
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     env.set_compaction_config(threshold_config(0.7, 150_000));
 
@@ -731,7 +731,7 @@ fn gate_skips_just_below_threshold() {
 #[test]
 fn gate_uses_fallback_when_no_model_cache() {
     let env = ThresholdTestEnv::new();
-    // No model cache at all — should use fallback.
+    // No model cache at all - should use fallback.
     env.set_context_size(Some(120_000)); // 120k/150k = 80% > 70%
     // Don't set model cache.
     env.set_compaction_config(threshold_config(0.7, 150_000));
@@ -748,14 +748,14 @@ fn gate_uses_fallback_when_no_model_cache() {
 fn gate_uses_fallback_when_model_not_in_cache() {
     let env = ThresholdTestEnv::new();
     env.set_context_size(Some(100_000)); // 100k/200k = 50% < 70%
-    // Cache has a different provider — "provider/model-200k" won't match.
+    // Cache has a different provider - "provider/model-200k" won't match.
     env.set_model_cache(model_cache_with("other-provider", "model-200k", 200_000));
     env.set_compaction_config(threshold_config(0.7, 200_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(mutations.is_empty(), "should skip — fallback 200k, context at 50%");
+    assert!(mutations.is_empty(), "should skip - fallback 200k, context at 50%");
 }
 
 // ── Test 9: uses fallback when model context_length is None ──
@@ -770,7 +770,7 @@ fn gate_uses_fallback_when_model_context_length_is_none() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(!mutations.is_empty(), "should compact — model has no context_length, fallback used");
+    assert!(!mutations.is_empty(), "should compact - model has no context_length, fallback used");
 }
 
 // ── Test 10: session not found ──
@@ -871,7 +871,7 @@ fn gate_triggers_when_context_size_equals_limit() {
 #[test]
 fn gate_triggers_when_context_size_exceeds_limit() {
     let env = ThresholdTestEnv::new();
-    env.set_context_size(Some(250_000)); // 250k/200k = 125% — over budget
+    env.set_context_size(Some(250_000)); // 250k/200k = 125% - over budget
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     env.set_compaction_config(threshold_config(0.7, 150_000));
 
@@ -886,7 +886,7 @@ fn gate_triggers_when_context_size_exceeds_limit() {
 #[test]
 fn manual_compact_all_bypasses_threshold_gate() {
     let env = ThresholdTestEnv::new();
-    // context_size is 0 — threshold gate would block, but compact_all ignores it.
+    // context_size is 0 - threshold gate would block, but compact_all ignores it.
     env.set_context_size(Some(0));
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     env.set_compaction_config(threshold_config(0.7, 150_000));
@@ -908,7 +908,7 @@ fn manual_compact_all_bypasses_threshold_gate() {
 
 // ── Test 18: manual compact (non-all) uses evaluate_for_session path ──
 // evaluate_for_session reads its own history/config from state and goes
-// directly to evaluate_with_config — it does NOT go through evaluate_history.
+// directly to evaluate_with_config - it does NOT go through evaluate_history.
 // So it should produce mutations regardless of context_size.
 
 #[test]
@@ -944,7 +944,7 @@ fn manual_compact_bypasses_threshold_gate() {
 #[test]
 fn gate_splits_provider_model_format() {
     let env = ThresholdTestEnv::new();
-    // Session model is "ollama/llama3" — provider="ollama", model="llama3"
+    // Session model is "ollama/llama3" - provider="ollama", model="llama3"
     {
         let mut app = env.state.write();
         let session = app.session.get_mut(&env.session_id).expect("session");
@@ -989,7 +989,7 @@ fn gate_handles_nested_provider_path() {
 fn gate_passes_but_nothing_to_compact_with_empty_history() {
     let mut session = ChatSessionState::new();
     session.set_model("provider/model-200k".to_owned());
-    // No entries — empty history.
+    // No entries - empty history.
     let session_id = session.session_id().clone();
     session.set_context_size(150_000);
 
@@ -1026,7 +1026,7 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
 #[test]
 fn gate_ratio_matches_status_bar_math() {
     let env = ThresholdTestEnv::new();
-    // 105_000 / 150_000 = 0.7 exactly — same as status bar "70.0%" display
+    // 105_000 / 150_000 = 0.7 exactly - same as status bar "70.0%" display
     env.set_context_size(Some(105_000));
     env.set_model_cache(model_cache_with("provider", "model-150k", 150_000));
     env.set_compaction_config(threshold_config(0.7, 150_000));
@@ -1058,7 +1058,7 @@ fn gate_threshold_one_requires_full_context() {
 #[test]
 fn gate_threshold_zero_always_triggers() {
     let env = ThresholdTestEnv::new();
-    // 1 / 200_000 = 0.0005% — but threshold is 0.0 so anything >= 0 triggers
+    // 1 / 200_000 = 0.0005% - but threshold is 0.0 so anything >= 0 triggers
     env.set_context_size(Some(1));
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     env.set_compaction_config(threshold_config(0.0, 150_000));
@@ -1080,7 +1080,7 @@ fn gate_uses_session_model_for_context_lookup() {
     env.set_context_size(Some(150_000)); // 150k/200k = 75% > 70%
     env.set_model_cache(model_cache_with("provider", "model-200k", 200_000));
     env.set_compaction_config(CompactionConfig {
-        model: Some("other/model-tiny".to_owned()), // compaction model — not used for threshold
+        model: Some("other/model-tiny".to_owned()), // compaction model - not used for threshold
         threshold: 0.7,
         reserve_tokens: 100,
         fallback_context_window: 150_000,
@@ -1092,7 +1092,7 @@ fn gate_uses_session_model_for_context_lookup() {
     assert!(!mutations.is_empty(), "should use session model for threshold, not compaction model");
 }
 
-// ── Test 26: concurrent HistoryAppended — in_flight guard ─
+// ── Test 26: concurrent HistoryAppended - in_flight guard ─
 // This test verifies the HistoryWorkerActor's in_flight guard prevents
 // duplicate compaction. This is tested in history_worker/tests.rs; here
 // we verify that a second evaluate call with the same session still works
@@ -1131,12 +1131,12 @@ fn gate_re_evaluated_on_subsequent_event() {
     env.set_context_size(Some(139_999)); // 69.999% < 70%
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations_1 = env.run_evaluate(&worker);
-    assert!(mutations_1.is_empty(), "first event below threshold — no compact");
+    assert!(mutations_1.is_empty(), "first event below threshold - no compact");
 
     // Second event: crosses threshold (new entry pushed, prompt reassembled).
     env.set_context_size(Some(140_000)); // 70% >= 70%
     let mutations_2 = env.run_evaluate(&worker);
-    assert!(!mutations_2.is_empty(), "second event at threshold — should compact");
+    assert!(!mutations_2.is_empty(), "second event at threshold - should compact");
 }
 
 // ── Test 28: context_size updates after prompt reassembly ──
@@ -1151,10 +1151,10 @@ fn gate_skips_after_compaction_reduces_context_size() {
     env.set_context_size(Some(150_000));
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations_1 = env.run_evaluate(&worker);
-    assert!(!mutations_1.is_empty(), "before compaction — should compact");
+    assert!(!mutations_1.is_empty(), "before compaction - should compact");
 
     // After compaction + reassembly: context_size drops to 50k (25% < 70%).
     env.set_context_size(Some(50_000));
     let mutations_2 = env.run_evaluate(&worker);
-    assert!(mutations_2.is_empty(), "after reassembly below threshold — should not compact");
+    assert!(mutations_2.is_empty(), "after reassembly below threshold - should not compact");
 }

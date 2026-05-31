@@ -480,7 +480,7 @@ async fn delete_cleans_up_orphaned_entries() {
     store.delete(&source_id).await.expect("delete source");
 
     // Then the entry is fully cleaned up (verified by saving the same
-    // entry ID again — should work since it was deleted).
+    // entry ID again - should work since it was deleted).
     let summaries = store.load_summaries().await.expect("load_summaries");
     assert!(summaries.is_empty());
 }

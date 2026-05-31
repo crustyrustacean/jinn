@@ -1,4 +1,4 @@
-//! Workflow tab UI state — persisted across frames in `FrontendState`.
+//! Workflow tab UI state - persisted across frames in `FrontendState`.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU16, Ordering};
@@ -7,7 +7,7 @@ use jinn_workflow::spatial_layout::SpatialRect;
 
 use crate::feat::chat_input::ChatInputBoxState;
 
-/// Workflow tab UI state — persisted across frames in `FrontendState`.
+/// Workflow tab UI state - persisted across frames in `FrontendState`.
 ///
 /// OWNER: IntentHandler (selection, inspector toggle, cancel prompt).
 #[derive(Debug, Default)]

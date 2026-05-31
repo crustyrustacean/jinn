@@ -1,8 +1,8 @@
-//! Summarize example — minimal LLM workflow.
+//! Summarize example - minimal LLM workflow.
 //!
 //! A 2-node pipeline:
-//! 1. **source** — emits a hard-coded text to summarize
-//! 2. **llm** — sends the text to the LLM with a system prompt and returns the summary
+//! 1. **source** - emits a hard-coded text to summarize
+//! 2. **llm** - sends the text to the LLM with a system prompt and returns the summary
 
 use jinn_workflow::graph::{WorkflowGraph, WorkflowGraphBuilder};
 use jinn_workflow::node::code::CodeNode;
@@ -15,7 +15,7 @@ use crate::feat::workflow::workflow_registry::WorkflowRegistry;
 ///
 /// # Panics
 ///
-/// Never panics — registration is infallible.
+/// Never panics - registration is infallible.
 pub fn register(registry: &mut WorkflowRegistry) {
     registry.register("summarize", build_summarize);
 }
@@ -33,7 +33,7 @@ pub fn register(registry: &mut WorkflowRegistry) {
     reason = "static graph definition should always be valid"
 )]
 pub fn build_summarize() -> WorkflowGraph {
-    // Node 1: Source — emits the text to summarize.
+    // Node 1: Source - emits the text to summarize.
     let source = CodeNode::new(
         "source".to_owned(),
         vec![], // no inputs
@@ -58,7 +58,7 @@ pub fn build_summarize() -> WorkflowGraph {
         },
     );
 
-    // Node 2: LLM — receives the text and summarizes it.
+    // Node 2: LLM - receives the text and summarizes it.
     let llm =
         LlmNode::new("You are a summarizer. Produce a one-sentence summary of the user's text.");
 

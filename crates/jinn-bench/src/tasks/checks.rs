@@ -346,7 +346,7 @@ pub fn check_fizzbuzz_output(dir: &Path) -> CheckResult {
 /// Compares a file in the working directory against expected content byte-for-byte.
 ///
 /// `expected` is typically provided via `include_str!` from an `expected/` directory
-/// co-located with the task definition. The comparison is exact — trailing newlines,
+/// co-located with the task definition. The comparison is exact - trailing newlines,
 /// whitespace, and encoding must all match.
 pub fn check_snapshot(dir: &Path, name: &str, expected: &str) -> CheckResult {
     let check_name = format!("snapshot({name})");

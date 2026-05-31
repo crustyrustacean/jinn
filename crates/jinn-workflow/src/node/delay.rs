@@ -1,4 +1,4 @@
-//! DelayNode — a node that delays before passing inputs through.
+//! DelayNode - a node that delays before passing inputs through.
 //!
 //! [`DelayNode`] is useful for testing concurrent execution and async behavior.
 //! All declared input ports are mirrored as output ports with matching names and types.
@@ -19,7 +19,7 @@ use crate::port::{PortDef, PortValues};
 pub struct DelayNode {
     /// How long to sleep before producing outputs.
     duration: Duration,
-    /// Port definitions — used for both input and output ports.
+    /// Port definitions - used for both input and output ports.
     ports: Vec<PortDef>,
 }
 

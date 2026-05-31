@@ -1,4 +1,4 @@
-//! Skills scan actor — scans and loads agent skills on command.
+//! Skills scan actor - scans and loads agent skills on command.
 //!
 //! Subscribes to [`ScanSkills`](crate::protocol::Command::ScanSkills) commands,
 //! scans the skills directory on a blocking thread, writes results to shared

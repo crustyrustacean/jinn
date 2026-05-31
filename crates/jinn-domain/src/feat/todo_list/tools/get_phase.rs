@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! `get_phase` built-in tool — returns a single phase's tasks.
+//! `get_phase` built-in tool - returns a single phase's tasks.
 
 use crate::feat::todo_list::PhaseId;
 use crate::feat::tools_actor::BoxedToolFuture;

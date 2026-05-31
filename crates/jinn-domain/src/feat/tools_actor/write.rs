@@ -1,4 +1,4 @@
-//! Write built-in tool — writes content to a file.
+//! Write built-in tool - writes content to a file.
 //!
 //! Creates the file if it doesn't exist, overwrites if it does.
 //! Automatically creates parent directories. Relative paths are resolved
@@ -921,7 +921,7 @@ mod tests {
         // Given a temp directory.
         let dir = tempfile::tempdir().expect("create temp dir");
         let file_path = dir.path().join("multibyte.txt");
-        let content = "\u{1F389}"; // 🎉 — 4 bytes in UTF-8
+        let content = "\u{1F389}"; // 🎉 - 4 bytes in UTF-8
 
         let call = ToolCall {
             id: "call_b2".to_owned(),

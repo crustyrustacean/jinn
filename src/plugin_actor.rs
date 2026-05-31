@@ -1,4 +1,4 @@
-//! Plugin actor — bridges domain events to Lua plugin VMs.
+//! Plugin actor - bridges domain events to Lua plugin VMs.
 //!
 //! The [`PluginActor`] subscribes to domain events (starting with
 //! [`SessionCreated`]) and dispatches them to Lua plugin VMs via the
@@ -17,7 +17,7 @@ use jinn_plugin::PluginRegistry;
 enum PluginMsg {
     /// A domain event to dispatch to plugin VMs.
     Event(Box<Event>),
-    /// All actors spawned — fire `app::started`.
+    /// All actors spawned - fire `app::started`.
     AppStarted,
     /// Shut down the plugin thread.
     Shutdown,

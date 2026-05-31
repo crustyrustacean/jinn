@@ -1,4 +1,4 @@
-//! Prompt template file parser — reads markdown files with TOML frontmatter.
+//! Prompt template file parser - reads markdown files with TOML frontmatter.
 //!
 //! Frontmatter is delimited by `+++` on its own line:
 //!
@@ -29,7 +29,7 @@ pub enum PromptTemplateParseError {
     Parse,
 }
 
-/// Frontmatter schema — the metadata extracted from between `+++` delimiters.
+/// Frontmatter schema - the metadata extracted from between `+++` delimiters.
 #[derive(Debug, Deserialize)]
 struct Frontmatter {
     /// Unique template name.

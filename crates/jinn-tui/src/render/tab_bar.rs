@@ -1,4 +1,4 @@
-//! Tab bar rendering — displays tab labels at the top of the main area.
+//! Tab bar rendering - displays tab labels at the top of the main area.
 
 use jinn_domain::ActiveTab;
 use ratatui::{

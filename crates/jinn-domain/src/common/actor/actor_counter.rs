@@ -1,4 +1,4 @@
-//! Actor counter — tracks the total number of actors spawned.
+//! Actor counter - tracks the total number of actors spawned.
 //!
 //! Used by the system-ready actor to know how many `ActorStarted`
 //! events to expect without hard-coding the count.

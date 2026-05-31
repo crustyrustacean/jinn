@@ -1,4 +1,4 @@
-//! Plugin wiring — concrete translator for plugin command names → typed Commands.
+//! Plugin wiring - concrete translator for plugin command names → typed Commands.
 //!
 //! This is the **only** file that knows about both plugin command names
 //! (strings) and domain command types (Rust structs). The plugin crate

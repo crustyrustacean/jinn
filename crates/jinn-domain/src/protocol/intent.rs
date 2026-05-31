@@ -1,4 +1,4 @@
-//! The [`Intent`] enum — one variant per user-initiated action.
+//! The [`Intent`] enum - one variant per user-initiated action.
 use crate::protocol::{Command, Event, PickerKind, SessionId};
 
 /// The search root for the directory picker.
@@ -88,9 +88,9 @@ pub enum Intent {
         /// The session to target, or `None` for the active session.
         session_id: Option<SessionId>,
     },
-    /// Enter Insert (Input) mode — the chat input box is active.
+    /// Enter Insert (Input) mode - the chat input box is active.
     EnterInsertMode,
-    /// Enter Normal mode — cancel streams, clear picker, return to neutral.
+    /// Enter Normal mode - cancel streams, clear picker, return to neutral.
     EnterNormalMode,
     /// Toggle the which-key popup.
     ToggleWhichkey,
@@ -180,7 +180,7 @@ pub enum Intent {
     /// Toggle the per-session auto-reset override for the judge session under the sidebar cursor.
     ToggleJudgeAutoReset,
 
-    /// Reset the judge session under the sidebar cursor — truncate history to pinned entries only.
+    /// Reset the judge session under the sidebar cursor - truncate history to pinned entries only.
     ResetJudge,
 
     // --- Chat Entry Selection ---

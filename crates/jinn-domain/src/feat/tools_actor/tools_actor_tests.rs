@@ -130,7 +130,7 @@ async fn activate_emits_tools_registered_for_builtins() {
         .iter()
         .find(|p| p.provider == "builtin")
         .expect("expected builtin ToolsRegistered");
-    assert_eq!(builtin_evt.definitions.len(), 19);
+    assert_eq!(builtin_evt.definitions.len(), 20);
 }
 
 // --- RegisterTools command tests ---
@@ -1007,7 +1007,7 @@ async fn build_tool_context_uses_session_default_cwd_when_not_overridden() {
     let session_id = {
         let mut guard = actor.state.write();
         let _session = guard.active_session_mut();
-        // Don't set cwd — it defaults to ".".
+        // Don't set cwd - it defaults to ".".
         guard.session.active_session_id().clone()
     };
 

@@ -1,4 +1,4 @@
-//! Bash built-in tool — executes shell commands.
+//! Bash built-in tool - executes shell commands.
 //!
 //! Spawns a shell process with piped stdout/stderr, streaming output
 //! via batched `ToolExecutionOutput` events. Output lines are accumulated
@@ -29,7 +29,7 @@ use super::BoxedToolFuture;
 /// `SIGKILL` to the child's entire process group, ensuring that
 /// descendant processes (e.g., `find /` spawned by bash) are also
 /// terminated. Without this, aborting the future only drops the
-/// handle — the OS processes continue running as orphans.
+/// handle - the OS processes continue running as orphans.
 #[cfg(unix)]
 struct KillOnDrop {
     child: tokio::process::Child,
@@ -242,7 +242,7 @@ fn format_exit_result(
                 truncation: Some(meta),
             }
         } else {
-            // truncated but no meta — return unformatted truncated content
+            // truncated but no meta - return unformatted truncated content
             ToolResult {
                 tool_call_id,
                 name: tool_name,
@@ -514,7 +514,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     );
                 }
                 Err(_) => {
-                    // Timeout — kill the process.
+                    // Timeout - kill the process.
                     let _ = child.kill().await;
                     return error_tool_result(
                         call.id,

@@ -68,7 +68,7 @@ pub fn build_request(messages: &[LlmMessage], tools: &[ToolDefinition]) -> Gemin
 fn message_to_json(msg: &LlmMessage) -> serde_json::Value {
     match msg {
         LlmMessage::System { .. } => {
-            // System messages handled separately — unreachable.
+            // System messages handled separately - unreachable.
             serde_json::json!({"role": "user", "parts": []})
         }
         LlmMessage::User { content } => serde_json::json!({

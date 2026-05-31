@@ -1,8 +1,8 @@
-//! Resolved provider — a single model expanded from a provider block.
+//! Resolved provider - a single model expanded from a provider block.
 
 use super::provider_id::ProviderId;
 
-/// A fully resolved provider entry — one per model.
+/// A fully resolved provider entry - one per model.
 ///
 /// Created by expanding each [`ProviderEntry`](super::config::ProviderEntry)'s
 /// `models` list, or by merging runtime-discovered models from the model cache.

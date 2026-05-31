@@ -114,7 +114,7 @@ pub trait TokenCounter: Send + Sync {
 /// Token counter using the `tiktoken` crate with a configurable encoding.
 ///
 /// Wraps a `tiktoken::CoreBPE` encoder. The encoding is chosen at construction
-/// time and does not change — counts are deterministic for a given text input.
+/// time and does not change - counts are deterministic for a given text input.
 /// This is important: once a count is recorded in the token ledger, it is
 /// immutable regardless of future model/tokenizer changes.
 #[derive(Clone, Copy)]

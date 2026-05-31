@@ -1,4 +1,4 @@
-//! Selection state — the core state machine for the picker widget.
+//! Selection state - the core state machine for the picker widget.
 //!
 //! [`SelectionState`] holds the filter text, cursor position, selection index, scroll offset,
 //! the full item list, and a cached filtered index list. Filter input methods trigger
@@ -98,7 +98,7 @@ where
 
     /// Replaces the full item list and re-filters against the current filter text.
     ///
-    /// Does **not** reset the filter text or cursor position — the consumer may want to
+    /// Does **not** reset the filter text or cursor position - the consumer may want to
     /// update items while the picker is open (e.g., after a model cache refresh).
     /// Clamps `selection` to stay within the new filtered bounds.
     pub fn set_items(&mut self, items: Vec<T>) {
@@ -129,7 +129,7 @@ where
     /// Bulk inserts text at the cursor position, advances the cursor, re-filters, and
     /// resets selection and scroll offset to 0.
     ///
-    /// Newlines are stripped — the picker filter is a single line.
+    /// Newlines are stripped - the picker filter is a single line.
     pub fn insert_text(&mut self, text: &str) {
         let flat: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
         if flat.is_empty() {
@@ -225,7 +225,7 @@ where
         } else if max_visible > 0 && self.selection >= self.scroll_offset + max_visible {
             self.scroll_offset = self.selection - max_visible + 1;
         } else {
-            // Selection is within the visible window — no adjustment needed.
+            // Selection is within the visible window - no adjustment needed.
         }
     }
 
@@ -233,7 +233,7 @@ where
 
     /// Clears the filter text and resets selection, cursor, and scroll offset to 0.
     ///
-    /// Does **not** clear the item list — the consumer manages the item lifecycle.
+    /// Does **not** clear the item list - the consumer manages the item lifecycle.
     /// The filtered list is recomputed (all items are visible when filter is empty).
     pub fn reset(&mut self) {
         self.filter.clear();
@@ -272,7 +272,7 @@ where
     /// Sets the selection index directly.
     ///
     /// Clamps to the valid range `[0, filtered_count - 1]`.
-    /// Primarily for test setup — production code should use [`move_up`](Self::move_up)
+    /// Primarily for test setup - production code should use [`move_up`](Self::move_up)
     /// and [`move_down`](Self::move_down).
     pub fn set_selection(&mut self, idx: usize) {
         let max = self.filtered_indices.len();

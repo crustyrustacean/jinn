@@ -1,4 +1,4 @@
-//! Rename session input popup rendering — a centered overlay for renaming a session.
+//! Rename session input popup rendering - a centered overlay for renaming a session.
 
 use crate::common::app_state::AppState;
 use ratatui::Frame;
@@ -21,7 +21,7 @@ pub fn rename_session_popup_rect(area: Rect) -> Rect {
 
     let popup_height = 3u16.min(area.height); // border(2) + 1 input line
 
-    // Integer division is intentional — we're computing cell positions for centering.
+    // Integer division is intentional - we're computing cell positions for centering.
     #[expect(clippy::integer_division, reason = "cell positions are integers")]
     let popup_x = area.width.saturating_sub(popup_width) / 2;
     #[expect(clippy::integer_division, reason = "cell positions are integers")]
@@ -66,7 +66,7 @@ pub fn render_rename_session_input(frame: &mut Frame<'_>, area: Rect, state: &Ap
         return;
     }
 
-    // Input line: "> {input}" — the ">" uses focus_accent for consistency.
+    // Input line: "> {input}" - the ">" uses focus_accent for consistency.
     let prefix = Span::styled("> ", Style::default().fg(theme.focus_accent));
     let input_span = Span::raw(&input_state.input);
     let input_line = Line::from(vec![prefix, input_span]);

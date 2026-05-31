@@ -26,7 +26,7 @@ fn hash_trigger_valid_after_space() {
             },
         ]);
 
-    // When typing "hello #" — the '#' is preceded by a space.
+    // When typing "hello #" - the '#' is preceded by a space.
     let _ = crate::feat::chat_input::intent::handle_insert_char('h', &mut state);
     let _ = crate::feat::chat_input::intent::handle_insert_char('e', &mut state);
     let _ = crate::feat::chat_input::intent::handle_insert_char('l', &mut state);
@@ -58,7 +58,7 @@ fn hash_trigger_valid_after_newline() {
             },
         ]);
 
-    // When typing "\n#" — the '#' is preceded by newline.
+    // When typing "\n#" - the '#' is preceded by newline.
     let _ = crate::feat::chat_input::intent::handle_insert_char('\n', &mut state);
     let _ = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
 
@@ -85,7 +85,7 @@ fn hash_trigger_invalid_after_letter() {
             },
         ]);
 
-    // When typing "abc#" — the '#' is preceded by 'c' (not space or newline).
+    // When typing "abc#" - the '#' is preceded by 'c' (not space or newline).
     let _ = crate::feat::chat_input::intent::handle_insert_char('a', &mut state);
     let _ = crate::feat::chat_input::intent::handle_insert_char('b', &mut state);
     let _ = crate::feat::chat_input::intent::handle_insert_char('c', &mut state);
@@ -106,7 +106,7 @@ fn slash_trigger_only_at_position_zero() {
     let mut state = AppState::default();
     state.frontend.scope_stack.push(FocusScope::Input);
 
-    // When typing "x/" — slash is NOT at position 0.
+    // When typing "x/" - slash is NOT at position 0.
     let _ = crate::feat::chat_input::intent::handle_insert_char('x', &mut state);
     let _ = crate::feat::chat_input::intent::handle_insert_char('/', &mut state);
 
@@ -199,7 +199,7 @@ fn delete_forward_deactivates_when_cursor_at_token_start() {
 
 #[rstest::rstest]
 fn cursor_move_left_deactivates_when_cursor_before_token() {
-    // Given "a #test" — cursor at the 'a' position is BEFORE the '#' token.
+    // Given "a #test" - cursor at the 'a' position is BEFORE the '#' token.
     // Moving left from within the token to before it should deactivate permanently.
     use crate::common::app_state::FocusScope;
 
@@ -216,7 +216,7 @@ fn cursor_move_left_deactivates_when_cursor_before_token() {
             },
         ]);
 
-    // Type "a #test" — space before '#', 'a' before that.
+    // Type "a #test" - space before '#', 'a' before that.
     let _ = crate::feat::chat_input::intent::handle_insert_char('a', &mut state);
     let _ = crate::feat::chat_input::intent::handle_insert_char(' ', &mut state);
     let _ = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
@@ -327,7 +327,7 @@ fn scroll_indicators_show_at_exact_boundary() {
     // This test exercises the chat_input element rendering to kill the > → >=
     // mutant in render_scroll_indicators. We test via the public API by ensuring
     // the element renders without panic when content exactly fills the viewport.
-    // (Indirect test — the real assertion is that the element doesn't crash
+    // (Indirect test - the real assertion is that the element doesn't crash
     // and produces output at the exact boundary.)
     use crate::common::app_state::FocusScope;
     let mut state = AppState::default();

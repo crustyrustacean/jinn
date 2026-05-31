@@ -6,8 +6,8 @@
 //!
 //! # Built-in nodes
 //!
-//! - [`CodeNode`] — wraps an async closure for quick custom logic.
-//! - [`DelayNode`] — sleeps for a configured duration, then passes inputs through.
+//! - [`CodeNode`] - wraps an async closure for quick custom logic.
+//! - [`DelayNode`] - sleeps for a configured duration, then passes inputs through.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -46,10 +46,10 @@ pub trait NodeContext: Send + Sync {
     /// message, waits for `SessionPhaseChanged(Idle)`, and extracts the final assistant
     /// response.
     ///
-    /// - `user_prompt` — the user message text.
-    /// - `system_prompt` — optional system prompt override.
-    /// - `tool_schemas` — tool definitions for this request.
-    /// - `provider_id` — optional provider ID override; `None` uses global default.
+    /// - `user_prompt` - the user message text.
+    /// - `system_prompt` - optional system prompt override.
+    /// - `tool_schemas` - tool definitions for this request.
+    /// - `provider_id` - optional provider ID override; `None` uses global default.
     ///
     /// Default: returns an error (no LLM capability).
     /// Override in `DomainNodeContext` to route through the actor bus.
@@ -84,7 +84,7 @@ pub trait NodeContext: Send + Sync {
 
 /// Error type for node execution failures.
 ///
-/// Opaque for MVP — nodes attach context via [`Report::attach`]. Will evolve
+/// Opaque for MVP - nodes attach context via [`Report::attach`]. Will evolve
 /// to an enum when structured error variants are needed (timeout, cancelled, etc.).
 #[derive(Debug, Error)]
 #[error(debug)]

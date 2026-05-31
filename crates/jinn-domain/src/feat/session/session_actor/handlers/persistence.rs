@@ -1,4 +1,4 @@
-//! Persistence handlers — save and load session snapshots.
+//! Persistence handlers - save and load session snapshots.
 
 use std::collections::{HashMap, HashSet};
 
@@ -15,14 +15,14 @@ impl SessionPersistenceActor {
     /// async runtime with a potentially expensive `ChatSessionState` clone
     /// (which includes the full `Vec<ChatEntry>` history). The store's
     /// `save` method does its own `spawn_blocking` internally for SQLite I/O.
-    /// Errors are logged as warnings — persistence failure must not break
+    /// Errors are logged as warnings - persistence failure must not break
     /// the user experience.
     pub(in crate::feat::session::session_actor) async fn save_active_session(
         &self,
         session_id: &crate::protocol::SessionId,
     ) {
         let Some(store) = &self.store else {
-            tracing::warn!("session-actor has no store — skipping save");
+            tracing::warn!("session-actor has no store - skipping save");
             return;
         };
 
@@ -106,7 +106,7 @@ impl SessionPersistenceActor {
         {
             let mut state = self.state.write();
             state.session.insert(session.clone());
-            // Remove the frozen node snapshot — the live session replaces it.
+            // Remove the frozen node snapshot - the live session replaces it.
             state.session.remove_frozen_node(&session_id);
         }
         let _ = ctx.send_event(Event::SessionLoadCompleted(Box::new(CompletedPayload { session })));
@@ -184,7 +184,7 @@ impl SessionPersistenceActor {
 
         let origin_id = meta.origin_session.clone();
 
-        // Guard: self-referential judge — proceed as normal session.
+        // Guard: self-referential judge - proceed as normal session.
         if origin_id == evt.session_id {
             tracing::warn!(
                 session_id = %evt.session_id,
@@ -337,7 +337,7 @@ impl SessionPersistenceActor {
     /// loads the full session, creates a frozen node snapshot, and inserts it.
     /// The full session is then discarded (not kept live).
     ///
-    /// Runs once at session load time — the frozen nodes are cached in memory.
+    /// Runs once at session load time - the frozen nodes are cached in memory.
     pub(in crate::feat::session::session_actor) async fn hydrate_tree_frozen_nodes(
         &self,
         store: &crate::feat::session::SessionStoreService,
@@ -463,7 +463,7 @@ impl SessionPersistenceActor {
         ctx: &crate::common::actor::ActorContext,
     ) {
         let Some(store) = self.store.clone() else {
-            tracing::warn!("session-actor has no store — dropping load request");
+            tracing::warn!("session-actor has no store - dropping load request");
             return;
         };
 

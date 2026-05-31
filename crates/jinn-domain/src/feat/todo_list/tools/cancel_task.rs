@@ -13,25 +13,33 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! `complete_task` built-in tool - marks a task as completed.
+//! `cancel_task` built-in tool — marks a task as cancelled (not happening).
 
 use crate::feat::todo_list::TaskId;
 use crate::feat::tools_actor::BoxedToolFuture;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 
-/// Returns the tool definition for `complete_task`.
+/// Returns the tool definition for `cancel_task`.
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
-        name: "todo_complete_task".to_owned(),
-        description: "Mark a task in the todo list as completed.".to_owned(),
-        prompt_snippet: Some("Mark a task as done".to_owned()),
-        prompt_guidelines: vec![],
+        name: "todo_cancel_task".to_owned(),
+        description: "Cancel a task — mark it as not happening. Cancelled tasks remain visible \
+            to the agent with a CANCELLED: prefix to prevent re-implementation of abandoned work."
+            .to_owned(),
+        prompt_snippet: Some("Cancel a task (not doing it)".to_owned()),
+        prompt_guidelines: vec![
+            "Cancelled tasks are hidden from the sidebar but remain visible in the task list \
+             with a CANCELLED: prefix."
+                .to_owned(),
+            "Use cancel when a task is not happening at all — not just postponed."
+                .to_owned(),
+        ],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {
                 "task_id": {
                     "type": "string",
-                    "description": "ID of the task to mark as completed (e.g., 't3')"
+                    "description": "ID of the task to cancel (e.g., 't3')"
                 }
             },
             "required": ["task_id"],
@@ -41,7 +49,7 @@ pub fn definition() -> ToolDefinition {
     }
 }
 
-/// Executes the `complete_task` tool.
+/// Executes the `cancel_task` tool.
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let Some(state) = ctx.state else {
@@ -65,11 +73,11 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             let mut w = state.write();
             let session = w.session_mut(&session_id);
             let list = session.task_list_mut();
-            match list.complete_task(&task_id) {
+            match list.cancel_task(&task_id) {
                 Ok(()) => {
                     let rendered = list.render_text();
                     Ok(format!(
-                        "Task [{task_id}] marked as completed.\n\n{rendered}"
+                        "Task [{task_id}] cancelled.\n\n{rendered}"
                     ))
                 }
                 Err(e) => Err(format!("Error: {e}")),
@@ -162,11 +170,11 @@ mod tests {
     }
 
     #[test]
-    fn complete_task_marks_as_completed() {
+    fn cancel_task_marks_as_cancelled() {
         let (state, session_id, tid) = setup_with_task();
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_complete_task".to_owned(),
+            name: "todo_cancel_task".to_owned(),
             arguments: serde_json::json!({"task_id": tid}).to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
@@ -174,17 +182,17 @@ mod tests {
         let result = futures::executor::block_on(result);
         assert!(result.success, "expected success: {:?}", result.content);
         assert!(
-            result.content.contains("[✓]"),
-            "should show completed indicator"
+            result.content.contains("cancelled"),
+            "should mention cancelled"
         );
     }
 
     #[test]
-    fn complete_task_errors_on_unknown_task() {
+    fn cancel_task_errors_on_unknown_task() {
         let (state, session_id, _tid) = setup_with_task();
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_complete_task".to_owned(),
+            name: "todo_cancel_task".to_owned(),
             arguments: r#"{"task_id": "t99"}"#.to_owned(),
         };
         let ctx = make_context(Some(state), Some(session_id));
@@ -195,10 +203,39 @@ mod tests {
     }
 
     #[test]
-    fn complete_task_requires_state() {
+    fn cancel_task_errors_on_already_cancelled() {
+        let (state, session_id, tid) = setup_with_task();
+        let call1 = ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_cancel_task".to_owned(),
+            arguments: serde_json::json!({"task_id": tid}).to_string(),
+        };
+        let ctx1 = make_context(Some(state.clone()), Some(session_id.clone()));
+        let result1 = execute(call1, ctx1);
+        let result1 = futures::executor::block_on(result1);
+        assert!(result1.success, "first cancel should succeed");
+
+        let call2 = ToolCall {
+            id: "call-2".to_owned(),
+            name: "todo_cancel_task".to_owned(),
+            arguments: serde_json::json!({"task_id": tid}).to_string(),
+        };
+        let ctx2 = make_context(Some(state), Some(session_id));
+        let result2 = execute(call2, ctx2);
+        let result2 = futures::executor::block_on(result2);
+        assert!(!result2.success);
+        assert!(
+            result2.content.contains("already cancelled"),
+            "expected already cancelled error, got: {:?}",
+            result2.content
+        );
+    }
+
+    #[test]
+    fn cancel_task_requires_state() {
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_complete_task".to_owned(),
+            name: "todo_cancel_task".to_owned(),
             arguments: r#"{"task_id": "t1"}"#.to_owned(),
         };
         let ctx = make_context(None, Some(SessionId::new()));

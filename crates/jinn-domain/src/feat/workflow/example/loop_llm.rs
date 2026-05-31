@@ -1,8 +1,8 @@
-//! LLM-based loop example — iterative generator + judge refinement.
+//! LLM-based loop example - iterative generator + judge refinement.
 //!
 //! A 2-node body graph inside a LoopNode:
-//! 1. **generator** — LlmNode that generates text based on a prompt
-//! 2. **judge** — LlmNode with YES/NO validation that evaluates the generator's output
+//! 1. **generator** - LlmNode that generates text based on a prompt
+//! 2. **judge** - LlmNode with YES/NO validation that evaluates the generator's output
 //!
 //! The LoopNode runs the body graph up to 3 times. Feedback from the judge's
 //! response overrides the generator's prompt on subsequent iterations.
@@ -19,7 +19,7 @@ use crate::feat::workflow::workflow_registry::WorkflowRegistry;
 ///
 /// # Panics
 ///
-/// Never panics — registration is infallible.
+/// Never panics - registration is infallible.
 pub fn register(registry: &mut WorkflowRegistry) {
     registry.register("loop_llm", build_loop_llm);
 }

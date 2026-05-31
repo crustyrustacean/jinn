@@ -1,4 +1,4 @@
-//! Tree item trait — the consumer-facing contract for tree-structured picker items.
+//! Tree item trait - the consumer-facing contract for tree-structured picker items.
 //!
 //! Consumers implement [`TreeItem`] for their domain type (e.g., `SessionTreeEntry`,
 //! file entries). The widget uses [`TreeItem::display_label`] for fuzzy matching and

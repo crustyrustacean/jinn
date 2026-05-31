@@ -13,27 +13,22 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! History appended event - emitted when a new entry is added to session history.
+//! Task list was updated by a tool.
 //!
-//! The compaction actor subscribes to this event to evaluate whether
-//! auto-compaction should be triggered. Unlike `StreamCompleted`, which
-//! only fires at turn boundaries, `HistoryAppended` fires for every
-//! history entry (user message, assistant message, tool call, tool result),
-//! enabling mid-turn compaction triggers during agentic tool loops.
+//! Emitted by todo list mutation tools after a successful change.
+//! The session actor subscribes to this event to persist the updated task list.
 
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::{EventMsg, SessionId};
 
-/// Emitted when a new entry is appended to the session history.
+/// A task list mutation was applied successfully.
 ///
-/// Carries no token count - the compaction actor reads `context_size()`
-/// directly from session state, which uses the tiktoken-based count
-/// from the last prompt assembly. This ensures the threshold check
-/// and the status bar display use the same value.
+/// Broadcast after any todo list tool modifies the task list (add phase, add task,
+/// complete task, postpone task, postpone to phase, or set list).
 #[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
 #[event_msg("session")]
-pub struct HistoryAppended {
-    /// The session whose history was appended to.
+pub struct TaskListUpdated {
+    /// The session whose task list was updated.
     pub session_id: SessionId,
 }

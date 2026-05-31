@@ -309,7 +309,7 @@ fn render_selected_entry_has_yellow_marker_when_sidebar_focused() {
 
     let buffer = terminal.backend().buffer();
     // First entry at index 0 is selected by default.
-    // No bordered block in section render — content starts at row 0.
+    // No bordered block in section render - content starts at row 0.
     let cell0 = buffer.cell((0, 2)).expect("cell 0,2");
     assert_eq!(cell0.symbol(), "\u{2588}");
     assert_eq!(cell0.fg, Color::Yellow);
@@ -456,7 +456,7 @@ fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
         .active_session_mut()
         .toggle_ignored_block_visibility(&block_start_id);
 
-    // Build visual items (now expanded — individual Entry items).
+    // Build visual items (now expanded - individual Entry items).
     let items = build_visual_items(
         state.active_session().history(),
         &state.active_session().ui.shown_ignored_blocks,

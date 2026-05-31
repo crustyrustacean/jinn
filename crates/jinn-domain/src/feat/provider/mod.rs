@@ -1,4 +1,4 @@
-//! Provider slice — LLM provider selection, model discovery, and streaming UI.
+//! Provider slice - LLM provider selection, model discovery, and streaming UI.
 //!
 //! Provides [`ProviderState`] for tracking the active provider, model cache,
 //! and provider picker state. Also contains the provider actor, discover actor,
@@ -35,7 +35,7 @@ use crate::common::AppUiRegistry;
 
 use crate::PickerEntry;
 
-/// Provider selection state — owned by the provider-actor.
+/// Provider selection state - owned by the provider-actor.
 ///
 /// Written to exclusively by `ProviderActor` and `IntentHandler`.
 /// No other actor should mutate these fields.

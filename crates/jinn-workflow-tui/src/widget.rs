@@ -1,7 +1,7 @@
 //! The workflow visualization widget for ratatui.
 //!
 //! [`WorkflowWidget`] implements [`ratatui::widgets::Widget`] and renders an entire
-//! workflow graph — nodes, connections, status indicators — into a ratatui buffer.
+//! workflow graph - nodes, connections, status indicators - into a ratatui buffer.
 
 use std::collections::HashMap;
 
@@ -18,7 +18,7 @@ use crate::viewport::ViewportState;
 /// The workflow visualization widget.
 ///
 /// Constructed fresh each frame (standard ratatui pattern). Renders the entire
-/// graph — nodes with status indicators, typed ports, and L-shaped connections.
+/// graph - nodes with status indicators, typed ports, and L-shaped connections.
 pub struct WorkflowWidget<'a> {
     /// Workflow execution snapshot to render.
     snapshot: &'a ExecutionSnapshot,
@@ -134,7 +134,7 @@ impl Widget for WorkflowWidget<'_> {
         // Render connections first (so nodes draw on top).
         self.render_connections(buf, &layout, &node_map, area);
 
-        // Area origin offset — layout positions are relative to the content area,
+        // Area origin offset - layout positions are relative to the content area,
         // but the buffer has absolute coordinates. Add area.x/area.y to translate.
         let ox = i32::from(area.x);
         let oy = i32::from(area.y);
@@ -255,7 +255,7 @@ mod tests {
         let mut buf = Buffer::empty(area);
         widget.render(area, &mut buf);
 
-        // Just verify no panic occurred — the real test is that render completed.
+        // Just verify no panic occurred - the real test is that render completed.
     }
 
     #[test]

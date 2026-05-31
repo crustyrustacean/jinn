@@ -69,7 +69,7 @@ const H_PAD: usize = 1;
 impl VisualNode {
     /// Computes a `VisualNode` from its name, port definitions, and status.
     ///
-    /// The node is placed at `(0, 0)` — the caller assigns the final position
+    /// The node is placed at `(0, 0)` - the caller assigns the final position
     /// via `x` and `y` fields.
     #[must_use]
     pub fn compute(
@@ -882,7 +882,7 @@ mod tests {
         let mut buf = Buffer::empty(area);
         set_cell_abs(&mut buf, -1, 5, "X", Style::default());
         set_cell_abs(&mut buf, 5, -1, "Y", Style::default());
-        // Both should be skipped — check that cell at (5,5) is still default.
+        // Both should be skipped - check that cell at (5,5) is still default.
         let cell = buf.cell(Position::new(5, 5)).unwrap();
         assert_eq!(cell.symbol(), " ", "negative coords must be skipped");
     }

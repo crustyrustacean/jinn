@@ -1,4 +1,4 @@
-//! Session load and fork handlers — restore sessions from disk and fork session history.
+//! Session load and fork handlers - restore sessions from disk and fork session history.
 //!
 //! Handles restoring a loaded session into active state (validating CWD, emitting
 //! follow-up commands for strategy restoration) and forking a session at a specific
@@ -30,7 +30,7 @@ impl SessionPersistenceActor {
             let mut state = self.state.write();
             let loaded = payload.session.clone();
 
-            // Restore model — fallback to config if not in payload (old session migration).
+            // Restore model - fallback to config if not in payload (old session migration).
             let model = if loaded.model() == crate::feat::provider_infra::NO_PROVIDER_ID {
                 state
                     .frontend
@@ -54,7 +54,7 @@ impl SessionPersistenceActor {
             #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
             let session = state.session.get_mut(&session_id).expect("just inserted");
             session.set_model(model);
-            // Mark loaded session as interacted — it came from disk (already persisted).
+            // Mark loaded session as interacted - it came from disk (already persisted).
             session.mark_interacted();
 
             // Read cwd before releasing the lock (for async existence check).
@@ -64,7 +64,7 @@ impl SessionPersistenceActor {
             state.session.clear_load();
         }
 
-        // Validate CWD — fallback to default if non-existent on disk.
+        // Validate CWD - fallback to default if non-existent on disk.
         // This check is async (tokio::fs), so it runs outside the state lock.
         let cwd_exists = tokio::fs::try_exists(&original_cwd).await.unwrap_or(false);
         if !cwd_exists {
@@ -120,7 +120,7 @@ impl SessionPersistenceActor {
         ctx: &ActorContext,
     ) {
         let Some(store) = &self.store else {
-            tracing::warn!("session-actor has no store — dropping fork request");
+            tracing::warn!("session-actor has no store - dropping fork request");
             return;
         };
 

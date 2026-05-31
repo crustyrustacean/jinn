@@ -1,4 +1,4 @@
-//! fix-syntax-broken-python bench task — fix syntax errors in Python code.
+//! fix-syntax-broken-python bench task - fix syntax errors in Python code.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

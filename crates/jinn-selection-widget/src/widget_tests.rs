@@ -359,7 +359,7 @@ fn render_clears_popup_background() {
         let b = Block::default().borders(Borders::ALL);
         b.inner(popup)
     };
-    // Check a cell in the middle of the inner area — should be space, not 'X'.
+    // Check a cell in the middle of the inner area - should be space, not 'X'.
     let mid_x = inner.x + inner.width / 2;
     let mid_y = inner.y + inner.height / 2;
     let cell = buffer.cell((mid_x, mid_y)).expect("mid cell");

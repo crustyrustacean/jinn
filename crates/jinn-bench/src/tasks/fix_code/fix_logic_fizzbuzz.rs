@@ -1,4 +1,4 @@
-//! fix-logic-fizzbuzz bench task — fix FizzBuzz logic bug.
+//! fix-logic-fizzbuzz bench task - fix FizzBuzz logic bug.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 
@@ -17,7 +17,7 @@ pub fn task() -> BenchTask {
         name: "fix-logic-fizzbuzz",
         category: "fix_code",
         messages: vec![
-            "The FizzBuzz program in src/main.rs has a logic bug — it never prints \
+            "The FizzBuzz program in src/main.rs has a logic bug - it never prints \
              \"FizzBuzz\". Find and fix the bug, then run the program. The correct \
              output for 15 should be \"FizzBuzz\", not \"Fizz\".",
         ],

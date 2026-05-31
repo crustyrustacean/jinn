@@ -6,7 +6,7 @@ use crate::common::app_state::AppState;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::protocol::SessionId;
 
-/// Sessions section cursor state — stored on `FrontendState`.
+/// Sessions section cursor state - stored on `FrontendState`.
 ///
 /// Tracks the selected index within the sorted open sessions list.
 /// `None` means no cursor (section not focused).
@@ -38,7 +38,7 @@ pub(crate) struct SessionEntry {
     pub(crate) judge_attached: Option<bool>,
     /// For judge sessions: whether auto-reset is effectively enabled.
     pub(crate) judge_auto_reset: bool,
-    /// Parent session ID — `None` for root sessions.
+    /// Parent session ID - `None` for root sessions.
     pub(crate) parent_id: Option<SessionId>,
     /// Depth in the session tree. 0 for roots, 1 for their children, etc.
     pub(crate) depth: usize,
@@ -54,10 +54,10 @@ pub(crate) struct SessionEntry {
 ///
 /// Roots are sorted by `created_at` descending (newest first).
 /// Children under each parent are sorted by `created_at` ascending
-/// (oldest child first — they were forked first). Orphaned sessions
+/// (oldest child first - they were forked first). Orphaned sessions
 /// (parent not in loaded sessions) are treated as roots.
 ///
-/// Only includes sessions with `SessionState::Loaded` — archived sessions
+/// Only includes sessions with `SessionState::Loaded` - archived sessions
 /// are not in the `SessionMap` and thus excluded automatically.
 pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
     let active_id = state.session.active_session_id();
@@ -107,9 +107,9 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
 
     for entry in entry_map.values() {
         let effective_parent = match &entry.parent_id {
-            // Direct parent is loaded — use it directly.
+            // Direct parent is loaded - use it directly.
             Some(pid) if entry_map.contains_key(pid) => Some(pid.clone()),
-            // Direct parent not loaded — try visual_parents for reparenting.
+            // Direct parent not loaded - try visual_parents for reparenting.
             Some(pid) => visual_parents
                 .get(pid)
                 .or_else(|| visual_parents.get(&entry.id))
@@ -194,9 +194,9 @@ pub fn update_visual_parents_on_removal(state: &mut AppState, removed_id: &Sessi
         };
 
         match removed_session.parent_session() {
-            // Direct parent is loaded — use it.
+            // Direct parent is loaded - use it.
             Some(pid) if state.session.contains(pid) => Some(pid.clone()),
-            // Direct parent not loaded — check if it has a visual_parents entry.
+            // Direct parent not loaded - check if it has a visual_parents entry.
             Some(pid) => state
                 .frontend
                 .sessions_section
@@ -213,7 +213,7 @@ pub fn update_visual_parents_on_removal(state: &mut AppState, removed_id: &Sessi
                         .get(removed_id)
                         .cloned()
                 }),
-            // No parent at all — check if the removed session itself has a visual parent.
+            // No parent at all - check if the removed session itself has a visual parent.
             None => state
                 .frontend
                 .sessions_section
@@ -269,7 +269,7 @@ pub fn update_visual_parents_on_removal(state: &mut AppState, removed_id: &Sessi
 /// it in the tree. This function removes any `visual_parents` entries whose
 /// **value** equals the loaded session's ID.
 ///
-/// Entries where the loaded session is the **key** are preserved — the loaded
+/// Entries where the loaded session is the **key** are preserved - the loaded
 /// session may itself have a hidden parent that it needs to be reparented under.
 pub fn clear_visual_parents_on_load(state: &mut AppState, loaded_id: &SessionId) {
     state
@@ -282,7 +282,7 @@ pub fn clear_visual_parents_on_load(state: &mut AppState, loaded_id: &SessionId)
 /// Recursively emits children in DFS order, recording tree metadata.
 ///
 /// `ancestor_continuations` tracks whether each ancestor level has younger
-/// siblings — used to draw `│` continuation lines.
+/// siblings - used to draw `│` continuation lines.
 fn dfs_children(
     parent_id: &SessionId,
     children_map: &HashMap<SessionId, Vec<SessionId>>,

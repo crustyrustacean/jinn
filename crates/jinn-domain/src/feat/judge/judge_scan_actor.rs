@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! Judge scan actor — scans and loads judge files on command.
+//! Judge scan actor - scans and loads judge files on command.
 //!
 //! Subscribes to [`RescanJudges`] commands, scans the judges directory,
 //! and emits [`JudgesLoaded`] events with the results.

@@ -1,4 +1,4 @@
-//! Workflow protocol types — commands and events.
+//! Workflow protocol types - commands and events.
 
 pub mod command;
 pub mod event;
