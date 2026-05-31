@@ -151,6 +151,11 @@ impl JudgeCoordinatorActor {
 
         let origin_id = &payload.session_id;
 
+        // Already evaluating this origin — don't re-trigger.
+        if self.pending.contains_key(origin_id) {
+            return;
+        }
+
         // Check if this is a judge session going Idle.
         let is_judge = {
             let guard = self.state.read();
