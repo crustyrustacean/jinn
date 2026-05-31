@@ -524,7 +524,12 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
         return Some(IntentResult::with_commands(vec![
             Command::CancelPendingJudgeEvaluation(
                 crate::feat::judge::CancelPendingJudgeEvaluation {
-                    origin_session_id: session_id,
+                    origin_session_id: session_id.clone(),
+                },
+            ),
+            Command::CancelLifecycleCommand(
+                crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand {
+                    session_id,
                 },
             ),
         ]));
@@ -1413,6 +1418,11 @@ mod tests {
         assert!(
             result.commands.iter().any(|c| matches!(c, crate::protocol::Command::CancelPendingJudgeEvaluation(cmd) if cmd.origin_session_id == session_id)),
             "should emit CancelPendingJudgeEvaluation for origin: {:?}",
+            result.commands
+        );
+        assert!(
+            result.commands.iter().any(|c| matches!(c, crate::protocol::Command::CancelLifecycleCommand(_))),
+            "should emit CancelLifecycleCommand: {:?}",
             result.commands
         );
     }

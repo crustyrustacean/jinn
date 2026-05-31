@@ -167,20 +167,41 @@ impl SessionPersistenceActor {
     }
 
     fn spawn_shell_setup(&mut self, payload: &RunSessionSetup, ctx: &ActorContext) {
+        use crate::feat::session_lifecycle::command_runner::spawn_setup_command;
+
+        let (child_arc, handle) = match spawn_setup_command(&payload.command, &self.shell) {
+            Ok(pair) => pair,
+            Err(e) => {
+                // Failed to even start the command.
+                let error_msg = format!("Failed to start setup command: {e}");
+                let mut state = self.state.write();
+                let default = state.session.default_cwd().clone();
+                if let Some(session) = state.session.get_mut(&payload.session_id) {
+                    session.set_cwd(default);
+                    session.complete_working();
+                }
+                drop(state);
+                let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
+                    session_id: payload.session_id.clone(),
+                    entry: ChatEntry::error(&error_msg),
+                }));
+                let _ = ctx.send_event(Event::SessionSetupCompleted(SessionSetupCompleted {
+                    session_id: payload.session_id.clone(),
+                    cwd: std::path::PathBuf::new(),
+                    error: Some(error_msg),
+                }));
+                return;
+            }
+        };
+
         let session_id = payload.session_id.clone();
         let sink = ctx.sink();
-        let shell = self.shell.clone();
-        let command = payload.command.clone();
 
-        let handle = tokio::spawn(async move {
-            let result =
-                crate::feat::session_lifecycle::command_runner::run_setup_command(
-                    &command, &shell,
-                )
-                .await;
+        let _handle = tokio::spawn(async move {
+            let result = handle.await;
             let (cwd, error) = match result {
-                Ok(path) => (Some(path), None as Option<String>),
-                Err(report) => {
+                Ok(Ok(path)) => (Some(path), None as Option<String>),
+                Ok(Err(report)) => {
                     let error_msg =
                         if let Some(cmd_err) = report.downcast_ref::<crate::feat::session_lifecycle::command_runner::LifecycleCommandError>() {
                             crate::feat::session::session_actor::handlers::lifecycle::format_lifecycle_error(cmd_err)
@@ -188,6 +209,10 @@ impl SessionPersistenceActor {
                             crate::feat::session::session_actor::handlers::lifecycle::strip_ansi(&format!("{report:#?}"))
                         };
                     (None, Some(error_msg))
+                }
+                Err(_) => {
+                    // Task was cancelled (abort).
+                    (None, Some("Setup command was cancelled".to_owned()))
                 }
             };
             let _ = sink.send_command(
@@ -201,7 +226,7 @@ impl SessionPersistenceActor {
             );
         });
 
-        self.lifecycle_task = Some(handle.abort_handle());
+        self.lifecycle_child = Some(child_arc);
     }
 
     /// Handle `FinishSessionSetup` - completion of an async setup shell command.
@@ -214,8 +239,9 @@ impl SessionPersistenceActor {
         payload: &crate::feat::session_lifecycle::protocol::command::FinishSessionSetup,
         ctx: &ActorContext,
     ) {
-        // Clear lifecycle task handle.
-        self.lifecycle_task = None;
+        // Clear lifecycle child handle.
+        self.lifecycle_child = None;
+
 
 
         // Complete Working phase.
@@ -485,31 +511,52 @@ impl SessionPersistenceActor {
                 let session_id = payload.session_id.clone();
                 let sink = ctx.sink();
                 let shell = self.shell.clone();
-                tokio::spawn(async move {
-                    let result =
-                        crate::feat::session_lifecycle::command_runner::run_teardown_command(
-                            &rendered, &shell,
-                        )
-                        .await;
-                    let error = result.err().map(|report| {
-                        if let Some(cmd_err) =
-                            report.downcast_ref::<crate::feat::session_lifecycle::command_runner::LifecycleCommandError>()
-                        {
-                            crate::feat::session::session_actor::handlers::lifecycle::format_lifecycle_error(cmd_err)
-                        } else {
-                            crate::feat::session::session_actor::handlers::lifecycle::strip_ansi(&format!(
-                                "{report:#?}"
-                            ))
-                        }
-                    });
-                    let _ = sink.send_command(crate::protocol::Command::FinishSessionTeardown(
-                        crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
-                            session_id,
-                            close_after: false,
-                            error,
-                        },
-                    ));
-                });
+
+                let spawn_result =
+                    crate::feat::session_lifecycle::command_runner::spawn_teardown_command(
+                        &rendered, &shell,
+                    );
+
+                match spawn_result {
+                    Ok((child_arc, join_handle)) => {
+                        self.lifecycle_child = Some(child_arc);
+                        let _handle = tokio::spawn(async move {
+                            let result = join_handle.await;
+                            let error = match result {
+                                Ok(Ok(())) => None,
+                                Ok(Err(report)) => {
+                                    if let Some(cmd_err) =
+                                        report.downcast_ref::<crate::feat::session_lifecycle::command_runner::LifecycleCommandError>()
+                                    {
+                                        Some(crate::feat::session::session_actor::handlers::lifecycle::format_lifecycle_error(cmd_err))
+                                    } else {
+                                        Some(crate::feat::session::session_actor::handlers::lifecycle::strip_ansi(&format!(
+                                            "{report:#?}"
+                                        )))
+                                    }
+                                }
+                                Err(_) => Some("Teardown command was cancelled".to_owned()),
+                            };
+                            let _ = sink.send_command(crate::protocol::Command::FinishSessionTeardown(
+                                crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
+                                    session_id,
+                                    close_after: false,
+                                    error,
+                                },
+                            ));
+                        });
+                    }
+                    Err(report) => {
+                        let error_msg = format!("Failed to start teardown command: {report}");
+                        let _ = sink.send_command(crate::protocol::Command::FinishSessionTeardown(
+                            crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
+                                session_id,
+                                close_after: false,
+                                error: Some(error_msg),
+                            },
+                        ));
+                    }
+                }
             }
             crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => {
                 // Builtin teardown is synchronous - run inline.
@@ -676,33 +723,56 @@ impl SessionPersistenceActor {
                         let session_id = payload.session_id.clone();
                         let sink = ctx.sink();
                         let shell = self.shell.clone();
-                        tokio::spawn(async move {
-                            let result = crate::feat::session_lifecycle::command_runner::run_teardown_command(
-                                &rendered,
-                                &shell,
-                            )
-                            .await;
-                            let error = result.err().map(|report| {
-                                if let Some(cmd_err) =
-                                    report.downcast_ref::<crate::feat::session_lifecycle::command_runner::LifecycleCommandError>()
-                                {
-                                    crate::feat::session::session_actor::handlers::lifecycle::format_lifecycle_error(cmd_err)
-                                } else {
-                                    crate::feat::session::session_actor::handlers::lifecycle::strip_ansi(&format!(
-                                        "{report:#?}"
-                                    ))
-                                }
-                            });
-                            let _ = sink.send_command(
-                                crate::protocol::Command::FinishSessionTeardown(
-                                    crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
-                                        session_id,
-                                        close_after: true,
-                                        error,
-                                    },
-                                ),
+
+                        let spawn_result =
+                            crate::feat::session_lifecycle::command_runner::spawn_teardown_command(
+                                &rendered, &shell,
                             );
-                        });
+
+                        match spawn_result {
+                            Ok((child_arc, join_handle)) => {
+                                self.lifecycle_child = Some(child_arc);
+                                let _handle = tokio::spawn(async move {
+                                    let result = join_handle.await;
+                                    let error = match result {
+                                        Ok(Ok(())) => None,
+                                        Ok(Err(report)) => {
+                                            if let Some(cmd_err) =
+                                                report.downcast_ref::<crate::feat::session_lifecycle::command_runner::LifecycleCommandError>()
+                                            {
+                                                Some(crate::feat::session::session_actor::handlers::lifecycle::format_lifecycle_error(cmd_err))
+                                            } else {
+                                                Some(crate::feat::session::session_actor::handlers::lifecycle::strip_ansi(&format!(
+                                                    "{report:#?}"
+                                                )))
+                                            }
+                                        }
+                                        Err(_) => Some("Teardown command was cancelled".to_owned()),
+                                    };
+                                    let _ = sink.send_command(
+                                        crate::protocol::Command::FinishSessionTeardown(
+                                            crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
+                                                session_id,
+                                                close_after: true,
+                                                error,
+                                            },
+                                        ),
+                                    );
+                                });
+                            }
+                            Err(report) => {
+                                let error_msg = format!("Failed to start teardown command: {report}");
+                                let _ = sink.send_command(
+                                    crate::protocol::Command::FinishSessionTeardown(
+                                        crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
+                                            session_id,
+                                            close_after: true,
+                                            error: Some(error_msg),
+                                        },
+                                    ),
+                                );
+                            }
+                        }
 
                         return; // Return immediately - async result handled via FinishSessionTeardown
                     }
@@ -770,6 +840,9 @@ impl SessionPersistenceActor {
         ctx: &ActorContext,
     ) {
         use crate::feat::session::chat_session::SessionState;
+
+        // Clear lifecycle child handle.
+        self.lifecycle_child = None;
 
         // Complete Working phase.
         {
@@ -894,9 +967,9 @@ impl SessionPersistenceActor {
         payload: &crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand,
         ctx: &ActorContext,
     ) {
-        // Abort the spawned task if one is running.
-        if let Some(handle) = self.lifecycle_task.take() {
-            handle.abort();
+        // Kill the child process if one is running.
+        if let Some(child_arc) = self.lifecycle_child.take() {
+            crate::feat::session_lifecycle::command_runner::kill_shared_child(&child_arc);
         }
 
         // Cancel Working phase -> Idle.
