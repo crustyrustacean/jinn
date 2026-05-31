@@ -45,6 +45,19 @@ pub struct AppState {
     pub frontend: FrontendState,
     /// Workflow execution state - owned by workflow-actor.
     pub workflow: crate::feat::workflow::workflow_state::WorkflowMap,
+    /// Live executions for running attached workflows. Ephemeral (not persisted).
+    /// Keyed by AttachedWorkflow.id (which IS a WorkflowId).
+    /// OWNER: workflow-controller-actor.
+    pub workflow_executions: std::collections::HashMap<
+        crate::feat::workflow::workflow_state::WorkflowId,
+        crate::feat::workflow::workflow_state::WorkflowExecutionState,
+    >,
+    /// The workflow currently displayed in the Workflow tab.
+    /// OWNER: IntentHandler (sidebar selection).
+    pub active_workflow: Option<(
+        crate::protocol::SessionId,
+        crate::feat::workflow::workflow_state::WorkflowId,
+    )>,
 }
 
 impl AppState {
