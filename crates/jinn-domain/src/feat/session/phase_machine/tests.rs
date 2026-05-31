@@ -34,13 +34,6 @@ fn streaming_machine() -> SessionPhaseMachine {
     m
 }
 
-/// Create a machine in `Working` phase.
-fn working_machine() -> SessionPhaseMachine {
-    let mut m = SessionPhaseMachine::new();
-    m.on_start_working().expect("working should succeed");
-    m
-}
-
 fn assert_from(err: &TransitionError, expected_from: PhaseKind) {
     assert_eq!(err.from, expected_from, "error from phase mismatch");
 }
@@ -156,32 +149,6 @@ fn sending_to_idle_on_tool_loop_disabled() {
 
     // Then the transition is Sending → Idle.
     assert_eq!(outcome.old_phase, PhaseKind::Sending);
-    assert_eq!(outcome.new_phase, PhaseKind::Idle);
-}
-
-#[test]
-fn idle_to_tearing_down() {
-    // Given a machine in Idle.
-    let mut m = idle_machine();
-
-    // When requesting working.
-    let outcome = m.on_start_working().expect("should succeed");
-
-    // Then the transition is Idle → Working.
-    assert_eq!(outcome.old_phase, PhaseKind::Idle);
-    assert_eq!(outcome.new_phase, PhaseKind::Working);
-}
-
-#[test]
-fn tearing_down_to_idle() {
-    // Given a machine in Working.
-    let mut m = working_machine();
-
-    // When working completes.
-    let outcome = m.on_working_complete().expect("should succeed");
-
-    // Then the transition is Working → Idle.
-    assert_eq!(outcome.old_phase, PhaseKind::Working);
     assert_eq!(outcome.new_phase, PhaseKind::Idle);
 }
 
@@ -313,13 +280,6 @@ fn reject_dispatch_while_sending() {
     assert_from(&err, PhaseKind::Sending);
 }
 
-#[test]
-fn reject_dispatch_while_tearing_down() {
-    let mut m = working_machine();
-    let err = m.on_dispatch_message().unwrap_err();
-    assert_from(&err, PhaseKind::Working);
-}
-
 // --- on_first_token ---
 
 #[test]
@@ -334,13 +294,6 @@ fn reject_first_token_while_streaming() {
     let mut m = streaming_machine();
     let err = m.on_first_token().unwrap_err();
     assert_from(&err, PhaseKind::Streaming);
-}
-
-#[test]
-fn reject_first_token_while_tearing_down() {
-    let mut m = working_machine();
-    let err = m.on_first_token().unwrap_err();
-    assert_from(&err, PhaseKind::Working);
 }
 
 // --- on_stream_completed_finished ---
@@ -359,13 +312,6 @@ fn reject_stream_completed_while_sending() {
     assert_from(&err, PhaseKind::Sending);
 }
 
-#[test]
-fn reject_stream_completed_while_tearing_down() {
-    let mut m = working_machine();
-    let err = m.on_stream_completed_finished().unwrap_err();
-    assert_from(&err, PhaseKind::Working);
-}
-
 // --- on_tool_batch_completed ---
 
 #[test]
@@ -380,52 +326,6 @@ fn reject_tool_batch_while_streaming() {
     let mut m = streaming_machine();
     let err = m.on_tool_batch_completed().unwrap_err();
     assert_from(&err, PhaseKind::Streaming);
-}
-
-#[test]
-fn reject_tool_batch_while_tearing_down() {
-    let mut m = working_machine();
-    let err = m.on_tool_batch_completed().unwrap_err();
-    assert_from(&err, PhaseKind::Working);
-}
-
-// --- on_start_working ---
-
-#[test]
-fn reject_working_while_streaming() {
-    let mut m = streaming_machine();
-    let err = m.on_start_working().unwrap_err();
-    assert_from(&err, PhaseKind::Streaming);
-}
-
-#[test]
-fn reject_working_while_sending() {
-    let mut m = sending_machine();
-    let err = m.on_start_working().unwrap_err();
-    assert_from(&err, PhaseKind::Sending);
-}
-
-#[test]
-fn start_working_is_idempotent_when_already_working() {
-    let mut m = working_machine();
-    // Calling on_start_working again increments the ref count.
-    let outcome = m.on_start_working().expect("should succeed");
-    assert_eq!(outcome.old_phase, PhaseKind::Working);
-    assert_eq!(outcome.new_phase, PhaseKind::Working);
-}
-
-// --- on_working_complete ---
-
-#[test]
-fn reject_working_complete_while_idle() {
-    let mut m = idle_machine();
-    assert!(m.on_working_complete().is_none());
-}
-
-#[test]
-fn reject_working_complete_while_streaming() {
-    let mut m = streaming_machine();
-    assert!(m.on_working_complete().is_none());
 }
 
 // --- cancel ---
@@ -444,13 +344,6 @@ fn reject_cancel_while_sending() {
     assert_from(&err, PhaseKind::Sending);
 }
 
-#[test]
-fn reject_cancel_while_tearing_down() {
-    let mut m = working_machine();
-    let err = m.cancel().unwrap_err();
-    assert_from(&err, PhaseKind::Working);
-}
-
 // --- soft_cancel ---
 
 #[test]
@@ -465,13 +358,6 @@ fn reject_soft_cancel_while_sending() {
     let mut m = sending_machine();
     let err = m.soft_cancel().unwrap_err();
     assert_from(&err, PhaseKind::Sending);
-}
-
-#[test]
-fn reject_soft_cancel_while_tearing_down() {
-    let mut m = working_machine();
-    let err = m.soft_cancel().unwrap_err();
-    assert_from(&err, PhaseKind::Working);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

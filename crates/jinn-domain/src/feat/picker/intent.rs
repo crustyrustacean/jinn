@@ -13,6 +13,7 @@ use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, Update
 use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch};
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
+use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::{Command, Intent, IntentResult, PickerKind};
 
@@ -627,6 +628,7 @@ pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
+    use std::path::PathBuf;
 
     // --- A-Tier: Kill mutants for picker confirm and validation ---
 

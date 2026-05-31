@@ -118,7 +118,7 @@ mod tests {
 
 
     #[rstest::rstest]
-    fn renders_working_label_during_sending_phase() {
+    fn renders_streaming_label_during_sending_phase() {
         // Given a session in Sending phase.
         use jinn_testutil::{buffer_row, setup_term};
 
@@ -134,10 +134,10 @@ mod tests {
         let buffer = terminal.backend().buffer().clone();
         let row = buffer_row(&buffer, 0, 30);
 
-        // Then the label shows "Working...".
+        // Then the label shows "Streaming...".
         assert!(
-            row.contains("Working..."),
-            "expected Working..., got: {row}"
+            row.contains("Streaming..."),
+            "expected Streaming..., got: {row}"
         );
     }
 
