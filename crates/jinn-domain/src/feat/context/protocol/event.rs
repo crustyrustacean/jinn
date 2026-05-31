@@ -29,3 +29,17 @@ pub struct PersonasLoaded {
     /// Error message if scanning failed, `None` on success.
     pub error: Option<String>,
 }
+
+/// Emitted when a chat entry's context override is toggled (e.g. via the `x` keybind).
+///
+/// The intent handler emits this after toggling an entry's inclusion in
+/// the LLM context. The `ContextSizeActor` subscribes to this event to
+/// recalculate the context size for the status bar.
+#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
+#[event_msg("context")]
+pub struct ContextOverrideChanged {
+    /// The session whose entry was toggled.
+    pub session_id: SessionId,
+    /// The entry whose context override changed.
+    pub entry_id: crate::protocol::ChatEntryId,
+}
