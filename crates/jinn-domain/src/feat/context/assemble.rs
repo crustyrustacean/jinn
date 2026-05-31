@@ -1,4 +1,4 @@
-//! Prompt assembly — builds LLM-ready messages from session state.
+//! Prompt assembly - builds LLM-ready messages from session state.
 //!
 //! Produces [`AssembledPrompt`] via a single pure function call.
 //! The assembly pipeline reads all context (skills, persona, context files,
@@ -35,7 +35,7 @@ pub struct AssemblyOverrides {
     pub skip_context_files: bool,
 }
 
-/// Fully assembled LLM prompt — everything a provider needs to make a request.
+/// Fully assembled LLM prompt - everything a provider needs to make a request.
 ///
 /// Produced by [`assemble_prompt`]. Token count is computed at construction time
 /// via the provided [`TokenCounter`]. Contains messages, tool definitions,
@@ -118,7 +118,7 @@ pub fn assemble_prompt(
     }
 
     // Filter out server tools that don't match the active provider.
-    // The model string format is "provider_name/model_name" — extract provider.
+    // The model string format is "provider_name/model_name" - extract provider.
     let provider_name = session.model().split('/').next().unwrap_or("");
     if overrides.is_none_or(|o| o.tool_definitions.is_none()) {
         tool_defs.retain(|def| {
@@ -173,7 +173,7 @@ pub fn assemble_prompt(
 
     // Apply overrides: env context.
     let env_context = if overrides.is_some_and(|o| o.system_prompt.is_some()) {
-        // System prompt override replaces everything — skip env context.
+        // System prompt override replaces everything - skip env context.
         String::new()
     } else if overrides.is_some_and(|o| o.skip_context_files) {
         build_env_context(persona, &[], &cwd)
@@ -555,7 +555,7 @@ mod tests {
         let guard = state.read();
         let result = assemble_prompt(&guard, &session_id, &counter(), Some(&overrides));
 
-        // Then the system message is exactly the override — no skills, no context files.
+        // Then the system message is exactly the override - no skills, no context files.
         match &result.messages[0] {
             LlmMessage::System { content } => {
                 assert_eq!(content, "You are a workflow assistant.");

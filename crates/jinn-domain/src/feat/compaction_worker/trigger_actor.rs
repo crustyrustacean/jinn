@@ -1,4 +1,4 @@
-//! Compaction trigger actor — handles `/compact` and `/compact-all` commands.
+//! Compaction trigger actor - handles `/compact` and `/compact-all` commands.
 //!
 //! Receives `TriggerCompaction` commands, runs the compaction worker,
 //! and submits mutations via `SubmitHistoryMutations`.
@@ -92,7 +92,7 @@ impl CompactionTriggerActor {
                 }
             }
             Ok(_) => {
-                // Empty mutations — nothing to compact.
+                // Empty mutations - nothing to compact.
                 let reserve = self.worker.state.read()
                     .frontend
                     .preferences

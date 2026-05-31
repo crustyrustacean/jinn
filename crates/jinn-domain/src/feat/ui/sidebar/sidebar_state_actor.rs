@@ -1,4 +1,4 @@
-//! Sidebar state actor — keeps sidebar cursor in sync after session close.
+//! Sidebar state actor - keeps sidebar cursor in sync after session close.
 //!
 //! Subscribes to [`SessionClosed`] events and clamps the sidebar's
 //! `selected_index` and `scroll_offset` so they never point past the end

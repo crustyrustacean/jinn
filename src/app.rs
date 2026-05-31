@@ -97,7 +97,7 @@ impl App {
                 .attach("--db-path cannot be used with bench subcommands. Use 'bench tui <db_path>' instead"));
         }
 
-        // Create the session store — uses --db-path if provided, otherwise
+        // Create the session store - uses --db-path if provided, otherwise
         // the platform default. The --db-path flag lets users point the TUI
         // at a bench database to inspect results after a bench run.
         let session_store = {
@@ -416,7 +416,7 @@ impl Default for App {
 
 /// Loads prompt templates from both user and system directories into the application state.
 ///
-/// Called once after core creation. Failures are logged but not fatal —
+/// Called once after core creation. Failures are logged but not fatal -
 /// an empty store is used when both directories are missing or unreadable.
 fn load_prompt_templates(state: &State, user_dir: &Path, system_dir: &Path) {
     let store = jinn_domain::PromptTemplateStore::load_from_dirs(user_dir, system_dir)
@@ -436,7 +436,7 @@ fn load_prompt_templates(state: &State, user_dir: &Path, system_dir: &Path) {
 /// # Errors
 ///
 /// Returns an error if the compaction prompt is missing from both directories
-/// or cannot be read. This is a fatal error — the application cannot run without it.
+/// or cannot be read. This is a fatal error - the application cannot run without it.
 fn load_compaction_prompt(
     state: &State,
     user_dir: &Path,
@@ -682,7 +682,7 @@ mod tests {
         let empty = PathBuf::from("/nonexistent");
 
         // When loading the theme (no matching file).
-        // Then it should not panic — the function logs a warning and returns.
+        // Then it should not panic - the function logs a warning and returns.
         load_theme(&state, &empty, &empty);
     }
 
@@ -785,7 +785,7 @@ mod tests {
 
         // Then it succeeds.
         // This kills: += with -= (would panic on u32 underflow in debug mode)
-        // and += with *= (would print "0 models" but still succeed — the println
+        // and += with *= (would print "0 models" but still succeed - the println
         // output in the test log shows the actual counts, making a human-readable check).
         assert!(result.is_ok(), "expected success, got: {:?}", result.err());
         mock.assert_async().await;

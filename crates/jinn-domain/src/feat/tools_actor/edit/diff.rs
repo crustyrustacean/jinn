@@ -432,7 +432,7 @@ mod tests {
         // Given content where two edits are exactly adjacent.
         let original = "abcdefghij";
 
-        // When finding adjacent edits ("abc" ends at 3, "def" starts at 3 — not overlapping).
+        // When finding adjacent edits ("abc" ends at 3, "def" starts at 3 - not overlapping).
         let edits = vec![
             Edit { old_text: "abc".to_owned(), new_text: "XXX".to_owned() },
             Edit { old_text: "def".to_owned(), new_text: "YYY".to_owned() },

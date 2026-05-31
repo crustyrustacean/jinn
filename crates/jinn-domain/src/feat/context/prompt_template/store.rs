@@ -1,4 +1,4 @@
-//! Prompt template store — holds all loaded templates and provides lookup.
+//! Prompt template store - holds all loaded templates and provides lookup.
 //!
 //! The store is populated at startup by scanning `~/.config/jinn/prompts/`
 //! recursively. It supports exact name lookup and fuzzy search for the
@@ -28,7 +28,7 @@ pub const MAX_FUZZY_RESULTS: usize = 20;
 
 /// Holds all loaded prompt templates and provides lookup methods.
 ///
-/// Uses `Arc<[PromptTemplate]>` internally so cloning is cheap — the store
+/// Uses `Arc<[PromptTemplate]>` internally so cloning is cheap - the store
 /// lives in `AppState` behind an `RwLock`.
 #[derive(Debug, Clone, Default)]
 pub struct PromptTemplateStore {
@@ -214,7 +214,7 @@ impl PromptTemplateStore {
 
     /// Recursively scans a directory, overriding existing templates with the same name.
     ///
-    /// Used for user directories — user templates replace system templates.
+    /// Used for user directories - user templates replace system templates.
     fn scan_dir_override(
         dir: &Path,
         templates: &mut Vec<PromptTemplate>,

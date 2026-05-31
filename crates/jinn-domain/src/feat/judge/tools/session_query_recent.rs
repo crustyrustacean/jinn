@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! `session_query_recent` built-in tool — retrieve the N most recent messages from the origin session.
+//! `session_query_recent` built-in tool - retrieve the N most recent messages from the origin session.
 
 use std::fmt::Write;
 

@@ -1,4 +1,4 @@
-//! json-parser bench task — parse a JSON file and print name + age.
+//! json-parser bench task - parse a JSON file and print name + age.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

@@ -1,4 +1,4 @@
-//! Provider picker rendering — renders the provider picker overlay.
+//! Provider picker rendering - renders the provider picker overlay.
 
 use crate::common::app_state::AppState;
 use crate::feat::ui::picker_states::PickerExt;

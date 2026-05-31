@@ -1,4 +1,4 @@
-//! Edit built-in tool — performs exact text replacement in files.
+//! Edit built-in tool - performs exact text replacement in files.
 //!
 //! Supports multiple non-overlapping edits per call, BOM preservation,
 //! line-ending preservation, and unified diff output.

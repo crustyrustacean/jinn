@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! Judge picker entry — display type for the selection widget.
+//! Judge picker entry - display type for the selection widget.
 
 use std::ops::Range;
 
@@ -114,7 +114,7 @@ fn render_judge_row(
     }
 
     if !description.is_empty() {
-        spans.push(Span::styled(format!(" — {description}"), desc_style));
+        spans.push(Span::styled(format!(" - {description}"), desc_style));
     }
 
     Line::from(spans)

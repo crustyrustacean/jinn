@@ -1,4 +1,4 @@
-//! Renders the dashboard view — a list of actors with their startup status.
+//! Renders the dashboard view - a list of actors with their startup status.
 //!
 //! Each actor is displayed with a 2-cell left border. The selected entry shows
 //! a solid yellow full block (`██`) in the border; unselected entries show spaces.

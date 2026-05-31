@@ -92,7 +92,7 @@ pub fn run_migrations(conn: &mut SqliteConnection) -> Result<(), Report<SessionS
 
 /// Creates the `_migrations` tracking table.
 ///
-/// This is the only place `IF NOT EXISTS` is used — the tracking table must
+/// This is the only place `IF NOT EXISTS` is used - the tracking table must
 /// bootstrap itself before version checking can begin. All other migrations
 /// use strict DDL so failures are loud.
 fn bootstrap_tracking_table(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
@@ -143,7 +143,7 @@ fn record_version(
 
 // ── Migrations ───────────────────────────────────────────────────────────
 
-/// v0: Initial schema — sessions, entries, session_entries, token_ledger.
+/// v0: Initial schema - sessions, entries, session_entries, token_ledger.
 fn migrate_v0(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query(
         "CREATE TABLE sessions (\
@@ -277,7 +277,7 @@ fn migrate_v6(conn: &mut SqliteConnection) {
 ///
 /// Persists the [`LifecycleScriptState`] enum so teardown runs correctly
 /// after app restart for sessions that had setup run.
-/// Default is `'nothing_ran'` — matching the enum's default.
+/// Default is `'nothing_ran'` - matching the enum's default.
 fn migrate_v7(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query(
         "ALTER TABLE sessions ADD COLUMN lifecycle_script_state TEXT NOT NULL DEFAULT 'nothing_ran'",
@@ -291,7 +291,7 @@ fn migrate_v7(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErro
 /// v8: Add \`metadata\` column to sessions.
 ///
 /// Stores a JSON blob of all session metadata. This eliminates the need
-/// for individual columns per field — new fields on `SessionCore` are
+/// for individual columns per field - new fields on `SessionCore` are
 /// automatically persisted via serde.
 fn migrate_v8(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query("ALTER TABLE sessions ADD COLUMN metadata TEXT")
@@ -303,7 +303,7 @@ fn migrate_v8(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErro
 
 /// v9: Rename `session_entries` table to `session_history`.
 ///
-/// The old name was ambiguous — it sounded like a table of sessions.
+/// The old name was ambiguous - it sounded like a table of sessions.
 /// The new name makes it clear this is the chat history junction table.
 fn migrate_v9(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query("ALTER TABLE session_entries RENAME TO session_history")
@@ -397,7 +397,7 @@ fn rewrite_profile_strategy(raw: &str) -> String {
 ///
 /// Marks sessions created by workflow LLM nodes. Enables filtering
 /// workflow sessions in the sidebar and elsewhere.
-/// Default is `false` — regular chat sessions are not workflow sessions.
+/// Default is `false` - regular chat sessions are not workflow sessions.
 fn migrate_v11(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query("ALTER TABLE sessions ADD COLUMN is_workflow BOOLEAN NOT NULL DEFAULT FALSE")
         .execute(conn)
@@ -410,7 +410,7 @@ fn migrate_v11(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErr
 ///
 /// Replaces the boolean `ignored` column with a tri-state text column:
 /// `'default'`, `'forced_include'`, `'forced_exclude'`. The old `ignored`
-/// column is kept for backward compatibility — the new column takes precedence.
+/// column is kept for backward compatibility - the new column takes precedence.
 /// Rows with `ignored = 1` are migrated to `'forced_exclude'`.
 /// v13: Add `judge_meta` column to sessions.
 ///
@@ -620,7 +620,7 @@ mod tests {
             // Build the database at exactly `target_version`.
             apply_migrations_up_to(&mut conn, target_version);
 
-            // Re-running should succeed — applying only versions > target_version.
+            // Re-running should succeed - applying only versions > target_version.
             run_migrations(&mut conn)
                 .unwrap_or_else(|e| panic!("re-run at target_version={target_version} should succeed: {e:?}"));
 

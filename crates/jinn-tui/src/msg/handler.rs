@@ -153,7 +153,7 @@ fn run_event_poll(sender: &MsgSender, stop: Arc<AtomicBool>) {
 
         match crossterm::event::poll(poll_duration) {
             Ok(true) => {
-                // Event available — read and forward.
+                // Event available - read and forward.
                 match crossterm::event::read() {
                     Ok(evt) => {
                         sender.send(Msg::Input(evt));
@@ -164,7 +164,7 @@ fn run_event_poll(sender: &MsgSender, stop: Arc<AtomicBool>) {
                 }
             }
             Ok(false) => {
-                // Timeout — no event, loop back to check tick/stop.
+                // Timeout - no event, loop back to check tick/stop.
             }
             Err(e) => {
                 tracing::error!(err = ?e, "crossterm event poll error");

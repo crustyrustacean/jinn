@@ -1,4 +1,4 @@
-//! Clipboard flush — extracts selected text from the buffer and copies to system clipboard.
+//! Clipboard flush - extracts selected text from the buffer and copies to system clipboard.
 
 use ratatui::buffer::Buffer;
 
@@ -11,7 +11,7 @@ use crate::selection::SelectionState;
 ///
 /// The clipboard write runs on a spawned thread that holds the
 /// [`arboard::Clipboard`] open for a few seconds after writing. On X11,
-/// clipboard data is only available while the `Clipboard` instance is alive —
+/// clipboard data is only available while the `Clipboard` instance is alive -
 /// dropping it immediately prevents clipboard managers from syncing.
 pub(super) fn flush_pending_clipboard(app: &mut TuiApp, buf: &Buffer) {
     if !app.pending_clipboard {
@@ -22,7 +22,7 @@ pub(super) fn flush_pending_clipboard(app: &mut TuiApp, buf: &Buffer) {
     let text = match app.selection.extract_text(buf) {
         Some(text) if !text.is_empty() => text,
         _ => {
-            // Empty selection — clear highlight silently.
+            // Empty selection - clear highlight silently.
             app.selection = SelectionState::Idle;
             return;
         }
@@ -46,7 +46,7 @@ pub(super) fn flush_pending_clipboard(app: &mut TuiApp, buf: &Buffer) {
         }
         tracing::debug!(len = text.len(), "copied selection to clipboard");
         // Hold clipboard open so clipboard managers can sync.
-        // cb must live through the sleep — X11 clipboard data is only
+        // cb must live through the sleep - X11 clipboard data is only
         // available while the Clipboard instance is alive.
         std::thread::sleep(std::time::Duration::from_secs(2));
     });

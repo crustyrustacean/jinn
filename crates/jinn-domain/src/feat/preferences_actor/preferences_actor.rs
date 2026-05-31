@@ -1,4 +1,4 @@
-//! Preferences actor — persists user preferences to `jinn.toml`.
+//! Preferences actor - persists user preferences to `jinn.toml`.
 //!
 //! Subscribes to [`UpdatePreferences`] commands carrying batches of
 //! [`PreferenceUpdate`] diffs. On each command, loads current preferences,

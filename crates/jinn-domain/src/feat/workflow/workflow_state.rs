@@ -39,7 +39,7 @@ pub struct WorkflowState {
     pub id: WorkflowId,
     /// The registered workflow name.
     pub name: String,
-    /// Shared execution state — holds topology and node statuses.
+    /// Shared execution state - holds topology and node statuses.
     /// The engine writes status updates; the renderer reads snapshots.
     pub execution: Arc<WorkflowExecution>,
     /// Maps node name → session ID (for correlating StreamCompleted events).
@@ -75,7 +75,7 @@ pub struct WorkflowResult {
 
 /// Map of loaded workflows with one active at a time.
 ///
-/// Mirrors the [`SessionMap`](crate::common::session_map::SessionMap) pattern —
+/// Mirrors the [`SessionMap`](crate::common::session_map::SessionMap) pattern -
 /// a map of workflow states with an active (focused) entry.
 /// Unlike `SessionMap`, empty is a valid state (no workflows running).
 #[derive(Default)]

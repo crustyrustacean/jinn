@@ -1,4 +1,4 @@
-//! Get time built-in tool — returns current UTC date/time.
+//! Get time built-in tool - returns current UTC date/time.
 
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 

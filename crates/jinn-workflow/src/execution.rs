@@ -1,11 +1,11 @@
 //! Workflow execution state types.
 //!
 //! Provides types for monitoring workflow execution:
-//! - [`WorkflowStructure`] — lightweight, Clone-able workflow topology
-//! - [`OwnedEdgeInfo`] — owned edge description
-//! - [`NodePorts`] — port definitions for a single node
-//! - [`ExecutionSnapshot`] — immutable point-in-time snapshot of execution state
-//! - [`WorkflowExecution`] — manages execution state with atomic snapshots
+//! - [`WorkflowStructure`] - lightweight, Clone-able workflow topology
+//! - [`OwnedEdgeInfo`] - owned edge description
+//! - [`NodePorts`] - port definitions for a single node
+//! - [`ExecutionSnapshot`] - immutable point-in-time snapshot of execution state
+//! - [`WorkflowExecution`] - manages execution state with atomic snapshots
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
@@ -209,7 +209,7 @@ pub struct NodeState {
 /// An immutable snapshot of workflow execution state at a point in time.
 ///
 /// Contains the topology (never changes) and per-node state (status, config, I/O).
-/// Obtained via [`WorkflowExecution::snapshot()`]. Cheap to hold —
+/// Obtained via [`WorkflowExecution::snapshot()`]. Cheap to hold -
 /// just an `Arc` reference count increment.
 #[derive(Debug)]
 pub struct ExecutionSnapshot {
@@ -258,7 +258,7 @@ impl ExecutionSnapshot {
 pub struct WorkflowExecution {
     /// The graph topology (immutable after construction).
     graph: WorkflowGraph,
-    /// Lock-free atomic snapshot — swapped on every status update.
+    /// Lock-free atomic snapshot - swapped on every status update.
     snapshot: ArcSwap<ExecutionSnapshot>,
 }
 
@@ -306,7 +306,7 @@ impl WorkflowExecution {
     /// Returns the current execution snapshot.
     ///
     /// Lock-free atomic read. The returned `Arc` is immutable and
-    /// won't change — safe to hold across an entire render frame.
+    /// won't change - safe to hold across an entire render frame.
     #[must_use]
     pub fn snapshot(&self) -> Arc<ExecutionSnapshot> {
         self.snapshot.load_full()

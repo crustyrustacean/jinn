@@ -29,7 +29,7 @@ pub struct SessionTreeEntry {
     pub theme: Theme,
     /// Whether this session is loaded in memory or archived.
     pub session_state: SessionState,
-    /// Parent session ID — `None` for root sessions.
+    /// Parent session ID - `None` for root sessions.
     pub parent_id: Option<SessionId>,
     /// Pre-computed string representation of `parent_id` for `TreeItem::parent_id`.
     parent_id_str: Option<String>,

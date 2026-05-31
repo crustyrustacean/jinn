@@ -15,7 +15,7 @@ use wherror::Error;
 
 /// Error type for LLM service operations.
 ///
-/// Unit variants — the original error is preserved in the `Report` chain
+/// Unit variants - the original error is preserved in the `Report` chain
 /// via `.change_context()`. Attach additional context with `.attach()`.
 #[derive(Debug, Error)]
 pub enum LlmServiceError {
@@ -95,7 +95,7 @@ pub trait LlmService: Send + Sync {
 /// Factory for creating [`LlmService`] instances.
 ///
 /// Each call to [`create`](LlmServiceFactory::create) produces a fresh service.
-/// The factory is `Clone + Send + Sync` — wrap in `Arc` for sharing.
+/// The factory is `Clone + Send + Sync` - wrap in `Arc` for sharing.
 pub trait LlmServiceFactory: Send + Sync + std::fmt::Debug {
     /// Create a new LLM service instance.
     ///

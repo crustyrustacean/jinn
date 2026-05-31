@@ -1,8 +1,8 @@
-//! Default theme — parsed from the embedded `themes/default.toml` at compile time.
+//! Default theme - parsed from the embedded `themes/default.toml` at compile time.
 
 use crate::theme::{Theme, ThemeFile};
 
-/// Embedded default theme TOML — the single source of truth.
+/// Embedded default theme TOML - the single source of truth.
 const DEFAULT_TOML: &str = include_str!("../../../res/themes/default.toml");
 
 /// Returns the default theme, parsed from the embedded TOML file.
@@ -23,7 +23,7 @@ pub fn default_theme() -> Theme {
         reason = "embedded TOML is a compile-time artifact"
     )]
     let file: ThemeFile = toml::from_str(DEFAULT_TOML)
-        .expect("embedded default.toml should be valid — this is a compile-time bug");
+        .expect("embedded default.toml should be valid - this is a compile-time bug");
     file.resolve_standalone()
 }
 

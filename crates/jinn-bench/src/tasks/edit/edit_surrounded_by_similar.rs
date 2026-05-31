@@ -1,4 +1,4 @@
-//! edit-surrounded-by-similar bench task — change one threshold among 10 nearly-identical blocks.
+//! edit-surrounded-by-similar bench task - change one threshold among 10 nearly-identical blocks.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

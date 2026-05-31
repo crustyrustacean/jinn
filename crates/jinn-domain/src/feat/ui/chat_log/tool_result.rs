@@ -2,10 +2,10 @@
 //!
 //! Renders the output and metadata of a tool execution. The tool call itself
 //! (the "header" line with `$ <command>` or `<name> <args>`) is rendered by
-//! `tool_call.rs` — this module handles only the output content.
+//! `tool_call.rs` - this module handles only the output content.
 //!
 //! **Collapsed** (default): shows the last N lines of output, with each line
-//! truncated to content width. No block padding — minimal escape sequences.
+//! truncated to content width. No block padding - minimal escape sequences.
 //!
 //! **Expanded:** shows all output lines without truncation.
 //!
@@ -59,7 +59,7 @@ fn to_lines_collapsed(
     let max = ctx.tool_entry_max_lines as usize;
 
     if all_lines.len() <= max {
-        // Short content — show all lines.
+        // Short content - show all lines.
         for line_text in &all_lines {
             lines.push(Line::from(Span::styled(
                 truncate_to_width(line_text, ctx.content_width as usize),
@@ -67,7 +67,7 @@ fn to_lines_collapsed(
             )));
         }
     } else {
-        // Long content — show last N lines, then indicator at the bottom.
+        // Long content - show last N lines, then indicator at the bottom.
         let remaining = all_lines.len() - max;
         for line_text in &all_lines[remaining..] {
             lines.push(Line::from(Span::styled(

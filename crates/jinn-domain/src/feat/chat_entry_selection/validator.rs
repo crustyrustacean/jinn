@@ -118,7 +118,7 @@ pub enum ChatEntryPinSelectedError {
 /// Validates the ChatEntryPinSelected intent.
 ///
 /// Returns an error if the history is empty or no entry is selected.
-/// All entry types can be pinned — pin overrides context state and forces
+/// All entry types can be pinned - pin overrides context state and forces
 /// the entry into the assembled LLM prompt.
 ///
 /// # Errors
@@ -150,7 +150,7 @@ pub enum ChatEntryIgnoreSelectedError {
 /// Validates the ChatEntryIgnoreSelected intent.
 ///
 /// Returns an error if the history is empty, no entry is selected,
-/// or the selected entry is pinned. All entry types can be toggled —
+/// or the selected entry is pinned. All entry types can be toggled -
 /// the `x` key always produces a visible gutter color change.
 ///
 /// # Errors

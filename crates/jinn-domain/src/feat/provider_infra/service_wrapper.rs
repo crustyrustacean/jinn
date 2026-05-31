@@ -1,7 +1,7 @@
 //! Service wrapper for LLM service factory.
 //!
 //! Wraps an [`LlmServiceFactory`] in a shared, swappable container. All clones
-//! of [`LlmServiceFactoryService`] see the same factory — calling [`swap`](LlmServiceFactoryService::swap)
+//! of [`LlmServiceFactoryService`] see the same factory - calling [`swap`](LlmServiceFactoryService::swap)
 //! on one clone updates every clone. This enables runtime provider switching
 //! without replacing the service wrapper itself.
 
@@ -54,7 +54,7 @@ impl LlmServiceFactoryService {
     /// Swaps the underlying factory for all clones of this service.
     ///
     /// The new factory takes effect immediately for subsequent [`create`](Self::create)
-    /// calls. In-flight streams are unaffected — they use service instances already
+    /// calls. In-flight streams are unaffected - they use service instances already
     /// created by the previous factory.
     pub fn swap(&self, factory: Arc<dyn LlmServiceFactory>) {
         let mut guard = self.inner.write();

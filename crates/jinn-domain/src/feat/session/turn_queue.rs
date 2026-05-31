@@ -1,4 +1,4 @@
-//! Turn dispatch queue — encapsulates the per-session turn queue.
+//! Turn dispatch queue - encapsulates the per-session turn queue.
 //!
 //! The turn queue holds pending operations (user messages, compaction requests,
 //! tool continuations) that should be dispatched when the session transitions
@@ -6,8 +6,8 @@
 //!
 //! # Visibility
 //!
-//! - **Public:** `enqueue`, `enqueue_front`, `len`, `is_empty` — anyone can add items.
-//! - **Restricted:** `pop`, `drain` — only the queue actor may consume items.
+//! - **Public:** `enqueue`, `enqueue_front`, `len`, `is_empty` - anyone can add items.
+//! - **Restricted:** `pop`, `drain` - only the queue actor may consume items.
 //!
 //! During the migration (before the queue actor exists), `pop` and `drain` are
 //! visible within the `session` feature module. This will be tightened once the

@@ -269,7 +269,7 @@ fn load_from_dirs_user_override_skips_underscore_prefixed() {
 fn fuzzy_search_never_returns_underscore_prefixed_templates() {
     // Given a store built directly (bypassing scan) that includes an underscore-prefixed name.
     // This verifies that even if somehow a _-prefixed template got into the store,
-    // the search would still return it — confirming the filter must happen at scan time.
+    // the search would still return it - confirming the filter must happen at scan time.
     let store = PromptTemplateStore::from_vec(vec![PromptTemplate {
         name: "_compaction".to_owned(),
         description: "System".to_owned(),

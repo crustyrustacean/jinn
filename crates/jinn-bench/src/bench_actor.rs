@@ -1,4 +1,4 @@
-//! Bench actor — orchestrates bench execution and records results.
+//! Bench actor - orchestrates bench execution and records results.
 //!
 //! When given a [`BenchPlan`], the actor drives the full bench pipeline:
 //! creates sessions with bench lifecycle names, enqueues messages, waits for
@@ -38,7 +38,7 @@ struct BenchSession {
     task_name: String,
     /// When this session was first tracked (after setup completed).
     start_time: Instant,
-    /// Deadline for timeout — `start_time + task.timeout`.
+    /// Deadline for timeout - `start_time + task.timeout`.
     deadline: Instant,
     /// Verification function from the task definition.
     verify: fn(&std::path::Path) -> VerificationReport,
@@ -56,7 +56,7 @@ struct BenchSession {
 pub struct BenchActor {
     /// Shared application state.
     state: State,
-    /// Tracked bench sessions — keyed by session ID.
+    /// Tracked bench sessions - keyed by session ID.
     pending: HashMap<SessionId, BenchSession>,
     /// CSV writer for results.
     csv_writer: Option<BenchCsvWriter>,
@@ -312,7 +312,7 @@ impl BenchActor {
         }
     }
 
-    /// Handle `SessionSetupCompleted` — start tracking if this is a bench session.
+    /// Handle `SessionSetupCompleted` - start tracking if this is a bench session.
     fn handle_session_setup_completed(
         &mut self,
         payload: &SessionSetupCompleted,
@@ -376,7 +376,7 @@ impl BenchActor {
         }
     }
 
-    /// Handle `StreamCompleted` — check timeout for tracked sessions.
+    /// Handle `StreamCompleted` - check timeout for tracked sessions.
     fn handle_stream_completed(&mut self, payload: &StreamCompleted, ctx: &ActorContext) {
         let Some(tracked) = self.pending.get(&payload.session_id) else {
             return;
@@ -398,7 +398,7 @@ impl BenchActor {
         }));
     }
 
-    /// Handle `SessionPhaseChanged` — finalize result when tracked session returns to Idle.
+    /// Handle `SessionPhaseChanged` - finalize result when tracked session returns to Idle.
     #[expect(
         clippy::unused_async,
         reason = "called via .await from the async handle method"
@@ -442,7 +442,7 @@ impl BenchActor {
             }
         }
 
-        // All messages sent — finalize the result.
+        // All messages sent - finalize the result.
         #[expect(clippy::expect_used, reason = "existence verified above")]
         let tracked = self
             .pending
@@ -514,11 +514,11 @@ impl BenchActor {
 
         // Push summary line.
         let summary = if report.passed() {
-            format!("✅ Evaluation passed — {} checks", report.checks.len())
+            format!("✅ Evaluation passed - {} checks", report.checks.len())
         } else {
             let fail_count = report.failures().count();
             format!(
-                "❌ Evaluation failed — {}/{} checks failed",
+                "❌ Evaluation failed - {}/{} checks failed",
                 fail_count,
                 report.checks.len()
             )
@@ -733,7 +733,7 @@ mod tests {
             },
             &mut ActorContext::new("test", sink.clone()),
         );
-        // Activate already started the first pair — index is at 1.
+        // Activate already started the first pair - index is at 1.
         assert_eq!(actor.current_pair_index, 1);
 
         // When SessionSetupCompleted fires with an error for a bench session.
@@ -1189,7 +1189,7 @@ mod tests {
             let mut s = state.write();
             let session = s.active_session_mut();
             session.set_lifecycle_name(Some("hello-world".to_owned()));
-            // Set CWD to the temp dir — verification will fail because no files exist.
+            // Set CWD to the temp dir - verification will fail because no files exist.
             session.set_cwd(temp_dir.path().to_owned());
             s.session.active_session_id().clone()
         };
@@ -1272,7 +1272,7 @@ mod tests {
             },
             &mut ActorContext::new("test", sink),
         );
-        // Activate started the first pair — index is at 1, plan has 1 pair.
+        // Activate started the first pair - index is at 1, plan has 1 pair.
         assert_eq!(actor.current_pair_index, 1);
 
         // When SessionSetupCompleted fires with an error for the bench session.
@@ -1314,7 +1314,7 @@ mod tests {
             },
             &mut ActorContext::new("test", sink),
         );
-        // Activate started pair 0 — index is at 1, plan has 3 pairs.
+        // Activate started pair 0 - index is at 1, plan has 3 pairs.
         assert_eq!(actor.current_pair_index, 1);
 
         // When SessionSetupCompleted fires with an error.
@@ -1485,7 +1485,7 @@ mod tests {
             &ctx,
         );
 
-        // Set deadline to far future — should NOT be timeout.
+        // Set deadline to far future - should NOT be timeout.
         if let Some(tracked) = actor.pending.get_mut(&session_id) {
             tracked.deadline = Instant::now() + Duration::from_secs(3600);
         }
@@ -1550,7 +1550,7 @@ mod tests {
         assert_eq!(tracked.messages_remaining, 1, "should have 1 remaining after first send");
         assert_eq!(tracked.next_message_index, 1, "index should be 1 after first send");
 
-        // When SessionPhaseChanged fires with Idle (intermediate — more messages left).
+        // When SessionPhaseChanged fires with Idle (intermediate - more messages left).
         actor
             .handle_session_phase_changed(
                 &SessionPhaseChanged {

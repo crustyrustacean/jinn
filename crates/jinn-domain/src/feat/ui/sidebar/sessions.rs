@@ -1,4 +1,4 @@
-//! Sessions sidebar section — listing, navigation, and session lifecycle actions.
+//! Sessions sidebar section - listing, navigation, and session lifecycle actions.
 //!
 //! This module groups all concerns related to the sessions list in the sidebar:
 //! rendering, cursor navigation, session activation, close/archive/teardown
@@ -24,7 +24,7 @@ mod preview_tests;
 use std::time::Duration;
 
 // ---------------------------------------------------------------------------
-// Re-exports — preserve the public API for external consumers.
+// Re-exports - preserve the public API for external consumers.
 // ---------------------------------------------------------------------------
 
 pub use activate::handle_session_activate;
@@ -50,7 +50,7 @@ pub use state::update_visual_parents_on_removal;
 pub use teardown::handle_session_teardown;
 
 // ---------------------------------------------------------------------------
-// Constants — shared across submodules.
+// Constants - shared across submodules.
 // ---------------------------------------------------------------------------
 
 /// Active session indicator prefix.

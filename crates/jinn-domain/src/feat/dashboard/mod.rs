@@ -1,4 +1,4 @@
-//! Dashboard — displays registered actors and their startup status.
+//! Dashboard - displays registered actors and their startup status.
 //!
 //! Everything related to the dashboard lives here: state, rendering, and intents.
 //!
@@ -72,7 +72,7 @@ impl DashboardState {
 
     /// Moves the selection to the next actor entry.
     ///
-    /// Clamps at the last entry — does nothing if already at the end.
+    /// Clamps at the last entry - does nothing if already at the end.
     pub fn select_next(&mut self) {
         let count = self.order.len();
         if count > 0 && self.selected_index < count - 1 {
@@ -82,7 +82,7 @@ impl DashboardState {
 
     /// Moves the selection to the previous actor entry.
     ///
-    /// Clamps at the first entry — does nothing if already at the beginning.
+    /// Clamps at the first entry - does nothing if already at the beginning.
     pub fn select_prev(&mut self) {
         if self.selected_index > 0 {
             self.selected_index -= 1;

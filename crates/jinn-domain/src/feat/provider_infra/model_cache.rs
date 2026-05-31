@@ -1,4 +1,4 @@
-//! Model cache — persisted discovery results for provider models.
+//! Model cache - persisted discovery results for provider models.
 //!
 //! [`ModelCache`] stores the results of model discovery (provider name → list of
 //! model metadata) as a JSON file on disk. It is loaded after a refresh completes

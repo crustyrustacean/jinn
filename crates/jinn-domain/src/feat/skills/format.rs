@@ -1,4 +1,4 @@
-//! Skills formatting — produces the `<available_skills>` XML block for the LLM prompt.
+//! Skills formatting - produces the `<available_skills>` XML block for the LLM prompt.
 //!
 //! Uses the Agent Skills standard format. See: <https://agentskills.io/integrate-skills>
 

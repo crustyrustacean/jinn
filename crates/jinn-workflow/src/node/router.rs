@@ -1,8 +1,8 @@
-//! RouterNode — conditional branching node for workflow graphs.
+//! RouterNode - conditional branching node for workflow graphs.
 //!
 //! [`RouterNode`] receives a text input, matches it against regex patterns to
 //! select one output port, and populates only that port. Downstream nodes on
-//! unpopulated branches are handled by the engine's deadlock detection — they
+//! unpopulated branches are handled by the engine's deadlock detection - they
 //! are marked `Skipped`.
 //!
 //! # Example
@@ -43,9 +43,9 @@ impl RouterNode {
     ///
     /// # Arguments
     ///
-    /// * `name` — Human-readable name for this node.
-    /// * `input_port` — The single input port definition.
-    /// * `output_ports` — All possible output port definitions.
+    /// * `name` - Human-readable name for this node.
+    /// * `input_port` - The single input port definition.
+    /// * `output_ports` - All possible output port definitions.
     ///
     /// # Panics
     ///
@@ -151,7 +151,7 @@ impl WorkflowNode for RouterNode {
             return Ok(out);
         }
 
-        // No route matched and no default — error.
+        // No route matched and no default - error.
         Err(Report::new(NodeError))
     }
 

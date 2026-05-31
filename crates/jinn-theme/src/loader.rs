@@ -70,9 +70,9 @@ pub fn discover_themes(themes_dir: &Path) -> Result<Vec<(String, PathBuf)>, Repo
 ///
 /// # Errors
 ///
-/// - [`ThemeError::NotFound`] — no TOML file with that name exists in either dir.
-/// - [`ThemeError::Parse`] — TOML is malformed or contains invalid colors.
-/// - [`ThemeError::Io`] — file cannot be read.
+/// - [`ThemeError::NotFound`] - no TOML file with that name exists in either dir.
+/// - [`ThemeError::Parse`] - TOML is malformed or contains invalid colors.
+/// - [`ThemeError::Io`] - file cannot be read.
 pub fn load_theme(
     name: &str,
     user_dir: &Path,
@@ -112,8 +112,8 @@ pub fn load_theme_from_dir(name: &str, dir: &Path) -> Result<Theme, Report<Theme
 ///
 /// # Errors
 ///
-/// - [`ThemeError::Parse`] — TOML is malformed or contains invalid colors.
-/// - [`ThemeError::Io`] — file cannot be read.
+/// - [`ThemeError::Parse`] - TOML is malformed or contains invalid colors.
+/// - [`ThemeError::Io`] - file cannot be read.
 pub fn load_theme_from_file(path: &Path) -> Result<Theme, Report<ThemeError>> {
     let content = std::fs::read_to_string(path)
         .change_context(ThemeError::Io)
@@ -145,11 +145,11 @@ pub fn resolve_theme(
 ) -> Result<Theme, Report<ThemeError>> {
     match name {
         None | Some("default") => {
-            // Try user dir, then system dir — allows user customization.
+            // Try user dir, then system dir - allows user customization.
             match load_theme("default", user_dir, system_dir) {
                 Ok(theme) => Ok(theme),
                 Err(err) if err.downcast_ref::<ThemeError>() == Some(&ThemeError::NotFound) => {
-                    // File not found anywhere — use embedded default.
+                    // File not found anywhere - use embedded default.
                     Ok(default_theme())
                 }
                 Err(err) => Err(err),

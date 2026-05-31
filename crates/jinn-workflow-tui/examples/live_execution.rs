@@ -34,7 +34,7 @@ impl NodeContext for Ctx {}
 /// Builds the workflow graph for the live execution example.
 fn build_graph() -> jinn_workflow::graph::WorkflowGraph {
     let mut b = WorkflowGraphBuilder::new();
-    // First node: source (no inputs, one output) — use make_node since DelayNode mirrors ports.
+    // First node: source (no inputs, one output) - use make_node since DelayNode mirrors ports.
     b.add_node(
         "fast".to_owned(),
         common::make_node("fast", vec![], vec![PortDef::text("out")]),

@@ -1,4 +1,4 @@
-//! Workflow picker entry — one row in the workflow selection picker.
+//! Workflow picker entry - one row in the workflow selection picker.
 
 use jinn_selection_widget::PickerItem;
 use ratatui::text::{Line, Span};

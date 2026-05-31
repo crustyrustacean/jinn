@@ -1,11 +1,11 @@
 //! Workflow integration module.
 //!
 //! Bridges the [`jinn_workflow`] engine to the domain layer, providing:
-//! - [`DomainNodeContext`] — implements [`NodeContext`] with LLM access
-//! - [`LlmNode`] — a workflow node that calls the LLM
-//! - [`WorkflowActor`] — bridges actor bus events to workflow execution
-//! - [`WorkflowMap`] / [`WorkflowState`] — runtime workflow state in [`AppState`]
-//! - [`WorkflowRegistry`] — instance-based named workflow registry
+//! - [`DomainNodeContext`] - implements [`NodeContext`] with LLM access
+//! - [`LlmNode`] - a workflow node that calls the LLM
+//! - [`WorkflowActor`] - bridges actor bus events to workflow execution
+//! - [`WorkflowMap`] / [`WorkflowState`] - runtime workflow state in [`AppState`]
+//! - [`WorkflowRegistry`] - instance-based named workflow registry
 
 pub mod domain_node_context;
 pub mod example;

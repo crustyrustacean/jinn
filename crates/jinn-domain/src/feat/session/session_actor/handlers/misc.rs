@@ -1,4 +1,4 @@
-//! Miscellaneous handlers — model refresh display and session picker loading.
+//! Miscellaneous handlers - model refresh display and session picker loading.
 //!
 //! Handles pushing model refresh results as transient markdown entries to the chat log,
 //! and loading session picker entries from the session store into app state.
@@ -15,7 +15,7 @@ impl SessionPersistenceActor {
     /// Pushes a transient markdown entry after model refresh.
     ///
     /// Builds a markdown table from the refresh results and pushes it directly
-    /// to session state. Does NOT emit `PushChatEntry` — transient entries
+    /// to session state. Does NOT emit `PushChatEntry` - transient entries
     /// are not persisted.
     #[allow(clippy::unused_self)]
     pub(in crate::feat::session::session_actor) fn on_models_refreshed(

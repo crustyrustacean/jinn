@@ -1,4 +1,4 @@
-//! Edit bench tasks — model must make precise edits to existing files.
+//! Edit bench tasks - model must make precise edits to existing files.
 //!
 //! Tasks provide the model with `read` + `write` tools only (no `bash`).
 //! Verification uses snapshot comparison against expected output files.

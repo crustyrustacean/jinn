@@ -6,9 +6,9 @@
 //!
 //! # Crate structure
 //!
-//! - [`node`] — Visual node rendering and dimension calculation.
-//! - [`port`] — Port type color legend.
-//! - [`status`] — Status indicator symbols and colors.
+//! - [`node`] - Visual node rendering and dimension calculation.
+//! - [`port`] - Port type color legend.
+//! - [`status`] - Status indicator symbols and colors.
 
 pub mod connection;
 pub mod layout;

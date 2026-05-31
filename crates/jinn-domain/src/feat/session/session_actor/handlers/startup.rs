@@ -1,4 +1,4 @@
-//! Startup handler — applies config defaults on environment load.
+//! Startup handler - applies config defaults on environment load.
 //!
 //! On startup, loads user preferences, applies model/strategy defaults to the
 //! default session, loads unarchived sessions from SQLite, and emits commands
@@ -68,7 +68,7 @@ impl SessionPersistenceActor {
         }
 
         // Load unarchived sessions from SQLite into memory.
-        // These are sessions with `archived=false` — corresponding to `SessionState::Loaded`.
+        // These are sessions with `archived=false` - corresponding to `SessionState::Loaded`.
         // On load they get the default `SessionState::Loaded` and `LifecycleScriptState::NothingRan`.
         if let Some(ref store) = self.store {
             let summaries = match store.load_unarchived_summaries().await {
@@ -94,7 +94,7 @@ impl SessionPersistenceActor {
 
                 if !loaded.is_empty() {
                     for mut session in loaded {
-                        // Mark startup-loaded sessions as interacted — they came from disk.
+                        // Mark startup-loaded sessions as interacted - they came from disk.
                         session.mark_interacted();
                         self.load_and_insert(session, ctx);
                     }

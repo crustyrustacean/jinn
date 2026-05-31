@@ -32,7 +32,7 @@ pub struct TransitionOutcome {
     pub new_phase: PhaseKind,
 }
 
-/// Result of a successful `cancel()` — includes the old streaming phase data
+/// Result of a successful `cancel()` - includes the old streaming phase data
 /// so the caller can force-exclude dangling tool calls and drain the queue.
 #[derive(Debug)]
 pub struct CancelOutcome {
@@ -97,7 +97,7 @@ impl SessionPhaseMachine {
     ///
     /// Used during Phase 1 migration to support legacy methods that bypass
     /// the normal transition graph (e.g., `finish_sending` which does
-    /// `Sending → Idle` — not a valid machine transition).
+    /// `Sending → Idle` - not a valid machine transition).
     ///
     /// Will be removed once all callers go through proper transitions.
     ///
@@ -123,7 +123,7 @@ impl SessionPhaseMachine {
         self.tool_loop_disabled
     }
 
-    /// `Streaming → Idle` — hard cancel, returns old streaming data.
+    /// `Streaming → Idle` - hard cancel, returns old streaming data.
     ///
     /// Returns [`CancelOutcome`] which includes the old [`StreamingPhase`]
     /// data so the caller can force-exclude dangling tool calls and drain
@@ -155,7 +155,7 @@ impl SessionPhaseMachine {
 
     /// Set soft cancel flag on the current `Streaming` phase.
     ///
-    /// Does NOT transition — the flag is checked at the next stream-completion
+    /// Does NOT transition - the flag is checked at the next stream-completion
     /// boundary (`on_stream_completed_tool_use` or `on_stream_completed_finished`).
     /// At that point, the transition goes to `Idle` instead of `Sending`.
     ///

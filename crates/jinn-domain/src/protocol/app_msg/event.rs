@@ -4,13 +4,13 @@
 //! inform internal handlers and actors about state changes and input.
 //!
 //! Individual event structs live in domain modules (`chat_input`, `system`,
-//! `custom`, `actor`). Consumers import structs directly from those modules —
+//! `custom`, `actor`). Consumers import structs directly from those modules -
 //! this facade only re-exports infrastructure types.
 //!
 //! # When adding a new event
 //!
 //! Every new event struct **must** be added as a variant on the [`Event`] enum
-//! below. Creating the struct alone is not enough — the bus broadcasts based on
+//! below. Creating the struct alone is not enough - the bus broadcasts based on
 //! enum variants, so a missing variant means the event is invisible to the system.
 
 use std::borrow::Cow;

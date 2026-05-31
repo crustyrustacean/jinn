@@ -1,4 +1,4 @@
-//! Todo list subsystem — phased task tracking for agent sessions.
+//! Todo list subsystem - phased task tracking for agent sessions.
 //!
 //! Provides a structured task list with one level of nesting: phases contain tasks.
 //! The data model is stored per-session on [`SessionCore`](crate::feat::session::chat_session::SessionCore)
@@ -41,7 +41,7 @@ fn generate_id_chars() -> [u8; 3] {
 /// Unique identifier for a phase within a task list.
 ///
 /// Random 3-char alphanumeric (excluding `p` and `t`) prefixed with `p`.
-/// Globally unique within the task list — collision-checked against existing IDs.
+/// Globally unique within the task list - collision-checked against existing IDs.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct PhaseId(String);
 
@@ -86,7 +86,7 @@ impl AsRef<str> for PhaseId {
 /// Unique identifier for a task within a task list.
 ///
 /// Random 3-char alphanumeric (excluding `p` and `t`) prefixed with `t`.
-/// Globally unique across all phases — collision-checked against existing IDs.
+/// Globally unique across all phases - collision-checked against existing IDs.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct TaskId(String);
 
@@ -135,7 +135,7 @@ impl AsRef<str> for TaskId {
 /// The status of a task item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum TaskStatus {
-    /// Task is pending — not yet done.
+    /// Task is pending - not yet done.
     #[default]
     Pending,
     /// Task has been completed.
@@ -251,7 +251,7 @@ impl Task {
 // Phase
 // ---------------------------------------------------------------------------
 
-/// A phase — a named container of ordered tasks.
+/// A phase - a named container of ordered tasks.
 ///
 /// Phases represent high-level stages of work (e.g., "Research", "Build", "Test").
 /// Tasks within a phase are ordered and can be repositioned.
@@ -296,18 +296,18 @@ impl Phase {
 // TaskList
 // ---------------------------------------------------------------------------
 
-/// A phased task list — the top-level container for agent planning.
+/// A phased task list - the top-level container for agent planning.
 ///
 /// Contains ordered phases, each containing ordered tasks.
 /// Stored per-session on [`SessionCore`](crate::feat::session::chat_session::SessionCore).
 ///
 /// # Persistence
 ///
-/// Derives `Serialize`/`Deserialize` — the existing session save/load pipeline
+/// Derives `Serialize`/`Deserialize` - the existing session save/load pipeline
 /// handles persistence automatically. The `#[serde(default)]` attribute on the
 /// `SessionCore` field ensures backward compatibility with old sessions.
 /// Old serialized data with counter fields (`next_phase_id`, `next_task_id`) will
-/// deserialize cleanly — unknown fields are ignored by serde's default behavior.
+/// deserialize cleanly - unknown fields are ignored by serde's default behavior.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskList {
     /// Ordered phases in this task list.

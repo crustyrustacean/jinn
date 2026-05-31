@@ -1,4 +1,4 @@
-//! Tree-aware selection state — the core state machine for the tree picker.
+//! Tree-aware selection state - the core state machine for the tree picker.
 //!
 //! [`TreePickerState`] holds the filter text, cursor position, selection index,
 //! scroll offset, the full item list, and a cached visible list with tree metadata.
@@ -43,7 +43,7 @@ pub struct VisibleEntry {
 ///
 /// # Ordering
 ///
-/// Items appear in tree DFS order — NOT sorted by fuzzy score. Score is only
+/// Items appear in tree DFS order - NOT sorted by fuzzy score. Score is only
 /// used to determine which items match, not for ordering.
 #[derive(Debug)]
 #[expect(
@@ -155,7 +155,7 @@ where
     /// Bulk inserts text at the cursor position, advances the cursor, re-filters, and
     /// resets selection and scroll offset to 0.
     ///
-    /// Newlines are stripped — the picker filter is a single line.
+    /// Newlines are stripped - the picker filter is a single line.
     pub fn insert_text(&mut self, text: &str) {
         let flat: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
         if flat.is_empty() {
@@ -239,7 +239,7 @@ where
         } else if max_visible > 0 && self.selection >= self.scroll_offset + max_visible {
             self.scroll_offset = self.selection - max_visible + 1;
         } else {
-            // Selection is within the visible window — no adjustment needed.
+            // Selection is within the visible window - no adjustment needed.
         }
     }
 
@@ -409,7 +409,7 @@ where
                 break; // orphan
             };
             if needed.contains(&parent_idx) {
-                break; // already included — prevents cycles
+                break; // already included - prevents cycles
             }
             needed.insert(parent_idx);
             current = parent_idx;

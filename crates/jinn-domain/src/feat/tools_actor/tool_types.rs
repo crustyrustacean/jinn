@@ -1,4 +1,4 @@
-//! Tool calling types — execution context.
+//! Tool calling types - execution context.
 //!
 //! [`ToolDefinition`], [`ToolCall`], and [`ToolResult`] are defined in the
 //! `jinn-provider` crate and re-exported here for convenience.
