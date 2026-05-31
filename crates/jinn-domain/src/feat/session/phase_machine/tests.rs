@@ -34,10 +34,10 @@ fn streaming_machine() -> SessionPhaseMachine {
     m
 }
 
-/// Create a machine in `TearingDown` phase.
-fn tearing_down_machine() -> SessionPhaseMachine {
+/// Create a machine in `Working` phase.
+fn working_machine() -> SessionPhaseMachine {
     let mut m = SessionPhaseMachine::new();
-    m.on_request_teardown().expect("teardown should succeed");
+    m.on_start_working().expect("working should succeed");
     m
 }
 
@@ -164,24 +164,24 @@ fn idle_to_tearing_down() {
     // Given a machine in Idle.
     let mut m = idle_machine();
 
-    // When requesting teardown.
-    let outcome = m.on_request_teardown().expect("should succeed");
+    // When requesting working.
+    let outcome = m.on_start_working().expect("should succeed");
 
-    // Then the transition is Idle → TearingDown.
+    // Then the transition is Idle → Working.
     assert_eq!(outcome.old_phase, PhaseKind::Idle);
-    assert_eq!(outcome.new_phase, PhaseKind::TearingDown);
+    assert_eq!(outcome.new_phase, PhaseKind::Working);
 }
 
 #[test]
 fn tearing_down_to_idle() {
-    // Given a machine in TearingDown.
-    let mut m = tearing_down_machine();
+    // Given a machine in Working.
+    let mut m = working_machine();
 
-    // When teardown completes.
-    let outcome = m.on_teardown_complete().expect("should succeed");
+    // When working completes.
+    let outcome = m.on_working_complete().expect("should succeed");
 
-    // Then the transition is TearingDown → Idle.
-    assert_eq!(outcome.old_phase, PhaseKind::TearingDown);
+    // Then the transition is Working → Idle.
+    assert_eq!(outcome.old_phase, PhaseKind::Working);
     assert_eq!(outcome.new_phase, PhaseKind::Idle);
 }
 
@@ -315,9 +315,9 @@ fn reject_dispatch_while_sending() {
 
 #[test]
 fn reject_dispatch_while_tearing_down() {
-    let mut m = tearing_down_machine();
+    let mut m = working_machine();
     let err = m.on_dispatch_message().unwrap_err();
-    assert_from(&err, PhaseKind::TearingDown);
+    assert_from(&err, PhaseKind::Working);
 }
 
 // --- on_first_token ---
@@ -338,9 +338,9 @@ fn reject_first_token_while_streaming() {
 
 #[test]
 fn reject_first_token_while_tearing_down() {
-    let mut m = tearing_down_machine();
+    let mut m = working_machine();
     let err = m.on_first_token().unwrap_err();
-    assert_from(&err, PhaseKind::TearingDown);
+    assert_from(&err, PhaseKind::Working);
 }
 
 // --- on_stream_completed_finished ---
@@ -361,9 +361,9 @@ fn reject_stream_completed_while_sending() {
 
 #[test]
 fn reject_stream_completed_while_tearing_down() {
-    let mut m = tearing_down_machine();
+    let mut m = working_machine();
     let err = m.on_stream_completed_finished().unwrap_err();
-    assert_from(&err, PhaseKind::TearingDown);
+    assert_from(&err, PhaseKind::Working);
 }
 
 // --- on_tool_batch_completed ---
@@ -384,48 +384,48 @@ fn reject_tool_batch_while_streaming() {
 
 #[test]
 fn reject_tool_batch_while_tearing_down() {
-    let mut m = tearing_down_machine();
+    let mut m = working_machine();
     let err = m.on_tool_batch_completed().unwrap_err();
-    assert_from(&err, PhaseKind::TearingDown);
+    assert_from(&err, PhaseKind::Working);
 }
 
-// --- on_request_teardown ---
+// --- on_start_working ---
 
 #[test]
-fn reject_teardown_while_streaming() {
+fn reject_working_while_streaming() {
     let mut m = streaming_machine();
-    let err = m.on_request_teardown().unwrap_err();
+    let err = m.on_start_working().unwrap_err();
     assert_from(&err, PhaseKind::Streaming);
 }
 
 #[test]
-fn reject_teardown_while_sending() {
+fn reject_working_while_sending() {
     let mut m = sending_machine();
-    let err = m.on_request_teardown().unwrap_err();
+    let err = m.on_start_working().unwrap_err();
     assert_from(&err, PhaseKind::Sending);
 }
 
 #[test]
-fn reject_teardown_while_tearing_down() {
-    let mut m = tearing_down_machine();
-    let err = m.on_request_teardown().unwrap_err();
-    assert_from(&err, PhaseKind::TearingDown);
+fn start_working_is_idempotent_when_already_working() {
+    let mut m = working_machine();
+    // Calling on_start_working again increments the ref count.
+    let outcome = m.on_start_working().expect("should succeed");
+    assert_eq!(outcome.old_phase, PhaseKind::Working);
+    assert_eq!(outcome.new_phase, PhaseKind::Working);
 }
 
-// --- on_teardown_complete ---
+// --- on_working_complete ---
 
 #[test]
-fn reject_teardown_complete_while_idle() {
+fn reject_working_complete_while_idle() {
     let mut m = idle_machine();
-    let err = m.on_teardown_complete().unwrap_err();
-    assert_from(&err, PhaseKind::Idle);
+    assert!(m.on_working_complete().is_none());
 }
 
 #[test]
-fn reject_teardown_complete_while_streaming() {
+fn reject_working_complete_while_streaming() {
     let mut m = streaming_machine();
-    let err = m.on_teardown_complete().unwrap_err();
-    assert_from(&err, PhaseKind::Streaming);
+    assert!(m.on_working_complete().is_none());
 }
 
 // --- cancel ---
@@ -446,9 +446,9 @@ fn reject_cancel_while_sending() {
 
 #[test]
 fn reject_cancel_while_tearing_down() {
-    let mut m = tearing_down_machine();
+    let mut m = working_machine();
     let err = m.cancel().unwrap_err();
-    assert_from(&err, PhaseKind::TearingDown);
+    assert_from(&err, PhaseKind::Working);
 }
 
 // --- soft_cancel ---
@@ -469,9 +469,9 @@ fn reject_soft_cancel_while_sending() {
 
 #[test]
 fn reject_soft_cancel_while_tearing_down() {
-    let mut m = tearing_down_machine();
+    let mut m = working_machine();
     let err = m.soft_cancel().unwrap_err();
-    assert_from(&err, PhaseKind::TearingDown);
+    assert_from(&err, PhaseKind::Working);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

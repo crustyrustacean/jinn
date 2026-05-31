@@ -67,9 +67,12 @@ pub struct SessionPersistenceActor {
         crate::feat::session_lifecycle::builtin::BuiltinRegistry,
     /// Shell captured at startup for running lifecycle commands.
     pub(in crate::feat::session::session_actor) shell: String,
+    /// Abort handle for the currently running lifecycle spawned task.
+    /// `None` when no lifecycle command is in flight.
+    pub(in crate::feat::session::session_actor) lifecycle_task:
+        Option<tokio::task::AbortHandle>,
 }
 
-/// Dependencies for [`SessionPersistenceActor`].
 pub struct SessionPersistenceActorDeps {
     /// Shared application state.
     pub state: State,
@@ -103,6 +106,10 @@ impl Actor for SessionPersistenceActor {
 
         // Lifecycle command subscriptions.
         ctx.subscribe_command::<RunSessionSetup>();
+        ctx.subscribe_command::<RunSessionTeardown>();
+        ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown>();
+        ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::FinishSessionSetup>();
+        ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand>();
         ctx.subscribe_command::<RunSessionTeardown>();
         ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown>();
         ctx.subscribe_command::<PersistSession>();
@@ -148,6 +155,7 @@ impl Actor for SessionPersistenceActor {
             counter: deps.counter,
             builtin_registry: deps.builtin_registry,
             shell: deps.shell,
+            lifecycle_task: None,
         }
     }
 
@@ -270,6 +278,14 @@ impl SessionPersistenceActor {
             Command::FinishSessionTeardown(payload) => {
                 self.handle_finish_session_teardown(payload, ctx).await;
             }
+            Command::FinishSessionSetup(payload) => {
+                self.handle_finish_session_setup(payload, ctx).await;
+            }
+            Command::CancelLifecycleCommand(payload) => {
+                self.handle_cancel_lifecycle_command(payload, ctx);
+            }
+
+
             Command::MarkSessionInteracted(payload) => {
                 self.handle_mark_session_interacted(payload, ctx).await;
             }
@@ -328,6 +344,7 @@ mod dispatch_tests {
             counter: TiktokenCounter::o200k_base(),
             builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
             shell: "/bin/sh".to_owned(),
+            lifecycle_task: None,
         }
     }
 
