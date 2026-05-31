@@ -219,7 +219,7 @@ mod tests {
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::preferences_actor::RequestRetryConfig;
     use crate::feat::preferences_actor::user_preferences::{
-        CompactionConfig, ContextSlidingWindowConfig, CwdSelectorConfig,
+        AutoPruneConfig, CompactionConfig, ContextSlidingWindowConfig, CwdSelectorConfig,
         MinimapConfig, OpenrouterWebSearchConfig, WebFetchConfig,
     };
 
@@ -257,6 +257,7 @@ mod tests {
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
+            auto_prune: AutoPruneConfig::default(),
         };
 
         // When saving and reloading.
@@ -309,6 +310,7 @@ mod tests {
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
+            auto_prune: AutoPruneConfig::default(),
         };
 
         // When saving and reloading.
@@ -344,6 +346,7 @@ mod tests {
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
+            auto_prune: AutoPruneConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -379,6 +382,7 @@ mod tests {
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
+            auto_prune: AutoPruneConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -401,6 +405,7 @@ mod tests {
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
+            auto_prune: AutoPruneConfig::default(),
         };
         service.save(&updated).expect("save updated");
 
@@ -432,6 +437,7 @@ mod tests {
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
+            auto_prune: AutoPruneConfig::default(),
         };
         service.save(&prefs).expect("save");
 
