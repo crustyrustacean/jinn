@@ -189,7 +189,7 @@ impl SessionPersistenceActor {
                 tokens_received: 0,
                 cost: None,
             });
-            session.set_context_size(assembled.estimated_tokens());
+
             (old_phase, session.phase())
         };
         super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
