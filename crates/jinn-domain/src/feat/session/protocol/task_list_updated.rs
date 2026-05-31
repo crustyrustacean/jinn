@@ -25,7 +25,7 @@ use crate::protocol::{EventMsg, SessionId};
 /// A task list mutation was applied successfully.
 ///
 /// Broadcast after any todo list tool modifies the task list (add phase, add task,
-/// complete task, defer task, defer to phase, or set list).
+/// complete task, postpone task, postpone to phase, or set list).
 #[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
 #[event_msg("session")]
 pub struct TaskListUpdated {

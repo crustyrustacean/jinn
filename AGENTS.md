@@ -539,8 +539,10 @@ These are the commands used by the project. Always prefer these over raw `cargo`
 
 Task plans live in `.plans/<task>/` where `<task>` is a slugified task name. Each task directory contains:
 
-- `high-level.md` — the phased plan with checkboxes
+- `plan.md` — the specification (source of truth for what to implement)
 - `phase-N.md` — execution plans and phase reviews for each phase
+
+The task list (managed via `todo_*` tools) tracks progress. The spec is an immutable reference — agents annotate it with divergence notes but never rewrite it.
 
 ## 8. Misc
 

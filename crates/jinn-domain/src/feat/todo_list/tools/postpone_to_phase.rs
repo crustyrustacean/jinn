@@ -13,32 +13,32 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! `defer_to_phase` built-in tool - defers a task to the end of a phase.
+//! `postpone_to_phase` built-in tool — postpones a task to the end of a phase.
 
 use crate::feat::todo_list::{PhaseId, TaskId};
 use crate::feat::tools_actor::BoxedToolFuture;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 
-/// Returns the tool definition for `defer_to_phase`.
+/// Returns the tool definition for `postpone_to_phase`.
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
-        name: "todo_defer_to_phase".to_owned(),
-        description: "Defer a task by marking it as deferred (\u{25bc}) and creating a \
+        name: "todo_postpone_to_phase".to_owned(),
+        description: "Postpone a task by marking it as postponed (\u{25bc}) and creating a \
             pending copy at the end of a target phase. Using target_phase_id moves \
             the task to an existing phase. Using phase_description creates a new \
             phase and moves the task there. These two options are mutually exclusive. \
             The source task remains in place but is excluded from agent-facing task \
             list output."
             .to_owned(),
-        prompt_snippet: Some("Defer a task to a phase".to_owned()),
+        prompt_snippet: Some("Postpone a task to a phase".to_owned()),
         prompt_guidelines: vec![
-            "Use target_phase_id to defer to an existing phase. Use phase_description to create \
-             a new phase and defer into it. These are mutually exclusive."
+            "Use target_phase_id to postpone to an existing phase. Use phase_description to create \
+             a new phase and postpone into it. These are mutually exclusive."
                 .to_owned(),
             "The copy is always appended to the end of the target phase. \
-             Use todo_defer_task if you need to position the copy relative to a specific task."
+             Use todo_postpone_task if you need to position the copy relative to a specific task."
                 .to_owned(),
-            "The source task is marked as deferred (\u{25bc}) and will not appear in \
+            "The source task is marked as postponed (\u{25bc}) and will not appear in \
              agent-facing task list queries."
                 .to_owned(),
         ],
@@ -47,15 +47,15 @@ pub fn definition() -> ToolDefinition {
             "properties": {
                 "task_id": {
                     "type": "string",
-                    "description": "ID of the task to defer"
+                    "description": "ID of the task to postpone"
                 },
                 "target_phase_id": {
                     "type": "string",
-                    "description": "ID of an existing phase to defer the task to. Mutually exclusive with phase_description."
+                    "description": "ID of an existing phase to postpone the task to. Mutually exclusive with phase_description."
                 },
                 "phase_description": {
                     "type": "string",
-                    "description": "Description for a new phase to create and defer the task into. Mutually exclusive with target_phase_id."
+                    "description": "Description for a new phase to create and postpone the task into. Mutually exclusive with target_phase_id."
                 }
             },
             "required": ["task_id"],
@@ -65,7 +65,7 @@ pub fn definition() -> ToolDefinition {
     }
 }
 
-/// Executes the `defer_to_phase` tool.
+/// Executes the `postpone_to_phase` tool.
 ///
 /// # Panics
 ///
@@ -126,11 +126,11 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 )
             };
 
-            match list.defer_to_phase(&source_id, &target_pid) {
+            match list.postpone_to_phase(&source_id, &target_pid) {
                 Ok(new_task_id) => {
                     let rendered = list.render_text();
                     Ok(format!(
-                        "Deferred task [{source_id}] \u{2192} created copy [{new_task_id}] in phase [{target_pid}].\n\n{rendered}"
+                        "Postponed task [{source_id}] \u{2192} created copy [{new_task_id}] in phase [{target_pid}].\n\n{rendered}"
                     ))
                 }
                 Err(e) => Err(format!("Error: {e}")),
@@ -224,11 +224,11 @@ mod tests {
     }
 
     #[test]
-    fn defer_to_existing_phase_appends_copy() {
+    fn postpone_to_existing_phase_appends_copy() {
         let (state, session_id, _p1, t1, p2) = setup_with_two_phases();
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_defer_to_phase".to_owned(),
+            name: "todo_postpone_to_phase".to_owned(),
             arguments: serde_json::json!({"task_id": t1, "target_phase_id": p2}).to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
@@ -236,17 +236,17 @@ mod tests {
         let result = futures::executor::block_on(result);
         assert!(result.success, "expected success: {:?}", result.content);
         assert!(
-            result.content.contains("Deferred task"),
-            "should mention deferred task"
+            result.content.contains("Postponed task"),
+            "should mention postponed task"
         );
     }
 
     #[test]
-    fn defer_to_new_phase_creates_and_appends() {
+    fn postpone_to_new_phase_creates_and_appends() {
         let (state, session_id, _p1, t1, _p2) = setup_with_two_phases();
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_defer_to_phase".to_owned(),
+            name: "todo_postpone_to_phase".to_owned(),
             arguments:
                 serde_json::json!({"task_id": t1, "phase_description": "Testing"}).to_string(),
         };
@@ -261,11 +261,11 @@ mod tests {
     }
 
     #[test]
-    fn defer_to_phase_rejects_both_options() {
+    fn postpone_to_phase_rejects_both_options() {
         let (state, session_id, _p1, t1, p2) = setup_with_two_phases();
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_defer_to_phase".to_owned(),
+            name: "todo_postpone_to_phase".to_owned(),
             arguments: serde_json::json!({
                 "task_id": t1,
                 "target_phase_id": p2,
@@ -287,11 +287,11 @@ mod tests {
     }
 
     #[test]
-    fn defer_to_phase_requires_one_option() {
+    fn postpone_to_phase_requires_one_option() {
         let (state, session_id, _p1, t1, _p2) = setup_with_two_phases();
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_defer_to_phase".to_owned(),
+            name: "todo_postpone_to_phase".to_owned(),
             arguments: serde_json::json!({"task_id": t1}).to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
@@ -308,11 +308,11 @@ mod tests {
     }
 
     #[test]
-    fn defer_to_phase_errors_on_unknown_phase() {
+    fn postpone_to_phase_errors_on_unknown_phase() {
         let (state, session_id, _p1, t1, _p2) = setup_with_two_phases();
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_defer_to_phase".to_owned(),
+            name: "todo_postpone_to_phase".to_owned(),
             arguments: serde_json::json!({"task_id": t1, "target_phase_id": "p99"}).to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
@@ -323,11 +323,11 @@ mod tests {
     }
 
     #[test]
-    fn defer_to_phase_errors_on_unknown_task() {
+    fn postpone_to_phase_errors_on_unknown_task() {
         let (state, session_id, _p1, _t1, p2) = setup_with_two_phases();
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_defer_to_phase".to_owned(),
+            name: "todo_postpone_to_phase".to_owned(),
             arguments: serde_json::json!({"task_id": "t99", "target_phase_id": p2}).to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
@@ -338,38 +338,38 @@ mod tests {
     }
 
     #[test]
-    fn defer_to_phase_errors_on_already_deferred() {
+    fn postpone_to_phase_errors_on_already_postponed() {
         let (state, session_id, _p1, t1, p2) = setup_with_two_phases();
-        // Defer once.
+        // Postpone once.
         let call1 = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_defer_to_phase".to_owned(),
+            name: "todo_postpone_to_phase".to_owned(),
             arguments: serde_json::json!({"task_id": t1, "target_phase_id": p2.clone()})
                 .to_string(),
         };
         let ctx1 = make_context(Some(state.clone()), Some(session_id.clone()));
         let result1 = execute(call1, ctx1);
         let result1 = futures::executor::block_on(result1);
-        assert!(result1.success, "first defer should succeed");
+        assert!(result1.success, "first postpone should succeed");
 
-        // Try to defer again.
+        // Try to postpone again.
         let call2 = ToolCall {
             id: "call-2".to_owned(),
-            name: "todo_defer_to_phase".to_owned(),
+            name: "todo_postpone_to_phase".to_owned(),
             arguments: serde_json::json!({"task_id": t1, "target_phase_id": p2}).to_string(),
         };
         let ctx2 = make_context(Some(state), Some(session_id));
         let result2 = execute(call2, ctx2);
         let result2 = futures::executor::block_on(result2);
         assert!(!result2.success);
-        assert!(result2.content.contains("already deferred"));
+        assert!(result2.content.contains("already postponed"));
     }
 
     #[test]
-    fn defer_to_phase_requires_state() {
+    fn postpone_to_phase_requires_state() {
         let call = ToolCall {
             id: "call-1".to_owned(),
-            name: "todo_defer_to_phase".to_owned(),
+            name: "todo_postpone_to_phase".to_owned(),
             arguments: r#"{"task_id": "t1", "target_phase_id": "p1"}"#.to_owned(),
         };
         let ctx = make_context(None, Some(SessionId::new()));
