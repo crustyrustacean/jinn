@@ -417,8 +417,21 @@ pub fn create_core_with_actor_host(
         jinn_domain::feat::queue_actor::QueueActorDeps {
             state: state.clone(),
             counter: token_counter,
+    }
+    ));
+
+    // Context size actor - recalculates context size for the status bar.
+    actors.push(spawn::<
+        jinn_domain::feat::context::context_size_actor::ContextSizeActor,
+    >(
+        "context-size",
+        &sink, handle, &counter, &shutdown_tracker,
+        jinn_domain::feat::context::context_size_actor::ContextSizeActorDeps {
+            state: state.clone(),
+            counter: token_counter,
         },
     ));
+
 
     // ── History mutation workers ────────────────��─────────────────────────
     //
