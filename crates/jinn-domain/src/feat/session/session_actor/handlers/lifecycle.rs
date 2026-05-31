@@ -1036,58 +1036,6 @@ impl SessionPersistenceActor {
         // Step 3: Remove from memory.
         self.remove_and_replace(&payload.session_id);
 
-        // Step 3b: Cascade archive to judge sessions.
-        let judge_ids: Vec<crate::protocol::SessionId> = {
-            let state = self.state.read();
-            state
-                .session
-                .iter()
-                .filter_map(|(id, s)| {
-                    let meta = s.judge().as_ref()?;
-                    if meta.origin_session == payload.session_id {
-                        Some(id.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect()
-        };
-        for judge_id in &judge_ids {
-            tracing::info!(
-                judge_session = %judge_id,
-                origin = %payload.session_id,
-                "cascading archive to judge session"
-            );
-            // Archive in state.
-            {
-                let mut state = self.state.write();
-                if let Some(session) = state.session.get_mut(judge_id) {
-                    session.set_session_state(SessionState::Archived);
-                }
-            }
-            // Persist to DB.
-            self.save_active_session(judge_id).await;
-
-            // Snapshot judge stats before removing.
-            {
-                let state = self.state.read();
-                if let Some(session) = state.session.get(judge_id) {
-                    let frozen = crate::feat::session::snapshot_frozen_node(session);
-                    drop(state);
-                    self.state.write().session.insert_frozen_node(frozen);
-                }
-            }
-
-            // Remove from memory.
-            self.remove_and_replace(judge_id);
-            // Notify.
-            let _ = ctx.send_event(Event::SessionArchived(SessionArchived {
-                session_id: judge_id.clone(),
-            }));
-            let _ = ctx.send_event(Event::SessionClosed(SessionClosed {
-                session_id: judge_id.clone(),
-            }));
-        }
 
         // Step 3: Notify.
         if let Err(e) = ctx.send_event(Event::SessionArchived(SessionArchived {

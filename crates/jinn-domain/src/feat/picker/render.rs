@@ -62,14 +62,6 @@ pub fn render_workflow_picker(frame: &mut Frame<'_>, area: Rect, state: &AppStat
     widget.render(frame, area);
 }
 
-/// Renders the judge picker overlay using [`SelectionWidget`].
-pub fn render_judge_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    let widget = SelectionWidget::new(state.frontend.judge_picker())
-        .title(Line::from(" Judges "))
-        .title_style(Style::default().fg(state.frontend.theme.popup_title))
-        .footer(Line::from(" Enter to attach, ESC to cancel "));
-    widget.render(frame, area);
-}
 
 /// Renders the tool picker overlay.
 pub fn render_tool_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {

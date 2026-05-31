@@ -1,7 +1,6 @@
 //! Generic `HistoryWorkerActor` - wraps any [`HistoryWorker`] as a bus actor.
 //!
 //! Subscribes to [`HistoryAppended`] events. On each event:
-//! 1. Checks exclusion criteria (judge session)
 //! 2. Acquires a brief read lock, clones `history.to_vec()`, drops lock
 //! 3. Spawns a tokio task for `worker.evaluate(history_snapshot).await`
 //! 4. If mutations are produced, emits [`SubmitHistoryMutations`]
@@ -84,18 +83,14 @@ impl<H: HistoryWorker> HistoryWorkerActor<H> {
             return;
         }
 
-        // Skip judge sessions.
+        // Verify session exists.
         {
             let state = self.state.read();
-            let Some(session) = state.session.get(&event.session_id) else {
+            if state.session.get(&event.session_id).is_none() {
                 tracing::info!("session not found, skipping");
-                return;
-            };
-            if session.is_judge() {
                 return;
             }
         }
-
         // Brief read lock → clone history → drop lock.
         let history_snapshot = {
             let state = self.state.read();

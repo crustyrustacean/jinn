@@ -55,25 +55,12 @@ impl SessionPersistenceActor {
         }));
     }
 
-    /// Caches tool definitions from a [`ToolsRegistered`] event into shared state.
-    ///
-    /// Judge-specific tools are excluded - they are injected into judge sessions
-    /// during prompt assembly, not stored in the global tool map.
     pub(in crate::feat::session::session_actor) fn on_tools_registered(
         &self,
         evt: &ToolsRegistered,
     ) {
-        let judge_names: std::collections::HashSet<String> =
-            crate::feat::judge::judge_tool_definitions()
-                .into_iter()
-                .map(|d| d.name)
-                .collect();
-
         let mut state = self.state.write();
         for def in &evt.definitions {
-            if judge_names.contains(&def.name) {
-                continue;
-            }
             state
                 .context
                 .tool_definitions
@@ -141,21 +128,6 @@ impl SessionPersistenceActor {
         }
     }
 
-    /// Stores loaded judges in state.
-    pub(in crate::feat::session::session_actor) fn on_judges_loaded(
-        &self,
-        payload: &crate::feat::judge::JudgesLoaded,
-    ) {
-        if payload.error.is_some() {
-            tracing::warn!(
-                error = ?payload.error,
-                "judge scan reported an error"
-            );
-            return;
-        }
-        let mut state = self.state.write();
-        state.context.judges.clone_from(&payload.judges);
-    }
 
     /// Loads persona picker entries into `AppState`.
     pub(in crate::feat::session::session_actor) fn handle_load_persona_picker_entries(

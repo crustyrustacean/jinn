@@ -272,7 +272,7 @@ mod tests {
         async fn fork(&self, _source_session_id: &SessionId, _at_ordinal: usize) -> Result<SessionId, error_stack::Report<super::super::SessionStoreError>> { Ok(SessionId::new()) }
         async fn set_archived(&self, _session_id: &SessionId, _archived: bool) -> Result<(), error_stack::Report<super::super::SessionStoreError>> { Ok(()) }
         async fn load_unarchived_summaries(&self) -> Result<Vec<SessionSummary>, error_stack::Report<super::super::SessionStoreError>> { Ok(vec![self.summary.clone()]) }
-        async fn load_judge_sessions_for_origin(&self, _origin_session_id: &SessionId) -> Result<Vec<ChatSessionState>, error_stack::Report<super::super::SessionStoreError>> { Ok(vec![]) }
+
     }
 
     #[rstest::rstest]

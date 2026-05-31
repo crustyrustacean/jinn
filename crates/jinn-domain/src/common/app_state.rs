@@ -63,7 +63,7 @@ impl AppState {
 
             PickerKind::SessionLifecycle => Some(self.frontend.session_lifecycle_picker_mut()),
             PickerKind::Workflow => Some(self.frontend.workflow_picker_mut()),
-            PickerKind::Judge => Some(self.frontend.judge_picker_mut()),
+
             PickerKind::CompactionModel => Some(self.frontend.compaction_model_picker_mut()),
             PickerKind::Tool => Some(self.frontend.tool_picker_mut()),
             PickerKind::Skill => Some(self.frontend.skill_picker_mut()),
