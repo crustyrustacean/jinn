@@ -1,4 +1,4 @@
-//! jinn-bench — harness benchmarking library.
+//! jinn-bench - harness benchmarking library.
 //!
 //! Provides bench task definitions, fixture management, CSV output, and
 //! builtin lifecycle handler registration for the bench system.

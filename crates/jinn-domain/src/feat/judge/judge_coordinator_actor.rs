@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! Judge coordinator actor — orchestrates judge evaluation cycles.
+//! Judge coordinator actor - orchestrates judge evaluation cycles.
 //!
 //! Subscribes to [`SessionPhaseChanged`] and [`JudgeVerdict`] events.
 //! When an origin session transitions to `Idle`, triggers attached judges
@@ -89,7 +89,7 @@ struct ReceivedVerdict {
 /// The judge coordinator actor.
 ///
 /// Orchestrates the evaluation loop for judge sessions attached to an origin.
-/// Does NOT create, launch, or manage sessions — only pushes trigger messages
+/// Does NOT create, launch, or manage sessions - only pushes trigger messages
 /// and collects verdicts.
 pub struct JudgeCoordinatorActor {
     /// Shared application state.
@@ -316,7 +316,7 @@ impl JudgeCoordinatorActor {
             .any(|v| v.judge_session_id == *judge_session_id);
 
         if already_responded {
-            // Judge already responded — this Idle is from a re-trigger that resulted
+            // Judge already responded - this Idle is from a re-trigger that resulted
             // in a verdict being emitted. No action needed.
             return;
         }
@@ -394,7 +394,7 @@ impl JudgeCoordinatorActor {
     /// 2. If not found (stale or unexpected), ignore.
     /// 3. If the origin is no longer Idle, discard pending results.
     /// 4. Append the verdict.
-    /// 5. Check if all expected verdicts are in — if yes, consolidate and dispatch.
+    /// 5. Check if all expected verdicts are in - if yes, consolidate and dispatch.
     fn handle_judge_verdict(&mut self, payload: &JudgeVerdict, ctx: &ActorContext) {
         let origin_id = &payload.origin_session_id;
 
@@ -422,7 +422,7 @@ impl JudgeCoordinatorActor {
                     return;
                 }
             } else {
-                // Origin session gone — discard.
+                // Origin session gone - discard.
                 drop(guard);
                 self.pending.remove(origin_id);
                 return;
@@ -841,10 +841,10 @@ mod tests {
                 &ctx,
             )
             .await;
-        // Only 2 of 3 — not yet complete.
+        // Only 2 of 3 - not yet complete.
         assert!(sink.commands().is_empty());
 
-        // Judge 2 passes — all verdicts in.
+        // Judge 2 passes - all verdicts in.
         actor
             .handle(
                 verdict_event(judge_sessions[2].clone(), origin_id.clone(), Verdict::Pass),
@@ -934,7 +934,7 @@ mod tests {
             .expect("origin exists")
             .begin_sending();
 
-        // Judge verdict arrives — stale.
+        // Judge verdict arrives - stale.
         actor
             .handle(
                 verdict_event(judge_id, origin_id.clone(), Verdict::Pass),
@@ -985,7 +985,7 @@ mod tests {
         // Origin session is removed.
         state.write().session.remove(&origin_id);
 
-        // Judge verdict arrives — origin gone.
+        // Judge verdict arrives - origin gone.
         actor
             .handle(verdict_event(judge_id, origin_id, Verdict::Pass), &ctx)
             .await;
@@ -1180,7 +1180,7 @@ mod tests {
         // When the judge goes Idle again (e.g., from a delayed phase change).
         actor.handle(idle_event(judge_id.clone()), &ctx).await;
 
-        // Then no retry trigger is emitted — verdict was already received.
+        // Then no retry trigger is emitted - verdict was already received.
         let commands = sink.commands();
         let retry_triggers = find_commands(
             &commands,
@@ -1536,7 +1536,7 @@ mod tests {
             .handle(verdict_event(judge_id.clone(), origin_id.clone(), Verdict::Pass), &ctx)
             .await;
 
-        // Then consolidation happens — origin is no longer busy.
+        // Then consolidation happens - origin is no longer busy.
         let guard = state.read();
         let origin_session = guard.session.get(&origin_id).expect("origin exists");
         assert!(
@@ -1569,7 +1569,7 @@ mod tests {
             .expect("origin exists")
             .begin_sending();
 
-        // Judge goes Idle without verdict — but origin is no longer Idle.
+        // Judge goes Idle without verdict - but origin is no longer Idle.
         actor.handle(idle_event(judge_id.clone()), &ctx).await;
 
         // Then no retry trigger is emitted.
@@ -1612,7 +1612,7 @@ mod tests {
         actor.handle(idle_event(origin_id.clone()), &ctx).await;
         sink.clear();
 
-        // Judge goes Idle once without verdict — should be retry 1 (not retry 2).
+        // Judge goes Idle once without verdict - should be retry 1 (not retry 2).
         actor.handle(idle_event(judge_id.clone()), &ctx).await;
 
         // Then a retry trigger was sent (not exhausted).

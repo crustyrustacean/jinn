@@ -69,7 +69,7 @@ pub struct AppWorld {
     /// Temp directory holding all test filesystem paths. Cleaned up on drop.
     #[allow(dead_code)]
     temp_dir: tempfile::TempDir,
-    /// The fake LLM factory — kept so tests can inspect received calls.
+    /// The fake LLM factory - kept so tests can inspect received calls.
     fake_factory: Arc<FakeLlmServiceFactory>,
     /// Pre-reload CWD captured during "saved and reloaded" step.
     cwd_before_reload: Option<std::path::PathBuf>,
@@ -117,7 +117,7 @@ impl AppWorld {
             let rt = tokio::runtime::Runtime::new().expect("test runtime");
             let handle = rt.handle().clone();
 
-            // Build fake services — same pattern as production App::dispatch
+            // Build fake services - same pattern as production App::dispatch
             // but with all fake implementations.
             let paths = jinn_domain::AppPaths::new_in(&temp_dir_path);
             let config_storage = ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new()));
@@ -137,7 +137,7 @@ impl AppWorld {
                 jinn_domain::SqliteSessionStore::new_in(&paths.sessions_dir()).expect("store"),
             ));
 
-            // Call production wiring — spawns all 16 actors.
+            // Call production wiring - spawns all 16 actors.
             let (core, services, actor_host) = actor_wiring::create_core_with_actor_host(
                 &handle,
                 llm_service,

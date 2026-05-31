@@ -32,7 +32,7 @@ pub struct SessionSummary {
     /// Whether this session is loaded in memory or archived.
     #[serde(default = "default_session_state")]
     pub session_state: SessionState,
-    /// Parent session ID — `None` for root sessions.
+    /// Parent session ID - `None` for root sessions.
     ///
     /// Deserialized from stored `ChatSessionState` JSON; defaults to `None`
     /// for sessions created before parent tracking was added.

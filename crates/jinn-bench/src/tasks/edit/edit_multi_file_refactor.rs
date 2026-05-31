@@ -1,4 +1,4 @@
-//! edit-multi-file-refactor bench task — rename a function across lib.rs and main.rs.
+//! edit-multi-file-refactor bench task - rename a function across lib.rs and main.rs.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

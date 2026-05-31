@@ -1,4 +1,4 @@
-//! Picker — fuzzy search picker for providers, strategies, and sessions.
+//! Picker - fuzzy search picker for providers, strategies, and sessions.
 //!
 //! Handles all picker intents (open, insert char, backspace, confirm, move,
 //! cursor movement), their validators, and rendering.

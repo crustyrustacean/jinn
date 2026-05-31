@@ -1,4 +1,4 @@
-//! User preferences persistence — manages `~/.config/jinn/jinn.toml`.
+//! User preferences persistence - manages `~/.config/jinn/jinn.toml`.
 //!
 //! Provides the [`UserPreferences`] data type, storage trait, and service wrapper
 //! for reading and writing user preferences across app restarts. The preferences

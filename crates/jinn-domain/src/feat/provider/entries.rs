@@ -1,4 +1,4 @@
-//! Provider entries — loading, sorting, and formatting.
+//! Provider entries - loading, sorting, and formatting.
 //!
 //! Contains loader functions, sorting, and formatting utilities for the
 //! provider picker overlay. The [`PickerEntry`] struct and [`PickerItem`]
@@ -247,7 +247,7 @@ fn remote_entry(
 
 /// Merges remote (cache-discovered) models into the entries list.
 ///
-/// Static entries win on collision — if a static entry already claims
+/// Static entries win on collision - if a static entry already claims
 /// `{provider_name}/{model}`, the remote version is skipped.
 fn merge_remote_entries(
     entries: &mut Vec<PickerEntry>,
@@ -294,7 +294,7 @@ fn merge_remote_entries(
 /// Loads all provider and alias entries from the registry, ready for `set_items()`.
 ///
 /// Reads the provider registry, API keys, and optional model cache
-/// to produce the full list of entries. No filtering is applied — that is
+/// to produce the full list of entries. No filtering is applied - that is
 /// handled by [`SelectionState`] via fuzzy matching on [`PickerItem::display_label`].
 ///
 /// Remote models from the cache are merged in after static entries. Static entries
@@ -331,7 +331,7 @@ pub fn load_provider_entries(
 
     // Phase 3: Merge remote models from cache.
     // Remote models are discovered at runtime (e.g., from Ollama's /api/tags).
-    // Static entries win on collision — if a static entry already claims
+    // Static entries win on collision - if a static entry already claims
     // `{provider_name}/{model}`, the remote version is skipped.
     if let Some(cache) = model_cache {
         merge_remote_entries(&mut entries, &static_ids, registry, api_keys, cache, theme);

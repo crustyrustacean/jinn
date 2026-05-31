@@ -42,7 +42,7 @@ impl std::fmt::Display for StopReason {
 /// Usage and cost data from a provider's streaming response.
 ///
 /// Populated when the provider reports token counts or cost in its streaming
-/// response. Not all providers report all fields — `None` means the provider
+/// response. Not all providers report all fields - `None` means the provider
 /// did not include that data.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StreamUsage {

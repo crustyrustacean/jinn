@@ -1,4 +1,4 @@
-//! System resource loader — loads internal system files from user and system directories.
+//! System resource loader - loads internal system files from user and system directories.
 //!
 //! System resources are files like `_compaction.md` that live in the prompts
 //! directory but are prefixed with `_` to mark them as internal. They are not
@@ -19,8 +19,8 @@ pub struct SystemResourceError;
 /// Load a system resource file by name from user and system directories.
 ///
 /// Resolution order:
-/// 1. `user_dir/<name>` — user override
-/// 2. `system_dir/<name>` — system default
+/// 1. `user_dir/<name>` - user override
+/// 2. `system_dir/<name>` - system default
 ///
 /// # Errors
 ///

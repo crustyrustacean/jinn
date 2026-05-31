@@ -8,12 +8,12 @@ use serde::{Deserialize, Serialize};
 /// In `Input` mode, keystrokes are typed into the input buffer.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Mode {
-    /// Command mode — keystrokes trigger actions.
+    /// Command mode - keystrokes trigger actions.
     #[default]
     Normal,
-    /// Text input mode — keystrokes type into the buffer.
+    /// Text input mode - keystrokes type into the buffer.
     Input,
-    /// Provider picker mode — keystrokes filter/select a provider.
+    /// Provider picker mode - keystrokes filter/select a provider.
     Picker,
 }
 

@@ -1,16 +1,16 @@
-//! Dynamic example — graph built entirely from data, no closures.
+//! Dynamic example - graph built entirely from data, no closures.
 //!
 //! Demonstrates data-driven graph construction using [`NodeRegistry`] and
 //! [`DynamicNode`]. The graph topology and node logic come from factory
-//! registrations and JSON config — the builder function contains zero
+//! registrations and JSON config - the builder function contains zero
 //! Rust closures (no `CodeNode`).
 //!
 //! Graph: `source` → `uppercase` → `prefix` → `sink`
 //!
-//! 1. **source** — emits a hard-coded string from config
-//! 2. **uppercase** — uppercases the text
-//! 3. **prefix** — prepends a configurable label
-//! 4. **sink** — accepts the result
+//! 1. **source** - emits a hard-coded string from config
+//! 2. **uppercase** - uppercases the text
+//! 3. **prefix** - prepends a configurable label
+//! 4. **sink** - accepts the result
 
 use jinn_workflow::graph::{WorkflowGraph, WorkflowGraphBuilder};
 use jinn_workflow::node::{DynamicNode, NodeError, WorkflowNode};
@@ -158,7 +158,7 @@ pub fn register(registry: &mut WorkflowRegistry) {
 
 /// Builds the "dynamic" workflow graph entirely from the node registry.
 ///
-/// Every node is created via a [`NodeFactory`] and [`DynamicNode`] —
+/// Every node is created via a [`NodeFactory`] and [`DynamicNode`] -
 /// no [`CodeNode`](jinn_workflow::node::code::CodeNode) closures.
 /// The graph topology and node configuration come from data.
 ///

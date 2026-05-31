@@ -1,4 +1,4 @@
-//! fix-logic-sort bench task — fix bubble sort index out of bounds.
+//! fix-logic-sort bench task - fix bubble sort index out of bounds.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

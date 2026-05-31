@@ -1,6 +1,6 @@
 //! Host infrastructure for the jinn actor system.
 //!
-//! Provides [`InMemoryActorHost`] for managing actor lifecycle — routing bus
+//! Provides [`InMemoryActorHost`] for managing actor lifecycle - routing bus
 //! events/commands into actors via closure-based [`RoutingEntry`], spawning
 //! tokio tasks, and shutting down gracefully.
 

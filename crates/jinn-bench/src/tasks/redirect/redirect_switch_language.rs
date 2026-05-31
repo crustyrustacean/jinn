@@ -1,4 +1,4 @@
-//! redirect-switch-language bench task — add word counting, then rewrite in Rust.
+//! redirect-switch-language bench task - add word counting, then rewrite in Rust.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

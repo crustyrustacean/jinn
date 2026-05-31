@@ -1,4 +1,4 @@
-//! Tool call state tracking handlers — manage tool call lifecycle during streaming.
+//! Tool call state tracking handlers - manage tool call lifecycle during streaming.
 //!
 //! Handles the full tool call lifecycle: creation via streaming, argument assembly,
 //! execution tracking, result collection, and batch completion routing.
@@ -98,7 +98,7 @@ impl SessionPersistenceActor {
         session.append_tool_result_output(&event.tool_call_id, &event.output);
     }
 
-    /// All tools in a batch have finished — route the continuation through
+    /// All tools in a batch have finished - route the continuation through
     /// context assembly so token counting and prompt strategy apply.
     ///
     /// By this point, the session history already contains `ToolCall`,
@@ -721,7 +721,7 @@ mod tests {
         };
         actor.on_tool_batch_completed(&event, &ctx);
 
-        // Then the mutation was applied — the assistant entry is now ForcedExclude.
+        // Then the mutation was applied - the assistant entry is now ForcedExclude.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let assistant = session
@@ -791,7 +791,7 @@ mod tests {
         };
         actor.on_tool_batch_completed(&event, &ctx);
 
-        // Then the mutation was NOT applied — the entry is still Default.
+        // Then the mutation was NOT applied - the entry is still Default.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         let assistant = session

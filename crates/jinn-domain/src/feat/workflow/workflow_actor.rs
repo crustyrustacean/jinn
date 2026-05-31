@@ -1,4 +1,4 @@
-//! Workflow actor — bridges actor bus events to workflow execution.
+//! Workflow actor - bridges actor bus events to workflow execution.
 //!
 //! Subscribes to `StartWorkflow`, `CancelWorkflow`, and `SessionPhaseChanged`.
 //! Manages the lifecycle of workflow executions by coordinating between
@@ -100,7 +100,7 @@ impl WorkflowActor {
             Command::LoadWorkflowPickerEntries(_) => {
                 self.handle_load_workflow_picker_entries();
             }
-            // Commands NOT subscribed to — these should not arrive.
+            // Commands NOT subscribed to - these should not arrive.
             _ => {}
         }
     }
@@ -164,7 +164,7 @@ impl WorkflowActor {
         let (execution, cancel) = {
             let guard = self.state.read();
             let Some(workflow) = guard.workflow.get(workflow_id) else {
-                tracing::warn!(id = %workflow_id, "workflow not found for start — was it initialized?");
+                tracing::warn!(id = %workflow_id, "workflow not found for start - was it initialized?");
                 return;
             };
             (workflow.execution.clone(), workflow.cancel.clone())

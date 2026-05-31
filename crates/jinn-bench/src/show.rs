@@ -1,4 +1,4 @@
-//! `show` subcommand — render bench CSV as a formatted terminal table.
+//! `show` subcommand - render bench CSV as a formatted terminal table.
 
 #![allow(clippy::print_stdout, reason = "CLI output")]
 #![allow(clippy::cast_precision_loss, reason = "display formatting")]
@@ -273,7 +273,7 @@ pub(crate) fn read_csv(path: &Path) -> Result<Vec<BenchResult>, Box<dyn std::err
     for record in reader.records() {
         let record = record.map_err(|e| {
             format!(
-                "Failed to parse '{}' as CSV — is this actually a CSV file? {e}",
+                "Failed to parse '{}' as CSV - is this actually a CSV file? {e}",
                 path.display()
             )
         })?;

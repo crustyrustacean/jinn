@@ -1,4 +1,4 @@
-//! Scroll indicator — renders "↑ N lines above" when scrolled up.
+//! Scroll indicator - renders "↑ N lines above" when scrolled up.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;

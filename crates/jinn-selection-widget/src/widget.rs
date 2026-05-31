@@ -1,4 +1,4 @@
-//! Selection widget — ratatui renderer for the picker popup.
+//! Selection widget - ratatui renderer for the picker popup.
 //!
 //! [`SelectionWidget`] renders a telescope-style popup overlay: a bordered block containing
 //! a filter input row with a real cursor, a horizontal separator, scrollable result rows,
@@ -99,7 +99,7 @@ pub fn compute_popup_rect(area: Rect) -> Rect {
     let max_body_rows = (f32::from(area.height) * PICKER_MAX_HEIGHT_FRAC).floor() as u16;
     let popup_height = (max_body_rows + 4).min(area.height);
 
-    // Integer division is intentional — we're computing cell positions for centering.
+    // Integer division is intentional - we're computing cell positions for centering.
     #[expect(clippy::integer_division, reason = "cell positions are integers")]
     let popup_x = area.width.saturating_sub(popup_width) / 2;
     #[expect(clippy::integer_division, reason = "cell positions are integers")]
@@ -229,7 +229,7 @@ where
             Paragraph::new(separator).style(Style::default().fg(self.colors.separator));
         frame.render_widget(sep_paragraph, separator_area);
 
-        // Results area — windowed display with scroll_offset.
+        // Results area - windowed display with scroll_offset.
         let max_visible = results_area.height as usize;
         let scroll_offset = self.state.scroll_offset();
         let selection = self.state.selection();

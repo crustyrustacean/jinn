@@ -86,7 +86,7 @@ pub(crate) fn tree_prefix(entry: &SessionEntry) -> String {
     if entry.depth == 0 {
         return String::new();
     }
-    // Skip ancestor_continuations[0] — the root-level continuation.
+    // Skip ancestor_continuations[0] - the root-level continuation.
     // Roots have no tree prefix, so there's nothing for that │ to connect to.
     let mut prefix = String::with_capacity(entry.depth * 3);
     for &continues in &entry.ancestor_continuations[1..] {

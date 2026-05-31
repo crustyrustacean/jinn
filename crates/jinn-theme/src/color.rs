@@ -12,7 +12,7 @@ use serde::de::{self, Visitor};
 /// - **ANSI name**: `"yellow"`, `"DarkGray"` (case-insensitive ratatui Color name)
 /// - **Hex**: `"#FFA500"` or `"#ffa500"`
 /// - **RGB array**: `[255, 165, 0]`
-/// - **ANSI code**: `"A80"` — prefix `A` followed by 0–255, resolved to RGB
+/// - **ANSI code**: `"A80"` - prefix `A` followed by 0–255, resolved to RGB
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ThemeColor(pub Color);
 

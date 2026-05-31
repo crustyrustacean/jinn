@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// content is still growing (streaming).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ToolResultStatus {
-    /// Tool is still executing — content may grow incrementally.
+    /// Tool is still executing - content may grow incrementally.
     Pending,
     /// Tool completed successfully.
     Success,

@@ -1,4 +1,4 @@
-//! Chat bottom line — horizontal separator at the bottom of the content area.
+//! Chat bottom line - horizontal separator at the bottom of the content area.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;

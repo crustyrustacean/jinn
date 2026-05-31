@@ -1,4 +1,4 @@
-//! User entry rendering — markdown-rendered text on a block background.
+//! User entry rendering - markdown-rendered text on a block background.
 
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};

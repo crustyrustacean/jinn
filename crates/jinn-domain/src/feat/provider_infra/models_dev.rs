@@ -31,7 +31,7 @@ impl ModelsDevData {
     /// If neither file exists, returns an empty lookup. If the user file is
     /// corrupted (invalid JSON), falls back to the system file with a warning.
     ///
-    /// This never returns an error — missing or unreadable files result in
+    /// This never returns an error - missing or unreadable files result in
     /// an empty lookup table.
     pub fn load(user_path: &Path, system_path: &Path) -> Self {
         // Try user path first.
@@ -62,7 +62,7 @@ impl ModelsDevData {
             }
         }
 
-        // Neither file exists or both corrupted — return empty.
+        // Neither file exists or both corrupted - return empty.
         Self::new()
     }
 
@@ -263,7 +263,7 @@ mod tests {
         // When loading.
         let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
 
-        // Then get() returns Some(0) — not None.
+        // Then get() returns Some(0) - not None.
         assert_eq!(data.get("text-embedding-3-large"), Some(0));
     }
 

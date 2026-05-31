@@ -1,4 +1,4 @@
-//! edit-large-file-surgical bench task — change exactly one specific 1024 to 4096 in a ~360-line file.
+//! edit-large-file-surgical bench task - change exactly one specific 1024 to 4096 in a ~360-line file.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 
@@ -22,7 +22,7 @@ pub fn task() -> BenchTask {
         messages: vec![
             "In main.rs, change the initial read buffer size in the `read_file` function \
              from 1024 to 4096. This is the line `let mut buffer = vec![0u8; 1024];` \
-             near the middle of the file. Only change that specific occurrence — there \
+             near the middle of the file. Only change that specific occurrence - there \
              are other uses of 1024 in the file that should not be modified.",
         ],
         fixture_dir: Some(&FIXTURES),

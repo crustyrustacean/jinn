@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{Verbosity, WarnLevel};
 
-/// jinn — a TUI agent harness with a component/actor system.
+/// jinn - a TUI agent harness with a component/actor system.
 #[derive(Debug, Parser)]
 #[command(name = "jinn", version, about)]
 pub struct Cli {

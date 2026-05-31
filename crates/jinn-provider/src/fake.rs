@@ -282,7 +282,7 @@ impl LlmService for FakeLlmService {
         }
 
         if self.tool_calls.is_empty() {
-            // No tool calls — just text and Done(end_turn).
+            // No tool calls - just text and Done(end_turn).
             events.push(Ok(StreamEvent::Done {
                 stop_reason: StopReason::EndTurn,
                 usage: None,

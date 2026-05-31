@@ -213,7 +213,7 @@ async fn actor_skips_judge_session() {
     let event = HistoryAppended { session_id };
     actor.handle_history_appended(&event, &ctx).await;
 
-    // Then no commands were emitted — judge session is skipped.
+    // Then no commands were emitted - judge session is skipped.
     let commands = sink.take_commands();
     assert!(commands.is_empty());
 }

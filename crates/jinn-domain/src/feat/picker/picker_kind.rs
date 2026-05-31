@@ -1,4 +1,4 @@
-//! Picker kind — identifies which picker is currently active.
+//! Picker kind - identifies which picker is currently active.
 //!
 //! A single set of `Picker*` commands, `Mode::Picker`, per-picker `Scope`,
 //! and keymap bindings serve all pickers. [`PickerKind`] determines which
@@ -18,17 +18,17 @@ pub enum PickerKind {
     Persona,
     /// Theme picker.
     Theme,
-    /// Session lifecycle picker — select a lifecycle recipe for new session creation.
+    /// Session lifecycle picker - select a lifecycle recipe for new session creation.
     SessionLifecycle,
-    /// Workflow picker — select a workflow to launch.
+    /// Workflow picker - select a workflow to launch.
     Workflow,
-    /// Compaction model picker — select a model for context compaction summarization.
+    /// Compaction model picker - select a model for context compaction summarization.
     CompactionModel,
-    /// Judge picker — select a judge definition to attach.
+    /// Judge picker - select a judge definition to attach.
     Judge,
-    /// Tool picker — toggle which tools are enabled for the session.
+    /// Tool picker - toggle which tools are enabled for the session.
     Tool,
-    /// Skill picker — toggle which skills are enabled for the session.
+    /// Skill picker - toggle which skills are enabled for the session.
     Skill,
 }
 

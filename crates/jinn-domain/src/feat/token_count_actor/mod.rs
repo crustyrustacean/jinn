@@ -1,4 +1,4 @@
-//! Token count actor — computes tiktoken-based counts for chat entries.
+//! Token count actor - computes tiktoken-based counts for chat entries.
 //!
 //! Subscribes to [`HistoryAppended`] and [`SessionLoadCompleted`] to
 //! asynchronously compute per-entry token counts and write them to the

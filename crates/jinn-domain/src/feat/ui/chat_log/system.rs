@@ -1,4 +1,4 @@
-//! System entry rendering — dark gray with indentation.
+//! System entry rendering - dark gray with indentation.
 
 use ratatui::style::Style;
 use ratatui::text::Line;

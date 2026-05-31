@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! `set_list` built-in tool — replaces the entire task list in one call.
+//! `set_list` built-in tool - replaces the entire task list in one call.
 
 use crate::feat::tools_actor::BoxedToolFuture;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
@@ -30,7 +30,7 @@ pub fn definition() -> ToolDefinition {
             .to_owned(),
         prompt_snippet: Some("Create a new task list".to_owned()),
         prompt_guidelines: vec![
-            "Provide the full plan — all phases and tasks — in a single call. \
+            "Provide the full plan - all phases and tasks - in a single call. \
              Existing phases and tasks are replaced entirely."
                 .to_owned(),
             "Each phase must have a description. Tasks within a phase are optional."

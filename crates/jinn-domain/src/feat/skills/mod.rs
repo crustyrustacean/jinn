@@ -1,4 +1,4 @@
-//! Agent skills — discovery, parsing, and data model.
+//! Agent skills - discovery, parsing, and data model.
 //!
 //! Scans `~/.agents/skills/*/SKILL.md` for skill definitions, parses their
 //! YAML frontmatter, and provides the data model for skill metadata.

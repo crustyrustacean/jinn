@@ -2,7 +2,7 @@
 //!
 //! Each [`Backend`] variant maps to a [`ProviderConfig`] with the correct
 //! default base URL, endpoint paths, and custom headers. Anthropic and Google
-//! are intentionally unsupported here — they have their own implementations.
+//! are intentionally unsupported here - they have their own implementations.
 
 use crate::Backend;
 

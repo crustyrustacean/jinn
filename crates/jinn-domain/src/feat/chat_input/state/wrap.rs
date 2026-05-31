@@ -125,7 +125,7 @@ fn wrap_logical_line(
             // the word stays on the current line. Let's think...
             //
             // "hello world" at width 6:
-            //   "hello " (6 cols) — break after space
+            //   "hello " (6 cols) - break after space
             //   "world" (5 cols)
             //
             // So the break point is i+1 (the grapheme after the whitespace).
@@ -157,7 +157,7 @@ fn wrap_logical_line(
                     .sum();
                 last_word_break = None;
             } else {
-                // No word break found — break at the current position
+                // No word break found - break at the current position
                 // (forced break in the middle of a long word).
                 out.push(WrappedLine {
                     grapheme_start: grapheme_offset + line_start,
@@ -228,8 +228,8 @@ mod tests {
     #[rstest::rstest]
     fn long_text_wraps_at_word_boundary() {
         // Given "hello world and more" at width 10.
-        // Line 1: "hello " (6 graphemes) — wrap after space at col 6
-        // Line 2: "world and " (10 graphemes) — exactly fits width 10
+        // Line 1: "hello " (6 graphemes) - wrap after space at col 6
+        // Line 2: "world and " (10 graphemes) - exactly fits width 10
         // Line 3: "more" (4 graphemes)
         let text = "hello world and more";
 
@@ -418,7 +418,7 @@ mod tests {
         // When wrapping at width 10.
         let lines = wrap_text(text, 10);
 
-        // Then no wrap — exactly fits.
+        // Then no wrap - exactly fits.
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].grapheme_end - lines[0].grapheme_start, 5);
     }
@@ -486,7 +486,7 @@ mod tests {
 
     #[rstest::rstest]
     fn whitespace_at_end_of_line_is_not_break_point() {
-        // Given "hello " (6 cols) at width 6 — the space is the last grapheme.
+        // Given "hello " (6 cols) at width 6 - the space is the last grapheme.
         let text = "hello ";
 
         // When wrapping at width 6.
@@ -499,7 +499,7 @@ mod tests {
 
     #[rstest::rstest]
     fn whitespace_mid_line_records_break() {
-        // Given "hello world" at width 6 — break should happen after space.
+        // Given "hello world" at width 6 - break should happen after space.
         let text = "hello world";
 
         // When wrapping at width 6.

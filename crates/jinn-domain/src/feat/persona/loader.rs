@@ -1,4 +1,4 @@
-//! Persona file parser — reads markdown files with TOML frontmatter.
+//! Persona file parser - reads markdown files with TOML frontmatter.
 //!
 //! Same format as prompt templates:
 //!

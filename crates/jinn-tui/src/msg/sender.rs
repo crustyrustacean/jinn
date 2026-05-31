@@ -24,7 +24,7 @@ impl MsgSender {
 
     /// Sends a message into the channel.
     ///
-    /// Non-blocking (unbounded channel). Discards send errors — if the
+    /// Non-blocking (unbounded channel). Discards send errors - if the
     /// receiver has been dropped the message is simply lost.
     pub fn send(&self, msg: Msg) {
         let _ = self.inner.send(msg);

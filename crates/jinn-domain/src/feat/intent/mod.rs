@@ -1,11 +1,11 @@
-//! User intents — what the user wants to do.
+//! User intents - what the user wants to do.
 //!
 //! Every keymap binding produces an [`Intent`] variant. Each intent has a
 //! dedicated validator function that checks whether the intent can proceed
 //! given the current [`AppState`].
 //!
 //! The [`IntentHandler`] processes all 55 intents: it validates each intent,
-//! then acts on it — mutating [`AppState`], setting TUI signals, and returning
+//! then acts on it - mutating [`AppState`], setting TUI signals, and returning
 //! commands/events for the actor system.
 //!
 //! This crate has no TUI or async dependency. It supports headless and

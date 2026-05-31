@@ -1,10 +1,10 @@
-//! Pipeline example — chain of text processing nodes into an LLM.
+//! Pipeline example - chain of text processing nodes into an LLM.
 //!
 //! A 4-node pipeline:
-//! 1. **source** — emits a hard-coded topic string
-//! 2. **formatter** — wraps the topic in a prompt template
-//! 3. **llm** — sends the prompt to the LLM and returns the response
-//! 4. **transform** — uppercases the first line (simulates post-processing)
+//! 1. **source** - emits a hard-coded topic string
+//! 2. **formatter** - wraps the topic in a prompt template
+//! 3. **llm** - sends the prompt to the LLM and returns the response
+//! 4. **transform** - uppercases the first line (simulates post-processing)
 
 use jinn_workflow::graph::{WorkflowGraph, WorkflowGraphBuilder};
 use jinn_workflow::node::code::CodeNode;
@@ -17,7 +17,7 @@ use crate::feat::workflow::workflow_registry::WorkflowRegistry;
 ///
 /// # Panics
 ///
-/// Never panics — registration is infallible.
+/// Never panics - registration is infallible.
 pub fn register(registry: &mut WorkflowRegistry) {
     registry.register("pipeline", build_pipeline);
 }
@@ -38,7 +38,7 @@ pub fn register(registry: &mut WorkflowRegistry) {
     reason = "static graph definition should always be valid"
 )]
 pub fn build_pipeline() -> WorkflowGraph {
-    // Node 1: Source — emits a topic string.
+    // Node 1: Source - emits a topic string.
     let source = CodeNode::new(
         "source".to_owned(),
         vec![], // no inputs
@@ -57,7 +57,7 @@ pub fn build_pipeline() -> WorkflowGraph {
         },
     );
 
-    // Node 2: Formatter — wraps the topic in a prompt template.
+    // Node 2: Formatter - wraps the topic in a prompt template.
     let formatter = CodeNode::new(
         "formatter".to_owned(),
         vec![PortDef::text("topic")],
@@ -75,11 +75,11 @@ pub fn build_pipeline() -> WorkflowGraph {
         },
     );
 
-    // Node 3: LLM — receives the formatted prompt and calls the LLM.
+    // Node 3: LLM - receives the formatted prompt and calls the LLM.
     let llm =
         LlmNode::new("You are a concise technical writer. Provide accurate, brief summaries.");
 
-    // Node 4: Transform — uppercases the first line of the response.
+    // Node 4: Transform - uppercases the first line of the response.
     let transform = CodeNode::new(
         "transform".to_owned(),
         vec![PortDef::text("response")],

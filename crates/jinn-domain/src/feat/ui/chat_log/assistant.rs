@@ -1,4 +1,4 @@
-//! Assistant entry rendering — markdown-rendered text.
+//! Assistant entry rendering - markdown-rendered text.
 
 use ratatui::text::Line;
 

@@ -1,4 +1,4 @@
-//! Session lifecycle handlers — manage setup, teardown, close, and archive operations.
+//! Session lifecycle handlers - manage setup, teardown, close, and archive operations.
 //!
 //! Handles the full session lifecycle: running setup/teardown commands, closing sessions
 //! (with optional teardown), archiving sessions to SQLite, and creating replacement sessions
@@ -52,7 +52,7 @@ pub(in crate::feat::session::session_actor) fn setup_complete_msg(
     cwd: &std::path::Path,
 ) -> ChatEntry {
     ChatEntry::system(format!(
-        "✅ Setup complete — Using {} as cwd",
+        "✅ Setup complete - Using {} as cwd",
         cwd.display()
     ))
 }
@@ -441,7 +441,7 @@ impl SessionPersistenceActor {
                 });
             }
             crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => {
-                // Builtin teardown is synchronous — run inline.
+                // Builtin teardown is synchronous - run inline.
                 let success = self
                     .run_builtin_teardown(&payload.session_id, id, &lifecycle_args, ctx)
                     .await;
@@ -634,7 +634,7 @@ impl SessionPersistenceActor {
                             );
                         });
 
-                        return; // Return immediately — async result handled via FinishSessionTeardown
+                        return; // Return immediately - async result handled via FinishSessionTeardown
                     }
                     crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => {
                         let success = self
@@ -686,7 +686,7 @@ impl SessionPersistenceActor {
         }
     }
 
-    /// Handle `FinishSessionTeardown` — completion of an async teardown shell command.
+    /// Handle `FinishSessionTeardown` - completion of an async teardown shell command.
     ///
     /// Called by the spawned tokio task after the teardown shell command finishes.
     /// Depending on `payload.close_after`:
@@ -711,7 +711,7 @@ impl SessionPersistenceActor {
         }
 
         if let Some(ref error_msg) = payload.error {
-            // Teardown failed — push error entry, emit failure, reset phase.
+            // Teardown failed - push error entry, emit failure, reset phase.
             let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
                 session_id: payload.session_id.clone(),
                 entry: ChatEntry::error(format!("Teardown failed: {error_msg}")),
@@ -833,7 +833,7 @@ impl SessionPersistenceActor {
     /// 3. Emit `SessionArchived` + `SessionClosed`
     ///
     /// Does NOT check or advance `LifecycleScriptState`. The session is simply
-    /// put away — it can be unarchived later.
+    /// put away - it can be unarchived later.
     pub(in crate::feat::session::session_actor) async fn handle_archive_session(
         &self,
         payload: &ArchiveSession,
@@ -941,7 +941,7 @@ impl SessionPersistenceActor {
     /// Returns `true` on success, `false` on failure (error entry pushed to session).
     /// Remove session from HashMap, create replacement if empty, reconcile cursor.
     ///
-    /// Pure state mutation helper. Does NOT emit events — callers handle notifications.
+    /// Pure state mutation helper. Does NOT emit events - callers handle notifications.
     /// Delegates cursor and active-session reconciliation to
     /// [`reconcile_after_session_removal`].
     ///

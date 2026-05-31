@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! `defer_to_phase` built-in tool — defers a task to the end of a phase.
+//! `defer_to_phase` built-in tool - defers a task to the end of a phase.
 
 use crate::feat::todo_list::{PhaseId, TaskId};
 use crate::feat::tools_actor::BoxedToolFuture;

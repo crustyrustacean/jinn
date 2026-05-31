@@ -2,7 +2,7 @@
 //!
 //! Defines the set of slash commands available in the chat input box.
 //! Each command has a name (e.g. `"new"`) and a short description for the
-//! autocomplete popup. Commands are matched on submit — the buffer text is
+//! autocomplete popup. Commands are matched on submit - the buffer text is
 //! checked against the registered names.
 
 /// A slash command the user can invoke from the chat input box.

@@ -1,4 +1,4 @@
-//! Session lifecycle protocol — commands and events for async execution.
+//! Session lifecycle protocol - commands and events for async execution.
 
 pub mod command;
 pub mod event;

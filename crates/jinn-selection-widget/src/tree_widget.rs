@@ -1,4 +1,4 @@
-//! Tree picker widget — ratatui renderer for the tree-structured picker popup.
+//! Tree picker widget - ratatui renderer for the tree-structured picker popup.
 //!
 //! [`TreePickerWidget`] renders a telescope-style popup overlay: a bordered block containing
 //! a filter input row with a real cursor, a horizontal separator, scrollable result rows
@@ -186,7 +186,7 @@ where
             Paragraph::new(separator).style(Style::default().fg(self.colors.separator));
         frame.render_widget(sep_paragraph, separator_area);
 
-        // Results area — windowed display with scroll_offset.
+        // Results area - windowed display with scroll_offset.
         let max_visible = results_area.height as usize;
         let scroll_offset = self.state.scroll_offset();
         let selection = self.state.selection();

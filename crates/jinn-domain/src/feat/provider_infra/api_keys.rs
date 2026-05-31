@@ -1,4 +1,4 @@
-//! Resolved API keys — populated once at application startup.
+//! Resolved API keys - populated once at application startup.
 //!
 //! [`ApiKeys`] maps environment variable names to their resolved values.
 //! The application reads all needed env vars at startup and stores them here.

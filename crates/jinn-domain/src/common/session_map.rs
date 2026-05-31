@@ -3,7 +3,7 @@
 //! [`SessionMap`] wraps a `HashMap<SessionId, ChatSessionState>` and enforces
 //! the invariant that at least one session always exists. The active session
 //! ID always points to a valid entry. This makes `active_session()` and
-//! `active_session_mut()` infallible — no `Option`, no `expect`.
+//! `active_session_mut()` infallible - no `Option`, no `expect`.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -12,7 +12,7 @@ use crate::feat::session::tree_aggregate::FrozenTreeNode;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::protocol::SessionId;
 
-/// Session lifecycle state — owned by the session-actor.
+/// Session lifecycle state - owned by the session-actor.
 ///
 /// Tracks an in-progress session load from disk.
 ///
@@ -23,7 +23,7 @@ use crate::protocol::SessionId;
 pub struct SessionLoadGuard {
     /// Which session is being loaded.
     pub session_id: SessionId,
-    /// When the load started — used for timeout detection.
+    /// When the load started - used for timeout detection.
     pub started_at: std::time::Instant,
 }
 
@@ -75,12 +75,12 @@ impl SessionMap {
         }
     }
 
-    /// Infallible — the active session is always present.
+    /// Infallible - the active session is always present.
     ///
     /// # Panics
     ///
     /// Panics if the invariant is violated (active session ID not in map).
-    /// This indicates a programming error — the map should never be in this state.
+    /// This indicates a programming error - the map should never be in this state.
     #[expect(
         clippy::expect_used,
         reason = "SessionMap invariant: active_session always valid"
@@ -91,12 +91,12 @@ impl SessionMap {
             .expect("SessionMap invariant violation: active_session not in map")
     }
 
-    /// Infallible mutable access — the active session is always present.
+    /// Infallible mutable access - the active session is always present.
     ///
     /// # Panics
     ///
     /// Panics if the invariant is violated (active session ID not in map).
-    /// This indicates a programming error — the map should never be in this state.
+    /// This indicates a programming error - the map should never be in this state.
     #[expect(
         clippy::expect_used,
         reason = "SessionMap invariant: active_session always valid"
@@ -186,7 +186,7 @@ impl SessionMap {
         // If we removed the active session, switch to another.
         if id == &self.active_session {
             self.active_session = self.sessions.keys().next().cloned().unwrap_or_else(|| {
-                // Map is empty — create a fresh session.
+                // Map is empty - create a fresh session.
                 let fresh = ChatSessionState::new();
                 let fresh_id = fresh.session_id().clone();
                 self.sessions.insert(fresh_id.clone(), fresh);
@@ -214,7 +214,7 @@ impl SessionMap {
         // If we removed the active session, switch to another.
         if id == &self.active_session {
             self.active_session = self.sessions.keys().next().cloned().unwrap_or_else(|| {
-                // Map is empty — insert the caller-provided fresh session.
+                // Map is empty - insert the caller-provided fresh session.
                 let fresh_id = fresh_session.session_id().clone();
                 self.sessions.insert(fresh_id.clone(), fresh_session);
                 fresh_id

@@ -1,4 +1,4 @@
-//! Chat log — renders the full conversation history.
+//! Chat log - renders the full conversation history.
 //!
 //! A display-only component showing all messages exchanged in the active session.
 //! Each entry type has a distinct visual style (user bold with `>`, system dark gray,

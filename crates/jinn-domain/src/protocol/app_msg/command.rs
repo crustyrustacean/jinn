@@ -7,7 +7,7 @@
 //! # When adding a new domain command
 //!
 //! Every new command struct **must** be added as a variant on the [`Command`] enum
-//! below. Creating the struct alone is not enough — the bus dispatches based on
+//! below. Creating the struct alone is not enough - the bus dispatches based on
 //! enum variants, so a missing variant means the command is invisible to the system.
 
 use std::borrow::Cow;

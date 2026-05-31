@@ -13,7 +13,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//! Chat history wrapper — restricts entry pushing to the session feature module.
+//! Chat history wrapper - restricts entry pushing to the session feature module.
 //!
 //! [`ChatHistory`] wraps a `Vec<ChatEntry>` and provides read access via
 //! [`Deref<Target = [ChatEntry]>`](std::ops::Deref). The `push` method is
@@ -51,7 +51,7 @@ impl ChatHistory {
 
     /// Push an entry onto the history.
     ///
-    /// Restricted to the session feature module — external code must use the
+    /// Restricted to the session feature module - external code must use the
     /// `PushChatEntry` command to add entries.
     pub(in crate::feat::session) fn push(&mut self, entry: ChatEntry) {
         self.entries.push(entry);

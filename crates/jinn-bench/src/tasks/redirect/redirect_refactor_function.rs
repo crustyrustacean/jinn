@@ -1,4 +1,4 @@
-//! redirect-refactor-function bench task — add volume, then switch to paint estimation.
+//! redirect-refactor-function bench task - add volume, then switch to paint estimation.
 
 #![allow(clippy::missing_docs_in_private_items, reason = "task definition")]
 

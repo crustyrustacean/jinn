@@ -1,4 +1,4 @@
-//! In-memory actor host — spawns tokio tasks and routes events/commands.
+//! In-memory actor host - spawns tokio tasks and routes events/commands.
 //!
 //! Provides [`spawn`] for spawning actors with lifecycle events,
 //! [`system_spawn`] for infrastructure actors (no lifecycle events),
@@ -300,7 +300,7 @@ struct RoutingTables {
     /// Command name → routing entries for registered actors.
     command_routes: HashMap<CommandName, Vec<Arc<RoutingEntry>>>,
 
-    /// All routing entries — used for broadcasting system messages.
+    /// All routing entries - used for broadcasting system messages.
     all_entries: Vec<Arc<RoutingEntry>>,
     /// Actors that subscribe to ALL events (wildcard).
     all_event_subscribers: Vec<Arc<RoutingEntry>>,
@@ -316,14 +316,14 @@ pub(crate) struct LifecycleState {
 ///
 /// The routing tables are built once from [`ActorSpawnResult`] entries and
 /// never mutated. The hot path (`send_event`/`send_command`) performs
-/// `HashMap` lookups without any Mutex — the Mutex is only touched during
+/// `HashMap` lookups without any Mutex - the Mutex is only touched during
 /// `shutdown()` to join tasks.
 pub struct InMemoryActorHost {
     /// Pre-computed routing tables for lock-free dispatch.
     routing: RoutingTables,
     /// Lifecycle state (task handles) touched only during shutdown.
     pub(crate) lifecycle: Mutex<LifecycleState>,
-    /// Shared shutdown tracker — also cloned into each actor's run loop.
+    /// Shared shutdown tracker - also cloned into each actor's run loop.
     shutdown_tracker: ShutdownTracker,
     /// Tokio runtime handle for spawning and joining tasks.
     handle: tokio::runtime::Handle,
@@ -419,7 +419,7 @@ impl InMemoryActorHost {
     ///
     /// Panics if called from within a tokio runtime context (uses `block_on`).
     pub fn shutdown_with_timeout(&self, timeout: Duration) -> Result<(), Report<ActorHostError>> {
-        // Close all actor channels — run loops exit when recv() returns Err.
+        // Close all actor channels - run loops exit when recv() returns Err.
         for entry in &self.routing.all_entries {
             (entry.close_channel)();
         }

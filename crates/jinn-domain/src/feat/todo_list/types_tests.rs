@@ -42,7 +42,7 @@ fn add_phase_returns_distinct_ids() {
 }
 
 // ---------------------------------------------------------------------------
-// add_task — append (no position)
+// add_task - append (no position)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -58,7 +58,7 @@ fn add_task_appends_to_phase_end_when_no_position() {
 }
 
 // ---------------------------------------------------------------------------
-// add_task — insert_after
+// add_task - insert_after
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -79,7 +79,7 @@ fn add_task_inserts_after_specified_task() {
 }
 
 // ---------------------------------------------------------------------------
-// add_task — insert_before
+// add_task - insert_before
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -100,7 +100,7 @@ fn add_task_inserts_before_specified_task() {
 }
 
 // ---------------------------------------------------------------------------
-// add_task — error cases
+// add_task - error cases
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -307,7 +307,7 @@ fn serde_default_creates_empty_list() {
 
 #[test]
 fn serde_deserializes_partial_json() {
-    // Only phases field (no counters) — a valid old-format JSON.
+    // Only phases field (no counters) - a valid old-format JSON.
     let json = r#"{"phases":[]}"#;
     let list: TaskList = serde_json::from_str(json).unwrap();
     assert!(list.is_empty());
