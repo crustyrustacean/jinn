@@ -119,6 +119,12 @@ pub struct SessionCoreEphemeral {
     /// OWNER: session-actor.
     pub(crate) cached_context_size: Option<u32>,
 
+    /// Number of active background operations (e.g., lifecycle tasks).
+    /// Ephemeral: not persisted, not serialized.
+    /// OWNER: session-actor.
+    #[serde(skip)]
+    pub(crate) busy_count: usize,
+
     /// Pending history mutation batches from background workers.
     /// Drained and applied at safe application points (tool batch completion,
     /// stream completion). Not persisted across restarts.
@@ -1282,6 +1288,36 @@ impl ChatSessionState {
                 "cancel_working: machine rejected transition - ignoring"
             );
         }
+    }
+
+    // ── Busy count ──────────────────────────────────────────────────────────
+
+    /// Increment the busy counter. Called when a background operation starts.
+    /// The count is ephemeral (not persisted).
+    pub fn begin_busy(&mut self) {
+        self.core.ephemeral.busy_count += 1;
+    }
+
+    /// Decrement the busy counter (floor at 0). Called when one background
+    /// operation completes. Returns the new count.
+    pub fn complete_busy(&mut self) -> usize {
+        self.core.ephemeral.busy_count = self.core.ephemeral.busy_count.saturating_sub(1);
+        self.core.ephemeral.busy_count
+    }
+
+    /// Hard-reset the busy counter to zero. Cancels all tracked operations.
+    pub fn cancel_busy(&mut self) {
+        self.core.ephemeral.busy_count = 0;
+    }
+
+    /// Returns the current number of active background operations.
+    pub fn busy_count(&self) -> usize {
+        self.core.ephemeral.busy_count
+    }
+
+    /// Returns `true` when any background operation is in progress.
+    pub fn is_busy(&self) -> bool {
+        self.core.ephemeral.busy_count > 0
     }
 
     /// The current scroll offset (lines to skip from top).
