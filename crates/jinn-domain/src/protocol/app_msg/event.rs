@@ -140,10 +140,7 @@ pub enum Event {
     WorkflowCompleted(crate::feat::workflow::protocol::event::WorkflowCompleted),
     /// A workflow node status changed.
     WorkflowNodeStatusChanged(crate::feat::workflow::protocol::event::WorkflowNodeStatusChanged),
-    /// Judges have been scanned and loaded from disk.
-    JudgesLoaded(crate::feat::judge::JudgesLoaded),
-    /// A judge rendered a verdict on its origin session.
-    JudgeVerdict(crate::feat::judge::JudgeVerdict),
+
     /// A task list was updated by a mutation tool.
     TaskListUpdated(crate::feat::session::protocol::task_list_updated::TaskListUpdated),
     /// A dynamic event from a plugin, carrying an arbitrary JSON payload.
@@ -227,12 +224,7 @@ impl Event {
             Self::WorkflowNodeStatusChanged(..) => {
                 Some(crate::feat::workflow::protocol::event::WorkflowNodeStatusChanged::TYPE_NAME)
             }
-            Self::JudgesLoaded(..) => {
-                Some(crate::feat::judge::JudgesLoaded::TYPE_NAME)
-            }
-            Self::JudgeVerdict(..) => {
-                Some(crate::feat::judge::JudgeVerdict::TYPE_NAME)
-            }
+
             Self::TaskListUpdated(..) => {
                 Some(crate::feat::session::protocol::task_list_updated::TaskListUpdated::TYPE_NAME)
             }

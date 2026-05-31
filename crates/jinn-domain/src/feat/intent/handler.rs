@@ -30,7 +30,7 @@
 )]
 
 use crate::AppState;
-use crate::feat::session::phase_machine::PhaseKind;
+
 use crate::protocol::{Command, Event, PickerKind, PinPosition};
 
 use crate::Intent;
@@ -316,15 +316,7 @@ impl IntentHandler {
             Intent::SidebarSessionContinue => {
                 feat::ui::sidebar::sessions::handle_session_continue(state)
             }
-            Intent::ToggleJudgeAttached => {
-                feat::ui::sidebar::sessions::handle_toggle_judge_attached(state)
-            }
-            Intent::ToggleJudgeAutoReset => {
-                feat::ui::sidebar::sessions::toggle_auto_reset::handle_toggle_auto_reset(state)
-            }
-            Intent::ResetJudge => {
-                feat::ui::sidebar::sessions::reset_judge::handle_reset_judge(state)
-            }
+
             Intent::SidebarConfirm => {
                 feat::ui::sidebar::sessions::handle_session_activate(state);
                 IntentResult::empty()
@@ -537,41 +529,28 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
 
     let session_id = state.session.active_session_id().clone();
 
-    // Working phase → cancel pending judge evaluation.
-    if state.active_session().phase() == PhaseKind::Working {
-        state.active_session_mut().cancel_stream_and_drain();
-        return Some(IntentResult::with_commands(vec![
-            Command::CancelPendingJudgeEvaluation(
-                crate::feat::judge::CancelPendingJudgeEvaluation {
-                    origin_session_id: session_id.clone(),
-                },
-            ),
-            Command::CancelLifecycleCommand(
-                crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand {
-                    session_id,
-                },
-            ),
-        ]));
+    // Check busy state before resetting.
+    let was_busy = state.active_session().is_busy();
+
+    // Cancel busy background operations (lifecycle, etc.).
+    if was_busy {
+        state.active_session_mut().cancel_busy();
     }
 
-    // Active session is a judge → escalate cancel to origin.
-    if let Some(judge_meta) = state.active_session().judge() {
-        let origin_session_id = judge_meta.origin_session.clone();
-        state.active_session_mut().cancel_stream_and_drain();
-        return Some(IntentResult::with_commands(vec![
-            Command::CancelPendingJudgeEvaluation(
-                crate::feat::judge::CancelPendingJudgeEvaluation {
-                    origin_session_id,
-                },
-            ),
-        ]));
-    }
-
-    // Existing stream cancel behavior (Streaming, Sending, Assembling, Idle).
+    // Cancel stream.
     state.active_session_mut().cancel_stream_and_drain();
-    Some(IntentResult::with_commands(vec![Command::CancelStream(
-        crate::feat::provider::protocol::command::CancelStream { session_id },
-    )]))
+    let mut commands = vec![Command::CancelStream(
+        crate::feat::provider::protocol::command::CancelStream { session_id: session_id.clone() },
+    )];
+
+    // Also cancel any running lifecycle command.
+    if was_busy {
+        commands.push(Command::CancelLifecycleCommand(
+            crate::feat::session_lifecycle::protocol::CancelLifecycleCommand { session_id },
+        ));
+    }
+
+    Some(IntentResult::with_commands(commands))
 }
 
 /// Close session confirmation prompt intercept.
@@ -1358,93 +1337,6 @@ mod tests {
         assert!(!state.frontend.cancel_stream_prompt);
     }
 
-    #[test]
-    fn judge_session_cancel_escalates_to_origin() {
-        // Given a judge session with cancel prompt showing.
-        use crate::feat::judge::JudgeMeta;
-        use crate::feat::session::chat_session::ChatSessionState;
-
-        let mut state = AppState::default();
-        let origin_id = state.session.active_session_id().clone();
-        state.frontend.cancel_stream_prompt = true;
-
-        // Add judge session linked to origin.
-        let mut judge = ChatSessionState::new();
-        let judge_id = judge.session_id().clone();
-        judge.set_judge(JudgeMeta {
-            origin_session: origin_id.clone(),
-            is_attached: true,
-            judge_name: "test-judge".to_owned(),
-            auto_reset: None,
-        });
-        state.session.insert(judge);
-        assert!(state.session.set_active(judge_id.clone()), "should activate judge session");
-
-        // When handling NormalEscape.
-        let result = IntentHandler::handle(&Intent::NormalEscape, &mut state);
-
-        // Then the prompt is dismissed.
-        assert!(!state.frontend.cancel_stream_prompt, "cancel prompt should be dismissed");
-
-        // Then CancelPendingJudgeEvaluation is emitted for the origin (not CancelStream for the judge).
-        assert!(
-            result.commands.iter().any(|c| matches!(c, crate::protocol::Command::CancelPendingJudgeEvaluation(cmd) if cmd.origin_session_id == origin_id)),
-            "should emit CancelPendingJudgeEvaluation for origin: {:?}",
-            result.commands
-        );
-        assert!(
-            !result.commands.iter().any(|c| matches!(c, crate::protocol::Command::CancelStream(cmd) if cmd.session_id == judge_id)),
-            "should NOT emit CancelStream for the judge: {:?}",
-            result.commands
-        );
-    }
-
-    #[test]
-    fn non_judge_cancel_emits_cancel_stream() {
-        // Given a regular (non-judge) session with cancel prompt showing.
-        let mut state = AppState::default();
-        state.frontend.cancel_stream_prompt = true;
-
-        // When handling NormalEscape.
-        let result = IntentHandler::handle(&Intent::NormalEscape, &mut state);
-
-        // Then CancelStream is emitted for the active session.
-        let session_id = state.session.active_session_id().clone();
-        assert!(
-            result.commands.iter().any(|c| matches!(c, crate::protocol::Command::CancelStream(cmd) if cmd.session_id == session_id)),
-            "should emit CancelStream for the session: {:?}",
-            result.commands
-        );
-        assert!(
-            !result.commands.iter().any(|c| matches!(c, crate::protocol::Command::CancelPendingJudgeEvaluation(_))),
-            "should NOT emit CancelPendingJudgeEvaluation: {:?}",
-            result.commands
-        );
-    }
-
-    #[test]
-    fn origin_idle_busy_cancel_emits_pending_cancel() {
-        // Given an origin session that is in Working phase (judges evaluating).
-        let mut state = AppState::default();
-        state.frontend.cancel_stream_prompt = true;
-        state.active_session_mut().begin_working();
-
-        // When handling NormalEscape.
-        let result = IntentHandler::handle(&Intent::NormalEscape, &mut state);
-
-        // Then CancelPendingJudgeEvaluation is emitted for the origin.
-        let session_id = state.session.active_session_id().clone();
-        assert!(
-            result.commands.iter().any(|c| matches!(c, crate::protocol::Command::CancelPendingJudgeEvaluation(cmd) if cmd.origin_session_id == session_id)),
-            "should emit CancelPendingJudgeEvaluation for origin: {:?}",
-            result.commands
-        );
-        assert!(
-            result.commands.iter().any(|c| matches!(c, crate::protocol::Command::CancelLifecycleCommand(_))),
-            "should emit CancelLifecycleCommand: {:?}",
-            result.commands
-        );
-    }
 
     // --- Mutant-killing tests for close session prompt ---
 

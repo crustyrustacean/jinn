@@ -320,7 +320,7 @@ pub fn scope_for_focus(focus: &jinn_domain::FocusScope) -> Scope {
             PickerKind::Theme => Scope::PickerTheme,
             PickerKind::SessionLifecycle => Scope::PickerLifecycle,
             PickerKind::Workflow => Scope::PickerWorkflow,
-            PickerKind::Judge => Scope::PickerJudge,
+
             PickerKind::CompactionModel => Scope::PickerCompactionModel,
             PickerKind::Tool => Scope::PickerTool,
             PickerKind::Skill => Scope::PickerSkill,

@@ -145,7 +145,7 @@ impl SessionPersistenceActor {
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
-            if !session.is_judge() {
+            {
                 let count = session.drain_and_apply_pending_mutations();
                 if count > 0 {
                     tracing::debug!(
@@ -743,68 +743,6 @@ mod tests {
         assert!(has_send, "expected SendToLlmProvider after mutation application");
     }
 
-    #[tokio::test]
-    async fn on_tool_batch_completed_skips_mutations_for_judge_session() {
-        // Given a judge session in sending state with pending mutations.
-        let actor = test_actor();
-        let (entry_id, session_id) = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.push_entry(ChatEntry::user("list files"));
-            let entry = ChatEntry::assistant("checking");
-            let entry_id = entry.id.clone();
-            session.push_entry(entry);
-            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
-            session.push_entry(ChatEntry::assistant("here are the files"));
-            session.begin_streaming();
-            session.finish_streaming(true);
-            session.begin_sending();
-            // Mark as judge session.
-            session.set_judge(crate::feat::judge::JudgeMeta {
-                origin_session: crate::protocol::SessionId::new(),
-                is_attached: true,
-                judge_name: "test-judge".to_owned(),
-                auto_reset: None,
-            });
-            // Queue a mutation.
-            session.queue_mutations(vec![
-                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
-                    entry_id: entry_id.clone(),
-                    value: crate::protocol::ContextOverride::ForcedExclude,
-                },
-            ]);
-            (entry_id, state.session.active_session_id().clone())
-        };
-        let (_sink, ctx) = test_context();
-
-        // When handling ToolBatchCompleted.
-        let event = ToolBatchCompleted {
-            session_id: session_id.clone(),
-            results: vec![ToolResult {
-                tool_call_id: "tc-1".to_owned(),
-                name: "bash".to_owned(),
-                content: "file1.txt".to_owned(),
-                success: true,
-                full_content: None,
-                truncation: None,
-            }],
-        };
-        actor.on_tool_batch_completed(&event, &ctx);
-
-        // Then the mutation was NOT applied - the entry is still Default.
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session exists");
-        let assistant = session
-            .history()
-            .iter()
-            .find(|e| e.id == entry_id)
-            .expect("assistant entry exists");
-        assert_eq!(
-            assistant.context_override,
-            crate::protocol::ContextOverride::Default,
-            "expected mutation to be skipped for judge session"
-        );
-    }
 
 
     #[tokio::test]
