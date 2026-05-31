@@ -5,7 +5,7 @@ use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
 use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::session::ChatSessionState;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
-use crate::protocol::{Command, ContextOverride, IntentResult, PinPosition};
+use crate::protocol::{Command, ContextOverride, Event, IntentResult, PinPosition};
 
 use super::validator;
 
@@ -266,6 +266,13 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
             // Apply the captured state directly (not a toggle).
             session.set_entry_context_override(target);
 
+            // Capture entry_id before advancing.
+            let entry_id = session
+                .selected_entry()
+                .expect("just set override on selected entry")
+                .id
+                .clone();
+
             // Advance cursor for next press.
             advance_selection_one(session);
 
@@ -273,9 +280,19 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
             session.set_ignore_sweep(target);
 
             let session_id = state.active_session().session_id().clone();
-            return IntentResult::with_commands(vec![Command::PersistSession(
-                crate::feat::session_lifecycle::protocol::command::PersistSession { session_id },
-            )]);
+            return IntentResult::with_commands_and_events(
+                vec![Command::PersistSession(
+                    crate::feat::session_lifecycle::protocol::command::PersistSession {
+                        session_id: session_id.clone(),
+                    },
+                )],
+                vec![Event::ContextOverrideChanged(
+                    crate::feat::context::protocol::event::ContextOverrideChanged {
+                        session_id,
+                        entry_id,
+                    },
+                )],
+            );
         }
     }
 
@@ -288,11 +305,12 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
     state.active_session_mut().toggle_entry_ignored();
 
     // Capture the resulting state on the toggled entry.
-    let captured = state
+    let selected = state
         .active_session()
         .selected_entry()
-        .expect("validator confirmed selection exists")
-        .context_override;
+        .expect("validator confirmed selection exists");
+    let captured = selected.context_override;
+    let entry_id = selected.id.clone();
 
     // Advance cursor.
     advance_selection_one(state.active_session_mut());
@@ -305,9 +323,19 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
     }
 
     let session_id = state.active_session().session_id().clone();
-    IntentResult::with_commands(vec![Command::PersistSession(
-        crate::feat::session_lifecycle::protocol::command::PersistSession { session_id },
-    )])
+    IntentResult::with_commands_and_events(
+        vec![Command::PersistSession(
+            crate::feat::session_lifecycle::protocol::command::PersistSession {
+                session_id: session_id.clone(),
+            },
+        )],
+        vec![Event::ContextOverrideChanged(
+            crate::feat::context::protocol::event::ContextOverrideChanged {
+                session_id,
+                entry_id,
+            },
+        )],
+    )
 }
 
 #[cfg(test)]
@@ -972,6 +1000,36 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn handle_ignore_selected_emits_context_override_changed() {
+        // Given a state with a selected user entry.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state.active_session_mut().select_next_entry();
+        let session_id = state.active_session().session_id().clone();
+        let entry_id = state
+            .active_session()
+            .selected_entry()
+            .expect("entry")
+            .id
+            .clone();
+
+        // When handling ignore selected.
+        let result = handle_ignore_selected(&mut state);
+
+        // Then ContextOverrideChanged event is emitted.
+        let has_event = result.events.iter().any(|e| {
+            matches!(
+                e,
+                Event::ContextOverrideChanged(payload)
+                if payload.session_id == session_id && payload.entry_id == entry_id
+            )
+        });
+        assert!(has_event, "should emit ContextOverrideChanged event");
+    }
+
+    #[rstest::rstest]
     fn handle_ignore_selected_toggles_true_to_false() {
         // Given a state with a selected ignored user entry.
         let mut state = AppState::default();
@@ -999,10 +1057,14 @@ mod tests {
         // When handling ignore selected.
         let result = handle_ignore_selected(&mut state);
 
-        // Then no commands are emitted.
+        // Then no commands or events are emitted.
         assert!(
             result.commands.is_empty(),
             "empty history should produce no commands"
+        );
+        assert!(
+            result.events.is_empty(),
+            "empty history should produce no events"
         );
     }
 
