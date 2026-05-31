@@ -312,7 +312,12 @@ impl SessionPersistenceActor {
 
             | Command::TriggerCompaction(..)
             | Command::Dynamic(..)
-            | Command::ExecuteWebFetch(..) => {}
+            | Command::ExecuteWebFetch(..)
+            | Command::AttachWorkflow(..)
+            | Command::DetachWorkflow(..)
+            | Command::ToggleWorkflow(..)
+            | Command::TriggerWorkflow(..)
+            | Command::LoadWorkflowPickerEntries(..) => {}
         }
     }
 }

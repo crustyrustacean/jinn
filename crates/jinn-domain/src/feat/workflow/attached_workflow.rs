@@ -101,8 +101,20 @@ impl WorkflowConfig {
             Self::Custom(_) => "Custom",
         }
     }
-}
 
+
+    /// Build a WorkflowGraph from this config.
+    ///
+    /// NOTE: Only callable after Phase 7+ (builtin.rs must exist).
+    /// Phase 1 defines the type; Phase 7-9 implement the builders.
+    #[must_use]
+    pub fn build_graph(&self) -> jinn_workflow::graph::WorkflowGraph {
+        // The actual builders (build_consensus, build_judge, build_divergence)
+        // are implemented in Phase 7-9 and registered in builtin.rs.
+        // Until then, this panics with a clear message.
+        unimplemented!("WorkflowConfig::build_graph() requires builtin.rs (Phase 7+)")
+    }
+}
 /// When an attached workflow fires.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]

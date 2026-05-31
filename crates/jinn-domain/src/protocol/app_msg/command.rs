@@ -142,6 +142,14 @@ pub enum Command {
     RerunFromNode(crate::feat::workflow::protocol::command::RerunFromNode),
     /// Load entries for the workflow picker.
     LoadWorkflowPickerEntries(crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries),
+    /// Attach a workflow to a session.
+    AttachWorkflow(crate::feat::workflow::protocol::command::AttachWorkflow),
+    /// Detach a workflow from a session.
+    DetachWorkflow(crate::feat::workflow::protocol::command::DetachWorkflow),
+    /// Toggle an attached workflow on/off.
+    ToggleWorkflow(crate::feat::workflow::protocol::command::ToggleWorkflow),
+    /// Manually trigger an attached workflow.
+    TriggerWorkflow(crate::feat::workflow::protocol::command::TriggerWorkflow),
 
     /// A dynamic command from a plugin, carrying an arbitrary JSON payload.
     ///
@@ -213,6 +221,18 @@ impl Command {
             }
             Self::LoadWorkflowPickerEntries(..) => {
                 Some(crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries::NAME)
+            }
+            Self::AttachWorkflow(..) => {
+                Some(crate::feat::workflow::protocol::command::AttachWorkflow::NAME)
+            }
+            Self::DetachWorkflow(..) => {
+                Some(crate::feat::workflow::protocol::command::DetachWorkflow::NAME)
+            }
+            Self::ToggleWorkflow(..) => {
+                Some(crate::feat::workflow::protocol::command::ToggleWorkflow::NAME)
+            }
+            Self::TriggerWorkflow(..) => {
+                Some(crate::feat::workflow::protocol::command::TriggerWorkflow::NAME)
             }
 
             Self::Dynamic(..) => Some(DynamicCommand::NAME),
@@ -379,6 +399,18 @@ impl std::fmt::Display for Command {
             }
             Command::LoadWorkflowPickerEntries(..) => {
                 write!(f, "load workflow picker entries")
+            }
+            Command::AttachWorkflow(payload) => {
+                write!(f, "attach workflow to {}", payload.session_id)
+            }
+            Command::DetachWorkflow(payload) => {
+                write!(f, "detach workflow {} from {}", payload.workflow_id, payload.session_id)
+            }
+            Command::ToggleWorkflow(payload) => {
+                write!(f, "toggle workflow {} on {}", payload.workflow_id, payload.session_id)
+            }
+            Command::TriggerWorkflow(payload) => {
+                write!(f, "trigger workflow {} on {}", payload.workflow_id, payload.session_id)
             }
 
             Command::Dynamic(d) => {

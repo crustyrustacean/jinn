@@ -47,3 +47,42 @@ pub struct InitWorkflow {
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("workflow")]
 pub struct LoadWorkflowPickerEntries;
+
+// --- Attached workflow commands ---
+
+
+use crate::protocol::SessionId;
+use super::super::attached_workflow::{WorkflowConfig, WorkflowTrigger};
+
+/// Attach a workflow to a session.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("workflow")]
+pub struct AttachWorkflow {
+    pub session_id: SessionId,
+    pub config: WorkflowConfig,
+    pub trigger: WorkflowTrigger,
+}
+
+/// Detach a workflow from a session.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("workflow")]
+pub struct DetachWorkflow {
+    pub session_id: SessionId,
+    pub workflow_id: WorkflowId,
+}
+
+/// Toggle an attached workflow on/off.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("workflow")]
+pub struct ToggleWorkflow {
+    pub session_id: SessionId,
+    pub workflow_id: WorkflowId,
+}
+
+/// Manually trigger an attached workflow.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("workflow")]
+pub struct TriggerWorkflow {
+    pub session_id: SessionId,
+    pub workflow_id: WorkflowId,
+}
