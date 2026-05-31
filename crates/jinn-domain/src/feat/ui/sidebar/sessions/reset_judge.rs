@@ -23,7 +23,7 @@ const BUSY_REJECTION_MESSAGE: &str = "Cannot reset judge while it is working.";
 /// - A session must be selected.
 /// - The selected entry must be a judge session.
 ///
-/// If the judge is actively working (non-Idle phase or `is_busy()`),
+/// If the judge is actively working (non-Idle phase),
 /// pushes a system message to the origin session and returns without resetting.
 ///
 /// Otherwise, calls [`crate::feat::session::chat_session::ChatSessionState::reset_judge_history()`]
@@ -71,8 +71,7 @@ pub fn handle_reset_judge(state: &mut AppState) -> IntentResult {
 
     // Guard: reject if the judge is actively working.
     let phase = judge_session.phase();
-    let is_busy = judge_session.is_busy();
-    if phase != PhaseKind::Idle || is_busy {
+    if phase != PhaseKind::Idle {
         // Push a system message to the ORIGIN session (not the judge).
         return IntentResult::with_commands(vec![Command::PushChatEntry(PushChatEntry {
             session_id: origin_session_id,
@@ -172,15 +171,15 @@ auto_reset: None,
     }
 
     #[rstest::rstest]
-    fn rejects_busy_counter_judge_with_system_message() {
+    fn rejects_working_phase_judge_with_system_message() {
         let (mut state, judge_id, origin_id) = state_with_idle_judge();
 
-        // Phase is Idle but busy_counter is set.
+        // Phase is Working.
         {
             let judge = state.session.get_mut(&judge_id).expect("judge");
             assert_eq!(judge.phase(), PhaseKind::Idle);
-            judge.core.ephemeral.busy_counter.set_busy();
-            assert!(judge.is_busy());
+            judge.begin_working();
+            assert_eq!(judge.phase(), PhaseKind::Working);
         }
 
         state.frontend.scope_stack.push(FocusScope::SidebarSessions);

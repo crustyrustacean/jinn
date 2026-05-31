@@ -130,7 +130,7 @@ async fn activate_emits_tools_registered_for_builtins() {
         .iter()
         .find(|p| p.provider == "builtin")
         .expect("expected builtin ToolsRegistered");
-    assert_eq!(builtin_evt.definitions.len(), 19);
+    assert_eq!(builtin_evt.definitions.len(), 20);
 }
 
 // --- RegisterTools command tests ---
@@ -308,7 +308,8 @@ async fn execute_builtin_read_tool() {
     let result = read::execute(call, tool_ctx).await;
     assert_eq!(result.tool_call_id, "call_4");
     assert!(result.success);
-    assert_eq!(result.content, "file contents here");
+    assert!(result.content.contains("file contents here"));
+    assert!(result.content.contains('#'), "expected LINE#HASH annotation");
 }
 
 #[rstest::rstest]

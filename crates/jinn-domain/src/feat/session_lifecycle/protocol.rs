@@ -3,5 +3,5 @@
 pub mod command;
 pub mod event;
 
-pub use command::{PersistSession, RunSessionSetup, RunSessionTeardown};
+pub use command::{CancelLifecycleCommand, FinishSessionSetup, PersistSession, RunSessionSetup, RunSessionTeardown};
 pub use event::{SessionSetupCompleted, SessionTeardownFinished};

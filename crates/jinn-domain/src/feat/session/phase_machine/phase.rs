@@ -16,8 +16,27 @@ pub enum PhaseKind {
     Idle,
     Sending,
     Streaming,
-    TearingDown,
+    Working,
 }
+
+impl std::str::FromStr for PhaseKind {
+    type Err = PhaseKindParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "idle" => Ok(Self::Idle),
+            "sending" => Ok(Self::Sending),
+            "streaming" => Ok(Self::Streaming),
+            "working" => Ok(Self::Working),
+            _ => Err(PhaseKindParseError(s.to_owned())),
+        }
+    }
+}
+
+/// Error returned when a string does not match any [`PhaseKind`] variant.
+#[derive(Debug, wherror::Error)]
+#[error("unknown phase kind: {0}")]
+pub struct PhaseKindParseError(String);
 
 /// No per-phase data needed for Idle.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -48,9 +67,16 @@ pub struct StreamingPhase {
     pub soft_cancel_requested: bool,
 }
 
-/// No per-phase data needed for TearingDown.
+/// Reference-counted busy phase for tracking concurrent async operations.
+///
+/// Callers increment via `on_start_working()` before starting an operation
+/// and decrement via `on_working_complete()` when it finishes.
+/// The phase returns to `Idle` when the count hits zero.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct TearingDownPhase;
+pub struct WorkingPhase {
+    /// Number of outstanding operations.
+    pub count: usize,
+}
 
 /// The current session phase with per-phase state.
 ///
@@ -64,8 +90,8 @@ pub enum Phase {
     Sending(SendingPhase),
     /// LLM tokens are actively streaming into the session.
     Streaming(StreamingPhase),
-    /// A lifecycle teardown script is running.
-    TearingDown(TearingDownPhase),
+    /// A background operation is in progress (setup, teardown, judge evaluation, etc.).
+    Working(WorkingPhase),
 }
 
 impl Phase {
@@ -75,7 +101,7 @@ impl Phase {
             Self::Idle(_) => PhaseKind::Idle,
             Self::Sending(_) => PhaseKind::Sending,
             Self::Streaming(_) => PhaseKind::Streaming,
-            Self::TearingDown(_) => PhaseKind::TearingDown,
+            Self::Working(_) => PhaseKind::Working,
         }
     }
 

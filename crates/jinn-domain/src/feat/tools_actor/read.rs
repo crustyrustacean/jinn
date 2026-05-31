@@ -6,6 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::feat::tools_actor::edit::hash;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 
 use super::truncation::{DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, format_size, truncate_head};
@@ -16,13 +17,21 @@ use super::BoxedToolFuture;
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
         name: "read".to_owned(),
-        description: "Read the contents of a file. Supports text files and images \
-            (jpg, png, gif, webp). For text files, output is truncated to 2000 lines \
-            or 50KB (whichever is hit first). Use offset/limit for large files. \
-            When truncated, a notice shows which lines were kept and the next offset to use."
-            .to_owned(),
-        prompt_snippet: Some("Read file contents".to_owned()),
-        prompt_guidelines: vec!["Use read to examine files instead of cat or sed.".to_owned()],
+        description: "Read a UTF-8 text file. Each returned line has the format\n\
+            `LINE#HASH|content`:\n\n\
+              1#HH|yo!\n\
+              2#VR|fn main() {\n\
+              3#SK|}\n\n\
+            Copy `LINE#HASH` anchors into `edit` calls. You may pass the full\n\
+            display line or just the anchor — `edit` accepts both.\n\n\
+            Output is truncated to 2000 lines or 50KB (whichever hits first).\n\
+            Use offset/limit for large files. When truncated, a notice shows\n\
+            which lines were kept and the next offset to use.".to_owned(),
+        prompt_snippet: Some("Read a text file with LINE#HASH anchors for edit".to_owned()),
+        prompt_guidelines: vec![
+            "Use `read` before `edit` when you don't have current anchors for the file.".to_owned(),
+            "If `read` is truncated, continue with the `offset` it suggests — do not guess unseen lines.".to_owned(),
+        ],
         parameters: serde_json::json!({
             "type": "object",
             "properties": {
@@ -90,12 +99,15 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
         let sliced = apply_offset_limit(&content, offset, limit);
 
+        // Annotate with LINE#HASH prefixes for the edit tool
+        let start_line = offset.map_or(1, |o| o.max(1));
+        let annotated = annotate_lines(&sliced, start_line);
+
         // Apply head-truncation to the result.
         let total_file_lines = content.lines().count();
-        let start_line = offset.map_or(1, |o| o.max(1));
         let max_lines = ctx.max_output_lines.unwrap_or(DEFAULT_MAX_LINES);
         let max_bytes = ctx.max_output_bytes.unwrap_or(DEFAULT_MAX_BYTES);
-        let truncation_result = truncate_head(&sliced, max_lines, max_bytes);
+        let truncation_result = truncate_head(&annotated, max_lines, max_bytes);
 
         if truncation_result.truncated {
             if let Some(meta) = truncation_result.meta {
@@ -120,7 +132,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     name: call.name,
                     content: output,
                     success: true,
-                    full_content: Some(sliced),
+                    full_content: Some(content.clone()),
                     truncation: Some(meta),
                 }
             } else {
@@ -130,7 +142,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     name: call.name,
                     content: truncation_result.content,
                     success: true,
-                    full_content: Some(sliced),
+                    full_content: Some(content.clone()),
                     truncation: None,
                 }
             }
@@ -138,13 +150,41 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             ToolResult {
                 tool_call_id: call.id,
                 name: call.name,
-                content: sliced,
+                content: annotated,
                 success: true,
-                full_content: None,
+                full_content: Some(content.clone()),
                 truncation: None,
             }
         }
     })
+}
+
+/// Annotates each line of `content` with `LINE#HASH|` prefixes.
+///
+/// `start_line` is the 1-indexed line number of the first line in `content`
+/// (respects the offset parameter from the read call).
+fn annotate_lines(content: &str, start_line: usize) -> String {
+    if content.is_empty() {
+        return String::new();
+    }
+
+    let lines = hash::get_visible_lines(content);
+    if lines.is_empty() {
+        return String::new();
+    }
+
+    let max_line = start_line + lines.len() - 1;
+    let width = format!("{max_line}").len();
+    let mut out = String::with_capacity(content.len() + lines.len() * (width + 4));
+
+    for (i, line) in lines.iter().enumerate() {
+        let line_num = start_line + i;
+        let h = hash::compute_line_hash(line_num, line);
+        use std::fmt::Write as _;
+        let _ = writeln!(out, "{line_num:>width$}#{h}|{line}", width = width);
+    }
+
+    out
 }
 
 fn parse_args(raw: &str) -> Result<(String, Option<usize>, Option<usize>), serde_json::Error> {
@@ -320,7 +360,8 @@ mod tests {
         // Then the result contains the file contents.
         assert_eq!(result.tool_call_id, "call_1");
         assert!(result.success);
-        assert_eq!(result.content, "file contents here");
+        assert!(result.content.contains("file contents here"));
+        assert!(result.content.starts_with('1'), "expected LINE#HASH prefix: {}", result.content);
     }
 
     #[rstest::rstest]
@@ -397,7 +438,8 @@ mod tests {
 
         // Then the file is found via CWD resolution.
         assert!(result.success);
-        assert_eq!(result.content, "relative content");
+        assert!(result.content.contains("relative content"));
+        assert!(result.content.contains('#'), "expected LINE#HASH prefix: {}", result.content);
     }
 
     #[rstest::rstest]
@@ -424,7 +466,12 @@ mod tests {
 
         // Then only lines 2-3 are returned.
         assert!(result.success);
-        assert_eq!(result.content, "b\nc");
+        // Lines 2-3 with LINE#HASH prefixes
+        assert!(result.content.contains("b"));
+        assert!(result.content.contains("c"));
+        // First line should be line 2 (from offset=2)
+        let first_line = result.content.lines().next().expect("first line");
+        assert!(first_line.starts_with('2'), "expected line 2, got: {first_line}");
     }
 
     // --- Phase 5: Mutation-killing tests ---
