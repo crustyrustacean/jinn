@@ -130,7 +130,7 @@ async fn activate_emits_tools_registered_for_builtins() {
         .iter()
         .find(|p| p.provider == "builtin")
         .expect("expected builtin ToolsRegistered");
-    assert_eq!(builtin_evt.definitions.len(), 19);
+    assert_eq!(builtin_evt.definitions.len(), 20);
 }
 
 // --- RegisterTools command tests ---
