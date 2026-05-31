@@ -1249,46 +1249,7 @@ impl ChatSessionState {
 
     /// Transition to Working phase (a background operation started).
     ///
-    /// Delegates to `machine.on_start_working()`. Logs a warning if the
-    /// machine rejects the transition.
-    pub fn begin_working(&mut self) {
-        use crate::feat::session::phase_machine::PhaseTransitions;
-        if let Err(e) = self.core.ephemeral.machine.on_start_working() {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.machine.kind(),
-                err = %e,
-                "begin_working: machine rejected transition - ignoring"
-            );
-        }
-    }
 
-    /// Complete one working operation.
-    ///
-    /// Delegates to `machine.on_working_complete()`. Returns `true` if the
-    /// session transitioned back to `Idle` (all pending operations complete).
-    /// Returns `false` if still in `Working` (more operations pending) or
-    /// if the machine was not in `Working`.
-    pub fn complete_working(&mut self) -> bool {
-        use crate::feat::session::phase_machine::PhaseTransitions;
-        self.core.ephemeral.machine.on_working_complete().is_some_and(|outcome| {
-            outcome.new_phase == crate::feat::session::phase_machine::PhaseKind::Idle
-        })
-    }
-
-    /// Hard cancel all working operations and return to Idle.
-    ///
-    /// Delegates to `machine.cancel_working()`. Logs a warning if the
-    /// machine rejects the transition.
-    pub fn cancel_working(&mut self) {
-        use crate::feat::session::phase_machine::PhaseTransitions;
-        if let Err(e) = self.core.ephemeral.machine.cancel_working() {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.machine.kind(),
-                err = %e,
-                "cancel_working: machine rejected transition - ignoring"
-            );
-        }
-    }
 
     // ── Busy count ──────────────────────────────────────────────────────────
 
