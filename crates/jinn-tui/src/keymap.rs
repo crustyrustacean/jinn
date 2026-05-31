@@ -200,6 +200,10 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // i activates session and enters insert mode (same as enter)
             .bind("i", Intent::SidebarConfirm, KeyCategory::Input);
         })
+        // Sidebar - Task list section
+        .scope(Scope::SidebarTaskList, |b| {
+            add_sidebar_base(b);
+        })
         // Input scope: typing into the input buffer
         .scope(Scope::Input, |b| {
             b.bind("<enter>", Intent::SubmitMessage, KeyCategory::Input)

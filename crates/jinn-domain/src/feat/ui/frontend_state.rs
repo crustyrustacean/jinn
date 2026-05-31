@@ -12,6 +12,7 @@ use crate::feat::workflow::workflow_ui_state::WorkflowUiState;
 pub use crate::feat::ui::sidebar::persona_section::PersonaSectionState;
 pub use crate::feat::ui::sidebar::pins::state::PinsState;
 pub use crate::feat::ui::sidebar::sessions::SessionsSectionState;
+pub use crate::feat::ui::sidebar::task_list_section::TaskListSectionState;
 use crate::feat::ui::sidebar::state::SidebarState;
 use crate::feat::ui::picker_states::PickerStates;
 use crate::protocol::tab::ActiveTab;
@@ -69,6 +70,9 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (sidebar navigation).
     pub sessions_section: SessionsSectionState,
 
+    /// Task list sidebar section state - phase cursor tracking.
+    /// OWNER: IntentHandler (sidebar navigation).
+    pub task_list_section: TaskListSectionState,
     /// Signals from the IntentHandler for the outer platform layer.
     /// OWNER: IntentHandler (cleared and set each handle() call).
     pub tui_signals: TuiSignals,
@@ -145,6 +149,7 @@ impl Default for FrontendState {
             sidebar: SidebarState::default(),
             persona_section: PersonaSectionState::default(),
             sessions_section: SessionsSectionState::default(),
+            task_list_section: TaskListSectionState::default(),
             tui_signals: TuiSignals::new(),
             preferences: UserPreferences::default(),
             scope_stack,

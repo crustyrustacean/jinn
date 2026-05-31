@@ -329,6 +329,7 @@ pub fn scope_for_focus(focus: &jinn_domain::FocusScope) -> Scope {
         FocusScope::SidebarPersona => Scope::SidebarPersona,
         FocusScope::SidebarPins => Scope::SidebarPins,
         FocusScope::SidebarSessions => Scope::SidebarSessions,
+        FocusScope::SidebarTaskList => Scope::SidebarTaskList,
         FocusScope::ArgInput => Scope::ArgInput,
         FocusScope::RenameSessionInput => Scope::RenameSessionInput,
         FocusScope::SidebarResize => Scope::SidebarResize,
