@@ -9,6 +9,7 @@
 
 pub mod attached_workflow;
 pub mod domain_node_context;
+pub mod builtin;
 pub mod example;
 pub mod node;
 pub mod picker_entry;
