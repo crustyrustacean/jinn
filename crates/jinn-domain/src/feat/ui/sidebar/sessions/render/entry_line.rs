@@ -115,35 +115,14 @@ pub(crate) fn assemble_entry_line(
     let arrow = arrow_span(entry.is_active, theme);
     let tree = tree_prefix(entry);
     let tree_len = tree.graphemes(true).count();
-    let mut style = entry_title_style(
+    let style = entry_title_style(
         is_selected,
         entry.is_active,
         entry.last_entry_is_error,
         theme,
     );
 
-    let display_title = if entry.is_judge {
-        let prefix = if entry.judge_auto_reset {
-            "\u{2696} \u{21BA} "
-        } else {
-            "\u{2696} "
-        };
-        let prefix_len = prefix.graphemes(true).count();
-        let truncated = truncate_str(&entry.title, max_title_len.saturating_sub(tree_len + prefix_len));
-        format!("{prefix}{truncated}")
-    } else {
-        truncate_str(&entry.title, max_title_len.saturating_sub(tree_len))
-    };
-
-    // Overlay judge-specific colors.
-    if let Some(attached) = entry.judge_attached {
-        if attached {
-            style = style.bg(Color::Rgb(80, 50, 120)).fg(Color::White);
-        } else {
-            style = style.fg(Color::Rgb(160, 130, 200));
-        }
-    }
-
+    let display_title = truncate_str(&entry.title, max_title_len.saturating_sub(tree_len));
     let mut spans = vec![indicator, Span::raw(" "), arrow];
     if !tree.is_empty() {
         spans.push(Span::styled(tree, Style::default().fg(theme.muted_text)));

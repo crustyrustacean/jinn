@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::feat::context::env_context::ContextFile;
 use crate::feat::context::prompt_template::PromptTemplateStore;
-use crate::feat::judge::Judge;
+
 use crate::feat::persona::Persona;
 use crate::feat::skills::Skill;
 use crate::protocol::ToolDefinition;
@@ -34,9 +34,7 @@ pub struct ContextAssemblyState {
     /// Cached project context files (AGENTS.md, CLAUDE.md).
     /// OWNER: populated on startup, refreshed on session/CWD change.
     pub context_files: Vec<ContextFile>,
-    /// Discovered judges from `~/.config/jinn/judges/`.
-    /// OWNER: session-actor (replaces on JudgesLoaded event).
-    pub judges: Vec<Judge>,
+
     /// Loaded compaction system prompt from `~/.config/jinn/prompts/_compaction.md`.
     /// OWNER: populated once at startup by the app init code.
     pub compaction_prompt: String,
@@ -51,7 +49,7 @@ impl Default for ContextAssemblyState {
             active_persona: None,
             tool_definitions: HashMap::new(),
             context_files: Vec::new(),
-            judges: Vec::new(),
+
             compaction_prompt: String::new(),
         }
     }

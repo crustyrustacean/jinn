@@ -104,6 +104,10 @@ pub enum Event {
     PersonasLoaded(crate::feat::context::protocol::event::PersonasLoaded),
     /// A chat entry was pinned or unpinned.
     ChatEntryPinChanged(crate::feat::context::protocol::event::ChatEntryPinChanged),
+    /// A chat entry's context override was toggled (included/excluded from LLM context).
+    ContextOverrideChanged(
+        crate::feat::context::protocol::event::ContextOverrideChanged,
+    ),
     /// Environment variables and API keys have been loaded.
     EnvironmentLoaded(EnvironmentLoaded),
     /// User preferences have been updated and persisted.
@@ -136,10 +140,7 @@ pub enum Event {
     WorkflowCompleted(crate::feat::workflow::protocol::event::WorkflowCompleted),
     /// A workflow node status changed.
     WorkflowNodeStatusChanged(crate::feat::workflow::protocol::event::WorkflowNodeStatusChanged),
-    /// Judges have been scanned and loaded from disk.
-    JudgesLoaded(crate::feat::judge::JudgesLoaded),
-    /// A judge rendered a verdict on its origin session.
-    JudgeVerdict(crate::feat::judge::JudgeVerdict),
+
     /// A task list was updated by a mutation tool.
     TaskListUpdated(crate::feat::session::protocol::task_list_updated::TaskListUpdated),
     /// A dynamic event from a plugin, carrying an arbitrary JSON payload.
@@ -184,6 +185,9 @@ impl Event {
             Self::ChatEntryPinChanged(..) => {
                 Some(crate::feat::context::protocol::event::ChatEntryPinChanged::TYPE_NAME)
             }
+            Self::ContextOverrideChanged(..) => {
+                Some(crate::feat::context::protocol::event::ContextOverrideChanged::TYPE_NAME)
+            }
             Self::EnvironmentLoaded(..) => Some(EnvironmentLoaded::TYPE_NAME),
             Self::PreferencesUpdated(..) => Some(PreferencesUpdated::TYPE_NAME),
             Self::ActiveSessionChanged(..) => {
@@ -220,12 +224,7 @@ impl Event {
             Self::WorkflowNodeStatusChanged(..) => {
                 Some(crate::feat::workflow::protocol::event::WorkflowNodeStatusChanged::TYPE_NAME)
             }
-            Self::JudgesLoaded(..) => {
-                Some(crate::feat::judge::JudgesLoaded::TYPE_NAME)
-            }
-            Self::JudgeVerdict(..) => {
-                Some(crate::feat::judge::JudgeVerdict::TYPE_NAME)
-            }
+
             Self::TaskListUpdated(..) => {
                 Some(crate::feat::session::protocol::task_list_updated::TaskListUpdated::TYPE_NAME)
             }
@@ -320,6 +319,13 @@ mod tests {
         Event::PromptTemplatesLoaded(PromptTemplatesLoaded { templates: vec![], error: None }),
         PromptTemplatesLoaded::TYPE_NAME
     )]
+    #[case::context_override_changed(
+        Event::ContextOverrideChanged(crate::feat::context::protocol::event::ContextOverrideChanged {
+            session_id: SessionId::new(),
+            entry_id: crate::feat::session::chat_entry::ChatEntryId::new(),
+        }),
+        crate::feat::context::protocol::event::ContextOverrideChanged::TYPE_NAME
+    )]
     fn event_type_name_returns_payload_type_name(#[case] event: Event, #[case] expected: &str) {
         // Given an Event variant with a payload.
         // When calling type_name().
@@ -354,5 +360,29 @@ mod tests {
         // When calling type_name.
         // Then it returns the static TYPE_NAME.
         assert_eq!(event.type_name(), Some(DynamicEvent::TYPE_NAME));
+    }
+
+    #[rstest::rstest]
+    fn context_override_changed_serialization_round_trip() {
+        // Given a ContextOverrideChanged event.
+        let entry_id = crate::feat::session::chat_entry::ChatEntryId::new();
+        let event = Event::ContextOverrideChanged(
+            crate::feat::context::protocol::event::ContextOverrideChanged {
+                session_id: SessionId::new(),
+                entry_id: entry_id.clone(),
+            },
+        );
+
+        // When serialized and deserialized.
+        let json = serde_json::to_string(&event).expect("serialize");
+        let back: Event = serde_json::from_str(&json).expect("deserialize");
+
+        // Then the entry_id is preserved.
+        match back {
+            Event::ContextOverrideChanged(payload) => {
+                assert_eq!(payload.entry_id, entry_id);
+            }
+            other => panic!("expected ContextOverrideChanged, got {other:?}"),
+        }
     }
 }

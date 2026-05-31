@@ -61,20 +61,28 @@ impl UiElement<AppState> for StreamingIndicatorElement {
         let phase = session.phase();
         let queue_len = session.queue_len();
 
+        let is_busy = session.is_busy();
         let is_phase_busy = matches!(
             phase,
-            PhaseKind::Sending
-                | PhaseKind::Streaming
-                | PhaseKind::Working
+            PhaseKind::Sending | PhaseKind::Streaming
         );
-        if !is_phase_busy {
+
+        if !is_busy && !is_phase_busy {
             return;
         }
 
-        let label = if queue_len > 0 {
-            format!(" Working... ({queue_len} queued)")
+        let label = if is_busy {
+            if queue_len > 0 {
+                format!(" Working... ({queue_len} queued)")
+            } else {
+                " Working...".to_owned()
+            }
         } else {
-            " Working...".to_owned()
+            if queue_len > 0 {
+                format!(" Streaming... ({queue_len} queued)")
+            } else {
+                " Streaming...".to_owned()
+            }
         };
 
         let throbber = Throbber::default()
@@ -110,7 +118,7 @@ mod tests {
 
 
     #[rstest::rstest]
-    fn renders_working_label_during_sending_phase() {
+    fn renders_streaming_label_during_sending_phase() {
         // Given a session in Sending phase.
         use jinn_testutil::{buffer_row, setup_term};
 
@@ -126,10 +134,10 @@ mod tests {
         let buffer = terminal.backend().buffer().clone();
         let row = buffer_row(&buffer, 0, 30);
 
-        // Then the label shows "Working...".
+        // Then the label shows "Streaming...".
         assert!(
-            row.contains("Working..."),
-            "expected Working..., got: {row}"
+            row.contains("Streaming..."),
+            "expected Streaming..., got: {row}"
         );
     }
 
@@ -165,7 +173,7 @@ mod tests {
 
         let mut element = StreamingIndicatorElement::new();
         let mut state = AppState::default();
-        state.active_session_mut().begin_working();
+        state.active_session_mut().begin_busy();
         let (mut terminal, area) = setup_term(30, 1);
         terminal
             .draw(|frame| {

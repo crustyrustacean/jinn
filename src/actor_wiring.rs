@@ -349,34 +349,7 @@ pub fn create_core_with_actor_host(
         },
     ));
 
-    // Judge scan actor.
-    actors.push(spawn::<
-        jinn_domain::feat::judge::judge_scan_actor::JudgeScanActor,
-    >(
-        "judge-scan",
-        &sink,
-        handle,
-        &counter,
-        &shutdown_tracker,
-        jinn_domain::feat::judge::judge_scan_actor::JudgeScanActorDeps {
-            paths: services.paths.clone(),
-        },
-    ));
 
-    // Judge coordinator actor.
-    // DISABLED: transitioning to a different architecture.
-    // actors.push(spawn::<
-    //     jinn_domain::feat::judge::judge_coordinator_actor::JudgeCoordinatorActor,
-    // >(
-    //     "judge-coordinator",
-    //     &sink,
-    //     handle,
-    //     &counter,
-    //     &shutdown_tracker,
-    //     jinn_domain::feat::judge::judge_coordinator_actor::JudgeCoordinatorActorDeps {
-    //         state: state.clone(),
-    //     },
-    // ));
 
     // Provider actor.
     actors.push(spawn::<
@@ -417,8 +390,21 @@ pub fn create_core_with_actor_host(
         jinn_domain::feat::queue_actor::QueueActorDeps {
             state: state.clone(),
             counter: token_counter,
+    }
+    ));
+
+    // Context size actor - recalculates context size for the status bar.
+    actors.push(spawn::<
+        jinn_domain::feat::context::context_size_actor::ContextSizeActor,
+    >(
+        "context-size",
+        &sink, handle, &counter, &shutdown_tracker,
+        jinn_domain::feat::context::context_size_actor::ContextSizeActorDeps {
+            state: state.clone(),
+            counter: token_counter,
         },
     ));
+
 
     // ── History mutation workers ────────────────��─────────────────────────
     //
@@ -483,6 +469,25 @@ pub fn create_core_with_actor_host(
                 },
             },
         ));
+    }
+
+    // Auto-prune worker: read→edit context pruning.
+    {
+        use jinn_domain::feat::auto_prune_worker::ReadEditAutoPruneWorker;
+        use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
+
+        let config = state.read().frontend.preferences.auto_prune.read_edit.clone();
+
+        if config.enabled {
+            actors.push(spawn::<HistoryWorkerActor<ReadEditAutoPruneWorker>>(
+                "history-worker-auto-prune-read-edit",
+                &sink, handle, &counter, &shutdown_tracker,
+                HistoryWorkerActorDeps {
+                    worker: ReadEditAutoPruneWorker { config },
+                    state: state.clone(),
+                },
+            ));
+        }
     }
 
     // Sidebar state actor - keeps sidebar cursor in sync after session removal.
@@ -611,10 +616,6 @@ pub fn create_core_with_actor_host(
         jinn_domain::feat::context::protocol::command::RescanPersonas,
     ));
 
-    // Trigger initial judge scan.
-    let _ = sink.send_command(jinn_domain::Command::RescanJudges(
-        jinn_domain::feat::judge::RescanJudges,
-    ));
 
     (core, services, actor_host_service)
 }

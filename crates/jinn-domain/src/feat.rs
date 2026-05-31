@@ -1,5 +1,6 @@
 //! Feature modules - domain-specific logic, actors, and UI elements.
 
+pub mod auto_prune_worker;
 pub mod chat_entry_selection;
 pub mod chat_input;
 pub mod compaction_worker;
@@ -7,7 +8,7 @@ pub mod context;
 pub mod global;
 pub mod history_worker;
 pub mod intent;
-pub mod judge;
+
 pub mod llm_actor;
 pub mod navigation;
 pub mod persona;

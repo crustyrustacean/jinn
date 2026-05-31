@@ -31,13 +31,7 @@ pub(crate) struct SessionEntry {
     pub(crate) created_at: jiff::Timestamp,
     pub(crate) is_idle: bool,
     pub(crate) last_entry_is_error: bool,
-    /// Whether this session is a judge session.
-    pub(crate) is_judge: bool,
-    /// For judge sessions: whether the judge is attached.
-    /// `None` for non-judge sessions.
-    pub(crate) judge_attached: Option<bool>,
-    /// For judge sessions: whether auto-reset is effectively enabled.
-    pub(crate) judge_auto_reset: bool,
+
     /// Parent session ID - `None` for root sessions.
     pub(crate) parent_id: Option<SessionId>,
     /// Depth in the session tree. 0 for roots, 1 for their children, etc.
@@ -79,11 +73,7 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
                 .history()
                 .last()
                 .is_some_and(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::Error(..))),
-            is_judge: session.is_judge(),
-            judge_attached: session.judge().as_ref().map(|m| m.is_attached),
-            judge_auto_reset: session.judge().as_ref().is_some_and(|meta| {
-                crate::feat::judge::resolve_effective_auto_reset(meta, &state.context.judges)
-            }),
+
             parent_id: session.parent_session().clone(),
             depth: 0,
             ancestor_continuations: vec![],

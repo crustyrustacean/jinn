@@ -3039,118 +3039,6 @@ fn force_exclude_no_tool_calls_is_noop() {
 
 
 
-// --- begin_working happy path & guards ---
-
-#[rstest::rstest]
-fn begin_working_transitions_idle_to_working() {
-    // Given a session that is idle.
-    let mut session = ChatSessionState::new();
-    assert_eq!(session.phase(), PhaseKind::Idle);
-
-    // When beginning teardown.
-    session.begin_working();
-
-    // Then phase is Working.
-    assert_eq!(session.phase(), PhaseKind::Working);
-}
-
-#[rstest::rstest]
-fn begin_working_is_noop_when_sending() {
-    // Given a session in Sending phase.
-    let mut session = ChatSessionState::new();
-    session.begin_sending();
-
-    // When calling begin_working.
-    session.begin_working();
-
-    // Then phase stays Sending.
-    assert_eq!(session.phase(), PhaseKind::Sending);
-}
-
-#[rstest::rstest]
-fn begin_working_is_noop_when_streaming() {
-    // Given a session in Streaming phase.
-    let mut session = ChatSessionState::new();
-    session.begin_streaming();
-
-    // When calling begin_working.
-    session.begin_working();
-
-    // Then phase stays Streaming.
-    assert_eq!(session.phase(), PhaseKind::Streaming);
-}
-
-
-
-
-
-#[rstest::rstest]
-fn begin_working_is_noop_when_already_working() {
-    // Given a session already tearing down.
-    let mut session = ChatSessionState::new();
-    session.begin_working();
-
-    // When calling begin_working again.
-    session.begin_working();
-
-    // Then phase stays Working (no panic, no double-transition).
-    assert_eq!(session.phase(), PhaseKind::Working);
-}
-
-// --- complete_working happy path & guards ---
-
-#[rstest::rstest]
-fn complete_working_transitions_to_idle() {
-    // Given a session in Working phase.
-    let mut session = ChatSessionState::new();
-    session.begin_working();
-    assert_eq!(session.phase(), PhaseKind::Working);
-
-    // When finishing teardown.
-    session.complete_working();
-
-    // Then phase is Idle.
-    assert_eq!(session.phase(), PhaseKind::Idle);
-}
-
-#[rstest::rstest]
-fn complete_working_is_noop_when_idle() {
-    // Given a session that is idle.
-    let mut session = ChatSessionState::new();
-
-    // When calling complete_working.
-    session.complete_working();
-
-    // Then phase stays Idle.
-    assert_eq!(session.phase(), PhaseKind::Idle);
-}
-
-#[rstest::rstest]
-fn complete_working_is_noop_when_sending() {
-    // Given a session in Sending phase.
-    let mut session = ChatSessionState::new();
-    session.begin_sending();
-
-    // When calling complete_working.
-    session.complete_working();
-
-    // Then phase stays Sending.
-    assert_eq!(session.phase(), PhaseKind::Sending);
-}
-
-#[rstest::rstest]
-fn complete_working_is_noop_when_streaming() {
-    // Given a session in Streaming phase.
-    let mut session = ChatSessionState::new();
-    session.begin_streaming();
-
-    // When calling complete_working.
-    session.complete_working();
-
-    // Then phase stays Streaming.
-    assert_eq!(session.phase(), PhaseKind::Streaming);
-}
-
 
 
 
@@ -3541,7 +3429,7 @@ fn insert_entry_at_shifts_multiple_indices() {
 #[case::idle("idle", PhaseKind::Idle)]
 #[case::sending("sending", PhaseKind::Sending)]
 #[case::streaming("streaming", PhaseKind::Streaming)]
-#[case::working("working", PhaseKind::Working)]
+
 fn phase_kind_from_str_roundtrips(#[case] input: &str, #[case] expected: PhaseKind) {
     // Given a phase string.
     // When parsing.
