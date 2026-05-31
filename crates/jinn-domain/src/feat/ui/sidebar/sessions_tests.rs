@@ -333,25 +333,25 @@ fn sorted_sessions_count_matches_hashmap() {
 }
 
 #[rstest::rstest]
-fn working_phase_makes_session_not_idle() {
-    // Given a session that is in Working phase.
+fn busy_count_does_not_affect_idle_phase() {
+    // Given a session that has active busy operations.
     let mut state = AppState::default();
-    state.active_session_mut().begin_working();
+    state.active_session_mut().begin_busy();
 
     // When collecting sorted open sessions.
     let sessions = sorted_open_sessions(&state);
 
-    // Then the session entry is not idle (throbber will animate).
+    // Then the session entry is still idle (phase machine unaffected by busy_count).
     assert_eq!(sessions.len(), 1);
-    assert!(!sessions[0].is_idle);
+    assert!(sessions[0].is_idle, "phase should remain Idle during busy operations");
 }
 
 #[rstest::rstest]
 fn working_complete_returns_to_idle() {
     // Given a session that was working but completed.
     let mut state = AppState::default();
-    state.active_session_mut().begin_working();
-    state.active_session_mut().complete_working();
+    state.active_session_mut().begin_busy();
+    state.active_session_mut().complete_busy();
 
     // When collecting sorted open sessions.
     let sessions = sorted_open_sessions(&state);
@@ -737,7 +737,7 @@ fn close_session_rejected_when_working_phase() {
     let mut state = AppState::default();
     state.frontend.scope_stack.push(FocusScope::SidebarSessions);
     state.frontend.sessions_section.selected_index = Some(0);
-    state.active_session_mut().begin_working();
+    state.active_session_mut().begin_busy();
 
     // When validating close.
     let result = validate_session_close(&state);

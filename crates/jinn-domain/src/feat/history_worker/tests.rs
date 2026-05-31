@@ -183,40 +183,6 @@ async fn actor_skips_nonexistent_session() {
     assert!(commands.is_empty());
 }
 
-#[tokio::test]
-async fn actor_skips_judge_session() {
-    // Given a session that is a judge session with enough entries to trigger mutations.
-    let entries: Vec<ChatEntry> = (0..5)
-        .map(|i| ChatEntry::user(format!("msg {i}")))
-        .collect();
-    let state = State::new(AppState::default());
-    let session_id = {
-        let mut session = crate::feat::session::chat_session::ChatSessionState::new();
-        for entry in entries {
-            session.push_entry(entry);
-        }
-        // Make it a judge session.
-        session.set_judge(crate::feat::judge::JudgeMeta {
-            origin_session: SessionId::new(),
-            is_attached: true,
-            judge_name: "test-judge".to_owned(),
-            auto_reset: None,
-        });
-        let id = session.session_id().clone();
-        let mut app = state.write();
-        app.session.insert(session);
-        id
-    };
-    let mut actor = make_actor(TruncateOldUserEntries, state);
-    let (sink, ctx) = test_ctx();
-
-    let event = HistoryAppended { session_id };
-    actor.handle_history_appended(&event, &ctx).await;
-
-    // Then no commands were emitted - judge session is skipped.
-    let commands = sink.take_commands();
-    assert!(commands.is_empty());
-}
 
 #[tokio::test]
 async fn noop_worker_never_produces_mutations() {

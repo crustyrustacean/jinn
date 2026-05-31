@@ -16,7 +16,6 @@ pub enum PhaseKind {
     Idle,
     Sending,
     Streaming,
-    Working,
 }
 
 impl std::str::FromStr for PhaseKind {
@@ -27,7 +26,6 @@ impl std::str::FromStr for PhaseKind {
             "idle" => Ok(Self::Idle),
             "sending" => Ok(Self::Sending),
             "streaming" => Ok(Self::Streaming),
-            "working" => Ok(Self::Working),
             _ => Err(PhaseKindParseError(s.to_owned())),
         }
     }
@@ -67,16 +65,7 @@ pub struct StreamingPhase {
     pub soft_cancel_requested: bool,
 }
 
-/// Reference-counted busy phase for tracking concurrent async operations.
-///
-/// Callers increment via `on_start_working()` before starting an operation
-/// and decrement via `on_working_complete()` when it finishes.
-/// The phase returns to `Idle` when the count hits zero.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct WorkingPhase {
-    /// Number of outstanding operations.
-    pub count: usize,
-}
+
 
 /// The current session phase with per-phase state.
 ///
@@ -90,8 +79,6 @@ pub enum Phase {
     Sending(SendingPhase),
     /// LLM tokens are actively streaming into the session.
     Streaming(StreamingPhase),
-    /// A background operation is in progress (setup, teardown, judge evaluation, etc.).
-    Working(WorkingPhase),
 }
 
 impl Phase {
@@ -101,7 +88,6 @@ impl Phase {
             Self::Idle(_) => PhaseKind::Idle,
             Self::Sending(_) => PhaseKind::Sending,
             Self::Streaming(_) => PhaseKind::Streaming,
-            Self::Working(_) => PhaseKind::Working,
         }
     }
 

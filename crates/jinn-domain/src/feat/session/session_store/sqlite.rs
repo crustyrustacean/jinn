@@ -337,24 +337,8 @@ impl SessionStore for SqliteSessionStore {
         .attach("spawn_blocking panicked during shutdown")?
     }
 
-    async fn load_judge_sessions_for_origin(
-        &self,
-        origin_session_id: &SessionId,
-    ) -> Result<Vec<ChatSessionState>, Report<SessionStoreError>> {
-        let pool = self.pool.clone();
-        let origin_session_id = origin_session_id.clone();
-        spawn_blocking(move || {
-            let mut conn = pool
-                .get()
-                .change_context(SessionStoreError)
-                .attach("failed to acquire connection from pool")?;
-            load_judge_sessions_for_origin_blocking(&mut conn, &origin_session_id)
-        })
-        .await
-        .change_context(SessionStoreError)
-        .attach("spawn_blocking panicked during load_judge_sessions_for_origin")?
     }
-}
+
 
 // ── Diesel model structs ─────────────────────────────────────────────────
 
@@ -381,7 +365,7 @@ struct SessionRow {
     lifecycle_script_state: String,
     metadata: Option<String>,
     is_workflow: bool,
-    judge_meta: Option<String>,
+
 }
 
 /// Insert model for the `sessions` table.
@@ -403,7 +387,7 @@ struct NewSessionRow {
     lifecycle_script_state: String,
     metadata: Option<String>,
     is_workflow: bool,
-    judge_meta: Option<String>,
+
 }
 
 /// Reading model for the `entries` table.
@@ -562,7 +546,6 @@ impl From<PersistableCore> for SessionCore {
             lifecycle_script_state: core.lifecycle_script_state,
             ephemeral: SessionCoreEphemeral::default(),
             is_workflow: false,       // set from DB column after deserialization
-            judge: None,              // set from DB column after deserialization
             workflow_overrides: None, // runtime-only, never persisted
             has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
             task_list: core.task_list,
@@ -597,28 +580,12 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     session_state,
                     lifecycle_script_state,
                     is_workflow,
-                    judge,
                     workflow_overrides: _workflow_overrides, // runtime-only, not persisted
                     has_interacted: _has_interacted, // deserialized from DB, restored by handle_session_load_completed
                     task_list: _task_list,           // included in metadata blob via PersistableCore
                 },
             ui: _ui, // runtime-only UI state, not persisted
         } = session;
-
-        // Build the JSON metadata blob from a PersistableCore snapshot.
-        let persistable = PersistableCore::from(&session.core);
-        let metadata = serde_json::to_string(&persistable)
-            .change_context(SessionStoreError)
-            .attach("failed to serialize session metadata blob")?;
-
-        let judge_meta = judge
-            .as_ref()
-            .map(|j| {
-                serde_json::to_string(j)
-                    .change_context(SessionStoreError)
-                    .attach("failed to serialize judge_meta")
-            })
-            .transpose()?;
 
         Ok(Self {
             id: session_id.to_string(),
@@ -646,9 +613,12 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
             lifecycle_script_state: serde_json::to_string(&lifecycle_script_state)
                 .change_context(SessionStoreError)
                 .attach("failed to serialize lifecycle_script_state")?,
-            metadata: Some(metadata),
+            metadata: serde_json::to_string(&PersistableCore::from(&session.core))
+                .change_context(SessionStoreError)
+                .attach("failed to serialize metadata")?
+                .into(),
             is_workflow: *is_workflow,
-            judge_meta,
+
         })
     }
 }
@@ -683,7 +653,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
             lifecycle_script_state,
             metadata,
             is_workflow,
-            judge_meta,
+
         } = ctx.row;
 
         // When a metadata JSON blob exists (v8+), deserialize it as the
@@ -733,7 +703,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 lifecycle_script_state: serde_json::from_str(&lifecycle_script_state)
                     .unwrap_or_default(),
                 is_workflow: false,
-                judge: None,
+
                 workflow_overrides: None, // runtime-only, set later if needed
                 has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
                 task_list: crate::feat::todo_list::TaskList::default(), // no metadata blob available for legacy sessions
@@ -743,21 +713,6 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
         // Single source of truth: is_workflow column → core.is_workflow.
         core.is_workflow = is_workflow;
 
-        // Single source of truth: judge_meta column → core.judge.
-        // Falls back to None if the column is NULL (backward compat).
-        if let Some(ref judge_json) = judge_meta {
-            match serde_json::from_str::<crate::feat::judge::JudgeMeta>(judge_json) {
-                Ok(meta) => core.judge = Some(meta),
-                Err(e) => {
-                    tracing::warn!(
-                        session_id = %core.session_id,
-                        error = %e,
-                        "failed to deserialize judge_meta, clearing judge field"
-                    );
-                    core.judge = None;
-                }
-            }
-        }
 
         // Single source of truth: archived column → session_state.
         core.session_state = if archived {
@@ -813,7 +768,7 @@ fn save_blocking(
                 sessions::lifecycle_script_state.eq(excluded(sessions::lifecycle_script_state)),
                 sessions::metadata.eq(excluded(sessions::metadata)),
                 sessions::is_workflow.eq(excluded(sessions::is_workflow)),
-                sessions::judge_meta.eq(excluded(sessions::judge_meta)),
+
             ))
             .execute(txn)?;
 
@@ -1113,7 +1068,7 @@ fn fork_blocking(
                 lifecycle_script_state: source_meta.lifecycle_script_state,
                 metadata: fork_metadata(source_meta.metadata.as_ref(), &source_str, &new_id_str),
                 is_workflow: source_meta.is_workflow,
-                judge_meta: None, // Forked sessions are never judge sessions.
+
             })
             .execute(txn)?;
 
@@ -1195,31 +1150,6 @@ fn load_unarchived_summaries_blocking(
     Ok(summaries)
 }
 
-/// Loads all non-archived judge sessions targeting the given origin.
-///
-/// Queries by `json_extract(judge_meta, '$.origin_session')`.
-/// Returns empty vec if no judge sessions found.
-fn load_judge_sessions_for_origin_blocking(
-    conn: &mut SqliteConnection,
-    origin_session_id: &SessionId,
-) -> Result<Vec<ChatSessionState>, Report<SessionStoreError>> {
-    let origin_str = origin_session_id.to_string();
-    let rows: Vec<SessionRow> =
-        sql_query("SELECT * FROM sessions WHERE json_extract(judge_meta, '$.origin_session') = ?")
-            .bind::<diesel::sql_types::Text, _>(&origin_str)
-            .get_results(conn)
-            .change_context(SessionStoreError)
-            .attach("failed to query judge sessions for origin")?;
-
-    let mut sessions = Vec::new();
-    for row in rows {
-        let session_id = SessionId::from(row.id.clone().unwrap_or_default());
-        if let Some(session) = load_session_blocking(conn, &session_id)? {
-            sessions.push(session);
-        }
-    }
-    Ok(sessions)
-}
 
 /// Deletes empty unarchived sessions and orphaned entries during shutdown.
 ///

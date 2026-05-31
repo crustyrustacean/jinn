@@ -32,8 +32,7 @@ pub enum Scope {
     PickerLifecycle,
     /// Picker - Workflow selection.
     PickerWorkflow,
-    /// Judge picker scope.
-    PickerJudge,
+
     /// Picker - Compaction model selection.
     PickerCompactionModel,
     /// Picker - Tool toggle selection.
@@ -71,7 +70,7 @@ impl std::fmt::Display for Scope {
             Self::PickerTheme => write!(f, "Picker(theme)"),
             Self::PickerLifecycle => write!(f, "Picker(lifecycle)"),
             Self::PickerWorkflow => write!(f, "Picker(workflow)"),
-            Self::PickerJudge => write!(f, "Picker(judge)"),
+
             Self::PickerCompactionModel => write!(f, "Picker(compaction-model)"),
             Self::PickerTool => write!(f, "Picker(tool)"),
             Self::PickerSkill => write!(f, "Picker(skill)"),
@@ -102,7 +101,7 @@ impl std::str::FromStr for Scope {
             "Picker(theme)" => Ok(Self::PickerTheme),
             "Picker(lifecycle)" => Ok(Self::PickerLifecycle),
             "Picker(workflow)" => Ok(Self::PickerWorkflow),
-            "Picker(judge)" => Ok(Self::PickerJudge),
+
             "Picker(compaction-model)" => Ok(Self::PickerCompactionModel),
             "Picker(tool)" => Ok(Self::PickerTool),
             "Picker(skill)" => Ok(Self::PickerSkill),
