@@ -102,7 +102,7 @@ mod tests {
     use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::feat::preferences_actor::user_preferences::{
-        CompactionConfig, ContextSlidingWindowConfig, CwdSelectorConfig,
+        AutoPruneConfig, CompactionConfig, ContextSlidingWindowConfig, CwdSelectorConfig,
         MinimapConfig, OpenrouterWebSearchConfig, WebFetchConfig,
     };
     use crate::protocol::Event;
@@ -148,6 +148,7 @@ mod tests {
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
+            auto_prune: AutoPruneConfig::default(),
         };
         actor
             .handle(
@@ -193,6 +194,7 @@ mod tests {
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
+            auto_prune: AutoPruneConfig::default(),
         };
         actor
             .handle(
@@ -222,6 +224,7 @@ mod tests {
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
+            auto_prune: AutoPruneConfig::default(),
         };
         actor
             .handle(
@@ -315,6 +318,7 @@ mod tests {
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
+            auto_prune: AutoPruneConfig::default(),
         };
         actor
             .handle(
