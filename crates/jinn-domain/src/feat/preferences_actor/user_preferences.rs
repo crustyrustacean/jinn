@@ -106,6 +106,66 @@ impl Default for MinimapConfig {
     }
 }
 
+/// Default minimum number of in-context entries after an edit before pruning the read.
+const DEFAULT_READ_EDIT_MIN_TAIL_ENTRIES: usize = 10;
+
+/// Default enabled state for read-edit auto-prune.
+const DEFAULT_READ_EDIT_ENABLED: bool = true;
+
+/// Read-edit auto-prune configuration.
+///
+/// Serialized as `[auto_prune.read_edit]` in `jinn.toml`.
+/// Controls the auto-prune worker that excludes stale read tool results
+/// after the file has been edited.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReadEditAutoPruneConfig {
+    /// Whether the read-edit auto-prune worker is active.
+    /// Default: `true`.
+    #[serde(default = "default_read_edit_enabled")]
+    pub enabled: bool,
+    /// Minimum number of in-context entries that must appear after the edit
+    /// before the read result is pruned.
+    /// Default: 10.
+    #[serde(default = "default_read_edit_min_tail_entries")]
+    pub min_tail_entries: usize,
+}
+
+fn default_read_edit_enabled() -> bool {
+    DEFAULT_READ_EDIT_ENABLED
+}
+
+fn default_read_edit_min_tail_entries() -> usize {
+    DEFAULT_READ_EDIT_MIN_TAIL_ENTRIES
+}
+
+impl Default for ReadEditAutoPruneConfig {
+    fn default() -> Self {
+        Self {
+            enabled: DEFAULT_READ_EDIT_ENABLED,
+            min_tail_entries: DEFAULT_READ_EDIT_MIN_TAIL_ENTRIES,
+        }
+    }
+}
+
+/// Auto-prune configuration.
+///
+/// Serialized as `[auto_prune]` in `jinn.toml`.
+/// Groups all auto-prune strategy configurations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoPruneConfig {
+    /// Read-edit auto-prune strategy configuration.
+    #[serde(default)]
+    pub read_edit: ReadEditAutoPruneConfig,
+}
+
+impl Default for AutoPruneConfig {
+    fn default() -> Self {
+        Self {
+            read_edit: ReadEditAutoPruneConfig::default(),
+        }
+    }
+}
+
 /// Default token threshold for auto-compaction.
 const DEFAULT_COMPACTION_THRESHOLD: f64 = 0.7;
 
@@ -393,6 +453,9 @@ pub struct UserPreferences {
     /// Minimap configuration.
     #[serde(default)]
     pub minimap: MinimapConfig,
+    /// Auto-prune configuration.
+    #[serde(default)]
+    pub auto_prune: AutoPruneConfig,
 }
 
 /// Returns the path to the user preferences file.
@@ -532,6 +595,7 @@ mod tests {
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
+            auto_prune: AutoPruneConfig::default(),
         };
 
         // When saving and reloading.
@@ -605,6 +669,7 @@ last_strategy = "sliding_window""#,
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
+            auto_prune: AutoPruneConfig::default(),
         };
 
         // When saving.
@@ -637,6 +702,7 @@ last_strategy = "sliding_window""#,
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
+            auto_prune: AutoPruneConfig::default(),
         };
 
         // When saving and reloading.
@@ -683,6 +749,7 @@ last_strategy = "sliding_window""#,
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
+            auto_prune: AutoPruneConfig::default(),
         };
 
         // When saving and reloading.
@@ -729,6 +796,7 @@ last_strategy = "sliding_window""#,
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
+            auto_prune: AutoPruneConfig::default(),
         };
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
@@ -844,6 +912,7 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
+            auto_prune: AutoPruneConfig::default(),
         };
 
         save_preferences_to(&prefs, &path).expect("save");
@@ -1121,5 +1190,75 @@ max_tokens = 5000
 
         // Then minimap uses defaults.
         assert_eq!(prefs.minimap.max_tokens, 2000);
+    }
+
+    // --- AutoPruneConfig tests ---
+
+    #[rstest::rstest]
+    fn default_auto_prune_config_has_defaults() {
+        let config = AutoPruneConfig::default();
+        assert!(config.read_edit.enabled);
+        assert_eq!(config.read_edit.min_tail_entries, 10);
+    }
+
+    #[rstest::rstest]
+    fn default_preferences_has_default_auto_prune_config() {
+        let prefs = UserPreferences::default();
+        assert!(prefs.auto_prune.read_edit.enabled);
+        assert_eq!(prefs.auto_prune.read_edit.min_tail_entries, 10);
+    }
+
+    #[rstest::rstest]
+    fn load_parses_auto_prune_read_edit_config() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[auto_prune.read_edit]
+enabled = false
+min_tail_entries = 20
+"#,
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+        assert!(!prefs.auto_prune.read_edit.enabled);
+        assert_eq!(prefs.auto_prune.read_edit.min_tail_entries, 20);
+    }
+
+    #[rstest::rstest]
+    fn save_then_load_round_trips_auto_prune_config() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let prefs = UserPreferences {
+            auto_prune: AutoPruneConfig {
+                read_edit: ReadEditAutoPruneConfig {
+                    enabled: false,
+                    min_tail_entries: 5,
+                },
+            },
+            ..UserPreferences::default()
+        };
+
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+        assert!(!reloaded.auto_prune.read_edit.enabled);
+        assert_eq!(reloaded.auto_prune.read_edit.min_tail_entries, 5);
+    }
+
+    #[rstest::rstest]
+    fn load_without_auto_prune_section_uses_defaults() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"last_model = "ollama/llama3"
+"#,
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+        assert!(prefs.auto_prune.read_edit.enabled);
+        assert_eq!(prefs.auto_prune.read_edit.min_tail_entries, 10);
     }
 }
