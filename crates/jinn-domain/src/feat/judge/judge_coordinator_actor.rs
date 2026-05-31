@@ -217,6 +217,13 @@ impl JudgeCoordinatorActor {
             }
         }
 
+        // Notify UI that the origin session entered Working phase.
+        let _ = ctx.send_event(Event::SessionPhaseChanged(SessionPhaseChanged {
+            session_id: origin_id.clone(),
+            old_phase: PhaseKind::Idle,
+            new_phase: PhaseKind::Working,
+        }));
+
         // Record pending judges.
         let mut pending_verdicts = PendingVerdicts::default();
         for (judge_session_id, judge_name) in attached_judges {
@@ -486,6 +493,13 @@ impl JudgeCoordinatorActor {
             }
         }
 
+        // Notify UI that the origin session returned to Idle.
+        let _ = ctx.send_event(Event::SessionPhaseChanged(SessionPhaseChanged {
+            session_id: origin_id.clone(),
+            old_phase: PhaseKind::Working,
+            new_phase: PhaseKind::Idle,
+        }));
+
         let all_passed = pending
             .received
             .iter()
@@ -559,6 +573,13 @@ impl JudgeCoordinatorActor {
                 origin.complete_working();
             }
         }
+
+        // Notify UI that the origin session returned to Idle.
+        let _ = ctx.send_event(Event::SessionPhaseChanged(SessionPhaseChanged {
+            session_id: origin_id.clone(),
+            old_phase: PhaseKind::Working,
+            new_phase: PhaseKind::Idle,
+        }));
 
         // Push system message.
         let notification = ChatEntry::system("Judge evaluation cancelled.");
@@ -1654,15 +1675,15 @@ mod tests {
 
         let (mut actor, sink, ctx) = create_actor(state);
 
-        // When origin transitions to TearingDown (NOT Idle).
-        let teardown_event = ActorEnvelope::Event(Event::SessionPhaseChanged(
+        // When origin transitions to Working (NOT Idle).
+        let non_idle_event = ActorEnvelope::Event(Event::SessionPhaseChanged(
             SessionPhaseChanged {
                 session_id: origin_id.clone(),
                 old_phase: PhaseKind::Sending,
                 new_phase: PhaseKind::Working,
             },
         ));
-        actor.handle(teardown_event, &ctx).await;
+        actor.handle(non_idle_event, &ctx).await;
 
         // Then no commands are emitted (judge NOT triggered).
         let commands = sink.commands();

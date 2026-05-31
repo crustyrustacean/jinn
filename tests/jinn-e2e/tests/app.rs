@@ -936,8 +936,7 @@ fn then_which_key_inactive(world: &mut AppWorld) {
 /// Asserts the active session's state matches the expected value.
 #[cucumber::then(expr = "the session should be {word}")]
 fn then_session_state(world: &mut AppWorld, state_name: String) {
-    let expected: jinn_domain::SessionPhase = state_name.parse().expect("valid session phase");
-    let expected_kind: jinn_domain::PhaseKind = expected.into();
+    let expected_kind: jinn_domain::PhaseKind = state_name.parse().expect("valid session phase");
     let state = world.state();
     let session = state.active_session();
     assert_eq!(

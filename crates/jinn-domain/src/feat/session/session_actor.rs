@@ -67,10 +67,12 @@ pub struct SessionPersistenceActor {
         crate::feat::session_lifecycle::builtin::BuiltinRegistry,
     /// Shell captured at startup for running lifecycle commands.
     pub(in crate::feat::session::session_actor) shell: String,
-    /// Abort handle for the currently running lifecycle spawned task.
+    /// Shared child handle for the currently running lifecycle shell process.
     /// `None` when no lifecycle command is in flight.
-    pub(in crate::feat::session::session_actor) lifecycle_task:
-        Option<tokio::task::AbortHandle>,
+    /// Wrapped in Arc<Mutex> so the spawned reader task and cancel handler
+    /// can both access it.
+    pub(in crate::feat::session::session_actor) lifecycle_child:
+        Option<crate::feat::session_lifecycle::command_runner::SharedChild>,
 }
 
 pub struct SessionPersistenceActorDeps {
@@ -155,7 +157,7 @@ impl Actor for SessionPersistenceActor {
             counter: deps.counter,
             builtin_registry: deps.builtin_registry,
             shell: deps.shell,
-            lifecycle_task: None,
+            lifecycle_child: None,
         }
     }
 
@@ -344,7 +346,7 @@ mod dispatch_tests {
             counter: TiktokenCounter::o200k_base(),
             builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
             shell: "/bin/sh".to_owned(),
-            lifecycle_task: None,
+            lifecycle_child: None,
         }
     }
 
