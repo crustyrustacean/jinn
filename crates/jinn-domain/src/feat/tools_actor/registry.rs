@@ -7,7 +7,7 @@ use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition
 
 use super::{BoxedToolFuture, bash, edit, get_time, read, skill, write};
 
-use crate::feat::judge::tools;
+
 use crate::feat::todo_list;
 
 /// A built-in tool entry: its definition paired with its execute function.
@@ -42,6 +42,6 @@ pub fn builtin_tools() -> Vec<BuiltinToolEntry> {
         ),
     ];
     entries.extend(todo_list::tools::tool_entries());
-    entries.extend(tools::tool_entries());
+
     entries
 }

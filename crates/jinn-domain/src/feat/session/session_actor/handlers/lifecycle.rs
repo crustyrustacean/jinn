@@ -135,11 +135,11 @@ impl SessionPersistenceActor {
         payload: &RunSessionSetup,
         ctx: &ActorContext,
     ) {
-        // Transition to Working phase.
+        // Mark session as busy.
         {
             let mut state = self.state.write();
             if let Some(session) = state.session.get_mut(&payload.session_id) {
-                session.begin_working();
+                session.begin_busy();
             }
         }
 
@@ -148,11 +148,11 @@ impl SessionPersistenceActor {
                 crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(id) => {
                     // Builtin: run inline, then complete Working.
                     self.run_builtin_setup(&payload.session_id, id, &payload.args, ctx);
-                    // Complete Working phase.
+                    // Complete busy.
                     {
                         let mut state = self.state.write();
                         if let Some(session) = state.session.get_mut(&payload.session_id) {
-                            session.complete_working();
+                            session.complete_busy();
                         }
                     }
                 }
@@ -178,7 +178,7 @@ impl SessionPersistenceActor {
                 let default = state.session.default_cwd().clone();
                 if let Some(session) = state.session.get_mut(&payload.session_id) {
                     session.set_cwd(default);
-                    session.complete_working();
+                    session.complete_busy();
                 }
                 drop(state);
                 let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
@@ -232,7 +232,7 @@ impl SessionPersistenceActor {
     /// Handle `FinishSessionSetup` - completion of an async setup shell command.
     ///
     /// Called by the spawned tokio task after the setup shell command finishes.
-    /// Clears the lifecycle child, completes the Working phase, sets CWD,
+    /// Clears the lifecycle child, completes busy, sets CWD,
     /// advances lifecycle state, and emits events.
     pub(in crate::feat::session::session_actor) async fn handle_finish_session_setup(
         &mut self,
@@ -244,11 +244,11 @@ impl SessionPersistenceActor {
 
 
 
-        // Complete Working phase.
+        // Complete busy.
         {
             let mut state = self.state.write();
             if let Some(session) = state.session.get_mut(&payload.session_id) {
-                session.complete_working();
+                session.complete_busy();
             }
         }
 
@@ -479,14 +479,13 @@ impl SessionPersistenceActor {
 
         match teardown_cmd {
             crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(shell_cmd) => {
-                // Set Working phase.
-                let (old_phase, rendered) = {
+                // Mark session as busy.
+                let rendered = {
                     let mut state = self.state.write();
                     let Some(session) = state.session.get_mut(&payload.session_id) else {
                         return;
                     };
-                    let old_phase = session.phase();
-                    session.begin_working();
+                    session.begin_busy();
                     use crate::feat::session_lifecycle::command_template::CommandTemplate;
                     let template = CommandTemplate::parse(shell_cmd);
                     let rendered = if lifecycle_args.is_empty() {
@@ -494,18 +493,12 @@ impl SessionPersistenceActor {
                     } else {
                         template.render(&lifecycle_args)
                     };
-                    (old_phase, rendered)
+                    rendered
                 };
 
-                // Push "running" entry + emit phase change.
+                // Push "running" entry.
                 self.push_and_save(&payload.session_id, teardown_running_msg(), ctx)
                     .await;
-                super::super::helpers::emit_phase_changed(
-                    ctx,
-                    &payload.session_id,
-                    old_phase,
-                    crate::feat::session::phase_machine::PhaseKind::Working,
-                );
 
                 // Spawn tokio task to run the shell command.
                 let session_id = payload.session_id.clone();
@@ -690,35 +683,28 @@ impl SessionPersistenceActor {
             if let Some(teardown_cmd) = teardown_cmd {
                 match teardown_cmd {
                     crate::feat::session_lifecycle::builtin::LifecycleCommand::Shell(shell_cmd) => {
-                        // For shell teardowns: set Working phase, spawn tokio task,
+                        // For shell teardowns: mark busy, spawn tokio task,
                         // then return immediately. The spawned task signals completion
                         // via FinishSessionTeardown with close_after: true.
-                        let (old_phase, rendered) = {
+                        let rendered = {
                             use crate::feat::session_lifecycle::command_template::CommandTemplate;
 
                             let mut state = self.state.write();
                             let Some(session) = state.session.get_mut(&payload.session_id) else {
                                 return;
                             };
-                            let old_phase = session.phase();
-                            session.begin_working();
+                            session.begin_busy();
                             let template = CommandTemplate::parse(&shell_cmd);
                             let rendered = if lifecycle_args.is_empty() {
                                 shell_cmd.clone()
                             } else {
                                 template.render(&lifecycle_args)
                             };
-                            (old_phase, rendered)
+                            rendered
                         };
 
                         self.push_and_save(&payload.session_id, teardown_running_msg(), ctx)
                             .await;
-                        super::super::helpers::emit_phase_changed(
-                            ctx,
-                            &payload.session_id,
-                            old_phase,
-                            crate::feat::session::phase_machine::PhaseKind::Working,
-                        );
 
                         let session_id = payload.session_id.clone();
                         let sink = ctx.sink();
@@ -844,13 +830,13 @@ impl SessionPersistenceActor {
         // Clear lifecycle child handle.
         self.lifecycle_child = None;
 
-        // Complete Working phase.
+        // Complete busy.
         {
             let mut state = self.state.write();
             let Some(session) = state.session.get_mut(&payload.session_id) else {
                 return;
             };
-            session.complete_working();
+            session.complete_busy();
         }
 
         if let Some(ref error_msg) = payload.error {
@@ -865,14 +851,7 @@ impl SessionPersistenceActor {
                 error: Some(error_msg.clone()),
             }));
 
-            // Phase already reset by complete_working(). Emit phase change.
-            let old_phase = crate::feat::session::phase_machine::PhaseKind::Working;
-            super::super::helpers::emit_phase_changed(
-                ctx,
-                &payload.session_id,
-                old_phase,
-                crate::feat::session::phase_machine::PhaseKind::Idle,
-            );
+            // Busy count already decremented by complete_busy(). No phase change to emit.
             return;
         }
 
@@ -947,20 +926,12 @@ impl SessionPersistenceActor {
                 error: None,
             }));
 
-            // Emit phase change so QueueActor drains queued messages.
-            let old_phase = crate::feat::session::phase_machine::PhaseKind::Working;
-            super::super::helpers::emit_phase_changed(
-                ctx,
-                &payload.session_id,
-                old_phase,
-                crate::feat::session::phase_machine::PhaseKind::Idle,
-            );
         }
     }
 
     /// Handle `CancelLifecycleCommand` - kill a running lifecycle process.
     ///
-    /// Kills the child process (if any), cancels the Working phase,
+    /// Kills the child process (if any), cancels busy state,
     /// and pushes a system entry.
     pub(in crate::feat::session::session_actor) fn handle_cancel_lifecycle_command(
         &mut self,
@@ -972,14 +943,14 @@ impl SessionPersistenceActor {
             crate::feat::session_lifecycle::command_runner::kill_shared_child(&child_arc);
         }
 
-        // Cancel Working phase -> Idle.
+        // Cancel busy state.
         let old_phase = {
             let mut state = self.state.write();
             let Some(session) = state.session.get_mut(&payload.session_id) else {
                 return;
             };
             let old_phase = session.phase();
-            session.cancel_working();
+            session.cancel_busy();
             old_phase
         };
 
@@ -1036,58 +1007,6 @@ impl SessionPersistenceActor {
         // Step 3: Remove from memory.
         self.remove_and_replace(&payload.session_id);
 
-        // Step 3b: Cascade archive to judge sessions.
-        let judge_ids: Vec<crate::protocol::SessionId> = {
-            let state = self.state.read();
-            state
-                .session
-                .iter()
-                .filter_map(|(id, s)| {
-                    let meta = s.judge().as_ref()?;
-                    if meta.origin_session == payload.session_id {
-                        Some(id.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect()
-        };
-        for judge_id in &judge_ids {
-            tracing::info!(
-                judge_session = %judge_id,
-                origin = %payload.session_id,
-                "cascading archive to judge session"
-            );
-            // Archive in state.
-            {
-                let mut state = self.state.write();
-                if let Some(session) = state.session.get_mut(judge_id) {
-                    session.set_session_state(SessionState::Archived);
-                }
-            }
-            // Persist to DB.
-            self.save_active_session(judge_id).await;
-
-            // Snapshot judge stats before removing.
-            {
-                let state = self.state.read();
-                if let Some(session) = state.session.get(judge_id) {
-                    let frozen = crate::feat::session::snapshot_frozen_node(session);
-                    drop(state);
-                    self.state.write().session.insert_frozen_node(frozen);
-                }
-            }
-
-            // Remove from memory.
-            self.remove_and_replace(judge_id);
-            // Notify.
-            let _ = ctx.send_event(Event::SessionArchived(SessionArchived {
-                session_id: judge_id.clone(),
-            }));
-            let _ = ctx.send_event(Event::SessionClosed(SessionClosed {
-                session_id: judge_id.clone(),
-            }));
-        }
 
         // Step 3: Notify.
         if let Err(e) = ctx.send_event(Event::SessionArchived(SessionArchived {
@@ -2487,158 +2406,4 @@ mod tests {
         );
     }
 
-    // --- Cascade archive to judge sessions ---
-
-    #[tokio::test]
-    async fn archiving_origin_cascades_to_judge_sessions() {
-        use crate::feat::judge::JudgeMeta;
-
-        // Given an origin session with two judge sessions.
-        let mut actor = test_actor();
-        let (_sink, ctx) = test_context();
-        let origin_id = actor.state.read().session.active_session_id().clone();
-
-        let mut judge_a = ChatSessionState::new();
-        let judge_a_id = judge_a.session_id().clone();
-        judge_a.set_judge(JudgeMeta {
-            origin_session: origin_id.clone(),
-            is_attached: true,
-            judge_name: "judge-a".to_owned(),
-auto_reset: None,
-});
-        judge_a.push_entry(ChatEntry::user("evaluate"));
-
-        let mut judge_b = ChatSessionState::new();
-        let judge_b_id = judge_b.session_id().clone();
-        judge_b.set_judge(JudgeMeta {
-            origin_session: origin_id.clone(),
-            is_attached: true,
-            judge_name: "judge-b".to_owned(),
-auto_reset: None,
-});
-        judge_b.push_entry(ChatEntry::user("evaluate"));
-
-        {
-            let mut state = actor.state.write();
-            state
-                .active_session_mut()
-                .push_entry(ChatEntry::user("do work"));
-            state.session.insert(judge_a);
-            state.session.insert(judge_b);
-        }
-
-        // When archiving the origin.
-        actor
-            .handle_archive_session(
-                &crate::feat::session::protocol::archive_session::ArchiveSession {
-                    session_id: origin_id.clone(),
-                },
-                &ctx,
-            )
-            .await;
-
-        // Then all judge sessions are removed from memory.
-        let state = actor.state.read();
-        assert!(!state.session.contains(&origin_id), "origin should be gone");
-        assert!(
-            !state.session.contains(&judge_a_id),
-            "judge-a should be gone"
-        );
-        assert!(
-            !state.session.contains(&judge_b_id),
-            "judge-b should be gone"
-        );
-    }
-
-    #[tokio::test]
-    async fn archiving_origin_emits_session_archived_for_each_judge() {
-        use crate::feat::judge::JudgeMeta;
-
-        // Given an origin session with two judge sessions.
-        let mut actor = test_actor();
-        let (sink, ctx) = test_context();
-        let origin_id = actor.state.read().session.active_session_id().clone();
-
-        let mut judge_a = ChatSessionState::new();
-        let judge_a_id = judge_a.session_id().clone();
-        judge_a.set_judge(JudgeMeta {
-            origin_session: origin_id.clone(),
-            is_attached: true,
-            judge_name: "judge-a".to_owned(),
-auto_reset: None,
-});
-        judge_a.push_entry(ChatEntry::user("evaluate"));
-
-        let mut judge_b = ChatSessionState::new();
-        let judge_b_id = judge_b.session_id().clone();
-        judge_b.set_judge(JudgeMeta {
-            origin_session: origin_id.clone(),
-            is_attached: true,
-            judge_name: "judge-b".to_owned(),
-auto_reset: None,
-});
-        judge_b.push_entry(ChatEntry::user("evaluate"));
-
-        {
-            let mut state = actor.state.write();
-            state
-                .active_session_mut()
-                .push_entry(ChatEntry::user("do work"));
-            state.session.insert(judge_a);
-            state.session.insert(judge_b);
-        }
-
-        // When archiving the origin.
-        actor
-            .handle_archive_session(
-                &crate::feat::session::protocol::archive_session::ArchiveSession {
-                    session_id: origin_id.clone(),
-                },
-                &ctx,
-            )
-            .await;
-
-        // Then SessionArchived events were emitted for origin and both judges.
-        let events = sink.events();
-        let archived_ids: Vec<_> = events
-            .iter()
-            .filter_map(|e| match e {
-                crate::protocol::Event::SessionArchived(ev) => Some(ev.session_id.clone()),
-                _ => None,
-            })
-            .collect();
-        assert!(
-            archived_ids.contains(&origin_id),
-            "origin should have SessionArchived"
-        );
-        assert!(
-            archived_ids.contains(&judge_a_id),
-            "judge-a should have SessionArchived"
-        );
-        assert!(
-            archived_ids.contains(&judge_b_id),
-            "judge-b should have SessionArchived"
-        );
-
-        // And SessionClosed events for all three.
-        let closed_ids: Vec<_> = events
-            .iter()
-            .filter_map(|e| match e {
-                crate::protocol::Event::SessionClosed(ev) => Some(ev.session_id.clone()),
-                _ => None,
-            })
-            .collect();
-        assert!(
-            closed_ids.contains(&origin_id),
-            "origin should have SessionClosed"
-        );
-        assert!(
-            closed_ids.contains(&judge_a_id),
-            "judge-a should have SessionClosed"
-        );
-        assert!(
-            closed_ids.contains(&judge_b_id),
-            "judge-b should have SessionClosed"
-        );
-    }
 }
