@@ -31,7 +31,9 @@
 
 pub mod assemble;
 pub mod assembly_state;
+pub mod context_size_actor;
 pub mod env_context;
+
 pub mod prompt_scan_actor;
 pub mod prompt_template;
 pub mod protocol;
