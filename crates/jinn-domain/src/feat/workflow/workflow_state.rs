@@ -73,6 +73,30 @@ pub struct WorkflowResult {
     pub success: bool,
 }
 
+/// Ephemeral runtime state for an attached workflow execution.
+///
+/// Lives in `AppState::workflow_executions`. Not persisted across restarts.
+/// Keyed by `WorkflowId` (which is the same as `AttachedWorkflow::id`).
+pub struct WorkflowExecutionState {
+    /// Shared execution state — holds topology and node statuses.
+    pub execution: Arc<WorkflowExecution>,
+    /// Cancellation token for aborting execution.
+    pub cancel: CancellationToken,
+    /// The session that owns this attached workflow.
+    pub session_id: SessionId,
+    /// Maps node name → session ID for cloned sessions.
+    pub node_sessions: HashMap<String, SessionId>,
+}
+
+impl std::fmt::Debug for WorkflowExecutionState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WorkflowExecutionState")
+            .field("session_id", &self.session_id)
+            .field("node_sessions", &self.node_sessions)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Map of loaded workflows with one active at a time.
 ///
 /// Mirrors the [`SessionMap`](crate::common::session_map::SessionMap) pattern -
