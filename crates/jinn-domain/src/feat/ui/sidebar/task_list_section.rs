@@ -1,7 +1,7 @@
 //! [`TaskListSection`] - the task list sidebar section.
 //!
-//! Render-only section that displays the phased task list for the active session.
-//! Navigation is always `Exhausted` - the cursor skips over this section.
+//! Interactive section that displays the phased task list for the active session.
+//! Phases are collapsed by default; the focused phase expands to show its tasks.
 //! The section is hidden when the task list is empty.
 
 use std::borrow::Cow;
@@ -21,20 +21,65 @@ use textwrap::Options;
 /// The task list sidebar section.
 ///
 /// Renders phases and tasks from the active session's task list.
-/// This section is non-interactive - the cursor always skips over it.
+/// Phases are collapsed when unfocused; the selected phase expands when focused.
 #[derive(Debug)]
 pub struct TaskListSection;
 
-/// Navigate within the task list section.
+/// State for the task list sidebar section.
 ///
-/// Always returns `Exhausted` - the section is non-interactive.
-pub fn navigate(_intent: &SidebarIntent, _state: &mut AppState) -> SectionNavResult {
-    SectionNavResult::Exhausted
+/// Tracks which phase is selected (has cursor). `None` means the section
+/// is unfocused — all phases are collapsed.
+#[derive(Debug, Clone, Default)]
+pub struct TaskListSectionState {
+    /// Index into the task list's phases vector.
+    /// `None` when the section is unfocused.
+    pub selected_phase_index: Option<usize>,
 }
 
-/// Place the cursor on this section (no-op).
-pub fn receive_cursor(_state: &mut AppState, _enter_from: EnterFrom) {
-    // No-op: non-interactive section.
+/// Navigate within the task list section.
+///
+/// Moves the phase cursor up/down. Returns `Exhausted` at boundaries.
+pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResult {
+    let Some(index) = state.frontend.task_list_section.selected_phase_index else {
+        return SectionNavResult::Exhausted;
+    };
+    let phase_count = state.active_session().task_list().phases().len();
+    if phase_count == 0 {
+        return SectionNavResult::Exhausted;
+    }
+    match intent {
+        SidebarIntent::MoveDown => {
+            if index + 1 < phase_count {
+                state.frontend.task_list_section.selected_phase_index = Some(index + 1);
+                SectionNavResult::Moved
+            } else {
+                SectionNavResult::Exhausted
+            }
+        }
+        SidebarIntent::MoveUp => {
+            if index > 0 {
+                state.frontend.task_list_section.selected_phase_index = Some(index - 1);
+                SectionNavResult::Moved
+            } else {
+                SectionNavResult::Exhausted
+            }
+        }
+        SidebarIntent::Action(_) => SectionNavResult::Exhausted,
+    }
+}
+
+/// Place the cursor on this section.
+///
+/// Sets the selected phase index based on entry direction.
+pub fn receive_cursor(state: &mut AppState, enter_from: EnterFrom) {
+    let phase_count = state.active_session().task_list().phases().len();
+    if phase_count == 0 {
+        return;
+    }
+    state.frontend.task_list_section.selected_phase_index = Some(match enter_from {
+        EnterFrom::Top => 0,
+        EnterFrom::Bottom => phase_count - 1,
+    });
 }
 
 impl SidebarSection for TaskListSection {
@@ -58,7 +103,7 @@ impl SidebarSection for TaskListSection {
         if list.is_empty() {
             return 0;
         }
-        compute_height(list, state.frontend.sidebar_width)
+        compute_height(list, state)
     }
 }
 
@@ -81,10 +126,23 @@ fn wrap_description(text: &str, available_width: usize) -> Vec<String> {
         .collect()
 }
 
+/// Returns the expanded phase index if the sidebar is focused on the task list section.
+fn expanded_phase_index(state: &AppState) -> Option<usize> {
+    if state.frontend.scope_stack.sidebar_section() == Some(SidebarSectionId::TaskList) {
+        state.frontend.task_list_section.selected_phase_index
+    } else {
+        None
+    }
+}
+
 /// Builds the render lines for a task list.
+///
+/// When unfocused (no expanded phase), renders only phase headers with `▸` indicators.
+/// When focused, expands the selected phase showing its tasks with a `▾` indicator.
 fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
     let theme = &state.frontend.theme;
     let sidebar_width = state.frontend.sidebar_width as usize;
+    let expanded = expanded_phase_index(state);
     let mut lines = Vec::new();
 
     // Header.
@@ -101,109 +159,126 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
     )]));
     lines.push(Line::from(""));
 
-    for phase in list.phases() {
-        // Phase header - word-wrapped.
-        let phase_width = sidebar_width.saturating_sub(PHASE_INDENT);
-        let phase_style = Style::default()
+    for (phase_idx, phase) in list.phases().iter().enumerate() {
+        let is_expanded = expanded == Some(phase_idx);
+        let is_selected = expanded == Some(phase_idx);
+
+        // Phase header with collapse indicator.
+        let indicator = if is_expanded {
+            "\u{25BE} " // ▾ expanded
+        } else {
+            "\u{25B8} " // ▸ collapsed
+        };
+        let phase_width = sidebar_width.saturating_sub(PHASE_INDENT + indicator.len());
+        let mut phase_style = Style::default()
             .fg(theme.muted_text)
             .add_modifier(Modifier::BOLD);
+        // Highlight the selected phase header with reversed colors.
+        if is_selected {
+            phase_style = phase_style.add_modifier(Modifier::REVERSED);
+        }
         let wrapped = wrap_description(phase.description(), phase_width);
-        for segment in &wrapped {
-            lines.push(Line::from(Span::styled(
-                format!("  {segment}"),
-                phase_style,
-            )));
+        for (i, segment) in wrapped.iter().enumerate() {
+            let prefix = if i == 0 {
+                format!("  {indicator}{segment}")
+            } else {
+                format!("    {}{segment}", " ".repeat(indicator.len()))
+            };
+            lines.push(Line::from(Span::styled(prefix, phase_style)));
         }
 
-        if phase.is_empty() {
-            lines.push(Line::from(Span::styled(
-                "    (no tasks)",
-                Style::default().fg(theme.muted_text),
-            )));
-        } else {
-            let task_width = sidebar_width.saturating_sub(TASK_INDENT);
-            for task in phase.tasks() {
-                let indicator = match task.status() {
-                    TaskStatus::Pending => "\u{25CB} ",    // \u{25CB}  ○
-                    TaskStatus::Completed => "\u{2713} ",  // \u{2713}  ✓
-                    TaskStatus::Cancelled => {
-                        // Cancelled tasks are hidden from sidebar.
-                        continue;
-                    }
-                    TaskStatus::Postponed => "\u{25BC} ",   // \u{25BC}  ▼
-                };
-                let style = match task.status() {
-                    TaskStatus::Pending => Style::default().fg(theme.primary_text),
-                    TaskStatus::Cancelled => {
-                        // Cancelled tasks are hidden (continued above), but rust needs this arm
-                        Style::default().fg(theme.muted_text)
-                    }
-                    TaskStatus::Completed | TaskStatus::Postponed => {
-                        Style::default().fg(theme.muted_text)
-                    }
-                };
-                let wrapped = wrap_description(task.description(), task_width);
-                for (i, segment) in wrapped.iter().enumerate() {
-                    if i == 0 {
-                        lines.push(Line::from(Span::styled(
-                            format!("    {indicator}{segment}"),
-                            style,
-                        )));
-                    } else {
-                        lines.push(Line::from(Span::styled(
-                            format!("      {segment}"),
-                            style,
-                        )));
+        // Only render tasks for the expanded phase.
+        if is_expanded {
+            if phase.is_empty() {
+                lines.push(Line::from(Span::styled(
+                    "    (no tasks)",
+                    Style::default().fg(theme.muted_text),
+                )));
+            } else {
+                let task_width = sidebar_width.saturating_sub(TASK_INDENT);
+                for task in phase.tasks() {
+                    let (indicator, style) = match task.status() {
+                        TaskStatus::Pending => {
+                            ("\u{25CB} ", Style::default().fg(theme.primary_text)) // ○
+                        }
+                        TaskStatus::Completed => {
+                            ("\u{2713} ", Style::default().fg(theme.muted_text)) // ✓
+                        }
+                        TaskStatus::Postponed => {
+                            ("\u{25BC} ", Style::default().fg(theme.muted_text)) // ▼
+                        }
+                        TaskStatus::Cancelled => {
+                            // Cancelled tasks are shown with strikethrough.
+                            (
+                                "\u{2717} ", // ✗
+                                Style::default()
+                                    .fg(theme.muted_text)
+                                    .add_modifier(Modifier::CROSSED_OUT),
+                            )
+                        }
+                    };
+                    let wrapped = wrap_description(task.description(), task_width);
+                    for (i, segment) in wrapped.iter().enumerate() {
+                        if i == 0 {
+                            lines.push(Line::from(Span::styled(
+                                format!("    {indicator}{segment}"),
+                                style,
+                            )));
+                        } else {
+                            lines.push(Line::from(Span::styled(
+                                format!("      {segment}"),
+                                style,
+                            )));
+                        }
                     }
                 }
             }
         }
 
-        // Blank line between phases.
-        lines.push(Line::from(""));
-    }
-
-    // Remove trailing blank.
-    if lines.last() == Some(&Line::from("")) {
-        lines.pop();
     }
 
     lines
 }
-
 /// Computes the content height for a non-empty task list.
-fn compute_height(list: &TaskList, sidebar_width: u16) -> u16 {
-    let sidebar_width = sidebar_width as usize;
+fn compute_height(list: &TaskList, state: &AppState) -> u16 {
+    let sidebar_width = state.frontend.sidebar_width as usize;
+    let expanded = expanded_phase_index(state);
     let mut height: usize = 0;
 
     // Header + blank.
     height += 2;
 
-    for phase in list.phases() {
+    for (phase_idx, phase) in list.phases().iter().enumerate() {
+        let is_expanded = expanded == Some(phase_idx);
+
         // Phase header - count wrapped lines.
-        let phase_width = sidebar_width.saturating_sub(PHASE_INDENT);
+        // Account for indicator ("▾ " or "▸ " = 2 chars) + indent.
+        let indicator_len = 2; // "▾ " or "▸ "
+        let phase_width = sidebar_width.saturating_sub(PHASE_INDENT + indicator_len);
         height += wrap_description(phase.description(), phase_width).len();
 
-        if phase.is_empty() {
-            height += 1; // "(no tasks)"
-        } else {
-            let task_width = sidebar_width.saturating_sub(TASK_INDENT);
-            for task in phase.tasks() {
-                height += wrap_description(task.description(), task_width).len();
+        // Only count task lines for the expanded phase.
+        if is_expanded {
+            if phase.is_empty() {
+                height += 1; // "(no tasks)"
+            } else {
+                let task_width = sidebar_width.saturating_sub(TASK_INDENT);
+                for task in phase.tasks() {
+                    height += wrap_description(task.description(), task_width).len();
+                }
             }
         }
-        // Blank line between phases.
-        height += 1;
+
     }
 
-    // Subtract trailing blank + add trailing gap.
-    height.saturating_sub(1) as u16 + 1
+    height as u16
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::common::app_state::AppState;
+    use crate::common::focus::FocusScope;
     use crate::feat::todo_list::TaskPosition;
 
     fn setup_with_tasks() -> AppState {
@@ -226,6 +301,21 @@ mod tests {
         app
     }
 
+    /// Helper: set up focus on a specific phase so it expands.
+    fn setup_focused_on_phase(app: &mut AppState, phase_index: usize) {
+        app.frontend.scope_stack.push(FocusScope::SidebarTaskList);
+        app.frontend.task_list_section.selected_phase_index = Some(phase_index);
+    }
+
+    /// Extract all text content from render lines.
+    fn extract_text(lines: &[Line<'static>]) -> String {
+        lines
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .map(|s| s.content.to_string())
+            .collect()
+    }
+
     #[test]
     fn content_height_is_zero_when_empty() {
         let app = AppState::default();
@@ -241,82 +331,68 @@ mod tests {
         assert!(height > 0, "expected non-zero height, got {height}");
     }
 
+    // --- Navigation tests ---
+
     #[test]
-    fn navigate_always_exhausted() {
+    fn navigate_returns_exhausted_without_selection() {
         let mut app = AppState::default();
         let result = navigate(&SidebarIntent::MoveDown, &mut app);
         assert_eq!(result, SectionNavResult::Exhausted);
     }
 
     #[test]
-    fn receive_cursor_is_noop() {
-        let mut app = AppState::default();
-        // Should not panic.
+    fn navigate_moves_down_within_bounds() {
+        let mut app = setup_with_tasks();
+        setup_focused_on_phase(&mut app, 0);
+        let result = navigate(&SidebarIntent::MoveDown, &mut app);
+        assert_eq!(result, SectionNavResult::Moved);
+        assert_eq!(app.frontend.task_list_section.selected_phase_index, Some(1));
+    }
+
+    #[test]
+    fn navigate_moves_up_within_bounds() {
+        let mut app = setup_with_tasks();
+        setup_focused_on_phase(&mut app, 1);
+        let result = navigate(&SidebarIntent::MoveUp, &mut app);
+        assert_eq!(result, SectionNavResult::Moved);
+        assert_eq!(app.frontend.task_list_section.selected_phase_index, Some(0));
+    }
+
+    #[test]
+    fn navigate_exhausted_at_bottom() {
+        let mut app = setup_with_tasks();
+        setup_focused_on_phase(&mut app, 1); // last phase
+        let result = navigate(&SidebarIntent::MoveDown, &mut app);
+        assert_eq!(result, SectionNavResult::Exhausted);
+    }
+
+    #[test]
+    fn navigate_exhausted_at_top() {
+        let mut app = setup_with_tasks();
+        setup_focused_on_phase(&mut app, 0); // first phase
+        let result = navigate(&SidebarIntent::MoveUp, &mut app);
+        assert_eq!(result, SectionNavResult::Exhausted);
+    }
+
+    #[test]
+    fn receive_cursor_sets_first_phase_from_top() {
+        let mut app = setup_with_tasks();
         receive_cursor(&mut app, EnterFrom::Top);
+        assert_eq!(app.frontend.task_list_section.selected_phase_index, Some(0));
     }
 
     #[test]
-    fn build_render_lines_shows_phases() {
-        let app = setup_with_tasks();
-        let list = app.session.active_session().task_list().clone();
-        let lines = build_render_lines(&list, &app);
-        let text: Vec<String> = lines
-            .iter()
-            .map(|l| l.spans.iter().map(|s| s.content.to_string()).collect())
-            .collect();
-        let combined = text.join("\n");
-        assert!(
-            combined.contains("Research"),
-            "should contain phase: Research"
-        );
-        assert!(combined.contains("Build"), "should contain phase: Build");
-        assert!(
-            combined.contains("Read docs"),
-            "should contain task: Read docs"
-        );
-        assert!(
-            combined.contains("Write code"),
-            "should contain task: Write code"
-        );
+    fn receive_cursor_sets_last_phase_from_bottom() {
+        let mut app = setup_with_tasks();
+        receive_cursor(&mut app, EnterFrom::Bottom);
+        assert_eq!(app.frontend.task_list_section.selected_phase_index, Some(1));
     }
 
     #[test]
-    fn build_render_lines_shows_pending_indicator() {
-        let app = setup_with_tasks();
-        let list = app.session.active_session().task_list().clone();
-        let lines = build_render_lines(&list, &app);
-        let combined: String = lines
-            .iter()
-            .flat_map(|l| l.spans.iter())
-            .map(|s| s.content.to_string())
-            .collect();
-        assert!(
-            combined.contains("\u{25CB}"),
-            "should contain pending indicator ○"
-        );
-    }
-
-    #[test]
-    fn build_render_lines_shows_completed_indicator() {
+    fn receive_cursor_no_panic_on_empty_list() {
         let mut app = AppState::default();
-        let session = app.session.active_session_mut();
-        let pid = session.task_list_mut().add_phase("Build");
-        let tid = session
-            .task_list_mut()
-            .add_task(&pid, "Write code", TaskPosition::End)
-            .unwrap();
-        session.task_list_mut().complete_task(&tid).unwrap();
-        let list = session.task_list().clone();
-        let lines = build_render_lines(&list, &app);
-        let combined: String = lines
-            .iter()
-            .flat_map(|l| l.spans.iter())
-            .map(|s| s.content.to_string())
-            .collect();
-        assert!(
-            combined.contains("\u{2713}"),
-            "should contain completed indicator ✓"
-        );
+        receive_cursor(&mut app, EnterFrom::Top);
+        assert_eq!(app.frontend.task_list_section.selected_phase_index, None);
     }
 
     #[test]
@@ -325,8 +401,156 @@ mod tests {
         assert_eq!(section.id(), SidebarSectionId::TaskList);
     }
 
+    // --- Collapsed rendering tests ---
+
     #[test]
-    fn build_render_lines_shows_postponed_indicator() {
+    fn collapsed_rendering_shows_no_tasks() {
+        // When unfocused, task descriptions should NOT appear.
+        let app = setup_with_tasks();
+        let list = app.session.active_session().task_list().clone();
+        let lines = build_render_lines(&list, &app);
+        let combined = extract_text(&lines);
+        assert!(
+            combined.contains("Research"),
+            "should contain phase: Research"
+        );
+        assert!(combined.contains("Build"), "should contain phase: Build");
+        assert!(
+            !combined.contains("Read docs"),
+            "collapsed should NOT contain task: Read docs"
+        );
+        assert!(
+            !combined.contains("Write code"),
+            "collapsed should NOT contain task: Write code"
+        );
+    }
+
+    #[test]
+    fn collapsed_shows_collapse_indicator() {
+        let app = setup_with_tasks();
+        let list = app.session.active_session().task_list().clone();
+        let lines = build_render_lines(&list, &app);
+        let combined = extract_text(&lines);
+        assert!(
+            combined.contains('\u{25B8}'),
+            "collapsed phases should show \u{25B8} indicator"
+        );
+    }
+
+    #[test]
+    fn no_blank_lines_between_phases() {
+        let app = setup_with_tasks();
+        let list = app.session.active_session().task_list().clone();
+        let lines = build_render_lines(&list, &app);
+        // No line should be empty (blank) - every line should have content.
+        for (i, line) in lines.iter().enumerate() {
+            // The header separator blank (line index 1) is OK.
+            // But between phases there should be no blank lines.
+            if i == 1 {
+                continue; // blank after header is expected
+            }
+            let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
+            assert!(
+                !text.trim().is_empty(),
+                "line {i} should not be blank between phases: {text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn selected_phase_header_has_reversed_modifier() {
+        let mut app = setup_with_tasks();
+        setup_focused_on_phase(&mut app, 0);
+        let list = app.session.active_session().task_list().clone();
+        let lines = build_render_lines(&list, &app);
+        // Find a line containing the first phase name.
+        let has_reversed = lines.iter().any(|line| {
+            let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
+            text.contains("Research")
+                && line.spans.iter().any(|s| {
+                    s.style.add_modifier.contains(Modifier::REVERSED)
+                })
+        });
+        assert!(
+            has_reversed,
+            "selected phase header should have REVERSED modifier for cursor highlight"
+        );
+    }
+
+    // --- Expanded rendering tests ---
+    // --- Expanded rendering tests ---
+
+    #[test]
+    fn expanded_rendering_shows_tasks_for_selected_phase() {
+        let mut app = setup_with_tasks();
+        setup_focused_on_phase(&mut app, 0); // expand Research phase
+        let list = app.session.active_session().task_list().clone();
+        let lines = build_render_lines(&list, &app);
+        let combined = extract_text(&lines);
+        // Research phase tasks should be visible.
+        assert!(
+            combined.contains("Read docs"),
+            "expanded phase should show task: Read docs"
+        );
+        assert!(
+            combined.contains("Call API"),
+            "expanded phase should show task: Call API"
+        );
+        // Build phase tasks should NOT be visible (collapsed).
+        assert!(
+            !combined.contains("Write code"),
+            "non-expanded phase should NOT show task: Write code"
+        );
+    }
+
+    #[test]
+    fn expanded_shows_expand_indicator() {
+        let mut app = setup_with_tasks();
+        setup_focused_on_phase(&mut app, 0);
+        let list = app.session.active_session().task_list().clone();
+        let lines = build_render_lines(&list, &app);
+        let combined = extract_text(&lines);
+        assert!(
+            combined.contains('\u{25BE}'),
+            "expanded phase should show \u{25BE} indicator"
+        );
+    }
+
+    #[test]
+    fn expanded_shows_pending_indicator() {
+        let mut app = setup_with_tasks();
+        setup_focused_on_phase(&mut app, 0);
+        let list = app.session.active_session().task_list().clone();
+        let lines = build_render_lines(&list, &app);
+        let combined = extract_text(&lines);
+        assert!(
+            combined.contains('\u{25CB}'),
+            "should contain pending indicator \u{25CB}"
+        );
+    }
+
+    #[test]
+    fn expanded_shows_completed_indicator() {
+        let mut app = AppState::default();
+        let session = app.session.active_session_mut();
+        let pid = session.task_list_mut().add_phase("Build");
+        let tid = session
+            .task_list_mut()
+            .add_task(&pid, "Write code", TaskPosition::End)
+            .unwrap();
+        session.task_list_mut().complete_task(&tid).unwrap();
+        setup_focused_on_phase(&mut app, 0);
+        let list = app.session.active_session().task_list().clone();
+        let lines = build_render_lines(&list, &app);
+        let combined = extract_text(&lines);
+        assert!(
+            combined.contains('\u{2713}'),
+            "should contain completed indicator \u{2713}"
+        );
+    }
+
+    #[test]
+    fn expanded_shows_postponed_indicator() {
         let mut app = AppState::default();
         let session = app.session.active_session_mut();
         let p1 = session.task_list_mut().add_phase("Research");
@@ -343,26 +567,74 @@ mod tests {
         // Postpone t1 (Read docs) to after t2.
         session
             .task_list_mut()
-            .postpone_task(&t1, crate::feat::todo_list::TaskPosition::After(t2))
+            .postpone_task(&t1, TaskPosition::After(t2))
             .unwrap();
 
-        let list = session.task_list().clone();
+        setup_focused_on_phase(&mut app, 0); // expand Research
+        let list = app.session.active_session().task_list().clone();
         let lines = build_render_lines(&list, &app);
-        let combined: String = lines
-            .iter()
-            .flat_map(|l| l.spans.iter())
-            .map(|s| s.content.to_string())
-            .collect();
+        let combined = extract_text(&lines);
 
-        // Sidebar should show the postponed task with ▼ indicator.
+        // Research phase should show postponed task with ▼.
         assert!(
-            combined.contains("\u{25BC}"),
-            "should contain postponed indicator ▼"
+            combined.contains('\u{25BC}'),
+            "should contain postponed indicator \u{25BC}"
         );
-        // Sidebar should also show pending tasks.
+    }
+
+    // --- Cancelled task tests ---
+
+    #[test]
+    fn cancelled_task_visible_with_indicator() {
+        let mut app = AppState::default();
+        let session = app.session.active_session_mut();
+        let pid = session.task_list_mut().add_phase("Build");
+        let tid = session
+            .task_list_mut()
+            .add_task(&pid, "Bad idea", TaskPosition::End)
+            .unwrap();
+        session.task_list_mut().cancel_task(&tid).unwrap();
+        setup_focused_on_phase(&mut app, 0);
+        let list = app.session.active_session().task_list().clone();
+        let lines = build_render_lines(&list, &app);
+        let combined = extract_text(&lines);
+
+        // Cancelled task should be visible with ✗ indicator.
         assert!(
-            combined.contains("\u{25CB}"),
-            "should contain pending indicator ○"
+            combined.contains('\u{2717}'),
+            "should contain cancelled indicator \u{2717}"
+        );
+        assert!(
+            combined.contains("Bad idea"),
+            "cancelled task description should be visible"
+        );
+    }
+
+    #[test]
+    fn cancelled_task_has_crossed_out_modifier() {
+        let mut app = AppState::default();
+        let session = app.session.active_session_mut();
+        let pid = session.task_list_mut().add_phase("Build");
+        let tid = session
+            .task_list_mut()
+            .add_task(&pid, "Bad idea", TaskPosition::End)
+            .unwrap();
+        session.task_list_mut().cancel_task(&tid).unwrap();
+        setup_focused_on_phase(&mut app, 0);
+        let list = app.session.active_session().task_list().clone();
+        let lines = build_render_lines(&list, &app);
+
+        // Find a line containing the cancelled task and check it has CROSSED_OUT.
+        let has_crossed_out = lines.iter().any(|line| {
+            let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
+            text.contains("Bad idea")
+                && line.spans.iter().any(|s| {
+                    s.style.add_modifier.contains(Modifier::CROSSED_OUT)
+                })
+        });
+        assert!(
+            has_crossed_out,
+            "cancelled task should have CROSSED_OUT modifier"
         );
     }
 
@@ -370,44 +642,29 @@ mod tests {
 
     #[test]
     fn wrap_description_short_text_no_wrap() {
-        // Given text shorter than width.
         let result = wrap_description("hello", 20);
-
-        // Then a single element is returned.
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], "hello");
     }
 
     #[test]
     fn wrap_description_long_text_wraps() {
-        // Given text much longer than width.
         let text = "This is a very long description that should wrap";
-
-        // When wrapping at width 15.
         let result = wrap_description(text, 15);
-
-        // Then multiple lines are produced.
         assert!(result.len() > 1, "expected wrapping, got {result:?}");
-        // And the joined text preserves all words.
         let joined = result.join(" ");
         assert!(joined.contains("very long"));
     }
 
     #[test]
     fn wrap_description_zero_width_returns_original() {
-        // Given text and width 0.
         let result = wrap_description("hello", 0);
-
-        // Then the original text is returned as a single element.
         assert_eq!(result, vec!["hello".to_owned()]);
     }
 
     #[test]
     fn wrap_description_empty_text_returns_single_empty() {
-        // Given empty text.
         let result = wrap_description("", 20);
-
-        // Then a single empty string is returned.
         assert_eq!(result.len(), 1);
         assert_eq!(result[0], "");
     }
@@ -416,7 +673,6 @@ mod tests {
 
     #[test]
     fn build_render_lines_long_task_wraps() {
-        // Given a task with a long description and narrow sidebar.
         let mut app = AppState::default();
         app.frontend.sidebar_width = 20;
         let session = app.session.active_session_mut();
@@ -430,16 +686,10 @@ mod tests {
             )
             .unwrap();
         let list = session.task_list().clone();
+        setup_focused_on_phase(&mut app, 0);
 
-        // When rendering.
         let lines = build_render_lines(&list, &app);
-
-        // Then the full description text is present (not clipped).
-        let combined: String = lines
-            .iter()
-            .flat_map(|l| l.spans.iter())
-            .map(|s| s.content.to_string())
-            .collect();
+        let combined = extract_text(&lines);
         assert!(
             combined.contains("very long"),
             "should contain 'very long' in: {combined}"
@@ -448,13 +698,12 @@ mod tests {
             combined.contains("wrap"),
             "should contain 'wrap' in: {combined}"
         );
-        // And more lines than the non-wrapped baseline (header + blank + phase + task + blank = 5).
+        // More lines than collapsed baseline (header + blank + 2 phases + blank = 5).
         assert!(lines.len() > 5, "expected wrapping to produce extra lines, got {}", lines.len());
     }
 
     #[test]
     fn build_render_lines_long_phase_wraps() {
-        // Given a phase with a long description and narrow sidebar.
         let mut app = AppState::default();
         app.frontend.sidebar_width = 20;
         let session = app.session.active_session_mut();
@@ -463,15 +712,8 @@ mod tests {
             .add_phase("Research and investigate the whole codebase");
         let list = session.task_list().clone();
 
-        // When rendering.
         let lines = build_render_lines(&list, &app);
-
-        // Then the full phase description is present.
-        let combined: String = lines
-            .iter()
-            .flat_map(|l| l.spans.iter())
-            .map(|s| s.content.to_string())
-            .collect();
+        let combined = extract_text(&lines);
         assert!(
             combined.contains("codebase"),
             "should contain 'codebase' in: {combined}"
@@ -480,7 +722,6 @@ mod tests {
 
     #[test]
     fn content_height_wraps_long_description() {
-        // Given a task with a 60-char description and narrow sidebar.
         let mut app = AppState::default();
         app.frontend.sidebar_width = 20;
         let session = app.session.active_session_mut();
@@ -494,20 +735,19 @@ mod tests {
             )
             .unwrap();
         let list = session.task_list().clone();
+        setup_focused_on_phase(&mut app, 0);
 
-        // When computing height.
-        let height = compute_height(&list, app.frontend.sidebar_width);
-
-        // Then height accounts for wrapped lines (more than the flat 5 baseline).
+        let height = compute_height(&list, &app);
+        // Collapsed baseline: header(1) + blank(1) + phase(1) + trailing_gap(1) = 4.
+        // With expansion, height should be > 4 due to task wrapping.
         assert!(
-            height > 5,
-            "expected height > 5 due to wrapping, got {height}"
+            height > 4,
+            "expected height > 4 due to wrapping, got {height}"
         );
     }
 
     #[test]
     fn content_height_minimum_sidebar_no_panic() {
-        // Given minimum sidebar width (15 columns).
         let mut app = AppState::default();
         app.frontend.sidebar_width = 15;
         let session = app.session.active_session_mut();
@@ -518,16 +758,13 @@ mod tests {
             .unwrap();
         let list = session.task_list().clone();
 
-        // When computing height - should not panic.
-        let height = compute_height(&list, 15);
-
-        // Then height is positive.
+        // Should not panic.
+        let height = compute_height(&list, &app);
         assert!(height > 0, "expected non-zero height, got {height}");
     }
 
     #[test]
     fn empty_description_does_not_panic() {
-        // Given a task with an empty description.
         let mut app = AppState::default();
         let session = app.session.active_session_mut();
         let pid = session.task_list_mut().add_phase("Build");
@@ -536,36 +773,47 @@ mod tests {
             .add_task(&pid, "", TaskPosition::End)
             .unwrap();
         let list = session.task_list().clone();
+        setup_focused_on_phase(&mut app, 0);
 
-        // When rendering and computing height - should not panic.
         let lines = build_render_lines(&list, &app);
-        let height = compute_height(&list, app.frontend.sidebar_width);
-
-        // Then results are valid.
+        let height = compute_height(&list, &app);
         assert!(!lines.is_empty());
         assert!(height > 0);
     }
 
     #[test]
-    fn exact_fit_does_not_wrap() {
-        // Given a task description that exactly fills the available width.
-        // sidebar_width = 30, TASK_INDENT = 6, so available = 24.
-        // "123456789012345678901234" = 24 chars.
+    fn exact_fit_does_not_wrap_collapsed() {
+        // When collapsed (no focus), a phase description that exactly fits should
+        // contribute exactly 1 row for the phase header.
+        // sidebar_width = 30, PHASE_INDENT(2) + indicator_len(2) = 4, so available = 26.
+        // "12345678901234567890123456" = 26 chars.
         let mut app = AppState::default();
         app.frontend.sidebar_width = 30;
         let session = app.session.active_session_mut();
-        let pid = session.task_list_mut().add_phase("Build");
         session
             .task_list_mut()
-            .add_task(&pid, "123456789012345678901234", TaskPosition::End)
-            .unwrap();
+            .add_phase("12345678901234567890123456");
         let list = session.task_list().clone();
 
-        // When computing height.
-        let height = compute_height(&list, 30);
+        let height = compute_height(&list, &app);
+        // Collapsed: header(1) + blank(1) + phase(1) = 3.
+        assert_eq!(height, 3, "expected no wrapping for exact-fit description");
+    }
 
-        // Then the task contributes exactly 1 row (no wrapping).
-        // Baseline: header(1) + blank(1) + phase(1) + task(1) + trailing_gap(1) = 5.
-        assert_eq!(height, 5, "expected no wrapping for exact-fit description");
+    #[test]
+    fn content_height_collapsed_vs_expanded() {
+        let app_collapsed = setup_with_tasks();
+        let list = app_collapsed.session.active_session().task_list().clone();
+        let collapsed_height = compute_height(&list, &app_collapsed);
+
+        let mut app_expanded = setup_with_tasks();
+        setup_focused_on_phase(&mut app_expanded, 0);
+        let list2 = app_expanded.session.active_session().task_list().clone();
+        let expanded_height = compute_height(&list2, &app_expanded);
+
+        assert!(
+            expanded_height > collapsed_height,
+            "expanded height ({expanded_height}) should be > collapsed height ({collapsed_height})"
+        );
     }
 }
