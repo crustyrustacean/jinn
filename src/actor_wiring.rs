@@ -422,10 +422,24 @@ pub fn create_core_with_actor_host(
     //       &sink, handle, &counter, &shutdown_tracker,
     //       HistoryWorkerActorDeps {
     //           worker: MyWorker::new(),
-    //           state: state.clone(),
     //       },
     //   ));
     //
+
+    // ── History snapshot actor ──────────────────────────────────────────
+    // Clones history once per HistoryAppended into Arc<[ChatEntry]>,
+    // then emits HistorySnapshotReady for all workers to share.
+    {
+        use jinn_domain::feat::history_worker::snapshot_actor::{HistorySnapshotActor, HistorySnapshotActorDeps};
+
+        actors.push(spawn::<HistorySnapshotActor>(
+            "history-snapshot",
+            &sink, handle, &counter, &shutdown_tracker,
+            HistorySnapshotActorDeps {
+                state: state.clone(),
+            },
+        ));
+    }
     // Compaction worker - summarizes conversation history into structured checkpoints.
     {
         use jinn_domain::feat::compaction_worker::CompactionWorker;
@@ -448,7 +462,6 @@ pub fn create_core_with_actor_host(
                     config,
                     compaction_prompt,
                 },
-                state: state.clone(),
             },
         ));
     }
@@ -494,7 +507,6 @@ pub fn create_core_with_actor_host(
                 &sink, handle, &counter, &shutdown_tracker,
                 HistoryWorkerActorDeps {
                     worker: ReadEditAutoPruneWorker { config },
-                    state: state.clone(),
                 },
             ));
         }
@@ -516,7 +528,6 @@ pub fn create_core_with_actor_host(
                 &sink, handle, &counter, &shutdown_tracker,
                 HistoryWorkerActorDeps {
                     worker: TodoAutoPruneWorker { config },
-                    state: state.clone(),
                 },
             ));
         }
@@ -538,7 +549,6 @@ pub fn create_core_with_actor_host(
                 &sink, handle, &counter, &shutdown_tracker,
                 HistoryWorkerActorDeps {
                     worker: BrokenEditAutoPruneWorker { config },
-                    state: state.clone(),
                 },
             ));
         }

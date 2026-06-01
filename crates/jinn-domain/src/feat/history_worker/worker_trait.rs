@@ -2,11 +2,11 @@
 //!
 //! Each worker inspects a snapshot of the session history and optionally
 //! produces a batch of mutations. Workers run outside any lock.
+use std::sync::Arc;
 
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
-
 /// A pluggable history mutation heuristic.
 ///
 /// Each worker inspects a snapshot of the session history and optionally
@@ -20,8 +20,8 @@ pub trait HistoryWorker: Send + Sync + 'static {
 
     /// Inspect the history snapshot and optionally produce mutations.
     ///
-    /// Called outside any lock. The `history` parameter is an owned
-    /// snapshot cloned under a brief read lock. The `session_id` identifies
-    /// which session triggered the evaluation.
-    async fn evaluate(&self, session_id: &SessionId, history: Vec<ChatEntry>) -> Vec<HistoryMutation>;
+    /// Called outside any lock. The `history` parameter is a shared snapshot
+    /// (via `Arc<[ChatEntry]>`) cloned once by the snapshot actor. The
+    /// `session_id` identifies which session triggered the evaluation.
+    async fn evaluate(&self, session_id: &SessionId, history: Arc<[ChatEntry]>) -> Vec<HistoryMutation>;
 }

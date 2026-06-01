@@ -3,6 +3,7 @@
 pub mod archive_session;
 pub mod close_session;
 pub mod history_appended;
+pub mod history_snapshot_ready;
 pub mod load_session_picker_entries;
 pub mod mark_session_interacted;
 pub mod session_archived;
