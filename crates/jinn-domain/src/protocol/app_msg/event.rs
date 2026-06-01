@@ -130,6 +130,10 @@ pub enum Event {
     SessionPhaseChanged(crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged),
     /// A new entry was appended to a session's history.
     HistoryAppended(crate::feat::session::protocol::history_appended::HistoryAppended),
+    /// A shared snapshot of session history is ready for workers to evaluate.
+    HistorySnapshotReady(
+        crate::feat::session::protocol::history_snapshot_ready::HistorySnapshotReady,
+    ),
     /// A session has been fully loaded from persistent storage.
     SessionLoadCompleted(Box<SessionLoadCompleted>),
     /// A workflow has been loaded (initialized) but not yet started.
@@ -220,6 +224,9 @@ impl Event {
             }
             Self::HistoryAppended(..) => {
                 Some(crate::feat::session::protocol::history_appended::HistoryAppended::TYPE_NAME)
+            }
+            Self::HistorySnapshotReady(..) => {
+                Some(crate::feat::session::protocol::history_snapshot_ready::HistorySnapshotReady::TYPE_NAME)
             }
             Self::SessionLoadCompleted(..) => Some(SessionLoadCompleted::TYPE_NAME),
             Self::WorkflowInitialized(..) => {

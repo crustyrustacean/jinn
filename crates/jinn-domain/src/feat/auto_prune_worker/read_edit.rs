@@ -23,6 +23,8 @@
 //!
 //! [`ForcedExclude`]: crate::feat::session::chat_entry::ContextOverride::ForcedExclude
 
+use std::sync::Arc;
+
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::ReadEditAutoPruneConfig;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
@@ -59,7 +61,7 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
     async fn evaluate(
         &self,
         _session_id: &SessionId,
-        history: Vec<ChatEntry>,
+        history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
         let mut mutations = Vec::new();
 
@@ -232,7 +234,7 @@ mod tests {
         let worker = worker_with_tail(3);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), history).await
+            worker.evaluate(&SessionId::new(), Arc::from(history)).await
         });
         assert!(mutations.is_empty());
     }
@@ -244,7 +246,7 @@ mod tests {
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), history).await
+            worker.evaluate(&SessionId::new(), Arc::from(history)).await
         });
         assert_eq!(mutations.len(), 1);
         // The mutation should target the read ToolResult.
@@ -263,7 +265,7 @@ mod tests {
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), history).await
+            worker.evaluate(&SessionId::new(), Arc::from(history)).await
         });
         assert!(mutations.is_empty());
     }
@@ -274,7 +276,7 @@ mod tests {
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), history).await
+            worker.evaluate(&SessionId::new(), Arc::from(history)).await
         });
         assert!(mutations.is_empty());
     }
@@ -288,7 +290,7 @@ mod tests {
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), history).await
+            worker.evaluate(&SessionId::new(), Arc::from(history)).await
         });
         assert!(mutations.is_empty());
     }
@@ -321,7 +323,7 @@ mod tests {
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), history).await
+            worker.evaluate(&SessionId::new(), Arc::from(history)).await
         });
         assert_eq!(mutations.len(), 2);
     }
@@ -342,7 +344,7 @@ mod tests {
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), history).await
+            worker.evaluate(&SessionId::new(), Arc::from(history)).await
         });
         assert!(mutations.is_empty());
     }
@@ -360,7 +362,7 @@ mod tests {
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), history).await
+            worker.evaluate(&SessionId::new(), Arc::from(history)).await
         });
         assert!(mutations.is_empty());
     }
@@ -372,7 +374,7 @@ mod tests {
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), history).await
+            worker.evaluate(&SessionId::new(), Arc::from(history)).await
         });
         assert_eq!(mutations.len(), 1);
     }
@@ -385,7 +387,7 @@ mod tests {
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), history).await
+            worker.evaluate(&SessionId::new(), Arc::from(history)).await
         });
         assert!(mutations.is_empty());
     }
@@ -414,7 +416,7 @@ mod tests {
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), history).await
+            worker.evaluate(&SessionId::new(), Arc::from(history)).await
         });
         assert!(mutations.is_empty(), "should not prune: only 9 in-context entries");
     }
@@ -445,7 +447,7 @@ mod tests {
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), history).await
+            worker.evaluate(&SessionId::new(), Arc::from(history)).await
         });
         assert_eq!(mutations.len(), 2, "both reads should be pruned");
     }
