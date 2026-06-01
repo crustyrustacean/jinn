@@ -490,6 +490,24 @@ pub fn create_core_with_actor_host(
         }
     }
 
+    // Auto-prune worker: broken-edit context pruning.
+    {
+        use jinn_domain::feat::auto_prune_worker::BrokenEditAutoPruneWorker;
+        use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
+
+        let config = state.read().frontend.preferences.auto_prune.broken_edit.clone();
+
+        if config.enabled {
+            actors.push(spawn::<HistoryWorkerActor<BrokenEditAutoPruneWorker>>(
+                "history-worker-auto-prune-broken-edit",
+                &sink, handle, &counter, &shutdown_tracker,
+                HistoryWorkerActorDeps {
+                    worker: BrokenEditAutoPruneWorker { config },
+                    state: state.clone(),
+                },
+            ));
+        }
+    }
     // Sidebar state actor - keeps sidebar cursor in sync after session removal.
     actors.push(spawn::<
         jinn_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor,
