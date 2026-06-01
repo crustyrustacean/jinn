@@ -490,6 +490,25 @@ pub fn create_core_with_actor_host(
         }
     }
 
+    // Auto-prune worker: todo tool call pruning.
+    {
+        use jinn_domain::feat::auto_prune_worker::TodoAutoPruneWorker;
+        use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
+
+        let config = state.read().frontend.preferences.auto_prune.todo.clone();
+
+        if config.enabled {
+            actors.push(spawn::<HistoryWorkerActor<TodoAutoPruneWorker>>(
+                "history-worker-auto-prune-todo",
+                &sink, handle, &counter, &shutdown_tracker,
+                HistoryWorkerActorDeps {
+                    worker: TodoAutoPruneWorker { config },
+                    state: state.clone(),
+                },
+            ));
+        }
+    }
+
     // Sidebar state actor - keeps sidebar cursor in sync after session removal.
     actors.push(spawn::<
         jinn_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor,
