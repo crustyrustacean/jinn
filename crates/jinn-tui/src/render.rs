@@ -87,16 +87,18 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         &mut rects,
     );
 
-    // Main content area - chat view.
-    // TODO Phase 5: switch between chat and workflow based on active state.
-    chat_tab::render_chat_tab(
-        &mut app.ui_registry,
-        frame,
-        &layout,
-        &state,
-        &mut rects,
-    );
-
+    // Main content area - chat or workflow based on active state.
+    if state.is_viewing_workflow() {
+        workflow_tab::render_workflow_tab(frame, layout.content, &state, 0);
+    } else {
+        chat_tab::render_chat_tab(
+            &mut app.ui_registry,
+            frame,
+            &layout,
+            &state,
+            &mut rects,
+        );
+    }
     // Session preview popup - when sidebar sessions section is focused.
     jinn_domain::feat::ui::sidebar::sessions::render_session_preview_for_state(
         frame,
