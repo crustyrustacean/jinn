@@ -65,8 +65,6 @@ pub struct StreamingPhase {
     pub soft_cancel_requested: bool,
 }
 
-
-
 /// The current session phase with per-phase state.
 ///
 /// Each variant carries its own state struct. Transitioning away from a variant

@@ -288,7 +288,10 @@ mod tests {
         let path = cache_path();
 
         // Then the path is non-empty and contains the expected filename.
-        assert!(!path.as_os_str().is_empty(), "cache_path should not be empty");
+        assert!(
+            !path.as_os_str().is_empty(),
+            "cache_path should not be empty"
+        );
         assert!(path.to_string_lossy().contains("jinn"));
         assert!(path.to_string_lossy().contains("model_cache.json"));
     }

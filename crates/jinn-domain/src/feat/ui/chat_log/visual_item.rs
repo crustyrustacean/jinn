@@ -241,7 +241,10 @@ mod tests {
         }
         assert_eq!(
             items[3],
-            VisualItem::CollapsedIgnoredBlock { start: 3, count: 10 }
+            VisualItem::CollapsedIgnoredBlock {
+                start: 3,
+                count: 10
+            }
         );
         // Non-ignored entries 13..19.
         for i in 0..7 {

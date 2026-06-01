@@ -70,7 +70,6 @@ impl TurnQueue {
     pub(in crate::feat::session) fn drain(&mut self) -> VecDeque<QueueItem> {
         std::mem::take(&mut self.inner)
     }
-
 }
 
 #[cfg(test)]

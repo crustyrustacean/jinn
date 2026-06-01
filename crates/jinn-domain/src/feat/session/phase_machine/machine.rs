@@ -194,7 +194,8 @@ impl SessionPhaseMachine {
 
     /// The streaming assistant entry index, if streaming.
     pub fn streaming_entry_index(&self) -> Option<usize> {
-        self.streaming_phase().and_then(|sp| sp.streaming_entry_index)
+        self.streaming_phase()
+            .and_then(|sp| sp.streaming_entry_index)
     }
 
     /// Set the streaming assistant entry index. No-op if not streaming.
@@ -206,7 +207,8 @@ impl SessionPhaseMachine {
 
     /// The streaming thinking entry index, if streaming.
     pub fn streaming_thinking_entry_index(&self) -> Option<usize> {
-        self.streaming_phase().and_then(|sp| sp.streaming_thinking_entry_index)
+        self.streaming_phase()
+            .and_then(|sp| sp.streaming_thinking_entry_index)
     }
 
     /// Set the streaming thinking entry index. No-op if not streaming.
@@ -220,26 +222,36 @@ impl SessionPhaseMachine {
     pub fn streaming_tool_call_indices(&self) -> &std::collections::HashMap<usize, usize> {
         use std::sync::OnceLock;
         static EMPTY: OnceLock<std::collections::HashMap<usize, usize>> = OnceLock::new();
-        self.streaming_phase()
-            .map_or_else(|| EMPTY.get_or_init(std::collections::HashMap::new), |sp| &sp.streaming_tool_call_indices)
+        self.streaming_phase().map_or_else(
+            || EMPTY.get_or_init(std::collections::HashMap::new),
+            |sp| &sp.streaming_tool_call_indices,
+        )
     }
 
     /// Mutable access to tool-call tracking map. Returns `None` if not streaming.
-    pub fn streaming_tool_call_indices_mut(&mut self) -> Option<&mut std::collections::HashMap<usize, usize>> {
-        self.streaming_phase_mut().map(|sp| &mut sp.streaming_tool_call_indices)
+    pub fn streaming_tool_call_indices_mut(
+        &mut self,
+    ) -> Option<&mut std::collections::HashMap<usize, usize>> {
+        self.streaming_phase_mut()
+            .map(|sp| &mut sp.streaming_tool_call_indices)
     }
 
     /// Read-only access to tool-result tracking map. Returns empty if not streaming.
     pub fn streaming_tool_result_indices(&self) -> &std::collections::HashMap<String, usize> {
         use std::sync::OnceLock;
         static EMPTY: OnceLock<std::collections::HashMap<String, usize>> = OnceLock::new();
-        self.streaming_phase()
-            .map_or_else(|| EMPTY.get_or_init(std::collections::HashMap::new), |sp| &sp.streaming_tool_result_indices)
+        self.streaming_phase().map_or_else(
+            || EMPTY.get_or_init(std::collections::HashMap::new),
+            |sp| &sp.streaming_tool_result_indices,
+        )
     }
 
     /// Mutable access to tool-result tracking map. Returns `None` if not streaming.
-    pub fn streaming_tool_result_indices_mut(&mut self) -> Option<&mut std::collections::HashMap<String, usize>> {
-        self.streaming_phase_mut().map(|sp| &mut sp.streaming_tool_result_indices)
+    pub fn streaming_tool_result_indices_mut(
+        &mut self,
+    ) -> Option<&mut std::collections::HashMap<String, usize>> {
+        self.streaming_phase_mut()
+            .map(|sp| &mut sp.streaming_tool_result_indices)
     }
 
     /// Shift all streaming indices >= `inserted_at` by +1.
@@ -247,11 +259,17 @@ impl SessionPhaseMachine {
     /// Called after `insert_entry_at` to keep indices valid.
     /// No-op if not streaming.
     pub fn shift_streaming_indices_for_insert_at(&mut self, inserted_at: usize) {
-        let Some(sp) = self.streaming_phase_mut() else { return };
-        if let Some(ref mut i) = sp.streaming_entry_index && *i >= inserted_at {
+        let Some(sp) = self.streaming_phase_mut() else {
+            return;
+        };
+        if let Some(ref mut i) = sp.streaming_entry_index
+            && *i >= inserted_at
+        {
             *i += 1;
         }
-        if let Some(ref mut i) = sp.streaming_thinking_entry_index && *i >= inserted_at {
+        if let Some(ref mut i) = sp.streaming_thinking_entry_index
+            && *i >= inserted_at
+        {
             *i += 1;
         }
         for v in sp.streaming_tool_result_indices.values_mut() {
@@ -259,8 +277,15 @@ impl SessionPhaseMachine {
                 *v += 1;
             }
         }
-        for key in sp.streaming_tool_call_indices.keys().copied().collect::<Vec<_>>() {
-            if let Some(v) = sp.streaming_tool_call_indices.get_mut(&key) && *v >= inserted_at {
+        for key in sp
+            .streaming_tool_call_indices
+            .keys()
+            .copied()
+            .collect::<Vec<_>>()
+        {
+            if let Some(v) = sp.streaming_tool_call_indices.get_mut(&key)
+                && *v >= inserted_at
+            {
                 *v += 1;
             }
         }
@@ -268,7 +293,9 @@ impl SessionPhaseMachine {
 
     /// Whether the machine is tracking a tool call at the given history index.
     pub fn is_tool_call_at_history_index(&self, history_index: usize) -> bool {
-        self.streaming_tool_call_indices().values().any(|&v| v == history_index)
+        self.streaming_tool_call_indices()
+            .values()
+            .any(|&v| v == history_index)
     }
 
     /// Read-only access to `SendingPhase` data, if currently sending.
@@ -288,7 +315,6 @@ impl SessionPhaseMachine {
             _ => None,
         }
     }
-
 
     // ── Internal helpers ────────────────────────────────────────────────
 

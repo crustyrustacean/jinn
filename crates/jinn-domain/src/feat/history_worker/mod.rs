@@ -12,12 +12,12 @@
 //!    mutations via the command bus.
 
 pub mod actor;
-pub mod worker_trait;
 pub mod snapshot_actor;
+pub mod worker_trait;
 
 pub use actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
-pub use worker_trait::HistoryWorker;
 pub use snapshot_actor::{HistorySnapshotActor, HistorySnapshotActorDeps};
+pub use worker_trait::HistoryWorker;
 
 #[cfg(test)]
 mod tests;

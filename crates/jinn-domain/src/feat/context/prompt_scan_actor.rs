@@ -34,7 +34,9 @@ impl Actor for PromptScanActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.set_description("Scans and reloads prompt templates");
         ctx.subscribe_command::<RescanPromptTemplates>();
-        Self { services: deps.services }
+        Self {
+            services: deps.services,
+        }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {

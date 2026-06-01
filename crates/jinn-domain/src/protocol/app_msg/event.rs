@@ -105,9 +105,7 @@ pub enum Event {
     /// A chat entry was pinned or unpinned.
     ChatEntryPinChanged(crate::feat::context::protocol::event::ChatEntryPinChanged),
     /// A chat entry's context override was toggled (included/excluded from LLM context).
-    ContextOverrideChanged(
-        crate::feat::context::protocol::event::ContextOverrideChanged,
-    ),
+    ContextOverrideChanged(crate::feat::context::protocol::event::ContextOverrideChanged),
     /// Environment variables and API keys have been loaded.
     EnvironmentLoaded(EnvironmentLoaded),
     /// User preferences have been updated and persisted.
@@ -151,9 +149,7 @@ pub enum Event {
     /// An attached workflow was toggled on/off.
     WorkflowToggled(crate::feat::workflow::protocol::event::WorkflowToggled),
     /// An attached workflow completed execution.
-    AttachedWorkflowCompleted(
-        crate::feat::workflow::protocol::event::AttachedWorkflowCompleted,
-    ),
+    AttachedWorkflowCompleted(crate::feat::workflow::protocol::event::AttachedWorkflowCompleted),
 
     /// A task list was updated by a mutation tool.
     TaskListUpdated(crate::feat::session::protocol::task_list_updated::TaskListUpdated),

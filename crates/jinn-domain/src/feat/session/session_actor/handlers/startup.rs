@@ -105,8 +105,8 @@ impl SessionPersistenceActor {
                     // Archived sessions (e.g., a parent that was archived while its
                     // children remain unarchived) need frozen node snapshots so the
                     // tree summary shows complete historical totals.
-                    self.hydrate_all_tree_frozen_nodes(&self.services.session_store).await;
-
+                    self.hydrate_all_tree_frozen_nodes(&self.services.session_store)
+                        .await;
                 }
             }
         }
@@ -119,10 +119,8 @@ impl SessionPersistenceActor {
             })) {
             tracing::warn!(err = ?e, "session-actor failed to send UpdatePreferences on startup");
         }
-
     }
 }
-
 
 #[cfg(test)]
 mod tests {

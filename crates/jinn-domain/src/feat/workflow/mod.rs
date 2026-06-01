@@ -8,8 +8,8 @@
 //! - [`WorkflowRegistry`] - instance-based named workflow registry
 
 pub mod attached_workflow;
-pub mod domain_node_context;
 pub mod builtin;
+pub mod domain_node_context;
 pub mod example;
 pub mod node;
 pub mod picker_entry;
@@ -54,6 +54,9 @@ mod tests {
 
         // Then the registry is not empty.
         let names = registry.names();
-        assert!(!names.is_empty(), "register_all_workflows should add workflows");
+        assert!(
+            !names.is_empty(),
+            "register_all_workflows should add workflows"
+        );
     }
 }

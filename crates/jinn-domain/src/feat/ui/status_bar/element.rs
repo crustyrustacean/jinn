@@ -7,7 +7,7 @@
 use crate::common::app_state::AppState;
 use crate::common::ui_element::UiElement;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
-use crate::feat::session::{aggregate_tree_stats, TokenStats};
+use crate::feat::session::{TokenStats, aggregate_tree_stats};
 use crate::feat::ui::status_bar::turn_counter;
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};

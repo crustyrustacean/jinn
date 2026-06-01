@@ -48,7 +48,10 @@ pub struct ReadEditAutoPruneWorker {
 /// missing or not a string.
 fn extract_path_from_arguments(arguments: &str) -> Option<String> {
     let value: serde_json::Value = serde_json::from_str(arguments).ok()?;
-    value.get("path")?.as_str().map(std::borrow::ToOwned::to_owned)
+    value
+        .get("path")?
+        .as_str()
+        .map(std::borrow::ToOwned::to_owned)
 }
 
 #[async_trait::async_trait]
@@ -70,7 +73,11 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
 
             // Only interested in "read" tool calls.
             let (tool_call_id, read_path) = match &entry.kind {
-                ChatEntryKind::ToolCall { name, arguments, id } if name == "read" => {
+                ChatEntryKind::ToolCall {
+                    name,
+                    arguments,
+                    id,
+                } if name == "read" => {
                     let Some(path) = extract_path_from_arguments(arguments) else {
                         continue;
                     };
@@ -104,7 +111,9 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
             // Scan forward for an "edit" on the same file path.
             let mut edit_index = None;
             for (j, entry_j) in history.iter().enumerate().skip(i + 1) {
-                if let ChatEntryKind::ToolCall { name, arguments, .. } = &entry_j.kind
+                if let ChatEntryKind::ToolCall {
+                    name, arguments, ..
+                } = &entry_j.kind
                     && name == "edit"
                     && extract_path_from_arguments(arguments).is_some_and(|p| p == read_path)
                 {
@@ -233,9 +242,8 @@ mod tests {
         ];
         let worker = worker_with_tail(3);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), Arc::from(history)).await
-        });
+        let mutations =
+            rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(history)).await });
         assert!(mutations.is_empty());
     }
 
@@ -245,9 +253,8 @@ mod tests {
         let expected_result_id = history[1].id.clone();
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), Arc::from(history)).await
-        });
+        let mutations =
+            rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(history)).await });
         assert_eq!(mutations.len(), 1);
         // The mutation should target the read ToolResult.
         match &mutations[0] {
@@ -264,9 +271,8 @@ mod tests {
         let history = history_with_read_edit_and_tail("/foo.rs", "/bar.rs", 10);
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), Arc::from(history)).await
-        });
+        let mutations =
+            rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(history)).await });
         assert!(mutations.is_empty());
     }
 
@@ -275,9 +281,8 @@ mod tests {
         let history = history_with_read_edit_and_tail("/foo.rs", "/foo.rs", 5);
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), Arc::from(history)).await
-        });
+        let mutations =
+            rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(history)).await });
         assert!(mutations.is_empty());
     }
 
@@ -289,9 +294,8 @@ mod tests {
 
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), Arc::from(history)).await
-        });
+        let mutations =
+            rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(history)).await });
         assert!(mutations.is_empty());
     }
 
@@ -322,9 +326,8 @@ mod tests {
 
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), Arc::from(history)).await
-        });
+        let mutations =
+            rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(history)).await });
         assert_eq!(mutations.len(), 2);
     }
 
@@ -332,7 +335,11 @@ mod tests {
     fn read_without_result_produces_no_mutation() {
         let mut history = Vec::new();
         // Read tool call but no corresponding tool result.
-        history.push(ChatEntry::tool_call("tc-orphan", "read", r#"{"path": "/foo.rs"}"#));
+        history.push(ChatEntry::tool_call(
+            "tc-orphan",
+            "read",
+            r#"{"path": "/foo.rs"}"#,
+        ));
         // Some edit on same file.
         let edit = edit_call_result("tc-2", "/foo.rs", "edit done");
         history.push(edit[0].clone());
@@ -343,9 +350,8 @@ mod tests {
 
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), Arc::from(history)).await
-        });
+        let mutations =
+            rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(history)).await });
         assert!(mutations.is_empty());
     }
 
@@ -361,9 +367,8 @@ mod tests {
 
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), Arc::from(history)).await
-        });
+        let mutations =
+            rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(history)).await });
         assert!(mutations.is_empty());
     }
 
@@ -373,9 +378,8 @@ mod tests {
         let history = history_with_read_edit_and_tail("/foo.rs", "/foo.rs", 10);
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), Arc::from(history)).await
-        });
+        let mutations =
+            rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(history)).await });
         assert_eq!(mutations.len(), 1);
     }
 
@@ -386,12 +390,10 @@ mod tests {
         let history = history_with_read_edit_and_tail("/foo.rs", "/foo.rs", 8);
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), Arc::from(history)).await
-        });
+        let mutations =
+            rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(history)).await });
         assert!(mutations.is_empty());
     }
-
 
     #[test]
     fn only_counts_in_context_entries() {
@@ -415,10 +417,12 @@ mod tests {
 
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), Arc::from(history)).await
-        });
-        assert!(mutations.is_empty(), "should not prune: only 9 in-context entries");
+        let mutations =
+            rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(history)).await });
+        assert!(
+            mutations.is_empty(),
+            "should not prune: only 9 in-context entries"
+        );
     }
 
     #[test]
@@ -446,9 +450,8 @@ mod tests {
 
         let worker = worker_with_tail(10);
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let mutations = rt.block_on(async {
-            worker.evaluate(&SessionId::new(), Arc::from(history)).await
-        });
+        let mutations =
+            rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(history)).await });
         assert_eq!(mutations.len(), 2, "both reads should be pruned");
     }
 }

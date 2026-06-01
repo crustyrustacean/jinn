@@ -106,7 +106,9 @@ impl SessionPersistenceActor {
             // Remove the frozen node snapshot - the live session replaces it.
             state.session.remove_frozen_node(&session_id);
         }
-        let _ = ctx.send_event(Event::SessionLoadCompleted(Box::new(CompletedPayload { session })));
+        let _ = ctx.send_event(Event::SessionLoadCompleted(Box::new(CompletedPayload {
+            session,
+        })));
     }
 
     /// Creates an empty session with the given ID and emits a `SessionLoadCompleted` command.
@@ -122,9 +124,10 @@ impl SessionPersistenceActor {
 
         let mut session = crate::feat::session::chat_session::ChatSessionState::new();
         session.set_session_id(session_id.clone());
-        let _ = ctx.send_event(Event::SessionLoadCompleted(Box::new(CompletedPayload { session })));
+        let _ = ctx.send_event(Event::SessionLoadCompleted(Box::new(CompletedPayload {
+            session,
+        })));
     }
-
 
     /// Hydrate frozen nodes for all live sessions' tree members.
     ///
@@ -350,7 +353,6 @@ impl SessionPersistenceActor {
 
         match store.load_session(&evt.session_id).await {
             Ok(Some(mut session)) => {
-
                 // Unarchive the session so it appears in the picker on next load.
                 if let Err(e) = store.set_archived(&evt.session_id, false).await {
                     tracing::warn!(err = ?e, "failed to unarchive session on load");
@@ -364,15 +366,21 @@ impl SessionPersistenceActor {
 
                 // Run the full restore flow (CWD validation, context size, persist).
                 let session_id = evt.session_id.clone();
-                let session = self.state.read().session.get(&session_id).expect("just inserted").clone();
+                let session = self
+                    .state
+                    .read()
+                    .session
+                    .get(&session_id)
+                    .expect("just inserted")
+                    .clone();
                 let payload = SessionLoadCompleted { session };
                 self.handle_session_load_completed(&payload, ctx).await;
-
 
                 // Hydrate frozen nodes for tree members not in memory.
                 // This ensures the tree summary shows ancestors/siblings even
                 // when they were never loaded into memory this app session.
-                self.hydrate_tree_frozen_nodes(&store, &evt.session_id).await;
+                self.hydrate_tree_frozen_nodes(&store, &evt.session_id)
+                    .await;
             }
             Ok(None) => {
                 tracing::warn!(
@@ -531,7 +539,6 @@ mod tests {
             "interacted session should be persisted after MarkSessionInteracted"
         );
     }
-
 
     #[tokio::test]
     async fn loading_child_session_creates_frozen_node_for_archived_parent() {

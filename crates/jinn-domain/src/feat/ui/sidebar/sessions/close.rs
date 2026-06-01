@@ -49,7 +49,6 @@ pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError>
         return Err(SessionCloseError::SessionBusy);
     }
 
-
     Ok(())
 }
 /// Handles `SidebarSessionClose` - closes the selected session.

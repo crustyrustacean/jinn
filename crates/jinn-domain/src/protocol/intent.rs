@@ -175,7 +175,6 @@ pub enum Intent {
     /// Queue a "Continue" user message to the session under the sidebar cursor.
     SidebarSessionContinue,
 
-
     // --- Chat Entry Selection ---
     /// Select the next chat entry.
     ChatEntrySelectNext,
@@ -244,7 +243,6 @@ pub enum Intent {
         /// Which one-shot workflow to toggle.
         kind: crate::feat::workflow::attached_workflow::OneShotKind,
     },
-
 
     // --- Workflow Navigation ---
     /// Select the nearest node to the left (spatial).

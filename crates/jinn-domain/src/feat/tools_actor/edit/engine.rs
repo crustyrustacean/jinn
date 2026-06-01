@@ -9,8 +9,7 @@
 //! 6. Track first/last changed lines for response formatting
 
 use super::hash::{
-    assert_no_display_prefixes, compute_line_hash, format_tag, parse_anchor, Anchor,
-    HashMismatch,
+    Anchor, HashMismatch, assert_no_display_prefixes, compute_line_hash, format_tag, parse_anchor,
 };
 
 // ─── Constants ──────────────────────────────────────────────────────────
@@ -62,10 +61,7 @@ pub enum HashlineEdit {
         lines: Vec<String>,
     },
     /// Replace the one exact unique occurrence of `old_text` with `new_text`.
-    ReplaceText {
-        old_text: String,
-        new_text: String,
-    },
+    ReplaceText { old_text: String, new_text: String },
 }
 
 /// Schema-level edit as received from the tool layer.
@@ -160,15 +156,12 @@ pub fn resolve_edit_anchors(edits: &[RawEdit]) -> Result<Vec<HashlineEdit>, Stri
 
         match op {
             EditOp::Replace => {
-                let pos_str = edit.pos.as_deref().ok_or_else(|| {
-                    "[E_BAD_OP] Replace requires a \"pos\" anchor.".to_owned()
-                })?;
-                let pos = parse_anchor(pos_str)?;
-                let end = edit
-                    .end
+                let pos_str = edit
+                    .pos
                     .as_deref()
-                    .map(parse_anchor)
-                    .transpose()?;
+                    .ok_or_else(|| "[E_BAD_OP] Replace requires a \"pos\" anchor.".to_owned())?;
+                let pos = parse_anchor(pos_str)?;
+                let end = edit.end.as_deref().map(parse_anchor).transpose()?;
                 let lines = edit
                     .lines
                     .clone()
@@ -184,11 +177,7 @@ pub fn resolve_edit_anchors(edits: &[RawEdit]) -> Result<Vec<HashlineEdit>, Stri
                             .to_owned(),
                     );
                 }
-                let pos = edit
-                    .pos
-                    .as_deref()
-                    .map(parse_anchor)
-                    .transpose()?;
+                let pos = edit.pos.as_deref().map(parse_anchor).transpose()?;
                 let lines = edit
                     .lines
                     .clone()
@@ -204,11 +193,7 @@ pub fn resolve_edit_anchors(edits: &[RawEdit]) -> Result<Vec<HashlineEdit>, Stri
                             .to_owned(),
                     );
                 }
-                let pos = edit
-                    .pos
-                    .as_deref()
-                    .map(parse_anchor)
-                    .transpose()?;
+                let pos = edit.pos.as_deref().map(parse_anchor).transpose()?;
                 let lines = edit
                     .lines
                     .clone()
@@ -221,9 +206,7 @@ pub fn resolve_edit_anchors(edits: &[RawEdit]) -> Result<Vec<HashlineEdit>, Stri
                 let old_text = edit.old_text.as_deref().unwrap_or("").to_owned();
                 let new_text = edit.new_text.as_deref().unwrap_or("").to_owned();
                 if old_text.is_empty() {
-                    return Err(
-                        "[E_BAD_OP] replace_text requires non-empty oldText.".to_owned(),
-                    );
+                    return Err("[E_BAD_OP] replace_text requires non-empty oldText.".to_owned());
                 }
                 result.push(HashlineEdit::ReplaceText { old_text, new_text });
             }
@@ -237,10 +220,7 @@ pub fn resolve_edit_anchors(edits: &[RawEdit]) -> Result<Vec<HashlineEdit>, Stri
 /// Validates all anchors in the edits against the current file content.
 ///
 /// Returns a list of mismatches. If empty, all anchors are valid.
-pub fn validate_anchors(
-    edits: &[HashlineEdit],
-    file_lines: &[&str],
-) -> Vec<HashMismatch> {
+pub fn validate_anchors(edits: &[HashlineEdit], file_lines: &[&str]) -> Vec<HashMismatch> {
     let mut mismatches = Vec::new();
     let mut seen_mismatch_lines = std::collections::HashSet::new();
 
@@ -253,19 +233,26 @@ pub fn validate_anchors(
                         mismatches.push(HashMismatch {
                             line: pos.line,
                             expected: pos.hash.clone(),
-                            actual: format!(
-                                "(range start {} > end {})",
-                                pos.line, end_anchor.line
-                            ),
+                            actual: format!("(range start {} > end {})", pos.line, end_anchor.line),
                         });
                         continue;
                     }
-                    validate_anchor(end_anchor, file_lines, &mut mismatches, &mut seen_mismatch_lines);
+                    validate_anchor(
+                        end_anchor,
+                        file_lines,
+                        &mut mismatches,
+                        &mut seen_mismatch_lines,
+                    );
                 }
             }
             HashlineEdit::Append { pos, .. } | HashlineEdit::Prepend { pos, .. } => {
                 if let Some(anchor) = pos {
-                    validate_anchor(anchor, file_lines, &mut mismatches, &mut seen_mismatch_lines);
+                    validate_anchor(
+                        anchor,
+                        file_lines,
+                        &mut mismatches,
+                        &mut seen_mismatch_lines,
+                    );
                 }
             }
             HashlineEdit::ReplaceText { .. } => {}
@@ -305,10 +292,7 @@ fn validate_anchor(
 }
 
 /// Formats a mismatch error with context lines and `>>>` markers.
-pub fn format_mismatch_error(
-    mismatches: &[HashMismatch],
-    file_lines: &[&str],
-) -> String {
+pub fn format_mismatch_error(mismatches: &[HashMismatch], file_lines: &[&str]) -> String {
     let mismatch_lines: std::collections::HashSet<usize> =
         mismatches.iter().map(|m| m.line).collect();
 
@@ -350,15 +334,9 @@ pub fn format_mismatch_error(
         let content = file_lines[num - 1];
         let h = compute_line_hash(num, content);
         if mismatch_lines.contains(&num) {
-            out.push_str(&format!(
-                ">>> {num:>width$}#{h}|{content}\n",
-                width = width
-            ));
+            out.push_str(&format!(">>> {num:>width$}#{h}|{content}\n", width = width));
         } else {
-            out.push_str(&format!(
-                "    {num:>width$}#{h}|{content}\n",
-                width = width
-            ));
+            out.push_str(&format!("    {num:>width$}#{h}|{content}\n", width = width));
         }
     }
 
@@ -370,10 +348,7 @@ pub fn format_mismatch_error(
 /// Applies validated hashline edits to the file content.
 ///
 /// Returns the modified content, changed line range, warnings, and NOOP edits.
-pub fn apply_hashline_edits(
-    content: &str,
-    edits: &[HashlineEdit],
-) -> Result<EditResult, String> {
+pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<EditResult, String> {
     if edits.is_empty() {
         return Ok(EditResult {
             content: content.to_owned(),
@@ -487,14 +462,10 @@ fn resolve_edit_to_span(
             let end_line = end.as_ref().map_or(start_line, |a| a.line);
 
             // NOOP check
-            let original: Vec<&str> = file_lines
-                [start_line - 1..end_line.min(file_lines.len())]
-                .to_vec();
+            let original: Vec<&str> =
+                file_lines[start_line - 1..end_line.min(file_lines.len())].to_vec();
             if original.len() == lines.len()
-                && original
-                    .iter()
-                    .zip(lines.iter())
-                    .all(|(a, b)| a == b)
+                && original.iter().zip(lines.iter()).all(|(a, b)| a == b)
             {
                 noop_edits.push(NoopEdit {
                     edit_index: index,
@@ -704,9 +675,7 @@ fn check_boundary_duplication(
     };
     let last_repl = lines.last().expect("lines non-empty").trim();
     if !last_repl.is_empty()
-        && last_repl
-            .chars()
-            .any(|c| c.is_alphanumeric())
+        && last_repl.chars().any(|c| c.is_alphanumeric())
         && last_repl == next.trim()
     {
         let next_tag = format_tag(end_line + 1, next);
@@ -731,11 +700,9 @@ fn describe_edit(edit: &HashlineEdit) -> String {
                 format!("replace {}#{}", pos.line, pos.hash)
             }
         }
-        HashlineEdit::Append { pos, .. } => {
-            pos.as_ref().map_or("append at EOF".to_owned(), |a| {
-                format!("append after {}#{}", a.line, a.hash)
-            })
-        }
+        HashlineEdit::Append { pos, .. } => pos.as_ref().map_or("append at EOF".to_owned(), |a| {
+            format!("append after {}#{}", a.line, a.hash)
+        }),
         HashlineEdit::Prepend { pos, .. } => {
             pos.as_ref().map_or("prepend at BOF".to_owned(), |a| {
                 format!("prepend before {}#{}", a.line, a.hash)
@@ -787,9 +754,7 @@ fn assert_no_conflicting_spans(spans: &[ResolvedSpan]) -> Result<(), String> {
             } else {
                 (right, left)
             };
-            if insert_span.start >= replace_span.start
-                && insert_span.start < replace_span.end
-            {
+            if insert_span.start >= replace_span.start && insert_span.start < replace_span.end {
                 return Err(format!(
                     "[E_EDIT_CONFLICT] Conflicting edits in a single request: edit {} ({}) and edit {} ({}) cannot be applied together because one inserts inside a replaced original range.",
                     left.index, left.label, right.index, right.label
@@ -802,10 +767,7 @@ fn assert_no_conflicting_spans(spans: &[ResolvedSpan]) -> Result<(), String> {
 
 /// Computes the first and last changed line numbers between original and result.
 #[allow(clippy::items_after_statements)]
-fn compute_changed_line_range(
-    original: &str,
-    result: &str,
-) -> (Option<usize>, Option<usize>) {
+fn compute_changed_line_range(original: &str, result: &str) -> (Option<usize>, Option<usize>) {
     if original == result {
         return (None, None);
     }
@@ -838,8 +800,7 @@ fn compute_changed_line_range(
     let mut last_res = result.len() as isize - 1;
     while last_orig >= first_diff as isize
         && last_res >= first_diff as isize
-        && original.as_bytes()[last_orig as usize]
-            == result.as_bytes()[last_res as usize]
+        && original.as_bytes()[last_orig as usize] == result.as_bytes()[last_res as usize]
     {
         last_orig -= 1;
         last_res -= 1;

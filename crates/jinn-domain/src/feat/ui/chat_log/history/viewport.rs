@@ -113,7 +113,10 @@ mod tests {
         // kills: abs_end > viewport_bottom -> abs_end == viewport_bottom (mutant)
         //        abs_end > viewport_bottom -> abs_end < viewport_bottom (mutant)
         //        abs_end > viewport_bottom -> abs_end >= viewport_bottom (mutant)
-        assert_eq!(result.clamped, 6, "should scroll down to show selected entry");
+        assert_eq!(
+            result.clamped, 6,
+            "should scroll down to show selected entry"
+        );
     }
 
     #[rstest::rstest]
@@ -125,7 +128,10 @@ mod tests {
         let result = compute_scroll(5, 5, Some(2), &ranges, Some(0));
 
         // Then no scroll adjustment needed.
-        assert_eq!(result.clamped, 0, "no scroll when selected is already visible");
+        assert_eq!(
+            result.clamped, 0,
+            "no scroll when selected is already visible"
+        );
     }
 
     #[rstest::rstest]
@@ -143,7 +149,10 @@ mod tests {
         // The mutant would treat entry_height > area_height as entry_height <= area_height,
         // entering the first branch and scrolling to abs_start = 3.
         // The correct behavior is NOT scrolling because the entry is partially visible.
-        assert_eq!(result.clamped, 0, "large entry partially visible should not scroll");
+        assert_eq!(
+            result.clamped, 0,
+            "large entry partially visible should not scroll"
+        );
     }
 
     #[rstest::rstest]
@@ -156,7 +165,10 @@ mod tests {
         // abs_start = 4 >= viewport_bottom = 4, so clamped = abs_start = 4.
         let result = compute_scroll(4, 15, Some(4), &ranges, Some(0));
 
-        assert_eq!(result.clamped, 4, "large entry completely below should scroll to its start");
+        assert_eq!(
+            result.clamped, 4,
+            "large entry completely below should scroll to its start"
+        );
     }
 
     #[rstest::rstest]
@@ -175,7 +187,10 @@ mod tests {
         // entry_height = 5 > area_height = 4.
         // abs_start (0) < viewport_bottom (9) → false for first else-if.
         // abs_end (5) <= viewport_top (5) → true, so clamped = 5 - 4 = 1.
-        assert_eq!(result.clamped, 1, "large entry completely above should scroll up");
+        assert_eq!(
+            result.clamped, 1,
+            "large entry completely above should scroll up"
+        );
     }
 
     #[rstest::rstest]

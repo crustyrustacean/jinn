@@ -35,7 +35,11 @@ impl Extractor for MarkdownExtractor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test assertions")] 
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        reason = "test assertions"
+    )]
 
     use super::*;
 
@@ -79,8 +83,14 @@ mod tests {
         let result = extractor.extract("<ul><li>first</li><li>second</li></ul>");
 
         // Then the output contains the list item text.
-        assert!(result.contains("first"), "should contain first list item text");
-        assert!(result.contains("second"), "should contain second list item text");
+        assert!(
+            result.contains("first"),
+            "should contain first list item text"
+        );
+        assert!(
+            result.contains("second"),
+            "should contain second list item text"
+        );
     }
 
     #[rstest::rstest]

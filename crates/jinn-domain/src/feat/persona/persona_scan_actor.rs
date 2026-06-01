@@ -33,7 +33,9 @@ impl Actor for PersonaScanActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.set_description("Scans and loads persona files from ~/.config/jinn/personas");
         ctx.subscribe_command::<RescanPersonas>();
-        Self { services: deps.services }
+        Self {
+            services: deps.services,
+        }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
@@ -108,9 +110,7 @@ mod tests {
         let services = crate::common::services::test_services::TestServices::builder()
             .paths(AppPaths::new_in(dir.path()))
             .build();
-        let deps = PersonaScanActorDeps {
-            services,
-        };
+        let deps = PersonaScanActorDeps { services };
 
         let actor = PersonaScanActor::activate(deps, &mut ctx);
         (actor, sink, ctx)

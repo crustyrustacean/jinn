@@ -339,9 +339,7 @@ mod tests {
         {
             let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
-            session.set_disabled_skills(
-                HashSet::from(["web-coder".to_owned()]),
-            );
+            session.set_disabled_skills(HashSet::from(["web-coder".to_owned()]));
         }
 
         let call = ToolCall {

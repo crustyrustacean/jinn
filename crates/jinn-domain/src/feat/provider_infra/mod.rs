@@ -37,10 +37,10 @@ pub use config_storage::{
     ConfigStorage, ConfigStorageService, FilesystemConfigStorage, InMemoryConfigStorage,
 };
 pub use generic_factory::GenericLlmServiceFactory;
+pub use jinn_provider::{FakeLlmServiceFactory, ModelInfo, TOOL_LOOP_TRIGGER};
 pub use model_cache::{ModelCache, ModelCacheError, cache_path};
 pub use models_dev::ModelsDevData;
 pub use no_providers::{NO_PROVIDER_ID, NoProvidersAvailableFactory};
-pub use jinn_provider::{FakeLlmServiceFactory, ModelInfo, TOOL_LOOP_TRIGGER};
 pub use provider_id::ProviderId;
 pub use registry::ProviderRegistry;
 pub use registry_service::ProviderRegistryService;

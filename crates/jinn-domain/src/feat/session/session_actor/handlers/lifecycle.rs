@@ -215,15 +215,13 @@ impl SessionPersistenceActor {
                     (None, Some("Setup command was cancelled".to_owned()))
                 }
             };
-            let _ = sink.send_command(
-                crate::protocol::Command::FinishSessionSetup(
-                    crate::feat::session_lifecycle::protocol::command::FinishSessionSetup {
-                        session_id,
-                        cwd,
-                        error,
-                    },
-                ),
-            );
+            let _ = sink.send_command(crate::protocol::Command::FinishSessionSetup(
+                crate::feat::session_lifecycle::protocol::command::FinishSessionSetup {
+                    session_id,
+                    cwd,
+                    error,
+                },
+            ));
         });
 
         self.lifecycle_child = Some(child_arc);
@@ -241,8 +239,6 @@ impl SessionPersistenceActor {
     ) {
         // Clear lifecycle child handle.
         self.lifecycle_child = None;
-
-
 
         // Complete busy.
         {
@@ -747,7 +743,8 @@ impl SessionPersistenceActor {
                                 });
                             }
                             Err(report) => {
-                                let error_msg = format!("Failed to start teardown command: {report}");
+                                let error_msg =
+                                    format!("Failed to start teardown command: {report}");
                                 let _ = sink.send_command(
                                     crate::protocol::Command::FinishSessionTeardown(
                                         crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown {
@@ -925,7 +922,6 @@ impl SessionPersistenceActor {
                 session_id: payload.session_id.clone(),
                 error: None,
             }));
-
         }
     }
 
@@ -1007,7 +1003,6 @@ impl SessionPersistenceActor {
         // Step 3: Remove from memory.
         self.remove_and_replace(&payload.session_id);
 
-
         // Step 3: Notify.
         if let Err(e) = ctx.send_event(Event::SessionArchived(SessionArchived {
             session_id: payload.session_id.clone(),
@@ -1041,7 +1036,8 @@ impl SessionPersistenceActor {
             &mut state, session_id,
         );
 
-        let prefs = self.services
+        let prefs = self
+            .services
             .user_preferences_storage
             .load()
             .unwrap_or_default();
@@ -2405,5 +2401,4 @@ mod tests {
             LifecycleScriptState::TeardownRan
         );
     }
-
 }

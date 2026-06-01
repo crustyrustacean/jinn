@@ -25,19 +25,18 @@ pub(crate) const NIBBLE_STR: &str = "ZPMQVRWSNKTXJBYH";
 
 /// Pre-computed lookup table: byte value → 2-character hash string.
 /// Built at runtime from the nibble alphabet.
-pub(crate) static DICT: std::sync::LazyLock<[String; 256]> =
-    std::sync::LazyLock::new(|| {
-        let nibble_bytes = b"ZPMQVRWSNKTXJBYH";
-        let mut table: [String; 256] = core::array::from_fn(|_| String::new());
-        let mut i = 0;
-        while i < 256 {
-            let hi = nibble_bytes[i >> 4] as char;
-            let lo = nibble_bytes[i & 0x0f] as char;
-            table[i] = format!("{hi}{lo}");
-            i += 1;
-        }
-        table
-    });
+pub(crate) static DICT: std::sync::LazyLock<[String; 256]> = std::sync::LazyLock::new(|| {
+    let nibble_bytes = b"ZPMQVRWSNKTXJBYH";
+    let mut table: [String; 256] = core::array::from_fn(|_| String::new());
+    let mut i = 0;
+    while i < 256 {
+        let hi = nibble_bytes[i >> 4] as char;
+        let lo = nibble_bytes[i & 0x0f] as char;
+        table[i] = format!("{hi}{lo}");
+        i += 1;
+    }
+    table
+});
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -151,14 +150,8 @@ pub fn parse_anchor(ref_str: &str) -> Result<Anchor, String> {
         .captures(core)
         .ok_or_else(|| diagnose_line_ref(ref_str))?;
 
-    let line_str = caps
-        .get(1)
-        .expect("capture group 1 exists")
-        .as_str();
-    let hash_str = caps
-        .get(2)
-        .expect("capture group 2 exists")
-        .as_str();
+    let line_str = caps.get(1).expect("capture group 1 exists").as_str();
+    let hash_str = caps.get(2).expect("capture group 2 exists").as_str();
 
     let line: usize = line_str
         .parse()
@@ -230,26 +223,19 @@ fn diagnose_line_ref(ref_str: &str) -> String {
 ///
 /// The model must send literal file content for `lines`, not the rendered
 /// read/diff form.
-static DISPLAY_PREFIX_RE: std::sync::LazyLock<regex::Regex> =
-    std::sync::LazyLock::new(|| {
-        regex::Regex::new(
-            r"^\s*(?:>>>|>>)?\s*(?:\d+\s*#\s*|#\s*)[ZPMQVRWSNKTXJBYH]{2}\|",
-        )
+static DISPLAY_PREFIX_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r"^\s*(?:>>>|>>)?\s*(?:\d+\s*#\s*|#\s*)[ZPMQVRWSNKTXJBYH]{2}\|")
         .expect("valid regex")
-    });
+});
 
 /// Regex detecting diff-plus display prefixes.
-static DISPLAY_PREFIX_PLUS_RE: std::sync::LazyLock<regex::Regex> =
-    std::sync::LazyLock::new(|| {
-        regex::Regex::new(r"^\+\s*(?:\d+\s*#\s*|#\s*)[ZPMQVRWSNKTXJBYH]{2}\|")
-            .expect("valid regex")
-    });
+static DISPLAY_PREFIX_PLUS_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r"^\+\s*(?:\d+\s*#\s*|#\s*)[ZPMQVRWSNKTXJBYH]{2}\|").expect("valid regex")
+});
 
 /// Regex detecting diff-minus display prefixes.
 static DIFF_MINUS_RE: std::sync::LazyLock<regex::Regex> =
-    std::sync::LazyLock::new(|| {
-        regex::Regex::new(r"^-\s*\d+\s{4}").expect("valid regex")
-    });
+    std::sync::LazyLock::new(|| regex::Regex::new(r"^-\s*\d+\s{4}").expect("valid regex"));
 
 /// Rejects hashline display prefixes in edit payloads.
 ///

@@ -10,15 +10,13 @@ use std::sync::Arc;
 
 use jinn_provider::RetryConfig;
 
+use crate::common::app_state::AppState;
 use crate::common::services::test_services::TestServices;
 use crate::common::state::State;
-use crate::common::app_state::AppState;
 use crate::feat::compaction_worker::worker::{CompactionTrigger, CompactionWorker};
 use crate::feat::preferences_actor::user_preferences::CompactionConfig;
 use crate::feat::provider_infra::{FakeLlmServiceFactory, LlmServiceFactoryService};
-use crate::feat::session::chat_entry::{
-    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride,
-};
+use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
@@ -209,7 +207,10 @@ fn worker_produces_mutations_when_threshold_exceeded() {
     let mutations = run_evaluate(&worker, &history, &config);
 
     // Then mutations are produced.
-    assert!(!mutations.is_empty(), "should produce mutations for long history");
+    assert!(
+        !mutations.is_empty(),
+        "should produce mutations for long history"
+    );
 }
 
 #[test]
@@ -265,7 +266,11 @@ fn mutations_insert_compaction_summary_at_boundary() {
 
     // Then there is exactly one InsertEntry mutation.
     let inserts = insert_entries(&mutations);
-    assert_eq!(inserts.len(), 1, "should have exactly one InsertEntry mutation");
+    assert_eq!(
+        inserts.len(),
+        1,
+        "should have exactly one InsertEntry mutation"
+    );
 
     // And it has an InsertEntry with a Compaction kind.
     match inserts[0] {
@@ -306,7 +311,10 @@ fn mutations_exclude_entries_around_prior_compaction() {
 
     // Then there are excluded entries (the user/assistant entries after the compaction).
     let excluded_ids = forced_exclude_ids(&mutations);
-    assert!(!excluded_ids.is_empty(), "should have excluded entries after prior compaction");
+    assert!(
+        !excluded_ids.is_empty(),
+        "should have excluded entries after prior compaction"
+    );
 
     // And the compaction entry itself is NOT excluded (compaction entries are skipped by gather).
     let compaction_entry_id = &history[0].id;
@@ -331,7 +339,11 @@ fn worker_preserves_recent_entries_in_reserve() {
     let excluded_ids = forced_exclude_ids(&mutations);
 
     // The very last entry should not be excluded (it's in the reserve).
-    let last_entry_id = history.last().expect("history should have entries").id.clone();
+    let last_entry_id = history
+        .last()
+        .expect("history should have entries")
+        .id
+        .clone();
     assert!(
         !excluded_ids.contains(&last_entry_id),
         "the most recent entry should be preserved in the reserve"
@@ -356,7 +368,10 @@ fn evaluate_for_session_returns_empty_for_empty_history() {
 
     // Then no mutations are produced.
     let mutations = result.expect("empty history should not error");
-    assert!(mutations.is_empty(), "empty history should produce no mutations");
+    assert!(
+        mutations.is_empty(),
+        "empty history should produce no mutations"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -453,7 +468,10 @@ fn session_continues_after_background_compaction() {
         .build();
     // Sync test preferences to the in-memory storage.
     let prefs = state.read().frontend.preferences.clone();
-    services.user_preferences_storage.save(&prefs).expect("save test prefs");
+    services
+        .user_preferences_storage
+        .save(&prefs)
+        .expect("save test prefs");
     let handle = services.handle.clone();
 
     let worker = CompactionWorker {
@@ -477,7 +495,10 @@ fn session_continues_after_background_compaction() {
 
     // Then compaction produced mutations.
     let mutations = result.expect("should not error");
-    assert!(!mutations.is_empty(), "should have mutations for long history");
+    assert!(
+        !mutations.is_empty(),
+        "should have mutations for long history"
+    );
 
     // And the session phase is still Sending (compaction doesn't change phase).
     let guard = worker.state.read();
@@ -509,7 +530,10 @@ fn threshold_uses_fresh_history_not_stale_context_size() {
 
     // Then the results differ - proving the worker uses the passed-in history,
     // not some stale cached value.
-    assert!(mutations_short.is_empty(), "short history should not compact");
+    assert!(
+        mutations_short.is_empty(),
+        "short history should not compact"
+    );
     assert!(!mutations_long.is_empty(), "long history should compact");
 }
 
@@ -523,8 +547,8 @@ fn threshold_uses_fresh_history_not_stale_context_size() {
 // method which delegates to evaluate_history.
 
 use crate::feat::history_worker::worker_trait::HistoryWorker;
-use jinn_provider::ModelInfo;
 use crate::feat::provider_infra::ModelCache;
+use jinn_provider::ModelInfo;
 
 /// Builder for constructing a test environment with full control over
 /// context_size, model cache, compaction config, and history.
@@ -555,7 +579,10 @@ impl ThresholdTestEnv {
     /// Set the session's cached context_size (tiktoken count from last assembly).
     fn set_context_size(&self, size: Option<u32>) {
         let mut app = self.state.write();
-        let session = app.session.get_mut(&self.session_id).expect("session exists");
+        let session = app
+            .session
+            .get_mut(&self.session_id)
+            .expect("session exists");
         if let Some(s) = size {
             session.set_context_size(s);
         }
@@ -584,7 +611,10 @@ impl ThresholdTestEnv {
         // Sync test preferences to the in-memory storage so
         // the worker can load them via services.user_preferences_storage.
         let prefs = self.state.read().frontend.preferences.clone();
-        services.user_preferences_storage.save(&prefs).expect("save test prefs");
+        services
+            .user_preferences_storage
+            .save(&prefs)
+            .expect("save test prefs");
         let handle = services.handle.clone();
         CompactionWorker {
             services,
@@ -598,9 +628,7 @@ impl ThresholdTestEnv {
     /// Run evaluate (auto-compaction path) and return mutations.
     fn run_evaluate(&self, worker: &CompactionWorker) -> Vec<HistoryMutation> {
         let rt = tokio::runtime::Runtime::new().expect("test runtime");
-        rt.block_on(async {
-            worker.evaluate(&self.session_id, Arc::from([])).await
-        })
+        rt.block_on(async { worker.evaluate(&self.session_id, Arc::from([])).await })
     }
 }
 
@@ -653,7 +681,10 @@ fn gate_skips_when_context_size_is_none() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(mutations.is_empty(), "should not compact when context_size is None");
+    assert!(
+        mutations.is_empty(),
+        "should not compact when context_size is None"
+    );
 }
 
 // ── Test 2: context_size is 0 ──
@@ -668,7 +699,10 @@ fn gate_skips_when_context_size_is_zero() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(mutations.is_empty(), "should not compact when context_size is 0");
+    assert!(
+        mutations.is_empty(),
+        "should not compact when context_size is 0"
+    );
 }
 
 // ── Test 3: below threshold ──
@@ -683,7 +717,10 @@ fn gate_skips_when_below_threshold() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(mutations.is_empty(), "should not compact at 50% with 70% threshold");
+    assert!(
+        mutations.is_empty(),
+        "should not compact at 50% with 70% threshold"
+    );
 }
 
 // ── Test 4: above threshold ──
@@ -698,7 +735,10 @@ fn gate_triggers_when_above_threshold() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(!mutations.is_empty(), "should compact at 75% with 70% threshold");
+    assert!(
+        !mutations.is_empty(),
+        "should compact at 75% with 70% threshold"
+    );
 }
 
 // ── Test 5: exactly at threshold ──
@@ -714,7 +754,10 @@ fn gate_triggers_when_exactly_at_threshold() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(!mutations.is_empty(), "should compact at exactly 70% (>= threshold)");
+    assert!(
+        !mutations.is_empty(),
+        "should compact at exactly 70% (>= threshold)"
+    );
 }
 
 // ── Test 6: just below threshold ──
@@ -730,7 +773,10 @@ fn gate_skips_just_below_threshold() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(mutations.is_empty(), "should not compact at 69.999% with 70% threshold");
+    assert!(
+        mutations.is_empty(),
+        "should not compact at 69.999% with 70% threshold"
+    );
 }
 
 // ── Test 7: uses fallback when model cache is None ──
@@ -746,7 +792,10 @@ fn gate_uses_fallback_when_no_model_cache() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(!mutations.is_empty(), "should compact using fallback context window");
+    assert!(
+        !mutations.is_empty(),
+        "should compact using fallback context window"
+    );
 }
 
 // ── Test 8: uses fallback when model not in cache ──
@@ -762,7 +811,10 @@ fn gate_uses_fallback_when_model_not_in_cache() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(mutations.is_empty(), "should skip - fallback 200k, context at 50%");
+    assert!(
+        mutations.is_empty(),
+        "should skip - fallback 200k, context at 50%"
+    );
 }
 
 // ── Test 9: uses fallback when model context_length is None ──
@@ -777,7 +829,10 @@ fn gate_uses_fallback_when_model_context_length_is_none() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(!mutations.is_empty(), "should compact - model has no context_length, fallback used");
+    assert!(
+        !mutations.is_empty(),
+        "should compact - model has no context_length, fallback used"
+    );
 }
 
 // ── Test 10: session not found ──
@@ -795,7 +850,10 @@ fn gate_skips_when_session_not_found() {
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
     let mutations = rt.block_on(async { worker.evaluate(&fake_id, Arc::from([])).await });
 
-    assert!(mutations.is_empty(), "should not compact for nonexistent session");
+    assert!(
+        mutations.is_empty(),
+        "should not compact for nonexistent session"
+    );
 }
 
 // ── Test 11: high threshold triggers ──
@@ -810,7 +868,10 @@ fn gate_triggers_at_high_threshold() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(!mutations.is_empty(), "should compact at 90% with 90% threshold");
+    assert!(
+        !mutations.is_empty(),
+        "should compact at 90% with 90% threshold"
+    );
 }
 
 // ── Test 12: high threshold skips ──
@@ -825,7 +886,10 @@ fn gate_skips_at_high_threshold() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(mutations.is_empty(), "should not compact at 85% with 90% threshold");
+    assert!(
+        mutations.is_empty(),
+        "should not compact at 85% with 90% threshold"
+    );
 }
 
 // ── Test 13: low threshold triggers ──
@@ -840,7 +904,10 @@ fn gate_triggers_at_low_threshold() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(!mutations.is_empty(), "should compact at 25% with 20% threshold");
+    assert!(
+        !mutations.is_empty(),
+        "should compact at 25% with 20% threshold"
+    );
 }
 
 // ── Test 14: low threshold skips ──
@@ -855,7 +922,10 @@ fn gate_skips_at_low_threshold() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(mutations.is_empty(), "should not compact at 15% with 20% threshold");
+    assert!(
+        mutations.is_empty(),
+        "should not compact at 15% with 20% threshold"
+    );
 }
 
 // ── Test 15: context_size equals context_limit ──
@@ -870,7 +940,10 @@ fn gate_triggers_when_context_size_equals_limit() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(!mutations.is_empty(), "should compact when context is 100% full");
+    assert!(
+        !mutations.is_empty(),
+        "should compact when context is 100% full"
+    );
 }
 
 // ── Test 16: context_size exceeds context_limit ──
@@ -885,7 +958,10 @@ fn gate_triggers_when_context_size_exceeds_limit() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(!mutations.is_empty(), "should compact when context exceeds limit");
+    assert!(
+        !mutations.is_empty(),
+        "should compact when context exceeds limit"
+    );
 }
 
 // ── Test 17: manual compact_all bypasses gate ──
@@ -910,7 +986,10 @@ fn manual_compact_all_bypasses_threshold_gate() {
     });
 
     let mutations = result.expect("should succeed");
-    assert!(!mutations.is_empty(), "compact_all should bypass threshold gate");
+    assert!(
+        !mutations.is_empty(),
+        "compact_all should bypass threshold gate"
+    );
 }
 
 // ── Test 18: manual compact (non-all) uses evaluate_for_session path ──
@@ -943,7 +1022,10 @@ fn manual_compact_bypasses_threshold_gate() {
     });
 
     let mutations = result.expect("should succeed");
-    assert!(!mutations.is_empty(), "manual /compact should bypass threshold gate");
+    assert!(
+        !mutations.is_empty(),
+        "manual /compact should bypass threshold gate"
+    );
 }
 
 // ── Test 19: provider/model format splits correctly ──
@@ -964,7 +1046,10 @@ fn gate_splits_provider_model_format() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(!mutations.is_empty(), "should compact with ollama/llama3 model lookup");
+    assert!(
+        !mutations.is_empty(),
+        "should compact with ollama/llama3 model lookup"
+    );
 }
 
 // ── Test 20: nested provider path ──
@@ -980,13 +1065,20 @@ fn gate_handles_nested_provider_path() {
         session.set_model("openrouter/anthropic/claude-sonnet".to_owned());
     }
     env.set_context_size(Some(150_000)); // 150k/200k = 75% > 70%
-    env.set_model_cache(model_cache_with("openrouter", "anthropic/claude-sonnet", 200_000));
+    env.set_model_cache(model_cache_with(
+        "openrouter",
+        "anthropic/claude-sonnet",
+        200_000,
+    ));
     env.set_compaction_config(threshold_config(0.7, 150_000));
 
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(!mutations.is_empty(), "should compact with nested provider/model path");
+    assert!(
+        !mutations.is_empty(),
+        "should compact with nested provider/model path"
+    );
 }
 
 // ── Test 21: empty history above threshold ──
@@ -1015,7 +1107,10 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
         .build();
     // Sync test preferences to the in-memory storage.
     let prefs = state.read().frontend.preferences.clone();
-    services.user_preferences_storage.save(&prefs).expect("save test prefs");
+    services
+        .user_preferences_storage
+        .save(&prefs)
+        .expect("save test prefs");
     let handle = services.handle.clone();
     let worker = CompactionWorker {
         services,
@@ -1028,7 +1123,10 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
     let mutations = rt.block_on(async { worker.evaluate(&session_id, Arc::from([])).await });
 
-    assert!(mutations.is_empty(), "threshold passes but empty history = no mutations");
+    assert!(
+        mutations.is_empty(),
+        "threshold passes but empty history = no mutations"
+    );
 }
 
 // ── Test 22: ratio matches status bar exactly ──
@@ -1044,7 +1142,10 @@ fn gate_ratio_matches_status_bar_math() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(!mutations.is_empty(), "should compact at exactly 70.0% like status bar");
+    assert!(
+        !mutations.is_empty(),
+        "should compact at exactly 70.0% like status bar"
+    );
 }
 
 // ── Test 23: threshold 1.0 requires full context ──
@@ -1060,7 +1161,10 @@ fn gate_threshold_one_requires_full_context() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(mutations.is_empty(), "should not compact at 99.999% with threshold 1.0");
+    assert!(
+        mutations.is_empty(),
+        "should not compact at 99.999% with threshold 1.0"
+    );
 }
 
 // ── Test 24: threshold 0.0 always triggers ──
@@ -1076,7 +1180,10 @@ fn gate_threshold_zero_always_triggers() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(!mutations.is_empty(), "threshold 0.0 should trigger for any non-zero context");
+    assert!(
+        !mutations.is_empty(),
+        "threshold 0.0 should trigger for any non-zero context"
+    );
 }
 
 // ── Test 25: uses session model not compaction model for lookup ──
@@ -1099,7 +1206,10 @@ fn gate_uses_session_model_for_context_lookup() {
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations = env.run_evaluate(&worker);
 
-    assert!(!mutations.is_empty(), "should use session model for threshold, not compaction model");
+    assert!(
+        !mutations.is_empty(),
+        "should use session model for threshold, not compaction model"
+    );
 }
 
 // ── Test 26: concurrent HistoryAppended - in_flight guard ─
@@ -1126,7 +1236,10 @@ fn gate_prevents_double_compaction_after_first() {
 
     // Second call should not compact.
     let mutations_2 = env.run_evaluate(&worker);
-    assert!(mutations_2.is_empty(), "second call should not compact after context_size drops");
+    assert!(
+        mutations_2.is_empty(),
+        "second call should not compact after context_size drops"
+    );
 }
 
 // ── Test 27: threshold re-checked on next HistoryAppended after skip ──
@@ -1141,12 +1254,18 @@ fn gate_re_evaluated_on_subsequent_event() {
     env.set_context_size(Some(139_999)); // 69.999% < 70%
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations_1 = env.run_evaluate(&worker);
-    assert!(mutations_1.is_empty(), "first event below threshold - no compact");
+    assert!(
+        mutations_1.is_empty(),
+        "first event below threshold - no compact"
+    );
 
     // Second event: crosses threshold (new entry pushed, prompt reassembled).
     env.set_context_size(Some(140_000)); // 70% >= 70%
     let mutations_2 = env.run_evaluate(&worker);
-    assert!(!mutations_2.is_empty(), "second event at threshold - should compact");
+    assert!(
+        !mutations_2.is_empty(),
+        "second event at threshold - should compact"
+    );
 }
 
 // ── Test 28: context_size updates after prompt reassembly ──
@@ -1161,10 +1280,16 @@ fn gate_skips_after_compaction_reduces_context_size() {
     env.set_context_size(Some(150_000));
     let worker = env.build_worker(FAKE_SUMMARY);
     let mutations_1 = env.run_evaluate(&worker);
-    assert!(!mutations_1.is_empty(), "before compaction - should compact");
+    assert!(
+        !mutations_1.is_empty(),
+        "before compaction - should compact"
+    );
 
     // After compaction + reassembly: context_size drops to 50k (25% < 70%).
     env.set_context_size(Some(50_000));
     let mutations_2 = env.run_evaluate(&worker);
-    assert!(mutations_2.is_empty(), "after reassembly below threshold - should not compact");
+    assert!(
+        mutations_2.is_empty(),
+        "after reassembly below threshold - should not compact"
+    );
 }

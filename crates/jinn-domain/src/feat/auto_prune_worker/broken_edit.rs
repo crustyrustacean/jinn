@@ -95,7 +95,9 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
             if history[i].context_override == ContextOverride::ForcedExclude {
                 continue;
             }
-            let result_already_excluded = history.iter().skip(i + 1)
+            let result_already_excluded = history
+                .iter()
+                .skip(i + 1)
                 .find(|e| e.id == result_id)
                 .is_some_and(|e| e.context_override == ContextOverride::ForcedExclude);
             if result_already_excluded {
@@ -151,10 +153,7 @@ mod tests {
     }
 
     /// Build a history with a failed edit pair followed by N user entries (in-context).
-    fn history_with_failed_edit_and_tail(
-        path: &str,
-        tail_count: usize,
-    ) -> Vec<ChatEntry> {
+    fn history_with_failed_edit_and_tail(path: &str, tail_count: usize) -> Vec<ChatEntry> {
         let mut history = Vec::new();
         let edit = failed_edit_call_result("tc-1", path, "edit failed: stale anchor");
         history.push(edit[0].clone());
@@ -174,11 +173,17 @@ mod tests {
         }
     }
 
-    async fn run_evaluate(worker: &BrokenEditAutoPruneWorker, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
+    async fn run_evaluate(
+        worker: &BrokenEditAutoPruneWorker,
+        history: Vec<ChatEntry>,
+    ) -> Vec<HistoryMutation> {
         worker.evaluate(&SessionId::new(), Arc::from(history)).await
     }
 
-    fn block_on_evaluate(worker: &BrokenEditAutoPruneWorker, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
+    fn block_on_evaluate(
+        worker: &BrokenEditAutoPruneWorker,
+        history: Vec<ChatEntry>,
+    ) -> Vec<HistoryMutation> {
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         rt.block_on(async { run_evaluate(worker, history).await })
     }
@@ -291,14 +296,22 @@ mod tests {
 
         let worker = worker_with_tail(10);
         let mutations = block_on_evaluate(&worker, history);
-        assert_eq!(mutations.len(), 4, "both failed edits should be pruned (2 entries each)");
+        assert_eq!(
+            mutations.len(),
+            4,
+            "both failed edits should be pruned (2 entries each)"
+        );
     }
 
     #[test]
     fn edit_without_result_produces_no_mutation() {
         let mut history = Vec::new();
         // Edit tool call but no corresponding tool result.
-        history.push(ChatEntry::tool_call("tc-orphan", "edit", r#"{"path": "/foo.rs"}"#));
+        history.push(ChatEntry::tool_call(
+            "tc-orphan",
+            "edit",
+            r#"{"path": "/foo.rs"}"#,
+        ));
         for i in 0..10 {
             history.push(ChatEntry::user(format!("tail {i}")));
         }
@@ -346,7 +359,10 @@ mod tests {
 
         let worker = worker_with_tail(10);
         let mutations = block_on_evaluate(&worker, history);
-        assert!(mutations.is_empty(), "should not prune: only 9 in-context entries");
+        assert!(
+            mutations.is_empty(),
+            "should not prune: only 9 in-context entries"
+        );
     }
 
     #[test]
@@ -370,6 +386,10 @@ mod tests {
 
         let worker = worker_with_tail(10);
         let mutations = block_on_evaluate(&worker, history);
-        assert_eq!(mutations.len(), 2, "only the failed edit pair should be pruned");
+        assert_eq!(
+            mutations.len(),
+            2,
+            "only the failed edit pair should be pruned"
+        );
     }
 }

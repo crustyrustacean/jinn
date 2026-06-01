@@ -12,10 +12,10 @@
 //! which subscribes to the `PreferencesUpdated` events emitted here.
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
+use crate::common::services::Services;
 use crate::feat::preferences_actor::protocol::command::UpdatePreferences;
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 use crate::feat::preferences_actor::user_preferences::UserPreferences;
-use crate::common::services::Services;
 use crate::protocol::{Command, Event};
 
 /// The preferences actor.
@@ -25,7 +25,6 @@ use crate::protocol::{Command, Event};
 /// downstream actors can sync their caches.
 pub struct PreferencesActor {
     /// Runtime services.
-
     pub(crate) services: Services,
 }
 /// Dependencies for [`PreferencesActor`].

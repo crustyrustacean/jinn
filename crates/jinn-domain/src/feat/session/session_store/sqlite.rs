@@ -336,9 +336,7 @@ impl SessionStore for SqliteSessionStore {
         .change_context(SessionStoreError)
         .attach("spawn_blocking panicked during shutdown")?
     }
-
-    }
-
+}
 
 // ── Diesel model structs ─────────────────────────────────────────────────
 
@@ -365,7 +363,6 @@ struct SessionRow {
     lifecycle_script_state: String,
     metadata: Option<String>,
     is_workflow: bool,
-
 }
 
 /// Insert model for the `sessions` table.
@@ -387,7 +384,6 @@ struct NewSessionRow {
     lifecycle_script_state: String,
     metadata: Option<String>,
     is_workflow: bool,
-
 }
 
 /// Reading model for the `entries` table.
@@ -509,7 +505,6 @@ struct PersistableCore {
     attached_workflows: Vec<crate::feat::workflow::attached_workflow::AttachedWorkflow>,
 }
 
-
 impl From<&SessionCore> for PersistableCore {
     fn from(core: &SessionCore) -> Self {
         Self {
@@ -555,7 +550,6 @@ impl From<PersistableCore> for SessionCore {
             has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
             task_list: core.task_list,
             attached_workflows: core.attached_workflows,
-
         }
     }
 }
@@ -589,7 +583,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     is_workflow,
                     workflow_overrides: _workflow_overrides, // runtime-only, not persisted
                     has_interacted: _has_interacted, // deserialized from DB, restored by handle_session_load_completed
-                    task_list: _task_list,           // included in metadata blob via PersistableCore
+                    task_list: _task_list, // included in metadata blob via PersistableCore
                     attached_workflows: _attached_workflows, // included in metadata blob via PersistableCore
                 },
             ui: _ui, // runtime-only UI state, not persisted
@@ -626,7 +620,6 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                 .attach("failed to serialize metadata")?
                 .into(),
             is_workflow: *is_workflow,
-
         })
     }
 }
@@ -661,7 +654,6 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
             lifecycle_script_state,
             metadata,
             is_workflow,
-
         } = ctx.row;
 
         // When a metadata JSON blob exists (v8+), deserialize it as the
@@ -722,7 +714,6 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
         // Single source of truth: is_workflow column → core.is_workflow.
         core.is_workflow = is_workflow;
 
-
         // Single source of truth: archived column → session_state.
         core.session_state = if archived {
             SessionState::Archived
@@ -777,7 +768,6 @@ fn save_blocking(
                 sessions::lifecycle_script_state.eq(excluded(sessions::lifecycle_script_state)),
                 sessions::metadata.eq(excluded(sessions::metadata)),
                 sessions::is_workflow.eq(excluded(sessions::is_workflow)),
-
             ))
             .execute(txn)?;
 
@@ -1077,7 +1067,6 @@ fn fork_blocking(
                 lifecycle_script_state: source_meta.lifecycle_script_state,
                 metadata: fork_metadata(source_meta.metadata.as_ref(), &source_str, &new_id_str),
                 is_workflow: source_meta.is_workflow,
-
             })
             .execute(txn)?;
 
@@ -1158,7 +1147,6 @@ fn load_unarchived_summaries_blocking(
 
     Ok(summaries)
 }
-
 
 /// Deletes empty unarchived sessions and orphaned entries during shutdown.
 ///

@@ -155,7 +155,6 @@ impl HistoryWorker for RegexAutoPruneWorker {
                 }
             }
 
-
             // Phase 2: Prune all but the last keep_last pairs.
             tracing::info!(
                 rule = %rule.regex,
@@ -167,17 +166,16 @@ impl HistoryWorker for RegexAutoPruneWorker {
                 continue;
             }
 
-
             let prune_count = matched_pairs.len() - rule.keep_last;
             let _rule_ident = rule.regex.as_str();
             for (idx, (call_id, result_id)) in matched_pairs.iter().take(prune_count).enumerate() {
                 // Only emit mutations for entries not already excluded.
-                let call_already_excluded = history
-                    .iter()
-                    .any(|e| e.id == *call_id && e.context_override == ContextOverride::ForcedExclude);
-                let result_already_excluded = history
-                    .iter()
-                    .any(|e| e.id == *result_id && e.context_override == ContextOverride::ForcedExclude);
+                let call_already_excluded = history.iter().any(|e| {
+                    e.id == *call_id && e.context_override == ContextOverride::ForcedExclude
+                });
+                let result_already_excluded = history.iter().any(|e| {
+                    e.id == *result_id && e.context_override == ContextOverride::ForcedExclude
+                });
 
                 if !call_already_excluded {
                     tracing::info!(
@@ -206,10 +204,7 @@ impl HistoryWorker for RegexAutoPruneWorker {
             }
         }
 
-        tracing::info!(
-            total_mutations = mutations.len(),
-            "regex worker done"
-        );
+        tracing::info!(total_mutations = mutations.len(), "regex worker done");
         mutations
     }
 }
@@ -219,9 +214,7 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
-    use crate::feat::preferences_actor::user_preferences::{
-        RegexAutoPruneConfig, RegexPruneRule,
-    };
+    use crate::feat::preferences_actor::user_preferences::{RegexAutoPruneConfig, RegexPruneRule};
     use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ContextOverride};
     use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::protocol::SessionId;
@@ -229,11 +222,7 @@ mod tests {
     /// Helper: create a bash ToolCall + ToolResult pair.
     fn bash_call_result(call_id: &str, command: &str, output: &str) -> [ChatEntry; 2] {
         [
-            ChatEntry::tool_call(
-                call_id,
-                "bash",
-                format!(r#"{{"command": "{command}"}}"#),
-            ),
+            ChatEntry::tool_call(call_id, "bash", format!(r#"{{"command": "{command}"}}"#)),
             ChatEntry::tool_result(call_id, "bash", output, ToolResultStatus::Success),
         ]
     }
@@ -322,17 +311,17 @@ mod tests {
             bash_call_result("tc-1", "cargo check", "ok")[1].clone(),
         ];
         let mutations = evaluate(&worker, history);
-        assert!(mutations.is_empty(), "disabled worker should produce no mutations");
+        assert!(
+            mutations.is_empty(),
+            "disabled worker should produce no mutations"
+        );
     }
 
     // --- evaluate tests ---
 
     #[test]
     fn no_matching_tool_calls_produces_no_mutations() {
-        let history = vec![
-            ChatEntry::user("hello"),
-            ChatEntry::assistant("hi"),
-        ];
+        let history = vec![ChatEntry::user("hello"), ChatEntry::assistant("hi")];
         let worker = worker_for_cargo_check(1);
         let mutations = evaluate(&worker, history);
         assert!(mutations.is_empty());
@@ -391,9 +380,15 @@ mod tests {
 
         // First two calls and first two results should be excluded.
         assert!(excluded_ids.contains(&id_0), "tc-1 call should be excluded");
-        assert!(excluded_ids.contains(&id_1), "tc-1 result should be excluded");
+        assert!(
+            excluded_ids.contains(&id_1),
+            "tc-1 result should be excluded"
+        );
         assert!(excluded_ids.contains(&id_2), "tc-2 call should be excluded");
-        assert!(excluded_ids.contains(&id_3), "tc-2 result should be excluded");
+        assert!(
+            excluded_ids.contains(&id_3),
+            "tc-2 result should be excluded"
+        );
         // Third pair should NOT be excluded.
         assert!(!excluded_ids.contains(&id_4), "tc-3 call should be kept");
         assert!(!excluded_ids.contains(&id_5), "tc-3 result should be kept");
@@ -471,7 +466,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn multiple_rules_apply_independently() {
         let worker = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
@@ -537,7 +531,10 @@ mod tests {
         history.push(r1[1].clone());
 
         let mutations = evaluate(&worker, history);
-        assert!(mutations.is_empty(), "read tool should not match bash-only rule");
+        assert!(
+            mutations.is_empty(),
+            "read tool should not match bash-only rule"
+        );
     }
 
     #[test]
@@ -580,7 +577,11 @@ mod tests {
         let mut history = Vec::new();
 
         // Orphaned tool call (no result).
-        history.push(ChatEntry::tool_call("tc-orphan", "bash", r#"{"command": "cargo check"}"#));
+        history.push(ChatEntry::tool_call(
+            "tc-orphan",
+            "bash",
+            r#"{"command": "cargo check"}"#,
+        ));
 
         let worker = worker_for_cargo_check(1);
         let mutations = evaluate(&worker, history);

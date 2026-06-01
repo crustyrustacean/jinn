@@ -152,10 +152,13 @@ pub fn kill_shared_child(child_arc: &SharedChild) {
 pub fn spawn_setup_command(
     command: &str,
     shell: &str,
-) -> Result<(
-    SharedChild,
-    tokio::task::JoinHandle<Result<PathBuf, Report<LifecycleCommandError>>>,
-), Report<LifecycleCommandError>> {
+) -> Result<
+    (
+        SharedChild,
+        tokio::task::JoinHandle<Result<PathBuf, Report<LifecycleCommandError>>>,
+    ),
+    Report<LifecycleCommandError>,
+> {
     use error_stack::ResultExt as _;
 
     let mut child = tokio::process::Command::new(shell)
@@ -202,7 +205,9 @@ pub fn spawn_setup_command(
                 return Err(Report::new(LifecycleCommandError::ExecutionFailed)
                     .attach("child was killed before wait"));
             };
-            let status = child.wait().await
+            let status = child
+                .wait()
+                .await
                 .change_context(LifecycleCommandError::ExecutionFailed)
                 .attach("failed to wait for lifecycle command")?;
             // Child has exited, clear it.
@@ -254,10 +259,13 @@ pub fn spawn_setup_command(
 pub fn spawn_teardown_command(
     command: &str,
     shell: &str,
-) -> Result<(
-    SharedChild,
-    tokio::task::JoinHandle<Result<(), Report<LifecycleCommandError>>>,
-), Report<LifecycleCommandError>> {
+) -> Result<
+    (
+        SharedChild,
+        tokio::task::JoinHandle<Result<(), Report<LifecycleCommandError>>>,
+    ),
+    Report<LifecycleCommandError>,
+> {
     use error_stack::ResultExt as _;
 
     let mut child = tokio::process::Command::new(shell)
@@ -304,7 +312,9 @@ pub fn spawn_teardown_command(
                 return Err(Report::new(LifecycleCommandError::ExecutionFailed)
                     .attach("child was killed before wait"));
             };
-            let status = child.wait().await
+            let status = child
+                .wait()
+                .await
                 .change_context(LifecycleCommandError::ExecutionFailed)
                 .attach("failed to wait for lifecycle command")?;
             *guard = None;

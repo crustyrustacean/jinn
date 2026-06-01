@@ -229,8 +229,9 @@ mod tests {
         let call = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_add_task".to_owned(),
-            arguments: serde_json::json!({"phase_id": pid, "description": "Write docs", "after_task": tid})
-                .to_string(),
+            arguments:
+                serde_json::json!({"phase_id": pid, "description": "Write docs", "after_task": tid})
+                    .to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
         let result = execute(call, ctx);
@@ -281,11 +282,7 @@ mod tests {
         let result = execute(call, ctx);
         let result = futures::executor::block_on(result);
         assert!(!result.success);
-        assert!(
-            result
-                .content
-                .contains("both after_task and before_task")
-        );
+        assert!(result.content.contains("both after_task and before_task"));
     }
 
     #[test]
