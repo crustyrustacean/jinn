@@ -5,6 +5,19 @@
 //! in-context entries have accumulated after the failed edit. This removes
 //! useless failed-edit noise from the LLM context window.
 //!
+//! Pruning does not occur until `min_tail_entries` (default: 10) in-context
+//! entries have accumulated after the failed edit.
+//!
+//! # Example
+//!
+//! ```text
+//!    [User]: fix the bug in /foo.rs
+//! X  [Tool Call]: edit(/foo.rs)
+//! X  [Tool Result] (Failure): stale anchor
+//!    [Tool Call]: edit(/foo.rs)
+//!    [Tool Result] (OK): edit applied
+//!    [Assistant]: I've fixed the bug.
+//!
 //! [`ForcedExclude`]: crate::feat::session::chat_entry::ContextOverride::ForcedExclude
 
 use crate::feat::history_worker::worker_trait::HistoryWorker;

@@ -6,6 +6,22 @@
 //! [`ForcedExclude`]. This removes stale todo state from the LLM context
 //! window.
 //!
+//! Pruning is immediate — no threshold or delay.
+//!
+//! # Example
+//!
+//! ```text
+//! X  [Tool Call]: todo_get_task_list
+//! X  [Tool Result] (OK): <stale task list>
+//! X  [Tool Call]: todo_complete_task("t1")
+//! X  [Tool Result] (OK): task completed
+//!    [Tool Call]: todo_get_task_list
+//!    [Tool Result] (OK): <current task list>
+//!    [Tool Call]: todo_complete_task("t2")
+//!    [Tool Result] (OK): task completed
+//!    [Assistant]: all tasks done
+//! ```
+//!
 //! [`ForcedExclude`]: crate::feat::session::chat_entry::ContextOverride::ForcedExclude
 
 use std::collections::HashMap;

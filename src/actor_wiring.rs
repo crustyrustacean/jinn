@@ -430,7 +430,10 @@ pub fn create_core_with_actor_host(
         use jinn_domain::feat::compaction_worker::CompactionWorker;
         use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
 
-        let config = state.read().frontend.preferences.compaction.clone();
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.compaction.clone())
+            .unwrap_or_default();
         let compaction_prompt = state.read().context.compaction_prompt.clone();
 
         actors.push(spawn::<HistoryWorkerActor<CompactionWorker>>(
@@ -453,7 +456,10 @@ pub fn create_core_with_actor_host(
     {
         use jinn_domain::feat::compaction_worker::{CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker};
 
-        let config = state.read().frontend.preferences.compaction.clone();
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.compaction.clone())
+            .unwrap_or_default();
         let compaction_prompt = state.read().context.compaction_prompt.clone();
 
         actors.push(spawn::<CompactionTriggerActor>(
@@ -476,7 +482,10 @@ pub fn create_core_with_actor_host(
         use jinn_domain::feat::auto_prune_worker::ReadEditAutoPruneWorker;
         use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
 
-        let config = state.read().frontend.preferences.auto_prune.read_edit.clone();
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.auto_prune.read_edit.clone())
+            .unwrap_or_default();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<ReadEditAutoPruneWorker>>(
@@ -495,7 +504,10 @@ pub fn create_core_with_actor_host(
         use jinn_domain::feat::auto_prune_worker::TodoAutoPruneWorker;
         use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
 
-        let config = state.read().frontend.preferences.auto_prune.todo.clone();
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.auto_prune.todo.clone())
+            .unwrap_or_default();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<TodoAutoPruneWorker>>(
@@ -514,7 +526,10 @@ pub fn create_core_with_actor_host(
         use jinn_domain::feat::auto_prune_worker::BrokenEditAutoPruneWorker;
         use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
 
-        let config = state.read().frontend.preferences.auto_prune.broken_edit.clone();
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.auto_prune.broken_edit.clone())
+            .unwrap_or_default();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<BrokenEditAutoPruneWorker>>(
