@@ -348,7 +348,12 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         // Edit source node data
         .bind("e", Intent::WorkflowEditNode, KeyCategory::Input)
         // Re-run from node
-        .bind("r", Intent::WorkflowRerunNode, KeyCategory::General);
+        .bind("r", Intent::WorkflowRerunNode, KeyCategory::General)
+        // Sidebar
+        .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
+        .bind("<M-s>", Intent::SidebarFocusSessions, KeyCategory::Navigation)
+        .bind("<c-w>", Intent::SidebarResizeEnter, KeyCategory::Navigation);
+
     });
 
     // WorkflowInput scope - editing source node data.

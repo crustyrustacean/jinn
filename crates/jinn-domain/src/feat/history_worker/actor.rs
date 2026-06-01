@@ -1,27 +1,26 @@
 //! Generic `HistoryWorkerActor` - wraps any [`HistoryWorker`] as a bus actor.
 //!
-//! Subscribes to [`HistoryAppended`] events. On each event:
-//! 2. Acquires a brief read lock, clones `history.to_vec()`, drops lock
+//! Subscribes to [`HistorySnapshotReady`] events. On each event:
+//! 2. Receives shared `Arc<[ChatEntry]>` (O(1) clone)
 //! 3. Spawns a tokio task for `worker.evaluate(history_snapshot).await`
 //! 4. If mutations are produced, emits [`SubmitHistoryMutations`]
-
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
-use crate::common::state::State;
 use crate::feat::history_worker::worker_trait::HistoryWorker;
-use crate::feat::session::protocol::history_appended::HistoryAppended;
+use crate::feat::session::chat_entry::ChatEntry;
+use crate::feat::session::protocol::history_snapshot_ready::HistorySnapshotReady;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 use crate::protocol::{Command, Event, SessionId};
 
 /// A generic actor that wraps a [`HistoryWorker`] implementation.
 ///
 /// Each worker instance runs as its own actor with its own tokio task.
-/// Workers receive [`HistoryAppended`] events, evaluate their heuristic,
+/// Workers receive [`HistorySnapshotReady`] events, evaluate their heuristic,
 /// and submit mutations via the command bus.
 pub struct HistoryWorkerActor<H: HistoryWorker> {
     worker: H,
-    state: State,
     /// Sessions currently being evaluated - prevents concurrent compaction.
     in_flight: HashSet<SessionId>,
 }
@@ -30,8 +29,6 @@ pub struct HistoryWorkerActor<H: HistoryWorker> {
 pub struct HistoryWorkerActorDeps<H: HistoryWorker> {
     /// The worker heuristic implementation.
     pub worker: H,
-    /// Shared application state (for reading session history).
-    pub state: State,
 }
 
 impl<H: HistoryWorker + Clone> Actor for HistoryWorkerActor<H> {
@@ -40,19 +37,18 @@ impl<H: HistoryWorker + Clone> Actor for HistoryWorkerActor<H> {
 
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.set_description(deps.worker.name());
-        ctx.subscribe_event::<HistoryAppended>();
+        ctx.subscribe_event::<HistorySnapshotReady>();
 
         Self {
             worker: deps.worker,
-            state: deps.state,
             in_flight: HashSet::new(),
         }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
-            ActorEnvelope::Event(Event::HistoryAppended(ref payload)) => {
-                self.handle_history_appended(payload, ctx).await;
+            ActorEnvelope::Event(Event::HistorySnapshotReady(ref payload)) => {
+                self.handle_snapshot_ready(payload, ctx).await;
             }
             ActorEnvelope::Command(_)
             | ActorEnvelope::Event(_)
@@ -62,16 +58,16 @@ impl<H: HistoryWorker + Clone> Actor for HistoryWorkerActor<H> {
     }
 }
 
-impl<H: HistoryWorker> HistoryWorkerActor<H> {
-    pub(crate) async fn handle_history_appended(
+impl<H: HistoryWorker + Clone> HistoryWorkerActor<H> {
+    pub(crate) async fn handle_snapshot_ready(
         &mut self,
-        event: &HistoryAppended,
+        event: &HistorySnapshotReady,
         ctx: &ActorContext,
     ) {
         tracing::info!(
             worker = self.worker.name(),
             session_id = %event.session_id,
-            "HistoryAppended received"
+            "HistorySnapshotReady received"
         );
 
         // Skip if already evaluating this session.
@@ -83,22 +79,8 @@ impl<H: HistoryWorker> HistoryWorkerActor<H> {
             return;
         }
 
-        // Verify session exists.
-        {
-            let state = self.state.read();
-            if state.session.get(&event.session_id).is_none() {
-                tracing::info!("session not found, skipping");
-                return;
-            }
-        }
-        // Brief read lock → clone history → drop lock.
-        let history_snapshot = {
-            let state = self.state.read();
-            let Some(session) = state.session.get(&event.session_id) else {
-                return;
-            };
-            session.history().to_vec()
-        };
+        // O(1) Arc clone — shared with all other workers.
+        let history_snapshot: Arc<[ChatEntry]> = event.history.clone();
 
         // Mark session as in-flight.
         self.in_flight.insert(event.session_id.clone());

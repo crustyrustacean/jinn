@@ -12,7 +12,6 @@ pub mod streaming_indicator;
 
 use jinn_domain::AppState;
 use jinn_domain::AppUiRegistry;
-use jinn_domain::feat::ui::sidebar::Sidebar;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
@@ -21,14 +20,15 @@ use ratatui::widgets::Paragraph;
 
 use super::app_layout::AppLayout;
 
-/// Renders the full Chat tab - border, sidebar, chat log, streaming indicator,
+/// Renders the Chat tab content - chat log, streaming indicator,
 /// queue, bottom line, input box, and autocomplete popup.
 ///
+/// Called from the top-level renderer when the chat view is active.
+/// Does NOT render the sidebar or border (those are rendered at top level).
 /// Computes sub-areas from the layout and delegates to individual render functions.
 /// Selectable rects are collected into `rects` for mouse selection support.
 pub(super) fn render_chat_tab(
     ui_registry: &mut AppUiRegistry,
-    sidebar: &mut Sidebar,
     frame: &mut Frame<'_>,
     layout: &AppLayout,
     state: &AppState,
@@ -36,27 +36,7 @@ pub(super) fn render_chat_tab(
 ) {
     let sidebar_focused = state.frontend.scope_stack.is_sidebar();
     let focus_scope = state.frontend.scope_stack.current();
-
-    // Vertical border between main and sidebar.
     let theme = &state.frontend.theme;
-    border::render_border(
-        frame,
-        layout.border,
-        focus_scope,
-        theme.focus_accent,
-        theme.border_unfocused,
-        theme.sidebar_resize_accent,
-    );
-
-    // Sidebar.
-    sidebar::render_sidebar(
-        sidebar,
-        frame,
-        layout.sidebar,
-        sidebar_focused,
-        state,
-        rects,
-    );
 
     // Compute sub-areas at the bottom of the content area.
     let content_area = layout.content;

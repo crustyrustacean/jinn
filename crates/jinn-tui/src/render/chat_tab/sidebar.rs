@@ -7,7 +7,7 @@ use jinn_domain::AppState;
 use jinn_domain::feat::ui::sidebar::Sidebar;
 
 /// Renders the sidebar and registers it as selectable when focused.
-pub(super) fn render_sidebar(
+pub fn render_sidebar(
     sidebar: &mut Sidebar,
     frame: &mut Frame<'_>,
     sidebar_rect: Rect,
