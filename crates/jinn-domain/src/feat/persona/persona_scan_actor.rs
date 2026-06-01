@@ -5,7 +5,7 @@
 
 use crate::common::actor::scan_actor::NoDirectMsg;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope};
-use crate::common::app_paths::AppPaths;
+use crate::common::services::Services;
 use crate::feat::context::protocol::command::RescanPersonas;
 use crate::feat::context::protocol::event::PersonasLoaded;
 use crate::feat::persona::scan_personas_merged;
@@ -13,8 +13,8 @@ use crate::protocol::{Command, Event};
 
 /// Dependencies for [`PersonaScanActor`].
 pub struct PersonaScanActorDeps {
-    /// Application paths for resolving scan directories.
-    pub paths: AppPaths,
+    /// Runtime services.
+    pub services: Services,
 }
 
 /// Scans and loads persona files on `RescanPersonas`.
@@ -22,8 +22,8 @@ pub struct PersonaScanActorDeps {
 /// On command, scans user and system persona directories, parses all
 /// `*.md` files, and emits `PersonasLoaded` with the results.
 pub struct PersonaScanActor {
-    /// Application paths for resolving scan directories.
-    paths: AppPaths,
+    /// Runtime services.
+    services: Services,
 }
 
 impl Actor for PersonaScanActor {
@@ -33,7 +33,7 @@ impl Actor for PersonaScanActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.set_description("Scans and loads persona files from ~/.config/jinn/personas");
         ctx.subscribe_command::<RescanPersonas>();
-        Self { paths: deps.paths }
+        Self { services: deps.services }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
@@ -53,7 +53,7 @@ impl PersonaScanActor {
 
     /// Runs the blocking scan and emits the result.
     async fn run_scan(&self, ctx: &ActorContext) {
-        let paths = self.paths.clone();
+        let paths = self.services.paths.clone();
         let result = tokio::task::spawn_blocking(move || {
             scan_personas_merged(&paths.personas_dir(), &paths.system_personas_dir())
         })
@@ -105,9 +105,13 @@ mod tests {
     ) -> (PersonaScanActor, Arc<RecordingSink>, ActorContext) {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("persona-scan-test", sink.clone() as Arc<dyn MessageSink>);
+        let services = crate::common::services::test_services::TestServices::builder()
+            .paths(AppPaths::new_in(dir.path()))
+            .build();
         let deps = PersonaScanActorDeps {
-            paths: AppPaths::new_in(dir.path()),
+            services,
         };
+
         let actor = PersonaScanActor::activate(deps, &mut ctx);
         (actor, sink, ctx)
     }

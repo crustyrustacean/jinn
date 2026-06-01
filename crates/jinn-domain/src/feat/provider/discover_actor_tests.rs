@@ -27,10 +27,8 @@ fn create_actor() -> (DiscoverActor, Services, Arc<RecordingSink>, ActorContext,
     let services = Services::new();
     let state = State::new(AppState::default());
     let deps = DiscoverActorDeps {
-        registry: services.provider_registry.clone(),
-        api_keys: services.api_keys.clone(),
+        services: services.clone(),
         state: state.clone(),
-        app_paths: services.paths.clone(),
     };
     let actor = DiscoverActor::activate(deps, &mut ctx);
     (actor, services, sink, ctx, state)

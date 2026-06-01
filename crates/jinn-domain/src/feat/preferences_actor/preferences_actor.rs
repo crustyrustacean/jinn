@@ -15,7 +15,7 @@ use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::feat::preferences_actor::protocol::command::UpdatePreferences;
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 use crate::feat::preferences_actor::user_preferences::UserPreferences;
-use crate::feat::preferences_actor::user_preferences_storage::UserPreferencesStorageService;
+use crate::common::services::Services;
 use crate::protocol::{Command, Event};
 
 /// The preferences actor.
@@ -24,14 +24,14 @@ use crate::protocol::{Command, Event};
 /// diffs to `jinn.toml`, then emits `PreferencesUpdated` so
 /// downstream actors can sync their caches.
 pub struct PreferencesActor {
-    /// User preferences storage service for reading/writing `jinn.toml`.
-    pub(crate) storage: UserPreferencesStorageService,
-}
+    /// Runtime services.
 
+    pub(crate) services: Services,
+}
 /// Dependencies for [`PreferencesActor`].
 pub struct PreferencesActorDeps {
-    /// Storage backend for persisting user preferences.
-    pub storage: UserPreferencesStorageService,
+    /// Runtime services.
+    pub services: Services,
 }
 
 impl Actor for PreferencesActor {
@@ -43,7 +43,7 @@ impl Actor for PreferencesActor {
         ctx.set_description("Persists user preferences to jinn.toml");
 
         Self {
-            storage: deps.storage,
+            services: deps.services,
         }
     }
 
@@ -64,7 +64,7 @@ impl PreferencesActor {
         for update in &payload.updates {
             update.apply(&mut prefs);
         }
-        if let Err(e) = self.storage.save(&prefs) {
+        if let Err(e) = self.services.user_preferences_storage.save(&prefs) {
             tracing::warn!(err = ?e, "preferences-actor failed to save user preferences");
             return;
         }
@@ -77,7 +77,7 @@ impl PreferencesActor {
 
     /// Loads current preferences or returns defaults.
     fn load_or_default(&self) -> UserPreferences {
-        match self.storage.load() {
+        match self.services.user_preferences_storage.load() {
             Ok(p) => p,
             Err(e) => {
                 tracing::warn!(err = ?e, "preferences-actor failed to load preferences");
