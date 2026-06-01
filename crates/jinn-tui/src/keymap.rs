@@ -206,6 +206,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<c-k>", Intent::EnterNormalMode, KeyCategory::General)
             .bind("<c-c>", Intent::Interrupt { session_id: None }, KeyCategory::General)
             .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
+            .bind("<c-g>", Intent::ToggleOneShot { kind: jinn_domain::feat::workflow::attached_workflow::OneShotKind::Consensus }, KeyCategory::Input)
             // Change CWD - search from session CWD
             .bind("<M-c>", Intent::ChangeCwd { root: CwdRoot::Session }, KeyCategory::Navigation)
             // Change CWD - search from home directory
