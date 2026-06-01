@@ -504,7 +504,11 @@ struct PersistableCore {
     /// OWNER: tools-actor (mutated by task list tools).
     #[serde(default)]
     task_list: crate::feat::todo_list::TaskList,
+    /// Attached workflows - persistent workflows bound to this session.
+    #[serde(default)]
+    attached_workflows: Vec<crate::feat::workflow::attached_workflow::AttachedWorkflow>,
 }
+
 
 impl From<&SessionCore> for PersistableCore {
     fn from(core: &SessionCore) -> Self {
@@ -522,6 +526,7 @@ impl From<&SessionCore> for PersistableCore {
             lifecycle_args: core.lifecycle_args.clone(),
             lifecycle_script_state: core.lifecycle_script_state,
             task_list: core.task_list.clone(),
+            attached_workflows: core.attached_workflows.clone(),
         }
     }
 }
@@ -549,6 +554,8 @@ impl From<PersistableCore> for SessionCore {
             workflow_overrides: None, // runtime-only, never persisted
             has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
             task_list: core.task_list,
+            attached_workflows: core.attached_workflows,
+
         }
     }
 }
@@ -583,6 +590,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     workflow_overrides: _workflow_overrides, // runtime-only, not persisted
                     has_interacted: _has_interacted, // deserialized from DB, restored by handle_session_load_completed
                     task_list: _task_list,           // included in metadata blob via PersistableCore
+                    attached_workflows: _attached_workflows, // included in metadata blob via PersistableCore
                 },
             ui: _ui, // runtime-only UI state, not persisted
         } = session;
@@ -707,6 +715,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 workflow_overrides: None, // runtime-only, set later if needed
                 has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
                 task_list: crate::feat::todo_list::TaskList::default(), // no metadata blob available for legacy sessions
+                attached_workflows: Vec::default(),
             }
         };
 
