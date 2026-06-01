@@ -8,14 +8,16 @@
 //!
 //! 1. Implement [`HistoryWorker`] for your heuristic type.
 //! 2. Spawn a [`HistoryWorkerActor`] with your worker at startup (see `actor_wiring.rs`).
-//! 3. The actor automatically subscribes to `HistoryAppended` and submits
+//! 3. The actor automatically subscribes to `HistorySnapshotReady` and submits
 //!    mutations via the command bus.
 
 pub mod actor;
 pub mod worker_trait;
+pub mod snapshot_actor;
 
 pub use actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
 pub use worker_trait::HistoryWorker;
+pub use snapshot_actor::{HistorySnapshotActor, HistorySnapshotActorDeps};
 
 #[cfg(test)]
 mod tests;

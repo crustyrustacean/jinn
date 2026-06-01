@@ -599,7 +599,7 @@ impl ThresholdTestEnv {
     fn run_evaluate(&self, worker: &CompactionWorker) -> Vec<HistoryMutation> {
         let rt = tokio::runtime::Runtime::new().expect("test runtime");
         rt.block_on(async {
-            worker.evaluate(&self.session_id, vec![]).await
+            worker.evaluate(&self.session_id, Arc::from([])).await
         })
     }
 }
@@ -793,7 +793,7 @@ fn gate_skips_when_session_not_found() {
     // Use a session ID that doesn't exist.
     let fake_id = SessionId::new();
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
-    let mutations = rt.block_on(async { worker.evaluate(&fake_id, vec![]).await });
+    let mutations = rt.block_on(async { worker.evaluate(&fake_id, Arc::from([])).await });
 
     assert!(mutations.is_empty(), "should not compact for nonexistent session");
 }
@@ -1026,7 +1026,7 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
     };
 
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
-    let mutations = rt.block_on(async { worker.evaluate(&session_id, vec![]).await });
+    let mutations = rt.block_on(async { worker.evaluate(&session_id, Arc::from([])).await });
 
     assert!(mutations.is_empty(), "threshold passes but empty history = no mutations");
 }

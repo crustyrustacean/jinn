@@ -180,21 +180,20 @@ pub fn handle_toggle_ignored_block(state: &mut AppState) -> IntentResult {
 /// selected entry's index in the history. The session actor handles the
 /// actual fork in SQLite and loads the new session.
 ///
-/// # Panics
-///
-/// Panics if `selected_entry_index()` returns `None` after validation
-/// succeeds. This should never happen - the validator guarantees a
-/// selection exists.
+/// No longer panics — returns `IntentResult::empty()` if the selected
+/// entry cannot be resolved after validation.
 pub fn handle_fork_from_entry(state: &mut AppState) -> IntentResult {
     if super::validator::validate_fork_from_entry(state).is_err() {
         return IntentResult::empty();
     }
 
     let source_session_id = state.session.active_session_id().clone();
-    let at_ordinal = state
+    let Some(at_ordinal) = state
         .active_session()
         .selected_history_index()
-        .expect("validator confirmed selection exists");
+    else {
+        return IntentResult::empty();
+    };
 
     state.session.begin_load(source_session_id.clone());
 
@@ -233,9 +232,8 @@ pub fn handle_yank_selected(state: &mut AppState) -> IntentResult {
 /// The sweep state is cleared by either a >100ms gap or any non-
 /// `ChatEntryIgnoreSelected` intent.
 ///
-/// # Panics
-///
-/// Calls `expect` on selected entry after validation; should never panic in practice.
+/// Returns gracefully if the selected entry cannot be resolved after
+/// validation (e.g. collapsed ignored block).
 pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
     // Try to continue an existing sweep.
     if let Some(target) = state.active_session_mut().take_ignore_sweep() {
@@ -267,11 +265,17 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
             session.set_entry_context_override(target);
 
             // Capture entry_id before advancing.
-            let entry_id = session
-                .selected_entry()
-                .expect("just set override on selected entry")
-                .id
-                .clone();
+            let Some(selected) = session.selected_entry() else {
+                // set_entry_context_override already mutated in memory.
+                // Emit a fallback PersistSession to flush the mutation.
+                let session_id = state.active_session().session_id().clone();
+                return IntentResult::with_commands(vec![Command::PersistSession(
+                    crate::feat::session_lifecycle::protocol::command::PersistSession {
+                        session_id,
+                    },
+                )]);
+            };
+            let entry_id = selected.id.clone();
 
             // Advance cursor for next press.
             advance_selection_one(session);
@@ -305,10 +309,9 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
     state.active_session_mut().toggle_entry_ignored();
 
     // Capture the resulting state on the toggled entry.
-    let selected = state
-        .active_session()
-        .selected_entry()
-        .expect("validator confirmed selection exists");
+    let Some(selected) = state.active_session().selected_entry() else {
+        return IntentResult::empty();
+    };
     let captured = selected.context_override;
     let entry_id = selected.id.clone();
 

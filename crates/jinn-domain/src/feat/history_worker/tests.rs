@@ -1,8 +1,7 @@
 //! Integration tests for the history worker pipeline.
 //!
-//! Tests cover the full lifecycle: worker evaluates history → produces
-//! mutations → actor submits them via command bus → session queues
-//! and later applies them at safe drain points.
+//! Tests cover the full lifecycle: worker evaluates history snapshot → produces
+//! mutations → actor submits them via command bus.
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
@@ -10,13 +9,11 @@ use std::sync::Arc;
 
 use crate::common::actor::actor::Actor;
 use crate::common::actor::{ActorContext, RecordingSink};
-use crate::common::app_state::AppState;
-use crate::common::state::State;
 use crate::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
-use crate::feat::session::protocol::history_appended::HistoryAppended;
+use crate::feat::session::protocol::history_snapshot_ready::HistorySnapshotReady;
 use crate::protocol::{Command, SessionId};
 
 // ── Test workers ───────────────────────────────────────────────────
@@ -31,7 +28,7 @@ impl HistoryWorker for TruncateOldUserEntries {
         "test-truncate-old-user"
     }
 
-    async fn evaluate(&self, _session_id: &SessionId, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
+    async fn evaluate(&self, _session_id: &SessionId, history: Arc<[ChatEntry]>) -> Vec<HistoryMutation> {
         let user_entries: Vec<_> = history
             .iter()
             .filter(|e| matches!(e.kind, ChatEntryKind::User { .. }))
@@ -63,38 +60,30 @@ impl HistoryWorker for NoOpWorker {
         "test-noop"
     }
 
-    async fn evaluate(&self, _session_id: &SessionId, _history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
+    async fn evaluate(&self, _session_id: &SessionId, _history: Arc<[ChatEntry]>) -> Vec<HistoryMutation> {
         vec![]
     }
 }
 
-// ── Test helpers ───────────────────��───────────────────────────────
+// ── Test helpers ───────────────────────────────────────────────────
 
-fn test_state_with_session(entries: Vec<ChatEntry>) -> (State, SessionId) {
-    let mut session = crate::feat::session::chat_session::ChatSessionState::new();
-    for entry in entries {
-        session.push_entry(entry);
-    }
-    let id = session.session_id().clone();
-    let state = State::new(AppState::default());
-    // Replace the default session.
-    {
-        let mut app = state.write();
-        app.session.insert(session);
-    }
-    (state, id)
-}
-
-fn make_actor<H: HistoryWorker + Clone>(worker: H, state: State) -> HistoryWorkerActor<H> {
+fn make_actor<H: HistoryWorker + Clone>(worker: H) -> HistoryWorkerActor<H> {
     let sink = Arc::new(RecordingSink::new());
     let mut ctx = ActorContext::new("test-worker", sink);
-    HistoryWorkerActor::activate(HistoryWorkerActorDeps { worker, state }, &mut ctx)
+    HistoryWorkerActor::activate(HistoryWorkerActorDeps { worker }, &mut ctx)
 }
 
 fn test_ctx() -> (Arc<RecordingSink>, ActorContext) {
     let sink = Arc::new(RecordingSink::new());
     let ctx = ActorContext::new("test-worker", sink.clone());
     (sink, ctx)
+}
+
+fn snapshot_event(session_id: SessionId, entries: Vec<ChatEntry>) -> HistorySnapshotReady {
+    HistorySnapshotReady {
+        session_id,
+        history: Arc::from(entries),
+    }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
@@ -106,7 +95,7 @@ fn worker_produces_mutations_for_long_history() {
         .collect();
     let worker = TruncateOldUserEntries;
     let rt = tokio::runtime::Runtime::new().expect("runtime");
-    let mutations = rt.block_on(async { worker.evaluate(&SessionId::new(), entries).await }); // 5 entries - 3 kept = 2 excluded
+    let mutations = rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(entries)).await }); // 5 entries - 3 kept = 2 excluded
     for m in &mutations {
         if let HistoryMutation::SetContextOverride { value, .. } = m {
             assert!(matches!(value, ContextOverride::ForcedExclude));
@@ -123,7 +112,7 @@ fn worker_produces_no_mutations_for_short_history() {
         .collect();
     let worker = TruncateOldUserEntries;
     let rt = tokio::runtime::Runtime::new().expect("runtime");
-    let mutations = rt.block_on(async { worker.evaluate(&SessionId::new(), entries).await });
+    let mutations = rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(entries)).await });
     assert!(mutations.is_empty());
 }
 
@@ -132,14 +121,12 @@ async fn actor_emits_submit_command_for_long_history() {
     let entries: Vec<ChatEntry> = (0..5)
         .map(|i| ChatEntry::user(format!("msg {i}")))
         .collect();
-    let (state, session_id) = test_state_with_session(entries);
-    let mut actor = make_actor(TruncateOldUserEntries, state);
+    let session_id = SessionId::new();
+    let mut actor = make_actor(TruncateOldUserEntries);
     let (sink, ctx) = test_ctx();
 
-    let event = HistoryAppended {
-        session_id: session_id.clone(),
-    };
-    actor.handle_history_appended(&event, &ctx).await;
+    let event = snapshot_event(session_id.clone(), entries);
+    actor.handle_snapshot_ready(&event, &ctx).await;
 
     let commands = sink.take_commands();
     assert_eq!(commands.len(), 1);
@@ -157,44 +144,28 @@ async fn actor_emits_nothing_for_short_history() {
     let entries: Vec<ChatEntry> = (0..2)
         .map(|i| ChatEntry::user(format!("msg {i}")))
         .collect();
-    let (state, session_id) = test_state_with_session(entries);
-    let mut actor = make_actor(TruncateOldUserEntries, state);
+    let session_id = SessionId::new();
+    let mut actor = make_actor(TruncateOldUserEntries);
     let (sink, ctx) = test_ctx();
 
-    let event = HistoryAppended { session_id };
-    actor.handle_history_appended(&event, &ctx).await;
+    let event = snapshot_event(session_id, entries);
+    actor.handle_snapshot_ready(&event, &ctx).await;
 
     let commands = sink.take_commands();
     assert!(commands.is_empty());
 }
-
-#[tokio::test]
-async fn actor_skips_nonexistent_session() {
-    let state = State::new(AppState::default());
-    let mut actor = make_actor(TruncateOldUserEntries, state);
-    let (sink, ctx) = test_ctx();
-
-    let event = HistoryAppended {
-        session_id: SessionId::new(),
-    };
-    actor.handle_history_appended(&event, &ctx).await;
-
-    let commands = sink.take_commands();
-    assert!(commands.is_empty());
-}
-
 
 #[tokio::test]
 async fn noop_worker_never_produces_mutations() {
     let entries: Vec<ChatEntry> = (0..10)
         .map(|i| ChatEntry::user(format!("msg {i}")))
         .collect();
-    let (state, session_id) = test_state_with_session(entries);
-    let mut actor = make_actor(NoOpWorker, state);
+    let session_id = SessionId::new();
+    let mut actor = make_actor(NoOpWorker);
     let (sink, ctx) = test_ctx();
 
-    let event = HistoryAppended { session_id };
-    actor.handle_history_appended(&event, &ctx).await;
+    let event = snapshot_event(session_id, entries);
+    actor.handle_snapshot_ready(&event, &ctx).await;
 
     let commands = sink.take_commands();
     assert!(commands.is_empty());

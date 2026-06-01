@@ -130,6 +130,10 @@ pub enum Event {
     SessionPhaseChanged(crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged),
     /// A new entry was appended to a session's history.
     HistoryAppended(crate::feat::session::protocol::history_appended::HistoryAppended),
+    /// A shared snapshot of session history is ready for workers to evaluate.
+    HistorySnapshotReady(
+        crate::feat::session::protocol::history_snapshot_ready::HistorySnapshotReady,
+    ),
     /// A session has been fully loaded from persistent storage.
     SessionLoadCompleted(Box<SessionLoadCompleted>),
     /// A workflow has been loaded (initialized) but not yet started.
@@ -140,6 +144,16 @@ pub enum Event {
     WorkflowCompleted(crate::feat::workflow::protocol::event::WorkflowCompleted),
     /// A workflow node status changed.
     WorkflowNodeStatusChanged(crate::feat::workflow::protocol::event::WorkflowNodeStatusChanged),
+    /// An attached workflow was added to a session.
+    WorkflowAttached(crate::feat::workflow::protocol::event::WorkflowAttached),
+    /// An attached workflow was removed from a session.
+    WorkflowDetached(crate::feat::workflow::protocol::event::WorkflowDetached),
+    /// An attached workflow was toggled on/off.
+    WorkflowToggled(crate::feat::workflow::protocol::event::WorkflowToggled),
+    /// An attached workflow completed execution.
+    AttachedWorkflowCompleted(
+        crate::feat::workflow::protocol::event::AttachedWorkflowCompleted,
+    ),
 
     /// A task list was updated by a mutation tool.
     TaskListUpdated(crate::feat::session::protocol::task_list_updated::TaskListUpdated),
@@ -211,6 +225,9 @@ impl Event {
             Self::HistoryAppended(..) => {
                 Some(crate::feat::session::protocol::history_appended::HistoryAppended::TYPE_NAME)
             }
+            Self::HistorySnapshotReady(..) => {
+                Some(crate::feat::session::protocol::history_snapshot_ready::HistorySnapshotReady::TYPE_NAME)
+            }
             Self::SessionLoadCompleted(..) => Some(SessionLoadCompleted::TYPE_NAME),
             Self::WorkflowInitialized(..) => {
                 Some(crate::feat::workflow::protocol::event::WorkflowInitialized::TYPE_NAME)
@@ -223,6 +240,18 @@ impl Event {
             }
             Self::WorkflowNodeStatusChanged(..) => {
                 Some(crate::feat::workflow::protocol::event::WorkflowNodeStatusChanged::TYPE_NAME)
+            }
+            Self::WorkflowAttached(..) => {
+                Some(crate::feat::workflow::protocol::event::WorkflowAttached::TYPE_NAME)
+            }
+            Self::WorkflowDetached(..) => {
+                Some(crate::feat::workflow::protocol::event::WorkflowDetached::TYPE_NAME)
+            }
+            Self::WorkflowToggled(..) => {
+                Some(crate::feat::workflow::protocol::event::WorkflowToggled::TYPE_NAME)
+            }
+            Self::AttachedWorkflowCompleted(..) => {
+                Some(crate::feat::workflow::protocol::event::AttachedWorkflowCompleted::TYPE_NAME)
             }
 
             Self::TaskListUpdated(..) => {

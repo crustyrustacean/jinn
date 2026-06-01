@@ -5,7 +5,22 @@
 //! in-context entries have accumulated after the failed edit. This removes
 //! useless failed-edit noise from the LLM context window.
 //!
+//! Pruning does not occur until `min_tail_entries` (default: 10) in-context
+//! entries have accumulated after the failed edit.
+//!
+//! # Example
+//!
+//! ```text
+//!    [User]: fix the bug in /foo.rs
+//! X  [Tool Call]: edit(/foo.rs)
+//! X  [Tool Result] (Failure): stale anchor
+//!    [Tool Call]: edit(/foo.rs)
+//!    [Tool Result] (OK): edit applied
+//!    [Assistant]: I've fixed the bug.
+//!
 //! [`ForcedExclude`]: crate::feat::session::chat_entry::ContextOverride::ForcedExclude
+
+use std::sync::Arc;
 
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::BrokenEditAutoPruneConfig;
@@ -35,7 +50,7 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
     async fn evaluate(
         &self,
         _session_id: &SessionId,
-        history: Vec<ChatEntry>,
+        history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
         let mut mutations = Vec::new();
 
@@ -160,7 +175,7 @@ mod tests {
     }
 
     async fn run_evaluate(worker: &BrokenEditAutoPruneWorker, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
-        worker.evaluate(&SessionId::new(), history).await
+        worker.evaluate(&SessionId::new(), Arc::from(history)).await
     }
 
     fn block_on_evaluate(worker: &BrokenEditAutoPruneWorker, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {

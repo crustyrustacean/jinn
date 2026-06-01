@@ -32,6 +32,7 @@ use jinn_domain::actor_channel::ActorChannelService;
 use jinn_domain::common::actor::protocol::event::{ActorStarted, ActorStarting, AllActorsSpawned};
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 use jinn_domain::feat::workflow::workflow_actor::{WorkflowActor, WorkflowActorDeps};
+use jinn_domain::feat::workflow::workflow_controller_actor::{WorkflowControllerActor, WorkflowControllerActorDeps};
 use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
@@ -432,10 +433,24 @@ pub fn create_core_with_actor_host(
     //       &sink, handle, &counter, &shutdown_tracker,
     //       HistoryWorkerActorDeps {
     //           worker: MyWorker::new(),
-    //           state: state.clone(),
     //       },
     //   ));
     //
+
+    // ── History snapshot actor ──────────────────────────────────────────
+    // Clones history once per HistoryAppended into Arc<[ChatEntry]>,
+    // then emits HistorySnapshotReady for all workers to share.
+    {
+        use jinn_domain::feat::history_worker::snapshot_actor::{HistorySnapshotActor, HistorySnapshotActorDeps};
+
+        actors.push(spawn::<HistorySnapshotActor>(
+            "history-snapshot",
+            &sink, handle, &counter, &shutdown_tracker,
+            HistorySnapshotActorDeps {
+                state: state.clone(),
+            },
+        ));
+    }
     // Compaction worker - summarizes conversation history into structured checkpoints.
     {
         use jinn_domain::feat::compaction_worker::CompactionWorker;
@@ -443,7 +458,10 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage.load().expect("preferences").compaction.clone();
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.compaction.clone())
+            .unwrap_or_default();
         let compaction_prompt = state.read().context.compaction_prompt.clone();
 
         actors.push(spawn::<HistoryWorkerActor<CompactionWorker>>(
@@ -460,8 +478,8 @@ pub fn create_core_with_actor_host(
                     config,
                     compaction_prompt,
                 },
-                state: state.clone(),
             },
+
         ));
     }
 
@@ -471,7 +489,10 @@ pub fn create_core_with_actor_host(
             CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker,
         };
 
-        let config = user_preferences_storage.load().expect("preferences").compaction.clone();
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.compaction.clone())
+            .unwrap_or_default();
         let compaction_prompt = state.read().context.compaction_prompt.clone();
 
         actors.push(spawn::<CompactionTriggerActor>(
@@ -499,7 +520,10 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage.load().expect("preferences").auto_prune.read_edit.clone();
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.auto_prune.read_edit.clone())
+            .unwrap_or_default();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<ReadEditAutoPruneWorker>>(
@@ -510,7 +534,6 @@ pub fn create_core_with_actor_host(
                 &shutdown_tracker,
                 HistoryWorkerActorDeps {
                     worker: ReadEditAutoPruneWorker { config },
-                    state: state.clone(),
                 },
             ));
         }
@@ -535,7 +558,6 @@ pub fn create_core_with_actor_host(
                         &shutdown_tracker,
                         HistoryWorkerActorDeps {
                             worker,
-                            state: state.clone(),
                         },
                     ));
                 }
@@ -559,7 +581,10 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage.load().expect("preferences").auto_prune.todo.clone();
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.auto_prune.todo.clone())
+            .unwrap_or_default();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<TodoAutoPruneWorker>>(
@@ -570,7 +595,6 @@ pub fn create_core_with_actor_host(
                 &shutdown_tracker,
                 HistoryWorkerActorDeps {
                     worker: TodoAutoPruneWorker { config },
-                    state: state.clone(),
                 },
             ));
         }
@@ -583,7 +607,10 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage.load().expect("preferences").auto_prune.broken_edit.clone();
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.auto_prune.broken_edit.clone())
+            .unwrap_or_default();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<BrokenEditAutoPruneWorker>>(
@@ -594,7 +621,6 @@ pub fn create_core_with_actor_host(
                 &shutdown_tracker,
                 HistoryWorkerActorDeps {
                     worker: BrokenEditAutoPruneWorker { config },
-                    state: state.clone(),
                 },
             ));
         }
@@ -631,6 +657,18 @@ pub fn create_core_with_actor_host(
             state: state.clone(),
             services: services.clone(),
             registry: workflow_registry,
+        },
+    ));
+    // Workflow controller actor - orchestrates attached workflow lifecycle.
+    actors.push(spawn::<WorkflowControllerActor>(
+        "workflow-controller",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        WorkflowControllerActorDeps {
+            state: state.clone(),
+            services: services.clone(),
         },
     ));
 

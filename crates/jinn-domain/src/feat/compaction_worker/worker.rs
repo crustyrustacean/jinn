@@ -4,6 +4,8 @@
 //! exclude old entries and insert a compaction summary. Runs asynchronously
 //! (LLM call for summarization).
 
+use std::sync::Arc;
+
 use error_stack::ResultExt as _;
 use futures::{StreamExt, pin_mut};
 use jinn_provider::LlmMessage;
@@ -73,10 +75,10 @@ impl HistoryWorker for CompactionWorker {
     async fn evaluate(
         &self,
         session_id: &SessionId,
-        history: Vec<ChatEntry>,
+        history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
         // Delegate to evaluate_history which needs state access.
-        // The history worker actor provides the history snapshot.
+        // The history snapshot actor provides the shared history snapshot.
         self.evaluate_history(session_id, &history).await
     }
 }

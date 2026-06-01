@@ -88,7 +88,7 @@ impl HistoryWorker for RegexAutoPruneWorker {
     async fn evaluate(
         &self,
         _session_id: &SessionId,
-        history: Vec<ChatEntry>,
+        history: std::sync::Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
         let mut mutations = Vec::new();
 
@@ -262,6 +262,7 @@ mod tests {
     /// Helper: evaluate a worker on a history snapshot.
     fn evaluate(worker: &RegexAutoPruneWorker, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
         let rt = tokio::runtime::Runtime::new().expect("runtime");
+        let history: std::sync::Arc<[ChatEntry]> = history.into();
         rt.block_on(async { worker.evaluate(&SessionId::new(), history).await })
     }
 
