@@ -46,3 +46,44 @@ pub struct WorkflowNodeStatusChanged {
     /// The new node status.
     pub status: String,
 }
+
+// --- Attached workflow events ---
+
+use crate::protocol::SessionId;
+use super::super::attached_workflow::WorkflowConfig;
+
+/// An attached workflow was added to a session.
+#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
+#[event_msg("workflow")]
+pub struct WorkflowAttached {
+    pub session_id: SessionId,
+    pub workflow_id: WorkflowId,
+    pub config: WorkflowConfig,
+}
+
+/// An attached workflow was removed from a session.
+#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
+#[event_msg("workflow")]
+pub struct WorkflowDetached {
+    pub session_id: SessionId,
+    pub workflow_id: WorkflowId,
+}
+
+/// An attached workflow was toggled on/off.
+#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
+#[event_msg("workflow")]
+pub struct WorkflowToggled {
+    pub session_id: SessionId,
+    pub workflow_id: WorkflowId,
+    pub enabled: bool,
+}
+
+/// An attached workflow completed execution.
+#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
+#[event_msg("workflow")]
+pub struct AttachedWorkflowCompleted {
+    pub session_id: SessionId,
+    pub workflow_id: WorkflowId,
+    pub success: bool,
+}
+

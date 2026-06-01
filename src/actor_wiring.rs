@@ -34,6 +34,7 @@ use jinn_domain::common::actor::protocol::event::{
 };
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 use jinn_domain::feat::workflow::workflow_actor::{WorkflowActor, WorkflowActorDeps};
+use jinn_domain::feat::workflow::workflow_controller_actor::{WorkflowControllerActor, WorkflowControllerActorDeps};
 use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
@@ -574,6 +575,18 @@ pub fn create_core_with_actor_host(
             state: state.clone(),
             services: services.clone(),
             registry: workflow_registry,
+        },
+    ));
+    // Workflow controller actor - orchestrates attached workflow lifecycle.
+    actors.push(spawn::<WorkflowControllerActor>(
+        "workflow-controller",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        WorkflowControllerActorDeps {
+            state: state.clone(),
+            services: services.clone(),
         },
     ));
 

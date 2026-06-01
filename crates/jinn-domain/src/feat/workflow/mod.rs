@@ -7,21 +7,28 @@
 //! - [`WorkflowMap`] / [`WorkflowState`] - runtime workflow state in [`AppState`]
 //! - [`WorkflowRegistry`] - instance-based named workflow registry
 
+pub mod attached_workflow;
 pub mod domain_node_context;
+pub mod builtin;
 pub mod example;
 pub mod node;
 pub mod picker_entry;
 pub mod protocol;
 pub mod tool_mapping;
 pub mod workflow_actor;
+pub mod workflow_controller_actor;
 pub mod workflow_input;
+
 pub mod workflow_registry;
+pub mod workflow_response;
 pub mod workflow_state;
+
 pub mod workflow_ui_state;
 
 pub use domain_node_context::DomainNodeContext;
 pub use node::LlmNode;
 pub use workflow_actor::WorkflowActor;
+pub use workflow_controller_actor::WorkflowControllerActorDeps;
 pub use workflow_registry::WorkflowRegistry;
 pub use workflow_state::{WorkflowId, WorkflowMap, WorkflowState};
 
