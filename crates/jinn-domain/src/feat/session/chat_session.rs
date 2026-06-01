@@ -1004,6 +1004,22 @@ impl ChatSessionState {
     /// Creates the entry with `ToolResultStatus::Pending` and empty content,
     /// then tracks its history index for later content appends.
     pub fn begin_tool_result(&mut self, tool_call_id: &str, name: &str) {
+        // Early return if not in Streaming phase — don't push orphaned entries.
+        if self
+            .core
+            .ephemeral
+            .machine
+            .streaming_tool_result_indices_mut()
+            .is_none()
+        {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.machine.kind(),
+                tool_call_id,
+                "begin_tool_result called while not streaming - ignoring"
+            );
+            return;
+        }
+
         let entry = ChatEntry::tool_result(
             tool_call_id,
             name,
@@ -1011,15 +1027,11 @@ impl ChatSessionState {
             crate::feat::session::tool_result_status::ToolResultStatus::Pending,
         );
         let history_index = self.push_entry(entry);
-        let Some(indices) = self.core.ephemeral.machine.streaming_tool_result_indices_mut() else {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.machine.kind(),
-                tool_call_id,
-                "begin_tool_result called while not streaming - ignoring"
-            );
-            return;
-        };
-        indices.insert(tool_call_id.to_owned(), history_index);
+
+        // Re-acquire the streaming index map after push_entry releases &mut self.
+        if let Some(indices) = self.core.ephemeral.machine.streaming_tool_result_indices_mut() {
+            indices.insert(tool_call_id.to_owned(), history_index);
+        }
     }
 
     /// Append incremental output to a pending ToolResult entry.
