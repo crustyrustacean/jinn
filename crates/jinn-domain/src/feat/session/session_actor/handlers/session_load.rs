@@ -108,10 +108,7 @@ impl SessionPersistenceActor {
         payload: &SessionForkRequested,
         ctx: &ActorContext,
     ) {
-        let Some(store) = &self.store else {
-            tracing::warn!("session-actor has no store - dropping fork request");
-            return;
-        };
+        let store = &self.services.session_store;
 
         // Fork in SQLite.
         let new_id = match store

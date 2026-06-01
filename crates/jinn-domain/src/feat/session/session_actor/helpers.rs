@@ -52,16 +52,13 @@ pub(super) fn test_actor() -> super::SessionPersistenceActor {
 
     super::SessionPersistenceActor {
         state: State::new(AppState::default()),
-        services: None,
-        store: None,
+        services: crate::common::services::Services::new(),
         counter: TiktokenCounter::o200k_base(),
         builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
         shell: "/bin/sh".to_owned(),
         lifecycle_child: None,
     }
 }
-
-
 #[cfg(test)]
 pub(super) fn test_context() -> (
     std::sync::Arc<crate::common::actor::RecordingSink>,
@@ -213,14 +210,12 @@ pub(super) fn test_actor_with_store(
 ) {
     let store = std::sync::Arc::new(PopulatedFakeStore::new(sessions));
     let services = crate::TestServices::builder()
-        .session_store(super::SessionStoreService::new(store.clone()))
+        .session_store(crate::feat::session::SessionStoreService::new(store.clone()))
         .build();
-    let service_store = services.session_store.clone();
     (
         super::SessionPersistenceActor {
             state: crate::common::state::State::new(crate::common::app_state::AppState::default()),
-            services: Some(services),
-            store: Some(service_store),
+            services,
             counter: crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
             builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
             shell: "/bin/sh".to_owned(),

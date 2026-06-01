@@ -191,8 +191,7 @@ mod tests {
         let state = State::new(AppState::default());
         let deps = SessionPersistenceActorDeps {
             state: state.clone(),
-            services: Some(TestServices::builder().build()),
-            store: None,
+            services: TestServices::builder().build(),
             counter: crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
             builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
             shell: "/bin/sh".to_owned(),
