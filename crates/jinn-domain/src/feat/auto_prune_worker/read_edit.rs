@@ -11,14 +11,14 @@
 //! # Example
 //!
 //! ```text
-//! [User]: show me /foo.rs
-//! [Tool Call]: read(/foo.rs)
-//! [Tool Result] (OK): <file contents>          ✗
-//! [Assistant]: here's what I see...
-//! [User]: now fix the bug
-//! [Tool Call]: edit(/foo.rs)
-//! [Tool Result] (OK): edit applied
-//! [Assistant]: done
+//!    [User]: show me /foo.rs
+//!    [Tool Call]: read(/foo.rs)
+//! X  [Tool Result] (OK): <file contents>
+//!    [Assistant]: here's what I see...
+//!    [User]: now fix the bug
+//!    [Tool Call]: edit(/foo.rs)
+//!    [Tool Result] (OK): edit applied
+//!    [Assistant]: done
 //! ```
 //!
 //! [`ForcedExclude`]: crate::feat::session::chat_entry::ContextOverride::ForcedExclude
