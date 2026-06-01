@@ -25,7 +25,7 @@
 //! [`ForcedExclude`]: crate::feat::session::chat_entry::ContextOverride::ForcedExclude
 
 use std::collections::HashMap;
-
+use std::sync::Arc;
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::TodoAutoPruneConfig;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
@@ -57,7 +57,7 @@ impl HistoryWorker for TodoAutoPruneWorker {
     async fn evaluate(
         &self,
         _session_id: &SessionId,
-        history: Vec<ChatEntry>,
+        history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
         let mut mutations = Vec::new();
 
@@ -168,7 +168,7 @@ mod tests {
     fn evaluate(history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
         let w = worker();
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        rt.block_on(async { w.evaluate(&SessionId::new(), history).await })
+        rt.block_on(async { w.evaluate(&SessionId::new(), Arc::from(history)).await })
     }
 
     // --- Tests ---

@@ -1041,20 +1041,19 @@ impl SessionPersistenceActor {
             &mut state, session_id,
         );
 
+        let prefs = self.services.as_ref()
+            .and_then(|s| s.user_preferences_storage.load().ok())
+            .unwrap_or_default();
         let fresh_session = {
-            let model = state
-                .frontend
-                .preferences
+            let model = prefs
                 .last_model
                 .clone()
                 .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned());
-            let strategy = state
-                .frontend
-                .preferences
+            let strategy = prefs
                 .last_strategy
                 .as_deref()
                 .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
-            let sliding_window_size = state.frontend.preferences.context_sliding_window.size;
+            let sliding_window_size = prefs.context_sliding_window.size;
             ChatSessionState::new_with_profile(
                 crate::feat::session::profile::SessionProfile::from_config(
                     model,
