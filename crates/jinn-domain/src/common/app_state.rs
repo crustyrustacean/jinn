@@ -52,13 +52,26 @@ pub struct AppState {
         crate::feat::workflow::workflow_state::WorkflowId,
         crate::feat::workflow::workflow_state::WorkflowExecutionState,
     >,
-    /// The workflow currently displayed in the Workflow tab.
-    /// OWNER: IntentHandler (sidebar selection).
     pub active_workflow: Option<(
         crate::protocol::SessionId,
         crate::feat::workflow::workflow_state::WorkflowId,
     )>,
+    pub pending_before_turn: std::collections::HashMap<
+        crate::protocol::SessionId,
+        crate::feat::workflow::attached_workflow::BeforeTurnMode,
+    >,
+    /// Queue of remaining BeforeTurn attachments for sequential execution.
+    /// Key: session_id, Value: ordered list of (AttachedWorkflow, BeforeTurnMode) pairs.
+    pub before_turn_queue: std::collections::HashMap<
+        crate::protocol::SessionId,
+        Vec<(
+            crate::feat::workflow::attached_workflow::AttachedWorkflow,
+            crate::feat::workflow::attached_workflow::BeforeTurnMode,
+        )>,
+    >,
 }
+
+
 
 impl AppState {
     /// Returns a mutable reference to the active picker's navigation interface.

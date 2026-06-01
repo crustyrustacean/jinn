@@ -34,6 +34,7 @@ use jinn_domain::common::actor::protocol::event::{
 };
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 use jinn_domain::feat::workflow::workflow_actor::{WorkflowActor, WorkflowActorDeps};
+use jinn_domain::feat::workflow::workflow_controller_actor::{WorkflowControllerActor, WorkflowControllerActorDeps};
 use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
@@ -430,7 +431,10 @@ pub fn create_core_with_actor_host(
         use jinn_domain::feat::compaction_worker::CompactionWorker;
         use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
 
-        let config = state.read().frontend.preferences.compaction.clone();
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.compaction.clone())
+            .unwrap_or_default();
         let compaction_prompt = state.read().context.compaction_prompt.clone();
 
         actors.push(spawn::<HistoryWorkerActor<CompactionWorker>>(
@@ -453,7 +457,10 @@ pub fn create_core_with_actor_host(
     {
         use jinn_domain::feat::compaction_worker::{CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker};
 
-        let config = state.read().frontend.preferences.compaction.clone();
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.compaction.clone())
+            .unwrap_or_default();
         let compaction_prompt = state.read().context.compaction_prompt.clone();
 
         actors.push(spawn::<CompactionTriggerActor>(
@@ -476,7 +483,10 @@ pub fn create_core_with_actor_host(
         use jinn_domain::feat::auto_prune_worker::ReadEditAutoPruneWorker;
         use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
 
-        let config = state.read().frontend.preferences.auto_prune.read_edit.clone();
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.auto_prune.read_edit.clone())
+            .unwrap_or_default();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<ReadEditAutoPruneWorker>>(
@@ -490,6 +500,49 @@ pub fn create_core_with_actor_host(
         }
     }
 
+    // Auto-prune worker: todo tool call pruning.
+    {
+        use jinn_domain::feat::auto_prune_worker::TodoAutoPruneWorker;
+        use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
+
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.auto_prune.todo.clone())
+            .unwrap_or_default();
+
+        if config.enabled {
+            actors.push(spawn::<HistoryWorkerActor<TodoAutoPruneWorker>>(
+                "history-worker-auto-prune-todo",
+                &sink, handle, &counter, &shutdown_tracker,
+                HistoryWorkerActorDeps {
+                    worker: TodoAutoPruneWorker { config },
+                    state: state.clone(),
+                },
+            ));
+        }
+    }
+
+    // Auto-prune worker: broken-edit context pruning.
+    {
+        use jinn_domain::feat::auto_prune_worker::BrokenEditAutoPruneWorker;
+        use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
+
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.auto_prune.broken_edit.clone())
+            .unwrap_or_default();
+
+        if config.enabled {
+            actors.push(spawn::<HistoryWorkerActor<BrokenEditAutoPruneWorker>>(
+                "history-worker-auto-prune-broken-edit",
+                &sink, handle, &counter, &shutdown_tracker,
+                HistoryWorkerActorDeps {
+                    worker: BrokenEditAutoPruneWorker { config },
+                    state: state.clone(),
+                },
+            ));
+        }
+    }
     // Sidebar state actor - keeps sidebar cursor in sync after session removal.
     actors.push(spawn::<
         jinn_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor,
@@ -522,6 +575,18 @@ pub fn create_core_with_actor_host(
             state: state.clone(),
             services: services.clone(),
             registry: workflow_registry,
+        },
+    ));
+    // Workflow controller actor - orchestrates attached workflow lifecycle.
+    actors.push(spawn::<WorkflowControllerActor>(
+        "workflow-controller",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        WorkflowControllerActorDeps {
+            state: state.clone(),
+            services: services.clone(),
         },
     ));
 

@@ -7,7 +7,7 @@ use jinn_workflow::graph::WorkflowGraphBuilder;
 use jinn_workflow::node::WorkflowNode;
 use jinn_workflow::port::{PortDef, PortValue, PortValues, ScalarValue};
 
-use crate::feat::workflow::attached_workflow::WorkflowConfig;
+
 
 /// Build a consensus workflow graph: N parallel clones → terminal.
 ///
@@ -70,19 +70,6 @@ pub fn build_divergence(n: u32, _temperature: f32) -> jinn_workflow::graph::Work
     builder.build().expect("divergence graph should be valid")
 }
 
-/// Update WorkflowConfig::build_graph to use the real builders.
-impl WorkflowConfig {
-    /// Build a WorkflowGraph from this config using the builtin builders.
-    #[must_use]
-    pub fn build_graph_real(&self) -> jinn_workflow::graph::WorkflowGraph {
-        match self {
-            Self::Consensus { n, .. } => build_consensus(*n),
-            Self::Judge { prompt, approval_tool, .. } => build_judge(prompt, approval_tool),
-            Self::Divergence { n, temperature, .. } => build_divergence(*n, *temperature),
-            Self::Custom(_) => panic!("Custom workflows cannot build graphs generically"),
-        }
-    }
-}
 
 // --- Internal node implementations ---
 
@@ -159,7 +146,7 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing)]
 
     use super::*;
-    use crate::feat::workflow::attached_workflow::ResultKind;
+    use crate::feat::workflow::attached_workflow::{ResultKind, WorkflowConfig};
 
     #[rstest::rstest]
     fn build_consensus_produces_valid_graph() {
@@ -200,27 +187,27 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn workflow_config_build_graph_real_consensus() {
+    fn workflow_config_build_graph_consensus() {
         let config = WorkflowConfig::Consensus { n: 3, result_kind: ResultKind::Assistant };
-        let graph = config.build_graph_real();
+        let graph = config.build_graph();
         assert_eq!(graph.node_count(), 4);
     }
 
     #[rstest::rstest]
-    fn workflow_config_build_graph_real_judge() {
+    fn workflow_config_build_graph_judge() {
         let config = WorkflowConfig::Judge {
             prompt: "Be harsh".to_owned(),
             approval_tool: "task_complete".to_owned(),
             result_kind: ResultKind::Silent,
         };
-        let graph = config.build_graph_real();
+        let graph = config.build_graph();
         assert_eq!(graph.node_count(), 2);
     }
 
     #[rstest::rstest]
-    fn workflow_config_build_graph_real_divergence() {
+    fn workflow_config_build_graph_divergence() {
         let config = WorkflowConfig::Divergence { n: 5, temperature: 1.0, result_kind: ResultKind::Assistant };
-        let graph = config.build_graph_real();
+        let graph = config.build_graph();
         assert_eq!(graph.node_count(), 6); // source + 5 diverge
     }
 }

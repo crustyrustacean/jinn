@@ -86,3 +86,12 @@ pub struct TriggerWorkflow {
     pub session_id: SessionId,
     pub workflow_id: WorkflowId,
 }
+
+/// Emitted by enqueue handler when a BeforeTurn workflow defers the user message.
+/// The controller picks this up, fires the BeforeTurn, then re-enqueues the merged text.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("workflow")]
+pub struct FireBeforeTurn {
+    pub session_id: SessionId,
+}
+

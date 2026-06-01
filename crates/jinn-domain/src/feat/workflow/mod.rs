@@ -28,6 +28,7 @@ pub mod workflow_ui_state;
 pub use domain_node_context::DomainNodeContext;
 pub use node::LlmNode;
 pub use workflow_actor::WorkflowActor;
+pub use workflow_controller_actor::WorkflowControllerActorDeps;
 pub use workflow_registry::WorkflowRegistry;
 pub use workflow_state::{WorkflowId, WorkflowMap, WorkflowState};
 

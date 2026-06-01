@@ -411,6 +411,19 @@ impl IntentHandler {
                 state.frontend.scope_stack.swap_base(new_scope);
                 IntentResult::empty()
             }
+            Intent::ToggleOneShot { kind } => {
+                let session_id = state.session.active_session_id().clone();
+                let session = state.session.get_mut(&session_id).unwrap();
+                if session.ui.pending_one_shots.contains_key(&kind) {
+                    session.ui.pending_one_shots.remove(&kind);
+                } else {
+                    let config = crate::feat::workflow::attached_workflow::WorkflowConfig::from_one_shot_kind(&kind);
+                    session.ui.pending_one_shots.insert(kind.clone(), config);
+                }
+                IntentResult::empty()
+            }
+
+
 
             // --- Workflow Navigation ---
             Intent::WorkflowNodeLeft => handle_workflow_node_spatial(state, SpatialDirection::Left),
@@ -1509,5 +1522,51 @@ mod tests {
             matches!(e, Event::ActiveSessionChanged(_))
         });
         assert!(!has_event, "should not emit ActiveSessionChanged when session unchanged");
+    }
+
+    #[rstest::rstest]
+    fn one_shot_toggle_inserts_and_removes() {
+        use crate::feat::workflow::attached_workflow::{OneShotKind, WorkflowConfig};
+        use std::collections::HashMap;
+
+        // Given an AppState with an active session.
+        let mut state = AppState::default();
+        let session_id = {
+            let session = crate::feat::session::chat_session::ChatSessionState::new();
+            let id = session.session_id().clone();
+            state.session.insert(session);
+            state.session.set_active(id.clone());
+            id
+        };
+
+        // When toggling consensus one-shot.
+        let _result = IntentHandler::handle(
+            &Intent::ToggleOneShot {
+                kind: OneShotKind::Consensus,
+            },
+
+            &mut state,
+        );
+
+        // Then pending_one_shots has an entry.
+        {
+            let session = state.session.get(&session_id).expect("session");
+            assert!(session.ui.pending_one_shots.contains_key(&OneShotKind::Consensus));
+        }
+
+        // When toggling again.
+        let _result = IntentHandler::handle(
+            &Intent::ToggleOneShot {
+                kind: OneShotKind::Consensus,
+            },
+
+            &mut state,
+        );
+
+        // Then the entry is removed.
+        {
+            let session = state.session.get(&session_id).expect("session");
+            assert!(!session.ui.pending_one_shots.contains_key(&OneShotKind::Consensus));
+        }
     }
 }

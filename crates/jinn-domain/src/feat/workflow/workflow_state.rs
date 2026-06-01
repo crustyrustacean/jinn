@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 use crate::protocol::SessionId;
 
 /// Unique identifier for a workflow execution.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct WorkflowId(String);
 
 impl WorkflowId {
