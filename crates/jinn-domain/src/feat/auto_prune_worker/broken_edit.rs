@@ -11,13 +11,12 @@
 //! # Example
 //!
 //! ```text
-//! [User]: fix the bug in /foo.rs
-//! [Tool Call]: edit(/foo.rs)                    ✗
-//! [Tool Result] (Failure): stale anchor        ✗
-//! [Tool Call]: edit(/foo.rs)
-//! [Tool Result] (OK): edit applied
-//! [Assistant]: I've fixed the bug.
-//! ```
+//!    [User]: fix the bug in /foo.rs
+//! X  [Tool Call]: edit(/foo.rs)
+//! X  [Tool Result] (Failure): stale anchor
+//!    [Tool Call]: edit(/foo.rs)
+//!    [Tool Result] (OK): edit applied
+//!    [Assistant]: I've fixed the bug.
 //!
 //! [`ForcedExclude`]: crate::feat::session::chat_entry::ContextOverride::ForcedExclude
 
