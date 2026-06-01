@@ -37,7 +37,7 @@ use crate::feat::tools_actor::protocol::command::{
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
 };
-use crate::feat::preferences_actor::OpenrouterWebSearchConfig;
+use crate::feat::preferences_actor::{OpenrouterWebSearchConfig, UserPreferencesStorageService};
 use jinn_provider::ServerToolType;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::{Command, Event, SessionId};
@@ -108,6 +108,7 @@ pub struct ToolOrchestratorActor {
     app_paths: crate::common::app_paths::AppPaths,
     /// Shell binary path (captured at startup from `$SHELL`).
     shell: String,
+    user_preferences_storage: UserPreferencesStorageService,
 }
 
 /// Dependencies for [`ToolOrchestratorActor`].
@@ -121,6 +122,7 @@ pub struct ToolOrchestratorActorDeps {
     pub builtin_filter: Option<Vec<String>>,
     /// Shell binary path (captured at startup from `$SHELL`).
     pub shell: String,
+    pub user_preferences_storage: UserPreferencesStorageService,
 }
 
 /// Builds the `openrouter:web_search` tool definition from config.
@@ -172,11 +174,13 @@ impl Actor for ToolOrchestratorActor {
         ctx.subscribe_command::<CancelToolBatch>();
         ctx.subscribe_event::<ToolExecutionCompleted>();
 
-        // Read web search config before moving state into actor.
-        let web_search_config = {
-            let guard = deps.state.read();
-            guard.frontend.preferences.openrouter_web_search.clone()
-        };
+        // Read web search config from preferences storage.
+        let web_search_config = deps
+            .user_preferences_storage
+            .load()
+            .expect("preferences")
+            .openrouter_web_search
+            .clone();
 
         let mut actor = Self {
             tools: HashMap::new(),
@@ -184,6 +188,7 @@ impl Actor for ToolOrchestratorActor {
             state: deps.state,
             app_paths: deps.app_paths,
             shell: deps.shell,
+            user_preferences_storage: deps.user_preferences_storage,
         };
 
         let all_builtins = registry::builtin_tools();
@@ -376,16 +381,21 @@ impl ToolOrchestratorActor {
         session_id: &SessionId,
         sink: std::sync::Arc<dyn MessageSink>,
     ) -> ToolContext {
-        let (cwd, max_output_lines, max_output_bytes) = {
+
+        let prefs = self
+            .user_preferences_storage
+            .load()
+            .expect("preferences");
+        let cwd = {
             let guard = self.state.read();
-            let cwd = guard.session.get(session_id).map_or_else(
+            guard.session.get(session_id).map_or_else(
                 || guard.session.default_cwd().clone(),
                 |s: &ChatSessionState| s.cwd().to_owned(),
-            );
-            let max_output_lines = guard.frontend.preferences.max_tool_output_lines;
-            let max_output_bytes = guard.frontend.preferences.max_tool_output_bytes;
-            (cwd, max_output_lines, max_output_bytes)
+            )
         };
+        let max_output_lines = prefs.max_tool_output_lines;
+        let max_output_bytes = prefs.max_tool_output_bytes;
+
         ToolContext {
             cwd,
             timeout: None,
