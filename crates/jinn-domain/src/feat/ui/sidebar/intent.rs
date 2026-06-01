@@ -52,15 +52,19 @@ pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
 pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
     use crate::common::app_state::FocusScope;
 
-    // Only run chat-specific side effects when returning to a chat view.
-    if matches!(state.frontend.scope_stack.current(), FocusScope::Workflow) {
-        // Returning to workflow view - skip chat scroll side effects.
-        state.frontend.scope_stack.clear_overlays();
-        return IntentResult::empty();
-    }
+    // Check what the base scope will be after clearing overlays.
+    // The current scope is a sidebar overlay; parent() gives us the base.
+    let returning_to_workflow = state
+        .frontend
+        .scope_stack
+        .parent()
+        .is_some_and(|base| matches!(base, FocusScope::Workflow | FocusScope::WorkflowInput));
 
-    state.active_session_mut().discard_saved_history_position();
-    state.active_session_mut().scroll_to_selected();
+    if !returning_to_workflow {
+        // Returning to chat view - run chat-specific scroll side effects.
+        state.active_session_mut().discard_saved_history_position();
+        state.active_session_mut().scroll_to_selected();
+    }
     state.frontend.scope_stack.clear_overlays();
     IntentResult::empty()
 }
