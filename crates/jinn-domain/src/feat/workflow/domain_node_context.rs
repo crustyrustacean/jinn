@@ -21,7 +21,7 @@ use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
 use crate::feat::context::assemble::AssemblyOverrides;
 use crate::feat::session::chat_entry::ChatEntry;
-use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session::chat_session::{ChatSessionState, SessionCoreEphemeral};
 use crate::feat::workflow::tool_mapping::tool_schemas_to_definitions;
 use crate::protocol::{Command, SessionId};
 
@@ -41,6 +41,9 @@ pub struct DomainNodeContext {
     pending: Arc<Mutex<HashMap<SessionId, oneshot::Sender<String>>>>,
     /// Current node being executed (set by engine via `set_node_name`).
     current_node_name: Arc<Mutex<Option<String>>>,
+    /// Current attached workflow ID being executed (set by controller before spawning).
+    /// Used to register node→session mappings in `state.workflow_executions`.
+    current_workflow_id: Arc<Mutex<Option<crate::feat::workflow::workflow_state::WorkflowId>>>,
 }
 
 impl DomainNodeContext {
@@ -51,7 +54,15 @@ impl DomainNodeContext {
             state,
             pending: Arc::new(Mutex::new(HashMap::new())),
             current_node_name: Arc::new(Mutex::new(None)),
+            current_workflow_id: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Send a command through the actor channel.
+    /// Used by the controller to emit EnqueueUserMessage/SetChatInputText after
+    /// BeforeTurn completion.
+    pub fn send_command(&self, cmd: crate::protocol::Command) {
+        self.services.actor_channel.send_command(cmd);
     }
 
     /// Send an LLM request through the session pipeline and wait for the full response.
@@ -160,7 +171,98 @@ impl DomainNodeContext {
     pub fn insert_pending(&self, session_id: SessionId, tx: oneshot::Sender<String>) {
         self.pending.lock().insert(session_id, tx);
     }
+
+    /// Set the current attached workflow ID (called by controller before execution).
+    pub fn set_workflow_id(&self, id: crate::feat::workflow::workflow_state::WorkflowId) {
+        *self.current_workflow_id.lock() = Some(id);
+    }
+
+    /// Send an LLM request using a cloned session and wait for the full response.
+    ///
+    /// Clones an existing session, giving the clone a new ID, `is_workflow = true`,
+    /// and `parent_session = Some(source)`. The clone inherits full history, profile,
+    /// and tools from the source.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the source session is not found or the oneshot is cancelled.
+    pub async fn send_llm_request_cloned(
+        &self,
+        source_session_id: &SessionId,
+        user_prompt: String,
+        system_prompt: Option<String>,
+        tool_schemas: Vec<ToolSchema>,
+        provider_id: Option<String>,
+    ) -> Result<String, Report<NodeError>> {
+        // 1. Read source session, clone it entirely
+        let mut session = {
+            let guard = self.state.read();
+            guard
+                .session
+                .get(source_session_id)
+                .cloned()
+                .ok_or_else(|| Report::new(NodeError).attach("source session not found"))?
+        };
+
+        // 2. Build overrides
+        let overrides = AssemblyOverrides {
+            system_prompt,
+            tool_definitions: if tool_schemas.is_empty() {
+                None
+            } else {
+                Some(tool_schemas_to_definitions(&tool_schemas))
+            },
+            skip_skills: true,
+            skip_context_files: true,
+        };
+
+        // 3. Generate new session ID (clone must NOT share ID with source)
+        session.core.session_id = SessionId::new();
+
+        // 4. Mark as workflow, reset ephemeral
+        session.core.is_workflow = true;
+        session.core.ephemeral = SessionCoreEphemeral::default();
+        session.core.workflow_overrides = Some(overrides);
+        session.core.parent_session = Some(source_session_id.clone());
+
+        // 5. Resolve model
+        let model = provider_id.unwrap_or_else(|| session.core.profile.model.clone());
+        session.set_model(model);
+
+        let session_id = session.session_id().clone();
+
+        // 6. Insert into app state
+        {
+            let mut state = self.state.write();
+            state.session.insert(session);
+            state.session.set_active(session_id.clone());
+        }
+
+        // 7. Record node→session mapping for the running attached workflow
+        let node_name = self.current_node_name.lock().clone();
+        if let (Some(name), Some(wid)) = (node_name, self.current_workflow_id.lock().clone()) {
+            let mut state = self.state.write();
+            if let Some(exec_state) = state.workflow_executions.get_mut(&wid) {
+                exec_state.node_sessions.insert(name, session_id.clone());
+            }
+        }
+
+        // 8. Create oneshot, enqueue, await (same pattern as existing)
+        let (tx, rx) = oneshot::channel();
+        self.pending.lock().insert(session_id.clone(), tx);
+
+        let entry = ChatEntry::user(&user_prompt);
+        self.services.actor_channel.send_command(
+            Command::EnqueueUserMessage(EnqueueUserMessage { session_id: session_id.clone(), entry }),
+        );
+
+        rx.await
+            .map_err(|_| Report::new(NodeError).attach("cloned workflow LLM request cancelled"))
+    }
 }
+
+
+
 
 impl NodeContext for DomainNodeContext {
     fn set_node_name(&self, name: &str) {
@@ -192,6 +294,7 @@ impl NodeContext for DomainNodeContext {
             state: self.state.clone(),
             pending: Arc::clone(&self.pending),
             current_node_name: Arc::clone(&self.current_node_name),
+            current_workflow_id: Arc::clone(&self.current_workflow_id),
         }))
     }
 }
