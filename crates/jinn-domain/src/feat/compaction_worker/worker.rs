@@ -93,15 +93,22 @@ impl CompactionWorker {
         &self,
         trigger: &CompactionTrigger,
     ) -> Result<Vec<HistoryMutation>, error_stack::Report<CompactionError>> {
-        // Read config and session state.
+        // Load preferences from service (outside state lock).
+        let prefs = self
+            .services
+            .user_preferences_storage
+            .load()
+            .expect("preferences");
+
+        // Read session state.
         let (config, model_name, history, compaction_prompt, retry_config) = {
             let state = self.state.read();
             let session = state.session(&trigger.session_id);
-            let config = state.frontend.preferences.compaction.clone();
+            let config = prefs.compaction.clone();
             let model_name = session.profile().model.clone();
             let history = session.history().to_vec();
             let compaction_prompt = state.context.compaction_prompt.clone();
-            let retry_config = state.frontend.preferences.request_retry.to_retry_config();
+            let retry_config = prefs.request_retry.to_retry_config();
             (config, model_name, history, compaction_prompt, retry_config)
         };
 
@@ -144,16 +151,22 @@ impl CompactionWorker {
         session_id: &SessionId,
         _history: &[ChatEntry],
     ) -> Vec<HistoryMutation> {
-        // Read live config, model, context_size, and context_length from shared state.
+        // Load preferences from service (outside state lock).
+        let prefs = self
+            .services
+            .user_preferences_storage
+            .load()
+            .expect("preferences");
+
         let (config, model_name, compaction_prompt, retry_config, full_history) = {
             let state = self.state.read();
-            let config = state.frontend.preferences.compaction.clone();
+            let config = prefs.compaction.clone();
             let Some(session) = state.session.get(session_id) else {
                 return vec![];
             };
             let model_name = session.profile().model.clone();
             let compaction_prompt = state.context.compaction_prompt.clone();
-            let retry_config = state.frontend.preferences.request_retry.to_retry_config();
+            let retry_config = prefs.request_retry.to_retry_config();
 
             // --- Threshold gate ---
             // Uses the exact same values displayed in the status bar:

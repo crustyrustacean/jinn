@@ -29,9 +29,7 @@ use jinn_domain::Services;
 use jinn_domain::SessionStoreService;
 use jinn_domain::UserPreferencesStorageService;
 use jinn_domain::actor_channel::ActorChannelService;
-use jinn_domain::common::actor::protocol::event::{
-    ActorStarted, ActorStarting, AllActorsSpawned,
-};
+use jinn_domain::common::actor::protocol::event::{ActorStarted, ActorStarting, AllActorsSpawned};
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 use jinn_domain::feat::workflow::workflow_actor::{WorkflowActor, WorkflowActorDeps};
 use jinn_domain::feat::workflow::workflow_controller_actor::{WorkflowControllerActor, WorkflowControllerActorDeps};
@@ -39,8 +37,8 @@ use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
 
-use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
 use jinn_domain::feat::preferences_actor::user_preferences::WebFetchBackend;
+use jinn_domain::feat::web_fetch_actor::{WebFetchActor, WebFetchActorDeps};
 use jinn_web_fetch::{HttpFetcher, MarkdownExtractor, OutputFormat};
 
 use jinn_domain::{
@@ -88,6 +86,14 @@ pub fn create_core_with_actor_host(
 
     // Create shared State FIRST - injected into multiple actors.
     let state = State::new(AppState::default());
+
+    // Set preferences
+    {
+        let mut guard = state.write();
+        guard.frontend.preferences = user_preferences_storage
+            .load()
+            .expect("should be able to access preferences");
+    }
 
     // Set default CWD for sessions (inherited from shell).
     {
@@ -231,21 +237,23 @@ pub fn create_core_with_actor_host(
     ));
 
     // Tool orchestrator actor.
-    actors.push(spawn::<
-        jinn_domain::feat::tools_actor::ToolOrchestratorActor,
-    >(
-        "tool-orchestrator",
-        &sink,
-        handle,
-        &counter,
-        &shutdown_tracker,
-        jinn_domain::feat::tools_actor::ToolOrchestratorActorDeps {
-            state: state.clone(),
-            app_paths: paths.clone(),
-            builtin_filter: None,
-            shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
-        },
-    ));
+    actors.push(
+        spawn::<jinn_domain::feat::tools_actor::ToolOrchestratorActor>(
+            "tool-orchestrator",
+            &sink,
+            handle,
+            &counter,
+            &shutdown_tracker,
+            jinn_domain::feat::tools_actor::ToolOrchestratorActorDeps {
+                state: state.clone(),
+                app_paths: paths.clone(),
+                builtin_filter: None,
+                shell: std::env::var("SHELL")
+                    .unwrap_or_else(|_| "/bin/sh".to_owned()),
+                user_preferences_storage: user_preferences_storage.clone(),
+            },
+        ),
+    );
 
     // Web fetch actor - reads backend from preferences, constructs fetcher.
     let web_fetch_backend = user_preferences_storage
@@ -254,7 +262,8 @@ pub fn create_core_with_actor_host(
         .unwrap_or(WebFetchBackend::Http);
     tracing::info!(backend = ?web_fetch_backend, "constructing web fetcher");
     let extractors = {
-        let markdown: std::sync::Arc<dyn jinn_web_fetch::Extractor> = std::sync::Arc::new(MarkdownExtractor);
+        let markdown: std::sync::Arc<dyn jinn_web_fetch::Extractor> =
+            std::sync::Arc::new(MarkdownExtractor);
         std::collections::HashMap::from([
             (OutputFormat::Text, markdown.clone()),
             (OutputFormat::Markdown, markdown),
@@ -267,7 +276,9 @@ pub fn create_core_with_actor_host(
         }
         WebFetchBackend::HeadlessChrome => {
             tracing::debug!("web-fetch: using HeadlessChromeFetcher backend");
-            std::sync::Arc::new(jinn_web_fetch::HeadlessChromeFetcher::new(extractors.clone()))
+            std::sync::Arc::new(jinn_web_fetch::HeadlessChromeFetcher::new(
+                extractors.clone(),
+            ))
         }
     };
     actors.push(spawn::<WebFetchActor>(
@@ -350,8 +361,6 @@ pub fn create_core_with_actor_host(
         },
     ));
 
-
-
     // Provider actor.
     actors.push(spawn::<
         jinn_domain::feat::provider::provider_actor::ProviderActor,
@@ -368,18 +377,18 @@ pub fn create_core_with_actor_host(
     ));
 
     // Token count actor - computes tiktoken counts for chat entries.
-    actors.push(spawn::<
-        jinn_domain::feat::token_count_actor::TokenCountActor,
-    >(
-        "token-count",
-        &sink,
-        handle,
-        &counter,
-        &shutdown_tracker,
-        jinn_domain::feat::token_count_actor::TokenCountActorDeps {
-            state: state.clone(),
-        },
-    ));
+    actors.push(
+        spawn::<jinn_domain::feat::token_count_actor::TokenCountActor>(
+            "token-count",
+            &sink,
+            handle,
+            &counter,
+            &shutdown_tracker,
+            jinn_domain::feat::token_count_actor::TokenCountActorDeps {
+                state: state.clone(),
+            },
+        ),
+    );
 
     // Queue actor - dispatches queued turns when sessions become idle.
     actors.push(spawn::<jinn_domain::feat::queue_actor::QueueActor>(
@@ -391,7 +400,7 @@ pub fn create_core_with_actor_host(
         jinn_domain::feat::queue_actor::QueueActorDeps {
             state: state.clone(),
             counter: token_counter,
-    }
+        },
     ));
 
     // Context size actor - recalculates context size for the status bar.
@@ -399,13 +408,15 @@ pub fn create_core_with_actor_host(
         jinn_domain::feat::context::context_size_actor::ContextSizeActor,
     >(
         "context-size",
-        &sink, handle, &counter, &shutdown_tracker,
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
         jinn_domain::feat::context::context_size_actor::ContextSizeActorDeps {
             state: state.clone(),
             counter: token_counter,
         },
     ));
-
 
     // ── History mutation workers ────────────────��─────────────────────────
     //
@@ -443,7 +454,9 @@ pub fn create_core_with_actor_host(
     // Compaction worker - summarizes conversation history into structured checkpoints.
     {
         use jinn_domain::feat::compaction_worker::CompactionWorker;
-        use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
+        use jinn_domain::feat::history_worker::actor::{
+            HistoryWorkerActor, HistoryWorkerActorDeps,
+        };
 
         let config = user_preferences_storage
             .load()
@@ -453,7 +466,10 @@ pub fn create_core_with_actor_host(
 
         actors.push(spawn::<HistoryWorkerActor<CompactionWorker>>(
             "history-worker-compaction",
-            &sink, handle, &counter, &shutdown_tracker,
+            &sink,
+            handle,
+            &counter,
+            &shutdown_tracker,
             HistoryWorkerActorDeps {
                 worker: CompactionWorker {
                     services: services.clone(),
@@ -463,12 +479,15 @@ pub fn create_core_with_actor_host(
                     compaction_prompt,
                 },
             },
+
         ));
     }
 
     // Compaction trigger actor - handles /compact and /compact-all commands.
     {
-        use jinn_domain::feat::compaction_worker::{CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker};
+        use jinn_domain::feat::compaction_worker::{
+            CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker,
+        };
 
         let config = user_preferences_storage
             .load()
@@ -478,7 +497,10 @@ pub fn create_core_with_actor_host(
 
         actors.push(spawn::<CompactionTriggerActor>(
             "compaction-trigger",
-            &sink, handle, &counter, &shutdown_tracker,
+            &sink,
+            handle,
+            &counter,
+            &shutdown_tracker,
             CompactionTriggerActorDeps {
                 worker: CompactionWorker {
                     services: services.clone(),
@@ -494,7 +516,9 @@ pub fn create_core_with_actor_host(
     // Auto-prune worker: read→edit context pruning.
     {
         use jinn_domain::feat::auto_prune_worker::ReadEditAutoPruneWorker;
-        use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
+        use jinn_domain::feat::history_worker::actor::{
+            HistoryWorkerActor, HistoryWorkerActorDeps,
+        };
 
         let config = user_preferences_storage
             .load()
@@ -504,7 +528,10 @@ pub fn create_core_with_actor_host(
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<ReadEditAutoPruneWorker>>(
                 "history-worker-auto-prune-read-edit",
-                &sink, handle, &counter, &shutdown_tracker,
+                &sink,
+                handle,
+                &counter,
+                &shutdown_tracker,
                 HistoryWorkerActorDeps {
                     worker: ReadEditAutoPruneWorker { config },
                 },
@@ -512,10 +539,47 @@ pub fn create_core_with_actor_host(
         }
     }
 
+    // Auto-prune worker: regex-based tool call pruning.
+    {
+        use jinn_domain::feat::auto_prune_worker::RegexAutoPruneWorker;
+        use jinn_domain::feat::history_worker::actor::{
+            HistoryWorkerActor, HistoryWorkerActorDeps,
+        };
+        let regex_config = user_preferences_storage.load().expect("preferences").auto_prune.regex.clone();
+
+        if regex_config.enabled && !regex_config.rules.is_empty() {
+            match RegexAutoPruneWorker::from_config(&regex_config) {
+                Ok(worker) => {
+                    actors.push(spawn::<HistoryWorkerActor<RegexAutoPruneWorker>>(
+                        "history-worker-auto-prune-regex",
+                        &sink,
+                        handle,
+                        &counter,
+                        &shutdown_tracker,
+                        HistoryWorkerActorDeps {
+                            worker,
+                        },
+                    ));
+                }
+                Err(e) => {
+                    tracing::warn!(err=?e, "invalid regex in auto_prune config, skipping");
+                }
+            }
+        } else {
+            tracing::debug!(
+                enabled = regex_config.enabled,
+                rules = regex_config.rules.len(),
+                "regex auto-prune skipped",
+            );
+        }
+    }
+
     // Auto-prune worker: todo tool call pruning.
     {
         use jinn_domain::feat::auto_prune_worker::TodoAutoPruneWorker;
-        use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
+        use jinn_domain::feat::history_worker::actor::{
+            HistoryWorkerActor, HistoryWorkerActorDeps,
+        };
 
         let config = user_preferences_storage
             .load()
@@ -525,7 +589,10 @@ pub fn create_core_with_actor_host(
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<TodoAutoPruneWorker>>(
                 "history-worker-auto-prune-todo",
-                &sink, handle, &counter, &shutdown_tracker,
+                &sink,
+                handle,
+                &counter,
+                &shutdown_tracker,
                 HistoryWorkerActorDeps {
                     worker: TodoAutoPruneWorker { config },
                 },
@@ -536,7 +603,9 @@ pub fn create_core_with_actor_host(
     // Auto-prune worker: broken-edit context pruning.
     {
         use jinn_domain::feat::auto_prune_worker::BrokenEditAutoPruneWorker;
-        use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
+        use jinn_domain::feat::history_worker::actor::{
+            HistoryWorkerActor, HistoryWorkerActorDeps,
+        };
 
         let config = user_preferences_storage
             .load()
@@ -546,7 +615,10 @@ pub fn create_core_with_actor_host(
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<BrokenEditAutoPruneWorker>>(
                 "history-worker-auto-prune-broken-edit",
-                &sink, handle, &counter, &shutdown_tracker,
+                &sink,
+                handle,
+                &counter,
+                &shutdown_tracker,
                 HistoryWorkerActorDeps {
                     worker: BrokenEditAutoPruneWorker { config },
                 },
@@ -616,11 +688,10 @@ pub fn create_core_with_actor_host(
             registry_factory: Box::new(move || {
                 let translator = crate::plugin_wiring::build_translator();
                 let cmd_sender_sink = plugin_sink.clone();
-                let cmd_sender = jinn_plugin::CommandSender::new(
-                    move |cmd: jinn_domain::Command| {
+                let cmd_sender =
+                    jinn_plugin::CommandSender::new(move |cmd: jinn_domain::Command| {
                         let _ = cmd_sender_sink.send_command(cmd);
-                    },
-                );
+                    });
                 let registry = jinn_plugin::PluginRegistry::new(translator, cmd_sender);
 
                 // Load system plugins.
@@ -660,6 +731,7 @@ pub fn create_core_with_actor_host(
                 state: state.clone(),
                 csv_path: bench_csv_path.clone(),
                 plan: bench_plan,
+                user_preferences_storage: user_preferences_storage.clone(),
             },
         ));
     }
@@ -690,7 +762,6 @@ pub fn create_core_with_actor_host(
     let _ = sink.send_command(jinn_domain::Command::RescanPersonas(
         jinn_domain::feat::context::protocol::command::RescanPersonas,
     ));
-
 
     (core, services, actor_host_service)
 }
