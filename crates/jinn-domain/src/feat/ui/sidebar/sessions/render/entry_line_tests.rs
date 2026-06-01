@@ -9,7 +9,7 @@ use throbber_widgets_tui::ThrobberState;
 
 use crate::common::app_state::AppState;
 use crate::feat::ui::sidebar::sessions::render::entry_line::{assemble_entry_line, tree_prefix};
-use crate::feat::ui::sidebar::sessions::state::SessionEntry;
+use crate::feat::ui::sidebar::sessions::state::{SessionEntry, SessionEntryKind};
 use crate::protocol::SessionId;
 
 use unicode_segmentation::UnicodeSegmentation;
@@ -24,6 +24,7 @@ fn tree_entry(
     is_last_child: bool,
 ) -> SessionEntry {
     SessionEntry {
+        kind: SessionEntryKind::Session,
         id: SessionId::new(),
         title: "Test".to_owned(),
         is_active: false,
@@ -34,6 +35,9 @@ fn tree_entry(
         depth,
         ancestor_continuations,
         is_last_child,
+        workflow_id: None,
+        workflow_state: None,
+        workflow_enabled: None,
     }
 }
 
@@ -166,6 +170,7 @@ fn tree_prefix_deep_chain_last() {
 fn assembled_line_includes_tree_prefix_for_non_root() {
     // Given a child entry at depth 1.
     let entry = SessionEntry {
+        kind: SessionEntryKind::Session,
         id: SessionId::new(),
         title: "Child".to_owned(),
         is_active: false,
@@ -176,6 +181,9 @@ fn assembled_line_includes_tree_prefix_for_non_root() {
         depth: 1,
         ancestor_continuations: vec![true],
         is_last_child: true,
+        workflow_id: None,
+        workflow_state: None,
+        workflow_enabled: None,
     };
     let theme = default_theme();
 
@@ -194,6 +202,7 @@ fn assembled_line_includes_tree_prefix_for_non_root() {
 fn assembled_line_has_no_tree_prefix_for_root() {
     // Given a root entry.
     let entry = SessionEntry {
+        kind: SessionEntryKind::Session,
         id: SessionId::new(),
         title: "Root".to_owned(),
         is_active: false,
@@ -204,6 +213,9 @@ fn assembled_line_has_no_tree_prefix_for_root() {
         depth: 0,
         ancestor_continuations: vec![],
         is_last_child: true,
+        workflow_id: None,
+        workflow_state: None,
+        workflow_enabled: None,
     };
     let theme = default_theme();
 
@@ -223,6 +235,7 @@ fn assembled_line_has_no_tree_prefix_for_root() {
 fn assembled_line_has_tree_prefix_span_for_child() {
     // Given a child entry at depth 1.
     let entry = SessionEntry {
+        kind: SessionEntryKind::Session,
         id: SessionId::new(),
         title: "Child".to_owned(),
         is_active: false,
@@ -233,6 +246,9 @@ fn assembled_line_has_tree_prefix_span_for_child() {
         depth: 1,
         ancestor_continuations: vec![true],
         is_last_child: false,
+        workflow_id: None,
+        workflow_state: None,
+        workflow_enabled: None,
     };
     let theme = default_theme();
 
@@ -256,6 +272,7 @@ fn assembled_line_has_tree_prefix_span_for_child() {
 fn title_is_truncated_more_at_higher_depth() {
     // Given two entries with the same title but different depths.
     let root = SessionEntry {
+        kind: SessionEntryKind::Session,
         id: SessionId::new(),
         title: "A very long session title that should be truncated".to_owned(),
         is_active: false,
@@ -266,8 +283,12 @@ fn title_is_truncated_more_at_higher_depth() {
         depth: 0,
         ancestor_continuations: vec![],
         is_last_child: true,
+        workflow_id: None,
+        workflow_state: None,
+        workflow_enabled: None,
     };
     let child = SessionEntry {
+        kind: SessionEntryKind::Session,
         id: SessionId::new(),
         title: "A very long session title that should be truncated".to_owned(),
         is_active: false,
@@ -278,6 +299,9 @@ fn title_is_truncated_more_at_higher_depth() {
         depth: 3,
         ancestor_continuations: vec![true, true, true],
         is_last_child: true,
+        workflow_id: None,
+        workflow_state: None,
+        workflow_enabled: None,
     };
     let theme = default_theme();
     let max_len = 20;
@@ -305,6 +329,7 @@ fn title_is_truncated_more_at_higher_depth() {
 fn active_arrow_shows_at_depth_greater_than_zero() {
     // Given an active child entry at depth 2.
     let entry = SessionEntry {
+        kind: SessionEntryKind::Session,
         id: SessionId::new(),
         title: "Deep Child".to_owned(),
         is_active: true,
@@ -315,6 +340,9 @@ fn active_arrow_shows_at_depth_greater_than_zero() {
         depth: 2,
         ancestor_continuations: vec![true, true],
         is_last_child: true,
+        workflow_id: None,
+        workflow_state: None,
+        workflow_enabled: None,
     };
     let theme = default_theme();
 
@@ -338,6 +366,7 @@ fn active_arrow_shows_at_depth_greater_than_zero() {
 fn tree_prefix_uses_muted_text_color() {
     // Given a child entry at depth 1.
     let entry = SessionEntry {
+        kind: SessionEntryKind::Session,
         id: SessionId::new(),
         title: "Child".to_owned(),
         is_active: false,
@@ -348,6 +377,9 @@ fn tree_prefix_uses_muted_text_color() {
         depth: 1,
         ancestor_continuations: vec![true],
         is_last_child: true,
+        workflow_id: None,
+        workflow_state: None,
+        workflow_enabled: None,
     };
     let theme = default_theme();
 
