@@ -6,7 +6,7 @@ pub mod clipboard;
 pub mod picker;
 pub mod selection_highlight;
 pub mod status_bar;
-pub mod tab_bar;
+
 pub mod too_small;
 pub mod which_key;
 pub mod workflow_tab;
@@ -59,26 +59,18 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         state.frontend.sidebar_width,
     );
 
-    // Tab bar - renders at top of main area.
-    tab_bar::render_tab_bar(frame, layout.tab_bar, state.frontend.active_tab);
+
 
     let mut rects = vec![];
 
-    match state.frontend.active_tab {
-        jinn_domain::ActiveTab::Chat => {
-            chat_tab::render_chat_tab(
-                &mut app.ui_registry,
-                &mut app.sidebar,
-                frame,
-                &layout,
-                &state,
-                &mut rects,
-            );
-        }
-        jinn_domain::ActiveTab::Workflow => {
-            workflow_tab::render_workflow_tab(frame, layout.content, &state, 0);
-        }
-    }
+    chat_tab::render_chat_tab(
+        &mut app.ui_registry,
+        &mut app.sidebar,
+        frame,
+        &layout,
+        &state,
+        &mut rects,
+    );
 
     // Session preview popup - when sidebar sessions section is focused.
     jinn_domain::feat::ui::sidebar::sessions::render_session_preview_for_state(

@@ -27,8 +27,7 @@ pub struct AppLayout {
     pub input: Rect,
     /// The status bar area (1 row at very bottom).
     pub status_bar: Rect,
-    /// The tab bar area (1 row at top of main area).
-    pub tab_bar: Rect,
+
 }
 
 impl AppLayout {
@@ -76,13 +75,13 @@ impl AppLayout {
         };
 
         let input_height = (1 + input_lines.max(1)).min(max_input_height);
-        let [tab_bar, content, input, status_bar] = Layout::vertical([
-            Constraint::Length(1), // tab bar
+        let [content, input, status_bar] = Layout::vertical([
             Constraint::Min(1),
             Constraint::Length(input_height),
             Constraint::Length(2),
         ])
         .areas(main);
+
 
         // Minimap column: same height as the chat log area (content minus
         // the bottom indicator line and chat-bottom-line).
@@ -116,7 +115,6 @@ impl AppLayout {
             content,
             input,
             status_bar,
-            tab_bar,
         }
     }
 }
