@@ -3,10 +3,10 @@
 use std::sync::Arc;
 
 use crate::common::actor::{Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
+use crate::common::services::Services;
 use crate::feat::preferences_actor::preferences_actor::{PreferencesActor, PreferencesActorDeps};
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
-use crate::common::services::Services;
 use crate::protocol::{Command, Event};
 
 /// Creates a test actor with in-memory storage.
@@ -35,7 +35,11 @@ async fn set_last_model_saves_to_storage() {
         .await;
 
     // Then the storage contains the provider as last_model.
-    let prefs = actor.services.user_preferences_storage.load().expect("load");
+    let prefs = actor
+        .services
+        .user_preferences_storage
+        .load()
+        .expect("load");
     assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
 }
 
@@ -66,7 +70,11 @@ async fn set_last_model_overwrites_previous() {
         .await;
 
     // Then only the latest model is persisted.
-    let prefs = actor.services.user_preferences_storage.load().expect("load");
+    let prefs = actor
+        .services
+        .user_preferences_storage
+        .load()
+        .expect("load");
     assert_eq!(prefs.last_model.as_deref(), Some("openrouter/gpt-4"));
 }
 
@@ -97,7 +105,11 @@ async fn set_last_model_preserves_last_strategy() {
         .await;
 
     // Then last_strategy is preserved.
-    let prefs = actor.services.user_preferences_storage.load().expect("load");
+    let prefs = actor
+        .services
+        .user_preferences_storage
+        .load()
+        .expect("load");
     assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
     assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
 }
@@ -121,7 +133,11 @@ async fn set_last_strategy_saves_to_storage() {
         .await;
 
     // Then the storage contains the strategy as last_strategy.
-    let prefs = actor.services.user_preferences_storage.load().expect("load");
+    let prefs = actor
+        .services
+        .user_preferences_storage
+        .load()
+        .expect("load");
     assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
 }
 
@@ -152,7 +168,11 @@ async fn set_last_strategy_preserves_last_model() {
         .await;
 
     // Then last_model is preserved.
-    let prefs = actor.services.user_preferences_storage.load().expect("load");
+    let prefs = actor
+        .services
+        .user_preferences_storage
+        .load()
+        .expect("load");
     assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
     assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
 }
@@ -177,7 +197,11 @@ async fn batch_diffs_apply_all_at_once() {
         .await;
 
     // Then both fields are persisted.
-    let prefs = actor.services.user_preferences_storage.load().expect("load");
+    let prefs = actor
+        .services
+        .user_preferences_storage
+        .load()
+        .expect("load");
     assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
     assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
 }
@@ -239,7 +263,11 @@ async fn empty_diffs_does_not_change_storage() {
         .await;
 
     // Then the existing preferences are preserved.
-    let prefs = actor.services.user_preferences_storage.load().expect("load");
+    let prefs = actor
+        .services
+        .user_preferences_storage
+        .load()
+        .expect("load");
     assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
 }
 
@@ -255,7 +283,11 @@ async fn ignores_unrelated_commands() {
         .await;
 
     // Then no preferences were saved (still defaults).
-    let prefs = actor.services.user_preferences_storage.load().expect("load");
+    let prefs = actor
+        .services
+        .user_preferences_storage
+        .load()
+        .expect("load");
     assert!(prefs.last_model.is_none());
     assert!(prefs.last_strategy.is_none());
 }

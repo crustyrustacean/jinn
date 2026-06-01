@@ -12,17 +12,17 @@
 //! (for resolving relative paths) and an optional timeout. The orchestrator
 //! reads CWD from shared [`State`] at dispatch time.
 
-pub mod registry;
 pub mod bash;
-pub mod get_time;
-pub mod read;
-pub mod skill;
-pub mod write;
-pub mod tool_entry;
 pub mod edit;
+pub mod get_time;
 pub mod protocol;
+pub mod read;
+pub mod registry;
+pub mod skill;
+pub mod tool_entry;
 pub mod tool_types;
 pub(crate) mod truncation;
+pub mod write;
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -31,6 +31,7 @@ use std::pin::Pin;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
+use crate::feat::preferences_actor::OpenrouterWebSearchConfig;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::tools_actor::protocol::command::{
     CancelToolBatch, ExecuteToolBatch, ExecuteWebFetch, RegisterTools,
@@ -38,10 +39,9 @@ use crate::feat::tools_actor::protocol::command::{
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
 };
-use crate::feat::preferences_actor::OpenrouterWebSearchConfig;
-use jinn_provider::ServerToolType;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::{Command, Event, SessionId};
+use jinn_provider::ServerToolType;
 
 /// A boxed future returned by built-in tool execute functions.
 pub type BoxedToolFuture = Pin<Box<dyn Future<Output = ToolResult> + Send>>;
@@ -110,7 +110,6 @@ pub struct ToolOrchestratorActor {
     pub(crate) services: Services,
     /// Shell binary path (captured at startup from `$SHELL`).
     shell: String,
-
 }
 
 /// Dependencies for [`ToolOrchestratorActor`].
@@ -125,7 +124,6 @@ pub struct ToolOrchestratorActorDeps {
     pub builtin_filter: Option<Vec<String>>,
     /// Shell binary path (captured at startup from `$SHELL`).
     pub shell: String,
-
 }
 
 /// Builds the `openrouter:web_search` tool definition from config.
@@ -135,7 +133,10 @@ pub struct ToolOrchestratorActorDeps {
 fn build_openrouter_web_search_definition(config: &OpenrouterWebSearchConfig) -> ToolDefinition {
     let mut params = serde_json::Map::new();
     if let Some(ref engine) = config.engine {
-        params.insert("engine".to_owned(), serde_json::Value::String(engine.clone()));
+        params.insert(
+            "engine".to_owned(),
+            serde_json::Value::String(engine.clone()),
+        );
     }
     if let Some(max) = config.max_results {
         params.insert("max_results".to_owned(), serde_json::json!(max));
@@ -384,7 +385,6 @@ impl ToolOrchestratorActor {
         session_id: &SessionId,
         sink: std::sync::Arc<dyn MessageSink>,
     ) -> ToolContext {
-
         let prefs = self
             .services
             .user_preferences_storage

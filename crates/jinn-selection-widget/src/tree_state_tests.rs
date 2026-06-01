@@ -673,5 +673,8 @@ fn tree_continuations_correct_with_sibling_filtering() {
     assert!(state.visible_entry(1).unwrap().is_last_child);
     // A is the last (only visible) root, so ancestor_continuation for C is [false]
     // (meaning: the parent A does NOT have younger siblings).
-    assert_eq!(state.visible_entry(1).unwrap().ancestor_continuations, vec![false]);
+    assert_eq!(
+        state.visible_entry(1).unwrap().ancestor_continuations,
+        vec![false]
+    );
 }

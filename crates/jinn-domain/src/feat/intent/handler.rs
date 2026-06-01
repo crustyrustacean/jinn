@@ -78,9 +78,11 @@ impl IntentHandler {
     }
 
     /// Internal intent dispatch — separated from `handle` to allow post-processing.
-    #[expect(clippy::too_many_lines, reason = "exhaustive match on all Intent variants")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "exhaustive match on all Intent variants"
+    )]
     fn handle_inner(intent: &Intent, state: &mut AppState) -> IntentResult {
-
         // Clear ignore sweep state when the user performs any action other than
         // pressing x. This ensures the sweep only continues during consecutive
         // x presses within 100ms.
@@ -553,7 +555,9 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
     // Cancel stream.
     state.active_session_mut().cancel_stream_and_drain();
     let mut commands = vec![Command::CancelStream(
-        crate::feat::provider::protocol::command::CancelStream { session_id: session_id.clone() },
+        crate::feat::provider::protocol::command::CancelStream {
+            session_id: session_id.clone(),
+        },
     )];
 
     // Also cancel any running lifecycle command.
@@ -1020,10 +1024,7 @@ mod tests {
         state.frontend.scope_stack.swap_base(FocusScope::Workflow);
 
         // Mark source node as AwaitingInput.
-        execution.set_status(
-            "source",
-            jinn_workflow::engine::NodeStatus::AwaitingInput,
-        );
+        execution.set_status("source", jinn_workflow::engine::NodeStatus::AwaitingInput);
 
         // When handling WorkflowRun.
         let result = IntentHandler::handle(&Intent::WorkflowRun, &mut state);
@@ -1143,7 +1144,10 @@ mod tests {
 
         // Then arg_input received the char, not the chat input.
         assert_eq!(state.frontend.arg_input.input, "helo");
-        assert!(state.active_chat_input().is_empty(), "chat input should be empty");
+        assert!(
+            state.active_chat_input().is_empty(),
+            "chat input should be empty"
+        );
     }
 
     #[test]
@@ -1157,7 +1161,10 @@ mod tests {
 
         // Then the chat input received the char.
         assert_eq!(state.active_chat_input().text(), "x");
-        assert!(state.frontend.arg_input.input.is_empty(), "arg input should be empty");
+        assert!(
+            state.frontend.arg_input.input.is_empty(),
+            "arg input should be empty"
+        );
     }
 
     #[test]
@@ -1285,7 +1292,10 @@ mod tests {
     fn paste_text_in_rename_session_scope_routes_to_rename() {
         // Given RenameSessionInput scope is active.
         let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::RenameSessionInput);
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
             input: "old".to_owned(),
             cursor_pos: 3,
@@ -1317,7 +1327,10 @@ mod tests {
         // Then the prompt is dismissed and a CancelStream command is emitted.
         assert!(!state.frontend.cancel_stream_prompt);
         assert!(
-            result.commands.iter().any(|c| matches!(c, crate::protocol::Command::CancelStream(_))),
+            result
+                .commands
+                .iter()
+                .any(|c| matches!(c, crate::protocol::Command::CancelStream(_))),
             "should emit CancelStream: {:?}",
             result.commands
         );
@@ -1349,7 +1362,6 @@ mod tests {
         // The prompt remains false.
         assert!(!state.frontend.cancel_stream_prompt);
     }
-
 
     // --- Mutant-killing tests for close session prompt ---
 
@@ -1459,7 +1471,10 @@ mod tests {
 
         // Then a RerunFromNode command is emitted.
         assert!(
-            result.commands.iter().any(|c| matches!(c, crate::protocol::Command::RerunFromNode(_))),
+            result
+                .commands
+                .iter()
+                .any(|c| matches!(c, crate::protocol::Command::RerunFromNode(_))),
             "should emit RerunFromNode: {:?}",
             result.commands
         );
@@ -1518,10 +1533,14 @@ mod tests {
         let result = IntentHandler::handle(&Intent::ChatEntrySelectNext, &mut state);
 
         // Then no ActiveSessionChanged event (same session).
-        let has_event = result.events.iter().any(|e| {
-            matches!(e, Event::ActiveSessionChanged(_))
-        });
-        assert!(!has_event, "should not emit ActiveSessionChanged when session unchanged");
+        let has_event = result
+            .events
+            .iter()
+            .any(|e| matches!(e, Event::ActiveSessionChanged(_)));
+        assert!(
+            !has_event,
+            "should not emit ActiveSessionChanged when session unchanged"
+        );
     }
 
     #[rstest::rstest]
@@ -1544,14 +1563,18 @@ mod tests {
             &Intent::ToggleOneShot {
                 kind: OneShotKind::Consensus,
             },
-
             &mut state,
         );
 
         // Then pending_one_shots has an entry.
         {
             let session = state.session.get(&session_id).expect("session");
-            assert!(session.ui.pending_one_shots.contains_key(&OneShotKind::Consensus));
+            assert!(
+                session
+                    .ui
+                    .pending_one_shots
+                    .contains_key(&OneShotKind::Consensus)
+            );
         }
 
         // When toggling again.
@@ -1559,14 +1582,18 @@ mod tests {
             &Intent::ToggleOneShot {
                 kind: OneShotKind::Consensus,
             },
-
             &mut state,
         );
 
         // Then the entry is removed.
         {
             let session = state.session.get(&session_id).expect("session");
-            assert!(!session.ui.pending_one_shots.contains_key(&OneShotKind::Consensus));
+            assert!(
+                !session
+                    .ui
+                    .pending_one_shots
+                    .contains_key(&OneShotKind::Consensus)
+            );
         }
     }
 }

@@ -145,10 +145,7 @@ mod tests {
         let mut services = crate::common::services::test_services::TestServices::builder()
             .paths(AppPaths::new_in(dir.path()))
             .build();
-        let deps = SkillsScanActorDeps {
-            services,
-            state,
-        };
+        let deps = SkillsScanActorDeps { services, state };
 
         let actor = SkillsScanActor::activate(deps, &mut ctx);
         (actor, sink, ctx)

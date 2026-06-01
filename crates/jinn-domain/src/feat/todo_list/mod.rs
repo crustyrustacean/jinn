@@ -49,8 +49,10 @@ impl PhaseId {
     fn new(existing: &[PhaseId]) -> Self {
         loop {
             let chars = generate_id_chars();
-            let candidate =
-                format!("p{}", std::str::from_utf8(&chars).expect("charset is valid UTF-8"));
+            let candidate = format!(
+                "p{}",
+                std::str::from_utf8(&chars).expect("charset is valid UTF-8")
+            );
             if !existing.iter().any(|e| e.0 == candidate) {
                 return Self(candidate);
             }
@@ -94,8 +96,10 @@ impl TaskId {
     fn new(existing: &[TaskId]) -> Self {
         loop {
             let chars = generate_id_chars();
-            let candidate =
-                format!("t{}", std::str::from_utf8(&chars).expect("charset is valid UTF-8"));
+            let candidate = format!(
+                "t{}",
+                std::str::from_utf8(&chars).expect("charset is valid UTF-8")
+            );
             if !existing.iter().any(|e| e.0 == candidate) {
                 return Self(candidate);
             }
@@ -192,10 +196,7 @@ pub enum TaskListError {
     BothAfterAndBefore,
     /// The referenced task belongs to a different phase.
     #[error("task {task_id} is not in phase {phase_id}")]
-    TaskNotInPhase {
-        task_id: TaskId,
-        phase_id: PhaseId,
-    },
+    TaskNotInPhase { task_id: TaskId, phase_id: PhaseId },
     /// Cannot postpone a task relative to itself.
     #[error("cannot postpone task relative to itself: {0}")]
     SelfReference(TaskId),
@@ -507,8 +508,12 @@ impl TaskList {
             ref_phase_idx.ok_or_else(|| TaskListError::TaskNotFound(ref_task_id.clone()))?;
 
         // Mark source task as postponed.
-        self.phases[src_pi].tasks.iter_mut().find(|t| &t.id == source_task_id).expect("source was found above").status =
-            TaskStatus::Postponed;
+        self.phases[src_pi]
+            .tasks
+            .iter_mut()
+            .find(|t| &t.id == source_task_id)
+            .expect("source was found above")
+            .status = TaskStatus::Postponed;
 
         // Generate new task ID.
         let existing: Vec<_> = self
@@ -529,11 +534,15 @@ impl TaskList {
         let phase = &mut self.phases[target_pi];
         match &position {
             TaskPosition::After(after_id) => {
-                let idx = phase.find_task_index(after_id).expect("ref was found above");
+                let idx = phase
+                    .find_task_index(after_id)
+                    .expect("ref was found above");
                 phase.tasks.insert(idx + 1, new_task);
             }
             TaskPosition::Before(before_id) => {
-                let idx = phase.find_task_index(before_id).expect("ref was found above");
+                let idx = phase
+                    .find_task_index(before_id)
+                    .expect("ref was found above");
                 phase.tasks.insert(idx, new_task);
             }
             TaskPosition::End => unreachable!(),
@@ -568,7 +577,15 @@ impl TaskList {
         for phase in &self.phases {
             for task in &phase.tasks {
                 if &task.id == source_task_id {
-                    source_info = Some((phase.tasks.iter().position(|t| &t.id == source_task_id).unwrap(), task.description.clone(), task.status));
+                    source_info = Some((
+                        phase
+                            .tasks
+                            .iter()
+                            .position(|t| &t.id == source_task_id)
+                            .unwrap(),
+                        task.description.clone(),
+                        task.status,
+                    ));
                     break;
                 }
             }
@@ -596,8 +613,12 @@ impl TaskList {
             .ok_or_else(|| TaskListError::PhaseNotFound(target_phase_id.clone()))?;
 
         // Mark source task as postponed.
-        self.phases[src_pi].tasks.iter_mut().find(|t| &t.id == source_task_id).expect("source was found above").status =
-            TaskStatus::Postponed;
+        self.phases[src_pi]
+            .tasks
+            .iter_mut()
+            .find(|t| &t.id == source_task_id)
+            .expect("source was found above")
+            .status = TaskStatus::Postponed;
 
         // Generate new task ID.
         let existing: Vec<_> = self
@@ -703,7 +724,9 @@ impl TaskList {
                         let (check, desc) = match task.status {
                             TaskStatus::Pending => (" ", task.description.clone()),
                             TaskStatus::Completed => ("\u{2713}", task.description.clone()),
-                            TaskStatus::Cancelled => ("\u{2717}", format!("CANCELLED: {}", task.description)),
+                            TaskStatus::Cancelled => {
+                                ("\u{2717}", format!("CANCELLED: {}", task.description))
+                            }
                             TaskStatus::Postponed => unreachable!(),
                         };
                         lines.push(format!("- [{}] {} [{}]", check, desc, task.id));
@@ -751,7 +774,9 @@ impl TaskList {
                     let (check, desc) = match task.status {
                         TaskStatus::Pending => (" ", task.description.clone()),
                         TaskStatus::Completed => ("\u{2713}", task.description.clone()),
-                        TaskStatus::Cancelled => ("\u{2717}", format!("CANCELLED: {}", task.description)),
+                        TaskStatus::Cancelled => {
+                            ("\u{2717}", format!("CANCELLED: {}", task.description))
+                        }
                         TaskStatus::Postponed => unreachable!(),
                     };
                     lines.push(format!("- [{}] {} [{}]", check, desc, task.id));

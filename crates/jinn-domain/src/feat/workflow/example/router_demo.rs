@@ -242,9 +242,7 @@ pub fn build_router_ternary() -> WorkflowGraph {
                 let mut out = PortValues::new();
                 out.insert(
                     "out".to_owned(),
-                    PortValue::single(ScalarValue::Text(
-                        text.chars().rev().collect::<String>(),
-                    )),
+                    PortValue::single(ScalarValue::Text(text.chars().rev().collect::<String>())),
                 );
                 Ok(out)
             })

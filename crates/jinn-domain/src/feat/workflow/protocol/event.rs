@@ -49,8 +49,8 @@ pub struct WorkflowNodeStatusChanged {
 
 // --- Attached workflow events ---
 
-use crate::protocol::SessionId;
 use super::super::attached_workflow::WorkflowConfig;
+use crate::protocol::SessionId;
 
 /// An attached workflow was added to a session.
 #[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
@@ -86,4 +86,3 @@ pub struct AttachedWorkflowCompleted {
     pub workflow_id: WorkflowId,
     pub success: bool,
 }
-

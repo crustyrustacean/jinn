@@ -498,8 +498,10 @@ async fn fetch_models() -> Result<(), Report<AppError>> {
 ///
 /// This is the testable core of [`fetch_models`], separated so tests can
 /// pass a mockito URL.
-async fn fetch_models_from_url(url: &str, output_path: std::path::PathBuf) -> Result<(), Report<AppError>> {
-
+async fn fetch_models_from_url(
+    url: &str,
+    output_path: std::path::PathBuf,
+) -> Result<(), Report<AppError>> {
     tracing::info!(url = url, "fetching model metadata");
 
     let response = reqwest::get(url)
@@ -638,7 +640,10 @@ mod tests {
         let result = load_compaction_prompt(&state, user_dir.path(), system_dir.path());
 
         // Then an error is returned (hard-fail semantics).
-        assert!(result.is_err(), "expected error when compaction prompt is missing");
+        assert!(
+            result.is_err(),
+            "expected error when compaction prompt is missing"
+        );
 
         // And the state compaction prompt remains empty.
         let state = state.read();
@@ -725,7 +730,10 @@ mod tests {
         mock.assert_async().await;
 
         // And the file was written to the temp directory (not real cache).
-        assert!(output_path.exists(), "output file should exist at temp path");
+        assert!(
+            output_path.exists(),
+            "output file should exist at temp path"
+        );
     }
 
     #[tokio::test]

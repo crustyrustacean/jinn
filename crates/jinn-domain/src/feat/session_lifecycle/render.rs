@@ -1,8 +1,8 @@
 //! Session lifecycle picker and arg input popup rendering.
 
 use crate::common::app_state::AppState;
-use crate::feat::ui::picker_states::PickerExt;
 use crate::feat::session_lifecycle::command_template::{CommandTemplate, split_preserving_quotes};
+use crate::feat::ui::picker_states::PickerExt;
 use jinn_selection_widget::SelectionWidget;
 use ratatui::Frame;
 use ratatui::layout::Rect;

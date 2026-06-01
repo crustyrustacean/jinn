@@ -145,15 +145,11 @@ mod tests {
         let path = dir.path().join("providers.toml");
         let storage = FilesystemConfigStorage::new(path);
 
-        let services = crate::common::services::test_services::TestServices::builder()
-            .build();
+        let services = crate::common::services::test_services::TestServices::builder().build();
         let api_keys = services.api_keys.clone();
-        let deps = EnvInitActorDeps {
-            services,
-        };
+        let deps = EnvInitActorDeps { services };
         let actor = EnvInitActor::activate(deps, &mut ctx);
         (actor, api_keys, sink, ctx)
-
     }
     #[tokio::test]
     async fn initialize_emits_environment_loaded() {

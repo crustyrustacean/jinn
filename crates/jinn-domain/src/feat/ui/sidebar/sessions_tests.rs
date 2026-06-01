@@ -343,7 +343,10 @@ fn busy_count_does_not_affect_idle_phase() {
 
     // Then the session entry is still idle (phase machine unaffected by busy_count).
     assert_eq!(sessions.len(), 1);
-    assert!(sessions[0].is_idle, "phase should remain Idle during busy operations");
+    assert!(
+        sessions[0].is_idle,
+        "phase should remain Idle during busy operations"
+    );
 }
 
 #[rstest::rstest]
@@ -1710,8 +1713,14 @@ fn sorted_sessions_last_root_is_marked_as_last_child() {
 
     // Then the last root is marked as is_last_child, others are not.
     assert_eq!(sessions.len(), 3, "should have 3 sessions");
-    assert!(!sessions[0].is_last_child, "first root should not be last child");
-    assert!(!sessions[1].is_last_child, "second root should not be last child");
+    assert!(
+        !sessions[0].is_last_child,
+        "first root should not be last child"
+    );
+    assert!(
+        !sessions[1].is_last_child,
+        "second root should not be last child"
+    );
     assert!(sessions[2].is_last_child, "last root should be last child");
 }
 
@@ -1725,7 +1734,10 @@ fn sorted_sessions_single_root_is_marked_as_last_child() {
 
     // Then it is marked as last child.
     assert_eq!(sessions.len(), 1);
-    assert!(sessions[0].is_last_child, "single root should be last child");
+    assert!(
+        sessions[0].is_last_child,
+        "single root should be last child"
+    );
 }
 
 // --- dfs_children: is_last_child for non-root entries (kills == -> !=
@@ -1751,8 +1763,14 @@ fn tree_children_last_child_flag_is_correct() {
         .collect();
 
     assert_eq!(children.len(), 2, "root_a should have 2 children");
-    assert!(!children[0].is_last_child, "first child should not be last child");
-    assert!(children[1].is_last_child, "second child should be last child");
+    assert!(
+        !children[0].is_last_child,
+        "first child should not be last child"
+    );
+    assert!(
+        children[1].is_last_child,
+        "second child should be last child"
+    );
 }
 
 // --- update_visual_parents_on_removal: kills == -> != mutant on line 250 ---
@@ -1809,7 +1827,11 @@ fn update_visual_parents_on_removal_reparents_only_children_of_removed_session()
     );
     // And the unrelated child is NOT reparented (it has a different parent).
     assert_eq!(
-        state.frontend.sessions_section.visual_parents.get(&unrelated_child_id),
+        state
+            .frontend
+            .sessions_section
+            .visual_parents
+            .get(&unrelated_child_id),
         None,
         "unrelated child should not be reparented - its parent is not being removed"
     );
@@ -1829,9 +1851,17 @@ fn clear_visual_parents_on_load_removes_only_entries_pointing_to_loaded_session(
     let other_id = crate::protocol::SessionId::new();
 
     // entry_x -> loaded_id (should be removed after load)
-    state.frontend.sessions_section.visual_parents.insert(id_x.clone(), loaded_id.clone());
+    state
+        .frontend
+        .sessions_section
+        .visual_parents
+        .insert(id_x.clone(), loaded_id.clone());
     // entry_y -> other_id (should be kept)
-    state.frontend.sessions_section.visual_parents.insert(id_y.clone(), other_id.clone());
+    state
+        .frontend
+        .sessions_section
+        .visual_parents
+        .insert(id_y.clone(), other_id.clone());
 
     // When clearing on load for loaded_id.
     clear_visual_parents_on_load(&mut state, &loaded_id);
@@ -1860,7 +1890,11 @@ fn clear_visual_parents_on_load_actually_removes_entries() {
     let child_id = crate::protocol::SessionId::new();
     let loaded_id = crate::protocol::SessionId::new();
 
-    state.frontend.sessions_section.visual_parents.insert(child_id, loaded_id.clone());
+    state
+        .frontend
+        .sessions_section
+        .visual_parents
+        .insert(child_id, loaded_id.clone());
     assert_eq!(state.frontend.sessions_section.visual_parents.len(), 1);
 
     // When clearing on load.

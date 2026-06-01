@@ -108,8 +108,8 @@ mod tests {
     use crate::protocol::Event;
 
     use super::{PreferencesStateSyncActor, PreferencesStateSyncActorDeps};
-    use crate::feat::preferences_actor::RequestRetryConfig;
     use crate::common::services::Services;
+    use crate::feat::preferences_actor::RequestRetryConfig;
 
     /// Creates a test actor with shared state.
     fn create_actor() -> (PreferencesStateSyncActor, State, ActorContext) {

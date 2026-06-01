@@ -196,7 +196,6 @@ impl crate::feat::session::session_store::SessionStore for PopulatedFakeStore {
     > {
         Ok(self.summaries.clone())
     }
-
 }
 
 /// Builds a test actor with services and a populated store.
@@ -210,7 +209,9 @@ pub(super) fn test_actor_with_store(
 ) {
     let store = std::sync::Arc::new(PopulatedFakeStore::new(sessions));
     let services = crate::TestServices::builder()
-        .session_store(crate::feat::session::SessionStoreService::new(store.clone()))
+        .session_store(crate::feat::session::SessionStoreService::new(
+            store.clone(),
+        ))
         .build();
     (
         super::SessionPersistenceActor {
@@ -224,5 +225,3 @@ pub(super) fn test_actor_with_store(
         store,
     )
 }
-
-

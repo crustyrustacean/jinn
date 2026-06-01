@@ -62,10 +62,7 @@ fn test_app() -> TuiApp {
 #[case::picker_provider(jinn_domain::FocusScope::Picker { kind: jinn_domain::PickerKind::Provider }, Scope::PickerProvider)]
 #[case::sidebar_resize(jinn_domain::FocusScope::SidebarResize, Scope::SidebarResize)]
 #[case::picker_compaction_model(jinn_domain::FocusScope::Picker { kind: jinn_domain::PickerKind::CompactionModel }, Scope::PickerCompactionModel)]
-fn scope_for_focus_maps_correctly(
-    #[case] focus: jinn_domain::FocusScope,
-    #[case] expected: Scope,
-) {
+fn scope_for_focus_maps_correctly(#[case] focus: jinn_domain::FocusScope, #[case] expected: Scope) {
     // Given a focus scope.
     // When mapping to a keymap scope.
     // Then the expected scope is returned.

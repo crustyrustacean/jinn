@@ -15,10 +15,8 @@ fn hash_trigger_valid_after_space() {
 
     let mut state = AppState::default();
     state.frontend.scope_stack.push(FocusScope::Input);
-    state
-        .context
-        .prompt_templates
-        = crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+    state.context.prompt_templates =
+        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
             crate::feat::context::protocol::prompt_template::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
@@ -47,10 +45,8 @@ fn hash_trigger_valid_after_newline() {
 
     let mut state = AppState::default();
     state.frontend.scope_stack.push(FocusScope::Input);
-    state
-        .context
-        .prompt_templates
-        = crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+    state.context.prompt_templates =
+        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
             crate::feat::context::protocol::prompt_template::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
@@ -64,7 +60,10 @@ fn hash_trigger_valid_after_newline() {
 
     // Then autocomplete activates (the || check passes with newline).
     let ac = state.active_chat_input().autocomplete();
-    assert!(ac.is_some(), "'#' after newline should trigger autocomplete");
+    assert!(
+        ac.is_some(),
+        "'#' after newline should trigger autocomplete"
+    );
 }
 
 #[rstest::rstest]
@@ -74,10 +73,8 @@ fn hash_trigger_invalid_after_letter() {
 
     let mut state = AppState::default();
     state.frontend.scope_stack.push(FocusScope::Input);
-    state
-        .context
-        .prompt_templates
-        = crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+    state.context.prompt_templates =
+        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
             crate::feat::context::protocol::prompt_template::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
@@ -93,7 +90,10 @@ fn hash_trigger_invalid_after_letter() {
 
     // Then autocomplete does NOT activate.
     let ac = state.active_chat_input().autocomplete();
-    assert!(ac.is_none(), "'#' after letter should NOT trigger autocomplete");
+    assert!(
+        ac.is_none(),
+        "'#' after letter should NOT trigger autocomplete"
+    );
 }
 
 // --- is_valid_slash_trigger_position: kills && → || at line 558 ---
@@ -112,7 +112,10 @@ fn slash_trigger_only_at_position_zero() {
 
     // Then autocomplete does NOT activate.
     let ac = state.active_chat_input().autocomplete();
-    assert!(ac.is_none(), "'/' not at position 0 should NOT trigger autocomplete");
+    assert!(
+        ac.is_none(),
+        "'/' not at position 0 should NOT trigger autocomplete"
+    );
 }
 
 // --- handle_delete_grapheme: kills <= → < at line 137 ---
@@ -131,10 +134,8 @@ fn delete_grapheme_deactivates_when_cursor_at_token_start_plus_one() {
 
     let mut state = AppState::default();
     state.frontend.scope_stack.push(FocusScope::Input);
-    state
-        .context
-        .prompt_templates
-        = crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+    state.context.prompt_templates =
+        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
             crate::feat::context::protocol::prompt_template::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
@@ -147,17 +148,28 @@ fn delete_grapheme_deactivates_when_cursor_at_token_start_plus_one() {
 
     // Autocomplete should be active with filter "t".
     assert!(state.active_chat_input().autocomplete().is_some());
-    let filter_before = state.active_chat_input().autocomplete_filter().unwrap_or_default();
+    let filter_before = state
+        .active_chat_input()
+        .autocomplete_filter()
+        .unwrap_or_default();
     assert_eq!(filter_before, "t", "filter should be 't' before deletion");
 
     // When deleting back to "#" (cursor moves to position 1 = token_start + 1).
     let _ = crate::feat::chat_input::intent::handle_delete_grapheme(&mut state);
 
     // Then autocomplete reactivates with empty filter (the 't' was deleted).
-    assert!(state.active_chat_input().autocomplete().is_some(),
-        "autocomplete should reactivate after deleting back to #");
-    let filter_after = state.active_chat_input().autocomplete_filter().unwrap_or_default();
-    assert_eq!(filter_after, "", "filter should be empty after deleting the filter char");
+    assert!(
+        state.active_chat_input().autocomplete().is_some(),
+        "autocomplete should reactivate after deleting back to #"
+    );
+    let filter_after = state
+        .active_chat_input()
+        .autocomplete_filter()
+        .unwrap_or_default();
+    assert_eq!(
+        filter_after, "",
+        "filter should be empty after deleting the filter char"
+    );
 }
 
 // --- handle_delete_grapheme_forward: kills == → != at line 189 ---
@@ -169,10 +181,8 @@ fn delete_forward_deactivates_when_cursor_at_token_start() {
 
     let mut state = AppState::default();
     state.frontend.scope_stack.push(FocusScope::Input);
-    state
-        .context
-        .prompt_templates
-        = crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+    state.context.prompt_templates =
+        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
             crate::feat::context::protocol::prompt_template::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
@@ -192,7 +202,10 @@ fn delete_forward_deactivates_when_cursor_at_token_start() {
 
     // Then autocomplete is deactivated (cursor == token_start triggers deactivation).
     let ac = state.active_chat_input().autocomplete();
-    assert!(ac.is_none(), "delete forward at token_start should deactivate");
+    assert!(
+        ac.is_none(),
+        "delete forward at token_start should deactivate"
+    );
 }
 
 // --- should_deactivate_on_cursor_move: kills <= → < ---
@@ -205,10 +218,8 @@ fn cursor_move_left_deactivates_when_cursor_before_token() {
 
     let mut state = AppState::default();
     state.frontend.scope_stack.push(FocusScope::Input);
-    state
-        .context
-        .prompt_templates
-        = crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+    state.context.prompt_templates =
+        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
             crate::feat::context::protocol::prompt_template::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
@@ -232,8 +243,10 @@ fn cursor_move_left_deactivates_when_cursor_before_token() {
     let _ = crate::feat::chat_input::intent::handle_move_cursor_right(&mut state);
     let _ = crate::feat::chat_input::intent::handle_move_cursor_right(&mut state);
     let _ = crate::feat::chat_input::intent::handle_move_cursor_right(&mut state);
-    assert!(state.active_chat_input().autocomplete().is_some(),
-        "cursor at position 4 should reactivate (within #test)");
+    assert!(
+        state.active_chat_input().autocomplete().is_some(),
+        "cursor at position 4 should reactivate (within #test)"
+    );
 
     // Move left 4 times to position 0 ('a'). This is before the '#' token.
     let _ = crate::feat::chat_input::intent::handle_move_cursor_left(&mut state);
@@ -245,7 +258,10 @@ fn cursor_move_left_deactivates_when_cursor_before_token() {
     // cursor 0 <= token_start 2 → true → deactivate.
     // try_reactivate: cursor at 0, no '#' at 0 (it's 'a'), so no reactivation.
     let ac = state.active_chat_input().autocomplete();
-    assert!(ac.is_none(), "cursor before token should deactivate permanently");
+    assert!(
+        ac.is_none(),
+        "cursor before token should deactivate permanently"
+    );
 }
 
 // --- find_hash_token_at_cursor: kills == → !=, boundary checks ---
@@ -257,10 +273,8 @@ fn reactivating_hash_autocomplete_within_token() {
 
     let mut state = AppState::default();
     state.frontend.scope_stack.push(FocusScope::Input);
-    state
-        .context
-        .prompt_templates
-        = crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+    state.context.prompt_templates =
+        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
             crate::feat::context::protocol::prompt_template::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
@@ -285,7 +299,10 @@ fn reactivating_hash_autocomplete_within_token() {
 
     // Then autocomplete should reactivate via try_reactivate_autocomplete / find_hash_token_at_cursor.
     let ac = state.active_chat_input().autocomplete();
-    assert!(ac.is_some(), "cursor within #token should reactivate autocomplete");
+    assert!(
+        ac.is_some(),
+        "cursor within #token should reactivate autocomplete"
+    );
 }
 
 // --- find_slash_token_at_cursor: kills <= → < and boundary checks ---
@@ -317,7 +334,10 @@ fn reactivating_slash_autocomplete_within_command() {
 
     // Then autocomplete should reactivate.
     let ac = state.active_chat_input().autocomplete();
-    assert!(ac.is_some(), "cursor within /command should reactivate autocomplete");
+    assert!(
+        ac.is_some(),
+        "cursor within /command should reactivate autocomplete"
+    );
 }
 
 // --- render_scroll_indicators: kills > → >= ---
@@ -347,10 +367,8 @@ fn enter_normal_mode_dismisses_active_autocomplete_without_scope_change() {
 
     let mut state = AppState::default();
     state.frontend.scope_stack.push(FocusScope::Input);
-    state
-        .context
-        .prompt_templates
-        = crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
+    state.context.prompt_templates =
+        crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
             crate::feat::context::protocol::prompt_template::PromptTemplate {
                 name: "test".to_owned(),
                 description: "desc".to_owned(),
@@ -365,8 +383,10 @@ fn enter_normal_mode_dismisses_active_autocomplete_without_scope_change() {
     let result = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
 
     // Then autocomplete is dismissed but scope stays Input (not Normal).
-    assert!(state.active_chat_input().autocomplete().is_none(),
-        "enter_normal_mode should dismiss autocomplete");
+    assert!(
+        state.active_chat_input().autocomplete().is_none(),
+        "enter_normal_mode should dismiss autocomplete"
+    );
     assert_eq!(
         state.frontend.scope_stack.current(),
         &FocusScope::Input,

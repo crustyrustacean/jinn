@@ -11,16 +11,20 @@
 
 use std::sync::Arc;
 
-use crate::common::actor::{
-    Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink,
-};
+use crate::common::actor::{Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
 use crate::common::app_state::AppState;
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::provider::discover_actor::{DiscoverActor, DiscoverActorDeps};
 use crate::protocol::Command;
 
-fn create_actor() -> (DiscoverActor, Services, Arc<RecordingSink>, ActorContext, State) {
+fn create_actor() -> (
+    DiscoverActor,
+    Services,
+    Arc<RecordingSink>,
+    ActorContext,
+    State,
+) {
     let sink = Arc::new(RecordingSink::new());
     let mut ctx = ActorContext::new("discover", sink.clone() as Arc<dyn MessageSink>);
 
@@ -54,7 +58,11 @@ async fn handle_processes_command_envelope() {
     // Then the actor processed the command - it should emit a ModelsRefreshed event
     // (with empty results since there are no configured providers).
     let events = sink.take_events();
-    assert_eq!(events.len(), 1, "handle should dispatch RefreshModels and emit event");
+    assert_eq!(
+        events.len(),
+        1,
+        "handle should dispatch RefreshModels and emit event"
+    );
 }
 
 #[rstest::rstest]

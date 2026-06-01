@@ -31,9 +31,9 @@ pub use app_msg::Event;
 pub use intent::CwdRoot;
 pub use intent::Intent;
 pub use intent::IntentResult;
+pub use jinn_protocol_derive::{CommandMsg, EventMsg};
 pub use key::{Key, KeyEvent, Modifiers};
 pub use mode::Mode;
-pub use jinn_protocol_derive::{CommandMsg, EventMsg};
 pub use tab::{ActiveTab, TabDirection};
 
 // Re-export domain types that are widely used as cross-cutting protocol concerns
