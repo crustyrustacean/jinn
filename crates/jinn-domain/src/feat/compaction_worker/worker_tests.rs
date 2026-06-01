@@ -451,6 +451,9 @@ fn session_continues_after_background_compaction() {
             FakeLlmServiceFactory::new(vec![FAKE_SUMMARY.to_owned()]),
         )))
         .build();
+    // Sync test preferences to the in-memory storage.
+    let prefs = state.read().frontend.preferences.clone();
+    services.user_preferences_storage.save(&prefs).expect("save test prefs");
     let handle = services.handle.clone();
 
     let worker = CompactionWorker {
@@ -578,6 +581,10 @@ impl ThresholdTestEnv {
                 FakeLlmServiceFactory::new(vec![summary_text.to_owned()]),
             )))
             .build();
+        // Sync test preferences to the in-memory storage so
+        // the worker can load them via services.user_preferences_storage.
+        let prefs = self.state.read().frontend.preferences.clone();
+        services.user_preferences_storage.save(&prefs).expect("save test prefs");
         let handle = services.handle.clone();
         CompactionWorker {
             services,
@@ -592,7 +599,7 @@ impl ThresholdTestEnv {
     fn run_evaluate(&self, worker: &CompactionWorker) -> Vec<HistoryMutation> {
         let rt = tokio::runtime::Runtime::new().expect("test runtime");
         rt.block_on(async {
-            worker.evaluate(&self.session_id, vec![]).await
+            worker.evaluate(&self.session_id, Arc::from([])).await
         })
     }
 }
@@ -786,7 +793,7 @@ fn gate_skips_when_session_not_found() {
     // Use a session ID that doesn't exist.
     let fake_id = SessionId::new();
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
-    let mutations = rt.block_on(async { worker.evaluate(&fake_id, vec![]).await });
+    let mutations = rt.block_on(async { worker.evaluate(&fake_id, Arc::from([])).await });
 
     assert!(mutations.is_empty(), "should not compact for nonexistent session");
 }
@@ -1006,6 +1013,9 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
             FakeLlmServiceFactory::new(vec![FAKE_SUMMARY.to_owned()]),
         )))
         .build();
+    // Sync test preferences to the in-memory storage.
+    let prefs = state.read().frontend.preferences.clone();
+    services.user_preferences_storage.save(&prefs).expect("save test prefs");
     let handle = services.handle.clone();
     let worker = CompactionWorker {
         services,
@@ -1016,7 +1026,7 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
     };
 
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
-    let mutations = rt.block_on(async { worker.evaluate(&session_id, vec![]).await });
+    let mutations = rt.block_on(async { worker.evaluate(&session_id, Arc::from([])).await });
 
     assert!(mutations.is_empty(), "threshold passes but empty history = no mutations");
 }

@@ -20,6 +20,8 @@
 //!
 //! [`ForcedExclude`]: crate::feat::session::chat_entry::ContextOverride::ForcedExclude
 
+use std::sync::Arc;
+
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::BrokenEditAutoPruneConfig;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
@@ -48,7 +50,7 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
     async fn evaluate(
         &self,
         _session_id: &SessionId,
-        history: Vec<ChatEntry>,
+        history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
         let mut mutations = Vec::new();
 
@@ -173,7 +175,7 @@ mod tests {
     }
 
     async fn run_evaluate(worker: &BrokenEditAutoPruneWorker, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
-        worker.evaluate(&SessionId::new(), history).await
+        worker.evaluate(&SessionId::new(), Arc::from(history)).await
     }
 
     fn block_on_evaluate(worker: &BrokenEditAutoPruneWorker, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {

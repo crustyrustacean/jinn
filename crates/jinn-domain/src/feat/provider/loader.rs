@@ -38,8 +38,11 @@ pub fn load_provider_picker_items(services: &Services, state: &mut AppState) {
 /// fall back to the session's model") followed by all available provider entries.
 /// Marks the active compaction model (or the sentinel if `compaction.model` is `None`).
 pub fn load_compaction_model_picker_items(services: &Services, state: &mut AppState) {
+    // Load preferences from service.
+    let prefs = services.user_preferences_storage.load().expect("preferences");
+
     // Build the sentinel entry.
-    let active_compaction_model = state.frontend.preferences.compaction.model.clone();
+    let active_compaction_model = prefs.compaction.model.clone();
     let sentinel_active = active_compaction_model.is_none();
     let sentinel = crate::protocol::PickerEntry {
         provider_id: SESSION_DEFAULT_PROVIDER_ID.to_owned(),
