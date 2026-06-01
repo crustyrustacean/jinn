@@ -50,11 +50,21 @@ pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
 /// Does NOT set the cancel stream prompt - cancel confirmation
 /// is handled exclusively by `NormalEscape`.
 pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
+    use crate::common::app_state::FocusScope;
+
+    // Only run chat-specific side effects when returning to a chat view.
+    if matches!(state.frontend.scope_stack.current(), FocusScope::Workflow) {
+        // Returning to workflow view - skip chat scroll side effects.
+        state.frontend.scope_stack.clear_overlays();
+        return IntentResult::empty();
+    }
+
     state.active_session_mut().discard_saved_history_position();
     state.active_session_mut().scroll_to_selected();
     state.frontend.scope_stack.clear_overlays();
     IntentResult::empty()
 }
+
 
 /// Handles `SidebarFocusSessions` \u{2014} jumps directly to the Sessions sidebar section.
 ///

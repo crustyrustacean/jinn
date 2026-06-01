@@ -103,6 +103,16 @@ impl AppState {
         self.session.active_session()
     }
 
+    /// Returns true if the user is currently viewing a workflow (not a chat session).
+    pub fn is_viewing_workflow(&self) -> bool {
+        use crate::common::app_state::FocusScope;
+        self.workflow.active().is_some()
+            && matches!(
+                self.frontend.scope_stack.current(),
+                FocusScope::Workflow | FocusScope::WorkflowInput
+            )
+    }
+
     /// Mutable access to the active chat session.
     ///
     /// Infallible - `SessionMap` guarantees the active session exists.
