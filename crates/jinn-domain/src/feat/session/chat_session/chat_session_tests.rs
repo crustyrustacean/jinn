@@ -535,6 +535,23 @@ fn cancel_streaming_returns_to_idle() {
 }
 
 #[rstest::rstest]
+fn cancel_streaming_from_sending_phase_returns_to_idle() {
+    // Given a session in sending phase (simulating tool execution).
+    let mut session = ChatSessionState::new();
+    session.begin_sending();
+    session.begin_streaming();
+    session.finish_streaming(true);
+    session.begin_sending();
+    assert_eq!(session.phase(), PhaseKind::Sending);
+
+    // When cancelling streaming (user presses ESC during tool execution).
+    session.cancel_streaming();
+
+    // Then the session returns to idle.
+    assert_eq!(session.phase(), PhaseKind::Idle);
+}
+
+#[rstest::rstest]
 fn finish_streaming_returns_to_idle() {
     // Given a session in streaming phase with an assistant entry.
     let mut session = ChatSessionState::new();

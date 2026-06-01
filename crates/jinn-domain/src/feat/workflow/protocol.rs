@@ -4,8 +4,10 @@ pub mod command;
 pub mod event;
 
 pub use command::{
-    CancelWorkflow, InitWorkflow, LoadWorkflowPickerEntries, RerunFromNode, StartWorkflow,
+    AttachWorkflow, CancelWorkflow, DetachWorkflow, InitWorkflow,
+    LoadWorkflowPickerEntries, RerunFromNode, StartWorkflow, ToggleWorkflow, TriggerWorkflow,
 };
 pub use event::{
-    WorkflowCompleted, WorkflowInitialized, WorkflowNodeStatusChanged, WorkflowStarted,
+    AttachedWorkflowCompleted, WorkflowAttached, WorkflowCompleted, WorkflowDetached,
+    WorkflowInitialized, WorkflowNodeStatusChanged, WorkflowStarted, WorkflowToggled,
 };
