@@ -451,6 +451,9 @@ fn session_continues_after_background_compaction() {
             FakeLlmServiceFactory::new(vec![FAKE_SUMMARY.to_owned()]),
         )))
         .build();
+    // Sync test preferences to the in-memory storage.
+    let prefs = state.read().frontend.preferences.clone();
+    services.user_preferences_storage.save(&prefs).expect("save test prefs");
     let handle = services.handle.clone();
 
     let worker = CompactionWorker {
@@ -578,6 +581,10 @@ impl ThresholdTestEnv {
                 FakeLlmServiceFactory::new(vec![summary_text.to_owned()]),
             )))
             .build();
+        // Sync test preferences to the in-memory storage so
+        // the worker can load them via services.user_preferences_storage.
+        let prefs = self.state.read().frontend.preferences.clone();
+        services.user_preferences_storage.save(&prefs).expect("save test prefs");
         let handle = services.handle.clone();
         CompactionWorker {
             services,
@@ -1006,6 +1013,9 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
             FakeLlmServiceFactory::new(vec![FAKE_SUMMARY.to_owned()]),
         )))
         .build();
+    // Sync test preferences to the in-memory storage.
+    let prefs = state.read().frontend.preferences.clone();
+    services.user_preferences_storage.save(&prefs).expect("save test prefs");
     let handle = services.handle.clone();
     let worker = CompactionWorker {
         services,

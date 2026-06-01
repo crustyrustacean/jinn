@@ -67,6 +67,7 @@ pub(crate) struct SessionEntry {
 ///
 /// Only includes sessions with `SessionState::Loaded` - archived sessions
 /// are not in the `SessionMap` and thus excluded automatically.
+#[expect(clippy::too_many_lines, reason = "session tree + workflow assembly is inherently long")]
 pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
     let active_id = state.session.active_session_id();
 
@@ -169,7 +170,7 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
         {
             continue;
         }
-        let mut wf_entries: Vec<SessionEntry> = session
+        let wf_entries: Vec<SessionEntry> = session
             .core
             .attached_workflows
             .iter()
@@ -337,7 +338,9 @@ pub fn clear_visual_parents_on_load(state: &mut AppState, loaded_id: &SessionId)
 ///
 /// `ancestor_continuations` tracks whether each ancestor level has younger
 /// siblings - used to draw `│` continuation lines.
+#[expect(clippy::too_many_arguments, reason = "DFS traversal needs session tree + workflow data + state accumulators")]
 fn dfs_children(
+
     parent_id: &SessionId,
     children_map: &HashMap<SessionId, Vec<SessionId>>,
     entry_map: &HashMap<SessionId, SessionEntry>,
