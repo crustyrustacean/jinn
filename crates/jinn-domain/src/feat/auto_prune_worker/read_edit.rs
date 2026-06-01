@@ -5,6 +5,22 @@
 //! have accumulated after the edit. This removes stale file contents from the
 //! LLM context window.
 //!
+//! Pruning does not occur until `min_tail_entries` (default: 10) in-context
+//! entries have accumulated after the edit.
+//!
+//! # Example
+//!
+//! ```text
+//! [User]: show me /foo.rs
+//! [Tool Call]: read(/foo.rs)
+//! [Tool Result] (OK): <file contents>          ✗
+//! [Assistant]: here's what I see...
+//! [User]: now fix the bug
+//! [Tool Call]: edit(/foo.rs)
+//! [Tool Result] (OK): edit applied
+//! [Assistant]: done
+//! ```
+//!
 //! [`ForcedExclude`]: crate::feat::session::chat_entry::ContextOverride::ForcedExclude
 
 use crate::feat::history_worker::worker_trait::HistoryWorker;
