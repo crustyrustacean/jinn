@@ -115,13 +115,9 @@ impl HistoryWorker for RegexAutoPruneWorker {
                     _ => continue,
                 };
 
-                // Skip already excluded.
-                if entry.context_override == ContextOverride::ForcedExclude {
-                    tracing::debug!(entry_id = %entry.id, "skipping already excluded");
-                    continue;
-                }
-
                 // Run regex against the full text() output: "{name}: {arguments}".
+                // Note: we match regardless of current exclusion status so that
+                // already-excluded entries still count toward keep_last positioning.
                 let text = entry.text();
                 let matched = rule.regex.is_match(&text);
                 tracing::info!(
@@ -140,16 +136,13 @@ impl HistoryWorker for RegexAutoPruneWorker {
                     if let ChatEntryKind::ToolResult { id, .. } = &entry_j.kind
                         && id == &tool_call_id
                     {
-                        if entry_j.context_override != ContextOverride::ForcedExclude {
-                            result_entry_id = Some(entry_j.id.clone());
-                        } else {
-                            tracing::debug!(result_id = %entry_j.id, "result already excluded");
-                        }
+                        result_entry_id = Some(entry_j.id.clone());
                         break;
                     }
                 }
 
-
+                // Track the pair even if already excluded, so it counts
+                // toward keep_last positioning.
                 if let Some(result_id) = result_entry_id {
                     tracing::info!(
                         call_id = %entry.id,
@@ -161,6 +154,7 @@ impl HistoryWorker for RegexAutoPruneWorker {
                     tracing::warn!(call_id = %entry.id, "no matching result found");
                 }
             }
+
 
             // Phase 2: Prune all but the last keep_last pairs.
             tracing::info!(
@@ -175,23 +169,47 @@ impl HistoryWorker for RegexAutoPruneWorker {
 
 
             let prune_count = matched_pairs.len() - rule.keep_last;
-            for (call_id, result_id) in matched_pairs.iter().take(prune_count) {
-                tracing::info!(
-                    call_id = %call_id,
-                    result_id = %result_id,
-                    "emitting ForcedExclude"
-                );
-                mutations.push(HistoryMutation::SetContextOverride {
-                    entry_id: call_id.clone(),
-                    value: ContextOverride::ForcedExclude,
-                });
-                mutations.push(HistoryMutation::SetContextOverride {
-                    entry_id: result_id.clone(),
-                    value: ContextOverride::ForcedExclude,
-                });
+            let _rule_ident = rule.regex.as_str();
+            for (idx, (call_id, result_id)) in matched_pairs.iter().take(prune_count).enumerate() {
+                // Only emit mutations for entries not already excluded.
+                let call_already_excluded = history
+                    .iter()
+                    .any(|e| e.id == *call_id && e.context_override == ContextOverride::ForcedExclude);
+                let result_already_excluded = history
+                    .iter()
+                    .any(|e| e.id == *result_id && e.context_override == ContextOverride::ForcedExclude);
+
+                if !call_already_excluded {
+                    tracing::info!(
+                        rule = %_rule_ident,
+                        pair_index = idx,
+                        entry_id = %call_id,
+                        "emitting ForcedExclude for call"
+                    );
+                    mutations.push(HistoryMutation::SetContextOverride {
+                        entry_id: call_id.clone(),
+                        value: ContextOverride::ForcedExclude,
+                    });
+                }
+                if !result_already_excluded {
+                    tracing::info!(
+                        rule = %_rule_ident,
+                        pair_index = idx,
+                        entry_id = %result_id,
+                        "emitting ForcedExclude for result"
+                    );
+                    mutations.push(HistoryMutation::SetContextOverride {
+                        entry_id: result_id.clone(),
+                        value: ContextOverride::ForcedExclude,
+                    });
+                }
             }
         }
 
+        tracing::info!(
+            total_mutations = mutations.len(),
+            "regex worker done"
+        );
         mutations
     }
 }
@@ -434,13 +452,24 @@ mod tests {
         history.push(p2[0].clone());
         history.push(p2[1].clone());
 
+        // Clone ID before move.
+        let result1_id = history[1].id.clone();
         let worker = worker_for_cargo_check(1);
         let mutations = evaluate(&worker, history);
 
-        // Only the second pair should be kept (it's the only match).
-        // First pair was already excluded, so no new mutations.
-        assert!(mutations.is_empty());
+        // With the new logic, excluded entries still count for positioning.
+        // Both pairs match, keep_last=1, so the first pair is pruned.
+        // The first call is already excluded, so only the first result gets a mutation.
+        assert_eq!(mutations.len(), 1);
+        match &mutations[0] {
+            HistoryMutation::SetContextOverride { entry_id, value } => {
+                assert_eq!(*entry_id, result1_id);
+                assert_eq!(*value, ContextOverride::ForcedExclude);
+            }
+            other => panic!("expected SetContextOverride, got {other:?}"),
+        }
     }
+
 
     #[test]
     fn multiple_rules_apply_independently() {

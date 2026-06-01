@@ -156,10 +156,15 @@ impl LlmActor {
         reason = "stream handling is inherently linear; splitting would obscure the flow"
     )]
     fn start_stream(&mut self, payload: &SendToLlmProvider, ctx: &ActorContext) {
-        // Read retry config from shared state (transport concern, not prompt concern).
-        let retry_config: jinn_provider::RetryConfig = {
-            let guard = self.state.read();
-            guard.frontend.preferences.request_retry.to_retry_config()
+        let retry_config: jinn_provider::RetryConfig = match self.services.as_ref() {
+            Some(services) => services
+                .user_preferences_storage
+                .load()
+                .expect("preferences")
+                .request_retry
+                .to_retry_config(),
+            None => crate::feat::preferences_actor::user_preferences::RequestRetryConfig::default()
+                .to_retry_config(),
         };
 
         let tools = payload.tool_definitions.clone();

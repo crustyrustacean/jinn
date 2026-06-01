@@ -175,9 +175,6 @@ impl Default for TodoAutoPruneConfig {
     }
 }
 
-
-
-
 /// Default minimum number of in-context entries after a failed edit before pruning.
 const DEFAULT_BROKEN_EDIT_MIN_TAIL_ENTRIES: usize = 10;
 
@@ -218,7 +215,6 @@ impl Default for BrokenEditAutoPruneConfig {
         }
     }
 }
-
 
 /// Default regex prune rule tool name.
 const DEFAULT_REGEX_TOOL_NAME: &str = "bash";
@@ -317,7 +313,6 @@ impl Default for AutoPruneConfig {
         }
     }
 }
-
 
 /// Default token threshold for auto-compaction.
 const DEFAULT_COMPACTION_THRESHOLD: f64 = 0.7;
@@ -1190,11 +1185,17 @@ backend = "socks"
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
 
-        assert_eq!(reloaded.openrouter_web_search.engine.as_deref(), Some("exa"));
+        assert_eq!(
+            reloaded.openrouter_web_search.engine.as_deref(),
+            Some("exa")
+        );
         assert_eq!(reloaded.openrouter_web_search.max_results, Some(10));
         assert_eq!(reloaded.openrouter_web_search.max_total_results, Some(50));
         assert_eq!(
-            reloaded.openrouter_web_search.search_context_size.as_deref(),
+            reloaded
+                .openrouter_web_search
+                .search_context_size
+                .as_deref(),
             Some("high")
         );
         assert_eq!(
@@ -1226,7 +1227,10 @@ excluded_domains = ["spam.com"]
 
         let prefs = load_preferences_from(&path).expect("load");
 
-        assert_eq!(prefs.openrouter_web_search.engine.as_deref(), Some("parallel"));
+        assert_eq!(
+            prefs.openrouter_web_search.engine.as_deref(),
+            Some("parallel")
+        );
         assert_eq!(prefs.openrouter_web_search.max_results, Some(5));
         assert_eq!(prefs.openrouter_web_search.max_total_results, Some(20));
         assert_eq!(
@@ -1258,14 +1262,26 @@ excluded_domains = ["spam.com"]
 
         let defaults = OpenrouterWebSearchConfig::default();
         assert_eq!(prefs.openrouter_web_search.engine, defaults.engine);
-        assert_eq!(prefs.openrouter_web_search.max_results, defaults.max_results);
-        assert_eq!(prefs.openrouter_web_search.max_total_results, defaults.max_total_results);
+        assert_eq!(
+            prefs.openrouter_web_search.max_results,
+            defaults.max_results
+        );
+        assert_eq!(
+            prefs.openrouter_web_search.max_total_results,
+            defaults.max_total_results
+        );
         assert_eq!(
             prefs.openrouter_web_search.search_context_size,
             defaults.search_context_size
         );
-        assert_eq!(prefs.openrouter_web_search.allowed_domains, defaults.allowed_domains);
-        assert_eq!(prefs.openrouter_web_search.excluded_domains, defaults.excluded_domains);
+        assert_eq!(
+            prefs.openrouter_web_search.allowed_domains,
+            defaults.allowed_domains
+        );
+        assert_eq!(
+            prefs.openrouter_web_search.excluded_domains,
+            defaults.excluded_domains
+        );
     }
 
     // --- MinimapConfig tests ---
@@ -1396,13 +1412,10 @@ min_tail_entries = 20
                     enabled: false,
                     min_tail_entries: 3,
                 },
-                todo: TodoAutoPruneConfig {
-                    enabled: false,
-                },
+                todo: TodoAutoPruneConfig { enabled: false },
             },
             ..UserPreferences::default()
         };
-
 
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
@@ -1564,4 +1577,70 @@ pattern = "cargo check"
         assert!(prefs.auto_prune.regex.enabled);
         assert!(prefs.auto_prune.regex.rules.is_empty());
     }
+
+    #[rstest::rstest]
+    fn load_parses_regex_rules_with_header_section() {
+        // Mirrors the real user config: [auto_prune.regex] header + [[auto_prune.regex.rules]] entries.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[auto_prune.regex]
+enabled = true
+
+[[auto_prune.regex.rules]]
+pattern = "ls"
+tool_name = "bash"
+keep_last = 1
+
+[[auto_prune.regex.rules]]
+pattern = "cargo check"
+tool_name = "bash"
+keep_last = 1
+"#,
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+        assert!(prefs.auto_prune.regex.enabled);
+        assert_eq!(prefs.auto_prune.regex.rules.len(), 2);
+        assert_eq!(prefs.auto_prune.regex.rules[0].pattern, "ls");
+        assert_eq!(prefs.auto_prune.regex.rules[1].pattern, "cargo check");
+    }
+
+    #[rstest::rstest]
+    fn serialize_regex_rules_produces_correct_toml() {
+        let prefs = UserPreferences {
+            auto_prune: AutoPruneConfig {
+                regex: RegexAutoPruneConfig {
+                    enabled: true,
+                    rules: vec![
+                        RegexPruneRule {
+                            pattern: "ls".to_owned(),
+                            tool_name: "bash".to_owned(),
+                            keep_last: 1,
+                        },
+                        RegexPruneRule {
+                            pattern: "cargo check".to_owned(),
+                            tool_name: "bash".to_owned(),
+                            keep_last: 1,
+                        },
+                    ],
+                },
+                ..AutoPruneConfig::default()
+            },
+            ..UserPreferences::default()
+        };
+
+        let toml_str = toml::to_string_pretty(&prefs).expect("serialize");
+        eprintln!("SERIALIZED TOML:\n{toml_str}");
+
+        // Round-trip back
+        let reloaded: UserPreferences = toml::from_str(&toml_str).expect("deserialize");
+        assert_eq!(reloaded.auto_prune.regex.rules.len(), 2);
+        assert_eq!(reloaded.auto_prune.regex.rules[0].pattern, "ls");
+        assert_eq!(reloaded.auto_prune.regex.rules[1].pattern, "cargo check");
+    }
+
 }
+
