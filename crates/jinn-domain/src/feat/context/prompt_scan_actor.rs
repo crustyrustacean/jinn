@@ -5,7 +5,7 @@
 
 use crate::common::actor::scan_actor::NoDirectMsg;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope};
-use crate::common::app_paths::AppPaths;
+use crate::common::services::Services;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::provider::protocol::command::RescanPromptTemplates;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
@@ -13,8 +13,8 @@ use crate::protocol::{Command, Event};
 
 /// Dependencies for [`PromptScanActor`].
 pub struct PromptScanActorDeps {
-    /// Application paths for resolving scan directories.
-    pub paths: AppPaths,
+    /// Runtime services.
+    pub services: Services,
 }
 
 /// Scans and reloads prompt templates on `RescanPromptTemplates`.
@@ -23,8 +23,8 @@ pub struct PromptScanActorDeps {
 /// parses all `*.md` files, and emits `PromptTemplatesLoaded` with the
 /// merged results. User templates override system templates.
 pub struct PromptScanActor {
-    /// Application paths for resolving scan directories.
-    paths: AppPaths,
+    /// Runtime services.
+    services: Services,
 }
 
 impl Actor for PromptScanActor {
@@ -34,7 +34,7 @@ impl Actor for PromptScanActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.set_description("Scans and reloads prompt templates");
         ctx.subscribe_command::<RescanPromptTemplates>();
-        Self { paths: deps.paths }
+        Self { services: deps.services }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
@@ -54,7 +54,7 @@ impl PromptScanActor {
 
     /// Runs the blocking scan and emits the result.
     async fn run_scan(&self, ctx: &ActorContext) {
-        let paths = self.paths.clone();
+        let paths = self.services.paths.clone();
         let result = tokio::task::spawn_blocking(move || {
             PromptTemplateStore::load_from_dirs(&paths.prompts_dir(), &paths.system_prompts_dir())
         })

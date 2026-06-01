@@ -37,11 +37,10 @@ fn default_test_ctx() -> (
     let ctx = test_context_with_state(&sink, state.clone());
     let test_services = crate::common::services::test_services::TestServices::builder().build();
     let deps = ToolOrchestratorActorDeps {
+        services: test_services,
         state,
-        app_paths: crate::common::app_paths::AppPaths::default(),
         builtin_filter: None,
         shell: "/bin/sh".to_owned(),
-        user_preferences_storage: test_services.user_preferences_storage,
     };
     (sink, ctx, deps)
 }

@@ -29,6 +29,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, NoDirectMsg};
+use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::tools_actor::protocol::command::{
@@ -105,10 +106,11 @@ pub struct ToolOrchestratorActor {
     /// Shared application state for reading session CWD.
     pub(crate) state: State,
     /// Application filesystem paths.
-    app_paths: crate::common::app_paths::AppPaths,
+    /// Runtime services.
+    pub(crate) services: Services,
     /// Shell binary path (captured at startup from `$SHELL`).
     shell: String,
-    user_preferences_storage: UserPreferencesStorageService,
+
 }
 
 /// Dependencies for [`ToolOrchestratorActor`].
@@ -116,13 +118,14 @@ pub struct ToolOrchestratorActorDeps {
     /// Shared application state.
     pub state: State,
     /// Application paths for working directory.
-    pub app_paths: crate::common::app_paths::AppPaths,
+    /// Runtime services.
+    pub services: Services,
     /// Override which built-in tools to register. `None` means register all.
     /// Each entry is a tool name (e.g., `"bash"`, `"read"`, `"write"`).
     pub builtin_filter: Option<Vec<String>>,
     /// Shell binary path (captured at startup from `$SHELL`).
     pub shell: String,
-    pub user_preferences_storage: UserPreferencesStorageService,
+
 }
 
 /// Builds the `openrouter:web_search` tool definition from config.
@@ -175,7 +178,9 @@ impl Actor for ToolOrchestratorActor {
         ctx.subscribe_event::<ToolExecutionCompleted>();
 
         // Read web search config from preferences storage.
+
         let web_search_config = deps
+            .services
             .user_preferences_storage
             .load()
             .expect("preferences")
@@ -185,12 +190,10 @@ impl Actor for ToolOrchestratorActor {
         let mut actor = Self {
             tools: HashMap::new(),
             pending: HashMap::new(),
+            services: deps.services,
             state: deps.state,
-            app_paths: deps.app_paths,
             shell: deps.shell,
-            user_preferences_storage: deps.user_preferences_storage,
         };
-
         let all_builtins = registry::builtin_tools();
         let builtins: Vec<_> = if let Some(ref filter) = deps.builtin_filter {
             all_builtins
@@ -383,6 +386,7 @@ impl ToolOrchestratorActor {
     ) -> ToolContext {
 
         let prefs = self
+            .services
             .user_preferences_storage
             .load()
             .expect("preferences");
@@ -401,7 +405,7 @@ impl ToolOrchestratorActor {
             timeout: None,
             state: Some(self.state.clone()),
             session_id: Some(session_id.clone()),
-            app_paths: self.app_paths.clone(),
+            app_paths: self.services.paths.clone(),
             sink: Some(sink),
             shell: self.shell.clone(),
             max_output_lines,
