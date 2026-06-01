@@ -141,7 +141,7 @@ impl ProviderActor {
             | Command::DetachWorkflow(..)
             | Command::ToggleWorkflow(..)
             | Command::TriggerWorkflow(..)
-            | Command::LoadWorkflowPickerEntries(..) => {}
+            | Command::FireBeforeTurn(..) => {}
         }
     }
 

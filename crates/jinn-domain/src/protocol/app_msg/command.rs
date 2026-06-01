@@ -150,6 +150,8 @@ pub enum Command {
     ToggleWorkflow(crate::feat::workflow::protocol::command::ToggleWorkflow),
     /// Manually trigger an attached workflow.
     TriggerWorkflow(crate::feat::workflow::protocol::command::TriggerWorkflow),
+    /// Fire BeforeTurn workflows for a session (emitted by enqueue handler).
+    FireBeforeTurn(crate::feat::workflow::protocol::command::FireBeforeTurn),
 
     /// A dynamic command from a plugin, carrying an arbitrary JSON payload.
     ///
@@ -234,6 +236,10 @@ impl Command {
             Self::TriggerWorkflow(..) => {
                 Some(crate::feat::workflow::protocol::command::TriggerWorkflow::NAME)
             }
+            Self::FireBeforeTurn(..) => {
+                Some(crate::feat::workflow::protocol::command::FireBeforeTurn::NAME)
+            }
+
 
             Self::Dynamic(..) => Some(DynamicCommand::NAME),
             Self::TriggerCompaction(..) => Some(
@@ -412,6 +418,10 @@ impl std::fmt::Display for Command {
             Command::TriggerWorkflow(payload) => {
                 write!(f, "trigger workflow {} on {}", payload.workflow_id, payload.session_id)
             }
+            Command::FireBeforeTurn(payload) => {
+                write!(f, "fire before-turn for {}", payload.session_id)
+            }
+
 
             Command::Dynamic(d) => {
                 write!(f, "dynamic command '{}'", d.name)

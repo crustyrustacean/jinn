@@ -12,6 +12,10 @@
 //! [`HistoryWorker`]: crate::feat::history_worker::worker_trait::HistoryWorker
 //! [`HistoryWorkerActor`]: crate::feat::history_worker::actor::HistoryWorkerActor
 
+pub mod broken_edit;
 pub mod read_edit;
+pub mod todo_prune;
 
+pub use broken_edit::BrokenEditAutoPruneWorker;
 pub use read_edit::ReadEditAutoPruneWorker;
+pub use todo_prune::TodoAutoPruneWorker;

@@ -239,6 +239,12 @@ pub enum Intent {
     RenameDeleteForward,
     /// Switch to the next tab (Chat → Workflow → Chat).
     SwitchTab,
+    /// Toggle a one-shot workflow (e.g., consensus).
+    ToggleOneShot {
+        /// Which one-shot workflow to toggle.
+        kind: crate::feat::workflow::attached_workflow::OneShotKind,
+    },
+
 
     // --- Workflow Navigation ---
     /// Select the nearest node to the left (spatial).
@@ -412,6 +418,7 @@ impl std::fmt::Display for Intent {
             Intent::RenameDeleteGrapheme => write!(f, "rename delete"),
             Intent::RenameDeleteForward => write!(f, "rename forward delete"),
             Intent::SwitchTab => write!(f, "switch tab"),
+            Intent::ToggleOneShot { kind } => write!(f, "toggle one-shot {:?}", kind),
 
             // --- Workflow Navigation ---
             Intent::WorkflowNodeLeft => write!(f, "workflow node left"),

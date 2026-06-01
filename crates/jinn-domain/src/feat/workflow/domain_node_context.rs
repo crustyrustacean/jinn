@@ -58,6 +58,13 @@ impl DomainNodeContext {
         }
     }
 
+    /// Send a command through the actor channel.
+    /// Used by the controller to emit EnqueueUserMessage/SetChatInputText after
+    /// BeforeTurn completion.
+    pub fn send_command(&self, cmd: crate::protocol::Command) {
+        self.services.actor_channel.send_command(cmd);
+    }
+
     /// Send an LLM request through the session pipeline and wait for the full response.
     ///
     /// Creates a new session with `is_workflow: true`, stores `AssemblyOverrides`

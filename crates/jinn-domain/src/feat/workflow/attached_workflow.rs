@@ -102,6 +102,24 @@ impl WorkflowConfig {
         }
     }
 
+    /// Create a config from an [`OneShotKind`].
+    /// Used by the ToggleOneShot intent handler.
+    #[must_use]
+    pub fn from_one_shot_kind(kind: &OneShotKind) -> Self {
+        match kind {
+            OneShotKind::Consensus => Self::Consensus {
+                n: 3,
+                result_kind: ResultKind::Assistant,
+            },
+            OneShotKind::Judge => Self::Judge {
+                prompt: String::new(),
+                approval_tool: String::from("approve"),
+                result_kind: ResultKind::System,
+            },
+        }
+    }
+
+
 
     /// Build a WorkflowGraph from this config.
     ///
@@ -109,10 +127,22 @@ impl WorkflowConfig {
     /// Phase 1 defines the type; Phase 7-9 implement the builders.
     #[must_use]
     pub fn build_graph(&self) -> jinn_workflow::graph::WorkflowGraph {
-        // The actual builders (build_consensus, build_judge, build_divergence)
-        // are implemented in Phase 7-9 and registered in builtin.rs.
-        // Until then, this panics with a clear message.
-        unimplemented!("WorkflowConfig::build_graph() requires builtin.rs (Phase 7+)")
+        match self {
+            Self::Consensus { n, .. } => {
+                super::builtin::build_consensus(*n)
+            }
+            Self::Judge { prompt, approval_tool, .. } => {
+                super::builtin::build_judge(prompt, approval_tool)
+            }
+            Self::Divergence { n, temperature, .. } => {
+                super::builtin::build_divergence(*n, *temperature)
+            }
+            Self::Custom(_) => {
+                // Custom workflows use the WorkflowRegistry lookup, not build_graph.
+                // Fallback: build a minimal pass-through graph.
+                super::builtin::build_consensus(1)
+            }
+        }
     }
 }
 /// When an attached workflow fires.
