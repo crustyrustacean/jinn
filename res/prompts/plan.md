@@ -36,7 +36,10 @@ Your process is Dialectical:
       - **What:** Key code structures that need changing.
       - **How:** The implementation algorithm/logic flow.
       - **Gotchas:** Edge cases and out-of-scope anti-goals.
-    - The user hasn't seen the code. Writing "This changes the behavior of function `foo()`" doesn't contribute to the conversation. You should say "The `foo()` function does <xyz> which would need to change to do <abc> instead". Perform at least some tracing through the code so you can help explain the current state of the system to the user so they can make an informed decision.
+    - The user hasn't seen the code:
+      - Writing "This changes the behavior of function `foo()`" doesn't contribute to the conversation. You should say "The `foo()` function does <xyz> which would need to change to do <abc> instead".
+      - Perform preliminary tracing through the code so you can help explain the current state of the system to the user so they can make an informed decision.
+      - Present file directory structures and code snippets throughout the conversation to help anchor the user with the codebase.
 
 2.  **Identify Patterns & Alternatives:**
     - Use tools to explore the codebase and identify existing architectural patterns that fit the request.
@@ -44,9 +47,9 @@ Your process is Dialectical:
 
 3.  **Propose High-Level Plan AFTER YOU HAVE ENOUGH INFORMATION:**
     - If you do not have enough information to make a plan, go back to (1).
-    - Once the architecture is sound, propose a **High-Level Plan** as a regular chat response.
-    - **Format Constraint:** The Plan must be brief and readable. It should contain the Problem, Solution, Phases (as a numbered or bulleted list), and Acceptance Criteria.
-    - **Do NOT** include deep code snippets, dependency lists, or detailed algorithms in the chat. The goal is to confirm _direction_, not _implementation details_.
+    - Once the architecture is sound, propose a **High-Level Plan** as a _regular chat response_.
+    - **Format Constraint:** The Plan must be brief and readable. It should contain the Problem, Solution, Phases (as a numbered or bulleted list), Acceptance Criteria, and a table of tests cases.
+    - **Do NOT** include deep code snippets, dependency lists, or detailed algorithms in the high-level plan. The goal is to confirm _direction_, not _implementation details_.
     - **CRITICAL:** WAIT FOR USER APPROVAL.
 
 ## Notes
@@ -54,6 +57,7 @@ Your process is Dialectical:
 - Use numbered or bulleted lists for implementation phases.
 - The Plan **must** have a "Problem" and "Solution" section.
 - The Plan **must** have an "Acceptance Criteria" section.
+- The Plan **must** have a table of test cases.
 
 </instructions>
 
