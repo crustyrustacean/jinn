@@ -338,10 +338,21 @@ fn reject_cancel_while_idle() {
 }
 
 #[test]
-fn reject_cancel_while_sending() {
+#[test]
+fn cancel_during_sending() {
+    // Given a machine in Sending.
     let mut m = sending_machine();
-    let err = m.cancel().unwrap_err();
-    assert_from(&err, PhaseKind::Sending);
+
+    // When cancel is called.
+    let result = m.cancel().expect("should succeed");
+
+    // Then the outcome is Sending → Idle.
+    assert_eq!(result.outcome.old_phase, PhaseKind::Sending);
+    assert_eq!(result.outcome.new_phase, PhaseKind::Idle);
+    // And the machine is in Idle.
+    assert_eq!(m.kind(), PhaseKind::Idle);
+    // And old_streaming is default (no streaming data in Sending phase).
+    assert!(result.old_streaming.streaming_entry_index.is_none());
 }
 
 // --- soft_cancel ---
