@@ -490,6 +490,34 @@ pub fn create_core_with_actor_host(
         }
     }
 
+
+
+    // Auto-prune worker: regex-based tool call pruning.
+    {
+        use jinn_domain::feat::auto_prune_worker::RegexAutoPruneWorker;
+        use jinn_domain::feat::history_worker::actor::{HistoryWorkerActor, HistoryWorkerActorDeps};
+
+        let regex_config = state.read().frontend.preferences.auto_prune.regex.clone();
+
+        if regex_config.enabled && !regex_config.rules.is_empty() {
+            match RegexAutoPruneWorker::from_config(&regex_config) {
+                Ok(worker) => {
+                    actors.push(spawn::<HistoryWorkerActor<RegexAutoPruneWorker>>(
+                        "history-worker-auto-prune-regex",
+                        &sink, handle, &counter, &shutdown_tracker,
+                        HistoryWorkerActorDeps {
+                            worker,
+                            state: state.clone(),
+                        },
+                    ));
+                }
+                Err(e) => {
+                    tracing::warn!("invalid regex in auto_prune config: {e}, skipping");
+                }
+            }
+        }
+    }
+
     // Sidebar state actor - keeps sidebar cursor in sync after session removal.
     actors.push(spawn::<
         jinn_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor,

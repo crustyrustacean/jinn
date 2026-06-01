@@ -147,6 +147,74 @@ impl Default for ReadEditAutoPruneConfig {
     }
 }
 
+
+/// Default regex prune rule tool name.
+const DEFAULT_REGEX_TOOL_NAME: &str = "bash";
+
+/// Default regex prune rule keep_last.
+const DEFAULT_REGEX_KEEP_LAST: usize = 1;
+
+/// Default enabled state for regex auto-prune.
+const DEFAULT_REGEX_ENABLED: bool = true;
+
+/// A single regex-based auto-prune rule.
+///
+/// Serialized as `[[auto_prune.regex]]` in `jinn.toml`.
+/// Each rule matches tool calls by name and content, keeping only the
+/// most recent `keep_last` matching call+result pairs in context.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegexPruneRule {
+    /// Regex pattern to match against the tool call's text output.
+    /// The regex is tested against `"{name}: {arguments}"`.
+    pub pattern: String,
+    /// Tool name to filter by. Only tool calls with this name are considered.
+    /// Default: `"bash"`.
+    #[serde(default = "default_regex_tool_name")]
+    pub tool_name: String,
+    /// Number of most recent matching pairs to keep in context.
+    /// Minimum 1 (clamped at worker construction).
+    /// Default: 1.
+    #[serde(default = "default_regex_keep_last")]
+    pub keep_last: usize,
+}
+
+fn default_regex_tool_name() -> String {
+    DEFAULT_REGEX_TOOL_NAME.to_owned()
+}
+
+fn default_regex_keep_last() -> usize {
+    DEFAULT_REGEX_KEEP_LAST
+}
+
+/// Regex-based auto-prune configuration.
+///
+/// Serialized as `[auto_prune.regex]` in `jinn.toml`.
+/// Contains a list of regex rules that identify tool calls to prune.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegexAutoPruneConfig {
+    /// Whether the regex auto-prune worker is active.
+    /// Default: `true`.
+    #[serde(default = "default_regex_enabled")]
+    pub enabled: bool,
+    /// List of regex prune rules.
+    /// Default: empty (no rules).
+    #[serde(default)]
+    pub rules: Vec<RegexPruneRule>,
+}
+
+fn default_regex_enabled() -> bool {
+    DEFAULT_REGEX_ENABLED
+}
+
+impl Default for RegexAutoPruneConfig {
+    fn default() -> Self {
+        Self {
+            enabled: DEFAULT_REGEX_ENABLED,
+            rules: Vec::new(),
+        }
+    }
+}
+
 /// Auto-prune configuration.
 ///
 /// Serialized as `[auto_prune]` in `jinn.toml`.
@@ -156,15 +224,20 @@ pub struct AutoPruneConfig {
     /// Read-edit auto-prune strategy configuration.
     #[serde(default)]
     pub read_edit: ReadEditAutoPruneConfig,
+    /// Regex-based auto-prune strategy configuration.
+    #[serde(default)]
+    pub regex: RegexAutoPruneConfig,
 }
 
 impl Default for AutoPruneConfig {
     fn default() -> Self {
         Self {
             read_edit: ReadEditAutoPruneConfig::default(),
+            regex: RegexAutoPruneConfig::default(),
         }
     }
 }
+
 
 /// Default token threshold for auto-compaction.
 const DEFAULT_COMPACTION_THRESHOLD: f64 = 0.7;
@@ -1236,9 +1309,11 @@ min_tail_entries = 20
                     enabled: false,
                     min_tail_entries: 5,
                 },
+                regex: RegexAutoPruneConfig::default(),
             },
             ..UserPreferences::default()
         };
+
 
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
@@ -1260,5 +1335,122 @@ min_tail_entries = 20
         let prefs = load_preferences_from(&path).expect("load");
         assert!(prefs.auto_prune.read_edit.enabled);
         assert_eq!(prefs.auto_prune.read_edit.min_tail_entries, 10);
+    }
+
+    // --- RegexAutoPruneConfig tests ---
+
+    #[rstest::rstest]
+    fn default_regex_config_is_empty_rules_and_enabled() {
+        let config = RegexAutoPruneConfig::default();
+        assert!(config.enabled);
+        assert!(config.rules.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn regex_prune_rule_defaults_to_bash_tool_name() {
+        let rule = RegexPruneRule {
+            pattern: "cargo check".to_owned(),
+            tool_name: default_regex_tool_name(),
+            keep_last: default_regex_keep_last(),
+        };
+        assert_eq!(rule.tool_name, "bash");
+        assert_eq!(rule.keep_last, 1);
+    }
+
+    #[rstest::rstest]
+    fn save_then_load_round_trips_regex_prune_rules() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let prefs = UserPreferences {
+            auto_prune: AutoPruneConfig {
+                regex: RegexAutoPruneConfig {
+                    enabled: true,
+                    rules: vec![
+                        RegexPruneRule {
+                            pattern: "cargo check".to_owned(),
+                            tool_name: "bash".to_owned(),
+                            keep_last: 1,
+                        },
+                        RegexPruneRule {
+                            pattern: "cargo test".to_owned(),
+                            tool_name: "bash".to_owned(),
+                            keep_last: 2,
+                        },
+                    ],
+                },
+                ..AutoPruneConfig::default()
+            },
+            ..UserPreferences::default()
+        };
+
+        save_preferences_to(&prefs, &path).expect("save");
+        let reloaded = load_preferences_from(&path).expect("load");
+
+        assert_eq!(reloaded.auto_prune.regex.rules.len(), 2);
+        assert_eq!(reloaded.auto_prune.regex.rules[0].pattern, "cargo check");
+        assert_eq!(reloaded.auto_prune.regex.rules[0].tool_name, "bash");
+        assert_eq!(reloaded.auto_prune.regex.rules[0].keep_last, 1);
+        assert_eq!(reloaded.auto_prune.regex.rules[1].pattern, "cargo test");
+        assert_eq!(reloaded.auto_prune.regex.rules[1].keep_last, 2);
+    }
+
+    #[rstest::rstest]
+    fn load_parses_multiple_regex_rules() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[[auto_prune.regex.rules]]
+pattern = "cargo check"
+tool_name = "bash"
+keep_last = 1
+
+[[auto_prune.regex.rules]]
+pattern = "cargo test"
+tool_name = "bash"
+keep_last = 2
+"#,
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+        assert_eq!(prefs.auto_prune.regex.rules.len(), 2);
+        assert_eq!(prefs.auto_prune.regex.rules[0].pattern, "cargo check");
+        assert_eq!(prefs.auto_prune.regex.rules[1].pattern, "cargo test");
+    }
+
+    #[rstest::rstest]
+    fn load_parses_regex_rules_with_defaults() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[[auto_prune.regex.rules]]
+pattern = "cargo check"
+"#,
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+        assert_eq!(prefs.auto_prune.regex.rules.len(), 1);
+        assert_eq!(prefs.auto_prune.regex.rules[0].pattern, "cargo check");
+        assert_eq!(prefs.auto_prune.regex.rules[0].tool_name, "bash");
+        assert_eq!(prefs.auto_prune.regex.rules[0].keep_last, 1);
+    }
+
+    #[rstest::rstest]
+    fn load_without_auto_prune_regex_section_uses_defaults() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"last_model = "ollama/llama3"
+"#,
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+        assert!(prefs.auto_prune.regex.enabled);
+        assert!(prefs.auto_prune.regex.rules.is_empty());
     }
 }
