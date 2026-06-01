@@ -123,26 +123,28 @@ impl SessionPhaseMachine {
         self.tool_loop_disabled
     }
 
-    /// `Streaming → Idle` - hard cancel, returns old streaming data.
+    /// `Streaming → Idle` or `Sending → Idle` - hard cancel, returns old streaming data.
     ///
-    /// Returns [`CancelOutcome`] which includes the old [`StreamingPhase`]
-    /// data so the caller can force-exclude dangling tool calls and drain
+    /// Accepts cancel from either `Streaming` or `Sending` phase. When cancelled
+    /// from `Sending` (e.g., during tool execution), the returned `old_streaming`
+    /// is `StreamingPhase::default()` since there is no streaming data to preserve.
+    /// When cancelled from `Streaming`, the old streaming data is preserved in
+    /// the result so the caller can force-exclude dangling tool calls and drain
     /// the queue to the input buffer.
     ///
     /// # Errors
     ///
-    /// Returns [`TransitionError`] if not in `Streaming`.
+    /// Returns [`TransitionError`] if not in `Streaming` or `Sending`.
     pub fn cancel(&mut self) -> Result<CancelOutcome, TransitionError> {
-        let old = self.validate(PhaseKind::Streaming)?;
+        let old = self.phase.kind();
+        match old {
+            PhaseKind::Streaming | PhaseKind::Sending => {}
+            _ => return Err(TransitionError { from: old }),
+        }
         let old_phase = std::mem::replace(&mut self.phase, Phase::Idle(IdlePhase));
-        let Phase::Streaming(old_streaming) = old_phase else {
-            return Ok(CancelOutcome {
-                outcome: TransitionOutcome {
-                    old_phase: old,
-                    new_phase: PhaseKind::Idle,
-                },
-                old_streaming: StreamingPhase::default(),
-            });
+        let old_streaming = match old_phase {
+            Phase::Streaming(sp) => sp,
+            _ => StreamingPhase::default(),
         };
         Ok(CancelOutcome {
             outcome: TransitionOutcome {
