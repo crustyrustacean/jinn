@@ -14,6 +14,8 @@
 
 pub mod broken_edit;
 pub mod read_edit;
+pub mod todo_prune;
 
 pub use broken_edit::BrokenEditAutoPruneWorker;
 pub use read_edit::ReadEditAutoPruneWorker;
+pub use todo_prune::TodoAutoPruneWorker;
