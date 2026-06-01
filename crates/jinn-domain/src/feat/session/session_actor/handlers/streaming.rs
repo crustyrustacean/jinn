@@ -60,7 +60,8 @@ impl SessionPersistenceActor {
         ctx: &ActorContext,
     ) {
         let should_save = event.reason == StreamCompletedReason::Finished
-            || event.reason == StreamCompletedReason::Error;
+            || event.reason == StreamCompletedReason::Error
+            || event.reason == StreamCompletedReason::Canceled;
 
         // Count output tokens off the async thread.
         // Prefer provider-reported tokens (includes thinking, matches billing).
@@ -188,7 +189,7 @@ impl SessionPersistenceActor {
         super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
         super::super::helpers::emit_history_appended(ctx, &event.session_id);
 
-        // Persist session after stream finishes (not on cancel).
+        // Persist session after stream finishes.
         if should_save {
             self.save_active_session(&event.session_id).await;
         }
@@ -676,7 +677,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn on_stream_completed_canceled_does_not_persist_session() {
+    async fn on_stream_completed_canceled_persists_session() {
         // Given an interacted session in streaming state.
         let (actor, store) = super::super::super::helpers::test_actor_with_store(vec![]);
         let session_id = {
@@ -701,10 +702,10 @@ mod tests {
         };
         actor.on_stream_completed(&event, &ctx).await;
 
-        // Then the session was NOT persisted (should_save = false for Canceled).
+        // Then the session was persisted.
         assert!(
-            store.last_saved_session(&session_id).is_none(),
-            "expected session NOT to be saved after Canceled"
+            store.last_saved_session(&session_id).is_some(),
+            "expected session to be saved after Canceled"
         );
     }
 

@@ -59,13 +59,38 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         state.frontend.sidebar_width,
     );
 
-
-
     let mut rects = vec![];
 
+
+
+    let sidebar_focused = state.frontend.scope_stack.is_sidebar();
+    let focus_scope = state.frontend.scope_stack.current();
+
+    // Vertical border between main and sidebar.
+    let theme = &state.frontend.theme;
+    chat_tab::border::render_border(
+        frame,
+        layout.border,
+        focus_scope,
+        theme.focus_accent,
+        theme.border_unfocused,
+        theme.sidebar_resize_accent,
+    );
+
+    // Sidebar - always rendered regardless of content view.
+    chat_tab::sidebar::render_sidebar(
+        &mut app.sidebar,
+        frame,
+        layout.sidebar,
+        sidebar_focused,
+        &state,
+        &mut rects,
+    );
+
+    // Main content area - chat view.
+    // TODO Phase 5: switch between chat and workflow based on active state.
     chat_tab::render_chat_tab(
         &mut app.ui_registry,
-        &mut app.sidebar,
         frame,
         &layout,
         &state,
