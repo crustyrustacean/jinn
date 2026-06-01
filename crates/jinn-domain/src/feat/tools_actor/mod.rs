@@ -38,7 +38,7 @@ use crate::feat::tools_actor::protocol::command::{
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolExecutionCompleted, ToolsRegistered,
 };
-use crate::feat::preferences_actor::{OpenrouterWebSearchConfig, UserPreferencesStorageService};
+use crate::feat::preferences_actor::OpenrouterWebSearchConfig;
 use jinn_provider::ServerToolType;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::{Command, Event, SessionId};
