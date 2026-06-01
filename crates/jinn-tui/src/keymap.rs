@@ -116,7 +116,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             // Navigation - scrolling and tab switching
             .bind("k", Intent::ChatEntrySelectPrev, KeyCategory::Navigation)
             .bind("j", Intent::ChatEntrySelectNext, KeyCategory::Navigation)
-            .bind("<Tab>", Intent::SwitchTab, KeyCategory::Navigation)
+
             .bind("<c-u>", Intent::ScrollUp, KeyCategory::Navigation)
             .bind("<c-d>", Intent::ScrollDown, KeyCategory::Navigation)
             // Input - external editor
@@ -323,7 +323,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
     // Workflow scope - workflow tab browsing.
     keymap.scope(Scope::Workflow, |b| {
         b
-        .bind("<Tab>", Intent::SwitchTab, KeyCategory::Navigation)
+
         .bind("q", Intent::Quit, KeyCategory::General)
         .bind("<c-c>", Intent::Quit, KeyCategory::General)
         .bind("?", Intent::ToggleWhichkey, KeyCategory::General)

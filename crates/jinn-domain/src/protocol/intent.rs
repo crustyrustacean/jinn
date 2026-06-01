@@ -237,9 +237,7 @@ pub enum Intent {
     RenameDeleteGrapheme,
     /// Delete the grapheme after the cursor in rename input.
     RenameDeleteForward,
-    /// Switch to the next tab (Chat → Workflow → Chat).
-    SwitchTab,
-    /// Toggle a one-shot workflow (e.g., consensus).
+
     ToggleOneShot {
         /// Which one-shot workflow to toggle.
         kind: crate::feat::workflow::attached_workflow::OneShotKind,
@@ -417,7 +415,7 @@ impl std::fmt::Display for Intent {
             Intent::RenameCursorRight => write!(f, "rename cursor right"),
             Intent::RenameDeleteGrapheme => write!(f, "rename delete"),
             Intent::RenameDeleteForward => write!(f, "rename forward delete"),
-            Intent::SwitchTab => write!(f, "switch tab"),
+
             Intent::ToggleOneShot { kind } => write!(f, "toggle one-shot {:?}", kind),
 
             // --- Workflow Navigation ---

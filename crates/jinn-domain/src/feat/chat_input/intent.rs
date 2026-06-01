@@ -343,7 +343,7 @@ fn execute_slash_command(
         SlashCommand::New => crate::feat::session::intent::handle_session_new(state),
         SlashCommand::Workflow => {
             let workflow_id = crate::feat::workflow::workflow_state::WorkflowId::new();
-            state.frontend.active_tab = crate::protocol::tab::ActiveTab::Workflow;
+
             state
                 .frontend
                 .scope_stack
