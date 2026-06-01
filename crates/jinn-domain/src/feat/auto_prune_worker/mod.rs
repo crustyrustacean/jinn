@@ -13,5 +13,7 @@
 //! [`HistoryWorkerActor`]: crate::feat::history_worker::actor::HistoryWorkerActor
 
 pub mod read_edit;
+pub mod regex;
 
 pub use read_edit::ReadEditAutoPruneWorker;
+pub use regex::RegexAutoPruneWorker;
