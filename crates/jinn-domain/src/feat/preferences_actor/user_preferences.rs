@@ -175,6 +175,50 @@ impl Default for TodoAutoPruneConfig {
     }
 }
 
+
+
+
+/// Default minimum number of in-context entries after a failed edit before pruning.
+const DEFAULT_BROKEN_EDIT_MIN_TAIL_ENTRIES: usize = 10;
+
+/// Default enabled state for broken-edit auto-prune.
+const DEFAULT_BROKEN_EDIT_ENABLED: bool = true;
+
+/// Broken-edit auto-prune configuration.
+///
+/// Serialized as `[auto_prune.broken_edit]` in `jinn.toml`.
+/// Controls the auto-prune worker that excludes failed edit tool call+result pairs
+/// from the LLM context once enough conversation has moved on.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrokenEditAutoPruneConfig {
+    /// Whether the broken-edit auto-prune worker is active.
+    /// Default: `true`.
+    #[serde(default = "default_broken_edit_enabled")]
+    pub enabled: bool,
+    /// Minimum number of in-context entries that must appear after the failed edit
+    /// ToolCall before the call+result pair is pruned.
+    /// Default: 10.
+    #[serde(default = "default_broken_edit_min_tail_entries")]
+    pub min_tail_entries: usize,
+}
+
+fn default_broken_edit_enabled() -> bool {
+    DEFAULT_BROKEN_EDIT_ENABLED
+}
+
+fn default_broken_edit_min_tail_entries() -> usize {
+    DEFAULT_BROKEN_EDIT_MIN_TAIL_ENTRIES
+}
+
+impl Default for BrokenEditAutoPruneConfig {
+    fn default() -> Self {
+        Self {
+            enabled: DEFAULT_BROKEN_EDIT_ENABLED,
+            min_tail_entries: DEFAULT_BROKEN_EDIT_MIN_TAIL_ENTRIES,
+        }
+    }
+}
+
 /// Auto-prune configuration.
 ///
 /// Serialized as `[auto_prune]` in `jinn.toml`.
@@ -184,6 +228,9 @@ pub struct AutoPruneConfig {
     /// Read-edit auto-prune strategy configuration.
     #[serde(default)]
     pub read_edit: ReadEditAutoPruneConfig,
+    /// Broken-edit auto-prune strategy configuration.
+    #[serde(default)]
+    pub broken_edit: BrokenEditAutoPruneConfig,
     /// Todo auto-prune strategy configuration.
     #[serde(default)]
     pub todo: TodoAutoPruneConfig,
@@ -193,6 +240,7 @@ impl Default for AutoPruneConfig {
     fn default() -> Self {
         Self {
             read_edit: ReadEditAutoPruneConfig::default(),
+            broken_edit: BrokenEditAutoPruneConfig::default(),
             todo: TodoAutoPruneConfig::default(),
         }
     }
@@ -1271,6 +1319,10 @@ min_tail_entries = 20
                     enabled: false,
                     min_tail_entries: 5,
                 },
+                broken_edit: BrokenEditAutoPruneConfig {
+                    enabled: false,
+                    min_tail_entries: 3,
+                },
                 todo: TodoAutoPruneConfig {
                     enabled: false,
                 },
@@ -1283,6 +1335,8 @@ min_tail_entries = 20
         let reloaded = load_preferences_from(&path).expect("load");
         assert!(!reloaded.auto_prune.read_edit.enabled);
         assert_eq!(reloaded.auto_prune.read_edit.min_tail_entries, 5);
+        assert!(!reloaded.auto_prune.broken_edit.enabled);
+        assert_eq!(reloaded.auto_prune.broken_edit.min_tail_entries, 3);
         assert!(!reloaded.auto_prune.todo.enabled);
     }
 
