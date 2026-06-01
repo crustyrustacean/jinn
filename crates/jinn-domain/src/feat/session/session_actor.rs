@@ -44,7 +44,7 @@ use crate::feat::tools_actor::protocol::event::{
 use crate::init::EnvironmentLoaded;
 use crate::protocol::{Command, Event};
 
-use super::SessionStoreService;
+
 use crate::SessionForkRequested;
 use crate::SessionLoadRequested;
 
@@ -57,9 +57,7 @@ pub struct SessionPersistenceActor {
     /// Shared application state.
     pub(in crate::feat::session::session_actor) state: State,
     /// Runtime services (user preferences storage for startup config loading).
-    pub(in crate::feat::session::session_actor) services: Option<Services>,
-    /// The session store service for writing session snapshots.
-    pub(in crate::feat::session::session_actor) store: Option<SessionStoreService>,
+    pub(in crate::feat::session::session_actor) services: Services,
     /// Token counter for recording token usage in the session ledger.
     pub(in crate::feat::session::session_actor) counter: TiktokenCounter,
     /// Registry of builtin lifecycle handlers.
@@ -79,9 +77,7 @@ pub struct SessionPersistenceActorDeps {
     /// Shared application state.
     pub state: State,
     /// Runtime services.
-    pub services: Option<Services>,
-    /// Session persistence store.
-    pub store: Option<SessionStoreService>,
+    pub services: Services,
     /// Token counter for usage tracking.
     pub counter: TiktokenCounter,
     /// Registry of builtin lifecycle handlers.
@@ -153,7 +149,6 @@ impl Actor for SessionPersistenceActor {
         Self {
             state: deps.state,
             services: deps.services,
-            store: deps.store,
             counter: deps.counter,
             builtin_registry: deps.builtin_registry,
             shell: deps.shell,
@@ -340,8 +335,7 @@ mod dispatch_tests {
 
         SessionPersistenceActor {
             state: State::new(AppState::default()),
-            services: None,
-            store: None,
+            services: crate::common::services::Services::new(),
             counter: TiktokenCounter::o200k_base(),
             builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
             shell: "/bin/sh".to_owned(),

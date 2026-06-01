@@ -21,10 +21,7 @@ impl SessionPersistenceActor {
         &self,
         session_id: &crate::protocol::SessionId,
     ) {
-        let Some(store) = &self.store else {
-            tracing::warn!("session-actor has no store - skipping save");
-            return;
-        };
+        let store = &self.services.session_store;
 
         let state = self.state.clone();
         let session_id = session_id.clone();
@@ -349,10 +346,7 @@ impl SessionPersistenceActor {
         evt: &SessionLoadRequested,
         ctx: &crate::common::actor::ActorContext,
     ) {
-        let Some(store) = self.store.clone() else {
-            tracing::warn!("session-actor has no store - dropping load request");
-            return;
-        };
+        let store = self.services.session_store.clone();
 
         match store.load_session(&evt.session_id).await {
             Ok(Some(mut session)) => {

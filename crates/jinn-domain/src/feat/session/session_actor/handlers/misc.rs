@@ -40,7 +40,8 @@ impl SessionPersistenceActor {
         &self,
         _payload: &LoadSessionPickerEntries,
     ) {
-        if let Some(ref store) = self.store {
+        {
+            let store = &self.services.session_store;
             let theme = {
                 let state = self.state.read();
                 state.frontend.theme.clone()
