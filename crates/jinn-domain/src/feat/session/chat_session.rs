@@ -130,6 +130,13 @@ pub struct SessionCoreEphemeral {
     /// stream completion). Not persisted across restarts.
     #[serde(skip)]
     pub(crate) pending_mutations: Vec<Vec<crate::feat::session::history_mutation::HistoryMutation>>,
+
+    /// Raw user text held during BeforeTurn interception.
+    /// The text does NOT enter history until BeforeTurn resolves.
+    /// Ephemeral: lost on crash (acceptable — user re-types).
+    /// OWNER: session-actor.
+    #[serde(skip)]
+    pub(crate) pending_user_text: Option<String>,
 }
 
 // Core session state - owned by session-actor and context-actor.
@@ -222,6 +229,10 @@ pub struct SessionCore {
     /// OWNER: tools-actor (mutated by task list tools).
     #[serde(default)]
     pub(crate) task_list: crate::feat::todo_list::TaskList,
+    /// Attached workflows - persistent workflows bound to this session.
+    /// OWNER: workflow-controller-actor (attach/detach/toggle).
+    #[serde(default)]
+    pub(crate) attached_workflows: Vec<crate::feat::workflow::attached_workflow::AttachedWorkflow>,
     /// Runtime-only state - not persisted across restarts.
     #[serde(skip)]
     pub(crate) ephemeral: SessionCoreEphemeral,
@@ -249,6 +260,7 @@ impl Default for SessionCore {
 
             workflow_overrides: None,
             task_list: crate::feat::todo_list::TaskList::default(),
+            attached_workflows: Vec::new(),
             has_interacted: false,
             ephemeral: SessionCoreEphemeral::default(),
         }
@@ -341,8 +353,18 @@ pub struct SessionUi {
     /// - `override`: the `ContextOverride` to apply to subsequent entries
     ///
     /// Cleared by: >100ms gap, or any non-`ChatEntryIgnoreSelected` intent.
+    /// Cleared by: >100ms gap, or any non-`ChatEntryIgnoreSelected` intent.
     pub(crate) ignore_sweep: Option<(std::time::Instant, ContextOverride)>,
+    /// One-shot workflow toggles pending for the next message submit.
+    /// Ephemeral UI state: toggling is free (no lifecycle events, no persistence).
+    /// Materializes into `TurnEndOneShot` attachments at submit time.
+    /// OWNER: intent-handler (toggle), session-actor (drain).
+    pub(crate) pending_one_shots: std::collections::HashMap<
+        crate::feat::workflow::attached_workflow::OneShotKind,
+        crate::feat::workflow::attached_workflow::WorkflowConfig,
+    >,
 }
+
 
 impl Clone for SessionUi {
     fn clone(&self) -> Self {
@@ -372,6 +394,7 @@ impl Clone for SessionUi {
                     .clone(),
             ),
             ignore_sweep: self.ignore_sweep,
+            pending_one_shots: self.pending_one_shots.clone(),
         }
     }
 }
@@ -392,6 +415,7 @@ impl Default for SessionUi {
             shown_ignored_blocks: HashSet::new(),
             visual_items: RwLock::new(Vec::new()),
             ignore_sweep: None,
+            pending_one_shots: std::collections::HashMap::new(),
         }
     }
 }

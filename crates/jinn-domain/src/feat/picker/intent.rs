@@ -11,9 +11,10 @@ use crate::common::app_state::FocusScope;
 use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch};
+use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
-use crate::feat::session::chat_session::ChatSessionState;
+
 use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::{Command, Intent, IntentResult, PickerKind};
 

@@ -62,6 +62,7 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
         .iter()
         .filter(|(_, session)| {
             session.session_state() == crate::feat::session::chat_session::SessionState::Loaded
+                && !session.is_workflow()
         })
         .map(|(id, session): (&_, &_)| SessionEntry {
             id: id.clone(),
