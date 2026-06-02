@@ -1824,6 +1824,7 @@ dependencies = [
  "fuzzy-matcher",
  "humantime",
  "jiff",
+ "jinn-lua-workflow",
  "jinn-protocol-derive",
  "jinn-provider",
  "jinn-selection-widget",
