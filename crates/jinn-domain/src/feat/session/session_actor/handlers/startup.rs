@@ -93,8 +93,11 @@ impl SessionPersistenceActor {
                     for mut session in loaded {
                         // Mark startup-loaded sessions as interacted - they came from disk.
                         session.mark_interacted();
+                        let session_id = session.session_id().clone();
                         self.load_and_insert(session, ctx);
+                        self.rehydrate_attached_workflows(&session_id);
                     }
+
 
                     // NOTE: We intentionally do NOT switch the active session.
                     // The user should land on the fresh welcome session.
