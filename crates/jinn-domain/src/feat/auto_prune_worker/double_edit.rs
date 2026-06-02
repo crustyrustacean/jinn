@@ -83,12 +83,10 @@ impl HistoryWorker for DoubleEditAutoPruneWorker {
             if let ChatEntryKind::ToolCall {
                 name, arguments, ..
             } = &entry.kind
+                && (name == "edit" || name == "write")
+                && let Some(path) = extract_path_from_arguments(arguments)
             {
-                if (name == "edit" || name == "write")
-                    && let Some(path) = extract_path_from_arguments(arguments)
-                {
-                    candidates.push((i, path));
-                }
+                candidates.push((i, path));
             }
         }
 
@@ -103,9 +101,8 @@ impl HistoryWorker for DoubleEditAutoPruneWorker {
                 continue;
             }
 
-            let tool_call_id = match &call_entry.kind {
-                ChatEntryKind::ToolCall { id, .. } => id,
-                _ => continue,
+            let ChatEntryKind::ToolCall { id: tool_call_id, .. } = &call_entry.kind else {
+                continue;
             };
 
             // Find matching ToolResult.
@@ -217,7 +214,7 @@ mod tests {
                 other => panic!("expected SetContextOverride, got {other:?}"),
             })
             .collect();
-        ids.sort_by_key(|id| id.to_string());
+        ids.sort_by_key(std::string::ToString::to_string);
         ids
     }
 
@@ -270,7 +267,7 @@ mod tests {
         let pruned_ids = collect_pruned_ids(mutations);
 
         let mut expected = vec![expected_call_id, expected_result_id];
-        expected.sort_by_key(|id| id.to_string());
+        expected.sort_by_key(std::string::ToString::to_string);
         assert_eq!(pruned_ids, expected);
     }
 
@@ -296,7 +293,7 @@ mod tests {
         let pruned_ids = collect_pruned_ids(mutations);
 
         let mut expected = vec![expected_call_id, expected_result_id];
-        expected.sort_by_key(|id| id.to_string());
+        expected.sort_by_key(std::string::ToString::to_string);
         assert_eq!(pruned_ids, expected);
     }
 
@@ -326,7 +323,7 @@ mod tests {
         let pruned_ids = collect_pruned_ids(mutations);
 
         let mut expected = vec![expected_call_id, expected_result_id];
-        expected.sort_by_key(|id| id.to_string());
+        expected.sort_by_key(std::string::ToString::to_string);
         assert_eq!(pruned_ids, expected);
     }
 
@@ -422,7 +419,7 @@ mod tests {
         assert_eq!(mutations.len(), 6, "3 oldest pairs × 2 = 6 mutations");
 
         let pruned_ids = collect_pruned_ids(mutations);
-        oldest_ids.sort_by_key(|id| id.to_string());
+        oldest_ids.sort_by_key(std::string::ToString::to_string);
         assert_eq!(pruned_ids, oldest_ids);
     }
 
