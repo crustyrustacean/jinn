@@ -1,8 +1,9 @@
 //! Rename session input popup rendering - a centered overlay for renaming a session.
 
-use crate::common::app_state::AppState;
+use crate::common::render_ctx::RenderCtx;
 use ratatui::Frame;
 use ratatui::layout::Rect;
+
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
@@ -35,10 +36,10 @@ pub fn rename_session_popup_rect(area: Rect) -> Rect {
 /// Shows a centered popup with:
 /// - Title: "Rename Session"
 /// - Input line with cursor showing the current value
-pub fn render_rename_session_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+pub fn render_rename_session_input(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    let state = ctx.state;
     let input_state = &state.frontend.rename_session_input;
     let theme = &state.frontend.theme;
-
     let popup_area = rename_session_popup_rect(area);
 
     let title = Line::from(Span::styled(
@@ -106,7 +107,7 @@ mod tests {
         // When rendering the popup.
         terminal
             .draw(|frame| {
-                render_rename_session_input(frame, area, &state);
+                let ctx = RenderCtx::new(&state); render_rename_session_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -149,7 +150,7 @@ mod tests {
         // When rendering the popup.
         terminal
             .draw(|frame| {
-                render_rename_session_input(frame, area, &state);
+                let ctx = RenderCtx::new(&state); render_rename_session_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -186,7 +187,7 @@ mod tests {
         // When rendering the popup.
         terminal
             .draw(|frame| {
-                render_rename_session_input(frame, area, &state);
+                let ctx = RenderCtx::new(&state); render_rename_session_input(frame, area, &ctx);
             })
             .unwrap();
 

@@ -17,6 +17,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
 use crate::common::app_state::{AppState, FocusScope};
+use crate::common::render_ctx::RenderCtx;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::theme::Theme;
@@ -111,8 +112,9 @@ pub fn render_session_preview_for_state(
     frame: &mut Frame<'_>,
     sidebar_rect: Rect,
     frame_area: Rect,
-    state: &AppState,
+    ctx: &RenderCtx,
 ) {
+    let state = ctx.state;
     if !matches!(
         state.frontend.scope_stack.current(),
         FocusScope::SidebarSessions

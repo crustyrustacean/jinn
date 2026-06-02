@@ -2,9 +2,9 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 
-use jinn_domain::FocusScope;
+use jinn_domain::RenderCtx;
 
 /// Renders the horizontal separator line (`─`) at the bottom of the content area.
 ///
@@ -12,15 +12,16 @@ use jinn_domain::FocusScope;
 pub(super) fn render_chat_bottom_line(
     frame: &mut Frame<'_>,
     content_area: Rect,
-    focus_scope: &FocusScope,
-    focus_accent: Color,
-    border_unfocused: Color,
+    ctx: &RenderCtx,
 ) {
+    let focus_scope = ctx.state.frontend.scope_stack.current();
+    let theme = &ctx.state.frontend.theme;
+
     let line_y = content_area.y + content_area.height.saturating_sub(1);
-    let chat_line_color = if matches!(focus_scope, FocusScope::Normal) {
-        focus_accent
+    let chat_line_color = if matches!(focus_scope, jinn_domain::FocusScope::Normal) {
+        theme.focus_accent
     } else {
-        border_unfocused
+        theme.border_unfocused
     };
     let chat_line_style = Style::default().fg(chat_line_color);
     for x in content_area.x..(content_area.x + content_area.width) {

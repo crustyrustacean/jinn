@@ -6,6 +6,7 @@
 //! entry visible.
 
 use crate::common::app_state::AppState;
+use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
 use crate::feat::dashboard::ActorStatus;
 use ratatui::Frame;
@@ -23,7 +24,7 @@ const UNSELECTED_BORDER: &str = "  ";
 #[derive(Debug)]
 pub struct DashboardElement;
 
-impl UiElement<AppState> for DashboardElement {
+impl UiElement for DashboardElement {
     fn name(&self) -> String {
         "dashboard".to_owned()
     }
@@ -32,7 +33,8 @@ impl UiElement<AppState> for DashboardElement {
         true
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+        let state = ctx.state;
         let theme = &state.frontend.theme;
         let actors = state.frontend.dashboard.actors();
         let selected_index = state.frontend.dashboard.selected_index();

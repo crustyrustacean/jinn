@@ -6,6 +6,7 @@
 
 use crate::common::app_state::AppState;
 use crate::common::app_state::pin_sort_key;
+use crate::common::render_ctx::RenderCtx;
 use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
 use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::feat::theme::Theme;
@@ -89,7 +90,8 @@ impl SidebarSection for PinsSection {
         SidebarSectionId::Pins
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+        let state = ctx.state;
         let sorted_ids = state.sorted_pinned_ids();
         let mut pinned = state.active_session().pinned_entries();
         // Sort to match sorted_ids order (TOP → REL → BOT, stable by history).
@@ -134,14 +136,16 @@ impl SidebarSection for PinsSection {
         frame.render_widget(widget, area);
     }
 
-    fn content_height(&self, state: &AppState) -> u16 {
+    fn content_height(&self, ctx: &RenderCtx) -> u16 {
+        let state = ctx.state;
         let count = state.active_session().pinned_entries().len();
         // Hide the section entirely when there are no pins.
         if count == 0 {
             return 0;
         }
+        let count = count as u16;
         // Header line + blank + (entry line + blank) * count - last blank + trailing gap(1)
-        (2 + count * 2).saturating_sub(1) as u16 + 1
+        (2 + count * 2).saturating_sub(1) + 1
     }
 }
 

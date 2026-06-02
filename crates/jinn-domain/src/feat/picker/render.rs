@@ -1,6 +1,6 @@
 //! Picker rendering for persona and theme pickers.
 
-use crate::common::app_state::AppState;
+use crate::common::render_ctx::RenderCtx;
 use crate::feat::ui::picker_states::PickerExt;
 use jinn_selection_widget::PreviewSelectionWidget;
 use jinn_selection_widget::SelectionWidget;
@@ -13,7 +13,8 @@ use ratatui::text::Line;
 ///
 /// Telescope-style layout: bordered popup with filter input at top,
 /// horizontal separator, scrollable persona entries.
-pub fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+pub fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    let state = ctx.state;
     let footer = {
         use ratatui::style::Style;
         use ratatui::text::{Line, Span};
@@ -42,7 +43,8 @@ pub fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState
 ///
 /// Telescope-style layout: bordered popup with filter input at top,
 /// horizontal separator, scrollable theme entries.
-pub fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+pub fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    let state = ctx.state;
     let widget = SelectionWidget::new(state.frontend.theme_picker())
         .title(Line::from(" Themes "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
@@ -54,7 +56,8 @@ pub fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) 
 ///
 /// Telescope-style layout: bordered popup with filter input at top,
 /// horizontal separator, scrollable workflow entries.
-pub fn render_workflow_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+pub fn render_workflow_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    let state = ctx.state;
     let widget = SelectionWidget::new(state.frontend.workflow_picker())
         .title(Line::from(" Workflows "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
@@ -63,7 +66,8 @@ pub fn render_workflow_picker(frame: &mut Frame<'_>, area: Rect, state: &AppStat
 }
 
 /// Renders the tool picker overlay.
-pub fn render_tool_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+pub fn render_tool_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    let state = ctx.state;
     let enabled_count = state
         .frontend
         .tool_picker()
@@ -86,7 +90,8 @@ pub fn render_tool_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
 ///
 /// Uses [`PreviewSelectionWidget`] to show the selected skill's markdown body
 /// in a split pane (vertical on wide terminals, horizontal on narrow ones).
-pub fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+pub fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    let state = ctx.state;
     let enabled_count = state
         .frontend
         .skill_picker()
