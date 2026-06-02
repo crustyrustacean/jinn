@@ -333,7 +333,7 @@ fn sorted_sessions_count_matches_hashmap() {
 }
 
 #[rstest::rstest]
-fn busy_count_does_not_affect_idle_phase() {
+fn busy_session_is_not_idle() {
     // Given a session that has active busy operations.
     let mut state = AppState::default();
     state.active_session_mut().begin_busy();
@@ -341,13 +341,24 @@ fn busy_count_does_not_affect_idle_phase() {
     // When collecting sorted open sessions.
     let sessions = sorted_open_sessions(&state);
 
-    // Then the session entry is still idle (phase machine unaffected by busy_count).
+    // Then the session entry is not idle (busy_count > 0 shows throbber).
     assert_eq!(sessions.len(), 1);
-    assert!(
-        sessions[0].is_idle,
-        "phase should remain Idle during busy operations"
-    );
+    assert!(!sessions[0].is_idle, "busy session should show throbber in sidebar");
 }
+
+#[rstest::rstest]
+fn idle_and_not_busy_is_idle() {
+    // Given a session with no busy operations and phase Idle.
+    let state = AppState::default();
+
+    // When collecting sorted open sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then the session entry is idle.
+    assert_eq!(sessions.len(), 1);
+    assert!(sessions[0].is_idle, "idle session with no busy ops should be idle");
+}
+
 
 #[rstest::rstest]
 fn working_complete_returns_to_idle() {
