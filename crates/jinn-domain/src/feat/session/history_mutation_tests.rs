@@ -609,6 +609,66 @@ fn set_context_override_default_resets_to_default() {
     );
 }
 
+// --- ForcedInclude protection guard ---
+
+#[test]
+fn forced_include_is_not_overwritten_by_forced_exclude() {
+    // Given a session with an entry that the user force-included.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    let entry_id = session.history()[0].id.clone();
+    session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::ForcedInclude,
+    }]);
+    assert_eq!(
+        session.history()[0].context_override,
+        ContextOverride::ForcedInclude
+    );
+
+    // When an auto-pruner tries to exclude it.
+    session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::ForcedExclude,
+    }]);
+
+    // Then the entry is still ForcedInclude (guard blocked the mutation).
+    assert_eq!(
+        session.history()[0].context_override,
+        ContextOverride::ForcedInclude,
+        "ForcedInclude should not be overwritten by ForcedExclude"
+    );
+}
+
+#[test]
+fn forced_include_can_be_changed_to_default() {
+    // Given a session with an entry that the user force-included.
+    let mut session = ChatSessionState::new();
+    session.push_entry(ChatEntry::user("hello"));
+    let entry_id = session.history()[0].id.clone();
+    session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::ForcedInclude,
+    }]);
+    assert_eq!(
+        session.history()[0].context_override,
+        ContextOverride::ForcedInclude
+    );
+
+    // When the user resets it to Default.
+    session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::Default,
+    }]);
+
+    // Then the entry is back to Default (guard does NOT block this).
+    assert_eq!(
+        session.history()[0].context_override,
+        ContextOverride::Default,
+        "ForcedInclude should be changeable to Default"
+    );
+}
+
 #[test]
 fn unpin_entry_removes_pin_from_pinned_entry() {
     // Given a session with a pinned entry.

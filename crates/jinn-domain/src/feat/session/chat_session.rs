@@ -2420,6 +2420,14 @@ impl ChatSessionState {
             match mutation {
                 HistoryMutation::SetContextOverride { entry_id, value } => {
                     if let Some(entry) = self.core.history.iter_mut().find(|e| e.id == entry_id) {
+                        // Protect user's explicit force-include from auto-pruner
+                        // exclusion. Workers may set ForcedExclude, but a user's
+                        // ForcedInclude takes precedence.
+                        if entry.context_override == ContextOverride::ForcedInclude
+                            && value == ContextOverride::ForcedExclude
+                        {
+                            continue;
+                        }
                         entry.context_override = value;
                     }
                 }
