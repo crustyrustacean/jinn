@@ -13,12 +13,14 @@
 //! [`HistoryWorkerActor`]: crate::feat::history_worker::actor::HistoryWorkerActor
 
 pub mod broken_edit;
+pub mod consecutive_reads;
 pub mod double_edit;
 pub mod read_edit;
 pub mod regex;
 pub mod todo_prune;
 
 pub use broken_edit::BrokenEditAutoPruneWorker;
+pub use consecutive_reads::ConsecutiveReadsAutoPruneWorker;
 pub use double_edit::DoubleEditAutoPruneWorker;
 pub use read_edit::ReadEditAutoPruneWorker;
 pub use regex::RegexAutoPruneWorker;
