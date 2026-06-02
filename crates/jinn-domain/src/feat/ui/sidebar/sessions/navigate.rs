@@ -44,7 +44,7 @@ fn update_preview(state: &mut AppState) {
             }
             let wf_id = entry.workflow_id.as_ref()?;
             state.workflow.get(wf_id)?;
-            Some(entry.workflow_id.clone()?)
+            entry.workflow_id.clone()
         });
     state.frontend.sessions_section.previewed_workflow_id = preview;
 }
