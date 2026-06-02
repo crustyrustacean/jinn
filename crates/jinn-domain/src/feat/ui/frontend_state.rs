@@ -6,6 +6,7 @@ use crate::common::focus::{FocusScope, ScopeStack};
 use crate::common::tui_signals::TuiSignals;
 use crate::feat::preferences_actor::UserPreferences;
 use crate::feat::rename_session_input::state::RenameSessionInputState;
+use crate::feat::rename_workflow_input::state::RenameWorkflowInputState;
 use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
 use crate::feat::theme::Theme;
 use crate::feat::ui::picker_states::PickerStates;
@@ -127,6 +128,10 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (rename input editing, confirmation).
     pub rename_session_input: RenameSessionInputState,
 
+    /// Rename workflow input popup state - active when `FocusScope::RenameWorkflowInput` is on the scope stack.
+    /// OWNER: IntentHandler (rename workflow label editing, confirmation).
+    pub rename_workflow_input: RenameWorkflowInputState,
+
     /// Sidebar width in columns, synced from preferences.
     /// OWNER: PreferencesStateSyncActor (on PreferencesUpdated).
     pub sidebar_width: u16,
@@ -161,6 +166,7 @@ impl Default for FrontendState {
             system_themes_dir: std::path::PathBuf::new(),
             arg_input: ArgInputState::default(),
             rename_session_input: RenameSessionInputState::default(),
+            rename_workflow_input: RenameWorkflowInputState::default(),
             sidebar_width: 30,
 
             workflow_ui: WorkflowUiState::default(),

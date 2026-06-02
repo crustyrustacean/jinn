@@ -15,6 +15,7 @@ pub use crate::common::session_map::SessionLoadGuard;
 pub use crate::feat::context::assembly_state::ContextAssemblyState;
 pub use crate::feat::provider::ProviderState;
 pub use crate::feat::rename_session_input::state::RenameSessionInputState;
+pub use crate::feat::rename_workflow_input::state::RenameWorkflowInputState;
 pub use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
 pub use crate::feat::ui::frontend_state::{FrontendCaches, FrontendState};
 pub use crate::feat::workflow::workflow_ui_state::WorkflowUiState;
