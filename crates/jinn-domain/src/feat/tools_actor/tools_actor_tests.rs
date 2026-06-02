@@ -6,13 +6,13 @@ use crate::common::actor::{Actor, ActorContext, RecordingSink};
 use crate::common::app_state::AppState;
 use crate::common::state::State;
 use crate::feat::tools_actor::get_time;
-use crate::feat::tools_actor::read;
-use crate::feat::tools_actor::write;
 use crate::feat::tools_actor::protocol::command::{
     CancelToolBatch, ExecuteToolBatch, RegisterTools,
 };
 use crate::feat::tools_actor::protocol::event::{ToolBatchCompleted, ToolExecutionCompleted};
+use crate::feat::tools_actor::read;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
+use crate::feat::tools_actor::write;
 use crate::protocol::{Command, Event, SessionId};
 
 use super::{ToolOrchestratorActor, ToolOrchestratorActorDeps, ToolRegistration};
@@ -37,11 +37,10 @@ fn default_test_ctx() -> (
     let ctx = test_context_with_state(&sink, state.clone());
     let test_services = crate::common::services::test_services::TestServices::builder().build();
     let deps = ToolOrchestratorActorDeps {
+        services: test_services,
         state,
-        app_paths: crate::common::app_paths::AppPaths::default(),
         builtin_filter: None,
         shell: "/bin/sh".to_owned(),
-        user_preferences_storage: test_services.user_preferences_storage,
     };
     (sink, ctx, deps)
 }
@@ -311,7 +310,10 @@ async fn execute_builtin_read_tool() {
     assert_eq!(result.tool_call_id, "call_4");
     assert!(result.success);
     assert!(result.content.contains("file contents here"));
-    assert!(result.content.contains('#'), "expected LINE#HASH annotation");
+    assert!(
+        result.content.contains('#'),
+        "expected LINE#HASH annotation"
+    );
 }
 
 #[rstest::rstest]
@@ -1048,7 +1050,9 @@ async fn handle_processes_register_tools_command() {
 
     // Then the tool was registered (event emitted).
     let events = sink.events();
-    let found = events.iter().any(|e| matches!(e, Event::ToolsRegistered(_)));
+    let found = events
+        .iter()
+        .any(|e| matches!(e, Event::ToolsRegistered(_)));
     assert!(found, "handle should process RegisterTools command");
 }
 
@@ -1087,13 +1091,20 @@ async fn handle_processes_tool_execution_completed_event() {
         },
     });
     actor
-        .handle(crate::common::actor::ActorEnvelope::Event(completed_evt), &ctx)
+        .handle(
+            crate::common::actor::ActorEnvelope::Event(completed_evt),
+            &ctx,
+        )
         .await;
 
     // Then ToolBatchCompleted was emitted via the event path.
     let events = sink.events();
     let batch_completed = find_batch_completed(&events);
-    assert_eq!(batch_completed.len(), 1, "handle should process ToolExecutionCompleted event");
+    assert_eq!(
+        batch_completed.len(),
+        1,
+        "handle should process ToolExecutionCompleted event"
+    );
 }
 
 #[rstest::rstest]
@@ -1115,5 +1126,8 @@ fn tool_registration_debug_shows_name() {
     let debug_str = format!("{reg:?}");
 
     // Then the output contains the tool name.
-    assert!(debug_str.contains("my_tool"), "Debug output should contain tool name: {debug_str}");
+    assert!(
+        debug_str.contains("my_tool"),
+        "Debug output should contain tool name: {debug_str}"
+    );
 }

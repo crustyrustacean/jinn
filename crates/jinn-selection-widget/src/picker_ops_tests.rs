@@ -3,11 +3,11 @@
 //! Verifies that all 7 trait methods work correctly when called through
 //! `&mut dyn PickerOps` for both SelectionState and TreePickerState.
 
+use crate::PickerItem;
 use crate::PickerOps;
 use crate::SelectionState;
 use crate::TreePickerState;
 use crate::tree_item::TreeItem;
-use crate::PickerItem;
 use ratatui::text::Line;
 use std::ops::Range;
 
@@ -115,8 +115,11 @@ fn flat_backspace_through_trait() {
 
 #[test]
 fn flat_move_up_through_trait() {
-    let mut state =
-        SelectionState::with_items(vec![FlatItem::new("a"), FlatItem::new("b"), FlatItem::new("c")]);
+    let mut state = SelectionState::with_items(vec![
+        FlatItem::new("a"),
+        FlatItem::new("b"),
+        FlatItem::new("c"),
+    ]);
     state.selection = 2;
     let ops: &mut dyn PickerOps = &mut state;
     ops.move_up(5);
@@ -125,8 +128,11 @@ fn flat_move_up_through_trait() {
 
 #[test]
 fn flat_move_down_through_trait() {
-    let mut state =
-        SelectionState::with_items(vec![FlatItem::new("a"), FlatItem::new("b"), FlatItem::new("c")]);
+    let mut state = SelectionState::with_items(vec![
+        FlatItem::new("a"),
+        FlatItem::new("b"),
+        FlatItem::new("c"),
+    ]);
     state.selection = 0;
     let ops: &mut dyn PickerOps = &mut state;
     ops.move_down(5);

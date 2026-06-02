@@ -33,10 +33,8 @@ pub fn definition() -> ToolDefinition {
             "Provide the full plan - all phases and tasks - in a single call. \
              Existing phases and tasks are replaced entirely."
                 .to_owned(),
-            "Each phase must have a description. Tasks within a phase are optional."
-                .to_owned(),
-            "To preserve existing phases, read the current list first and include them."
-                .to_owned(),
+            "Each phase must have a description. Tasks within a phase are optional.".to_owned(),
+            "To preserve existing phases, read the current list first and include them.".to_owned(),
         ],
         parameters: serde_json::json!({
             "type": "object",

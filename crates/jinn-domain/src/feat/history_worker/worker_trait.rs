@@ -23,5 +23,9 @@ pub trait HistoryWorker: Send + Sync + 'static {
     /// Called outside any lock. The `history` parameter is a shared snapshot
     /// (via `Arc<[ChatEntry]>`) cloned once by the snapshot actor. The
     /// `session_id` identifies which session triggered the evaluation.
-    async fn evaluate(&self, session_id: &SessionId, history: Arc<[ChatEntry]>) -> Vec<HistoryMutation>;
+    async fn evaluate(
+        &self,
+        session_id: &SessionId,
+        history: Arc<[ChatEntry]>,
+    ) -> Vec<HistoryMutation>;
 }

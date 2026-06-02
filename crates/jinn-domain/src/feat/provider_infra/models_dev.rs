@@ -342,7 +342,10 @@ mod tests {
 
         let data = ModelsDevData::load(&user_path, Path::new("/nonexistent"));
 
-        assert!(!data.is_empty(), "is_empty should return false when data is loaded");
+        assert!(
+            !data.is_empty(),
+            "is_empty should return false when data is loaded"
+        );
         assert_eq!(data.get("gpt-4o"), Some(128_000));
     }
 }

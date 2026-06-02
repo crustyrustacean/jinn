@@ -638,17 +638,23 @@ mod tests {
         let mut dirs = HashSet::new();
         dirs.insert(Dir2D::Left);
         dirs.insert(Dir2D::Right);
-        grid.insert((10, 0), CellInfo {
-            dirs: dirs.clone(),
-            port_type: PortType::Single(ScalarType::Text),
-            mixed: false,
-        });
+        grid.insert(
+            (10, 0),
+            CellInfo {
+                dirs: dirs.clone(),
+                port_type: PortType::Single(ScalarType::Text),
+                mixed: false,
+            },
+        );
         // Also add a cell that IS inside.
-        grid.insert((5, 0), CellInfo {
-            dirs,
-            port_type: PortType::Single(ScalarType::Text),
-            mixed: false,
-        });
+        grid.insert(
+            (5, 0),
+            CellInfo {
+                dirs,
+                port_type: PortType::Single(ScalarType::Text),
+                mixed: false,
+            },
+        );
 
         let mut buf = Buffer::empty(area);
         render_merged_grid(&mut buf, &grid, area);
@@ -671,16 +677,22 @@ mod tests {
         let mut dirs = HashSet::new();
         dirs.insert(Dir2D::Left);
         dirs.insert(Dir2D::Right);
-        grid.insert((-1, 0), CellInfo {
-            dirs: dirs.clone(),
-            port_type: PortType::Single(ScalarType::Text),
-            mixed: false,
-        });
-        grid.insert((5, 0), CellInfo {
-            dirs,
-            port_type: PortType::Single(ScalarType::Text),
-            mixed: false,
-        });
+        grid.insert(
+            (-1, 0),
+            CellInfo {
+                dirs: dirs.clone(),
+                port_type: PortType::Single(ScalarType::Text),
+                mixed: false,
+            },
+        );
+        grid.insert(
+            (5, 0),
+            CellInfo {
+                dirs,
+                port_type: PortType::Single(ScalarType::Text),
+                mixed: false,
+            },
+        );
 
         let mut buf = Buffer::empty(area);
         render_merged_grid(&mut buf, &grid, area);
@@ -696,8 +708,14 @@ mod tests {
         let area = Rect::new(0, 0, 20, 20);
         let mut buf = Buffer::empty(area);
         let path = vec![
-            PathCell { pos: (5, 5), char: '─' },
-            PathCell { pos: (6, 5), char: '─' },
+            PathCell {
+                pos: (5, 5),
+                char: '─',
+            },
+            PathCell {
+                pos: (6, 5),
+                char: '─',
+            },
         ];
         render_path(&mut buf, &path, PortType::Single(ScalarType::Text), area);
         let cell = buf.cell(Position::new(5, 5)).unwrap();
@@ -713,7 +731,10 @@ mod tests {
         let mut buf = Buffer::empty(area);
         // Cell at x=10 (area.x+area.width=10) should be skipped by `>=` check.
         let path = vec![
-            PathCell { pos: (9, 4), char: '─' },  // inside
+            PathCell {
+                pos: (9, 4),
+                char: '─',
+            }, // inside
         ];
         render_path(&mut buf, &path, PortType::Single(ScalarType::Text), area);
         let cell = buf.cell(Position::new(9, 4)).unwrap();

@@ -566,7 +566,10 @@ impl ChatEntry {
     pub fn is_pending_tool_result(&self) -> bool {
         matches!(
             &self.kind,
-            ChatEntryKind::ToolResult { status: ToolResultStatus::Pending, .. }
+            ChatEntryKind::ToolResult {
+                status: ToolResultStatus::Pending,
+                ..
+            }
         )
     }
 

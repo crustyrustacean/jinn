@@ -544,7 +544,7 @@ fn message_order_after_compaction() {
             kind: crate::protocol::ChatEntryKind::Compaction {
                 summary: "The user asked about X and was told Y".to_owned(),
                 tokens_before: 500,
-            tokens_after: 25,
+                tokens_after: 25,
                 entries_compacted: 2,
                 model_used: "test/model".to_owned(),
             },
@@ -755,7 +755,11 @@ fn forced_exclude_dangling_tool_call_produces_valid_messages() {
     let messages = entries_to_messages(&entries);
 
     // Then only the User message is produced - no dangling tool_calls.
-    assert_eq!(messages.len(), 1, "expected only User message, got: {messages:?}");
+    assert_eq!(
+        messages.len(),
+        1,
+        "expected only User message, got: {messages:?}"
+    );
     assert!(matches!(&messages[0], LlmMessage::User { .. }));
 
     // And no Assistant message with tool_calls exists.
@@ -776,12 +780,7 @@ fn forced_exclude_preserves_complete_tool_loop_in_messages() {
         ChatEntry::user("run it"),
         ChatEntry::assistant(""),
         ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#),
-        ChatEntry::tool_result(
-            "tc-1",
-            "bash",
-            "file.txt",
-            ToolResultStatus::Success,
-        ),
+        ChatEntry::tool_result("tc-1", "bash", "file.txt", ToolResultStatus::Success),
         ChatEntry::assistant(""),
         ChatEntry::tool_call("tc-2", "read", r#"{"file":"a.rs"}"#),
     ];
@@ -845,7 +844,10 @@ fn no_dangling_tool_calls_in_messages_after_hard_cancel() {
 
     for msg in &messages {
         match msg {
-            LlmMessage::Assistant { tool_calls: Some(calls), .. } => {
+            LlmMessage::Assistant {
+                tool_calls: Some(calls),
+                ..
+            } => {
                 for tc in calls {
                     tool_call_ids.push(tc.id.clone());
                 }
@@ -892,7 +894,10 @@ fn complete_tool_batch_produces_valid_messages() {
 
     for msg in &messages {
         match msg {
-            LlmMessage::Assistant { tool_calls: Some(calls), .. } => {
+            LlmMessage::Assistant {
+                tool_calls: Some(calls),
+                ..
+            } => {
                 for tc in calls {
                     tool_call_ids.push(tc.id.clone());
                 }

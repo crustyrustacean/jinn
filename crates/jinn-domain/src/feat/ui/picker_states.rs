@@ -7,7 +7,6 @@
 
 use std::collections::HashSet;
 
-
 use crate::feat::persona::PersonaEntry;
 use crate::feat::session::picker_entry::SessionTreeEntry;
 use crate::feat::session_lifecycle::picker_entry::SessionLifecycleEntry;
@@ -68,7 +67,6 @@ pub struct PickerStates {
     /// OWNER: IntentHandler (workflow picker navigation) + WorkflowActor (entry population).
     pub workflow_picker: jinn_selection_widget::SelectionState<WorkflowPickerEntry>,
 
-
     /// Compaction model picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (compaction model picker navigation).
     pub compaction_model_picker: jinn_selection_widget::SelectionState<PickerEntry>,
@@ -84,7 +82,9 @@ pub trait PickerExt {
     /// Read-only access to the session picker state.
     fn session_picker(&self) -> &jinn_selection_widget::TreePickerState<SessionTreeEntry>;
     /// Mutable access to the session picker state.
-    fn session_picker_mut(&mut self) -> &mut jinn_selection_widget::TreePickerState<SessionTreeEntry>;
+    fn session_picker_mut(
+        &mut self,
+    ) -> &mut jinn_selection_widget::TreePickerState<SessionTreeEntry>;
 
     // --- Persona picker ---
 
@@ -133,24 +133,31 @@ pub trait PickerExt {
     // --- Session lifecycle picker ---
 
     /// Read-only access to the session lifecycle picker state.
-    fn session_lifecycle_picker(&self) -> &jinn_selection_widget::SelectionState<SessionLifecycleEntry>;
+    fn session_lifecycle_picker(
+        &self,
+    ) -> &jinn_selection_widget::SelectionState<SessionLifecycleEntry>;
     /// Mutable access to the session lifecycle picker state.
-    fn session_lifecycle_picker_mut(&mut self) -> &mut jinn_selection_widget::SelectionState<SessionLifecycleEntry>;
+    fn session_lifecycle_picker_mut(
+        &mut self,
+    ) -> &mut jinn_selection_widget::SelectionState<SessionLifecycleEntry>;
 
     // --- Workflow picker ---
 
     /// Read-only access to the workflow picker state.
     fn workflow_picker(&self) -> &jinn_selection_widget::SelectionState<WorkflowPickerEntry>;
     /// Mutable access to the workflow picker state.
-    fn workflow_picker_mut(&mut self) -> &mut jinn_selection_widget::SelectionState<WorkflowPickerEntry>;
-
+    fn workflow_picker_mut(
+        &mut self,
+    ) -> &mut jinn_selection_widget::SelectionState<WorkflowPickerEntry>;
 
     // --- Compaction model picker ---
 
     /// Read-only access to the compaction model picker state.
     fn compaction_model_picker(&self) -> &jinn_selection_widget::SelectionState<PickerEntry>;
     /// Mutable access to the compaction model picker state.
-    fn compaction_model_picker_mut(&mut self) -> &mut jinn_selection_widget::SelectionState<PickerEntry>;
+    fn compaction_model_picker_mut(
+        &mut self,
+    ) -> &mut jinn_selection_widget::SelectionState<PickerEntry>;
 }
 
 impl PickerExt for super::frontend_state::FrontendState {
@@ -158,7 +165,9 @@ impl PickerExt for super::frontend_state::FrontendState {
         &self.pickers.session_picker
     }
 
-    fn session_picker_mut(&mut self) -> &mut jinn_selection_widget::TreePickerState<SessionTreeEntry> {
+    fn session_picker_mut(
+        &mut self,
+    ) -> &mut jinn_selection_widget::TreePickerState<SessionTreeEntry> {
         &mut self.pickers.session_picker
     }
 
@@ -226,11 +235,15 @@ impl PickerExt for super::frontend_state::FrontendState {
         self.pickers.skill_preview_scroll = val;
     }
 
-    fn session_lifecycle_picker(&self) -> &jinn_selection_widget::SelectionState<SessionLifecycleEntry> {
+    fn session_lifecycle_picker(
+        &self,
+    ) -> &jinn_selection_widget::SelectionState<SessionLifecycleEntry> {
         &self.pickers.session_lifecycle_picker
     }
 
-    fn session_lifecycle_picker_mut(&mut self) -> &mut jinn_selection_widget::SelectionState<SessionLifecycleEntry> {
+    fn session_lifecycle_picker_mut(
+        &mut self,
+    ) -> &mut jinn_selection_widget::SelectionState<SessionLifecycleEntry> {
         &mut self.pickers.session_lifecycle_picker
     }
 
@@ -238,16 +251,19 @@ impl PickerExt for super::frontend_state::FrontendState {
         &self.pickers.workflow_picker
     }
 
-    fn workflow_picker_mut(&mut self) -> &mut jinn_selection_widget::SelectionState<WorkflowPickerEntry> {
+    fn workflow_picker_mut(
+        &mut self,
+    ) -> &mut jinn_selection_widget::SelectionState<WorkflowPickerEntry> {
         &mut self.pickers.workflow_picker
     }
-
 
     fn compaction_model_picker(&self) -> &jinn_selection_widget::SelectionState<PickerEntry> {
         &self.pickers.compaction_model_picker
     }
 
-    fn compaction_model_picker_mut(&mut self) -> &mut jinn_selection_widget::SelectionState<PickerEntry> {
+    fn compaction_model_picker_mut(
+        &mut self,
+    ) -> &mut jinn_selection_widget::SelectionState<PickerEntry> {
         &mut self.pickers.compaction_model_picker
     }
 }

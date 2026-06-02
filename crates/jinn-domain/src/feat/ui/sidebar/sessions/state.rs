@@ -69,7 +69,7 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
             title: session.title().unwrap_or("Untitled Session").to_owned(),
             is_active: id == active_id,
             created_at: *session.created_at(),
-            is_idle: matches!(session.phase(), PhaseKind::Idle),
+            is_idle: matches!(session.phase(), PhaseKind::Idle) && !session.is_busy(),
             last_entry_is_error: session
                 .history()
                 .last()

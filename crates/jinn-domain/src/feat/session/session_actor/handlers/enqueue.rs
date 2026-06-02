@@ -75,7 +75,6 @@ impl SessionPersistenceActor {
                             },
                         ));
                         return;
-
                     }
 
                     // Normal path: set title, push entry, begin_sending.
@@ -90,13 +89,9 @@ impl SessionPersistenceActor {
                     }
                     session.push_entry(payload.entry.clone());
                     session.begin_sending();
-                    (
-                        EnqueueAction::DispatchDirectly,
-                        workflow_overrides,
-                    )
+                    (EnqueueAction::DispatchDirectly, workflow_overrides)
                 }
-                PhaseKind::Sending
-                | PhaseKind::Streaming => {
+                PhaseKind::Sending | PhaseKind::Streaming => {
                     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
                         payload.entry.clone(),
                     ));
@@ -107,10 +102,7 @@ impl SessionPersistenceActor {
 
         match action {
             EnqueueAction::DispatchDirectly => {
-                super::super::helpers::emit_history_appended(
-                    ctx,
-                    &payload.session_id,
-                );
+                super::super::helpers::emit_history_appended(ctx, &payload.session_id);
                 // Assemble the prompt directly and emit SendToLlmProvider.
                 let assembled = {
                     let guard = self.state.read();
@@ -367,16 +359,17 @@ mod tests {
             .await;
 
         // Then SendToLlmProvider has provider_id = None (because model == NO_PROVIDER_ID).
-        let send_cmd = sink
-            .commands()
-            .iter()
-            .find_map(|c| match c {
-                Command::SendToLlmProvider(s) => Some(s.provider_id.clone()),
-                _ => None,
-            });
+        let send_cmd = sink.commands().iter().find_map(|c| match c {
+            Command::SendToLlmProvider(s) => Some(s.provider_id.clone()),
+            _ => None,
+        });
         // With default model (NO_PROVIDER_ID), provider_id should be None.
         // Mutant (== -> !=) would send Some(NO_PROVIDER_ID) instead.
-        assert_eq!(send_cmd, Some(None), "expected None provider_id for NO_PROVIDER_ID model");
+        assert_eq!(
+            send_cmd,
+            Some(None),
+            "expected None provider_id for NO_PROVIDER_ID model"
+        );
     }
 
     // --- handle_set_chat_input_text ---
@@ -438,15 +431,17 @@ mod tests {
         );
 
         // And ChatEntrySubmitted event was emitted.
-        let has_submitted = sink.events().iter().any(|e| {
-            matches!(e, Event::ChatEntrySubmitted(e) if e.session_id == session_id)
-        });
+        let has_submitted = sink
+            .events()
+            .iter()
+            .any(|e| matches!(e, Event::ChatEntrySubmitted(e) if e.session_id == session_id));
         assert!(has_submitted, "expected ChatEntrySubmitted event");
 
         // And HistoryAppended was emitted.
-        let has_history = sink.events().iter().any(|e| {
-            matches!(e, Event::HistoryAppended(e) if e.session_id == session_id)
-        });
+        let has_history = sink
+            .events()
+            .iter()
+            .any(|e| matches!(e, Event::HistoryAppended(e) if e.session_id == session_id));
         assert!(has_history, "expected HistoryAppended event");
     }
 
@@ -470,12 +465,14 @@ mod tests {
 
         // Then EnqueueUserMessage command was emitted.
         let commands = sink.commands();
-        let has_enqueue = commands.iter().any(|c| {
-            matches!(c, Command::EnqueueUserMessage(e) if e.session_id == session_id)
-        });
-        assert!(has_enqueue, "expected EnqueueUserMessage command from SendMessage");
+        let has_enqueue = commands
+            .iter()
+            .any(|c| matches!(c, Command::EnqueueUserMessage(e) if e.session_id == session_id));
+        assert!(
+            has_enqueue,
+            "expected EnqueueUserMessage command from SendMessage"
+        );
     }
-
 
     // --- Workflow BeforeTurn / One-Shot tests ---
 
@@ -517,8 +514,7 @@ mod tests {
     #[tokio::test]
     async fn before_turn_holds_text_in_pending() {
         use crate::feat::workflow::attached_workflow::{
-            AttachedWorkflow, BeforeTurnMode, PromptMergeStrategy, WorkflowConfig,
-            WorkflowTrigger,
+            AttachedWorkflow, BeforeTurnMode, PromptMergeStrategy, WorkflowConfig, WorkflowTrigger,
         };
 
         // Given an idle session with a BeforeTurn attachment.
@@ -528,8 +524,13 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             let aw = AttachedWorkflow::new(
-                WorkflowConfig::Consensus { n: 1, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
-                WorkflowTrigger::BeforeTurn(BeforeTurnMode::AutoSend { strategy: PromptMergeStrategy::Replace }),
+                WorkflowConfig::Consensus {
+                    n: 1,
+                    result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+                },
+                WorkflowTrigger::BeforeTurn(BeforeTurnMode::AutoSend {
+                    strategy: PromptMergeStrategy::Replace,
+                }),
             );
             session.core.attached_workflows.push(aw);
             state.session.active_session_id().clone()
@@ -578,7 +579,10 @@ mod tests {
             let session = state.active_session_mut();
             session.ui.pending_one_shots.insert(
                 OneShotKind::Consensus,
-                WorkflowConfig::Consensus { n: 3, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
+                WorkflowConfig::Consensus {
+                    n: 3,
+                    result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+                },
             );
             state.session.active_session_id().clone()
         };
@@ -597,8 +601,16 @@ mod tests {
         // Then a TurnEndOneShot attachment was created.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
-        let one_shots: Vec<_> = session.core.attached_workflows.iter()
-            .filter(|aw| matches!(aw.trigger, crate::feat::workflow::attached_workflow::WorkflowTrigger::TurnEndOneShot))
+        let one_shots: Vec<_> = session
+            .core
+            .attached_workflows
+            .iter()
+            .filter(|aw| {
+                matches!(
+                    aw.trigger,
+                    crate::feat::workflow::attached_workflow::WorkflowTrigger::TurnEndOneShot
+                )
+            })
             .collect();
         assert_eq!(one_shots.len(), 1);
 
@@ -619,11 +631,18 @@ mod tests {
             let session = state.active_session_mut();
             session.ui.pending_one_shots.insert(
                 OneShotKind::Consensus,
-                WorkflowConfig::Consensus { n: 3, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
+                WorkflowConfig::Consensus {
+                    n: 3,
+                    result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+                },
             );
             session.ui.pending_one_shots.insert(
                 OneShotKind::Judge,
-                WorkflowConfig::Judge { prompt: String::new(), approval_tool: "approve".into(), result_kind: crate::feat::workflow::attached_workflow::ResultKind::System },
+                WorkflowConfig::Judge {
+                    prompt: String::new(),
+                    approval_tool: "approve".into(),
+                    result_kind: crate::feat::workflow::attached_workflow::ResultKind::System,
+                },
             );
             state.session.active_session_id().clone()
         };
@@ -642,8 +661,16 @@ mod tests {
         // Then two TurnEndOneShot attachments were created.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
-        let one_shots: Vec<_> = session.core.attached_workflows.iter()
-            .filter(|aw| matches!(aw.trigger, crate::feat::workflow::attached_workflow::WorkflowTrigger::TurnEndOneShot))
+        let one_shots: Vec<_> = session
+            .core
+            .attached_workflows
+            .iter()
+            .filter(|aw| {
+                matches!(
+                    aw.trigger,
+                    crate::feat::workflow::attached_workflow::WorkflowTrigger::TurnEndOneShot
+                )
+            })
             .collect();
         assert_eq!(one_shots.len(), 2);
     }

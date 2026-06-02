@@ -55,7 +55,10 @@ impl HeadlessChromeFetcher {
 
     /// Ensures a browser is running, launching one if necessary.
     fn ensure_browser(&self) -> Result<Browser, FetchError> {
-        let mut guard = self.browser.lock().map_err(|_lock_err| FetchError::BrowserCrash)?;
+        let mut guard = self
+            .browser
+            .lock()
+            .map_err(|_lock_err| FetchError::BrowserCrash)?;
         if let Some(ref browser) = *guard {
             tracing::trace!("HeadlessChromeFetcher: reusing existing browser");
             return Ok(browser.clone());
@@ -117,7 +120,10 @@ impl WebFetcher for HeadlessChromeFetcher {
             let html = tab
                 .get_content()
                 .map_err(|e| FetchError::Render(e.to_string()))?;
-            tracing::debug!(html_len = html.len(), "HeadlessChromeFetcher: HTML retrieved");
+            tracing::debug!(
+                html_len = html.len(),
+                "HeadlessChromeFetcher: HTML retrieved"
+            );
 
             // Apply extraction based on the requested format.
             tracing::trace!(format = ?options.format, "HeadlessChromeFetcher: extracting content");
@@ -125,7 +131,10 @@ impl WebFetcher for HeadlessChromeFetcher {
                 Some(extractor) => extractor.extract(&html),
                 None => html,
             };
-            tracing::debug!(content_len = content.len(), "HeadlessChromeFetcher: content extracted");
+            tracing::debug!(
+                content_len = content.len(),
+                "HeadlessChromeFetcher: content extracted"
+            );
 
             // Try to get final URL (after redirects).
             let final_url = tab.get_url();

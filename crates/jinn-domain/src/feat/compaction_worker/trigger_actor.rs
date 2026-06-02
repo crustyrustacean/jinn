@@ -93,7 +93,10 @@ impl CompactionTriggerActor {
             }
             Ok(_) => {
                 // Empty mutations - nothing to compact.
-                let reserve = self.worker.state.read()
+                let reserve = self
+                    .worker
+                    .state
+                    .read()
                     .frontend
                     .preferences
                     .compaction

@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::SessionId;
 use crate::protocol::CommandMsg;
+use crate::protocol::SessionId;
 
 /// Trigger compaction for a session.
 ///

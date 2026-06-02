@@ -8,8 +8,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::session::history_mutation::HistoryMutation;
-use crate::protocol::SessionId;
 use crate::protocol::CommandMsg;
+use crate::protocol::SessionId;
 
 /// Submit a batch of history mutations for deferred application.
 ///

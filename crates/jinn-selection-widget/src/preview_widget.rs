@@ -11,8 +11,8 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-use crate::{PickerItem, SelectionColors, SelectionState, compute_popup_rect};
 use crate::preview_content::PreviewContent;
+use crate::{PickerItem, SelectionColors, SelectionState, compute_popup_rect};
 
 /// Popup width threshold for vertical (side-by-side) split.
 /// Below this, the layout switches to horizontal (stacked) split.
@@ -199,17 +199,18 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
     /// Render with a horizontal split layout (stacked list and preview).
     fn render_horizontal_split(&self, frame: &mut Frame<'_>, inner: Rect) {
         let list_height = HORIZONTAL_LIST_ROWS + 2;
-        let [list_area, sep_area, preview_area] =
-            Layout::vertical([
-                Constraint::Length(list_height),
-                Constraint::Length(1),
-                Constraint::Min(0),
-            ])
-            .areas(inner);
+        let [list_area, sep_area, preview_area] = Layout::vertical([
+            Constraint::Length(list_height),
+            Constraint::Length(1),
+            Constraint::Min(0),
+        ])
+        .areas(inner);
 
         self.render_list(frame, list_area);
 
-        let separator = HORIZONTAL_SEPARATOR.to_string().repeat(sep_area.width as usize);
+        let separator = HORIZONTAL_SEPARATOR
+            .to_string()
+            .repeat(sep_area.width as usize);
         let sep_paragraph =
             Paragraph::new(separator).style(Style::default().fg(self.colors.separator));
         frame.render_widget(sep_paragraph, sep_area);
@@ -285,8 +286,7 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
             padded.push(Line::from(""));
         }
 
-        let paragraph =
-            Paragraph::new(padded).style(Style::default().fg(self.colors.filter_text));
+        let paragraph = Paragraph::new(padded).style(Style::default().fg(self.colors.filter_text));
         frame.render_widget(paragraph, area);
     }
 }
@@ -316,7 +316,10 @@ mod tests {
 
     impl PreviewContent for TestItem {
         fn preview_lines(&self, _width: usize) -> Vec<Line<'static>> {
-            self.body.lines().map(|l| Line::from(l.to_owned())).collect()
+            self.body
+                .lines()
+                .map(|l| Line::from(l.to_owned()))
+                .collect()
         }
     }
 
@@ -331,7 +334,12 @@ mod tests {
         let popup = compute_popup_rect(area);
 
         // Then the popup is wide enough for vertical split.
-        assert!(popup.width >= VERTICAL_SPLIT_MIN_WIDTH, "popup width {} < {}", popup.width, VERTICAL_SPLIT_MIN_WIDTH);
+        assert!(
+            popup.width >= VERTICAL_SPLIT_MIN_WIDTH,
+            "popup width {} < {}",
+            popup.width,
+            VERTICAL_SPLIT_MIN_WIDTH
+        );
     }
 
     #[rstest::rstest]

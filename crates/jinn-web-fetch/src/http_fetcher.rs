@@ -90,18 +90,13 @@ impl WebFetcher for HttpFetcher {
         validate_url(url)?;
 
         tracing::trace!(url = %url, "HttpFetcher: sending GET request");
-        let response = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| {
-                if e.is_timeout() {
-                    FetchError::Timeout
-                } else {
-                    FetchError::Network
-                }
-            })?;
+        let response = self.client.get(url).send().await.map_err(|e| {
+            if e.is_timeout() {
+                FetchError::Timeout
+            } else {
+                FetchError::Network
+            }
+        })?;
 
         let status = response.status().as_u16();
         let final_url = response.url().to_string();
@@ -155,7 +150,12 @@ impl WebFetcher for HttpFetcher {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::map_err_ignore, reason = "test assertions")]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::map_err_ignore,
+        reason = "test assertions"
+    )]
     use super::*;
 
     #[rstest::rstest]
@@ -281,9 +281,10 @@ mod tests {
             .create_async()
             .await;
 
-        let fetcher = HttpFetcher::new(HashMap::from([
-            (OutputFormat::Markdown, Arc::new(crate::MarkdownExtractor) as Arc<dyn crate::Extractor>),
-        ]));
+        let fetcher = HttpFetcher::new(HashMap::from([(
+            OutputFormat::Markdown,
+            Arc::new(crate::MarkdownExtractor) as Arc<dyn crate::Extractor>,
+        )]));
         let result = fetcher
             .fetch(
                 &server.url(),
@@ -297,12 +298,30 @@ mod tests {
 
         // Then the output contains proper markdown equivalents.
         let output = result.expect("fetch should succeed");
-        assert!(output.content.contains("# Title"), "h1 should become # Title");
-        assert!(output.content.contains("## Subtitle"), "h2 should become ## Subtitle");
-        assert!(output.content.contains("Some paragraph text"), "paragraph text should be preserved");
-        assert!(output.content.contains("first item"), "list items should be preserved");
-        assert!(output.content.contains("[click here](https://example.com)"), "link should become markdown link");
-        assert!(!output.content.contains('<'), "no raw HTML tags should remain");
+        assert!(
+            output.content.contains("# Title"),
+            "h1 should become # Title"
+        );
+        assert!(
+            output.content.contains("## Subtitle"),
+            "h2 should become ## Subtitle"
+        );
+        assert!(
+            output.content.contains("Some paragraph text"),
+            "paragraph text should be preserved"
+        );
+        assert!(
+            output.content.contains("first item"),
+            "list items should be preserved"
+        );
+        assert!(
+            output.content.contains("[click here](https://example.com)"),
+            "link should become markdown link"
+        );
+        assert!(
+            !output.content.contains('<'),
+            "no raw HTML tags should remain"
+        );
     }
 
     #[rstest::rstest]
@@ -338,9 +357,7 @@ mod tests {
     #[tokio::test]
     async fn fetch_returns_error_for_invalid_url() {
         let fetcher = HttpFetcher::new(HashMap::new());
-        let result = fetcher
-            .fetch("not-a-url", FetchOptions::default())
-            .await;
+        let result = fetcher.fetch("not-a-url", FetchOptions::default()).await;
 
         assert!(matches!(result, Err(FetchError::InvalidUrl(_))));
     }
@@ -360,10 +377,7 @@ mod tests {
 
         mock.assert_async().await;
 
-        assert!(matches!(
-            result,
-            Err(FetchError::Http { status: 404, .. })
-        ));
+        assert!(matches!(result, Err(FetchError::Http { status: 404, .. })));
     }
 
     #[rstest::rstest]

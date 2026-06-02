@@ -82,8 +82,17 @@ mod tests {
 
         // Then the output contains cwd, timeout, and session_id.
         assert!(debug_str.contains("/tmp/test"), "debug should contain cwd");
-        assert!(debug_str.contains("timeout"), "debug should contain timeout");
-        assert!(debug_str.contains("session_id"), "debug should contain session_id");
-        assert!(debug_str.contains("ToolContext"), "debug should contain struct name");
+        assert!(
+            debug_str.contains("timeout"),
+            "debug should contain timeout"
+        );
+        assert!(
+            debug_str.contains("session_id"),
+            "debug should contain session_id"
+        );
+        assert!(
+            debug_str.contains("ToolContext"),
+            "debug should contain struct name"
+        );
     }
 }

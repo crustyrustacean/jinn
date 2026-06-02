@@ -7,8 +7,6 @@ use jinn_workflow::graph::WorkflowGraphBuilder;
 use jinn_workflow::node::WorkflowNode;
 use jinn_workflow::port::{PortDef, PortValue, PortValues, ScalarValue};
 
-
-
 /// Build a consensus workflow graph: N parallel clones → terminal.
 ///
 /// Uses a fan-out pattern where the source node fans out to N clone nodes,
@@ -26,7 +24,9 @@ pub fn build_consensus(n: u32) -> jinn_workflow::graph::WorkflowGraph {
     for i in 0..n {
         let name = format!("clone_{i}");
         builder.add_node(name.clone(), Box::new(CloneNode { index: i }));
-        builder.connect("source", "out", &name, "in").expect("connect source→clone");
+        builder
+            .connect("source", "out", &name, "in")
+            .expect("connect source→clone");
     }
 
     // Connect all clones to a single consolidation node first,
@@ -43,13 +43,14 @@ pub fn build_consensus(n: u32) -> jinn_workflow::graph::WorkflowGraph {
 
 /// Build a judge workflow graph: source → judge clone.
 pub fn build_judge(_prompt: &str, _approval_tool: &str) -> jinn_workflow::graph::WorkflowGraph {
-    let mut builder = WorkflowGraphBuilder::new()
-        .with_description("Judge workflow");
+    let mut builder = WorkflowGraphBuilder::new().with_description("Judge workflow");
 
     builder.add_node("source".to_owned(), Box::new(SourceNode));
     builder.add_node("judge".to_owned(), Box::new(CloneNode { index: 0 }));
 
-    builder.connect("source", "out", "judge", "in").expect("connect source→judge");
+    builder
+        .connect("source", "out", "judge", "in")
+        .expect("connect source→judge");
 
     builder.build().expect("judge graph should be valid")
 }
@@ -64,12 +65,13 @@ pub fn build_divergence(n: u32, _temperature: f32) -> jinn_workflow::graph::Work
     for i in 0..n {
         let name = format!("diverge_{i}");
         builder.add_node(name.clone(), Box::new(CloneNode { index: i }));
-        builder.connect("source", "out", &name, "in").expect("connect source→diverge");
+        builder
+            .connect("source", "out", &name, "in")
+            .expect("connect source→diverge");
     }
 
     builder.build().expect("divergence graph should be valid")
 }
-
 
 // --- Internal node implementations ---
 
@@ -78,9 +80,15 @@ struct SourceNode;
 
 #[async_trait::async_trait]
 impl WorkflowNode for SourceNode {
-    fn name(&self) -> &str { "source" }
-    fn input_ports(&self) -> Vec<PortDef> { vec![] }
-    fn output_ports(&self) -> Vec<PortDef> { vec![PortDef::text("out")] }
+    fn name(&self) -> &str {
+        "source"
+    }
+    fn input_ports(&self) -> Vec<PortDef> {
+        vec![]
+    }
+    fn output_ports(&self) -> Vec<PortDef> {
+        vec![PortDef::text("out")]
+    }
 
     async fn execute(
         &self,
@@ -88,11 +96,16 @@ impl WorkflowNode for SourceNode {
         _ctx: &dyn jinn_workflow::node::NodeContext,
     ) -> Result<PortValues, error_stack::Report<jinn_workflow::node::NodeError>> {
         let mut outputs = PortValues::new();
-        outputs.insert("out".to_owned(), PortValue::single(ScalarValue::Text("placeholder".to_owned())));
+        outputs.insert(
+            "out".to_owned(),
+            PortValue::single(ScalarValue::Text("placeholder".to_owned())),
+        );
         Ok(outputs)
     }
 
-    fn clone_box(&self) -> Box<dyn WorkflowNode> { Box::new(SourceNode) }
+    fn clone_box(&self) -> Box<dyn WorkflowNode> {
+        Box::new(SourceNode)
+    }
 }
 
 /// Clone node — represents one parallel LLM call via `send_llm_request_cloned`.
@@ -102,9 +115,15 @@ struct CloneNode {
 
 #[async_trait::async_trait]
 impl WorkflowNode for CloneNode {
-    fn name(&self) -> &str { "clone" }
-    fn input_ports(&self) -> Vec<PortDef> { vec![PortDef::text("in")] }
-    fn output_ports(&self) -> Vec<PortDef> { vec![PortDef::text("out")] }
+    fn name(&self) -> &str {
+        "clone"
+    }
+    fn input_ports(&self) -> Vec<PortDef> {
+        vec![PortDef::text("in")]
+    }
+    fn output_ports(&self) -> Vec<PortDef> {
+        vec![PortDef::text("out")]
+    }
 
     async fn execute(
         &self,
@@ -112,7 +131,10 @@ impl WorkflowNode for CloneNode {
         _ctx: &dyn jinn_workflow::node::NodeContext,
     ) -> Result<PortValues, error_stack::Report<jinn_workflow::node::NodeError>> {
         let mut outputs = PortValues::new();
-        outputs.insert("out".to_owned(), PortValue::single(ScalarValue::Text(format!("clone_{}_response", self.index))));
+        outputs.insert(
+            "out".to_owned(),
+            PortValue::single(ScalarValue::Text(format!("clone_{}_response", self.index))),
+        );
         Ok(outputs)
     }
 
@@ -126,9 +148,15 @@ struct TerminalNode;
 
 #[async_trait::async_trait]
 impl WorkflowNode for TerminalNode {
-    fn name(&self) -> &str { "terminal" }
-    fn input_ports(&self) -> Vec<PortDef> { vec![] }
-    fn output_ports(&self) -> Vec<PortDef> { vec![] }
+    fn name(&self) -> &str {
+        "terminal"
+    }
+    fn input_ports(&self) -> Vec<PortDef> {
+        vec![]
+    }
+    fn output_ports(&self) -> Vec<PortDef> {
+        vec![]
+    }
 
     async fn execute(
         &self,
@@ -138,7 +166,9 @@ impl WorkflowNode for TerminalNode {
         Ok(PortValues::new())
     }
 
-    fn clone_box(&self) -> Box<dyn WorkflowNode> { Box::new(TerminalNode) }
+    fn clone_box(&self) -> Box<dyn WorkflowNode> {
+        Box::new(TerminalNode)
+    }
 }
 
 #[cfg(test)]
@@ -188,7 +218,10 @@ mod tests {
 
     #[rstest::rstest]
     fn workflow_config_build_graph_consensus() {
-        let config = WorkflowConfig::Consensus { n: 3, result_kind: ResultKind::Assistant };
+        let config = WorkflowConfig::Consensus {
+            n: 3,
+            result_kind: ResultKind::Assistant,
+        };
         let graph = config.build_graph();
         assert_eq!(graph.node_count(), 4);
     }
@@ -206,7 +239,11 @@ mod tests {
 
     #[rstest::rstest]
     fn workflow_config_build_graph_divergence() {
-        let config = WorkflowConfig::Divergence { n: 5, temperature: 1.0, result_kind: ResultKind::Assistant };
+        let config = WorkflowConfig::Divergence {
+            n: 5,
+            temperature: 1.0,
+            result_kind: ResultKind::Assistant,
+        };
         let graph = config.build_graph();
         assert_eq!(graph.node_count(), 6); // source + 5 diverge
     }

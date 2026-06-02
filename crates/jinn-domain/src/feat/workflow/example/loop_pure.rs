@@ -54,7 +54,11 @@ pub fn build_loop_pure() -> WorkflowGraph {
         "source".to_owned(),
         "text".to_owned(),
     )
-    .with_output_mapping("result".to_owned(), "transform".to_owned(), "out".to_owned());
+    .with_output_mapping(
+        "result".to_owned(),
+        "transform".to_owned(),
+        "out".to_owned(),
+    );
 
     let mut builder = WorkflowGraphBuilder::new();
     builder.add_node("loop".to_owned(), Box::new(loop_node));
