@@ -255,6 +255,28 @@ fn scroll_to_cursor_noop_when_no_selection() {
 }
 
 #[rstest::rstest]
+fn scroll_to_cursor_clamps_offset_when_list_shrinks() {
+    // Given 20 sessions with scroll_offset at 5, cursor at index 10.
+    let mut state = state_with_sessions(20);
+    state.frontend.sessions_section.scroll_offset = 5;
+    state.frontend.sessions_section.selected_index = Some(10);
+
+    // Remove 15 sessions, leaving only 5.
+    let sorted = sorted_open_sessions(&state);
+    for entry in &sorted[5..] {
+        state.session.remove_without_replacement(&entry.id);
+    }
+    // Cursor is now clamped to index 4 by the caller (reconcile).
+    state.frontend.sessions_section.selected_index = Some(4);
+
+    // When scrolling to cursor.
+    scroll_to_cursor(&mut state);
+
+    // Then scroll_offset is clamped to 0 (5 sessions fit in MAX_VISIBLE_SESSIONS).
+    assert_eq!(state.frontend.sessions_section.scroll_offset, 0);
+}
+
+#[rstest::rstest]
 fn navigate_down_scrolls_viewport_at_bottom() {
     // Given 20 sessions, scroll_offset at 0, cursor at index 14 (last visible).
     let mut state = state_with_sessions(20);
