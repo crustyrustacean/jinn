@@ -320,6 +320,24 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         });
     });
 
+    // RenameWorkflowInput scope - editing a workflow label.
+    keymap.scope(Scope::RenameWorkflowInput, |b| {
+        b
+        .bind("<esc>", Intent::RenameWorkflowLeave, KeyCategory::General)
+        .bind("<enter>", Intent::RenameWorkflowConfirm, KeyCategory::Input)
+        .bind("<left>", Intent::RenameWorkflowCursorLeft, KeyCategory::Input)
+        .bind("<right>", Intent::RenameWorkflowCursorRight, KeyCategory::Input)
+        .bind("<backspace>", Intent::RenameWorkflowDeleteGrapheme, KeyCategory::Input)
+        .bind("<delete>", Intent::RenameWorkflowDeleteForward, KeyCategory::Input)
+        .bind("<c-j>", Intent::RenameWorkflowInsertChar { ch: '\n' }, KeyCategory::Input)
+        .catch_all(|key: KeyEvent| {
+            if let Key::Char(c) = key.key {
+                Some(Intent::RenameWorkflowInsertChar { ch: c })
+            } else {
+                None
+            }
+        });
+    });
     // Workflow scope - workflow tab browsing.
     keymap.scope(Scope::Workflow, |b| {
         b
