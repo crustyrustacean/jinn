@@ -15,7 +15,7 @@ pub use crate::feat::ui::sidebar::sessions::SessionsSectionState;
 use crate::feat::ui::sidebar::state::SidebarState;
 pub use crate::feat::ui::sidebar::task_list_section::TaskListSectionState;
 use crate::feat::workflow::workflow_ui_state::WorkflowUiState;
-use crate::protocol::tab::ActiveTab;
+
 
 /// Theme-sensitive caches owned by the frontend.
 ///
@@ -131,9 +131,7 @@ pub struct FrontendState {
     /// OWNER: PreferencesStateSyncActor (on PreferencesUpdated).
     pub sidebar_width: u16,
 
-    /// Currently active tab in the main area.
-    /// OWNER: IntentHandler (SwitchTab intent).
-    pub active_tab: ActiveTab,
+
 
     /// Workflow tab UI state - selection, viewport, inspector, cancel prompt.
     /// OWNER: IntentHandler (all workflow UI interactions).
@@ -164,7 +162,7 @@ impl Default for FrontendState {
             arg_input: ArgInputState::default(),
             rename_session_input: RenameSessionInputState::default(),
             sidebar_width: 30,
-            active_tab: ActiveTab::default(),
+
             workflow_ui: WorkflowUiState::default(),
         }
     }

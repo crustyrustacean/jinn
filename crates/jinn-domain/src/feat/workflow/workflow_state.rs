@@ -133,7 +133,18 @@ impl WorkflowMap {
     }
 
     /// Insert a workflow and set it as active.
+    ///
+    /// In test builds this is `pub` for direct test setup.
+    /// In non-test builds this is restricted to the workflow module
+    /// to ensure every insert is paired with an AttachedWorkflow creation.
+    #[cfg(test)]
     pub fn insert(&mut self, state: WorkflowState) {
+        self.active = Some(state.id.clone());
+        self.workflows.insert(state.id.clone(), state);
+    }
+
+    #[cfg(not(test))]
+    pub(in crate::feat::workflow) fn insert(&mut self, state: WorkflowState) {
         self.active = Some(state.id.clone());
         self.workflows.insert(state.id.clone(), state);
     }
