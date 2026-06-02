@@ -4,7 +4,7 @@
 //! block with fresh LINE#HASH tags for the changed region, allowing the LLM
 //! to chain follow-up edits without re-reading the file.
 
-use super::hash::{get_visible_lines, format_hashline_region};
+use super::hash::{format_hashline_region, get_visible_lines};
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
@@ -79,18 +79,18 @@ pub fn compute_affected_line_range(
 /// Builds the anchor block for a successful edit response.
 ///
 /// Returns the formatted text to include in the tool result.
-pub fn build_anchor_block(result_content: &str, first_changed_line: Option<usize>, last_changed_line: Option<usize>) -> AnchorBlock {
+pub fn build_anchor_block(
+    result_content: &str,
+    first_changed_line: Option<usize>,
+    last_changed_line: Option<usize>,
+) -> AnchorBlock {
     let visible = get_visible_lines(result_content);
 
     if visible.is_empty() {
         return AnchorBlock::EmptyFile;
     }
 
-    let range = compute_affected_line_range(
-        first_changed_line,
-        last_changed_line,
-        visible.len(),
-    );
+    let range = compute_affected_line_range(first_changed_line, last_changed_line, visible.len());
 
     let Some(range) = range else {
         return AnchorBlock::Omitted;

@@ -39,7 +39,10 @@ pub fn load_provider_picker_items(services: &Services, state: &mut AppState) {
 /// Marks the active compaction model (or the sentinel if `compaction.model` is `None`).
 pub fn load_compaction_model_picker_items(services: &Services, state: &mut AppState) {
     // Load preferences from service.
-    let prefs = services.user_preferences_storage.load().expect("preferences");
+    let prefs = services
+        .user_preferences_storage
+        .load()
+        .expect("preferences");
 
     // Build the sentinel entry.
     let active_compaction_model = prefs.compaction.model.clone();
@@ -78,7 +81,10 @@ pub fn load_compaction_model_picker_items(services: &Services, state: &mut AppSt
     // Prepend sentinel (always first).
     entries.insert(0, sentinel);
 
-    state.frontend.compaction_model_picker_mut().set_items(entries);
+    state
+        .frontend
+        .compaction_model_picker_mut()
+        .set_items(entries);
 }
 
 #[cfg(test)]

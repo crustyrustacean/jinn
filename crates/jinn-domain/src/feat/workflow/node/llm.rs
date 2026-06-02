@@ -164,12 +164,11 @@ impl WorkflowNode for LlmNode {
 
         // Build user message from prompt + user inputs.
         let prompt_text = inputs.take_text("prompt").ok();
-        let user_text =
-            inputs
-                .take_text("user")
-                .map_err(|e: jinn_workflow::port::PortError| {
-                    Report::new(NodeError).attach(e.to_string())
-                })?;
+        let user_text = inputs
+            .take_text("user")
+            .map_err(|e: jinn_workflow::port::PortError| {
+                Report::new(NodeError).attach(e.to_string())
+            })?;
 
         let original_message = match prompt_text {
             Some(prompt) => format!("{prompt}\n{user_text}"),
@@ -196,8 +195,8 @@ impl WorkflowNode for LlmNode {
         };
 
         // Validation configured - retry loop.
-        let validation =
-            Regex::new(regex_pattern).map_err(|_| Report::new(NodeError).attach("invalid validation regex"))?;
+        let validation = Regex::new(regex_pattern)
+            .map_err(|_| Report::new(NodeError).attach("invalid validation regex"))?;
         let retry_prompt = self
             .retry_prompt
             .as_deref()
@@ -250,13 +249,11 @@ impl WorkflowNode for LlmNode {
         });
 
         if self.validation_regex.is_some() {
-            config["validation_regex"] = serde_json::Value::String(
-                self.validation_regex.clone().unwrap_or_default(),
-            );
+            config["validation_regex"] =
+                serde_json::Value::String(self.validation_regex.clone().unwrap_or_default());
             config["max_retries"] = serde_json::Value::Number(self.max_retries.into());
-            config["retry_prompt"] = serde_json::Value::String(
-                self.retry_prompt.clone().unwrap_or_default(),
-            );
+            config["retry_prompt"] =
+                serde_json::Value::String(self.retry_prompt.clone().unwrap_or_default());
         }
 
         Some(config)
@@ -344,8 +341,11 @@ mod tests {
     #[tokio::test]
     async fn valid_response_passes_first_try() {
         // Given an LlmNode with validation that matches "YES".
-        let node = LlmNode::new("You are a judge.")
-            .with_validation(r"^YES$", 3, "Respond with YES or NO only.");
+        let node = LlmNode::new("You are a judge.").with_validation(
+            r"^YES$",
+            3,
+            "Respond with YES or NO only.",
+        );
         let ctx = MockContext::new(vec!["YES".to_owned()]);
 
         // When executing.
@@ -361,8 +361,8 @@ mod tests {
     async fn invalid_response_triggers_retry() {
         // Given an LlmNode with validation.
         // Mock returns invalid first, then valid.
-        let node = LlmNode::new("Judge.")
-            .with_validation(r"^YES$", 2, "Respond with YES or NO only.");
+        let node =
+            LlmNode::new("Judge.").with_validation(r"^YES$", 2, "Respond with YES or NO only.");
         // Responses are popped from the end (stack), so last = first call.
         let ctx = MockContext::new(vec!["YES".to_owned(), "yes, but...".to_owned()]);
 
@@ -378,8 +378,7 @@ mod tests {
     #[tokio::test]
     async fn exhausts_all_retries_returns_error() {
         // Given an LlmNode with max_retries = 1 (2 total attempts).
-        let node = LlmNode::new("Judge.")
-            .with_validation(r"^YES$", 1, "Try again.");
+        let node = LlmNode::new("Judge.").with_validation(r"^YES$", 1, "Try again.");
         // Both responses are invalid.
         let ctx = MockContext::new(vec!["maybe".to_owned(), "I think so".to_owned()]);
 
@@ -394,8 +393,7 @@ mod tests {
     #[tokio::test]
     async fn zero_max_retries_single_attempt() {
         // Given an LlmNode with max_retries = 0 (1 attempt only).
-        let node = LlmNode::new("Judge.")
-            .with_validation(r"^YES$", 0, "Try again.");
+        let node = LlmNode::new("Judge.").with_validation(r"^YES$", 0, "Try again.");
         let ctx = MockContext::new(vec!["nope".to_owned()]);
 
         // When executing.
@@ -409,8 +407,7 @@ mod tests {
     #[tokio::test]
     async fn retry_prompt_contains_original_and_correction() {
         // Given an LlmNode with validation.
-        let node = LlmNode::new("Judge.")
-            .with_validation(r"^YES$", 1, "Respond YES or NO.");
+        let node = LlmNode::new("Judge.").with_validation(r"^YES$", 1, "Respond YES or NO.");
         // First invalid, second valid.
         let ctx = MockContext::new(vec!["YES".to_owned(), "maybe".to_owned()]);
 
@@ -439,8 +436,7 @@ mod tests {
     #[tokio::test]
     async fn case_insensitive_regex_matches() {
         // Given an LlmNode with a case-insensitive regex.
-        let node = LlmNode::new("Judge.")
-            .with_validation(r"(?i)^yes$", 0, "Try again.");
+        let node = LlmNode::new("Judge.").with_validation(r"(?i)^yes$", 0, "Try again.");
         let ctx = MockContext::new(vec!["yes".to_owned()]);
 
         // When executing with lowercase "yes".
@@ -455,8 +451,7 @@ mod tests {
     #[test]
     fn config_includes_validation_when_configured() {
         // Given an LlmNode with validation.
-        let node = LlmNode::new("Judge.")
-            .with_validation(r"^YES$", 3, "Try again.");
+        let node = LlmNode::new("Judge.").with_validation(r"^YES$", 3, "Try again.");
 
         // When getting config.
         let config = node.config().expect("should have config");

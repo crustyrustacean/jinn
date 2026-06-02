@@ -74,7 +74,10 @@ mod tests {
 
     #[rstest::rstest]
     fn lookup_compact_all_returns_compact_all() {
-        assert_eq!(SlashCommand::lookup("compact-all"), Some(SlashCommand::CompactAll));
+        assert_eq!(
+            SlashCommand::lookup("compact-all"),
+            Some(SlashCommand::CompactAll)
+        );
     }
 
     #[rstest::rstest]
@@ -84,7 +87,10 @@ mod tests {
 
     #[rstest::rstest]
     fn lookup_workflow_returns_workflow() {
-        assert_eq!(SlashCommand::lookup("workflow"), Some(SlashCommand::Workflow));
+        assert_eq!(
+            SlashCommand::lookup("workflow"),
+            Some(SlashCommand::Workflow)
+        );
     }
 
     #[rstest::rstest]

@@ -225,7 +225,11 @@ fn section_has_cursor(id: SidebarSectionId, state: &AppState) -> bool {
     match id {
         SidebarSectionId::Persona => state.frontend.persona_section.cursor.is_some(),
         SidebarSectionId::Pins => state.frontend.pins.selected_id().is_some(),
-        SidebarSectionId::TaskList => state.frontend.task_list_section.selected_phase_index.is_some(),
+        SidebarSectionId::TaskList => state
+            .frontend
+            .task_list_section
+            .selected_phase_index
+            .is_some(),
         SidebarSectionId::Sessions => state.frontend.sessions_section.selected_index.is_some(),
     }
 }

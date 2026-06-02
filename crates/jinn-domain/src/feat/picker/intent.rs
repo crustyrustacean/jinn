@@ -185,7 +185,11 @@ fn reset_preview_scroll(state: &mut AppState) {
 pub fn handle_preview_scroll_up(state: &mut AppState) -> IntentResult {
     let page_size = preview_page_size(state);
     state.frontend.set_skill_preview_scroll(
-        state.frontend.skill_preview_scroll().saturating_sub(page_size));
+        state
+            .frontend
+            .skill_preview_scroll()
+            .saturating_sub(page_size),
+    );
     IntentResult::empty()
 }
 
@@ -193,7 +197,11 @@ pub fn handle_preview_scroll_up(state: &mut AppState) -> IntentResult {
 pub fn handle_preview_scroll_down(state: &mut AppState) -> IntentResult {
     let page_size = preview_page_size(state);
     state.frontend.set_skill_preview_scroll(
-        state.frontend.skill_preview_scroll().saturating_add(page_size));
+        state
+            .frontend
+            .skill_preview_scroll()
+            .saturating_add(page_size),
+    );
     IntentResult::empty()
 }
 
@@ -426,7 +434,10 @@ fn load_lifecycle_picker_entries(state: &mut AppState) {
         });
     }
 
-    state.frontend.session_lifecycle_picker_mut().set_items(entries);
+    state
+        .frontend
+        .session_lifecycle_picker_mut()
+        .set_items(entries);
 }
 
 /// Confirms the selected session lifecycle.
@@ -572,7 +583,10 @@ pub fn handle_tool_toggle(state: &mut AppState) -> IntentResult {
     state.frontend.tool_picker_mut().with_selected_mut(|entry| {
         entry.enabled = !entry.enabled;
     });
-    state.frontend.tool_picker_mut().move_down(PICKER_MAX_VISIBLE);
+    state
+        .frontend
+        .tool_picker_mut()
+        .move_down(PICKER_MAX_VISIBLE);
     IntentResult::empty()
 }
 
@@ -628,10 +642,16 @@ fn confirm_skill(state: &mut AppState) -> IntentResult {
 
 /// Toggles the `enabled` state of the currently selected skill entry.
 pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
-    state.frontend.skill_picker_mut().with_selected_mut(|entry| {
-        entry.enabled = !entry.enabled;
-    });
-    state.frontend.skill_picker_mut().move_down(PICKER_MAX_VISIBLE);
+    state
+        .frontend
+        .skill_picker_mut()
+        .with_selected_mut(|entry| {
+            entry.enabled = !entry.enabled;
+        });
+    state
+        .frontend
+        .skill_picker_mut()
+        .move_down(PICKER_MAX_VISIBLE);
     IntentResult::empty()
 }
 
@@ -650,9 +670,9 @@ mod tests {
         let mut state = AppState::default();
         let origin = ChatSessionState::new();
         state.session.insert(origin);
-        state.session.set_active(
-            state.session.active_session_id().clone(),
-        );
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
 
         // Add an unavailable provider entry to the picker and select it.
         let entry = crate::protocol::PickerEntry {
@@ -684,9 +704,9 @@ mod tests {
         let mut state = AppState::default();
         let origin = ChatSessionState::new();
         state.session.insert(origin);
-        state.session.set_active(
-            state.session.active_session_id().clone(),
-        );
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
 
         let entry = crate::protocol::PickerEntry {
             provider_id: "ollama/llama3".to_owned(),
@@ -720,9 +740,9 @@ mod tests {
         let mut state = AppState::default();
         let origin = ChatSessionState::new();
         state.session.insert(origin);
-        state.session.set_active(
-            state.session.active_session_id().clone(),
-        );
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
 
         // Add two personas to context.
         state.context.personas = vec![
@@ -763,7 +783,11 @@ mod tests {
 
         // Then the active persona is "writer", not "coder".
         assert_eq!(
-            state.context.active_persona.as_ref().map(|p| p.name.as_str()),
+            state
+                .context
+                .active_persona
+                .as_ref()
+                .map(|p| p.name.as_str()),
             Some("writer"),
             "confirm_persona should set the correct persona"
         );
@@ -780,9 +804,9 @@ mod tests {
         let mut state = AppState::default();
         let origin = ChatSessionState::new();
         state.session.insert(origin);
-        state.session.set_active(
-            state.session.active_session_id().clone(),
-        );
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
 
         // Add two lifecycles with args ($1) to preferences.
         state.frontend.preferences.session_lifecycles = vec![
@@ -848,7 +872,11 @@ mod tests {
 
         // Then the picker has entries (blank + project-a = 2).
         let items = state.frontend.session_lifecycle_picker().items();
-        assert_eq!(items.len(), 2, "should have blank + 1 lifecycle = 2 entries");
+        assert_eq!(
+            items.len(),
+            2,
+            "should have blank + 1 lifecycle = 2 entries"
+        );
         assert_eq!(items[0].name, "blank");
         assert_eq!(items[1].name, "project-a");
     }
@@ -862,9 +890,9 @@ mod tests {
         let mut state = AppState::default();
         let origin = ChatSessionState::new();
         state.session.insert(origin);
-        state.session.set_active(
-            state.session.active_session_id().clone(),
-        );
+        state
+            .session
+            .set_active(state.session.active_session_id().clone());
 
         state.context.skills = vec![
             Skill {
@@ -905,9 +933,9 @@ mod tests {
     fn load_skill_picker_entries_marks_disabled() {
         // Given state with "web-coder" disabled.
         let mut state = setup_state_with_skills();
-        state.active_session_mut().set_disabled_skills(
-            std::collections::HashSet::from(["web-coder".to_owned()]),
-        );
+        state
+            .active_session_mut()
+            .set_disabled_skills(std::collections::HashSet::from(["web-coder".to_owned()]));
 
         // When loading skill picker entries.
         load_skill_picker_entries(&mut state);
@@ -933,7 +961,10 @@ mod tests {
 
         // Then the session's disabled_skills contains "web-coder".
         let disabled = state.active_session().disabled_skills().clone();
-        assert_eq!(disabled, std::collections::HashSet::from(["web-coder".to_owned()]));
+        assert_eq!(
+            disabled,
+            std::collections::HashSet::from(["web-coder".to_owned()])
+        );
     }
 
     #[rstest::rstest]

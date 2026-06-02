@@ -63,8 +63,7 @@ fn source_and_sink_graph() -> WorkflowGraph {
 
 /// Helper: inserts a workflow into state and returns it.
 fn insert_workflow(state: &mut AppState, graph: WorkflowGraph) {
-    let execution =
-        std::sync::Arc::new(jinn_workflow::execution::WorkflowExecution::new(graph));
+    let execution = std::sync::Arc::new(jinn_workflow::execution::WorkflowExecution::new(graph));
     let workflow_state = WorkflowState::new("test".to_owned(), execution);
     state.workflow.insert(workflow_state);
 }

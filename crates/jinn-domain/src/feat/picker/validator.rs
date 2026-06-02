@@ -120,7 +120,10 @@ mod tests {
 
         let result = validate_picker_confirm(&state);
 
-        assert!(result.is_err(), "should reject confirm when no picker is active");
+        assert!(
+            result.is_err(),
+            "should reject confirm when no picker is active"
+        );
     }
 
     #[rstest::rstest]
@@ -128,10 +131,9 @@ mod tests {
         // Kills: replace validate_open_picker with Ok(()).
         // If the validator always returned Ok, nested pickers would be allowed.
         let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::Picker { kind: PickerKind::Provider });
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Provider,
+        });
 
         let result = validate_open_picker(&state, &PickerKind::Session);
 
@@ -145,6 +147,9 @@ mod tests {
 
         let result = validate_open_picker(&state, &PickerKind::Provider);
 
-        assert!(result.is_ok(), "should allow opening picker when none is active");
+        assert!(
+            result.is_ok(),
+            "should allow opening picker when none is active"
+        );
     }
 }

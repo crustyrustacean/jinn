@@ -1582,7 +1582,10 @@ fn hash_autocomplete_populates_matches_from_template_store() {
 
     // Then autocomplete is active with non-empty matches.
     let ac = state.active_chat_input().autocomplete();
-    assert!(ac.is_some(), "autocomplete should activate on '#' with templates");
+    assert!(
+        ac.is_some(),
+        "autocomplete should activate on '#' with templates"
+    );
     let matches = ac.as_ref().unwrap().matches();
     assert!(
         !matches.is_empty(),

@@ -12,6 +12,7 @@ use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::session::chat_entry::ChatEntryKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
+use crate::feat::ui::picker_states::PickerExt;
 use crate::feat::workflow::domain_node_context::DomainNodeContext;
 use crate::feat::workflow::protocol::command::{
     CancelWorkflow, InitWorkflow, LoadWorkflowPickerEntries, RerunFromNode, StartWorkflow,
@@ -22,7 +23,6 @@ use crate::feat::workflow::protocol::event::{
 use crate::feat::workflow::workflow_registry::WorkflowRegistry;
 use crate::feat::workflow::workflow_state::WorkflowState;
 use crate::protocol::{Command, Event};
-use crate::feat::ui::picker_states::PickerExt;
 
 /// The workflow actor.
 ///
@@ -129,9 +129,7 @@ impl WorkflowActor {
         }
 
         // Build the graph once and wrap in a WorkflowExecution.
-        let execution = Arc::new(jinn_workflow::execution::WorkflowExecution::new(
-            builder(),
-        ));
+        let execution = Arc::new(jinn_workflow::execution::WorkflowExecution::new(builder()));
 
         // Create workflow state with the shared execution.
         let mut workflow_state = WorkflowState::new(name.clone(), execution.clone());
@@ -210,12 +208,9 @@ impl WorkflowActor {
         let workflow_id_clone = workflow_id.clone();
 
         tokio::spawn(async move {
-            let result = jinn_workflow::engine::execute_with_cancel(
-                execution,
-                domain_ctx.clone(),
-                cancel,
-            )
-            .await;
+            let result =
+                jinn_workflow::engine::execute_with_cancel(execution, domain_ctx.clone(), cancel)
+                    .await;
 
             match result {
                 Ok(workflow_result) => {
@@ -417,7 +412,7 @@ impl WorkflowActor {
             })
             .collect();
 
-    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
         self.state
             .write()

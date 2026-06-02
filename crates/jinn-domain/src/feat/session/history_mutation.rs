@@ -33,7 +33,5 @@ pub enum HistoryMutation {
         position: PinPosition,
     },
     /// Remove the pin from an entry.
-    UnpinEntry {
-        entry_id: ChatEntryId,
-    },
+    UnpinEntry { entry_id: ChatEntryId },
 }

@@ -129,7 +129,6 @@ pub fn assemble_prompt(
         });
     }
 
-
     // Apply overrides: tool context block.
     let tool_block = if overrides.is_some_and(|o| o.tool_definitions.is_some()) {
         let defs = overrides
@@ -681,7 +680,6 @@ mod tests {
         assert_eq!(result_none.tool_definitions[0].name, "bash");
     }
 
-
     #[test]
     fn assemble_prompt_excludes_disabled_tools_from_tool_definitions() {
         // Given a session with tools and some disabled.
@@ -716,7 +714,11 @@ mod tests {
         let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
         // Then only enabled tools appear in tool definitions.
-        let tool_names: Vec<&str> = result.tool_definitions.iter().map(|t| t.name.as_str()).collect();
+        let tool_names: Vec<&str> = result
+            .tool_definitions
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
         assert!(
             !tool_names.contains(&"bash"),
             "disabled bash should be excluded, got: {tool_names:?}"
@@ -791,9 +793,7 @@ mod tests {
                 .session
                 .get_mut(&session_id)
                 .expect("session exists")
-                .set_disabled_skills(
-                    std::collections::HashSet::from(["web-coder".to_owned()]),
-                );
+                .set_disabled_skills(std::collections::HashSet::from(["web-coder".to_owned()]));
         }
 
         // When assembling the prompt.
@@ -859,7 +859,6 @@ mod tests {
         assert_eq!(result.tool_definitions.len(), 1);
         assert_eq!(result.tool_definitions[0].name, "bash");
     }
-
 
     // --- Mutant-killing tests ---
 
@@ -975,10 +974,7 @@ mod tests {
             .messages
             .iter()
             .find(|m| matches!(m, LlmMessage::System { .. }));
-        assert!(
-            system_msg.is_some(),
-            "should have a system message"
-        );
+        assert!(system_msg.is_some(), "should have a system message");
         if let LlmMessage::System { content } = system_msg.expect("checked") {
             assert!(content.contains("System stuff"));
         }

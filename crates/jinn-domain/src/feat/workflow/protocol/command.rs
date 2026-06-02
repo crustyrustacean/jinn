@@ -103,4 +103,3 @@ pub struct TriggerWorkflow {
 pub struct FireBeforeTurn {
     pub session_id: SessionId,
 }
-

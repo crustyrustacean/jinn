@@ -79,7 +79,6 @@ impl SessionStore for FakeSessionStore {
     ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
         Ok(Vec::new())
     }
-
 }
 
 /// A builder for constructing [Services] with fake implementations for tests.

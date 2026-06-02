@@ -32,7 +32,8 @@ pub fn to_lines(
     let muted_style = Style::default().fg(ctx.theme.muted_text).bg(bg);
 
     // Header line (always shown).
-    let header_text = format!("📜 Compacted {entries_compacted} messages (~{tokens_before} tokens)");
+    let header_text =
+        format!("📜 Compacted {entries_compacted} messages (~{tokens_before} tokens)");
     let mut header_line = Line::from(Span::styled(header_text, muted_style));
     pad_line_to_width(&mut header_line, ctx.content_width, bg_style);
 

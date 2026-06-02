@@ -247,8 +247,8 @@ mod tests {
         let call = ToolCall {
             id: "call-1".to_owned(),
             name: "todo_postpone_to_phase".to_owned(),
-            arguments:
-                serde_json::json!({"task_id": t1, "phase_description": "Testing"}).to_string(),
+            arguments: serde_json::json!({"task_id": t1, "phase_description": "Testing"})
+                .to_string(),
         };
         let ctx = make_context(Some(state), Some(session_id));
         let result = execute(call, ctx);

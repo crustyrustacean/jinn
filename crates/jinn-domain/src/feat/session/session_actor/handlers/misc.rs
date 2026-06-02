@@ -3,12 +3,12 @@
 //! Handles pushing model refresh results as transient markdown entries to the chat log,
 //! and loading session picker entries from the session store into app state.
 
+use super::super::SessionPersistenceActor;
 use crate::feat::provider::protocol::event::ModelsRefreshed;
 use crate::feat::session::phase_machine::PhaseKind;
-use crate::feat::ui::picker_states::PickerExt;
-use super::super::SessionPersistenceActor;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
+use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::ChatEntry;
 
 impl SessionPersistenceActor {
@@ -40,7 +40,8 @@ impl SessionPersistenceActor {
         &self,
         _payload: &LoadSessionPickerEntries,
     ) {
-        if let Some(ref store) = self.store {
+        {
+            let store = &self.services.session_store;
             let theme = {
                 let state = self.state.read();
                 state.frontend.theme.clone()
@@ -136,10 +137,10 @@ mod tests {
     use super::super::super::helpers::{test_actor, test_actor_with_store};
     use crate::feat::provider::protocol::event::ModelsRefreshed;
     use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
+    use crate::feat::ui::picker_states::PickerExt;
     use crate::protocol::{ChatEntryKind, SessionId};
     use jinn_provider::ModelInfo;
     use std::collections::HashMap;
-    use crate::feat::ui::picker_states::PickerExt;
 
     // --- on_models_refreshed ---
 

@@ -217,6 +217,10 @@ mod tests {
             vec![PortDef::text("out")],
             |_inputs, _ctx| Box::pin(async { Ok(PortValues::new()) }),
         );
-        assert_eq!(node.name(), "my_custom_node", "must return actual name, not empty or xyzzy");
+        assert_eq!(
+            node.name(),
+            "my_custom_node",
+            "must return actual name, not empty or xyzzy"
+        );
     }
 }

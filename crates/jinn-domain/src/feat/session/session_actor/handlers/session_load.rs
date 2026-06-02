@@ -92,8 +92,6 @@ impl SessionPersistenceActor {
             ));
         }
 
-
-
         // Persist the restored session.
         self.save_active_session(&session_id).await;
     }
@@ -108,10 +106,7 @@ impl SessionPersistenceActor {
         payload: &SessionForkRequested,
         ctx: &ActorContext,
     ) {
-        let Some(store) = &self.store else {
-            tracing::warn!("session-actor has no store - dropping fork request");
-            return;
-        };
+        let store = &self.services.session_store;
 
         // Fork in SQLite.
         let new_id = match store
@@ -136,7 +131,13 @@ impl SessionPersistenceActor {
 
                 // Run the user-facing restore flow.
                 // Re-read from state since load_and_insert consumed the session.
-                let session = self.state.read().session.get(&new_id).expect("just inserted").clone();
+                let session = self
+                    .state
+                    .read()
+                    .session
+                    .get(&new_id)
+                    .expect("just inserted")
+                    .clone();
                 let payload = SessionLoadCompleted { session };
                 self.handle_session_load_completed(&payload, ctx).await;
             }
@@ -209,9 +210,7 @@ mod tests {
         let payload = SessionLoadCompleted { session };
 
         // When handling SessionLoadCompleted.
-        actor
-            .handle_session_load_completed(&payload, &ctx)
-            .await;
+        actor.handle_session_load_completed(&payload, &ctx).await;
 
         // Then the session has been marked as interacted (it came from disk).
         let state = actor.state.read();

@@ -9,7 +9,7 @@ use crate::common::actor::scan_actor::NoDirectMsg;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope};
 use crate::common::state::State;
 use crate::feat::context::strategy::token_estimator::{
-    TokenCounter, TokenEstimator, TiktokenCounter, estimate_entry_tokens,
+    TiktokenCounter, TokenCounter, TokenEstimator, estimate_entry_tokens,
 };
 use crate::feat::session::protocol::history_appended::HistoryAppended;
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;

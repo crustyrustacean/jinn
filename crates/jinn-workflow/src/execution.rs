@@ -606,7 +606,10 @@ mod tests {
         let snapshot = execution.snapshot();
         let count = snapshot.node_states().count();
         // Kills: node_states -> iter::empty()
-        assert_eq!(count, 3, "node_states() must yield all 3 nodes, not be empty");
+        assert_eq!(
+            count, 3,
+            "node_states() must yield all 3 nodes, not be empty"
+        );
     }
 
     #[rstest::rstest]
@@ -616,7 +619,10 @@ mod tests {
         // Kills: Debug fmt -> Ok(Default::default())
         let debug_str = format!("{execution:?}");
         assert!(!debug_str.is_empty(), "Debug output must not be empty");
-        assert!(debug_str.contains("node_count"), "Debug must contain node_count");
+        assert!(
+            debug_str.contains("node_count"),
+            "Debug must contain node_count"
+        );
     }
 
     #[rstest::rstest]

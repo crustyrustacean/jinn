@@ -257,10 +257,7 @@ mod tests {
 
         // Then the rendered output contains both the name and description.
         let rendered = line.to_string();
-        assert!(
-            rendered.contains("bash"),
-            "row should contain tool name"
-        );
+        assert!(rendered.contains("bash"), "row should contain tool name");
         assert!(
             rendered.contains("run shell"),
             "row should contain tool description"

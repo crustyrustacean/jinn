@@ -44,7 +44,6 @@ use crate::feat::tools_actor::protocol::event::{
 use crate::init::EnvironmentLoaded;
 use crate::protocol::{Command, Event};
 
-use super::SessionStoreService;
 use crate::SessionForkRequested;
 use crate::SessionLoadRequested;
 
@@ -57,9 +56,7 @@ pub struct SessionPersistenceActor {
     /// Shared application state.
     pub(in crate::feat::session::session_actor) state: State,
     /// Runtime services (user preferences storage for startup config loading).
-    pub(in crate::feat::session::session_actor) services: Option<Services>,
-    /// The session store service for writing session snapshots.
-    pub(in crate::feat::session::session_actor) store: Option<SessionStoreService>,
+    pub(in crate::feat::session::session_actor) services: Services,
     /// Token counter for recording token usage in the session ledger.
     pub(in crate::feat::session::session_actor) counter: TiktokenCounter,
     /// Registry of builtin lifecycle handlers.
@@ -79,9 +76,7 @@ pub struct SessionPersistenceActorDeps {
     /// Shared application state.
     pub state: State,
     /// Runtime services.
-    pub services: Option<Services>,
-    /// Session persistence store.
-    pub store: Option<SessionStoreService>,
+    pub services: Services,
     /// Token counter for usage tracking.
     pub counter: TiktokenCounter,
     /// Registry of builtin lifecycle handlers.
@@ -112,7 +107,6 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown>();
         ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::FinishSessionSetup>();
         ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand>();
-
 
         ctx.subscribe_command::<PersistSession>();
         ctx.subscribe_command::<CloseSession>();
@@ -147,13 +141,11 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_event::<crate::feat::provider::protocol::event::PromptTemplatesLoaded>();
         ctx.subscribe_event::<crate::feat::context::protocol::event::PersonasLoaded>();
 
-
         ctx.set_description("Session lifecycle and persistence");
 
         Self {
             state: deps.state,
             services: deps.services,
-            store: deps.store,
             counter: deps.counter,
             builtin_registry: deps.builtin_registry,
             shell: deps.shell,
@@ -280,7 +272,6 @@ impl SessionPersistenceActor {
                 self.handle_cancel_lifecycle_command(payload, ctx);
             }
 
-
             Command::MarkSessionInteracted(payload) => {
                 self.handle_mark_session_interacted(payload, ctx).await;
             }
@@ -307,9 +298,7 @@ impl SessionPersistenceActor {
             | Command::CancelWorkflow(..)
             | Command::RerunFromNode(..)
             | Command::LoadWorkflowPickerEntries(..)
-
             | Command::LoadCompactionModelPickerEntries(..)
-
             | Command::TriggerCompaction(..)
             | Command::Dynamic(..)
             | Command::ExecuteWebFetch(..)
@@ -318,7 +307,6 @@ impl SessionPersistenceActor {
             | Command::ToggleWorkflow(..)
             | Command::TriggerWorkflow(..)
             | Command::FireBeforeTurn(..) => {}
-
         }
     }
 }
@@ -328,9 +316,9 @@ mod dispatch_tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::common::actor::ActorEnvelope;
+    use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
     use crate::feat::provider::protocol::event::StreamToken;
     use crate::feat::tools_actor::protocol::event::ToolCallReceived;
-    use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
     use crate::protocol::{Command, Event};
 
     fn test_actor() -> SessionPersistenceActor {
@@ -340,8 +328,7 @@ mod dispatch_tests {
 
         SessionPersistenceActor {
             state: State::new(AppState::default()),
-            services: None,
-            store: None,
+            services: crate::common::services::Services::new(),
             counter: TiktokenCounter::o200k_base(),
             builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
             shell: "/bin/sh".to_owned(),
@@ -377,9 +364,7 @@ mod dispatch_tests {
             token: "hello".to_owned(),
             is_thinking: false,
         });
-        actor
-            .handle(ActorEnvelope::Event(event), &ctx)
-            .await;
+        actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
         // Then the handler was invoked (session still streaming = no crash).
         let state = actor.state.read();
@@ -404,9 +389,7 @@ mod dispatch_tests {
                 arguments: "{}".to_owned(),
             },
         });
-        actor
-            .handle(ActorEnvelope::Event(event), &ctx)
-            .await;
+        actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
         // Then the handler was invoked (no panic = dispatch worked).
     }
@@ -423,9 +406,7 @@ mod dispatch_tests {
             session_id: session_id.clone(),
             entry: crate::protocol::ChatEntry::user("hello world"),
         });
-        actor
-            .handle(ActorEnvelope::Command(cmd), &ctx)
-            .await;
+        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
         // Then the handler was invoked (no panic = dispatch worked).
     }
@@ -442,9 +423,7 @@ mod dispatch_tests {
             results: std::collections::HashMap::new(),
             errors: std::collections::HashMap::new(),
         });
-        actor
-            .handle(ActorEnvelope::Event(event), &ctx)
-            .await;
+        actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
         // Then no panic (dispatch to on_models_refreshed worked).
     }
@@ -463,9 +442,7 @@ mod dispatch_tests {
                 default_provider: None,
             },
         });
-        actor
-            .handle(ActorEnvelope::Event(event), &ctx)
-            .await;
+        actor.handle(ActorEnvelope::Event(event), &ctx).await;
 
         // Then no panic (dispatch to on_environment_loaded worked).
     }

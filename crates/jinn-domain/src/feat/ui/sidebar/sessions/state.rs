@@ -81,18 +81,16 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
         })
         .map(|(id, session)| {
             SessionEntry {
-
                 kind: SessionEntryKind::Session,
                 id: id.clone(),
                 title: session.title().unwrap_or("Untitled Session").to_owned(),
                 is_active: id == active_id,
                 created_at: *session.created_at(),
-                is_idle: matches!(session.phase(), PhaseKind::Idle),
+                is_idle: matches!(session.phase(), PhaseKind::Idle) && !session.is_busy(),
                 last_entry_is_error: session
                     .history()
                     .last()
                     .is_some_and(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::Error(..))),
-
                 parent_id: session.parent_session().clone(),
                 depth: 0,
                 ancestor_continuations: vec![],

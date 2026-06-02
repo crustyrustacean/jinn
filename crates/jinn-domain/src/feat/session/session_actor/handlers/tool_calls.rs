@@ -228,7 +228,10 @@ mod tests {
     use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::feat::session::token_stats::TokenRecord;
-    use crate::feat::tools_actor::protocol::event::{ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionStarted, ToolExecutionOutput, ToolUseStarted};
+    use crate::feat::tools_actor::protocol::event::{
+        ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionOutput,
+        ToolExecutionStarted, ToolUseStarted,
+    };
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
     use crate::protocol::{ChatEntry, ChatEntryKind, Command, Event};
 
@@ -346,7 +349,6 @@ mod tests {
             ledger[0].tokens_received
         );
     }
-
 
     #[tokio::test]
     async fn on_tool_execution_completed_emits_history_appended() {
@@ -546,7 +548,8 @@ mod tests {
                 id: "tc-1".to_owned(),
                 name: "bash".to_owned(),
                 arguments: r#"{"command":"ls"}
-"#.to_owned(),
+"#
+                .to_owned(),
             },
         });
 
@@ -559,7 +562,10 @@ mod tests {
             .find(|e| matches!(&e.kind, ChatEntryKind::ToolCall { id, .. } if id == "tc-1"))
             .expect("tool call entry");
         if let ChatEntryKind::ToolCall { arguments, .. } = &tc.kind {
-            assert!(arguments.contains("ls"), "expected arguments to contain 'ls', got: {arguments}");
+            assert!(
+                arguments.contains("ls"),
+                "expected arguments to contain 'ls', got: {arguments}"
+            );
         }
     }
 
@@ -675,9 +681,6 @@ mod tests {
 
     // --- Phase 7: Comprehensive tool batch transition tests ---
 
-
-
-
     // --- Phase 2: History mutation application hooks ---
 
     #[tokio::test]
@@ -740,10 +743,11 @@ mod tests {
         let has_send = commands
             .iter()
             .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(has_send, "expected SendToLlmProvider after mutation application");
+        assert!(
+            has_send,
+            "expected SendToLlmProvider after mutation application"
+        );
     }
-
-
 
     #[tokio::test]
     async fn on_tool_batch_completed_empty_mutation_queue_is_noop() {
@@ -782,6 +786,9 @@ mod tests {
         let has_send = commands
             .iter()
             .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(has_send, "expected SendToLlmProvider with empty mutation queue");
+        assert!(
+            has_send,
+            "expected SendToLlmProvider with empty mutation queue"
+        );
     }
 }

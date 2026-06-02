@@ -41,7 +41,6 @@ fn tree_entry(
     }
 }
 
-
 fn default_theme() -> crate::feat::theme::Theme {
     AppState::default().frontend.theme
 }
