@@ -156,7 +156,15 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("n", Intent::SessionNew, KeyCategory::General)
             .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::General)
             // Escape: cancel selection
-            .bind("<esc>", Intent::NormalEscape, KeyCategory::General);
+            .bind("<esc>", Intent::NormalEscape, KeyCategory::General)
+            // Unmapped character keys produce NoOp to dismiss confirmation prompts
+            .catch_all(|key: KeyEvent| {
+                if let Key::Char(_) = key.key {
+                    Some(Intent::NoOp)
+                } else {
+                    None
+                }
+            });
         })
         // Sidebar - Persona section
         .scope(Scope::SidebarPersona, |b| {
@@ -191,7 +199,15 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("c", Intent::SidebarSessionContinue, KeyCategory::General)
 
             // i activates session and enters insert mode (same as enter)
-            .bind("i", Intent::SidebarConfirm, KeyCategory::Input);
+            .bind("i", Intent::SidebarConfirm, KeyCategory::Input)
+            // Unmapped character keys produce NoOp to dismiss confirmation prompts
+            .catch_all(|key: KeyEvent| {
+                if let Key::Char(_) = key.key {
+                    Some(Intent::NoOp)
+                } else {
+                    None
+                }
+            });
         })
         // Sidebar - Task list section
         .scope(Scope::SidebarTaskList, |b| {
