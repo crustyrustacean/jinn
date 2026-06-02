@@ -42,8 +42,6 @@ impl SessionPersistenceActor {
                 loaded.model().to_owned()
             };
 
-            // Extract attached workflows before insert consumes the session.
-            let attached_workflows = loaded.core.attached_workflows.clone();
 
             // Insert loaded session into HashMap.
             state.session.insert(loaded);
@@ -54,37 +52,6 @@ impl SessionPersistenceActor {
                 &session_id,
             );
 
-            // Re-register attached workflows in the runtime workflow map.
-            // attached_workflows are persisted on the session, but WorkflowState
-            // (the execution graph) is ephemeral and must be rebuilt on load.
-            // Also reset Running → Ready (crash/restart safety).
-            for aw in &attached_workflows {
-                if state.workflow.get(&aw.id).is_some() {
-                    continue; // already registered (e.g. duplicate load)
-                }
-                let execution = std::sync::Arc::new(
-                    jinn_workflow::execution::WorkflowExecution::new(aw.config.build_graph()),
-                );
-                let mut wf_state =
-                    crate::feat::workflow::workflow_state::WorkflowState::new(
-                        aw.config.label().to_owned(),
-                        execution,
-                    );
-                wf_state.id = aw.id.clone();
-                state.workflow.register(wf_state);
-            }
-            // Reset Running → Ready for all attached workflows (crash/restart safety).
-            {
-                let session = state.session.get_mut(&session_id).expect("just inserted");
-                for aw in &mut session.core.attached_workflows {
-                    if matches!(aw.state,
-                        crate::feat::workflow::attached_workflow::AttachedWorkflowState::Running)
-                    {
-                        aw.state =
-                            crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready;
-                    }
-                }
-            }
 
             #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
             let session = state.session.get_mut(&session_id).expect("just inserted");
@@ -98,6 +65,12 @@ impl SessionPersistenceActor {
             state.session.set_active(session_id.clone());
             state.session.clear_load();
         }
+
+        // Re-register attached workflows in the runtime workflow map.
+        // Must be called after the write lock above is released, since
+        // rehydrate_attached_workflows acquires its own write lock.
+        self.rehydrate_attached_workflows(&session_id);
+
 
         // Validate CWD - fallback to default if non-existent on disk.
         // This check is async (tokio::fs), so it runs outside the state lock.
@@ -129,6 +102,56 @@ impl SessionPersistenceActor {
 
         // Persist the restored session.
         self.save_active_session(&session_id).await;
+    }
+
+    /// Re-registers attached workflows for a loaded session into the runtime WorkflowMap.
+    ///
+    /// WorkflowState (the execution graph) is ephemeral and must be rebuilt on load.
+    /// Also resets Running → Ready for crash/restart safety.
+    ///
+    /// Call this after inserting a session into the SessionMap.
+    /// Acquires its own write lock — do NOT call inside another write-lock scope.
+    pub(in crate::feat::session::session_actor) fn rehydrate_attached_workflows(
+        &self,
+        session_id: &crate::protocol::SessionId,
+    ) {
+        let mut state = self.state.write();
+        let Some(session) = state.session.get(session_id) else {
+            return;
+        };
+        let attached_workflows = session.core.attached_workflows.clone();
+        let _ = session; // release the shared borrow
+
+        // Re-register each workflow in the runtime WorkflowMap.
+        for aw in &attached_workflows {
+            if state.workflow.get(&aw.id).is_some() {
+                continue; // already registered (e.g. duplicate load)
+            }
+            let execution = std::sync::Arc::new(
+                jinn_workflow::execution::WorkflowExecution::new(aw.config.build_graph()),
+            );
+            let mut wf_state =
+                crate::feat::workflow::workflow_state::WorkflowState::new(
+                    aw.config.label().to_owned(),
+                    execution,
+                );
+            wf_state.id = aw.id.clone();
+            state.workflow.register(wf_state);
+        }
+
+        // Reset Running → Ready for all attached workflows (crash/restart safety).
+        let Some(session) = state.session.get_mut(session_id) else {
+            return;
+        };
+        for aw in &mut session.core.attached_workflows {
+            if matches!(
+                aw.state,
+                crate::feat::workflow::attached_workflow::AttachedWorkflowState::Running
+            ) {
+                aw.state =
+                    crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready;
+            }
+        }
     }
 
     /// SessionForkRequested: fork the session in SQLite, then load the new session.
@@ -272,11 +295,13 @@ mod tests {
                     n: 3,
                     result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
                 },
+                label: "Consensus".to_owned(),
                 trigger: crate::feat::workflow::attached_workflow::WorkflowTrigger::Manual,
                 enabled: true,
                 state: crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready,
             },
         );
+
         let session_id = session.session_id().clone();
 
         let actor = test_actor();
