@@ -502,9 +502,18 @@ fn confirm_workflow(state: &mut AppState) -> IntentResult {
         .frontend
         .scope_stack
         .swap_base(crate::common::app_state::FocusScope::Workflow);
-
+    let config = crate::feat::workflow::attached_workflow::WorkflowConfig::Custom(
+        serde_json::json!({"name": name}),
+    );
+    let session_id = state.session.active_session_id().clone();
     IntentResult::with_commands(vec![Command::InitWorkflow(
-        crate::feat::workflow::protocol::command::InitWorkflow { name, workflow_id },
+        crate::feat::workflow::protocol::command::InitWorkflow {
+            name,
+            workflow_id,
+            session_id,
+            config,
+            trigger: crate::feat::workflow::attached_workflow::WorkflowTrigger::Manual,
+        },
     )])
 }
 
