@@ -1923,7 +1923,7 @@ fn clear_visual_parents_on_load_actually_removes_entries() {
 // ---------------------------------------------------------------------------
 
 use crate::feat::workflow::attached_workflow::{
-    AttachedWorkflow, AttachedWorkflowState, ResultKind, WorkflowConfig, WorkflowTrigger,
+    AttachedWorkflow, ResultKind, WorkflowConfig, WorkflowTrigger,
 };
 use crate::feat::workflow::example::add_numbers;
 use crate::feat::workflow::workflow_state::{WorkflowId, WorkflowState};
@@ -1989,7 +1989,7 @@ fn navigate_to_workflow_entry_sets_preview() {
 fn navigate_away_from_workflow_clears_preview() {
     // Given cursor on a workflow entry with preview set.
     let (mut state, wf_id) = state_with_attached_workflow();
-    let sessions = sorted_open_sessions(&state);
+    let _sessions = sorted_open_sessions(&state);
     state.frontend.sessions_section.selected_index = Some(1); // workflow entry
     state.frontend.sessions_section.previewed_workflow_id = Some(wf_id);
 
