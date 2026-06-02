@@ -131,6 +131,7 @@ mod tests {
             AttachedWorkflow {
                 id: wf_id.clone(),
                 config: WorkflowConfig::Custom(serde_json::json!({})),
+                label: "Custom".to_owned(),
                 trigger: WorkflowTrigger::Manual,
                 enabled: true,
                 state: AttachedWorkflowState::Ready,
@@ -180,6 +181,7 @@ mod tests {
             AttachedWorkflow {
                 id: wf_id.clone(),
                 config: WorkflowConfig::Custom(serde_json::json!({})),
+                label: "Custom".to_owned(),
                 trigger: WorkflowTrigger::Manual,
                 enabled: true,
                 state: AttachedWorkflowState::Ready,

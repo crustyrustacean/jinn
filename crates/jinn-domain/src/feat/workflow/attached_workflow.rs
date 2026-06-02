@@ -22,6 +22,10 @@ pub struct AttachedWorkflow {
     pub id: WorkflowId,
     /// The configuration (kind + parameters) for this workflow.
     pub config: WorkflowConfig,
+    /// User-editable display label. Initialized from `config.label()` at construction.
+    /// Falls back to `config.label()` when empty (backward compat with old persisted data).
+    #[serde(default)]
+    pub label: String,
     /// When this workflow fires.
     pub trigger: WorkflowTrigger,
     /// Whether this attachment is active. `false` = skip on trigger.
@@ -34,12 +38,27 @@ impl AttachedWorkflow {
     /// Create a new attached workflow with Ready state and enabled=true.
     #[must_use]
     pub fn new(config: WorkflowConfig, trigger: WorkflowTrigger) -> Self {
+        let label = config.label().to_owned();
         Self {
             id: WorkflowId::new(),
             config,
+            label,
             trigger,
             enabled: true,
             state: AttachedWorkflowState::Ready,
+        }
+    }
+
+    /// Returns the display label, falling back to `config.label()` when empty.
+    ///
+    /// This handles backward compatibility with old persisted data that lacks
+    /// the `label` field — `#[serde(default)]` produces an empty string.
+    #[must_use]
+    pub fn label_or_default(&self) -> &str {
+        if self.label.is_empty() {
+            self.config.label()
+        } else {
+            &self.label
         }
     }
 }
@@ -457,6 +476,79 @@ mod tests {
 
     #[rstest::rstest]
     fn prompt_merge_strategy_default_is_replace() {
-        assert_eq!(PromptMergeStrategy::default(), PromptMergeStrategy::Replace);
+    assert_eq!(PromptMergeStrategy::default(), PromptMergeStrategy::Replace);
+    }
+
+
+    // --- Test 13: new_initializes_label_from_config ---
+
+    #[rstest::rstest]
+    fn new_initializes_label_from_config() {
+        let aw = AttachedWorkflow::new(
+            WorkflowConfig::Consensus {
+                n: 3,
+                result_kind: ResultKind::Assistant,
+            },
+            WorkflowTrigger::TurnEnd,
+        );
+        assert_eq!(aw.label, "Consensus");
+    }
+
+    // --- Test 14: label_or_default_returns_label_when_nonempty ---
+
+    #[rstest::rstest]
+    fn label_or_default_returns_label_when_nonempty() {
+        let mut aw = AttachedWorkflow::new(
+            WorkflowConfig::Consensus {
+                n: 3,
+                result_kind: ResultKind::Assistant,
+            },
+            WorkflowTrigger::TurnEnd,
+        );
+        aw.label = "My Custom Name".to_owned();
+        assert_eq!(aw.label_or_default(), "My Custom Name");
+    }
+
+    // --- Test 15: label_or_default_falls_back_to_config_label_when_empty ---
+
+    #[rstest::rstest]
+    fn label_or_default_falls_back_to_config_label_when_empty() {
+        let mut aw = AttachedWorkflow::new(
+            WorkflowConfig::Judge {
+                prompt: String::new(),
+                approval_tool: "task_complete".to_owned(),
+                result_kind: ResultKind::Silent,
+            },
+            WorkflowTrigger::TurnEnd,
+        );
+        // Simulate old persisted data: label is empty.
+        aw.label = String::new();
+        assert_eq!(aw.label_or_default(), "Judge");
+    }
+
+    // --- Test 16: deserialize_without_label_field_uses_default ---
+
+    // --- Test 16: deserialize_without_label_field_uses_default ---
+
+    #[rstest::rstest]
+    fn deserialize_without_label_field_uses_default() {
+        // Create a valid AttachedWorkflow, serialize it, remove the label field,
+        // then deserialize to verify backward compat.
+        let aw = AttachedWorkflow::new(
+            WorkflowConfig::Consensus {
+                n: 3,
+                result_kind: ResultKind::Assistant,
+            },
+            WorkflowTrigger::TurnEnd,
+        );
+        let mut val = serde_json::to_value(&aw).expect("serialize");
+        // Remove the label field to simulate old persisted data.
+        val.as_object_mut().expect("object").remove("label");
+        let back: AttachedWorkflow =
+            serde_json::from_value(val).expect("should deserialize");
+        // label defaults to empty string (serde default).
+        assert!(back.label.is_empty());
+        // But label_or_default() falls back to config label.
+        assert_eq!(back.label_or_default(), "Consensus");
     }
 }
