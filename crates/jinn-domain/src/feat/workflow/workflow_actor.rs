@@ -119,6 +119,15 @@ impl WorkflowActor {
             return;
         };
 
+        // Check session exists BEFORE inserting anything (atomicity).
+        {
+            let guard = self.state.read();
+            if guard.session.get(&payload.session_id).is_none() {
+                tracing::warn!(id = %payload.session_id, "session not found for workflow init");
+                return;
+            }
+        }
+
         // Build the graph once and wrap in a WorkflowExecution.
         let execution = Arc::new(jinn_workflow::execution::WorkflowExecution::new(
             builder(),
@@ -128,8 +137,26 @@ impl WorkflowActor {
         let mut workflow_state = WorkflowState::new(name.clone(), execution.clone());
         workflow_state.id = workflow_id.clone();
 
-        // Insert into app state.
+        // Insert WorkflowState into app state.
         self.state.write().workflow.insert(workflow_state);
+
+        // Create AttachedWorkflow on the session (shares the same WorkflowId).
+        {
+            let mut guard = self.state.write();
+            let Some(session) = guard.session.get_mut(&payload.session_id) else {
+                // Should not happen - we checked above. Defensive guard.
+                return;
+            };
+            session.core.attached_workflows.push(
+                crate::feat::workflow::attached_workflow::AttachedWorkflow {
+                    id: workflow_id.clone(),
+                    config: payload.config.clone(),
+                    trigger: payload.trigger.clone(),
+                    enabled: true,
+                    state: crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready,
+                },
+            );
+        }
 
         // Mark source nodes as AwaitingInput so the UI shows they need user data.
         {
@@ -470,22 +497,31 @@ mod tests {
         )
     }
 
+    fn test_init_workflow(name: &str, workflow_id: WorkflowId, session_id: SessionId) -> InitWorkflow {
+        use crate::feat::workflow::attached_workflow::WorkflowConfig;
+        InitWorkflow {
+            name: name.to_owned(),
+            workflow_id,
+            session_id,
+            config: WorkflowConfig::Custom(serde_json::json!({"name": name})),
+            trigger: crate::feat::workflow::attached_workflow::WorkflowTrigger::Manual,
+        }
+    }
+
     // --- handle_init_workflow ---
 
     #[rstest::rstest]
     fn handle_init_workflow_creates_state() {
-        // Given a fresh harness.
+        // Given a fresh harness with an active session.
         let mut h = TestHarness::new();
         let sink = h.sink.clone();
         let ctx = make_actor_context(&sink);
         let workflow_id = WorkflowId::new();
+        let session_id = h.state.read().session.active_session_id().clone();
 
         // When initializing a workflow.
         h.actor.handle_init_workflow(
-            &InitWorkflow {
-                name: "add-numbers".to_owned(),
-                workflow_id: workflow_id.clone(),
-            },
+            &test_init_workflow("add-numbers", workflow_id.clone(), session_id.clone()),
             &ctx,
         );
 
@@ -494,6 +530,10 @@ mod tests {
         let wf = guard.workflow.get(&workflow_id).expect("should exist");
         assert_eq!(wf.name, "add-numbers");
         assert!(wf.result.is_none());
+        // And the session has an attached workflow.
+        let session = guard.session.get(&session_id).expect("session exists");
+        assert_eq!(session.core.attached_workflows.len(), 1);
+        assert_eq!(session.core.attached_workflows[0].id, workflow_id);
     }
 
     #[rstest::rstest]
@@ -503,13 +543,11 @@ mod tests {
         let sink = h.sink.clone();
         let ctx = make_actor_context(&sink);
         let workflow_id = WorkflowId::new();
+        let session_id = h.state.read().session.active_session_id().clone();
 
         // When initializing a workflow.
         h.actor.handle_init_workflow(
-            &InitWorkflow {
-                name: "add-numbers".to_owned(),
-                workflow_id: workflow_id.clone(),
-            },
+            &test_init_workflow("add-numbers", workflow_id.clone(), session_id),
             &ctx,
         );
 
@@ -529,14 +567,12 @@ mod tests {
         let mut h = TestHarness::new();
         let sink = h.sink.clone();
         let ctx = make_actor_context(&sink);
+        let session_id = h.state.read().session.active_session_id().clone();
         let workflow_id = WorkflowId::new();
 
         // When initializing with an unknown name.
         h.actor.handle_init_workflow(
-            &InitWorkflow {
-                name: "nonexistent".to_owned(),
-                workflow_id: workflow_id.clone(),
-            },
+            &test_init_workflow("nonexistent", workflow_id.clone(), session_id),
             &ctx,
         );
 
@@ -553,12 +589,11 @@ mod tests {
         let mut h = TestHarness::new();
         let sink = h.sink.clone();
         let ctx = make_actor_context(&sink);
+        let session_id = h.state.read().session.active_session_id().clone();
         let workflow_id = WorkflowId::new();
         h.actor.handle_init_workflow(
-            &InitWorkflow {
-                name: "add-numbers".to_owned(),
-                workflow_id: workflow_id.clone(),
-            },
+
+            &test_init_workflow("add-numbers", workflow_id.clone(), session_id),
             &ctx,
         );
 
