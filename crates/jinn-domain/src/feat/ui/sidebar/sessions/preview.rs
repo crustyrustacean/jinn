@@ -18,7 +18,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
 use crate::common::app_state::{AppState, FocusScope};
 use crate::feat::provider_infra::NO_PROVIDER_ID;
-use crate::feat::session::chat_session::{ChatSessionState, SessionState};
+use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::theme::Theme;
 use crate::feat::ui::chat_log::entry_to_lines;
 use crate::feat::ui::chat_log::shared::RenderContext;
@@ -92,12 +92,8 @@ const DEFAULT_TOOL_ENTRY_MAX_LINES: u16 = 6;
 /// can determine where the sessions section starts without needing the
 /// section instance.
 pub fn sessions_section_content_height(state: &AppState) -> u16 {
-    let session_count = state
-        .session
-        .iter()
-        .filter(|(_, s)| s.session_state() == SessionState::Loaded)
-        .count() as u16;
-    let visible = session_count.min(MAX_VISIBLE_SESSIONS as u16);
+    let entry_count = sorted_open_sessions(state).len() as u16;
+    let visible = entry_count.min(MAX_VISIBLE_SESSIONS as u16);
     // entries(N).max(1) + footer(1)
     visible.max(1) + 1
 }
