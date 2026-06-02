@@ -42,6 +42,9 @@ impl SessionPersistenceActor {
                 loaded.model().to_owned()
             };
 
+            // Extract attached workflows before insert consumes the session.
+            let attached_workflows = loaded.core.attached_workflows.clone();
+
             // Insert loaded session into HashMap.
             state.session.insert(loaded);
 
@@ -50,6 +53,38 @@ impl SessionPersistenceActor {
                 &mut state,
                 &session_id,
             );
+
+            // Re-register attached workflows in the runtime workflow map.
+            // attached_workflows are persisted on the session, but WorkflowState
+            // (the execution graph) is ephemeral and must be rebuilt on load.
+            // Also reset Running → Ready (crash/restart safety).
+            for aw in &attached_workflows {
+                if state.workflow.get(&aw.id).is_some() {
+                    continue; // already registered (e.g. duplicate load)
+                }
+                let execution = std::sync::Arc::new(
+                    jinn_workflow::execution::WorkflowExecution::new(aw.config.build_graph()),
+                );
+                let mut wf_state =
+                    crate::feat::workflow::workflow_state::WorkflowState::new(
+                        aw.config.label().to_owned(),
+                        execution,
+                    );
+                wf_state.id = aw.id.clone();
+                state.workflow.register(wf_state);
+            }
+            // Reset Running → Ready for all attached workflows (crash/restart safety).
+            {
+                let session = state.session.get_mut(&session_id).expect("just inserted");
+                for aw in &mut session.core.attached_workflows {
+                    if matches!(aw.state,
+                        crate::feat::workflow::attached_workflow::AttachedWorkflowState::Running)
+                    {
+                        aw.state =
+                            crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready;
+                    }
+                }
+            }
 
             #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
             let session = state.session.get_mut(&session_id).expect("just inserted");
@@ -222,6 +257,49 @@ mod tests {
         assert!(
             loaded.is_persistable(),
             "loaded session should be persistable"
+        );
+    }
+
+    #[tokio::test]
+    async fn session_load_re_registers_attached_workflows_in_runtime_map() {
+        // Given a session with an attached workflow (simulating load from disk).
+        let mut session = ChatSessionState::new();
+        let wf_id = crate::feat::workflow::workflow_state::WorkflowId::new();
+        session.core.attached_workflows.push(
+            crate::feat::workflow::attached_workflow::AttachedWorkflow {
+                id: wf_id.clone(),
+                config: crate::feat::workflow::attached_workflow::WorkflowConfig::Consensus {
+                    n: 3,
+                    result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+                },
+                trigger: crate::feat::workflow::attached_workflow::WorkflowTrigger::Manual,
+                enabled: true,
+                state: crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready,
+            },
+        );
+        let session_id = session.session_id().clone();
+
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+
+        let payload = SessionLoadCompleted { session };
+
+        // When handling SessionLoadCompleted.
+        actor.handle_session_load_completed(&payload, &ctx).await;
+
+        // Then the workflow is registered in the runtime workflow map.
+        let state = actor.state.read();
+        assert!(
+            state.workflow.get(&wf_id).is_some(),
+            "attached workflow should be re-registered in state.workflow after load"
+        );
+
+        // And the session's attached_workflows list is preserved.
+        let loaded = state.session.get(&session_id).expect("session exists");
+        assert_eq!(
+            loaded.core.attached_workflows.len(),
+            1,
+            "attached_workflows list should still contain the workflow"
         );
     }
 }

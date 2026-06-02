@@ -106,8 +106,6 @@ impl Default for MinimapConfig {
     }
 }
 
-/// Default minimum number of in-context entries after an edit before pruning the read.
-const DEFAULT_READ_EDIT_MIN_TAIL_ENTRIES: usize = 10;
 
 /// Default enabled state for read-edit auto-prune.
 const DEFAULT_READ_EDIT_ENABLED: bool = true;
@@ -118,34 +116,24 @@ const DEFAULT_TODO_ENABLED: bool = true;
 /// Read-edit auto-prune configuration.
 ///
 /// Serialized as `[auto_prune.read_edit]` in `jinn.toml`.
-/// Controls the auto-prune worker that excludes stale read tool results
-/// after the file has been edited.
+/// Controls the auto-prune worker that excludes stale read tool calls and results
+/// after the file has been edited twice.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReadEditAutoPruneConfig {
-    /// Whether the read-edit auto-prune worker is active.
-    /// Default: `true`.
     #[serde(default = "default_read_edit_enabled")]
     pub enabled: bool,
-    /// Minimum number of in-context entries that must appear after the edit
-    /// before the read result is pruned.
-    /// Default: 10.
-    #[serde(default = "default_read_edit_min_tail_entries")]
-    pub min_tail_entries: usize,
 }
 
 fn default_read_edit_enabled() -> bool {
     DEFAULT_READ_EDIT_ENABLED
 }
 
-fn default_read_edit_min_tail_entries() -> usize {
-    DEFAULT_READ_EDIT_MIN_TAIL_ENTRIES
-}
+
 
 impl Default for ReadEditAutoPruneConfig {
     fn default() -> Self {
         Self {
             enabled: DEFAULT_READ_EDIT_ENABLED,
-            min_tail_entries: DEFAULT_READ_EDIT_MIN_TAIL_ENTRIES,
         }
     }
 }
@@ -1413,7 +1401,6 @@ max_tokens = 5000
     fn default_auto_prune_config_has_defaults() {
         let config = AutoPruneConfig::default();
         assert!(config.read_edit.enabled);
-        assert_eq!(config.read_edit.min_tail_entries, 10);
         assert!(config.todo.enabled);
     }
 
@@ -1421,7 +1408,6 @@ max_tokens = 5000
     fn default_preferences_has_default_auto_prune_config() {
         let prefs = UserPreferences::default();
         assert!(prefs.auto_prune.read_edit.enabled);
-        assert_eq!(prefs.auto_prune.read_edit.min_tail_entries, 10);
         assert!(prefs.auto_prune.todo.enabled);
     }
 
@@ -1433,14 +1419,12 @@ max_tokens = 5000
             &path,
             r#"[auto_prune.read_edit]
 enabled = false
-min_tail_entries = 20
 "#,
         )
         .expect("write");
 
         let prefs = load_preferences_from(&path).expect("load");
         assert!(!prefs.auto_prune.read_edit.enabled);
-        assert_eq!(prefs.auto_prune.read_edit.min_tail_entries, 20);
     }
 
     #[rstest::rstest]
@@ -1451,7 +1435,6 @@ min_tail_entries = 20
             auto_prune: AutoPruneConfig {
                 read_edit: ReadEditAutoPruneConfig {
                     enabled: false,
-                    min_tail_entries: 5,
                 },
                 regex: RegexAutoPruneConfig::default(),
                 broken_edit: BrokenEditAutoPruneConfig {
@@ -1467,7 +1450,6 @@ min_tail_entries = 20
         save_preferences_to(&prefs, &path).expect("save");
         let reloaded = load_preferences_from(&path).expect("load");
         assert!(!reloaded.auto_prune.read_edit.enabled);
-        assert_eq!(reloaded.auto_prune.read_edit.min_tail_entries, 5);
         assert!(!reloaded.auto_prune.broken_edit.enabled);
         assert_eq!(reloaded.auto_prune.broken_edit.min_tail_entries, 3);
         assert!(!reloaded.auto_prune.todo.enabled);
@@ -1479,14 +1461,12 @@ min_tail_entries = 20
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
-            r#"last_model = "ollama/llama3"
-"#,
+            r##"last_model = 'ollama/llama3'"##,
         )
         .expect("write");
 
         let prefs = load_preferences_from(&path).expect("load");
         assert!(prefs.auto_prune.read_edit.enabled);
-        assert_eq!(prefs.auto_prune.read_edit.min_tail_entries, 10);
         assert!(prefs.auto_prune.todo.enabled);
     }
 

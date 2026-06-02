@@ -421,3 +421,62 @@ fn non_judge_child_at_depth_1_uses_grapheme_count_for_tree() {
         "truncated title should end with ellipsis, got: {title_span}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// assemble_entry_line - workflow title style based on is_active
+// ---------------------------------------------------------------------------
+
+fn workflow_entry(is_active: bool) -> SessionEntry {
+    SessionEntry {
+        kind: SessionEntryKind::Workflow,
+        id: SessionId::new(),
+        title: "My Workflow".to_owned(),
+        is_active,
+        created_at: Timestamp::now(),
+        is_idle: true,
+        last_entry_is_error: false,
+        parent_id: None,
+        depth: 1,
+        ancestor_continuations: vec![true],
+        is_last_child: true,
+        workflow_id: None,
+        workflow_state: None,
+        workflow_enabled: Some(true),
+    }
+}
+
+#[rstest::rstest]
+fn inactive_workflow_uses_muted_text() {
+    // Given a workflow entry that is not active (parent session is inactive).
+    let entry = workflow_entry(false);
+    let theme = default_theme();
+
+    // When assembling the entry line.
+    let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
+
+    // Then the title span (last span) uses muted_text color.
+    let title_span = line.spans.last().expect("line should have spans");
+    assert_eq!(
+        title_span.style.fg,
+        Some(theme.muted_text),
+        "inactive workflow title should use muted_text color"
+    );
+}
+
+#[rstest::rstest]
+fn active_workflow_uses_primary_text() {
+    // Given a workflow entry that is active (parent session is active).
+    let entry = workflow_entry(true);
+    let theme = default_theme();
+
+    // When assembling the entry line.
+    let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
+
+    // Then the title span (last span) uses primary_text color.
+    let title_span = line.spans.last().expect("line should have spans");
+    assert_eq!(
+        title_span.style.fg,
+        Some(theme.primary_text),
+        "active workflow title should use primary_text color"
+    );
+}
