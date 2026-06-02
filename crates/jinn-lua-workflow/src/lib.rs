@@ -27,4 +27,4 @@ pub use capabilities::{make_gather, make_llm, make_push_system, make_push_user, 
 pub use ctx::CtxBuilder;
 pub use protocol::HostRequest;
 pub use registry::{LuaError, LuaRegistry, VmHandle};
-pub use vm::spawn_one_shot;
+pub use vm::{spawn_one_shot, CtxConfig};
