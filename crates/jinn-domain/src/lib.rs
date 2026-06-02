@@ -73,8 +73,8 @@ pub use feat::session::PoolConfig;
 pub use feat::session::SessionStoreService;
 pub use feat::session::SqliteSessionStore;
 
-pub use feat::session::phase_machine::PhaseKind;
 pub use feat::session::no_api_keys_msg;
+pub use feat::session::phase_machine::PhaseKind;
 
 // Re-export preferences types
 pub use feat::preferences_actor::FilesystemUserPreferencesStorage;
@@ -127,10 +127,10 @@ pub use feat::session::protocol::session_load_completed::SessionLoadCompleted;
 pub use feat::session::protocol::session_load_requested::SessionLoadRequested;
 pub use feat::session::protocol::session_new::SessionNew;
 pub use feat::tools_actor::BoxedToolFuture;
-pub use feat::tools_actor::registry::{BuiltinToolEntry, builtin_tools};
 pub use feat::tools_actor::protocol::command::{ExecuteTool, ExecuteToolBatch, RegisterTools};
 pub use feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted, ToolsRegistered,
 };
+pub use feat::tools_actor::registry::{BuiltinToolEntry, builtin_tools};
 pub use feat::tools_actor::tool_types::{ToolCall, ToolDefinition, ToolResult};

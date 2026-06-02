@@ -371,7 +371,9 @@ fn drain_returns_all_in_order() {
         .into_iter()
         .map(|item| match item {
             crate::feat::session::queue_item::QueueItem::UserMessage(e) => e,
-            crate::feat::session::queue_item::QueueItem::ToolContinuation => panic!("expected UserMessage"),
+            crate::feat::session::queue_item::QueueItem::ToolContinuation => {
+                panic!("expected UserMessage")
+            }
         })
         .collect();
     assert_eq!(entries.len(), 3);
@@ -558,7 +560,11 @@ fn finish_streaming_returns_to_idle() {
     session.begin_sending();
     session.begin_streaming();
     let idx = session.push_entry(ChatEntry::assistant(""));
-    session.core.ephemeral.machine.set_streaming_entry_index(idx);
+    session
+        .core
+        .ephemeral
+        .machine
+        .set_streaming_entry_index(idx);
 
     // When finishing streaming.
     session.finish_streaming(true);
@@ -1952,7 +1958,11 @@ fn begin_tool_result_tracks_history_index() {
             .contains_key("call_1")
     );
     assert_eq!(
-        session.core.ephemeral.machine.streaming_tool_result_indices()["call_1"],
+        session
+            .core
+            .ephemeral
+            .machine
+            .streaming_tool_result_indices()["call_1"],
         1
     );
 }
@@ -2060,6 +2070,171 @@ fn finalize_tool_result_pushes_new_entry_for_unknown_id() {
             assert_eq!(name, "bash");
             assert_eq!(content, "output");
             assert_eq!(*status, ToolResultStatus::Success);
+        }
+        other => panic!("expected ToolResult, got {other:?}"),
+    }
+}
+
+
+// --- Phase 1 fix: begin_tool_result guard tests ---
+
+#[test]
+fn begin_tool_result_does_not_push_when_not_streaming() {
+    // Given a session NOT in streaming phase (defaults to Idle).
+    let mut session = ChatSessionState::new();
+
+    // When beginning a tool result.
+    session.begin_tool_result("call_1", "bash");
+
+    // Then no entry is pushed (the early return prevented it).
+    assert!(
+        session.history().is_empty(),
+        "expected no entry when not streaming, got {} entries",
+        session.history().len()
+    );
+}
+
+#[test]
+fn begin_tool_result_does_not_push_in_sending_phase() {
+    // Given a session in Sending phase (not Streaming).
+    let mut session = ChatSessionState::new();
+    session.begin_sending();
+
+    // When beginning a tool result.
+    session.begin_tool_result("call_1", "bash");
+
+    // Then no entry is pushed.
+    assert!(
+        session.history().is_empty(),
+        "expected no entry in Sending phase, got {} entries",
+        session.history().len()
+    );
+}
+
+// --- Phase 2 fix: finalize_tool_result history search tests ---
+
+#[test]
+fn finalize_tool_result_updates_existing_pending_by_kind_id() {
+    // Given a session with a manually-pushed pending ToolResult
+    // (simulating the case where begin_tool_result pushed before
+    // the streaming index was available).
+    let mut session = ChatSessionState::new();
+    let pending = ChatEntry::tool_result(
+        "call_1",
+        "bash",
+        "",
+        ToolResultStatus::Pending,
+    );
+    let pending_id = pending.id.clone();
+    session.push_entry(pending);
+    assert_eq!(session.history().len(), 1);
+
+    // When finalizing the tool result (no streaming index available).
+    session.finalize_tool_result("call_1", "bash", "actual output", true, None, None);
+
+    // Then the existing entry was updated in-place (same ChatEntryId).
+    assert_eq!(
+        session.history().len(),
+        1,
+        "expected no new entry, got {} entries",
+        session.history().len()
+    );
+    assert_eq!(
+        session.history()[0].id, pending_id,
+        "entry should be the same (updated in-place)"
+    );
+    match &session.history()[0].kind {
+        ChatEntryKind::ToolResult {
+            content, status, ..
+        } => {
+            assert_eq!(content, "actual output");
+            assert_eq!(*status, ToolResultStatus::Success);
+        }
+        other => panic!("expected ToolResult, got {other:?}"),
+    }
+}
+
+#[test]
+fn finalize_tool_result_updates_existing_with_truncation() {
+    // Given a session with a pending ToolResult.
+    let mut session = ChatSessionState::new();
+    let pending = ChatEntry::tool_result(
+        "call_1",
+        "bash",
+        "",
+        ToolResultStatus::Pending,
+    );
+    let pending_id = pending.id.clone();
+    session.push_entry(pending);
+
+    // When finalizing with truncation data.
+    let meta = jinn_provider::tool_types::TruncationMeta {
+        truncated_by: jinn_provider::tool_types::TruncatedBy::Bytes,
+        total_lines: 50,
+        total_bytes: 1000,
+        output_lines: 25,
+        output_bytes: 500,
+    };
+    session.finalize_tool_result(
+        "call_1",
+        "bash",
+        "truncated output",
+        true,
+        Some("full output...".to_owned()),
+        Some(meta.clone()),
+    );
+
+    // Then the existing entry was updated in-place with truncation data.
+    assert_eq!(session.history().len(), 1);
+    assert_eq!(session.history()[0].id, pending_id);
+    match &session.history()[0].kind {
+        ChatEntryKind::ToolResult {
+            content,
+            status,
+            full_content,
+            truncation,
+            ..
+        } => {
+            assert_eq!(content, "truncated output");
+            assert_eq!(*status, ToolResultStatus::Success);
+            assert_eq!(full_content.as_deref(), Some("full output..."));
+            assert!(truncation.is_some(), "expected truncation meta");
+        }
+        other => panic!("expected ToolResult, got {other:?}"),
+    }
+}
+
+#[test]
+fn finalize_tool_result_pushes_new_with_truncation_when_no_existing() {
+    // Given an empty session.
+    let mut session = ChatSessionState::new();
+
+    // When finalizing with truncation but no existing entry.
+    let meta = jinn_provider::tool_types::TruncationMeta {
+        truncated_by: jinn_provider::tool_types::TruncatedBy::Bytes,
+        total_lines: 50,
+        total_bytes: 1000,
+        output_lines: 25,
+        output_bytes: 500,
+    };
+    session.finalize_tool_result(
+        "call_1",
+        "bash",
+        "truncated",
+        true,
+        Some("full".to_owned()),
+        Some(meta),
+    );
+
+    // Then a new truncated entry was pushed.
+    assert_eq!(session.history().len(), 1);
+    match &session.history()[0].kind {
+        ChatEntryKind::ToolResult {
+            content, full_content, truncation, ..
+        } => {
+            assert_eq!(content, "truncated");
+            assert_eq!(full_content.as_deref(), Some("full"));
+            assert!(truncation.is_some());
         }
         other => panic!("expected ToolResult, got {other:?}"),
     }
@@ -3054,12 +3229,6 @@ fn force_exclude_no_tool_calls_is_noop() {
 // Phase 1: Session Phase State Machine Guards
 // ===========================================================================
 
-
-
-
-
-
-
 // --- cancel_stream_and_drain ---
 
 #[rstest::rstest]
@@ -3087,9 +3256,7 @@ fn cancel_stream_and_drain_discards_non_user_items() {
     // Given a streaming session with mixed queue items.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.enqueue(
-        crate::feat::session::queue_item::QueueItem::ToolContinuation,
-    );
+    session.enqueue(crate::feat::session::queue_item::QueueItem::ToolContinuation);
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
         ChatEntry::user("keep this"),
     ));
@@ -3177,7 +3344,10 @@ fn insert_entry_at_shifts_streaming_entry_index() {
     assert_eq!(result, 1);
     assert_eq!(session.history().len(), 5);
     // And streaming_entry_index was shifted from 3 to 4.
-    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(4));
+    assert_eq!(
+        session.core.ephemeral.machine.streaming_entry_index(),
+        Some(4)
+    );
 }
 
 #[rstest::rstest]
@@ -3194,7 +3364,10 @@ fn insert_entry_at_does_not_shift_streaming_index_before_insertion() {
     session.insert_entry_at(2, ChatEntry::system("inserted"));
 
     // Then streaming_entry_index stays at 1.
-    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(1));
+    assert_eq!(
+        session.core.ephemeral.machine.streaming_entry_index(),
+        Some(1)
+    );
 }
 
 #[rstest::rstest]
@@ -3206,14 +3379,22 @@ fn insert_entry_at_shifts_thinking_entry_index() {
     session.push_entry(ChatEntry::assistant("thinking")); // idx 2
     session.begin_sending();
     session.begin_streaming();
-    session.core.ephemeral.machine.set_streaming_thinking_entry_index(2);
+    session
+        .core
+        .ephemeral
+        .machine
+        .set_streaming_thinking_entry_index(2);
 
     // When inserting at index 0.
     session.insert_entry_at(0, ChatEntry::system("inserted"));
 
     // Then thinking index shifted from 2 to 3.
     assert_eq!(
-        session.core.ephemeral.machine.streaming_thinking_entry_index(),
+        session
+            .core
+            .ephemeral
+            .machine
+            .streaming_thinking_entry_index(),
         Some(3)
     );
 }
@@ -3225,14 +3406,22 @@ fn insert_entry_at_does_not_shift_thinking_index_before_insertion() {
     session.push_entry(ChatEntry::assistant("thinking")); // idx 0
     session.begin_sending();
     session.begin_streaming();
-    session.core.ephemeral.machine.set_streaming_thinking_entry_index(0);
+    session
+        .core
+        .ephemeral
+        .machine
+        .set_streaming_thinking_entry_index(0);
 
     // When inserting at index 1 (after thinking).
     session.insert_entry_at(1, ChatEntry::system("inserted"));
 
     // Then thinking index stays at 0.
     assert_eq!(
-        session.core.ephemeral.machine.streaming_thinking_entry_index(),
+        session
+            .core
+            .ephemeral
+            .machine
+            .streaming_thinking_entry_index(),
         Some(0)
     );
 }
@@ -3335,7 +3524,12 @@ fn insert_entry_at_shifts_tool_call_indices() {
 
     // Then tool call history index shifted from 3 to 4.
     assert_eq!(
-        session.core.ephemeral.machine.streaming_tool_call_indices().get(&0),
+        session
+            .core
+            .ephemeral
+            .machine
+            .streaming_tool_call_indices()
+            .get(&0),
         Some(&4)
     );
 }
@@ -3361,7 +3555,12 @@ fn insert_entry_at_does_not_shift_tool_call_indices_before_insertion() {
 
     // Then tool call history index stays at 1.
     assert_eq!(
-        session.core.ephemeral.machine.streaming_tool_call_indices().get(&0),
+        session
+            .core
+            .ephemeral
+            .machine
+            .streaming_tool_call_indices()
+            .get(&0),
         Some(&1)
     );
 }
@@ -3382,7 +3581,10 @@ fn insert_entry_at_shifts_at_exact_boundary() {
     session.insert_entry_at(2, ChatEntry::system("inserted"));
 
     // Then streaming_entry_index was shifted (>= check, not just >).
-    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(3));
+    assert_eq!(
+        session.core.ephemeral.machine.streaming_entry_index(),
+        Some(3)
+    );
 }
 
 #[rstest::rstest]
@@ -3414,7 +3616,11 @@ fn insert_entry_at_shifts_multiple_indices() {
     session.begin_sending();
     session.begin_streaming();
     session.core.ephemeral.machine.set_streaming_entry_index(1);
-    session.core.ephemeral.machine.set_streaming_thinking_entry_index(1);
+    session
+        .core
+        .ephemeral
+        .machine
+        .set_streaming_thinking_entry_index(1);
     session
         .core
         .ephemeral
@@ -3427,13 +3633,25 @@ fn insert_entry_at_shifts_multiple_indices() {
     session.insert_entry_at(0, ChatEntry::system("inserted"));
 
     // Then ALL indices at or after insertion point are shifted.
-    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(2));
     assert_eq!(
-        session.core.ephemeral.machine.streaming_thinking_entry_index(),
+        session.core.ephemeral.machine.streaming_entry_index(),
         Some(2)
     );
     assert_eq!(
-        session.core.ephemeral.machine.streaming_tool_call_indices().get(&0),
+        session
+            .core
+            .ephemeral
+            .machine
+            .streaming_thinking_entry_index(),
+        Some(2)
+    );
+    assert_eq!(
+        session
+            .core
+            .ephemeral
+            .machine
+            .streaming_tool_call_indices()
+            .get(&0),
         Some(&2)
     );
 }
@@ -4277,9 +4495,7 @@ fn enqueue_front_puts_item_at_front_of_queue() {
     ));
 
     // When enqueuing a ToolContinuation at the front.
-    session.enqueue_front(
-        crate::feat::session::queue_item::QueueItem::ToolContinuation,
-    );
+    session.enqueue_front(crate::feat::session::queue_item::QueueItem::ToolContinuation);
 
     // Then dequeue returns ToolContinuation first.
     let front = session.dequeue();
@@ -4304,4 +4520,3 @@ fn is_workflow_returns_real_value() {
     // Then is_workflow returns true (not hardcoded false).
     assert!(wf_session.is_workflow());
 }
-

@@ -136,9 +136,7 @@ impl SessionPersistenceActor {
 
             // Apply pending history mutations for non-ToolUse completions.
             // ToolUse defers to on_tool_batch_completed.
-            if event.reason != StreamCompletedReason::ToolUse
-
-            {
+            if event.reason != StreamCompletedReason::ToolUse {
                 let count = session.drain_and_apply_pending_mutations();
                 if count > 0 {
                     tracing::debug!(

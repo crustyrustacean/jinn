@@ -24,13 +24,13 @@
 //!
 //! [`ForcedExclude`]: crate::feat::session::chat_entry::ContextOverride::ForcedExclude
 
-use std::collections::HashMap;
-use std::sync::Arc;
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::TodoAutoPruneConfig;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Tool names that this worker prunes.
 const TOOL_NAMES: &[&str] = &["todo_get_task_list", "todo_complete_task"];
@@ -66,8 +66,10 @@ impl HistoryWorker for TodoAutoPruneWorker {
             let mut calls: Vec<(usize, crate::feat::session::chat_entry::ChatEntryId, String)> =
                 Vec::new();
             // Map tool_call_id → (result_index, result_entry_id).
-            let mut result_map: HashMap<String, (usize, crate::feat::session::chat_entry::ChatEntryId)> =
-                HashMap::new();
+            let mut result_map: HashMap<
+                String,
+                (usize, crate::feat::session::chat_entry::ChatEntryId),
+            > = HashMap::new();
 
             for (i, entry) in history.iter().enumerate() {
                 match &entry.kind {
@@ -87,9 +89,7 @@ impl HistoryWorker for TodoAutoPruneWorker {
             }
 
             // Prune all calls except the last one (most recent).
-            for (idx, call_entry_id, tool_call_id) in
-                calls.iter().take(calls.len() - 1)
-            {
+            for (idx, call_entry_id, tool_call_id) in calls.iter().take(calls.len() - 1) {
                 // Prune the ToolCall.
                 if history[*idx].context_override != ContextOverride::ForcedExclude {
                     mutations.push(HistoryMutation::SetContextOverride {
@@ -127,11 +127,7 @@ mod tests {
     /// Helper: create a `todo_get_task_list` ToolCall + ToolResult pair.
     fn get_task_list_call_result(call_id: &str, content: &str) -> [ChatEntry; 2] {
         [
-            ChatEntry::tool_call(
-                call_id,
-                "todo_get_task_list",
-                r#"{"phase_id":"p1"}"#,
-            ),
+            ChatEntry::tool_call(call_id, "todo_get_task_list", r#"{"phase_id":"p1"}"#),
             ChatEntry::tool_result(
                 call_id,
                 "todo_get_task_list",
@@ -144,11 +140,7 @@ mod tests {
     /// Helper: create a `todo_complete_task` ToolCall + ToolResult pair.
     fn complete_task_call_result(call_id: &str, content: &str) -> [ChatEntry; 2] {
         [
-            ChatEntry::tool_call(
-                call_id,
-                "todo_complete_task",
-                r#"{"task_id":"t1"}"#,
-            ),
+            ChatEntry::tool_call(call_id, "todo_complete_task", r#"{"task_id":"t1"}"#),
             ChatEntry::tool_result(
                 call_id,
                 "todo_complete_task",
@@ -228,8 +220,14 @@ mod tests {
             })
             .collect();
 
-        assert!(mutation_ids.contains(&cr1[0].id), "tc-1 ToolCall should be pruned");
-        assert!(mutation_ids.contains(&cr1[1].id), "tc-1 ToolResult should be pruned");
+        assert!(
+            mutation_ids.contains(&cr1[0].id),
+            "tc-1 ToolCall should be pruned"
+        );
+        assert!(
+            mutation_ids.contains(&cr1[1].id),
+            "tc-1 ToolResult should be pruned"
+        );
     }
 
     #[test]
@@ -256,8 +254,14 @@ mod tests {
             })
             .collect();
 
-        assert!(mutation_ids.contains(&cr1[0].id), "tc-1 ToolCall should be pruned");
-        assert!(mutation_ids.contains(&cr1[1].id), "tc-1 ToolResult should be pruned");
+        assert!(
+            mutation_ids.contains(&cr1[0].id),
+            "tc-1 ToolCall should be pruned"
+        );
+        assert!(
+            mutation_ids.contains(&cr1[1].id),
+            "tc-1 ToolResult should be pruned"
+        );
     }
 
     #[test]
@@ -332,7 +336,11 @@ mod tests {
     fn tool_call_without_result_still_prunes_call() {
         let mut history = Vec::new();
         // Orphan ToolCall with no corresponding ToolResult.
-        history.push(ChatEntry::tool_call("tc-orphan", "todo_get_task_list", "{}"));
+        history.push(ChatEntry::tool_call(
+            "tc-orphan",
+            "todo_get_task_list",
+            "{}",
+        ));
         let orphan_id = history[0].id.clone();
         // Most recent call with result.
         let cr2 = get_task_list_call_result("tc-2", "list v2");
@@ -390,8 +398,17 @@ mod tests {
     fn other_tool_calls_not_affected() {
         let mut history = Vec::new();
         // A read tool call (should not be touched).
-        history.push(ChatEntry::tool_call("rc-1", "read", r#"{"path": "/foo.rs"}"#));
-        history.push(ChatEntry::tool_result("rc-1", "read", "contents", ToolResultStatus::Success));
+        history.push(ChatEntry::tool_call(
+            "rc-1",
+            "read",
+            r#"{"path": "/foo.rs"}"#,
+        ));
+        history.push(ChatEntry::tool_result(
+            "rc-1",
+            "read",
+            "contents",
+            ToolResultStatus::Success,
+        ));
         // A todo_get_task_list call.
         let cr = get_task_list_call_result("tc-1", "list");
         history.push(cr[0].clone());

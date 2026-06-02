@@ -90,7 +90,6 @@ impl AppPaths {
         self.config_dir.join(APP_NAME).join("personas")
     }
 
-
     /// Model cache file (`~/.cache/jinn/model_cache.json`).
     #[must_use]
     pub fn cache_path(&self) -> PathBuf {
@@ -139,7 +138,6 @@ impl AppPaths {
     pub fn system_personas_dir(&self) -> PathBuf {
         self.system_data_dir.join("personas")
     }
-
 
     /// System prompts directory (`/usr/share/jinn/prompts`).
     #[must_use]
@@ -204,7 +202,6 @@ impl AppPaths {
     pub fn resolve_prompt_paths(&self) -> Vec<(String, PathBuf)> {
         resolve_resource_paths(&self.system_prompts_dir(), &self.prompts_dir(), "md")
     }
-
 }
 
 /// Scans two directories for files with the given extension, merging by filename stem.

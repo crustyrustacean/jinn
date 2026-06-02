@@ -507,11 +507,15 @@ fn sync_chat_log_cursor_sets_correct_entry_when_multiple_entries_exist() {
     state.active_session_mut().push_entry(entry_c);
 
     // Pin entry_b and select it in the pins section.
-    state.active_session_mut().pin_entry(&id_b, PinPosition::Top);
+    state
+        .active_session_mut()
+        .pin_entry(&id_b, PinPosition::Top);
     state.frontend.pins.select_by_id(id_b.clone());
 
     // Set cursor to entry_a first.
-    state.active_session_mut().set_selected_cursor_id(id_a.clone());
+    state
+        .active_session_mut()
+        .set_selected_cursor_id(id_a.clone());
 
     // When sync_chat_log_cursor is called.
     sync_chat_log_cursor(&mut state);
@@ -542,7 +546,9 @@ fn resolve_selected_entry_id_returns_real_session_and_entry_ids() {
     let entry = ChatEntry::user("pinned entry");
     let entry_id = entry.id.clone();
     state.active_session_mut().push_entry(entry);
-    state.active_session_mut().pin_entry(&entry_id, PinPosition::Top);
+    state
+        .active_session_mut()
+        .pin_entry(&entry_id, PinPosition::Top);
     state.frontend.pins.select_by_id(entry_id.clone());
 
     // When handling pins unpin (which uses resolve_selected_entry_id internally).
@@ -557,7 +563,8 @@ fn resolve_selected_entry_id_returns_real_session_and_entry_ids() {
     assert!(cmd.is_some(), "should return an UnpinChatEntry command");
     let payload = cmd.unwrap();
     assert_eq!(
-        payload.session_id, *state.session.active_session_id(),
+        payload.session_id,
+        *state.session.active_session_id(),
         "session_id should be the real active session ID, not a default"
     );
     assert_eq!(

@@ -116,7 +116,9 @@ mod tests {
         let actor = test_actor();
         let session_id = {
             let mut state = actor.state.write();
-            state.active_session_mut().push_entry(ChatEntry::user("hello world"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("hello world"));
             state.session.active_session_id().clone()
         };
 
@@ -157,7 +159,9 @@ mod tests {
         // When adding an entry and recalculating.
         {
             let mut state = actor.state.write();
-            state.active_session_mut().push_entry(ChatEntry::user("a long message that adds tokens"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("a long message that adds tokens"));
         }
         actor.recalculate();
 
@@ -208,7 +212,9 @@ mod tests {
             let mut state = actor.state.write();
             state.session.insert(second);
             // Active session has history, second does not.
-            state.active_session_mut().push_entry(ChatEntry::user("hello"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("hello"));
         }
 
         // When recalculating.
@@ -221,7 +227,12 @@ mod tests {
             "active session should have context_size"
         );
         assert!(
-            state.session.get(&second_id).expect("second").context_size().is_none(),
+            state
+                .session
+                .get(&second_id)
+                .expect("second")
+                .context_size()
+                .is_none(),
             "non-active session should not have context_size set"
         );
     }

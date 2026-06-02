@@ -232,6 +232,10 @@ mod tests {
     #[test]
     fn echo_node_config_returns_none_by_default() {
         let node = EchoNode;
-        assert_eq!(node.config(), None, "default config() must return None, not Some(default)");
+        assert_eq!(
+            node.config(),
+            None,
+            "default config() must return None, not Some(default)"
+        );
     }
 }

@@ -18,12 +18,12 @@ use crate::feat::chat_input::AutocompleteMatch;
 use crate::feat::chat_input::AutocompleteTrigger;
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
-use crate::feat::ui::picker_states::PickerExt;
 use crate::feat::chat_input::slash_command::SlashCommand;
 use crate::feat::chat_input::state::autocomplete::AutocompleteState;
 use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
+use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::{ChatEntry, Command, IntentResult, SessionId};
 use unicode_segmentation::UnicodeSegmentation as _;
 
@@ -216,7 +216,6 @@ pub fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
 /// Handles `SubmitMessage` - confirms autocomplete if active, executes slash commands,
 /// or submits the message as chat input.
 pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
-
     if state.active_chat_input().autocomplete().is_some() {
         return handle_submit_message_with_autocomplete(state);
     }
@@ -317,9 +316,10 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
 
 /// Prepends a `MarkSessionInteracted` command to the result.
 fn with_mark_interacted(session_id: SessionId, mut result: IntentResult) -> IntentResult {
-    result
-        .commands
-        .insert(0, Command::MarkSessionInteracted(MarkSessionInteracted { session_id }));
+    result.commands.insert(
+        0,
+        Command::MarkSessionInteracted(MarkSessionInteracted { session_id }),
+    );
     result
 }
 
@@ -482,7 +482,9 @@ pub fn handle_move_cursor_down(state: &mut AppState) -> IntentResult {
 pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
     super::validator::validate_normal_escape(state);
 
-    if state.active_session().is_busy() || !matches!(state.active_session().phase(), PhaseKind::Idle) {
+    if state.active_session().is_busy()
+        || !matches!(state.active_session().phase(), PhaseKind::Idle)
+    {
         // Session is busy - show cancel confirmation prompt.
         state.frontend.cancel_stream_prompt = true;
     }
@@ -495,7 +497,6 @@ pub fn handle_normal_escape(state: &mut AppState) -> IntentResult {
 /// Handles `EnterInsertMode` - pushes Input onto the scope stack.
 pub fn handle_enter_insert_mode(state: &mut AppState) -> IntentResult {
     use crate::common::app_state::FocusScope;
-
 
     // The pin cursor jump is only for pin → Normal, not pin → Insert.
     if state.active_session().has_saved_history_position() {

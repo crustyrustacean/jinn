@@ -191,7 +191,10 @@ enum SuspendResult {
 /// 6. Restarts the event thread
 /// 7. Redraws the terminal
 /// 8. Writes the result directly to the active session's input box via `replace_all`
-#[expect(clippy::too_many_lines, reason = "large match on SuspendAction variants")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "large match on SuspendAction variants"
+)]
 fn handle_suspend_action(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     app: &mut TuiApp,
@@ -346,7 +349,7 @@ fn shell_escape(s: &str) -> String {
     result.push('\'');
     for ch in s.chars() {
         if ch == '\'' {
-            result.push_str("'\\''") ;
+            result.push_str("'\\''");
         } else {
             result.push(ch);
         }

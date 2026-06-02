@@ -86,7 +86,10 @@ impl<H: HistoryWorker + Clone> HistoryWorkerActor<H> {
         self.in_flight.insert(event.session_id.clone());
 
         // Run heuristic evaluation outside any lock (async).
-        let mutations = self.worker.evaluate(&event.session_id, history_snapshot).await;
+        let mutations = self
+            .worker
+            .evaluate(&event.session_id, history_snapshot)
+            .await;
 
         // Clear in-flight marker.
         self.in_flight.remove(&event.session_id);

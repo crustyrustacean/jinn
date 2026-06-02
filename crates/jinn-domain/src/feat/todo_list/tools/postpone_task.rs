@@ -111,7 +111,9 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             match list.postpone_task(&source_id, position) {
                 Ok(new_task_id) => {
                     let rendered = list.render_text();
-                    Ok(format!("Postponed task [{source_id}] \u{2192} created copy [{new_task_id}].\n\n{rendered}"))
+                    Ok(format!(
+                        "Postponed task [{source_id}] \u{2192} created copy [{new_task_id}].\n\n{rendered}"
+                    ))
                 }
                 Err(e) => Err(format!("Error: {e}")),
             }
@@ -202,7 +204,12 @@ mod tests {
                 .task_list_mut()
                 .add_task(&p2, "Write code", TaskPosition::End)
                 .unwrap();
-            (p1.to_string(), t1.to_string(), p2.to_string(), t2.to_string())
+            (
+                p1.to_string(),
+                t1.to_string(),
+                p2.to_string(),
+                t2.to_string(),
+            )
         };
         (state, session_id, p1, t1, p2, t2)
     }
@@ -273,11 +280,7 @@ mod tests {
         let result = execute(call, ctx);
         let result = futures::executor::block_on(result);
         assert!(!result.success);
-        assert!(
-            result
-                .content
-                .contains("both after_task and before_task")
-        );
+        assert!(result.content.contains("both after_task and before_task"));
     }
 
     #[test]

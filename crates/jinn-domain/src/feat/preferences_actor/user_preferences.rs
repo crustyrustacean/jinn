@@ -1641,6 +1641,4 @@ keep_last = 1
         assert_eq!(reloaded.auto_prune.regex.rules[0].pattern, "ls");
         assert_eq!(reloaded.auto_prune.regex.rules[1].pattern, "cargo check");
     }
-
 }
-

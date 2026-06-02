@@ -82,7 +82,10 @@ fn streaming_to_sending_on_tool_use() {
     // Then the transition is Streaming → Sending.
     assert_eq!(outcome.old_phase, PhaseKind::Streaming);
     assert_eq!(outcome.new_phase, PhaseKind::Sending);
-    assert!(m.streaming_phase().is_none(), "streaming data should be gone");
+    assert!(
+        m.streaming_phase().is_none(),
+        "streaming data should be gone"
+    );
 }
 
 #[test]
@@ -96,7 +99,10 @@ fn streaming_to_idle_on_finished() {
     // Then the transition is Streaming → Idle.
     assert_eq!(outcome.old_phase, PhaseKind::Streaming);
     assert_eq!(outcome.new_phase, PhaseKind::Idle);
-    assert!(m.streaming_phase().is_none(), "streaming data should be gone");
+    assert!(
+        m.streaming_phase().is_none(),
+        "streaming data should be gone"
+    );
 }
 
 #[test]
@@ -176,7 +182,11 @@ fn soft_cancel_sets_flag() {
     m.soft_cancel().expect("should succeed");
 
     // Then the flag is set on the streaming phase.
-    assert!(m.streaming_phase().expect("should be streaming").soft_cancel_requested);
+    assert!(
+        m.streaming_phase()
+            .expect("should be streaming")
+            .soft_cancel_requested
+    );
     // And the phase is still Streaming (no transition).
     assert_eq!(m.kind(), PhaseKind::Streaming);
 }
@@ -235,7 +245,8 @@ fn streaming_state_cleared_on_finish() {
         sp.streaming_entry_index = Some(5);
         sp.streaming_thinking_entry_index = Some(3);
         sp.streaming_tool_call_indices.insert(0, 10);
-        sp.streaming_tool_result_indices.insert("tc_1".to_owned(), 12);
+        sp.streaming_tool_result_indices
+            .insert("tc_1".to_owned(), 12);
     }
 
     // When stream finishes.
@@ -455,7 +466,8 @@ fn cancel_returns_streaming_data() {
         sp.streaming_entry_index = Some(42);
         sp.streaming_tool_call_indices.insert(0, 10);
         sp.streaming_tool_call_indices.insert(1, 11);
-        sp.streaming_tool_result_indices.insert("tc_a".to_owned(), 20);
+        sp.streaming_tool_result_indices
+            .insert("tc_a".to_owned(), 20);
     }
 
     // When cancel is called.
@@ -470,7 +482,10 @@ fn cancel_returns_streaming_data() {
         Some(&10)
     );
     assert_eq!(
-        result.old_streaming.streaming_tool_result_indices.get("tc_a"),
+        result
+            .old_streaming
+            .streaming_tool_result_indices
+            .get("tc_a"),
         Some(&20)
     );
 }
@@ -502,7 +517,9 @@ fn streaming_phase_tracks_thinking() {
     let mut m = streaming_machine();
 
     // When thinking index is set.
-    m.streaming_phase_mut().expect("streaming").streaming_thinking_entry_index = Some(7);
+    m.streaming_phase_mut()
+        .expect("streaming")
+        .streaming_thinking_entry_index = Some(7);
 
     // Then it persists.
     assert_eq!(
@@ -531,7 +548,11 @@ fn soft_cancel_flag_consumed_on_transition() {
     // Given a machine in Streaming with soft cancel set.
     let mut m = streaming_machine();
     m.soft_cancel().expect("soft cancel");
-    assert!(m.streaming_phase().expect("streaming").soft_cancel_requested);
+    assert!(
+        m.streaming_phase()
+            .expect("streaming")
+            .soft_cancel_requested
+    );
 
     // When transition happens.
     m.on_stream_completed_finished().expect("finished");

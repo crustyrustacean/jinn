@@ -193,10 +193,9 @@ fn workflow_input_submit_transitions_status_to_pending() {
 
     // Mark as AwaitingInput (simulating what handle_init_workflow does).
     let workflow = state.workflow.active().expect("workflow exists");
-    workflow.execution.set_status(
-        "source",
-        jinn_workflow::engine::NodeStatus::AwaitingInput,
-    );
+    workflow
+        .execution
+        .set_status("source", jinn_workflow::engine::NodeStatus::AwaitingInput);
 
     // Enter edit mode and type text.
     IntentHandler::handle(&Intent::WorkflowEditNode, &mut state);

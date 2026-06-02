@@ -31,8 +31,7 @@ pub fn definition() -> ToolDefinition {
             "Cancelled tasks are hidden from the sidebar but remain visible in the task list \
              with a CANCELLED: prefix."
                 .to_owned(),
-            "Use cancel when a task is not happening at all — not just postponed."
-                .to_owned(),
+            "Use cancel when a task is not happening at all — not just postponed.".to_owned(),
         ],
         parameters: serde_json::json!({
             "type": "object",
@@ -76,9 +75,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             match list.cancel_task(&task_id) {
                 Ok(()) => {
                     let rendered = list.render_text();
-                    Ok(format!(
-                        "Task [{task_id}] cancelled.\n\n{rendered}"
-                    ))
+                    Ok(format!("Task [{task_id}] cancelled.\n\n{rendered}"))
                 }
                 Err(e) => Err(format!("Error: {e}")),
             }

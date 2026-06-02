@@ -203,7 +203,10 @@ mod tests {
 
     #[rstest::rstest]
     fn server_tool_type_as_str_returns_correct_string() {
-        assert_eq!(ServerToolType::OpenrouterWebSearch.as_str(), "openrouter:web_search");
+        assert_eq!(
+            ServerToolType::OpenrouterWebSearch.as_str(),
+            "openrouter:web_search"
+        );
     }
 
     #[rstest::rstest]
@@ -219,7 +222,10 @@ mod tests {
         let json = serde_json::to_string(&def).expect("serialize");
         let back: ToolDefinition = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back, def);
-        assert_eq!(back.server_tool_type, Some(ServerToolType::OpenrouterWebSearch));
+        assert_eq!(
+            back.server_tool_type,
+            Some(ServerToolType::OpenrouterWebSearch)
+        );
     }
 
     #[rstest::rstest]

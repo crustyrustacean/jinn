@@ -125,9 +125,8 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     // Arg input popup overlay (+ selectable rect).
     if matches!(state.frontend.scope_stack.current(), FocusScope::ArgInput) {
         picker::render_arg_input(frame, area, &state);
-        rects.push(
-            jinn_domain::feat::session_lifecycle::render::arg_input_popup_rect(area, &state),
-        );
+        rects
+            .push(jinn_domain::feat::session_lifecycle::render::arg_input_popup_rect(area, &state));
     }
 
     // Rename session input popup overlay (+ selectable rect).
@@ -138,9 +137,8 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         jinn_domain::feat::rename_session_input::render::render_rename_session_input(
             frame, area, &state,
         );
-        rects.push(
-            jinn_domain::feat::rename_session_input::render::rename_session_popup_rect(area),
-        );
+        rects
+            .push(jinn_domain::feat::rename_session_input::render::rename_session_popup_rect(area));
     }
 
     // Release the state read lock before post-render steps.

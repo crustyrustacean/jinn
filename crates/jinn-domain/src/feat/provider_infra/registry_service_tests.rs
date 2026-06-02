@@ -277,9 +277,8 @@ fn is_available_returns_false_for_key_required_without_key() {
     // If is_available always returned true, the key-required provider would appear available.
     let service = service_with_providers();
     let api_keys = crate::feat::provider_infra::api_keys::ApiKeys::new();
-    let id = crate::feat::provider_infra::provider_id::ProviderId::new(
-        "openrouter/gpt-4".to_owned(),
-    );
+    let id =
+        crate::feat::provider_infra::provider_id::ProviderId::new("openrouter/gpt-4".to_owned());
 
     assert!(!service.is_available(&id, &api_keys));
 }
@@ -306,9 +305,8 @@ fn merge_cache_actually_adds_entries_to_registry() {
     service.merge_cache(&cache);
 
     // Then the merged model should be in the registry.
-    let merged_id = crate::feat::provider_infra::provider_id::ProviderId::new(
-        "ollama/mistral".to_owned(),
-    );
+    let merged_id =
+        crate::feat::provider_infra::provider_id::ProviderId::new("ollama/mistral".to_owned());
     let entry = service.get(&merged_id);
     assert!(entry.is_some(), "merge_cache should add the remote model");
     assert!(entry.unwrap().is_remote);
