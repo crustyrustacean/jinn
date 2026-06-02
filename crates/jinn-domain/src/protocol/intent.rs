@@ -96,6 +96,9 @@ pub enum Intent {
     ToggleWhichkey,
     /// Escape key in Normal mode: cancel selection.
     NormalEscape,
+    /// No-op intent produced by unmapped keys in scopes with confirmation prompts.
+    /// Dismisses any active confirmation prompt via the pre-match interceptors.
+    NoOp,
 
     // --- Picker ---
     /// Open a picker of the specified kind.
@@ -371,6 +374,7 @@ impl std::fmt::Display for Intent {
             Intent::EnterNormalMode => write!(f, "enter normal mode"),
             Intent::ToggleWhichkey => write!(f, "toggle which-key"),
             Intent::NormalEscape => write!(f, "escape"),
+            Intent::NoOp => write!(f, "no-op"),
             Intent::OpenPicker { kind } => write!(f, "search {kind}"),
             Intent::PickerInsertChar { ch } => write!(f, "picker insert '{ch}'"),
             Intent::PickerBackspace => write!(f, "picker backspace"),
