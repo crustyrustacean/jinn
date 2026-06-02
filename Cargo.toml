@@ -72,6 +72,7 @@ jinn-workflow-tui = { path = "crates/jinn-workflow-tui" }
 jinn-bench = { path = "crates/jinn-bench" }
 jinn-theme = { path = "crates/jinn-theme" }
 jinn-web-fetch = { path = "crates/jinn-web-fetch" }
+jinn-lua-workflow = { path = "crates/jinn-lua-workflow" }
 
 # Error handling
 wherror = "2.3.1"
@@ -94,7 +95,7 @@ ratatui-spatial-splits = "0.2.0"
 throbber-widgets-tui = "0.11"
 
 # Lua
-mlua = { version = "0.10", features = ["lua54", "vendored", "serialize"] }
+mlua = { version = "0.10", features = ["lua54", "vendored", "serialize", "async"] }
 
 # State
 parking_lot = "0.12"
