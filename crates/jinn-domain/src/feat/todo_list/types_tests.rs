@@ -65,7 +65,9 @@ fn add_task_appends_to_phase_end_when_no_position() {
 fn add_task_inserts_after_specified_task() {
     let mut list = TaskList::new();
     let pid = list.add_phase("Build");
-    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
+    let t1 = list
+        .add_task(&pid, "Write code", TaskPosition::End)
+        .unwrap();
     let t2 = list.add_task(&pid, "Test code", TaskPosition::End).unwrap();
     // Insert t3 after t1: expected order [t1, t3, t2]
     let t3 = list
@@ -86,7 +88,9 @@ fn add_task_inserts_after_specified_task() {
 fn add_task_inserts_before_specified_task() {
     let mut list = TaskList::new();
     let pid = list.add_phase("Build");
-    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
+    let t1 = list
+        .add_task(&pid, "Write code", TaskPosition::End)
+        .unwrap();
     let t2 = list.add_task(&pid, "Test code", TaskPosition::End).unwrap();
     // Insert t3 before t2: expected order [t1, t3, t2]
     let t3 = list
@@ -140,7 +144,9 @@ fn add_task_with_after_rejects_task_not_in_phase() {
 fn complete_task_marks_as_completed() {
     let mut list = TaskList::new();
     let pid = list.add_phase("Build");
-    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
+    let t1 = list
+        .add_task(&pid, "Write code", TaskPosition::End)
+        .unwrap();
     let _t2 = list
         .add_task(&pid, "Write tests", TaskPosition::End)
         .unwrap();
@@ -232,9 +238,7 @@ fn render_text_shows_phases_and_tasks() {
     let mut list = TaskList::new();
     let pid = list.add_phase("Research");
     let _t1 = list.add_task(&pid, "Read docs", TaskPosition::End).unwrap();
-    let _t2 = list
-        .add_task(&pid, "Call API", TaskPosition::End)
-        .unwrap();
+    let _t2 = list.add_task(&pid, "Call API", TaskPosition::End).unwrap();
 
     let rendered = list.render_text();
     assert!(rendered.contains("Phase 1: Research"));
@@ -248,7 +252,9 @@ fn render_text_shows_phases_and_tasks() {
 fn render_text_shows_completed_task() {
     let mut list = TaskList::new();
     let pid = list.add_phase("Build");
-    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
+    let t1 = list
+        .add_task(&pid, "Write code", TaskPosition::End)
+        .unwrap();
     list.complete_task(&t1).unwrap();
 
     let rendered = list.render_text();
@@ -347,7 +353,10 @@ fn id_format_is_correct() {
     let suffix = &pid_str[1..];
     for ch in suffix.chars() {
         assert!(ch.is_ascii_alphanumeric());
-        assert!(ch != 'p' && ch != 't', "char '{ch}' should not be 'p' or 't'");
+        assert!(
+            ch != 'p' && ch != 't',
+            "char '{ch}' should not be 'p' or 't'"
+        );
     }
 
     assert_eq!(tid_str.len(), 4);
@@ -355,7 +364,10 @@ fn id_format_is_correct() {
     let suffix = &tid_str[1..];
     for ch in suffix.chars() {
         assert!(ch.is_ascii_alphanumeric());
-        assert!(ch != 'p' && ch != 't', "char '{ch}' should not be 'p' or 't'");
+        assert!(
+            ch != 'p' && ch != 't',
+            "char '{ch}' should not be 'p' or 't'"
+        );
     }
 }
 
@@ -368,7 +380,9 @@ fn id_generation_no_collision() {
     for i in 0..50 {
         let pid = list.add_phase(&format!("Phase {i}"));
         phase_ids.push(pid.clone());
-        let tid = list.add_task(&pid, &format!("Task {i}"), TaskPosition::End).unwrap();
+        let tid = list
+            .add_task(&pid, &format!("Task {i}"), TaskPosition::End)
+            .unwrap();
         task_ids.push(tid);
     }
 
@@ -406,7 +420,9 @@ fn postpone_task_marks_source_and_creates_copy() {
     let p2 = list.add_phase("Build");
     let t2 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
 
-    let new_tid = list.postpone_task(&t1, TaskPosition::After(t2.clone())).unwrap();
+    let new_tid = list
+        .postpone_task(&t1, TaskPosition::After(t2.clone()))
+        .unwrap();
 
     // Source task should be deferred.
     let source = list.get_task(&t1).unwrap();
@@ -430,7 +446,9 @@ fn postpone_task_same_phase() {
     let t1 = list.add_task(&p1, "Read docs", TaskPosition::End).unwrap();
     let t2 = list.add_task(&p1, "Call API", TaskPosition::End).unwrap();
 
-    let new_tid = list.postpone_task(&t1, TaskPosition::Before(t2.clone())).unwrap();
+    let new_tid = list
+        .postpone_task(&t1, TaskPosition::Before(t2.clone()))
+        .unwrap();
 
     // Source postponed.
     let source = list.get_task(&t1).unwrap();
@@ -487,7 +505,8 @@ fn postpone_task_error_on_already_postponed() {
     let t2 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
 
     // Postpone once.
-    list.postpone_task(&t1, TaskPosition::After(t2.clone())).unwrap();
+    list.postpone_task(&t1, TaskPosition::After(t2.clone()))
+        .unwrap();
 
     // Try to postpone again.
     let result = list.postpone_task(&t1, TaskPosition::After(t2));
@@ -502,7 +521,9 @@ fn render_text_excludes_postponed() {
     let p2 = list.add_phase("Build");
     let t2 = list.add_task(&p2, "Write code", TaskPosition::End).unwrap();
 
-    let new_tid = list.postpone_task(&t1, TaskPosition::After(t2.clone())).unwrap();
+    let new_tid = list
+        .postpone_task(&t1, TaskPosition::After(t2.clone()))
+        .unwrap();
 
     let rendered = list.render_text();
 
@@ -620,10 +641,14 @@ fn postpone_to_phase_errors_on_already_postponed() {
 fn set_from_descriptions_creates_phases_and_tasks() {
     let mut list = TaskList::new();
     list.set_from_descriptions(vec![
-        ("Research".to_owned(), vec!["Read docs".to_owned(), "Call API".to_owned()]),
+        (
+            "Research".to_owned(),
+            vec!["Read docs".to_owned(), "Call API".to_owned()],
+        ),
         ("Build".to_owned(), vec!["Write code".to_owned()]),
         ("Deploy".to_owned(), vec![]),
-    ]).unwrap();
+    ])
+    .unwrap();
 
     assert_eq!(list.phases().len(), 3);
     assert_eq!(list.phases()[0].description(), "Research");
@@ -641,12 +666,17 @@ fn set_from_descriptions_creates_phases_and_tasks() {
     }
 
     // All IDs are unique.
-    let mut ids: Vec<String> = list.phases().iter()
+    let mut ids: Vec<String> = list
+        .phases()
+        .iter()
         .flat_map(|p| p.tasks().iter().map(|t| t.id().to_string()))
         .collect();
     ids.sort();
     ids.dedup();
-    assert_eq!(ids.len(), list.phases().iter().map(|p| p.tasks().len()).sum::<usize>());
+    assert_eq!(
+        ids.len(),
+        list.phases().iter().map(|p| p.tasks().len()).sum::<usize>()
+    );
 }
 
 #[test]
@@ -655,9 +685,8 @@ fn set_from_descriptions_replaces_existing() {
     let p1 = list.add_phase("Old");
     list.add_task(&p1, "Old task", TaskPosition::End).unwrap();
 
-    list.set_from_descriptions(vec![
-        ("New".to_owned(), vec!["New task".to_owned()]),
-    ]).unwrap();
+    list.set_from_descriptions(vec![("New".to_owned(), vec!["New task".to_owned()])])
+        .unwrap();
 
     assert_eq!(list.phases().len(), 1);
     assert_eq!(list.phases()[0].description(), "New");
@@ -680,7 +709,9 @@ fn set_from_descriptions_errors_on_empty() {
 fn cancel_task_marks_as_cancelled() {
     let mut list = TaskList::new();
     let pid = list.add_phase("Build");
-    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
+    let t1 = list
+        .add_task(&pid, "Write code", TaskPosition::End)
+        .unwrap();
 
     list.cancel_task(&t1).unwrap();
 
@@ -701,7 +732,9 @@ fn cancel_task_errors_on_unknown_task() {
 fn cancel_task_errors_on_already_cancelled() {
     let mut list = TaskList::new();
     let pid = list.add_phase("Build");
-    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
+    let t1 = list
+        .add_task(&pid, "Write code", TaskPosition::End)
+        .unwrap();
 
     list.cancel_task(&t1).unwrap();
     let result = list.cancel_task(&t1);
@@ -728,7 +761,9 @@ fn cancel_task_can_cancel_postponed_task() {
 fn complete_task_errors_on_cancelled() {
     let mut list = TaskList::new();
     let pid = list.add_phase("Build");
-    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
+    let t1 = list
+        .add_task(&pid, "Write code", TaskPosition::End)
+        .unwrap();
 
     list.cancel_task(&t1).unwrap();
     let result = list.complete_task(&t1);
@@ -763,7 +798,9 @@ fn postpone_to_phase_errors_on_cancelled() {
 fn render_text_shows_cancelled_with_prefix() {
     let mut list = TaskList::new();
     let pid = list.add_phase("Build");
-    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
+    let t1 = list
+        .add_task(&pid, "Write code", TaskPosition::End)
+        .unwrap();
     list.cancel_task(&t1).unwrap();
 
     let rendered = list.render_text();
@@ -801,7 +838,9 @@ fn render_text_hides_postponed_shows_cancelled() {
 fn render_phase_text_handles_cancelled() {
     let mut list = TaskList::new();
     let pid = list.add_phase("Build");
-    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
+    let t1 = list
+        .add_task(&pid, "Write code", TaskPosition::End)
+        .unwrap();
     list.cancel_task(&t1).unwrap();
 
     let rendered = list.render_phase_text(&pid).unwrap();
@@ -812,7 +851,9 @@ fn render_phase_text_handles_cancelled() {
 fn serde_roundtrip_with_cancelled() {
     let mut list = TaskList::new();
     let pid = list.add_phase("Build");
-    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
+    let t1 = list
+        .add_task(&pid, "Write code", TaskPosition::End)
+        .unwrap();
     list.cancel_task(&t1).unwrap();
 
     let json = serde_json::to_string(&list).unwrap();

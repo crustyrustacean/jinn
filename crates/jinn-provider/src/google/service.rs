@@ -68,7 +68,10 @@ impl GoogleService {
     ///
     /// Returns [`LlmServiceError::Provider`] on HTTP or parse errors.
     pub async fn list_models(&self) -> Result<Vec<ModelInfo>, Report<LlmServiceError>> {
-        let base_url = self.base_url.as_deref().unwrap_or("https://generativelanguage.googleapis.com");
+        let base_url = self
+            .base_url
+            .as_deref()
+            .unwrap_or("https://generativelanguage.googleapis.com");
         models::list_models_with_base_url(&self.client, &self.api_key, base_url).await
     }
 
@@ -260,7 +263,8 @@ mod tests {
             .mock("GET", "/v1beta/models?key=test-key")
             .with_status(200)
             .with_body(
-                serde_json::json!({"models": [{"name": "gemini-pro", "input_token_limit": 32000}]}).to_string(),
+                serde_json::json!({"models": [{"name": "gemini-pro", "input_token_limit": 32000}]})
+                    .to_string(),
             )
             .create_async()
             .await;
@@ -274,10 +278,13 @@ mod tests {
         let result = svc.list_models().await;
         let models = result.expect("should succeed");
         assert_eq!(models.len(), 1);
-        assert_eq!(models[0], ModelInfo {
-            id: "gemini-pro".to_owned(),
-            context_length: Some(32_000),
-        });
+        assert_eq!(
+            models[0],
+            ModelInfo {
+                id: "gemini-pro".to_owned(),
+                context_length: Some(32_000),
+            }
+        );
         mock.assert_async().await;
     }
 

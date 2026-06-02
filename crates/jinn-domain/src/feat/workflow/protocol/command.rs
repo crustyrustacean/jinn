@@ -50,9 +50,8 @@ pub struct LoadWorkflowPickerEntries;
 
 // --- Attached workflow commands ---
 
-
-use crate::protocol::SessionId;
 use super::super::attached_workflow::{WorkflowConfig, WorkflowTrigger};
+use crate::protocol::SessionId;
 
 /// Attach a workflow to a session.
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
@@ -94,4 +93,3 @@ pub struct TriggerWorkflow {
 pub struct FireBeforeTurn {
     pub session_id: SessionId,
 }
-

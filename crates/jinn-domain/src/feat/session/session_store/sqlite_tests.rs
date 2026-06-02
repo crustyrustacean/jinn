@@ -727,8 +727,6 @@ async fn lifecycle_script_state_nothing_ran_round_trips() {
     );
 }
 
-
-
 #[rstest::rstest]
 #[tokio::test]
 async fn fork_inherits_lifecycle_script_state() {
@@ -756,4 +754,3 @@ async fn fork_inherits_lifecycle_script_state() {
         crate::feat::session::chat_session::LifecycleScriptState::SetupRan
     );
 }
-

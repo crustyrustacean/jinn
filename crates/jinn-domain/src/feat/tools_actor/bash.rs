@@ -957,8 +957,9 @@ mod tests {
     #[rstest::rstest]
     fn format_exit_result_io_error() {
         // Given an I/O error.
-        let exit_result: Result<std::process::ExitStatus, std::io::Error> =
-            Err(std::io::Error::new(std::io::ErrorKind::NotFound, "not found"));
+        let exit_result: Result<std::process::ExitStatus, std::io::Error> = Err(
+            std::io::Error::new(std::io::ErrorKind::NotFound, "not found"),
+        );
 
         // When formatting the exit result.
         let result = format_exit_result(
@@ -995,7 +996,11 @@ mod tests {
 
         // Then a newline is added before the exit code message.
         assert!(!result.success);
-        assert!(result.content.contains("no trailing newline\nCommand exited with code 3"));
+        assert!(
+            result
+                .content
+                .contains("no trailing newline\nCommand exited with code 3")
+        );
     }
 
     #[rstest::rstest]

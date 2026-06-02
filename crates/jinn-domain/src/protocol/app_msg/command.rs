@@ -240,11 +240,10 @@ impl Command {
                 Some(crate::feat::workflow::protocol::command::FireBeforeTurn::NAME)
             }
 
-
             Self::Dynamic(..) => Some(DynamicCommand::NAME),
-            Self::TriggerCompaction(..) => Some(
-                crate::feat::session::protocol::trigger_compaction::TriggerCompaction::NAME,
-            ),
+            Self::TriggerCompaction(..) => {
+                Some(crate::feat::session::protocol::trigger_compaction::TriggerCompaction::NAME)
+            }
         }
     }
 
@@ -370,7 +369,6 @@ impl std::fmt::Display for Command {
                 write!(f, "cancel lifecycle command for {}", payload.session_id)
             }
 
-
             Command::SubmitHistoryMutations(payload) => {
                 write!(
                     f,
@@ -410,18 +408,29 @@ impl std::fmt::Display for Command {
                 write!(f, "attach workflow to {}", payload.session_id)
             }
             Command::DetachWorkflow(payload) => {
-                write!(f, "detach workflow {} from {}", payload.workflow_id, payload.session_id)
+                write!(
+                    f,
+                    "detach workflow {} from {}",
+                    payload.workflow_id, payload.session_id
+                )
             }
             Command::ToggleWorkflow(payload) => {
-                write!(f, "toggle workflow {} on {}", payload.workflow_id, payload.session_id)
+                write!(
+                    f,
+                    "toggle workflow {} on {}",
+                    payload.workflow_id, payload.session_id
+                )
             }
             Command::TriggerWorkflow(payload) => {
-                write!(f, "trigger workflow {} on {}", payload.workflow_id, payload.session_id)
+                write!(
+                    f,
+                    "trigger workflow {} on {}",
+                    payload.workflow_id, payload.session_id
+                )
             }
             Command::FireBeforeTurn(payload) => {
                 write!(f, "fire before-turn for {}", payload.session_id)
             }
-
 
             Command::Dynamic(d) => {
                 write!(f, "dynamic command '{}'", d.name)

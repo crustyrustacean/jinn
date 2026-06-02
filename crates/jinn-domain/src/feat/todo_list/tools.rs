@@ -20,16 +20,16 @@
 
 pub mod add_phase;
 pub mod add_task;
-pub mod complete_task;
 pub mod cancel_task;
-pub mod postpone_task;
-pub mod postpone_to_phase;
+pub mod complete_task;
 pub mod get_phase;
 pub mod get_task_list;
+pub mod postpone_task;
+pub mod postpone_to_phase;
 pub mod set_list;
 
-use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition};
 use crate::feat::tools_actor::BoxedToolFuture;
+use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition};
 
 /// A built-in tool entry: its definition paired with its execute function.
 pub type BuiltinToolEntry = (ToolDefinition, fn(ToolCall, ToolContext) -> BoxedToolFuture);

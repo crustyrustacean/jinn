@@ -444,6 +444,9 @@ tool_stream = true
 
         let config = load_config_from(&path).expect("load");
 
-        assert!(config.providers[0].requires_key, "requires_key should default to true");
+        assert!(
+            config.providers[0].requires_key,
+            "requires_key should default to true"
+        );
     }
 }

@@ -261,9 +261,7 @@ impl<'a> HistoryRender<'a> {
                     let entry = &self.history[*hist_idx];
                     let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
 
-                    if let Some(hit) =
-                        cache.get(entry, is_expanded, self.content_width)
-                    {
+                    if let Some(hit) = cache.get(entry, is_expanded, self.content_width) {
                         let start = wrapped_cursor;
                         let end = wrapped_cursor + hit.wrapped_count;
                         self.entry_line_ranges.push((start, end));
@@ -560,6 +558,12 @@ pub fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext) -> Vec<Line<'stati
             tokens_before,
             tokens_after,
             ..
-        } => compaction::to_lines(summary, *entries_compacted, *tokens_before, *tokens_after, ctx),
+        } => compaction::to_lines(
+            summary,
+            *entries_compacted,
+            *tokens_before,
+            *tokens_after,
+            ctx,
+        ),
     }
 }

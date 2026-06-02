@@ -10,13 +10,13 @@
 //! and on each field.
 
 // --- Re-exports: types moved to their feature homes ---
-pub use crate::common::session_map::SessionLoadGuard;
 pub use crate::common::focus::{FocusScope, ScopeStack};
-pub use crate::feat::ui::frontend_state::{FrontendCaches, FrontendState};
+pub use crate::common::session_map::SessionLoadGuard;
 pub use crate::feat::context::assembly_state::ContextAssemblyState;
 pub use crate::feat::provider::ProviderState;
 pub use crate::feat::rename_session_input::state::RenameSessionInputState;
 pub use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
+pub use crate::feat::ui::frontend_state::{FrontendCaches, FrontendState};
 pub use crate::feat::workflow::workflow_ui_state::WorkflowUiState;
 
 use crate::protocol::{ChatEntryId, PickerKind, PinPosition, SessionId};
@@ -70,8 +70,6 @@ pub struct AppState {
         )>,
     >,
 }
-
-
 
 impl AppState {
     /// Returns a mutable reference to the active picker's navigation interface.

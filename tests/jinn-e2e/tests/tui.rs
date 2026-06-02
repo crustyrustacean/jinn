@@ -60,9 +60,9 @@ impl TuiWorld {
             session_store: jinn_domain::SessionStoreService::new(Arc::new(
                 jinn_domain::SqliteSessionStore::new_in(&sessions_dir).expect("store"),
             )),
-            user_preferences_storage: jinn_domain::UserPreferencesStorageService::new(
-                Arc::new(jinn_domain::InMemoryUserPreferencesStorage::new()),
-            ),
+            user_preferences_storage: jinn_domain::UserPreferencesStorageService::new(Arc::new(
+                jinn_domain::InMemoryUserPreferencesStorage::new(),
+            )),
         };
 
         let app = TuiApp::test_builder().services(services).build();
@@ -410,8 +410,7 @@ fn run_headless_script(world: &mut TuiWorld, content: &str) {
     for keys in lines {
         for key in keys {
             let state_read = world.app.core.state.read();
-            let scope =
-                jinn_tui::app::scope_for_focus(state_read.frontend.scope_stack.current());
+            let scope = jinn_tui::app::scope_for_focus(state_read.frontend.scope_stack.current());
             drop(state_read);
             world.app.which_key.set_scope(scope);
             if let Some(intent) = world.app.which_key.handle_key(key) {

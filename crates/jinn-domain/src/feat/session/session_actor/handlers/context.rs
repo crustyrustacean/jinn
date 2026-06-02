@@ -128,7 +128,6 @@ impl SessionPersistenceActor {
         }
     }
 
-
     /// Loads persona picker entries into `AppState`.
     pub(in crate::feat::session::session_actor) fn handle_load_persona_picker_entries(
         &self,
@@ -153,9 +152,9 @@ impl SessionPersistenceActor {
             .collect();
         drop(state);
 
-    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
-    let mut state = self.state.write();
+        let mut state = self.state.write();
         state.frontend.persona_picker_mut().set_items(entries);
     }
 }
@@ -191,8 +190,7 @@ mod tests {
         let state = State::new(AppState::default());
         let deps = SessionPersistenceActorDeps {
             state: state.clone(),
-            services: Some(TestServices::builder().build()),
-            store: None,
+            services: TestServices::builder().build(),
             counter: crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base(),
             builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
             shell: "/bin/sh".to_owned(),
@@ -200,7 +198,6 @@ mod tests {
         let actor = SessionPersistenceActor::activate(deps, &mut ctx);
         (actor, state)
     }
-
 
     #[rstest::rstest]
     fn on_tools_registered_keeps_regular_tools_in_global_map() {
@@ -395,13 +392,18 @@ mod tests {
         // Then the entry is pinned.
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
-        let entry = session.history().iter().find(|e| e.id == entry_id).expect("entry");
+        let entry = session
+            .history()
+            .iter()
+            .find(|e| e.id == entry_id)
+            .expect("entry");
         assert!(entry.is_pinned(), "expected entry to be pinned");
 
         // And ChatEntryPinChanged event was emitted.
-        let has_event = sink.events().iter().any(|e| {
-            matches!(e, Event::ChatEntryPinChanged(e) if e.session_id == session_id)
-        });
+        let has_event = sink
+            .events()
+            .iter()
+            .any(|e| matches!(e, Event::ChatEntryPinChanged(e) if e.session_id == session_id));
         assert!(has_event, "expected ChatEntryPinChanged event");
     }
 
@@ -439,13 +441,18 @@ mod tests {
         // Then the entry is no longer pinned.
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
-        let entry = session.history().iter().find(|e| e.id == entry_id).expect("entry");
+        let entry = session
+            .history()
+            .iter()
+            .find(|e| e.id == entry_id)
+            .expect("entry");
         assert!(!entry.is_pinned(), "expected entry to be unpinned");
 
         // And ChatEntryPinChanged event was emitted.
-        let has_event = sink.events().iter().any(|e| {
-            matches!(e, Event::ChatEntryPinChanged(e) if e.session_id == session_id)
-        });
+        let has_event = sink
+            .events()
+            .iter()
+            .any(|e| matches!(e, Event::ChatEntryPinChanged(e) if e.session_id == session_id));
         assert!(has_event, "expected ChatEntryPinChanged event");
     }
 
@@ -472,10 +479,11 @@ mod tests {
         // Then the templates are stored in state.
         let guard = state.read();
         assert_eq!(guard.context.prompt_templates.len(), 1);
-        assert_eq!(guard.context.prompt_templates.templates()[0].name, "test-template");
+        assert_eq!(
+            guard.context.prompt_templates.templates()[0].name,
+            "test-template"
+        );
     }
-
-
 
     // --- handle_load_persona_picker_entries ---
 

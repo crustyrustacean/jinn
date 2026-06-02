@@ -6,8 +6,8 @@
 //! the registry is created on and never leaves a dedicated OS thread.
 //! The actor itself only holds a channel sender, forwarding events to that thread.
 
-use jinn_domain::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use jinn_domain::common::actor::protocol::event::AllActorsSpawned;
+use jinn_domain::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use jinn_domain::feat::session_lifecycle::protocol::event::SessionCreated;
 use jinn_domain::protocol::app_msg::Event;
 use jinn_plugin::PluginRegistry;
@@ -97,7 +97,11 @@ impl PluginActor {
 
 /// Runs on a dedicated OS thread. Owns the `PluginRegistry` and dispatches
 /// events to Lua plugin VMs. Never crosses thread boundaries with `!Send` types.
-fn plugin_thread(rx: kanal::Receiver<PluginMsg>, registry: PluginRegistry, startup_session_id: String) {
+fn plugin_thread(
+    rx: kanal::Receiver<PluginMsg>,
+    registry: PluginRegistry,
+    startup_session_id: String,
+) {
     loop {
         match rx.recv() {
             Ok(PluginMsg::Event(event)) => {
@@ -107,11 +111,7 @@ fn plugin_thread(rx: kanal::Receiver<PluginMsg>, registry: PluginRegistry, start
                 let ctx = jinn_plugin::ctx::AppStartedCtx {
                     session_id: startup_session_id.clone(),
                 };
-                jinn_plugin::emit(
-                    jinn_plugin::hooks::APP_STARTED,
-                    &registry,
-                    &ctx,
-                );
+                jinn_plugin::emit(jinn_plugin::hooks::APP_STARTED, &registry, &ctx);
             }
             Ok(PluginMsg::Shutdown) | Err(_) => {
                 tracing::debug!("plugin dispatch thread shutting down");
@@ -127,10 +127,6 @@ fn dispatch_event(event: &Event, registry: &PluginRegistry) {
         let ctx = jinn_plugin::ctx::SessionCreatedCtx {
             session_id: session_id.to_string(),
         };
-        jinn_plugin::emit(
-            jinn_plugin::hooks::SESSION_CREATED,
-            registry,
-            &ctx,
-        );
+        jinn_plugin::emit(jinn_plugin::hooks::SESSION_CREATED, registry, &ctx);
     }
 }

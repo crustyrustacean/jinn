@@ -75,7 +75,7 @@ pub struct LlmActor {
     /// Factory for creating LLM service instances.
     factory: LlmServiceFactoryService,
     /// Runtime services (provider registry, API keys for per-request factory creation).
-    services: Option<Services>,
+    services: Services,
     /// Shared application state (for reading tool definitions).
     state: State,
     /// Active stream tasks, keyed by session ID.
@@ -89,7 +89,7 @@ pub struct LlmActorDeps {
     /// Factory for creating LLM service instances.
     pub factory: LlmServiceFactoryService,
     /// Runtime services (provider registry, API keys for per-request factory creation).
-    pub services: Option<Services>,
+    pub services: Services,
     /// Shared application state (for reading tool definitions).
     pub state: State,
 }
@@ -156,16 +156,13 @@ impl LlmActor {
         reason = "stream handling is inherently linear; splitting would obscure the flow"
     )]
     fn start_stream(&mut self, payload: &SendToLlmProvider, ctx: &ActorContext) {
-        let retry_config: jinn_provider::RetryConfig = match self.services.as_ref() {
-            Some(services) => services
-                .user_preferences_storage
-                .load()
-                .expect("preferences")
-                .request_retry
-                .to_retry_config(),
-            None => crate::feat::preferences_actor::user_preferences::RequestRetryConfig::default()
-                .to_retry_config(),
-        };
+        let retry_config = self
+            .services
+            .user_preferences_storage
+            .load()
+            .expect("preferences")
+            .request_retry
+            .to_retry_config();
 
         let tools = payload.tool_definitions.clone();
         let messages = payload.messages.clone();
@@ -189,39 +186,38 @@ impl LlmActor {
 
         // Resolve the factory: per-request if provider_id is set, global fallback otherwise.
         let factory = if let Some(pid) = payload.provider_id.as_deref() {
-            if let Some(ref services) = self.services {
-                let id = crate::feat::provider_infra::ProviderId::new(pid.to_owned());
-                let api_keys = services.api_keys.read();
-                match services.provider_registry.create_factory(&id, &api_keys) {
-                    Ok(f) => {
-                        tracing::debug!(provider_id = %pid, "created per-request LLM factory");
-                        LlmServiceFactoryService::new(Arc::from(f))
-                    }
-                    Err(e) => {
-                        tracing::error!(err = ?e, provider_id = %pid, "failed to create per-request factory");
-                        let sink = ctx.sink();
-                        let sid = session_id.clone();
-                        let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
-                            session_id: sid.clone(),
-                            entry: ChatEntry::error(format!(
-                                "LLM factory creation failed for {pid}: {e:?}"
-                            )),
-                        }));
-                        let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
-                            session_id: sid,
-                            reason: StreamCompletedReason::Error,
-                            assistant_content: None,
-                            tool_calls: None,
-                            cost: None,
-            provider_completion_tokens: None,
-            thinking_content: None,
-                        }));
-                        return;
-                    }
+            let id = crate::feat::provider_infra::ProviderId::new(pid.to_owned());
+            let api_keys = self.services.api_keys.read();
+            match self
+                .services
+                .provider_registry
+                .create_factory(&id, &api_keys)
+            {
+                Ok(f) => {
+                    tracing::debug!(provider_id = %pid, "created per-request LLM factory");
+                    LlmServiceFactoryService::new(Arc::from(f))
                 }
-            } else {
-                // No services - fall through to global factory
-                self.factory.clone()
+                Err(e) => {
+                    tracing::error!(err = ?e, provider_id = %pid, "failed to create per-request factory");
+                    let sink = ctx.sink();
+                    let sid = session_id.clone();
+                    let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
+                        session_id: sid.clone(),
+                        entry: ChatEntry::error(format!(
+                            "LLM factory creation failed for {pid}: {e:?}"
+                        )),
+                    }));
+                    let _ = sink.send_event(Event::StreamCompleted(StreamCompleted {
+                        session_id: sid,
+                        reason: StreamCompletedReason::Error,
+                        assistant_content: None,
+                        tool_calls: None,
+                        cost: None,
+                        provider_completion_tokens: None,
+                        thinking_content: None,
+                    }));
+                    return;
+                }
             }
         } else {
             self.factory.clone()
@@ -249,8 +245,8 @@ impl LlmActor {
                         assistant_content: None,
                         tool_calls: None,
                         cost: None,
-            provider_completion_tokens: None,
-            thinking_content: None,
+                        provider_completion_tokens: None,
+                        thinking_content: None,
                     }));
                     return;
                 }
@@ -276,8 +272,8 @@ impl LlmActor {
                         assistant_content: None,
                         tool_calls: None,
                         cost: None,
-            provider_completion_tokens: None,
-            thinking_content: None,
+                        provider_completion_tokens: None,
+                        thinking_content: None,
                     }));
                     return;
                 }
@@ -447,8 +443,8 @@ impl LlmActor {
                                 assistant_content: None,
                                 tool_calls: None,
                                 cost: None,
-            provider_completion_tokens: None,
-            thinking_content: None,
+                                provider_completion_tokens: None,
+                                thinking_content: None,
                             }));
                             stream_ended_normally = true;
                             break;
@@ -466,8 +462,8 @@ impl LlmActor {
                             assistant_content: None,
                             tool_calls: None,
                             cost: None,
-            provider_completion_tokens: None,
-            thinking_content: None,
+                            provider_completion_tokens: None,
+                            thinking_content: None,
                         }));
                         stream_ended_normally = true;
                         break;
@@ -494,8 +490,8 @@ impl LlmActor {
                     assistant_content: None,
                     tool_calls: None,
                     cost: None,
-            provider_completion_tokens: None,
-            thinking_content: None,
+                    provider_completion_tokens: None,
+                    thinking_content: None,
                 }));
             }
         });
@@ -571,8 +567,8 @@ impl LlmActor {
                 assistant_content: None,
                 tool_calls: None,
                 cost: None,
-            provider_completion_tokens: None,
-            thinking_content: None,
+                provider_completion_tokens: None,
+                thinking_content: None,
             }));
         }
     }
@@ -599,7 +595,7 @@ mod tests {
         let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![])));
         LlmActor {
             factory,
-            services: None,
+            services: crate::common::services::Services::new(),
             state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
@@ -720,7 +716,9 @@ mod tests {
 
         let mut actor = test_llm_actor();
         let session_id = SessionId::new();
-        actor.sessions.insert(session_id.clone(), SessionData::new());
+        actor
+            .sessions
+            .insert(session_id.clone(), SessionData::new());
         // Insert a dummy task that will be aborted.
         let handle = tokio::spawn(async { std::future::pending::<()>().await });
         actor.tasks.insert(session_id.clone(), handle);
@@ -736,8 +734,7 @@ mod tests {
         let events = sink.events();
         let found = events.iter().any(|e| {
             if let Event::StreamCompleted(sc) = e {
-                sc.reason == StreamCompletedReason::Canceled
-                    && sc.session_id == session_id
+                sc.reason == StreamCompletedReason::Canceled && sc.session_id == session_id
             } else {
                 false
             }
@@ -784,7 +781,10 @@ mod tests {
         // Yield to let abort propagate.
         tokio::task::yield_now().await;
         for handle in actor.tasks.values() {
-            assert!(handle.is_finished(), "task should be aborted after cancel_all");
+            assert!(
+                handle.is_finished(),
+                "task should be aborted after cancel_all"
+            );
         }
     }
 
@@ -805,7 +805,10 @@ mod tests {
         // Then the task is aborted.
         tokio::task::yield_now().await;
         for handle in actor.tasks.values() {
-            assert!(handle.is_finished(), "task should be aborted after on_shutdown");
+            assert!(
+                handle.is_finished(),
+                "task should be aborted after on_shutdown"
+            );
         }
     }
 
@@ -816,12 +819,13 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let ctx = ActorContext::new("test-llm", sink.clone());
 
-        let factory = LlmServiceFactoryService::new(Arc::new(
-            FakeLlmServiceFactory::new(vec!["Hello".to_owned(), " World".to_owned()]),
-        ));
+        let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![
+            "Hello".to_owned(),
+            " World".to_owned(),
+        ])));
         let mut actor = LlmActor {
             factory,
-            services: None,
+            services: crate::common::services::Services::new(),
             state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
@@ -865,7 +869,9 @@ mod tests {
 
         // And StreamCompleted was emitted.
         let completed = stream_events.iter().find_map(|e| match e {
-            Event::StreamCompleted(sc) if sc.reason == StreamCompletedReason::Finished => Some(sc.clone()),
+            Event::StreamCompleted(sc) if sc.reason == StreamCompletedReason::Finished => {
+                Some(sc.clone())
+            }
             _ => None,
         });
         assert!(completed.is_some(), "should emit StreamCompleted(Finished)");
@@ -880,12 +886,12 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let ctx = ActorContext::new("test-llm", sink.clone());
 
-        let factory = LlmServiceFactoryService::new(Arc::new(
-            FakeLlmServiceFactory::new(vec!["First".to_owned()]),
-        ));
+        let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![
+            "First".to_owned(),
+        ])));
         let mut actor = LlmActor {
             factory,
-            services: None,
+            services: crate::common::services::Services::new(),
             state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
@@ -905,7 +911,9 @@ mod tests {
         let first_handle = actor.tasks.remove(&session_id);
         assert!(first_handle.is_some());
         // Re-insert for the second start_stream to find and abort.
-        actor.tasks.insert(session_id.clone(), first_handle.unwrap());
+        actor
+            .tasks
+            .insert(session_id.clone(), first_handle.unwrap());
 
         // When starting a second stream for the same session.
         actor.start_stream(&payload, &ctx);
@@ -924,12 +932,12 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let ctx = ActorContext::new("test-llm", sink.clone());
 
-        let factory = LlmServiceFactoryService::new(Arc::new(
-            FakeLlmServiceFactory::new(vec!["Hi".to_owned()]),
-        ));
+        let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![
+            "Hi".to_owned(),
+        ])));
         let mut actor = LlmActor {
             factory,
-            services: None,
+            services: crate::common::services::Services::new(),
             state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
@@ -964,12 +972,12 @@ mod tests {
         let sink = Arc::new(RecordingSink::new());
         let ctx = ActorContext::new("test-llm", sink.clone());
 
-        let factory = LlmServiceFactoryService::new(Arc::new(
-            FakeLlmServiceFactory::new(vec!["response".to_owned()]),
-        ));
+        let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![
+            "response".to_owned(),
+        ])));
         let mut actor = LlmActor {
             factory,
-            services: None,
+            services: crate::common::services::Services::new(),
             state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
@@ -1000,7 +1008,9 @@ mod tests {
 
         let mut actor = test_llm_actor();
         let session_id = SessionId::new();
-        actor.sessions.insert(session_id.clone(), SessionData::new());
+        actor
+            .sessions
+            .insert(session_id.clone(), SessionData::new());
         let handle = tokio::spawn(async { std::future::pending::<()>().await });
         actor.tasks.insert(session_id.clone(), handle);
 

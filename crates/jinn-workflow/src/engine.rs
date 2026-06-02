@@ -715,9 +715,7 @@ fn detect_deadlocks(
         let mut newly_deadlocked: Vec<String> = Vec::new();
 
         for (name, &remaining) in pending_count {
-            if remaining > 0
-                && statuses.get(name.as_str()) == Some(&NodeStatus::Pending)
-            {
+            if remaining > 0 && statuses.get(name.as_str()) == Some(&NodeStatus::Pending) {
                 let Some(&idx) = name_to_index.get(name) else {
                     continue;
                 };
@@ -730,11 +728,7 @@ fn detect_deadlocks(
                         };
                         matches!(
                             statuses.get(src_name.as_str()),
-                            Some(
-                                NodeStatus::Completed
-                                    | NodeStatus::Failed
-                                    | NodeStatus::Skipped
-                            )
+                            Some(NodeStatus::Completed | NodeStatus::Failed | NodeStatus::Skipped)
                         )
                     });
 
@@ -1622,10 +1616,18 @@ mod tests {
             .add_node("left".to_owned(), uppercase_node())
             .add_node("right".to_owned(), suffix_node("!"))
             .add_node("merge".to_owned(), concat_node());
-        builder.connect("src", "out", "left", "in").expect("src→left");
-        builder.connect("src", "out", "right", "in").expect("src→right");
-        builder.connect("left", "out", "merge", "left").expect("left→merge");
-        builder.connect("right", "out", "merge", "right").expect("right→merge");
+        builder
+            .connect("src", "out", "left", "in")
+            .expect("src→left");
+        builder
+            .connect("src", "out", "right", "in")
+            .expect("src→right");
+        builder
+            .connect("left", "out", "merge", "left")
+            .expect("left→merge");
+        builder
+            .connect("right", "out", "merge", "right")
+            .expect("right→merge");
         let graph = builder.build().expect("build");
         let execution = Arc::new(WorkflowExecution::new(graph));
 
@@ -1710,9 +1712,15 @@ mod tests {
             .add_node("router".to_owned(), selective_output_node())
             .add_node("yes_branch".to_owned(), uppercase_node())
             .add_node("no_branch".to_owned(), suffix_node("!"));
-        builder.connect("source", "out", "router", "in").expect("src→router");
-        builder.connect("router", "yes", "yes_branch", "in").expect("router→yes");
-        builder.connect("router", "no", "no_branch", "in").expect("router→no");
+        builder
+            .connect("source", "out", "router", "in")
+            .expect("src→router");
+        builder
+            .connect("router", "yes", "yes_branch", "in")
+            .expect("router→yes");
+        builder
+            .connect("router", "no", "no_branch", "in")
+            .expect("router→no");
         let graph = builder.build().expect("build");
         let execution = Arc::new(WorkflowExecution::new(graph));
 
@@ -1738,9 +1746,15 @@ mod tests {
             .add_node("router".to_owned(), selective_output_node())
             .add_node("dead_branch".to_owned(), uppercase_node())
             .add_node("downstream".to_owned(), suffix_node("!"));
-        builder.connect("source", "out", "router", "in").expect("src→router");
-        builder.connect("router", "no", "dead_branch", "in").expect("router→dead");
-        builder.connect("dead_branch", "out", "downstream", "in").expect("dead→down");
+        builder
+            .connect("source", "out", "router", "in")
+            .expect("src→router");
+        builder
+            .connect("router", "no", "dead_branch", "in")
+            .expect("router→dead");
+        builder
+            .connect("dead_branch", "out", "downstream", "in")
+            .expect("dead→down");
         let graph = builder.build().expect("build");
         let execution = Arc::new(WorkflowExecution::new(graph));
 
@@ -1766,11 +1780,21 @@ mod tests {
             .add_node("b".to_owned(), uppercase_node())
             .add_node("c".to_owned(), suffix_node("!"))
             .add_node("merge".to_owned(), concat_node());
-        builder.connect("source", "out", "router", "in").expect("src→router");
-        builder.connect("router", "yes", "b", "in").expect("router→b");
-        builder.connect("router", "no", "c", "in").expect("router→c");
-        builder.connect("b", "out", "merge", "left").expect("b→merge");
-        builder.connect("c", "out", "merge", "right").expect("c→merge");
+        builder
+            .connect("source", "out", "router", "in")
+            .expect("src→router");
+        builder
+            .connect("router", "yes", "b", "in")
+            .expect("router→b");
+        builder
+            .connect("router", "no", "c", "in")
+            .expect("router→c");
+        builder
+            .connect("b", "out", "merge", "left")
+            .expect("b→merge");
+        builder
+            .connect("c", "out", "merge", "right")
+            .expect("c→merge");
         let graph = builder.build().expect("build");
         let execution = Arc::new(WorkflowExecution::new(graph));
 

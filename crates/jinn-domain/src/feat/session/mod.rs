@@ -16,11 +16,11 @@ pub(crate) mod entry_token_cache;
 mod chat_entry_tests;
 pub mod chat_session;
 pub mod entries;
+#[cfg(test)]
+mod entries_tests;
 pub mod history_mutation;
 #[cfg(test)]
 mod history_mutation_tests;
-#[cfg(test)]
-mod entries_tests;
 pub mod intent;
 pub mod phase_machine;
 pub mod picker_entry;
@@ -37,7 +37,9 @@ mod token_stats_tests;
 #[cfg(test)]
 mod tree_aggregate_tests;
 
-pub use tree_aggregate::{FrozenTreeNode, TreeAggregateStats, aggregate_tree_stats, find_tree_root, snapshot_frozen_node};
+pub use tree_aggregate::{
+    FrozenTreeNode, TreeAggregateStats, aggregate_tree_stats, find_tree_root, snapshot_frozen_node,
+};
 pub(crate) mod tool_result_status;
 pub mod turn_queue;
 pub mod validator;
