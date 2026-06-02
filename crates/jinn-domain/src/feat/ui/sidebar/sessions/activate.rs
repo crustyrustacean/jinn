@@ -44,6 +44,9 @@ pub fn handle_session_activate(state: &mut AppState) {
             }
         }
     }
+
+    // Clear preview after activation decision.
+    state.frontend.sessions_section.previewed_workflow_id = None;
 }
 
 

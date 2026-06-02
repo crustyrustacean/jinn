@@ -81,6 +81,35 @@ pub fn render_workflow_tab(frame: &mut Frame<'_>, area: Rect, state: &AppState, 
     }
 }
 
+/// Renders a read-only preview of a workflow graph.
+///
+/// Used when the sidebar cursor hovers over a workflow entry.
+/// Renders only the graph widget and a status line hint.
+/// Does NOT use `state.frontend.workflow_ui` to avoid polluting active workflow state.
+pub fn render_workflow_preview(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    workflow: &jinn_domain::feat::workflow::workflow_state::WorkflowState,
+) {
+    let snapshot = workflow.execution.snapshot();
+    let viewport = jinn_workflow_tui::viewport::ViewportState::default();
+    let widget = WorkflowWidget::new(&snapshot, &viewport, 0, ratatui::style::Color::Yellow);
+    frame.render_widget(widget, area);
+
+    // Preview hint status line.
+    let hint = Line::from(Span::styled(
+        format!(" Preview: {} · press Enter to activate", workflow.name),
+        Style::default().add_modifier(Modifier::DIM),
+    ));
+    let status_area = Rect {
+        x: area.x,
+        y: area.y + area.height.saturating_sub(1),
+        width: area.width,
+        height: 1,
+    };
+    frame.render_widget(Paragraph::new(hint), status_area);
+}
+
 /// Constructs a `ViewportState` from the persisted `WorkflowUiState`.
 fn viewport_from_ui(ui: &WorkflowUiState) -> jinn_workflow_tui::viewport::ViewportState {
     jinn_workflow_tui::viewport::ViewportState {
