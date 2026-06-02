@@ -39,11 +39,16 @@ pub fn handle_session_activate(state: &mut AppState) {
                 return;
             };
             if state.workflow.get(wf_id).is_some() {
+                state.session.set_active(entry.id.clone());
                 state.workflow.set_active(wf_id);
                 state.frontend.scope_stack.swap_base(FocusScope::Workflow);
             }
+
         }
     }
+
+    // Clear preview after activation decision.
+    state.frontend.sessions_section.previewed_workflow_id = None;
 }
 
 
@@ -147,4 +152,60 @@ mod tests {
         );
         assert_eq!(state.frontend.scope_stack.len(), 1, "sidebar overlay should be gone");
     }
-}
+
+    #[rstest::rstest]
+    fn activating_workflow_also_activates_owning_session() {
+        // Given a state with two sessions, workflow on the second (inactive) session.
+        let mut state = AppState::default();
+        let first_session_id = state.session.active_session_id().clone();
+
+        // Create a second session.
+        let second_id = SessionId::new();
+        let mut second_session = crate::feat::session::chat_session::ChatSessionState::new();
+        second_session.set_session_id(second_id.clone());
+        state.session.insert(second_session);
+
+        // Add a workflow to the second session.
+        let wf_id = WorkflowId::new();
+        let execution = std::sync::Arc::new(
+            jinn_workflow::execution::WorkflowExecution::new(
+                test_graph(),
+            ),
+        );
+        let wf_state = WorkflowState::new("test".into(), execution);
+        state.workflow.insert(WorkflowState {
+            id: wf_id.clone(),
+            ..wf_state
+        });
+        state.session.get_mut(&second_id).unwrap().core.attached_workflows.push(
+            AttachedWorkflow {
+                id: wf_id.clone(),
+                config: WorkflowConfig::Custom(serde_json::json!({})),
+                label: "Custom".to_owned(),
+                trigger: WorkflowTrigger::Manual,
+                enabled: true,
+                state: AttachedWorkflowState::Ready,
+            },
+        );
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+        // Position cursor on the workflow entry (index 1: second_session[0], workflow[1], first_session[2]).
+        state.frontend.sessions_section.selected_index = Some(1);
+
+        // Verify the first session is active before activation.
+        assert_eq!(
+            state.session.active_session_id(),
+            &first_session_id,
+            "first session should be active before activation"
+        );
+
+        // When activating.
+        handle_session_activate(&mut state);
+
+        // Then the owning (second) session is now active.
+        assert_eq!(
+            state.session.active_session_id(),
+            &second_id,
+            "activating a workflow should also activate its owning session"
+        );
+    }
+    }

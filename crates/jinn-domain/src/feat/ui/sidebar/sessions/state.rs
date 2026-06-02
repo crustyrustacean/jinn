@@ -28,6 +28,12 @@ pub struct SessionsSectionState {
     /// Updated reactively in `remove_and_replace()`, invalidated on session load.
     /// Empty when no intermediate parents have been hidden.
     pub visual_parents: HashMap<SessionId, SessionId>,
+    /// Workflow preview: the workflow ID currently under the sidebar cursor.
+    /// Set when navigating onto a `SessionEntryKind::Workflow` entry whose
+    /// workflow exists in `WorkflowMap`. Cleared when moving off the entry,
+    /// leaving the section, or activating the workflow.
+    /// `None` when no workflow is being previewed.
+    pub previewed_workflow_id: Option<crate::feat::workflow::workflow_state::WorkflowId>,
 }
 
 #[derive(Clone)]
@@ -176,7 +182,7 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
                 kind: SessionEntryKind::Workflow,
                 id: id.clone(),
                 title: aw.label_or_default().to_owned(),
-                is_active: active_workflow_id.as_ref() == Some(&aw.id),
+                is_active: active_workflow_id.as_ref() == Some(&aw.id) && id == active_id,
                 created_at: *session.created_at(), // approximate
                 is_idle: true,
                 last_entry_is_error: matches!(

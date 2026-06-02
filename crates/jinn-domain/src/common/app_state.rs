@@ -112,6 +112,16 @@ impl AppState {
             )
     }
 
+    /// Returns the workflow being previewed in the sidebar, if any.
+    ///
+    /// Only returns `Some` when the sessions section has a workflow entry under
+    /// the cursor and that workflow exists in `WorkflowMap`.
+    pub fn previewed_workflow(&self) -> Option<&crate::feat::workflow::workflow_state::WorkflowState> {
+        self.frontend.sessions_section.previewed_workflow_id
+            .as_ref()
+            .and_then(|id| self.workflow.get(id))
+    }
+
     /// Mutable access to the active chat session.
     ///
     /// Infallible - `SessionMap` guarantees the active session exists.
