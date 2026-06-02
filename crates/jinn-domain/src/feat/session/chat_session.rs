@@ -1019,6 +1019,22 @@ impl ChatSessionState {
     /// Creates the entry with `ToolResultStatus::Pending` and empty content,
     /// then tracks its history index for later content appends.
     pub fn begin_tool_result(&mut self, tool_call_id: &str, name: &str) {
+        // Early return if not in Streaming phase — don't push orphaned entries.
+        if self
+            .core
+            .ephemeral
+            .machine
+            .streaming_tool_result_indices_mut()
+            .is_none()
+        {
+            tracing::warn!(
+                current_phase = ?self.core.ephemeral.machine.kind(),
+                tool_call_id,
+                "begin_tool_result called while not streaming - ignoring"
+            );
+            return;
+        }
+
         let entry = ChatEntry::tool_result(
             tool_call_id,
             name,
@@ -1026,20 +1042,16 @@ impl ChatSessionState {
             crate::feat::session::tool_result_status::ToolResultStatus::Pending,
         );
         let history_index = self.push_entry(entry);
-        let Some(indices) = self
+
+        // Re-acquire the streaming index map after push_entry releases &mut self.
+        if let Some(indices) = self
             .core
             .ephemeral
             .machine
             .streaming_tool_result_indices_mut()
-        else {
-            tracing::warn!(
-                current_phase = ?self.core.ephemeral.machine.kind(),
-                tool_call_id,
-                "begin_tool_result called while not streaming - ignoring"
-            );
-            return;
-        };
-        indices.insert(tool_call_id.to_owned(), history_index);
+        {
+            indices.insert(tool_call_id.to_owned(), history_index);
+        }
     }
 
     /// Append incremental output to a pending ToolResult entry.
@@ -1088,8 +1100,8 @@ impl ChatSessionState {
         name: &str,
         content: &str,
         success: bool,
-        full_content: Option<String>,
-        truncation: Option<jinn_provider::tool_types::TruncationMeta>,
+        mut full_content: Option<String>,
+        mut truncation: Option<jinn_provider::tool_types::TruncationMeta>,
     ) {
         let status = if success {
             crate::feat::session::tool_result_status::ToolResultStatus::Success
@@ -1121,20 +1133,53 @@ impl ChatSessionState {
                 }
                 _ => {}
             }
-        } else if let Some(meta) = truncation {
-            // Non-streaming tool with truncation - push a truncated entry.
-            let full = full_content.unwrap_or_default();
-            self.push_entry(ChatEntry::tool_result_truncated(
-                tool_call_id,
-                name,
-                content.to_owned(),
-                full,
-                status,
-                meta,
-            ));
         } else {
-            // Non-streaming tool - push a new completed entry.
-            self.push_entry(ChatEntry::tool_result(tool_call_id, name, content, status));
+            // Streaming index not available. Search history for an existing
+            // ToolResult with matching kind.id (e.g., a pending entry created
+            // by begin_tool_result before the streaming phase was dropped).
+            let mut existing_found = false;
+            for entry in self.core.history.iter_mut().rev() {
+                match &mut entry.kind {
+                    ChatEntryKind::ToolResult {
+                        id: entry_id,
+                        content: entry_content,
+                        status: entry_status,
+                        full_content: entry_full_content,
+                        truncation: entry_truncation,
+                        ..
+                    } if entry_id == tool_call_id => {
+                        content.clone_into(entry_content);
+                        *entry_status = status;
+                        *entry_full_content = full_content.take();
+                        *entry_truncation = truncation.take();
+                        existing_found = true;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+
+            if !existing_found {
+                // No existing entry found - push a new one.
+                if let Some(meta) = truncation {
+                    let full = full_content.unwrap_or_default();
+                    self.push_entry(ChatEntry::tool_result_truncated(
+                        tool_call_id,
+                        name,
+                        content.to_owned(),
+                        full,
+                        status,
+                        meta,
+                    ));
+                } else {
+                    self.push_entry(ChatEntry::tool_result(
+                        tool_call_id,
+                        name,
+                        content,
+                        status,
+                    ));
+                }
+            }
         }
     }
 
