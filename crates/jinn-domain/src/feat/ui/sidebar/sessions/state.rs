@@ -176,7 +176,7 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
                 kind: SessionEntryKind::Workflow,
                 id: id.clone(),
                 title: aw.config.label().to_owned(),
-                is_active: active_workflow_id.as_ref() == Some(&aw.id),
+                is_active: active_workflow_id.as_ref() == Some(&aw.id) && id == active_id,
                 created_at: *session.created_at(), // approximate
                 is_idle: true,
                 last_entry_is_error: matches!(
