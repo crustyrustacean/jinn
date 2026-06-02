@@ -149,6 +149,7 @@ impl WorkflowActor {
                 crate::feat::workflow::attached_workflow::AttachedWorkflow {
                     id: workflow_id.clone(),
                     config: payload.config.clone(),
+                    label: payload.config.label().to_owned(),
                     trigger: payload.trigger.clone(),
                     enabled: true,
                     state: crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready,
