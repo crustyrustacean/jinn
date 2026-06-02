@@ -22,6 +22,10 @@ pub struct AttachedWorkflow {
     pub id: WorkflowId,
     /// The configuration (kind + parameters) for this workflow.
     pub config: WorkflowConfig,
+    /// User-editable display label. Initialized from `config.label()` at construction.
+    /// Falls back to `config.label()` when empty (backward compat with old persisted data).
+    #[serde(default)]
+    pub label: String,
     /// When this workflow fires.
     pub trigger: WorkflowTrigger,
     /// Whether this attachment is active. `false` = skip on trigger.
@@ -34,12 +38,27 @@ impl AttachedWorkflow {
     /// Create a new attached workflow with Ready state and enabled=true.
     #[must_use]
     pub fn new(config: WorkflowConfig, trigger: WorkflowTrigger) -> Self {
+        let label = config.label().to_owned();
         Self {
             id: WorkflowId::new(),
             config,
+            label,
             trigger,
             enabled: true,
             state: AttachedWorkflowState::Ready,
+        }
+    }
+
+    /// Returns the display label, falling back to `config.label()` when empty.
+    ///
+    /// This handles backward compatibility with old persisted data that lacks
+    /// the `label` field — `#[serde(default)]` produces an empty string.
+    #[must_use]
+    pub fn label_or_default(&self) -> &str {
+        if self.label.is_empty() {
+            self.config.label()
+        } else {
+            &self.label
         }
     }
 }

@@ -235,8 +235,27 @@ pub enum Intent {
     /// Delete the grapheme before the cursor in rename input.
     RenameDeleteGrapheme,
     /// Delete the grapheme after the cursor in rename input.
+    /// Delete the grapheme after the cursor in rename input.
     RenameDeleteForward,
 
+    // --- Rename Workflow Input ---
+    /// Confirm the rename workflow input and apply.
+    RenameWorkflowConfirm,
+    /// Cancel the rename workflow input popup.
+    RenameWorkflowLeave,
+    /// Insert a character into the rename workflow input.
+    RenameWorkflowInsertChar {
+        /// The character to insert.
+        ch: char,
+    },
+    /// Move cursor left in the rename workflow input.
+    RenameWorkflowCursorLeft,
+    /// Move cursor right in the rename workflow input.
+    RenameWorkflowCursorRight,
+    /// Delete the grapheme before the cursor in rename workflow input.
+    RenameWorkflowDeleteGrapheme,
+    /// Delete the grapheme after the cursor in rename workflow input.
+    RenameWorkflowDeleteForward,
     ToggleOneShot {
         /// Which one-shot workflow to toggle.
         kind: crate::feat::workflow::attached_workflow::OneShotKind,
@@ -413,6 +432,15 @@ impl std::fmt::Display for Intent {
             Intent::RenameCursorRight => write!(f, "rename cursor right"),
             Intent::RenameDeleteGrapheme => write!(f, "rename delete"),
             Intent::RenameDeleteForward => write!(f, "rename forward delete"),
+
+            // --- Rename Workflow Input ---
+            Intent::RenameWorkflowConfirm => write!(f, "rename workflow confirm"),
+            Intent::RenameWorkflowLeave => write!(f, "rename workflow leave"),
+            Intent::RenameWorkflowInsertChar { ch } => write!(f, "rename workflow insert '{ch}'"),
+            Intent::RenameWorkflowCursorLeft => write!(f, "rename workflow cursor left"),
+            Intent::RenameWorkflowCursorRight => write!(f, "rename workflow cursor right"),
+            Intent::RenameWorkflowDeleteGrapheme => write!(f, "rename workflow delete"),
+            Intent::RenameWorkflowDeleteForward => write!(f, "rename workflow forward delete"),
 
             Intent::ToggleOneShot { kind } => write!(f, "toggle one-shot {:?}", kind),
 
