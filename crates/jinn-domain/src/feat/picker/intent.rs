@@ -11,6 +11,7 @@ use crate::common::app_state::FocusScope;
 use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch};
+#[cfg(test)]
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
@@ -506,15 +507,24 @@ fn confirm_workflow(state: &mut AppState) -> IntentResult {
     // Pop picker overlay.
     state.frontend.scope_stack.pop();
 
-    // Switch to workflow tab.
-    state.frontend.active_tab = crate::protocol::tab::ActiveTab::Workflow;
+
+
     state
         .frontend
         .scope_stack
         .swap_base(crate::common::app_state::FocusScope::Workflow);
-
+    let config = crate::feat::workflow::attached_workflow::WorkflowConfig::Custom(
+        serde_json::json!({"name": name}),
+    );
+    let session_id = state.session.active_session_id().clone();
     IntentResult::with_commands(vec![Command::InitWorkflow(
-        crate::feat::workflow::protocol::command::InitWorkflow { name, workflow_id },
+        crate::feat::workflow::protocol::command::InitWorkflow {
+            name,
+            workflow_id,
+            session_id,
+            config,
+            trigger: crate::feat::workflow::attached_workflow::WorkflowTrigger::Manual,
+        },
     )])
 }
 

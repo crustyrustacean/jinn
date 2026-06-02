@@ -19,7 +19,7 @@ pub mod key;
 mod key_tests;
 pub mod mode;
 pub mod system;
-pub mod tab;
+
 
 // Re-export primary types
 pub use crate::common::actor::{CommandMsg, CommandName, EventMsg, EventTypeName};
@@ -34,7 +34,7 @@ pub use intent::IntentResult;
 pub use jinn_protocol_derive::{CommandMsg, EventMsg};
 pub use key::{Key, KeyEvent, Modifiers};
 pub use mode::Mode;
-pub use tab::{ActiveTab, TabDirection};
+
 
 // Re-export domain types that are widely used as cross-cutting protocol concerns
 pub use crate::common::actor::actor_name::ActorName;

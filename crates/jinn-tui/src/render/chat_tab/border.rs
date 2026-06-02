@@ -8,7 +8,7 @@ use ratatui::style::{Color, Style};
 /// Draws the vertical border line (`│`) between the main column and sidebar.
 ///
 /// The color reflects sidebar focus state and resize mode.
-pub(super) fn render_border(
+pub fn render_border(
     frame: &mut Frame<'_>,
     border: Rect,
     focus_scope: &FocusScope,

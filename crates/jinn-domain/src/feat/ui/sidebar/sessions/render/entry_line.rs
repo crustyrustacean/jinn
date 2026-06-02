@@ -9,7 +9,7 @@ use throbber_widgets_tui::ThrobberState;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::feat::theme::Theme;
-use crate::feat::ui::sidebar::sessions::state::SessionEntry;
+use crate::feat::ui::sidebar::sessions::state::{SessionEntry, SessionEntryKind};
 
 use super::super::{ACTIVE_PREFIX, INACTIVE_PREFIX};
 use super::truncate::truncate_str;
@@ -104,6 +104,29 @@ pub(crate) fn tree_prefix(entry: &SessionEntry) -> String {
 ///
 /// Combines the throbber indicator, arrow prefix, tree connector prefix,
 /// and styled truncated title into a single [`Line`] ready for rendering.
+/// Builds the indicator span for a workflow entry.
+///
+/// Uses a state-colored symbol instead of the throbber.
+fn workflow_indicator_span(entry: &SessionEntry) -> Span<'static> {
+    use crate::feat::workflow::attached_workflow::AttachedWorkflowState;
+    let enabled = entry.workflow_enabled.unwrap_or(true);
+    let state = entry.workflow_state.as_ref();
+
+    let (symbol, color) = match state {
+        Some(AttachedWorkflowState::Running) => ("⚙", Color::Cyan),
+        Some(AttachedWorkflowState::Failed { .. }) => ("⚙", Color::Red),
+        Some(AttachedWorkflowState::Completed) => ("✓", Color::Green),
+        _ if !enabled => ("⚙", Color::DarkGray),
+        _ => ("⚙", Color::Yellow),
+    };
+    Span::styled(symbol.to_string(), Style::default().fg(color))
+}
+
+/// Assembles a complete session entry line from its components.
+///
+/// Combines the throbber indicator, arrow prefix, tree connector prefix,
+/// and styled truncated title into a single [`Line`] ready for rendering.
+/// For workflow entries, uses a state-colored indicator and dimmed style when disabled.
 pub(crate) fn assemble_entry_line(
     entry: &SessionEntry,
     is_selected: bool,
@@ -111,7 +134,10 @@ pub(crate) fn assemble_entry_line(
     throbber_state: &ThrobberState,
     theme: &Theme,
 ) -> Line<'static> {
-    let indicator = indicator_span(entry.is_idle, throbber_state);
+    let indicator = match entry.kind {
+        SessionEntryKind::Session => indicator_span(entry.is_idle, throbber_state),
+        SessionEntryKind::Workflow => workflow_indicator_span(entry),
+    };
     let arrow = arrow_span(entry.is_active, theme);
     let tree = tree_prefix(entry);
     let tree_len = tree.graphemes(true).count();
@@ -121,6 +147,15 @@ pub(crate) fn assemble_entry_line(
         entry.last_entry_is_error,
         theme,
     );
+    // Dim workflow titles when disabled.
+    let style = if entry.kind == SessionEntryKind::Workflow
+        && !entry.workflow_enabled.unwrap_or(true)
+        && !is_selected
+    {
+        style.add_modifier(Modifier::DIM)
+    } else {
+        style
+    };
 
     let display_title = truncate_str(&entry.title, max_title_len.saturating_sub(tree_len));
     let mut spans = vec![indicator, Span::raw(" "), arrow];
