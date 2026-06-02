@@ -207,9 +207,13 @@ pub(crate) fn clear_cursor(id: SidebarSectionId, state: &mut AppState) {
         SidebarSectionId::Persona => state.frontend.persona_section.cursor = None,
         SidebarSectionId::Pins => state.frontend.pins.clear_selection(),
         SidebarSectionId::TaskList => state.frontend.task_list_section.selected_phase_index = None,
-        SidebarSectionId::Sessions => state.frontend.sessions_section.selected_index = None,
+        SidebarSectionId::Sessions => {
+            state.frontend.sessions_section.selected_index = None;
+            state.frontend.sessions_section.previewed_workflow_id = None;
+        }
     }
 }
+
 
 fn receive_cursor(id: SidebarSectionId, enter_from: EnterFrom, state: &mut AppState) {
     match id {
@@ -260,6 +264,12 @@ pub fn jump_to_section(direction: &SidebarIntent, state: &mut AppState) {
             if focused == SidebarSectionId::Pins && target != SidebarSectionId::Pins {
                 state.active_session_mut().restore_history_position();
             }
+
+            // Clear workflow preview when leaving Sessions section.
+            if focused == SidebarSectionId::Sessions {
+                state.frontend.sessions_section.previewed_workflow_id = None;
+            }
+
 
             state.frontend.scope_stack.set_sidebar_section(target);
 
