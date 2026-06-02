@@ -28,6 +28,12 @@ pub struct SessionsSectionState {
     /// Updated reactively in `remove_and_replace()`, invalidated on session load.
     /// Empty when no intermediate parents have been hidden.
     pub visual_parents: HashMap<SessionId, SessionId>,
+    /// Workflow preview: the workflow ID currently under the sidebar cursor.
+    /// Set when navigating onto a `SessionEntryKind::Workflow` entry whose
+    /// workflow exists in `WorkflowMap`. Cleared when moving off the entry,
+    /// leaving the section, or activating the workflow.
+    /// `None` when no workflow is being previewed.
+    pub previewed_workflow_id: Option<crate::feat::workflow::workflow_state::WorkflowId>,
 }
 
 #[derive(Clone)]

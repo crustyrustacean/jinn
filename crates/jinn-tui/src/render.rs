@@ -87,9 +87,11 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         &mut rects,
     );
 
-    // Main content area - chat or workflow based on active state.
+    // Main content area - chat, workflow, or workflow preview.
     if state.is_viewing_workflow() {
         workflow_tab::render_workflow_tab(frame, layout.content, &state, 0);
+    } else if let Some(workflow) = state.previewed_workflow() {
+        workflow_tab::render_workflow_preview(frame, layout.content, workflow);
     } else {
         chat_tab::render_chat_tab(
             &mut app.ui_registry,
