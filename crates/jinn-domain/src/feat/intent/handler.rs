@@ -222,6 +222,7 @@ impl IntentHandler {
             Intent::EnterNormalMode => feat::chat_input::intent::handle_enter_normal_mode(state),
             Intent::ToggleWhichkey => feat::global::intent::handle_toggle_whichkey(state),
             Intent::NormalEscape => feat::chat_input::intent::handle_normal_escape(state),
+            Intent::NoOp => IntentResult::empty(),
 
             // --- Picker ---
             Intent::OpenPicker { kind } => feat::picker::intent::handle_open_picker(state, *kind),
@@ -1421,6 +1422,53 @@ mod tests {
 
         // Then the prompt is dismissed.
         assert!(!state.frontend.close_session_prompt);
+    }
+
+    #[test]
+    fn cancel_stream_prompt_noop_dismisses() {
+        // Given cancel_stream_prompt is showing.
+        let mut state = AppState::default();
+        state.frontend.cancel_stream_prompt = true;
+
+        // When handling NoOp (unmapped key).
+        let result = IntentHandler::handle(&Intent::NoOp, &mut state);
+
+        // Then the prompt is dismissed and no CancelStream command is emitted.
+        assert!(!state.frontend.cancel_stream_prompt);
+        assert!(
+            !result
+                .commands
+                .iter()
+                .any(|c| matches!(c, crate::protocol::Command::CancelStream(_))),
+            "should not emit CancelStream: {:?}",
+            result.commands
+        );
+    }
+
+    #[test]
+    fn close_session_prompt_noop_dismisses() {
+        // Given close_session_prompt is showing.
+        let mut state = AppState::default();
+        state.frontend.close_session_prompt = true;
+
+        // When handling NoOp (unmapped key).
+        let _result = IntentHandler::handle(&Intent::NoOp, &mut state);
+
+        // Then the prompt is dismissed.
+        assert!(!state.frontend.close_session_prompt);
+    }
+
+    #[test]
+    fn noop_is_empty_when_no_prompt() {
+        // Given default state with no prompts showing.
+        let mut state = AppState::default();
+
+        // When handling NoOp.
+        let result = IntentHandler::handle(&Intent::NoOp, &mut state);
+
+        // Then result is empty.
+        assert!(result.commands.is_empty());
+        assert!(result.events.is_empty());
     }
 
     // --- Mutant-killing tests for workflow handlers ---
