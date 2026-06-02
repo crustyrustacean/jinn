@@ -58,7 +58,11 @@ mod tests {
         crate::feat::provider::register(&mut registry);
 
         // Then exactly 2 elements were added.
-        assert_eq!(registry.iter_mut().count(), 2, "provider::register should add 2 elements");
+        assert_eq!(
+            registry.iter_mut().count(),
+            2,
+            "provider::register should add 2 elements"
+        );
     }
 
     #[test]
@@ -71,6 +75,9 @@ mod tests {
 
         // Then at least 1 element was added.
         let count = registry.iter_mut().count();
-        assert!(count > 0, "chat_input::register should add at least 1 element");
+        assert!(
+            count > 0,
+            "chat_input::register should add at least 1 element"
+        );
     }
 }

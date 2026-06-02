@@ -262,6 +262,9 @@ mod tests {
         let lines = entry.preview_lines(80);
 
         // Then no lines are produced.
-        assert!(lines.is_empty(), "empty body should produce no preview lines");
+        assert!(
+            lines.is_empty(),
+            "empty body should produce no preview lines"
+        );
     }
 }

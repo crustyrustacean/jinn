@@ -775,7 +775,10 @@ mod tests {
     #[test]
     fn truncate_str_returns_actual_content() {
         let result = truncate_str("hello world", 5);
-        assert_eq!(result, "hello", "must return actual truncated content, not empty or xyzzy");
+        assert_eq!(
+            result, "hello",
+            "must return actual truncated content, not empty or xyzzy"
+        );
     }
 
     #[test]
@@ -796,7 +799,10 @@ mod tests {
         // Shift the node so it's entirely off-screen to the left.
         // Node width is ~18. With dx = 100, shifted x = 0 - 100 = -100.
         let shifted = node.shifted_i32(100, 0);
-        assert!(!shifted.is_visible(), "node scrolled off-screen left must be invisible");
+        assert!(
+            !shifted.is_visible(),
+            "node scrolled off-screen left must be invisible"
+        );
     }
 
     // Kills: ShiftedNode::is_visible -> true
@@ -809,7 +815,10 @@ mod tests {
             NodeStatus::Pending,
         );
         let shifted = node.shifted_i32(0, 100);
-        assert!(!shifted.is_visible(), "node scrolled off-screen up must be invisible");
+        assert!(
+            !shifted.is_visible(),
+            "node scrolled off-screen up must be invisible"
+        );
     }
 
     // Kills: ShiftedNode::is_visible && -> ||
@@ -856,7 +865,11 @@ mod tests {
         node.y = 10;
         let (px, py) = node.input_port_pos(0);
         assert_eq!(px, 4, "input port x must be node.x - 1");
-        assert_eq!(py, 10 + node.input_ports[0].row_offset, "input port y must be node.y + row_offset");
+        assert_eq!(
+            py,
+            10 + node.input_ports[0].row_offset,
+            "input port y must be node.y + row_offset"
+        );
     }
 
     // Kills: output_port_pos uses + correctly (not * or -)
@@ -872,7 +885,11 @@ mod tests {
         node.y = 10;
         let (px, py) = node.output_port_pos(0);
         assert_eq!(px, 5 + node.width, "output port x must be node.x + width");
-        assert_eq!(py, 10 + node.output_ports[0].row_offset, "output port y must be node.y + row_offset");
+        assert_eq!(
+            py,
+            10 + node.output_ports[0].row_offset,
+            "output port y must be node.y + row_offset"
+        );
     }
 
     // Kills: set_cell_abs skipping negative coords
@@ -927,7 +944,11 @@ mod tests {
         let mut buf = Buffer::empty(area);
         node.render(&mut buf, false, 0, Color::Cyan);
         let cell = buf.cell(Position::new(0, 0)).unwrap();
-        assert_eq!(cell.fg, Color::DarkGray, "unselected node border must be dark gray");
+        assert_eq!(
+            cell.fg,
+            Color::DarkGray,
+            "unselected node border must be dark gray"
+        );
     }
 
     // Kills: render_title writes actual title content

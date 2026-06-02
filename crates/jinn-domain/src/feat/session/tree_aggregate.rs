@@ -144,17 +144,13 @@ pub fn aggregate_tree_stats<S: ::std::hash::BuildHasher>(
             tree_sessions.push(session);
             // Find live children.
             for (child_id, child) in sessions {
-                if child.parent_session().as_ref() == Some(&id)
-                    && !visited.contains(child_id)
-                {
+                if child.parent_session().as_ref() == Some(&id) && !visited.contains(child_id) {
                     queue.push(child_id.clone());
                 }
             }
             // Find frozen children.
             for (frozen_id, frozen) in frozen_nodes {
-                if frozen.parent_session_id.as_ref() == Some(&id)
-                    && !visited.contains(frozen_id)
-                {
+                if frozen.parent_session_id.as_ref() == Some(&id) && !visited.contains(frozen_id) {
                     queue.push(frozen_id.clone());
                 }
             }
@@ -162,9 +158,7 @@ pub fn aggregate_tree_stats<S: ::std::hash::BuildHasher>(
             tree_frozen.push(frozen);
             // Find live children of this frozen node.
             for (child_id, child) in sessions {
-                if child.parent_session().as_ref() == Some(&id)
-                    && !visited.contains(child_id)
-                {
+                if child.parent_session().as_ref() == Some(&id) && !visited.contains(child_id) {
                     queue.push(child_id.clone());
                 }
             }

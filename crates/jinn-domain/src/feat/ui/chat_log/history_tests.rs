@@ -1020,7 +1020,11 @@ fn streaming_content_change_invalidates_cache() {
         })
         .unwrap();
 
-    assert_eq!(state.frontend.caches.entry_line_cache.read().len(), 1, "cache should have 1 entry");
+    assert_eq!(
+        state.frontend.caches.entry_line_cache.read().len(),
+        1,
+        "cache should have 1 entry"
+    );
 
     // When more tokens arrive (content changes, fingerprint changes).
     state

@@ -1192,14 +1192,26 @@ mod tests {
 
     #[async_trait::async_trait]
     impl WorkflowNode for ConfigNode {
-        fn name(&self) -> &str { "config_node" }
-        fn input_ports(&self) -> Vec<PortDef> { vec![] }
-        fn output_ports(&self) -> Vec<PortDef> { vec![PortDef::text("out")] }
+        fn name(&self) -> &str {
+            "config_node"
+        }
+        fn input_ports(&self) -> Vec<PortDef> {
+            vec![]
+        }
+        fn output_ports(&self) -> Vec<PortDef> {
+            vec![PortDef::text("out")]
+        }
         async fn execute(
-            &self, _inputs: PortValues, _ctx: &dyn NodeContext,
-        ) -> Result<PortValues, Report<crate::node::NodeError>> { Ok(PortValues::new()) }
+            &self,
+            _inputs: PortValues,
+            _ctx: &dyn NodeContext,
+        ) -> Result<PortValues, Report<crate::node::NodeError>> {
+            Ok(PortValues::new())
+        }
         fn clone_box(&self) -> Box<dyn WorkflowNode> {
-            Box::new(ConfigNode { config_val: self.config_val.clone() })
+            Box::new(ConfigNode {
+                config_val: self.config_val.clone(),
+            })
         }
         fn config(&self) -> Option<serde_json::Value> {
             Some(self.config_val.clone())
@@ -1215,7 +1227,11 @@ mod tests {
         builder.connect("a", "out", "b", "in").expect("a→b");
         let graph = builder.build().expect("build");
         // TestNode doesn't override config(), so this returns None.
-        assert_eq!(graph.node_config("a"), None, "node without config must return None, not Some(default)");
+        assert_eq!(
+            graph.node_config("a"),
+            None,
+            "node without config must return None, not Some(default)"
+        );
     }
 
     #[test]
@@ -1223,11 +1239,20 @@ mod tests {
         // Kills: node_config -> None (always)
         let config = serde_json::json!({"prompt": "test", "temperature": 0.7});
         let mut builder = WorkflowGraphBuilder::new();
-        builder.add_node("cfg".to_owned(), Box::new(ConfigNode { config_val: config.clone() }));
+        builder.add_node(
+            "cfg".to_owned(),
+            Box::new(ConfigNode {
+                config_val: config.clone(),
+            }),
+        );
         builder.add_node("b".to_owned(), Box::new(TestNode::sink("b")));
         builder.connect("cfg", "out", "b", "in").expect("cfg→b");
         let graph = builder.build().expect("build");
         let result = graph.node_config("cfg");
-        assert_eq!(result, Some(config), "must return actual config, not None or Some(default)");
+        assert_eq!(
+            result,
+            Some(config),
+            "must return actual config, not None or Some(default)"
+        );
     }
 }

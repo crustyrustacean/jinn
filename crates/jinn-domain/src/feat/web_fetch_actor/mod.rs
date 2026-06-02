@@ -93,11 +93,7 @@ impl WebFetchActor {
     }
 
     /// Handles an `ExecuteWebFetch` command.
-    async fn handle_execute_web_fetch(
-        &self,
-        payload: &ExecuteWebFetch,
-        ctx: &ActorContext,
-    ) {
+    async fn handle_execute_web_fetch(&self, payload: &ExecuteWebFetch, ctx: &ActorContext) {
         tracing::trace!(
             tool_call_id = %payload.tool_call.id,
             url_args = %payload.tool_call.arguments,
@@ -290,7 +286,11 @@ mod tests {
 
         // Then a RegisterTools command was emitted.
         let commands = sink.take_commands();
-        assert_eq!(commands.len(), 1, "should send exactly one RegisterTools command");
+        assert_eq!(
+            commands.len(),
+            1,
+            "should send exactly one RegisterTools command"
+        );
         let cmd = &commands[0];
         match cmd {
             Command::RegisterTools(reg) => {

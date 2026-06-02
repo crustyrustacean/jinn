@@ -12,7 +12,10 @@ mod word_frequency;
 mod noop;
 
 /// Returns all 1-shot bench tasks.
-#[cfg_attr(not(test), expect(unused_mut, reason = "mutable only in test builds for noop push"))]
+#[cfg_attr(
+    not(test),
+    expect(unused_mut, reason = "mutable only in test builds for noop push")
+)]
 pub fn tasks() -> Vec<BenchTask> {
     let mut list = vec![
         hello_world::task(),

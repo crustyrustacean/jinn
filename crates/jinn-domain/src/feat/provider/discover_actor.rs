@@ -8,11 +8,11 @@
 use std::collections::HashMap;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
-use crate::common::app_paths::AppPaths;
+use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::provider::protocol::command::RefreshModels;
 use crate::feat::provider::protocol::event::ModelsRefreshed;
-use crate::feat::provider_infra::{ApiKeysService, ModelCache, ProviderRegistryService};
+use crate::feat::provider_infra::ModelCache;
 use crate::protocol::{Command, Event};
 use error_stack::Report;
 use jinn_provider::{
@@ -31,41 +31,30 @@ pub struct DiscoverError;
 /// builds an LLM provider for each, calls `list_models(None)`, and collects
 /// results. Saves the cache to disk and emits `ModelsRefreshed`.
 pub struct DiscoverActor {
-    /// Provider registry for looking up configured providers.
-    registry: ProviderRegistryService,
-    /// Resolved API keys for provider authentication.
-    api_keys: ApiKeysService,
-    /// Shared application state (to read active session ID).
+    /// Runtime services.
+    services: Services,
+    /// Shared application state.
     state: State,
-    /// Application filesystem paths.
-    app_paths: AppPaths,
 }
 
 /// Dependencies for [`DiscoverActor`].
 pub struct DiscoverActorDeps {
-    /// Provider registry for listing available models.
-    pub registry: ProviderRegistryService,
-    /// API keys service for authentication.
-    pub api_keys: ApiKeysService,
+    /// Runtime services.
+    pub services: Services,
     /// Shared application state.
     pub state: State,
-    /// Application paths for cache directory.
-    pub app_paths: AppPaths,
 }
 
 impl Actor for DiscoverActor {
     type Message = NoDirectMsg;
     type Deps = DiscoverActorDeps;
-
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.set_description("Discovers available models");
         ctx.subscribe_command::<RefreshModels>();
 
         Self {
-            registry: deps.registry,
-            api_keys: deps.api_keys,
+            services: deps.services,
             state: deps.state,
-            app_paths: deps.app_paths,
         }
     }
 
@@ -92,7 +81,7 @@ impl DiscoverActor {
     #[allow(clippy::too_many_lines)]
     async fn refresh_models(&self, ctx: &ActorContext) {
         let entries = {
-            let registry = self.registry.read();
+            let registry = self.services.provider_registry.read();
             registry.config().providers.clone()
         };
 
@@ -101,8 +90,8 @@ impl DiscoverActor {
 
         // Load models.dev reference data for context length fallback.
         let models_dev = crate::feat::provider_infra::ModelsDevData::load(
-            &self.app_paths.models_dev_user_path(),
-            &self.app_paths.models_dev_system_path(),
+            &self.services.paths.models_dev_user_path(),
+            &self.services.paths.models_dev_system_path(),
         );
 
         for entry in &entries {
@@ -132,7 +121,7 @@ impl DiscoverActor {
                     );
                     continue;
                 };
-                if let Some(key) = self.api_keys.get(env_var) {
+                if let Some(key) = self.services.api_keys.get(env_var) {
                     Some(key)
                 } else {
                     errors.insert(entry.name.clone(), "API key not resolved".to_owned());
@@ -202,7 +191,7 @@ impl DiscoverActor {
             entries: results.clone(),
             last_updated_at: Some(jiff::Timestamp::now()),
         };
-        let path = self.app_paths.cache_path();
+        let path = self.services.paths.cache_path();
         if let Err(e) = cache.save(&path) {
             tracing::warn!("failed to save model cache: {e:?}");
         }

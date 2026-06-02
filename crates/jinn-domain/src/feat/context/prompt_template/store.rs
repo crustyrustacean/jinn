@@ -325,8 +325,7 @@ mod tests {
 
         let mut templates = Vec::new();
         let mut seen_names = std::collections::HashSet::new();
-        PromptTemplateStore::scan_dir(dir.path(), &mut templates, &mut seen_names)
-            .expect("scan");
+        PromptTemplateStore::scan_dir(dir.path(), &mut templates, &mut seen_names).expect("scan");
 
         // Then only the .md file is loaded.
         assert_eq!(templates.len(), 1);
@@ -342,8 +341,7 @@ mod tests {
 
         let mut templates = Vec::new();
         let mut seen_names = std::collections::HashSet::new();
-        PromptTemplateStore::scan_dir(dir.path(), &mut templates, &mut seen_names)
-            .expect("scan");
+        PromptTemplateStore::scan_dir(dir.path(), &mut templates, &mut seen_names).expect("scan");
 
         // Then only the non-underscore file is loaded.
         assert_eq!(templates.len(), 1);

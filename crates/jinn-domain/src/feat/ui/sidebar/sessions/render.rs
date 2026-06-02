@@ -161,7 +161,8 @@ impl SidebarSection for SessionsSection {
         frame.render_widget(widget, area);
 
         // Close session confirmation prompt - overlay 1 row above the cursor.
-        if state.frontend.close_session_prompt && section_focused
+        if state.frontend.close_session_prompt
+            && section_focused
             && let Some(sel) = selected_index
         {
             let visual_row = sel.saturating_sub(scroll_offset) as u16;

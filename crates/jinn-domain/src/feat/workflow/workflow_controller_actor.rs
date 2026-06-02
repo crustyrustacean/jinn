@@ -26,12 +26,10 @@ use crate::feat::workflow::protocol::command::{
     AttachWorkflow, DetachWorkflow, FireBeforeTurn, ToggleWorkflow, TriggerWorkflow,
 };
 
-
+use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, SetChatInputText};
 use crate::feat::workflow::workflow_response::WorkflowResponse;
 use crate::feat::workflow::workflow_state::{WorkflowExecutionState, WorkflowId};
 use crate::protocol::{Command, Event};
-use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, SetChatInputText};
-
 
 /// The workflow controller actor.
 ///
@@ -77,9 +75,14 @@ impl Actor for WorkflowControllerActor {
         // On restart, in-flight workflows from previous sessions are stale.
         {
             let guard = deps.state.read();
-            let ids_to_reset: Vec<_> = guard.session.iter()
+            let ids_to_reset: Vec<_> = guard
+                .session
+                .iter()
                 .filter(|(_, session)| {
-                    session.core.attached_workflows.iter()
+                    session
+                        .core
+                        .attached_workflows
+                        .iter()
                         .any(|aw| matches!(aw.state, AttachedWorkflowState::Running))
                 })
                 .map(|(id, _)| id.clone())
@@ -99,7 +102,6 @@ impl Actor for WorkflowControllerActor {
             guard.pending_before_turn.clear();
 
             guard.before_turn_queue.clear();
-
         }
 
         actor
@@ -179,7 +181,10 @@ impl WorkflowControllerActor {
             let Some(session) = guard.session.get_mut(session_id) else {
                 return;
             };
-            session.core.attached_workflows.retain(|aw| aw.id != *workflow_id);
+            session
+                .core
+                .attached_workflows
+                .retain(|aw| aw.id != *workflow_id);
         }
 
         tracing::info!(
@@ -223,12 +228,17 @@ impl WorkflowControllerActor {
             let Some(session) = guard.session.get(&session_id) else {
                 return;
             };
-            session.core.attached_workflows.iter().find(|aw| {
-                aw.id == workflow_id
-                    && matches!(aw.trigger, WorkflowTrigger::Manual)
-                    && aw.enabled
-                    && matches!(aw.state, AttachedWorkflowState::Ready)
-            }).cloned()
+            session
+                .core
+                .attached_workflows
+                .iter()
+                .find(|aw| {
+                    aw.id == workflow_id
+                        && matches!(aw.trigger, WorkflowTrigger::Manual)
+                        && aw.enabled
+                        && matches!(aw.state, AttachedWorkflowState::Ready)
+                })
+                .cloned()
         };
 
         let Some(attachment) = attachment else {
@@ -250,7 +260,10 @@ impl WorkflowControllerActor {
             let Some(session) = guard.session.get(&session_id) else {
                 return;
             };
-            session.core.attached_workflows.iter()
+            session
+                .core
+                .attached_workflows
+                .iter()
                 .filter(|aw| {
                     aw.enabled
                         && matches!(aw.state, AttachedWorkflowState::Ready)
@@ -274,7 +287,8 @@ impl WorkflowControllerActor {
             _ => return,
         };
 
-        let remaining: Vec<_> = before_turn_attachments.into_iter()
+        let remaining: Vec<_> = before_turn_attachments
+            .into_iter()
             .filter_map(|aw| {
                 let mode = match &aw.trigger {
                     WorkflowTrigger::BeforeTurn(mode) => mode.clone(),
@@ -285,11 +299,17 @@ impl WorkflowControllerActor {
             .collect();
 
         if !remaining.is_empty() {
-            self.state.write().before_turn_queue.insert(session_id.clone(), remaining);
+            self.state
+                .write()
+                .before_turn_queue
+                .insert(session_id.clone(), remaining);
         }
 
         // Store the mode for post-processing when the workflow completes.
-        self.state.write().pending_before_turn.insert(session_id.clone(), before_turn_mode);
+        self.state
+            .write()
+            .pending_before_turn
+            .insert(session_id.clone(), before_turn_mode);
 
         // Fire the first attachment.
         self.spawn_attached_workflow(&session_id, first);
@@ -371,7 +391,8 @@ impl WorkflowControllerActor {
         {
             let mut guard = self.state.write();
             if let Some(session) = guard.session.get_mut(session_id) {
-                session.core.ephemeral.busy_count = session.core.ephemeral.busy_count.saturating_sub(1);
+                session.core.ephemeral.busy_count =
+                    session.core.ephemeral.busy_count.saturating_sub(1);
             }
         }
     }
@@ -409,12 +430,8 @@ impl WorkflowControllerActor {
         domain_ctx.set_workflow_id(workflow_id.clone());
 
         tokio::spawn(async move {
-            let result = jinn_workflow::engine::execute_with_cancel(
-                execution,
-                domain_ctx,
-                cancel,
-            )
-            .await;
+            let result =
+                jinn_workflow::engine::execute_with_cancel(execution, domain_ctx, cancel).await;
 
             match result {
                 Ok(workflow_result) => {
@@ -476,10 +493,13 @@ impl WorkflowControllerActor {
         self.state.write().workflow_executions.remove(workflow_id);
 
         match result {
-
             Ok(responses) => {
-                let should_detach = responses.iter().any(|r| matches!(r, WorkflowResponse::Detach));
-                let should_turn_off = responses.iter().any(|r| matches!(r, WorkflowResponse::TurnOff));
+                let should_detach = responses
+                    .iter()
+                    .any(|r| matches!(r, WorkflowResponse::Detach));
+                let should_turn_off = responses
+                    .iter()
+                    .any(|r| matches!(r, WorkflowResponse::TurnOff));
 
                 // Apply each response.
                 for response in &responses {
@@ -506,7 +526,10 @@ impl WorkflowControllerActor {
                     if let Some(session) = guard.session.get_mut(session_id) {
                         if should_detach {
                             // Remove one-shot attachments.
-                            session.core.attached_workflows.retain(|aw| aw.id != *workflow_id);
+                            session
+                                .core
+                                .attached_workflows
+                                .retain(|aw| aw.id != *workflow_id);
                             tracing::info!(workflow = %workflow_id, "auto-detached one-shot workflow");
                         } else if should_turn_off {
                             for aw in &mut session.core.attached_workflows {
@@ -533,14 +556,15 @@ impl WorkflowControllerActor {
                 // BeforeTurn attachment, or finalize with AutoSend/PutBack.
                 if let Some(mode) = self.state.write().pending_before_turn.remove(session_id) {
                     // Extract enhanced text from workflow output.
-                    let enhanced_text: String = responses.iter()
+                    let enhanced_text: String = responses
+                        .iter()
                         .filter_map(|r| match r {
-                            WorkflowResponse::PushSessionHistory(entry) => {
-                                match &entry.kind {
-                                    crate::feat::session::chat_entry::ChatEntryKind::Assistant(text) => Some(text.as_str()),
-                                    _ => None,
-                                }
-                            }
+                            WorkflowResponse::PushSessionHistory(entry) => match &entry.kind {
+                                crate::feat::session::chat_entry::ChatEntryKind::Assistant(
+                                    text,
+                                ) => Some(text.as_str()),
+                                _ => None,
+                            },
                             _ => None,
                         })
                         .collect::<Vec<_>>()
@@ -548,28 +572,33 @@ impl WorkflowControllerActor {
 
                     let original = {
                         let mut guard = self.state.write();
-                        guard.session.get_mut(session_id)
+                        guard
+                            .session
+                            .get_mut(session_id)
                             .and_then(|s| s.core.ephemeral.pending_user_text.take())
                             .unwrap_or_default()
                     };
                     let merged = match &mode {
                         BeforeTurnMode::AutoSend { strategy }
-                        | BeforeTurnMode::PutBack { strategy } => {
-                            match strategy {
-                                PromptMergeStrategy::Replace => enhanced_text.clone(),
-                                PromptMergeStrategy::Prepend => format!("{enhanced_text}\n{original}"),
-                                PromptMergeStrategy::Append => format!("{original}\n{enhanced_text}"),
-                            }
-                        }
+                        | BeforeTurnMode::PutBack { strategy } => match strategy {
+                            PromptMergeStrategy::Replace => enhanced_text.clone(),
+                            PromptMergeStrategy::Prepend => format!("{enhanced_text}\n{original}"),
+                            PromptMergeStrategy::Append => format!("{original}\n{enhanced_text}"),
+                        },
                     };
 
                     // Check if there's a next BeforeTurn in the queue.
                     let next = {
                         let mut guard = self.state.write();
-                        guard.before_turn_queue.get_mut(session_id)
+                        guard
+                            .before_turn_queue
+                            .get_mut(session_id)
                             .and_then(|queue| {
-                                if queue.is_empty() { None }
-                                else { Some(queue.remove(0)) }
+                                if queue.is_empty() {
+                                    None
+                                } else {
+                                    Some(queue.remove(0))
+                                }
                             })
                     };
 
@@ -582,7 +611,10 @@ impl WorkflowControllerActor {
                             }
                         }
                         // Store the next mode and fire the next attachment.
-                        self.state.write().pending_before_turn.insert(session_id.clone(), next_mode);
+                        self.state
+                            .write()
+                            .pending_before_turn
+                            .insert(session_id.clone(), next_mode);
                         self.spawn_attached_workflow(session_id, next_aw);
                     } else {
                         // No more in queue — finalize.
@@ -610,13 +642,9 @@ impl WorkflowControllerActor {
                         }
                     }
                 }
-
             }
 
-
-
             Err(reason) => {
-
                 tracing::error!(
                     session = %session_id,
                     workflow = %workflow_id,
@@ -628,7 +656,9 @@ impl WorkflowControllerActor {
                 if let Some(session) = guard.session.get_mut(session_id) {
                     for aw in &mut session.core.attached_workflows {
                         if aw.id == *workflow_id {
-                            aw.state = AttachedWorkflowState::Failed { reason: reason.clone() };
+                            aw.state = AttachedWorkflowState::Failed {
+                                reason: reason.clone(),
+                            };
                             break;
                         }
                     }
@@ -639,20 +669,27 @@ impl WorkflowControllerActor {
 
                 // Graceful degradation for BeforeTurn failures:
                 // Fall back to sending the original user text.
-                if self.state.write().pending_before_turn.remove(session_id).is_some() {
+                if self
+                    .state
+                    .write()
+                    .pending_before_turn
+                    .remove(session_id)
+                    .is_some()
+                {
                     let original = {
                         let mut guard = self.state.write();
-                        guard.session.get_mut(session_id)
+                        guard
+                            .session
+                            .get_mut(session_id)
                             .and_then(|s| s.core.ephemeral.pending_user_text.take())
                     };
                     if let Some(original) = original {
                         let entry = ChatEntry::user_expanded(&original, &original);
-                        self.ctx.send_command(Command::EnqueueUserMessage(
-                            EnqueueUserMessage {
+                        self.ctx
+                            .send_command(Command::EnqueueUserMessage(EnqueueUserMessage {
                                 session_id: session_id.clone(),
                                 entry,
-                            },
-                        ));
+                            }));
                     }
                     // Clean up any remaining queued BeforeTurn attachments.
                     self.state.write().before_turn_queue.remove(session_id);
@@ -660,8 +697,6 @@ impl WorkflowControllerActor {
             }
         }
     }
-
-
 
     /// Set attachment state.
     fn set_attachment_state(
@@ -685,7 +720,12 @@ impl WorkflowControllerActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, dead_code, clippy::unwrap_used)]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        dead_code,
+        clippy::unwrap_used
+    )]
 
     use super::*;
     use crate::common::app_state::AppState;
@@ -717,7 +757,10 @@ mod tests {
         fn session_has_attachment(&self, session_id: &SessionId, workflow_id: &WorkflowId) -> bool {
             let guard = self.state.read();
             guard.session.get(session_id).map_or(false, |s| {
-                s.core.attached_workflows.iter().any(|aw| aw.id == *workflow_id)
+                s.core
+                    .attached_workflows
+                    .iter()
+                    .any(|aw| aw.id == *workflow_id)
             })
         }
     }
@@ -729,7 +772,10 @@ mod tests {
         let h = TestHarness::new();
         let mut session = ChatSessionState::new();
         let aw = AttachedWorkflow::new(
-            WorkflowConfig::Consensus { n: 3, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
+            WorkflowConfig::Consensus {
+                n: 3,
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+            },
             WorkflowTrigger::TurnEnd,
         );
         let wf_id = aw.id.clone();
@@ -739,9 +785,15 @@ mod tests {
         assert!(h.session_has_attachment(&session_id, &wf_id));
         let guard = h.state.read();
         let session = guard.session.get(&session_id).expect("session");
-        let matching: Vec<_> = session.core.attached_workflows.iter()
-            .filter(|aw| aw.enabled && matches!(aw.state, AttachedWorkflowState::Ready) &&
-                matches!(aw.trigger, WorkflowTrigger::TurnEnd))
+        let matching: Vec<_> = session
+            .core
+            .attached_workflows
+            .iter()
+            .filter(|aw| {
+                aw.enabled
+                    && matches!(aw.state, AttachedWorkflowState::Ready)
+                    && matches!(aw.trigger, WorkflowTrigger::TurnEnd)
+            })
             .collect();
         assert_eq!(matching.len(), 1);
     }
@@ -753,7 +805,10 @@ mod tests {
         let h = TestHarness::new();
         let mut session = ChatSessionState::new();
         let mut aw = AttachedWorkflow::new(
-            WorkflowConfig::Consensus { n: 3, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
+            WorkflowConfig::Consensus {
+                n: 3,
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+            },
             WorkflowTrigger::TurnEnd,
         );
         aw.enabled = false;
@@ -762,7 +817,10 @@ mod tests {
 
         let guard = h.state.read();
         let session = guard.session.get(&session_id).expect("session");
-        let matching: Vec<_> = session.core.attached_workflows.iter()
+        let matching: Vec<_> = session
+            .core
+            .attached_workflows
+            .iter()
             .filter(|aw| aw.enabled && matches!(aw.state, AttachedWorkflowState::Ready))
             .collect();
         assert!(matching.is_empty());
@@ -775,7 +833,10 @@ mod tests {
         let h = TestHarness::new();
         let mut session = ChatSessionState::new();
         let aw = AttachedWorkflow::new(
-            WorkflowConfig::Consensus { n: 3, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
+            WorkflowConfig::Consensus {
+                n: 3,
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+            },
             WorkflowTrigger::Manual,
         );
         session.core.attached_workflows.push(aw);
@@ -783,8 +844,16 @@ mod tests {
 
         let guard = h.state.read();
         let session = guard.session.get(&session_id).expect("session");
-        let matching: Vec<_> = session.core.attached_workflows.iter()
-            .filter(|aw| matches!(aw.trigger, WorkflowTrigger::TurnEnd | WorkflowTrigger::TurnEndOneShot))
+        let matching: Vec<_> = session
+            .core
+            .attached_workflows
+            .iter()
+            .filter(|aw| {
+                matches!(
+                    aw.trigger,
+                    WorkflowTrigger::TurnEnd | WorkflowTrigger::TurnEndOneShot
+                )
+            })
             .collect();
         assert!(matching.is_empty());
     }
@@ -805,14 +874,20 @@ mod tests {
 
         actor.handle_attach_workflow(&AttachWorkflow {
             session_id: session_id.clone(),
-            config: WorkflowConfig::Consensus { n: 3, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
+            config: WorkflowConfig::Consensus {
+                n: 3,
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+            },
             trigger: WorkflowTrigger::TurnEnd,
         });
 
         let guard = h.state.read();
         let session = guard.session.get(&session_id).expect("session");
         assert_eq!(session.core.attached_workflows.len(), 1);
-        assert!(matches!(session.core.attached_workflows[0].trigger, WorkflowTrigger::TurnEnd));
+        assert!(matches!(
+            session.core.attached_workflows[0].trigger,
+            WorkflowTrigger::TurnEnd
+        ));
     }
 
     // --- Test 34: detach_workflow_command_removes_attachment ---
@@ -827,7 +902,10 @@ mod tests {
 
         let mut session = ChatSessionState::new();
         let aw = AttachedWorkflow::new(
-            WorkflowConfig::Consensus { n: 3, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
+            WorkflowConfig::Consensus {
+                n: 3,
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+            },
             WorkflowTrigger::TurnEnd,
         );
         let wf_id = aw.id.clone();
@@ -857,7 +935,10 @@ mod tests {
 
         let mut session = ChatSessionState::new();
         let aw = AttachedWorkflow::new(
-            WorkflowConfig::Consensus { n: 3, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
+            WorkflowConfig::Consensus {
+                n: 3,
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+            },
             WorkflowTrigger::TurnEnd,
         );
         let wf_id = aw.id.clone();
@@ -899,7 +980,10 @@ mod tests {
 
         let mut session = ChatSessionState::new();
         let aw = AttachedWorkflow::new(
-            WorkflowConfig::Consensus { n: 3, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
+            WorkflowConfig::Consensus {
+                n: 3,
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+            },
             WorkflowTrigger::TurnEnd,
         );
         let wf_id = aw.id.clone();
@@ -912,7 +996,10 @@ mod tests {
 
         let guard = h.state.read();
         let session = guard.session.get(&session_id).expect("session");
-        assert!(matches!(session.core.attached_workflows[0].state, AttachedWorkflowState::Running));
+        assert!(matches!(
+            session.core.attached_workflows[0].state,
+            AttachedWorkflowState::Running
+        ));
     }
 
     // --- Test 29: controller_resets_to_ready_on_cancel ---
@@ -927,7 +1014,10 @@ mod tests {
 
         let mut session = ChatSessionState::new();
         let aw = AttachedWorkflow::new(
-            WorkflowConfig::Consensus { n: 3, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
+            WorkflowConfig::Consensus {
+                n: 3,
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+            },
             WorkflowTrigger::TurnEnd,
         );
         let wf_id = aw.id.clone();
@@ -941,14 +1031,16 @@ mod tests {
 
         let guard = h.state.read();
         let session = guard.session.get(&session_id).expect("session");
-        assert!(matches!(session.core.attached_workflows[0].state, AttachedWorkflowState::Ready));
+        assert!(matches!(
+            session.core.attached_workflows[0].state,
+            AttachedWorkflowState::Ready
+        ));
     }
 
     // --- Test 30: controller_sets_failed_on_execution_error ---
 
     #[rstest::rstest]
     fn controller_sets_failed_on_execution_error() {
-
         let h = TestHarness::new();
 
         let services = TestServices::builder().build();
@@ -959,7 +1051,10 @@ mod tests {
 
         let mut session = ChatSessionState::new();
         let aw = AttachedWorkflow::new(
-            WorkflowConfig::Consensus { n: 3, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
+            WorkflowConfig::Consensus {
+                n: 3,
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+            },
             WorkflowTrigger::TurnEnd,
         );
         let wf_id = aw.id.clone();
@@ -990,7 +1085,10 @@ mod tests {
 
         let mut session = ChatSessionState::new();
         let aw = AttachedWorkflow::new(
-            WorkflowConfig::Consensus { n: 3, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
+            WorkflowConfig::Consensus {
+                n: 3,
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+            },
             WorkflowTrigger::TurnEnd, // Not Manual
         );
         let wf_id = aw.id.clone();
@@ -1007,7 +1105,10 @@ mod tests {
         // State should still be Ready (not Running).
         let guard = h.state.read();
         let session = guard.session.get(&session_id).expect("session");
-        assert!(matches!(session.core.attached_workflows[0].state, AttachedWorkflowState::Ready));
+        assert!(matches!(
+            session.core.attached_workflows[0].state,
+            AttachedWorkflowState::Ready
+        ));
     }
 
     // --- Test 32: controller_handles_detach_while_running ---
@@ -1022,7 +1123,10 @@ mod tests {
 
         let mut session = ChatSessionState::new();
         let aw = AttachedWorkflow::new(
-            WorkflowConfig::Consensus { n: 3, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
+            WorkflowConfig::Consensus {
+                n: 3,
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+            },
             WorkflowTrigger::TurnEnd,
         );
         let wf_id = aw.id.clone();
@@ -1039,7 +1143,10 @@ mod tests {
             session_id: session_id.clone(),
             node_sessions: HashMap::new(),
         };
-        h.state.write().workflow_executions.insert(wf_id.clone(), exec_state);
+        h.state
+            .write()
+            .workflow_executions
+            .insert(wf_id.clone(), exec_state);
 
         // Detach while running.
         actor.handle_detach_workflow(&DetachWorkflow {
@@ -1065,13 +1172,23 @@ mod tests {
 
         // Create two BeforeTurn attachments.
         let aw1 = AttachedWorkflow::new(
-            WorkflowConfig::Consensus { n: 1, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
-            WorkflowTrigger::BeforeTurn(BeforeTurnMode::AutoSend { strategy: PromptMergeStrategy::Replace }),
+            WorkflowConfig::Consensus {
+                n: 1,
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+            },
+            WorkflowTrigger::BeforeTurn(BeforeTurnMode::AutoSend {
+                strategy: PromptMergeStrategy::Replace,
+            }),
         );
         let aw1_id = aw1.id.clone();
         let aw2 = AttachedWorkflow::new(
-            WorkflowConfig::Consensus { n: 1, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
-            WorkflowTrigger::BeforeTurn(BeforeTurnMode::AutoSend { strategy: PromptMergeStrategy::Append }),
+            WorkflowConfig::Consensus {
+                n: 1,
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+            },
+            WorkflowTrigger::BeforeTurn(BeforeTurnMode::AutoSend {
+                strategy: PromptMergeStrategy::Append,
+            }),
         );
         let aw2_id = aw2.id.clone();
 
@@ -1083,15 +1200,33 @@ mod tests {
         // Clone first, then mutate.
         let aw2_clone = {
             let guard = h.state.read();
-            guard.session.get(&session_id).unwrap().core.attached_workflows[1].clone()
+            guard
+                .session
+                .get(&session_id)
+                .unwrap()
+                .core
+                .attached_workflows[1]
+                .clone()
         };
         {
             let mut guard = h.state.write();
-            guard.before_turn_queue.insert(session_id.clone(), vec![(
-                aw2_clone,
-                BeforeTurnMode::AutoSend { strategy: crate::feat::workflow::attached_workflow::PromptMergeStrategy::Append },
-            )]);
-            guard.pending_before_turn.insert(session_id.clone(), BeforeTurnMode::AutoSend { strategy: crate::feat::workflow::attached_workflow::PromptMergeStrategy::Replace });
+            guard.before_turn_queue.insert(
+                session_id.clone(),
+                vec![(
+                    aw2_clone,
+                    BeforeTurnMode::AutoSend {
+                        strategy:
+                            crate::feat::workflow::attached_workflow::PromptMergeStrategy::Append,
+                    },
+                )],
+            );
+            guard.pending_before_turn.insert(
+                session_id.clone(),
+                BeforeTurnMode::AutoSend {
+                    strategy:
+                        crate::feat::workflow::attached_workflow::PromptMergeStrategy::Replace,
+                },
+            );
         }
 
         // Verify queue has one entry.
@@ -1110,8 +1245,16 @@ mod tests {
         let session_id = h.insert_session(session);
 
         // Populate both fields.
-        h.state.write().pending_before_turn.insert(session_id.clone(), BeforeTurnMode::AutoSend { strategy: crate::feat::workflow::attached_workflow::PromptMergeStrategy::Replace });
-        h.state.write().before_turn_queue.insert(session_id.clone(), vec![]);
+        h.state.write().pending_before_turn.insert(
+            session_id.clone(),
+            BeforeTurnMode::AutoSend {
+                strategy: crate::feat::workflow::attached_workflow::PromptMergeStrategy::Replace,
+            },
+        );
+        h.state
+            .write()
+            .before_turn_queue
+            .insert(session_id.clone(), vec![]);
 
         // Simulate deactivate clearing.
         {
@@ -1125,7 +1268,6 @@ mod tests {
         assert!(guard.before_turn_queue.is_empty());
     }
 
-
     // --- Integration tests: BeforeTurn merge strategies ---
     //
     // These test the merge logic (Replace/Prepend/Append) by simulating
@@ -1133,7 +1275,11 @@ mod tests {
     // the actor's write-lock path (which deadlocks in sync test context).
     // The real method is covered by the tokio::spawn-based tests above.
 
-    fn merge_text(strategy: &crate::feat::workflow::attached_workflow::PromptMergeStrategy, original: &str, enhanced: &str) -> String {
+    fn merge_text(
+        strategy: &crate::feat::workflow::attached_workflow::PromptMergeStrategy,
+        original: &str,
+        enhanced: &str,
+    ) -> String {
         use crate::feat::workflow::attached_workflow::PromptMergeStrategy;
         match strategy {
             PromptMergeStrategy::Replace => enhanced.to_owned(),
@@ -1144,31 +1290,51 @@ mod tests {
 
     #[rstest::rstest]
     fn merge_strategy_replace_drops_original() {
-        let result = merge_text(&crate::feat::workflow::attached_workflow::PromptMergeStrategy::Replace, "original", "enhanced");
+        let result = merge_text(
+            &crate::feat::workflow::attached_workflow::PromptMergeStrategy::Replace,
+            "original",
+            "enhanced",
+        );
         assert_eq!(result, "enhanced");
     }
 
     #[rstest::rstest]
     fn merge_strategy_prepend_puts_enhanced_first() {
-        let result = merge_text(&crate::feat::workflow::attached_workflow::PromptMergeStrategy::Prepend, "original", "enhanced");
+        let result = merge_text(
+            &crate::feat::workflow::attached_workflow::PromptMergeStrategy::Prepend,
+            "original",
+            "enhanced",
+        );
         assert_eq!(result, "enhanced\noriginal");
     }
 
     #[rstest::rstest]
     fn merge_strategy_append_puts_enhanced_last() {
-        let result = merge_text(&crate::feat::workflow::attached_workflow::PromptMergeStrategy::Append, "original", "enhanced");
+        let result = merge_text(
+            &crate::feat::workflow::attached_workflow::PromptMergeStrategy::Append,
+            "original",
+            "enhanced",
+        );
         assert_eq!(result, "original\nenhanced");
     }
 
     #[rstest::rstest]
     fn merge_strategy_replace_with_empty_original() {
-        let result = merge_text(&crate::feat::workflow::attached_workflow::PromptMergeStrategy::Replace, "", "enhanced");
+        let result = merge_text(
+            &crate::feat::workflow::attached_workflow::PromptMergeStrategy::Replace,
+            "",
+            "enhanced",
+        );
         assert_eq!(result, "enhanced");
     }
 
     #[rstest::rstest]
     fn merge_strategy_prepend_with_empty_enhanced() {
-        let result = merge_text(&crate::feat::workflow::attached_workflow::PromptMergeStrategy::Prepend, "original", "");
+        let result = merge_text(
+            &crate::feat::workflow::attached_workflow::PromptMergeStrategy::Prepend,
+            "original",
+            "",
+        );
         assert_eq!(result, "\noriginal");
     }
 
@@ -1176,18 +1342,30 @@ mod tests {
     fn before_turn_queue_sequential_ordering() {
         // Verify that the before_turn_queue stores attachments in order
         // and that sequential execution would process them FIFO.
-        use crate::feat::workflow::attached_workflow::{AttachedWorkflow, BeforeTurnMode, PromptMergeStrategy, WorkflowConfig, WorkflowTrigger};
+        use crate::feat::workflow::attached_workflow::{
+            AttachedWorkflow, BeforeTurnMode, PromptMergeStrategy, WorkflowConfig, WorkflowTrigger,
+        };
 
         let h = TestHarness::new();
         let mut session = ChatSessionState::new();
 
         let aw1 = AttachedWorkflow::new(
-            WorkflowConfig::Consensus { n: 1, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
-            WorkflowTrigger::BeforeTurn(BeforeTurnMode::AutoSend { strategy: PromptMergeStrategy::Replace }),
+            WorkflowConfig::Consensus {
+                n: 1,
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+            },
+            WorkflowTrigger::BeforeTurn(BeforeTurnMode::AutoSend {
+                strategy: PromptMergeStrategy::Replace,
+            }),
         );
         let aw2 = AttachedWorkflow::new(
-            WorkflowConfig::Consensus { n: 1, result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant },
-            WorkflowTrigger::BeforeTurn(BeforeTurnMode::AutoSend { strategy: PromptMergeStrategy::Append }),
+            WorkflowConfig::Consensus {
+                n: 1,
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+            },
+            WorkflowTrigger::BeforeTurn(BeforeTurnMode::AutoSend {
+                strategy: PromptMergeStrategy::Append,
+            }),
         );
         let aw1_id = aw1.id.clone();
         let aw2_id = aw2.id.clone();
@@ -1199,15 +1377,33 @@ mod tests {
         // Simulate handle_fire_before_turn queueing the second attachment.
         let aw2_clone = {
             let guard = h.state.read();
-            guard.session.get(&session_id).unwrap().core.attached_workflows[1].clone()
+            guard
+                .session
+                .get(&session_id)
+                .unwrap()
+                .core
+                .attached_workflows[1]
+                .clone()
         };
         {
             let mut guard = h.state.write();
-            guard.before_turn_queue.insert(session_id.clone(), vec![(
-                aw2_clone,
-                BeforeTurnMode::AutoSend { strategy: crate::feat::workflow::attached_workflow::PromptMergeStrategy::Append },
-            )]);
-            guard.pending_before_turn.insert(session_id.clone(), BeforeTurnMode::AutoSend { strategy: crate::feat::workflow::attached_workflow::PromptMergeStrategy::Replace });
+            guard.before_turn_queue.insert(
+                session_id.clone(),
+                vec![(
+                    aw2_clone,
+                    BeforeTurnMode::AutoSend {
+                        strategy:
+                            crate::feat::workflow::attached_workflow::PromptMergeStrategy::Append,
+                    },
+                )],
+            );
+            guard.pending_before_turn.insert(
+                session_id.clone(),
+                BeforeTurnMode::AutoSend {
+                    strategy:
+                        crate::feat::workflow::attached_workflow::PromptMergeStrategy::Replace,
+                },
+            );
         }
 
         // Verify queue has one entry and pending_before_turn is set.
@@ -1216,5 +1412,4 @@ mod tests {
         assert_eq!(queue.len(), 1);
         assert!(guard.pending_before_turn.contains_key(&session_id));
     }
-
 }

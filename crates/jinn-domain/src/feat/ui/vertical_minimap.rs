@@ -177,7 +177,10 @@ pub fn render_vertical_minimap(
             let span = match entry.token_count {
                 Some(count) => Span::styled(
                     FULL_BLOCK.to_owned(),
-                    Style::default().fg(token_threshold_color(count, state.frontend.preferences.minimap.max_tokens)),
+                    Style::default().fg(token_threshold_color(
+                        count,
+                        state.frontend.preferences.minimap.max_tokens,
+                    )),
                 ),
                 None => Span::raw(" "),
             };
@@ -190,11 +193,21 @@ pub fn render_vertical_minimap(
     let widget = Paragraph::new(lines);
     frame.render_widget(widget, area);
 
-    render_scroll_arrows(frame, area, selected_block, total_blocks, viewport_height, muted_text_color);
+    render_scroll_arrows(
+        frame,
+        area,
+        selected_block,
+        total_blocks,
+        viewport_height,
+        muted_text_color,
+    );
 
     let arrow_row = midpoint as u16;
     let selected_token_count = visible.get(selected_block).and_then(|e| e.token_count);
-    Some(MinimapArrow { row: arrow_row, token_count: selected_token_count })
+    Some(MinimapArrow {
+        row: arrow_row,
+        token_count: selected_token_count,
+    })
 }
 
 fn render_scroll_arrows(
@@ -210,15 +223,31 @@ fn render_scroll_arrows(
     let has_below = selected_block + (viewport_height - midpoint) < total_blocks;
 
     if has_above {
-        let arrow_area = Rect { x: area.x, y: area.y, width: 1, height: 1 };
-        let arrow = Paragraph::new(Line::from(Span::styled("▲", Style::default().fg(muted_text_color))));
+        let arrow_area = Rect {
+            x: area.x,
+            y: area.y,
+            width: 1,
+            height: 1,
+        };
+        let arrow = Paragraph::new(Line::from(Span::styled(
+            "▲",
+            Style::default().fg(muted_text_color),
+        )));
         frame.render_widget(arrow, arrow_area);
     }
 
     if has_below {
         let bottom_y = area.y + area.height.saturating_sub(1);
-        let arrow_area = Rect { x: area.x, y: bottom_y, width: 1, height: 1 };
-        let arrow = Paragraph::new(Line::from(Span::styled("▼", Style::default().fg(muted_text_color))));
+        let arrow_area = Rect {
+            x: area.x,
+            y: bottom_y,
+            width: 1,
+            height: 1,
+        };
+        let arrow = Paragraph::new(Line::from(Span::styled(
+            "▼",
+            Style::default().fg(muted_text_color),
+        )));
         frame.render_widget(arrow, arrow_area);
     }
 }
@@ -235,21 +264,43 @@ pub fn render_minimap_arrow(
 
     let y = chat_log_area.y + arrow.row.min(chat_log_area.height.saturating_sub(1));
 
-    #[allow(clippy::single_match_else, reason = "different match arms produce different widget layouts")]
+    #[allow(
+        clippy::single_match_else,
+        reason = "different match arms produce different widget layouts"
+    )]
     match arrow.token_count {
         Some(count) => {
             let formatted = format_entry_tokens(count);
             let text = format!("{formatted} >");
             let width = text.len() as u16;
-            let x = chat_log_area.x.saturating_add(chat_log_area.width).saturating_sub(width);
-            let paragraph = Paragraph::new(Line::from(Span::styled(text, Style::default().fg(arrow_color))));
-            let arrow_area = Rect { x, y, width: width.min(chat_log_area.width), height: 1 };
+            let x = chat_log_area
+                .x
+                .saturating_add(chat_log_area.width)
+                .saturating_sub(width);
+            let paragraph = Paragraph::new(Line::from(Span::styled(
+                text,
+                Style::default().fg(arrow_color),
+            )));
+            let arrow_area = Rect {
+                x,
+                y,
+                width: width.min(chat_log_area.width),
+                height: 1,
+            };
             frame.render_widget(paragraph, arrow_area);
         }
         None => {
             let x = chat_log_area.x + chat_log_area.width.saturating_sub(1);
-            let paragraph = Paragraph::new(Line::from(Span::styled(">", Style::default().fg(arrow_color))));
-            let arrow_area = Rect { x, y, width: 1, height: 1 };
+            let paragraph = Paragraph::new(Line::from(Span::styled(
+                ">",
+                Style::default().fg(arrow_color),
+            )));
+            let arrow_area = Rect {
+                x,
+                y,
+                width: 1,
+                height: 1,
+            };
             frame.render_widget(paragraph, arrow_area);
         }
     }
@@ -276,9 +327,18 @@ mod tests {
     #[rstest::rstest]
     fn find_block_index_returns_position_for_existing_entry() {
         let visible = vec![
-            VisibleEntry { vi_index: 0, token_count: None },
-            VisibleEntry { vi_index: 2, token_count: None },
-            VisibleEntry { vi_index: 5, token_count: None },
+            VisibleEntry {
+                vi_index: 0,
+                token_count: None,
+            },
+            VisibleEntry {
+                vi_index: 2,
+                token_count: None,
+            },
+            VisibleEntry {
+                vi_index: 5,
+                token_count: None,
+            },
         ];
         assert_eq!(find_block_index(Some(2), &visible), Some(1));
     }
@@ -286,8 +346,14 @@ mod tests {
     #[rstest::rstest]
     fn find_block_index_returns_none_for_excluded_entry() {
         let visible = vec![
-            VisibleEntry { vi_index: 0, token_count: None },
-            VisibleEntry { vi_index: 2, token_count: None },
+            VisibleEntry {
+                vi_index: 0,
+                token_count: None,
+            },
+            VisibleEntry {
+                vi_index: 2,
+                token_count: None,
+            },
         ];
         assert!(find_block_index(Some(1), &visible).is_none());
     }
@@ -295,8 +361,14 @@ mod tests {
     #[rstest::rstest]
     fn find_block_index_returns_last_when_none() {
         let visible = vec![
-            VisibleEntry { vi_index: 0, token_count: None },
-            VisibleEntry { vi_index: 2, token_count: None },
+            VisibleEntry {
+                vi_index: 0,
+                token_count: None,
+            },
+            VisibleEntry {
+                vi_index: 2,
+                token_count: None,
+            },
         ];
         assert_eq!(find_block_index(None, &visible), Some(1));
     }
@@ -308,28 +380,44 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn scroll_is_midpoint_based() { assert_eq!(compute_minimap_scroll(4, 5, 10), 0); }
+    fn scroll_is_midpoint_based() {
+        assert_eq!(compute_minimap_scroll(4, 5, 10), 0);
+    }
 
     #[rstest::rstest]
-    fn scroll_centers_selected() { assert_eq!(compute_minimap_scroll(45, 50, 10), 40); }
+    fn scroll_centers_selected() {
+        assert_eq!(compute_minimap_scroll(45, 50, 10), 40);
+    }
 
     #[rstest::rstest]
-    fn scroll_at_start_is_zero() { assert_eq!(compute_minimap_scroll(0, 50, 10), 0); }
+    fn scroll_at_start_is_zero() {
+        assert_eq!(compute_minimap_scroll(0, 50, 10), 0);
+    }
 
     #[rstest::rstest]
-    fn scroll_at_last_block() { assert_eq!(compute_minimap_scroll(49, 50, 10), 44); }
+    fn scroll_at_last_block() {
+        assert_eq!(compute_minimap_scroll(49, 50, 10), 44);
+    }
 
     #[rstest::rstest]
-    fn scroll_near_midpoint() { assert_eq!(compute_minimap_scroll(5, 50, 10), 0); }
+    fn scroll_near_midpoint() {
+        assert_eq!(compute_minimap_scroll(5, 50, 10), 0);
+    }
 
-    fn render_to_buffer(state: &AppState, width: u16, height: u16) -> (Option<MinimapArrow>, Vec<String>) {
+    fn render_to_buffer(
+        state: &AppState,
+        width: u16,
+        height: u16,
+    ) -> (Option<MinimapArrow>, Vec<String>) {
         setup_visual_items(state);
         let (mut terminal, area) = jinn_testutil::setup_term(width, height);
         let theme = default_theme();
         let mut arrow_result = None;
-        terminal.draw(|frame| {
-            arrow_result = render_vertical_minimap(frame, area, state, theme.muted_text);
-        }).unwrap();
+        terminal
+            .draw(|frame| {
+                arrow_result = render_vertical_minimap(frame, area, state, theme.muted_text);
+            })
+            .unwrap();
         let buffer = terminal.backend().buffer();
         let rows = jinn_testutil::buffer_rows(buffer, width, height);
         (arrow_result, rows)
@@ -346,10 +434,15 @@ mod tests {
     #[rstest::rstest]
     fn single_entry_no_cache_shows_space_at_midpoint() {
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("hello"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
         let (arrow, rows) = render_to_buffer(&state, 1, 10);
         assert!(arrow.is_some());
-        assert!(!rows[5].contains('\u{2588}'), "no block without token count");
+        assert!(
+            !rows[5].contains('\u{2588}'),
+            "no block without token count"
+        );
     }
 
     #[rstest::rstest]
@@ -358,7 +451,12 @@ mod tests {
         let entry = ChatEntry::user("hello world");
         let entry_id = entry.id.clone();
         state.active_session_mut().push_entry(entry);
-        state.frontend.caches.entry_token_cache.write().insert(entry_id, 50);
+        state
+            .frontend
+            .caches
+            .entry_token_cache
+            .write()
+            .insert(entry_id, 50);
         let (arrow, rows) = render_to_buffer(&state, 1, 10);
         assert!(arrow.is_some());
         assert!(rows[5].contains('\u{2588}'), "expected block at midpoint");
@@ -368,7 +466,9 @@ mod tests {
     fn arrow_at_midpoint_when_last_entry_selected() {
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry::user("a"));
-        state.active_session_mut().push_entry(ChatEntry::assistant("b"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("b"));
         state.active_session_mut().push_entry(ChatEntry::user("c"));
         let (arrow, _) = render_to_buffer(&state, 1, 10);
         assert_eq!(arrow.expect("arrow exists").row, 5);
@@ -378,9 +478,15 @@ mod tests {
     fn excluded_entries_produce_no_blocks() {
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry::user("a"));
-        state.active_session_mut().push_entry(ChatEntry::actor("bash", "output"));
-        state.active_session_mut().push_entry(ChatEntry::thinking("reasoning"));
-        state.active_session_mut().push_entry(ChatEntry::assistant("b"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::actor("bash", "output"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::thinking("reasoning"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("b"));
         let (arrow, rows) = render_to_buffer(&state, 1, 10);
         assert_eq!(rows.iter().filter(|r| r.contains('\u{2588}')).count(), 0);
         assert_eq!(arrow.expect("arrow").row, 5);
@@ -389,7 +495,11 @@ mod tests {
     #[rstest::rstest]
     fn arrow_clamps_to_viewport_height() {
         let mut state = AppState::default();
-        for i in 0..20 { state.active_session_mut().push_entry(ChatEntry::user(format!("msg {i}"))); }
+        for i in 0..20 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(format!("msg {i}")));
+        }
         let (arrow, _) = render_to_buffer(&state, 1, 5);
         assert_eq!(arrow.expect("arrow").row, 2);
     }
@@ -397,9 +507,16 @@ mod tests {
     #[rstest::rstest]
     fn arrow_renders_greater_than_character() {
         let (mut terminal, area) = jinn_testutil::setup_term(40, 10);
-        let arrow = MinimapArrow { row: 3, token_count: None };
+        let arrow = MinimapArrow {
+            row: 3,
+            token_count: None,
+        };
         let theme = default_theme();
-        terminal.draw(|frame| { render_minimap_arrow(frame, area, &arrow, theme.border_unfocused); }).unwrap();
+        terminal
+            .draw(|frame| {
+                render_minimap_arrow(frame, area, &arrow, theme.border_unfocused);
+            })
+            .unwrap();
         let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 40, 10);
         assert!(rows[3].contains('>'));
     }
@@ -407,7 +524,11 @@ mod tests {
     #[rstest::rstest]
     fn scroll_down_arrow_at_bottom() {
         let mut state = AppState::default();
-        for i in 0..20 { state.active_session_mut().push_entry(ChatEntry::user(format!("msg {i}"))); }
+        for i in 0..20 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(format!("msg {i}")));
+        }
         state.active_session_mut().set_selected_entry_index(0);
         let (_, rows) = render_to_buffer(&state, 1, 5);
         assert!(rows[4].contains('▼'));
@@ -416,7 +537,11 @@ mod tests {
     #[rstest::rstest]
     fn scroll_up_arrow_at_top() {
         let mut state = AppState::default();
-        for i in 0..20 { state.active_session_mut().push_entry(ChatEntry::user(format!("msg {i}"))); }
+        for i in 0..20 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(format!("msg {i}")));
+        }
         let (_, rows) = render_to_buffer(&state, 1, 5);
         assert!(rows[0].contains('▲'));
     }
@@ -425,7 +550,9 @@ mod tests {
     fn no_arrows_when_all_entries_fit() {
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry::user("a"));
-        state.active_session_mut().push_entry(ChatEntry::assistant("b"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("b"));
         state.active_session_mut().push_entry(ChatEntry::user("c"));
         let (_, rows) = render_to_buffer(&state, 1, 10);
         assert!(!rows.iter().any(|r| r.contains('▲')));
@@ -435,7 +562,9 @@ mod tests {
     #[rstest::rstest]
     fn empty_assistant_entry_produces_no_block() {
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::assistant(""));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant(""));
         let (arrow, rows) = render_to_buffer(&state, 1, 10);
         assert!(arrow.is_none());
         assert_eq!(rows.iter().filter(|r| r.contains('\u{2588}')).count(), 0);
@@ -443,7 +572,12 @@ mod tests {
 
     fn setup_visual_items(state: &AppState) {
         let session = state.active_session();
-        let items = build_visual_items(session.history(), &session.ui.shown_ignored_blocks, PROXIMITY_COUNT, DEFAULT_MIN_COLLAPSE_COUNT);
+        let items = build_visual_items(
+            session.history(),
+            &session.ui.shown_ignored_blocks,
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
         state.active_session().set_visual_items(items);
     }
 
@@ -453,7 +587,12 @@ mod tests {
         let entry = ChatEntry::user("hello world this is a test");
         let entry_id = entry.id.clone();
         state.active_session_mut().push_entry(entry);
-        state.frontend.caches.entry_token_cache.write().insert(entry_id, 500);
+        state
+            .frontend
+            .caches
+            .entry_token_cache
+            .write()
+            .insert(entry_id, 500);
         let (_, rows) = render_to_buffer(&state, 1, 10);
         assert_eq!(rows[5].chars().filter(|&c| c == '\u{2588}').count(), 1);
     }
@@ -461,7 +600,9 @@ mod tests {
     #[rstest::rstest]
     fn entry_without_cache_shows_space() {
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("hello"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
         let (_, rows) = render_to_buffer(&state, 1, 10);
         assert_eq!(rows[5].chars().filter(|&c| c == '\u{2588}').count(), 0);
     }
@@ -538,7 +679,9 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn format_entry_tokens_small() { assert_eq!(format_entry_tokens(42), "42"); }
+    fn format_entry_tokens_small() {
+        assert_eq!(format_entry_tokens(42), "42");
+    }
 
     #[rstest::rstest]
     fn format_entry_tokens_k() {
@@ -554,9 +697,16 @@ mod tests {
     #[rstest::rstest]
     fn arrow_with_token_count_renders_formatted_count() {
         let (mut terminal, area) = jinn_testutil::setup_term(40, 10);
-        let arrow = MinimapArrow { row: 3, token_count: Some(3000) };
+        let arrow = MinimapArrow {
+            row: 3,
+            token_count: Some(3000),
+        };
         let theme = default_theme();
-        terminal.draw(|frame| { render_minimap_arrow(frame, area, &arrow, theme.border_unfocused); }).unwrap();
+        terminal
+            .draw(|frame| {
+                render_minimap_arrow(frame, area, &arrow, theme.border_unfocused);
+            })
+            .unwrap();
         let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 40, 10);
         assert!(rows[3].contains('3'));
         assert!(rows[3].contains('>'));
@@ -565,9 +715,16 @@ mod tests {
     #[rstest::rstest]
     fn arrow_without_token_count_renders_just_gt() {
         let (mut terminal, area) = jinn_testutil::setup_term(40, 10);
-        let arrow = MinimapArrow { row: 3, token_count: None };
+        let arrow = MinimapArrow {
+            row: 3,
+            token_count: None,
+        };
         let theme = default_theme();
-        terminal.draw(|frame| { render_minimap_arrow(frame, area, &arrow, theme.border_unfocused); }).unwrap();
+        terminal
+            .draw(|frame| {
+                render_minimap_arrow(frame, area, &arrow, theme.border_unfocused);
+            })
+            .unwrap();
         let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 40, 10);
         assert!(rows[3].contains('>'));
         assert!(!rows[3].contains('k'));

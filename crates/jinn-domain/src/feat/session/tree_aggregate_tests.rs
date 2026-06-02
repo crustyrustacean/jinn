@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::token_stats::TokenRecord;
-use crate::feat::session::{aggregate_tree_stats, find_tree_root, FrozenTreeNode};
+use crate::feat::session::{FrozenTreeNode, aggregate_tree_stats, find_tree_root};
 use crate::protocol::{ChatEntry, SessionId};
 
 /// Helper: create an empty session with the given ID.
@@ -142,7 +142,10 @@ fn single_session_returns_own_stats() {
     // Given a single session with known stats.
     let id = SessionId::new();
     let mut sessions = HashMap::new();
-    sessions.insert(id.clone(), make_session_with_stats(id.clone(), 100, 50, Some(0.01), 2));
+    sessions.insert(
+        id.clone(),
+        make_session_with_stats(id.clone(), 100, 50, Some(0.01), 2),
+    );
 
     // When aggregating tree stats.
     let stats = aggregate_tree_stats(&sessions, &HashMap::new(), &id);
@@ -163,9 +166,18 @@ fn parent_with_children_sums_all() {
     let child2_id = SessionId::new();
 
     let mut sessions = HashMap::new();
-    sessions.insert(parent_id.clone(), make_session_with_stats(parent_id.clone(), 100, 50, Some(0.01), 2));
-    sessions.insert(child1_id.clone(), make_session_with_stats(child1_id.clone(), 200, 100, Some(0.02), 1));
-    sessions.insert(child2_id.clone(), make_session_with_stats(child2_id.clone(), 300, 150, Some(0.03), 3));
+    sessions.insert(
+        parent_id.clone(),
+        make_session_with_stats(parent_id.clone(), 100, 50, Some(0.01), 2),
+    );
+    sessions.insert(
+        child1_id.clone(),
+        make_session_with_stats(child1_id.clone(), 200, 100, Some(0.02), 1),
+    );
+    sessions.insert(
+        child2_id.clone(),
+        make_session_with_stats(child2_id.clone(), 300, 150, Some(0.03), 3),
+    );
 
     set_parent(&mut sessions, &child1_id, &parent_id);
     set_parent(&mut sessions, &child2_id, &parent_id);
@@ -189,9 +201,18 @@ fn child_sees_entire_tree() {
     let child2_id = SessionId::new();
 
     let mut sessions = HashMap::new();
-    sessions.insert(parent_id.clone(), make_session_with_stats(parent_id.clone(), 100, 50, None, 1));
-    sessions.insert(child1_id.clone(), make_session_with_stats(child1_id.clone(), 200, 100, None, 2));
-    sessions.insert(child2_id.clone(), make_session_with_stats(child2_id.clone(), 300, 150, None, 3));
+    sessions.insert(
+        parent_id.clone(),
+        make_session_with_stats(parent_id.clone(), 100, 50, None, 1),
+    );
+    sessions.insert(
+        child1_id.clone(),
+        make_session_with_stats(child1_id.clone(), 200, 100, None, 2),
+    );
+    sessions.insert(
+        child2_id.clone(),
+        make_session_with_stats(child2_id.clone(), 300, 150, None, 3),
+    );
 
     set_parent(&mut sessions, &child1_id, &parent_id);
     set_parent(&mut sessions, &child2_id, &parent_id);
@@ -214,9 +235,18 @@ fn deeply_nested_tree_sums_all() {
     let child_id = SessionId::new();
 
     let mut sessions = HashMap::new();
-    sessions.insert(gp_id.clone(), make_session_with_stats(gp_id.clone(), 10, 5, None, 1));
-    sessions.insert(parent_id.clone(), make_session_with_stats(parent_id.clone(), 20, 10, None, 1));
-    sessions.insert(child_id.clone(), make_session_with_stats(child_id.clone(), 30, 15, None, 1));
+    sessions.insert(
+        gp_id.clone(),
+        make_session_with_stats(gp_id.clone(), 10, 5, None, 1),
+    );
+    sessions.insert(
+        parent_id.clone(),
+        make_session_with_stats(parent_id.clone(), 20, 10, None, 1),
+    );
+    sessions.insert(
+        child_id.clone(),
+        make_session_with_stats(child_id.clone(), 30, 15, None, 1),
+    );
 
     set_parent(&mut sessions, &parent_id, &gp_id);
     set_parent(&mut sessions, &child_id, &parent_id);
@@ -239,9 +269,18 @@ fn disconnected_sessions_excluded() {
     let disconnected_id = SessionId::new();
 
     let mut sessions = HashMap::new();
-    sessions.insert(parent_id.clone(), make_session_with_stats(parent_id.clone(), 100, 50, None, 1));
-    sessions.insert(child_id.clone(), make_session_with_stats(child_id.clone(), 200, 100, None, 1));
-    sessions.insert(disconnected_id.clone(), make_session_with_stats(disconnected_id.clone(), 999, 999, None, 99));
+    sessions.insert(
+        parent_id.clone(),
+        make_session_with_stats(parent_id.clone(), 100, 50, None, 1),
+    );
+    sessions.insert(
+        child_id.clone(),
+        make_session_with_stats(child_id.clone(), 200, 100, None, 1),
+    );
+    sessions.insert(
+        disconnected_id.clone(),
+        make_session_with_stats(disconnected_id.clone(), 999, 999, None, 99),
+    );
 
     set_parent(&mut sessions, &child_id, &parent_id);
 
@@ -298,7 +337,10 @@ fn frozen_child_included_in_aggregate() {
     let child_id = SessionId::new();
 
     let mut sessions = HashMap::new();
-    sessions.insert(root_id.clone(), make_session_with_stats(root_id.clone(), 100, 50, Some(0.01), 2));
+    sessions.insert(
+        root_id.clone(),
+        make_session_with_stats(root_id.clone(), 100, 50, Some(0.01), 2),
+    );
 
     let mut frozen_nodes = HashMap::new();
     frozen_nodes.insert(
@@ -331,7 +373,10 @@ fn child_of_frozen_included_in_aggregate() {
     let child_id = SessionId::new();
 
     let mut sessions = HashMap::new();
-    sessions.insert(child_id.clone(), make_session_with_stats(child_id.clone(), 100, 50, Some(0.01), 2));
+    sessions.insert(
+        child_id.clone(),
+        make_session_with_stats(child_id.clone(), 100, 50, Some(0.01), 2),
+    );
     // The live child's parent is the frozen root.
     if let Some(s) = sessions.get_mut(&child_id) {
         s.set_parent_session(root_id.clone());
@@ -369,8 +414,14 @@ fn deeply_nested_with_frozen_in_middle() {
     let child_id = SessionId::new();
 
     let mut sessions = HashMap::new();
-    sessions.insert(gp_id.clone(), make_session_with_stats(gp_id.clone(), 10, 5, None, 1));
-    sessions.insert(child_id.clone(), make_session_with_stats(child_id.clone(), 30, 15, None, 1));
+    sessions.insert(
+        gp_id.clone(),
+        make_session_with_stats(gp_id.clone(), 10, 5, None, 1),
+    );
+    sessions.insert(
+        child_id.clone(),
+        make_session_with_stats(child_id.clone(), 30, 15, None, 1),
+    );
     // Child's parent is the frozen parent.
     if let Some(s) = sessions.get_mut(&child_id) {
         s.set_parent_session(parent_id.clone());
@@ -451,7 +502,10 @@ fn frozen_node_not_in_tree_is_excluded() {
     let frozen_root = SessionId::new(); // root of a disconnected tree
 
     let mut sessions = HashMap::new();
-    sessions.insert(live_id.clone(), make_session_with_stats(live_id.clone(), 100, 50, None, 1));
+    sessions.insert(
+        live_id.clone(),
+        make_session_with_stats(live_id.clone(), 100, 50, None, 1),
+    );
 
     let mut frozen_nodes = HashMap::new();
     frozen_nodes.insert(

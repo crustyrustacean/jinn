@@ -51,11 +51,7 @@ impl RouterNode {
     ///
     /// Panics if `output_ports` is empty.
     #[must_use]
-    pub fn new(
-        name: String,
-        input_port: PortDef,
-        output_ports: Vec<PortDef>,
-    ) -> Self {
+    pub fn new(name: String, input_port: PortDef, output_ports: Vec<PortDef>) -> Self {
         assert!(
             !output_ports.is_empty(),
             "RouterNode must have at least one output port"
@@ -230,15 +226,9 @@ mod tests {
 
         #[expect(clippy::expect_used, reason = "test assertion")]
         let outputs = result.expect("router should succeed");
-        assert!(
-            outputs.contains("yes"),
-            "'yes' port must be populated"
-        );
+        assert!(outputs.contains("yes"), "'yes' port must be populated");
         assert_eq!(outputs.get_text("yes").unwrap(), "YES");
-        assert!(
-            !outputs.contains("no"),
-            "'no' port must not be populated"
-        );
+        assert!(!outputs.contains("no"), "'no' port must not be populated");
     }
 
     #[tokio::test]
@@ -249,15 +239,9 @@ mod tests {
 
         #[expect(clippy::expect_used, reason = "test assertion")]
         let outputs = result.expect("router should succeed");
-        assert!(
-            outputs.contains("no"),
-            "'no' port must be populated"
-        );
+        assert!(outputs.contains("no"), "'no' port must be populated");
         assert_eq!(outputs.get_text("no").unwrap(), "NO");
-        assert!(
-            !outputs.contains("yes"),
-            "'yes' port must not be populated"
-        );
+        assert!(!outputs.contains("yes"), "'yes' port must not be populated");
     }
 
     #[tokio::test]
@@ -280,9 +264,15 @@ mod tests {
 
         #[expect(clippy::expect_used, reason = "test assertion")]
         let outputs = result.expect("router should succeed");
-        assert!(outputs.contains("medium"), "'medium' port must be populated");
+        assert!(
+            outputs.contains("medium"),
+            "'medium' port must be populated"
+        );
         assert!(!outputs.contains("low"), "'low' port must not be populated");
-        assert!(!outputs.contains("high"), "'high' port must not be populated");
+        assert!(
+            !outputs.contains("high"),
+            "'high' port must not be populated"
+        );
     }
 
     #[tokio::test]
@@ -298,7 +288,11 @@ mod tests {
         let router = RouterNode::new(
             "router".to_owned(),
             PortDef::text("in"),
-            vec![PortDef::text("yes"), PortDef::text("no"), PortDef::text("unknown")],
+            vec![
+                PortDef::text("yes"),
+                PortDef::text("no"),
+                PortDef::text("unknown"),
+            ],
         )
         .with_route("yes".to_owned(), r"(?i)^yes")
         .with_route("no".to_owned(), r"(?i)^no")
@@ -309,7 +303,10 @@ mod tests {
 
         #[expect(clippy::expect_used, reason = "test assertion")]
         let outputs = result.expect("router should succeed with default");
-        assert!(outputs.contains("unknown"), "'unknown' port must be populated");
+        assert!(
+            outputs.contains("unknown"),
+            "'unknown' port must be populated"
+        );
         assert_eq!(outputs.get_text("unknown").unwrap(), "maybe");
     }
 
@@ -364,13 +361,15 @@ mod tests {
         );
         builder.add_node(
             "router".to_owned(),
-            Box::new(RouterNode::new(
-            "router".to_owned(),
-                PortDef::text("in"),
-                vec![PortDef::text("yes"), PortDef::text("no")],
-            )
-            .with_route("yes".to_owned(), r"(?i)^yes")
-            .with_route("no".to_owned(), r"(?i)^no")),
+            Box::new(
+                RouterNode::new(
+                    "router".to_owned(),
+                    PortDef::text("in"),
+                    vec![PortDef::text("yes"), PortDef::text("no")],
+                )
+                .with_route("yes".to_owned(), r"(?i)^yes")
+                .with_route("no".to_owned(), r"(?i)^no"),
+            ),
         );
         builder.add_node(
             "yes_branch".to_owned(),
@@ -415,9 +414,15 @@ mod tests {
             )),
         );
 
-        builder.connect("source", "out", "router", "in").expect("src→router");
-        builder.connect("router", "yes", "yes_branch", "in").expect("router→yes");
-        builder.connect("router", "no", "no_branch", "in").expect("router→no");
+        builder
+            .connect("source", "out", "router", "in")
+            .expect("src→router");
+        builder
+            .connect("router", "yes", "yes_branch", "in")
+            .expect("router→yes");
+        builder
+            .connect("router", "no", "no_branch", "in")
+            .expect("router→no");
 
         let graph = builder.build().expect("build");
         let execution = Arc::new(crate::execution::WorkflowExecution::new(graph));
@@ -430,7 +435,12 @@ mod tests {
             &NodeStatus::Completed
         );
         assert_eq!(
-            result.outputs.get("yes_branch").unwrap().get_text("out").unwrap(),
+            result
+                .outputs
+                .get("yes_branch")
+                .unwrap()
+                .get_text("out")
+                .unwrap(),
             "YES"
         );
 

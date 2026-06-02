@@ -214,8 +214,8 @@ mod tests {
                 web_fetch: WebFetchConfig::default(),
                 openrouter_web_search: OpenrouterWebSearchConfig::default(),
                 cwd_selector: CwdSelectorConfig::default(),
-            minimap: MinimapConfig::default(),
-            auto_prune: AutoPruneConfig::default(),
+                minimap: MinimapConfig::default(),
+                auto_prune: AutoPruneConfig::default(),
             })
             .expect("save prefs");
 
@@ -438,8 +438,8 @@ mod tests {
                 web_fetch: WebFetchConfig::default(),
                 openrouter_web_search: OpenrouterWebSearchConfig::default(),
                 cwd_selector: CwdSelectorConfig::default(),
-            minimap: MinimapConfig::default(),
-            auto_prune: AutoPruneConfig::default(),
+                minimap: MinimapConfig::default(),
+                auto_prune: AutoPruneConfig::default(),
             })
             .expect("save prefs");
 

@@ -103,7 +103,6 @@ impl QueueActor {
         session_id: &crate::protocol::SessionId,
         ctx: &ActorContext,
     ) {
-
         let item = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(session_id);
@@ -119,10 +118,8 @@ impl QueueActor {
             QueueItem::ToolContinuation => {
                 self.dispatch_tool_continuation(session_id, ctx).await;
             }
-
         }
     }
-
 
     /// Dispatch a user message: push to history, set title, begin sending,
     /// assemble prompt, emit SendToLlmProvider, emit ChatEntrySubmitted, emit PersistSession.
@@ -227,8 +224,6 @@ impl QueueActor {
             );
         }
     }
-
-
 }
 
 #[cfg(test)]
@@ -293,7 +288,6 @@ mod tests {
         );
     }
 
-
     #[tokio::test]
     async fn session_phase_changed_non_idle_does_not_pop_queue() {
         // Given a session with a queued user message in non-Idle phase.
@@ -353,8 +347,6 @@ mod tests {
         let commands = sink.commands();
         assert!(commands.is_empty(), "expected no commands for empty queue");
     }
-
-
 
     #[tokio::test]
     async fn dispatch_user_message_emits_chat_entry_submitted() {
@@ -425,7 +417,6 @@ mod tests {
         assert!(matches!(session.phase(), PhaseKind::Sending));
     }
 
-
     #[tokio::test]
     async fn dispatch_tool_continuation_emits_send_to_llm_provider() {
         // Given a session in Idle phase with history.
@@ -448,8 +439,6 @@ mod tests {
             .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(has_send, "expected SendToLlmProvider command");
     }
-
-
 
     #[tokio::test]
     async fn session_phase_changed_idle_to_sending_does_not_dispatch_continuation() {
@@ -502,7 +491,10 @@ mod tests {
             Command::SendToLlmProvider(cmd) => cmd.provider_id.clone(),
             _ => None,
         });
-        assert_eq!(provider_id, None, "expected provider_id None for NO_PROVIDER_ID");
+        assert_eq!(
+            provider_id, None,
+            "expected provider_id None for NO_PROVIDER_ID"
+        );
     }
 
     #[tokio::test]
@@ -570,7 +562,9 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             session.push_entry(ChatEntry::user("previous message"));
-            state.active_session_mut().set_model("tool-model".to_owned());
+            state
+                .active_session_mut()
+                .set_model("tool-model".to_owned());
             state.session.active_session_id().clone()
         };
 
@@ -589,8 +583,6 @@ mod tests {
             "expected provider_id Some(\"tool-model\") in tool continuation"
         );
     }
-
-
 
     #[tokio::test]
     async fn handle_processes_session_phase_changed_event() {
@@ -628,5 +620,4 @@ mod tests {
             "expected SendToLlmProvider when handle processes SessionPhaseChanged"
         );
     }
-
 }

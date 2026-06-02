@@ -727,7 +727,9 @@ fn render_shows_cost_before_turns_indicator() {
     let row = buffer_row(&buffer, 1, 80);
     // Then cost appears before Turns in the rendered row.
     let cost_pos = row.find("$0.00150").expect("cost should be present");
-    let turns_pos = row.find("\u{21BB}").expect("turns symbol should be present");
+    let turns_pos = row
+        .find("\u{21BB}")
+        .expect("turns symbol should be present");
     assert!(
         cost_pos < turns_pos,
         "cost should appear before turns symbol, got: {row}"

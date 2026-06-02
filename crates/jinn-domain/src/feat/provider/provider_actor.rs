@@ -28,7 +28,6 @@ use crate::feat::provider::protocol::command::{
     LoadCompactionModelPickerEntries, LoadProviderPickerEntries,
 };
 
-
 /// The provider actor.
 ///
 /// Subscribes to provider-related commands, mutates [`State`], and emits events
@@ -114,7 +113,6 @@ impl ProviderActor {
             | Command::LoadSessionPickerEntries(..)
             | Command::ScanSkills
             | Command::RescanPersonas(..)
-
             | Command::LoadPersonaPickerEntries(..)
             | Command::UpdatePreferences(..)
             | Command::SessionForkRequested(..)
@@ -132,7 +130,6 @@ impl ProviderActor {
             | Command::RerunFromNode(..)
             | Command::LoadWorkflowPickerEntries(..)
             | Command::MarkSessionInteracted(..)
-
             | Command::SubmitHistoryMutations(..)
             | Command::TriggerCompaction(..)
             | Command::Dynamic(..)
@@ -286,9 +283,9 @@ mod tests {
     use crate::protocol::{Command, Event};
 
     use super::{ModelsRefreshed, ProviderActor, ProviderActorDeps};
-    use crate::feat::ui::picker_states::PickerExt;
     use crate::feat::provider::protocol::command::LoadProviderPickerEntries;
     use crate::feat::provider::protocol::command::ProviderSwitch;
+    use crate::feat::ui::picker_states::PickerExt;
 
     fn create_actor() -> (
         ProviderActor,
@@ -472,10 +469,16 @@ mod tests {
         assert_eq!(cache.entries["zai"][0].context_length, Some(128_000));
 
         // And the model is registered in the provider registry.
-        let resolved = services.provider_registry.get(
-            &crate::feat::provider_infra::ProviderId::new("zai/zai-1.5".to_owned()),
+        let resolved =
+            services
+                .provider_registry
+                .get(&crate::feat::provider_infra::ProviderId::new(
+                    "zai/zai-1.5".to_owned(),
+                ));
+        assert!(
+            resolved.is_some(),
+            "model should be in registry after ModelsRefreshed"
         );
-        assert!(resolved.is_some(), "model should be in registry after ModelsRefreshed");
     }
 
     #[rstest::rstest]
@@ -642,10 +645,16 @@ mod tests {
         assert_eq!(loaded.entries["zai"][0].context_length, Some(128_000));
 
         // And the model is registered in the provider registry.
-        let resolved = services.provider_registry.get(
-            &crate::feat::provider_infra::ProviderId::new("zai/zai-1.5".to_owned()),
+        let resolved =
+            services
+                .provider_registry
+                .get(&crate::feat::provider_infra::ProviderId::new(
+                    "zai/zai-1.5".to_owned(),
+                ));
+        assert!(
+            resolved.is_some(),
+            "model should be in registry after ModelCacheLoaded"
         );
-        assert!(resolved.is_some(), "model should be in registry after ModelCacheLoaded");
     }
 
     #[rstest::rstest]
@@ -880,9 +889,7 @@ mod tests {
             session_id: session_id.clone(),
             provider_id: "ollama/llama3".to_owned(),
         });
-        actor
-            .handle(ActorEnvelope::Command(cmd), &ctx)
-            .await;
+        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
         // Then the session model is updated.
         let s = state.read();
@@ -891,7 +898,9 @@ mod tests {
         // And a ProviderSwitched event is emitted.
         let events = sink.take_events();
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0], Event::ProviderSwitched(e) if e.provider_name == "ollama/llama3"));
+        assert!(
+            matches!(&events[0], Event::ProviderSwitched(e) if e.provider_name == "ollama/llama3")
+        );
     }
 
     #[rstest::rstest]
@@ -906,14 +915,15 @@ mod tests {
 
         // When sending LoadProviderPickerEntries.
         let cmd = Command::LoadProviderPickerEntries(LoadProviderPickerEntries);
-        actor
-            .handle(ActorEnvelope::Command(cmd), &ctx)
-            .await;
+        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
         // Then the provider picker has entries.
         let s = state.read();
         let items = s.provider.provider_picker.items();
-        assert!(!items.is_empty(), "picker should have entries after loading");
+        assert!(
+            !items.is_empty(),
+            "picker should have entries after loading"
+        );
     }
 
     #[rstest::rstest]
@@ -930,13 +940,14 @@ mod tests {
         let cmd = Command::LoadCompactionModelPickerEntries(
             crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
         );
-        actor
-            .handle(ActorEnvelope::Command(cmd), &ctx)
-            .await;
+        actor.handle(ActorEnvelope::Command(cmd), &ctx).await;
 
         // Then the compaction model picker has entries (at least the sentinel).
         let s = state.read();
         let items = s.frontend.compaction_model_picker().items();
-        assert!(!items.is_empty(), "compaction picker should have entries after loading");
+        assert!(
+            !items.is_empty(),
+            "compaction picker should have entries after loading"
+        );
     }
 }

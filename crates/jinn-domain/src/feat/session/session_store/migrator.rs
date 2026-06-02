@@ -578,7 +578,8 @@ mod tests {
         }
         if target >= 9 {
             migrate_v9(conn).expect("v9");
-            record_version(conn, 9, "rename_session_entries_to_session_history").expect("record v9");
+            record_version(conn, 9, "rename_session_entries_to_session_history")
+                .expect("record v9");
         }
         if target >= 10 {
             migrate_v10(conn).expect("v10");
@@ -621,8 +622,9 @@ mod tests {
             apply_migrations_up_to(&mut conn, target_version);
 
             // Re-running should succeed - applying only versions > target_version.
-            run_migrations(&mut conn)
-                .unwrap_or_else(|e| panic!("re-run at target_version={target_version} should succeed: {e:?}"));
+            run_migrations(&mut conn).unwrap_or_else(|e| {
+                panic!("re-run at target_version={target_version} should succeed: {e:?}")
+            });
 
             // Verify no duplicate rows: exactly 14 migration rows total.
             let rows: Vec<CountRow> = sql_query("SELECT COUNT(*) AS count FROM _migrations")

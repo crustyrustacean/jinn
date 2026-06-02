@@ -9,8 +9,6 @@
 //! - [`WorkflowTrigger`] — when the workflow fires
 //! - [`OneShotKind`] — keybind toggle keys for one-shot workflows
 
-
-
 use serde::{Deserialize, Serialize};
 
 use super::workflow_state::WorkflowId;
@@ -119,8 +117,6 @@ impl WorkflowConfig {
         }
     }
 
-
-
     /// Build a WorkflowGraph from this config.
     ///
     /// NOTE: Only callable after Phase 7+ (builtin.rs must exist).
@@ -128,12 +124,12 @@ impl WorkflowConfig {
     #[must_use]
     pub fn build_graph(&self) -> jinn_workflow::graph::WorkflowGraph {
         match self {
-            Self::Consensus { n, .. } => {
-                super::builtin::build_consensus(*n)
-            }
-            Self::Judge { prompt, approval_tool, .. } => {
-                super::builtin::build_judge(prompt, approval_tool)
-            }
+            Self::Consensus { n, .. } => super::builtin::build_consensus(*n),
+            Self::Judge {
+                prompt,
+                approval_tool,
+                ..
+            } => super::builtin::build_judge(prompt, approval_tool),
             Self::Divergence { n, temperature, .. } => {
                 super::builtin::build_divergence(*n, *temperature)
             }
@@ -216,7 +212,7 @@ pub enum AttachedWorkflowState {
     Failed {
         /// Error description.
         reason: String,
-    }
+    },
 }
 
 impl Default for AttachedWorkflowState {
@@ -304,7 +300,10 @@ mod tests {
             .label(),
             "Divergence"
         );
-        assert_eq!(WorkflowConfig::Custom(serde_json::json!({})).label(), "Custom");
+        assert_eq!(
+            WorkflowConfig::Custom(serde_json::json!({})).label(),
+            "Custom"
+        );
     }
 
     // --- Test 3: one_shot_kind_default_config_matches_kind ---
@@ -312,7 +311,10 @@ mod tests {
     #[rstest::rstest]
     fn one_shot_kind_default_config_matches_kind() {
         let consensus_cfg = OneShotKind::Consensus.default_config();
-        assert!(matches!(consensus_cfg, WorkflowConfig::Consensus { n: 3, .. }));
+        assert!(matches!(
+            consensus_cfg,
+            WorkflowConfig::Consensus { n: 3, .. }
+        ));
 
         let judge_cfg = OneShotKind::Judge.default_config();
         assert!(matches!(judge_cfg, WorkflowConfig::Judge { .. }));
@@ -322,7 +324,8 @@ mod tests {
 
     #[rstest::rstest]
     fn pending_one_shots_default_empty() {
-        let map: std::collections::HashMap<OneShotKind, WorkflowConfig> = std::collections::HashMap::new();
+        let map: std::collections::HashMap<OneShotKind, WorkflowConfig> =
+            std::collections::HashMap::new();
         assert!(map.is_empty());
     }
 
@@ -411,7 +414,10 @@ mod tests {
 
         // Toggle on
         assert!(map.is_empty());
-        map.insert(OneShotKind::Consensus, OneShotKind::Consensus.default_config());
+        map.insert(
+            OneShotKind::Consensus,
+            OneShotKind::Consensus.default_config(),
+        );
         assert!(map.contains_key(&OneShotKind::Consensus));
 
         // Toggle off
@@ -428,7 +434,9 @@ mod tests {
             AttachedWorkflowState::Ready,
             AttachedWorkflowState::Running,
             AttachedWorkflowState::Completed,
-            AttachedWorkflowState::Failed { reason: "something went wrong".to_owned() },
+            AttachedWorkflowState::Failed {
+                reason: "something went wrong".to_owned(),
+            },
         ];
         for state in states {
             let json = serde_json::to_string(&state).expect("serialize");

@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
-use crate::common::app_paths::AppPaths;
+use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::theme;
 use crate::protocol::Event;
@@ -29,8 +29,8 @@ pub struct PreferencesStateSyncActor {
 pub struct PreferencesStateSyncActorDeps {
     /// Shared application state.
     pub state: State,
-    /// Application paths for theme resolution.
-    pub paths: AppPaths,
+    /// Runtime services.
+    pub services: Services,
 }
 
 impl Actor for PreferencesStateSyncActor {
@@ -43,8 +43,8 @@ impl Actor for PreferencesStateSyncActor {
 
         Self {
             state: deps.state,
-            themes_dir: deps.paths.themes_dir(),
-            system_themes_dir: deps.paths.system_themes_dir(),
+            themes_dir: deps.services.paths.themes_dir(),
+            system_themes_dir: deps.services.paths.system_themes_dir(),
         }
     }
 
@@ -108,6 +108,7 @@ mod tests {
     use crate::protocol::Event;
 
     use super::{PreferencesStateSyncActor, PreferencesStateSyncActorDeps};
+    use crate::common::services::Services;
     use crate::feat::preferences_actor::RequestRetryConfig;
 
     /// Creates a test actor with shared state.
@@ -116,9 +117,10 @@ mod tests {
         let mut ctx = ActorContext::new("preferences-sync", sink.clone() as Arc<dyn MessageSink>);
         let state = State::new(AppState::default());
         let deps = PreferencesStateSyncActorDeps {
+            services: Services::new(),
             state: state.clone(),
-            paths: AppPaths::default(),
         };
+
         let actor = PreferencesStateSyncActor::activate(deps, &mut ctx);
         (actor, state, ctx)
     }

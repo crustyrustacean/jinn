@@ -88,9 +88,7 @@ pub fn handle_workflow_input_submit(state: &mut AppState) -> IntentResult {
     let mut outputs = jinn_workflow::port::PortValues::new();
     outputs.insert(
         output_port_name,
-        jinn_workflow::port::PortValue::Single(jinn_workflow::port::ScalarValue::Text(
-            text,
-        )),
+        jinn_workflow::port::PortValue::Single(jinn_workflow::port::ScalarValue::Text(text)),
     );
 
     workflow.execution.set_node_outputs(&node_name, outputs);

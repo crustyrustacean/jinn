@@ -389,17 +389,28 @@ mod tests {
         let viewport = ViewportState::new();
         let widget = WorkflowWidget::new(&snapshot, &viewport, 0, Color::Cyan);
 
-        let area = Rect { x: 0, y: 0, width: 120, height: 30 };
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 120,
+            height: 30,
+        };
         let mut buf = Buffer::empty(area);
         widget.render(area, &mut buf);
 
         // Verify at least one connection character appears (─ or │ or corner).
         let has_connection = (0..area.height).any(|row| {
             (0..area.width).any(|col| {
-                let sym = buf.cell(ratatui::layout::Position::new(col, row)).unwrap().symbol();
+                let sym = buf
+                    .cell(ratatui::layout::Position::new(col, row))
+                    .unwrap()
+                    .symbol();
                 matches!(sym, "─" | "│" | "╭" | "╮" | "╰" | "╯")
             })
         });
-        assert!(has_connection, "two-node graph must render connection lines");
+        assert!(
+            has_connection,
+            "two-node graph must render connection lines"
+        );
     }
 }

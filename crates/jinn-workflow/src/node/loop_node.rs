@@ -139,7 +139,10 @@ impl LoopNode {
     ///
     /// Panics if the default empty-match regex fails to compile (should never happen).
     #[must_use]
-    #[expect(clippy::expect_used, reason = "default regex is compile-time guaranteed to be valid")]
+    #[expect(
+        clippy::expect_used,
+        reason = "default regex is compile-time guaranteed to be valid"
+    )]
     pub fn new(
         name: String,
         input_ports: Vec<PortDef>,
@@ -323,17 +326,12 @@ impl WorkflowNode for LoopNode {
         self.output_ports.clone()
     }
 
-    #[expect(
-        clippy::unimplemented,
-        reason = "LoopNode cannot be cloned by design"
-    )]
+    #[expect(clippy::unimplemented, reason = "LoopNode cannot be cloned by design")]
     fn clone_box(&self) -> Box<dyn WorkflowNode> {
         // LoopNode cannot be meaningfully cloned because it contains
         // a factory closure and Regex. The engine should not need to
         // clone LoopNode since it's not used inside itself.
-        unimplemented!(
-            "LoopNode::clone_box is not supported - loop nodes cannot be cloned"
-        )
+        unimplemented!("LoopNode::clone_box is not supported - loop nodes cannot be cloned")
     }
 
     fn config(&self) -> Option<serde_json::Value> {
@@ -394,7 +392,9 @@ impl WorkflowNode for LoopNode {
             Self::seed_source_nodes(&execution, &inputs);
 
             // Inject feedback from previous iteration (if iteration > 0).
-            if iteration > 0 && let Some(ref prev) = prev_body_outputs {
+            if iteration > 0
+                && let Some(ref prev) = prev_body_outputs
+            {
                 self.inject_feedback(&execution, prev);
             }
 
@@ -418,9 +418,8 @@ impl WorkflowNode for LoopNode {
                 .get(&self.exit_condition.node_name)
                 .and_then(|outputs| outputs.get_text(&self.exit_condition.port_name).ok());
 
-            let exit_met = exit_value.is_some_and(|text| {
-                self.exit_condition.pattern.is_match(text)
-            });
+            let exit_met =
+                exit_value.is_some_and(|text| self.exit_condition.pattern.is_match(text));
 
             if exit_met {
                 // Extract outputs via output map.
@@ -440,9 +439,11 @@ impl WorkflowNode for LoopNode {
         }
 
         // Max iterations exhausted.
-        Err(Report::new(NodeError).attach(LoopError::MaxIterationsExhausted {
-            max_iterations: self.max_iterations,
-        }))
+        Err(
+            Report::new(NodeError).attach(LoopError::MaxIterationsExhausted {
+                max_iterations: self.max_iterations,
+            }),
+        )
     }
 }
 
@@ -456,11 +457,11 @@ mod tests {
     )]
 
     use super::*;
-    use std::sync::Mutex;
     use crate::graph::WorkflowGraphBuilder;
     use crate::node::code::CodeNode;
     use crate::node::router::RouterNode;
     use crate::port::{PortDef, PortValue, ScalarValue};
+    use std::sync::Mutex;
 
     /// A simple node that echoes its input to its output.
     struct EchoNode;
@@ -481,9 +482,14 @@ mod tests {
             mut inputs: PortValues,
             _ctx: &dyn NodeContext,
         ) -> Result<PortValues, Report<NodeError>> {
-            let value = inputs.take_text("in").map_err(|_e| Report::new(NodeError))?;
+            let value = inputs
+                .take_text("in")
+                .map_err(|_e| Report::new(NodeError))?;
             let mut out = PortValues::new();
-            out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text(value)));
+            out.insert(
+                "out".to_owned(),
+                PortValue::Single(ScalarValue::Text(value)),
+            );
             Ok(out)
         }
         fn clone_box(&self) -> Box<dyn WorkflowNode> {
@@ -550,7 +556,9 @@ mod tests {
             mut inputs: PortValues,
             _ctx: &dyn NodeContext,
         ) -> Result<PortValues, Report<NodeError>> {
-            let value = inputs.take_text("in").map_err(|_e| Report::new(NodeError))?;
+            let value = inputs
+                .take_text("in")
+                .map_err(|_e| Report::new(NodeError))?;
             let mut out = PortValues::new();
             out.insert(
                 "out".to_owned(),
@@ -720,7 +728,11 @@ mod tests {
             "generator".to_owned(),
             "previous".to_owned(),
         )
-        .with_output_mapping("result".to_owned(), "generator".to_owned(), "output".to_owned());
+        .with_output_mapping(
+            "result".to_owned(),
+            "generator".to_owned(),
+            "output".to_owned(),
+        );
 
         // When getting config.
         let config = loop_node.config().expect("config should return Some");
@@ -799,7 +811,11 @@ mod tests {
             Box::new(move || build_counter_graph(Arc::clone(&count_for_factory))),
         )
         .with_exit_condition("judge".to_owned(), "verdict".to_owned(), "pass")
-        .with_output_mapping("result".to_owned(), "counter".to_owned(), "count".to_owned())
+        .with_output_mapping(
+            "result".to_owned(),
+            "counter".to_owned(),
+            "count".to_owned(),
+        )
         .with_max_iterations(5);
 
         // When executing the loop.
@@ -827,8 +843,16 @@ mod tests {
             Box::new(move || build_counter_graph(Arc::clone(&count_for_factory))),
         )
         .with_exit_condition("judge".to_owned(), "verdict".to_owned(), "pass")
-        .with_output_mapping("final_count".to_owned(), "counter".to_owned(), "count".to_owned())
-        .with_output_mapping("verdict".to_owned(), "judge".to_owned(), "verdict".to_owned())
+        .with_output_mapping(
+            "final_count".to_owned(),
+            "counter".to_owned(),
+            "count".to_owned(),
+        )
+        .with_output_mapping(
+            "verdict".to_owned(),
+            "judge".to_owned(),
+            "verdict".to_owned(),
+        )
         .with_max_iterations(5);
 
         // When executing.
@@ -957,8 +981,15 @@ mod tests {
         let inputs = received_inputs.lock().unwrap();
         // Iteration 1: source seeds "seed" -> receiver gets "seed"
         // Iteration 2: feedback from iter 1's output -> receiver gets "processed-seed"
-        assert!(inputs.len() >= 2, "receiver should have at least 2 inputs: {:?}", *inputs);
-        assert_eq!(inputs[0], "seed", "first iteration input should be from source");
+        assert!(
+            inputs.len() >= 2,
+            "receiver should have at least 2 inputs: {:?}",
+            *inputs
+        );
+        assert_eq!(
+            inputs[0], "seed",
+            "first iteration input should be from source"
+        );
         assert_eq!(
             inputs[1], "processed-seed",
             "second iteration input should be feedback from first iteration"
@@ -972,7 +1003,10 @@ mod tests {
     /// The router routes to "path_a" for iterations 1-2 and "path_b" for iteration 3+.
     /// Deadlock detection should skip the non-matching branch inside each loop iteration.
     /// The loop exits when the counter reaches 3.
-    #[expect(clippy::too_many_lines, reason = "test function with inline graph construction")]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "test function with inline graph construction"
+    )]
     #[tokio::test]
     async fn router_inside_loop_body_graph() {
         let iteration_count: Arc<Mutex<u32>> = Arc::new(Mutex::new(0u32));
@@ -1110,7 +1144,11 @@ mod tests {
             Box::new(make_graph),
         )
         .with_exit_condition("judge".to_owned(), "verdict".to_owned(), "pass")
-        .with_output_mapping("result".to_owned(), "counter".to_owned(), "level".to_owned())
+        .with_output_mapping(
+            "result".to_owned(),
+            "counter".to_owned(),
+            "level".to_owned(),
+        )
         .with_max_iterations(5);
 
         let ctx = TestLoopContext;
@@ -1123,10 +1161,18 @@ mod tests {
         assert_eq!(*iteration_count.lock().unwrap(), 3);
 
         // Verify path_a ran on iterations 1-2 (when counter < 3 → "low").
-        assert_eq!(*path_a_count.lock().unwrap(), 2, "path_a should run twice (iters 1-2)");
+        assert_eq!(
+            *path_a_count.lock().unwrap(),
+            2,
+            "path_a should run twice (iters 1-2)"
+        );
 
         // Verify path_b ran on iteration 3 (when counter >= 3 → "high").
-        assert_eq!(*path_b_count.lock().unwrap(), 1, "path_b should run once (iter 3)");
+        assert_eq!(
+            *path_b_count.lock().unwrap(),
+            1,
+            "path_b should run once (iter 3)"
+        );
 
         // Verify output mapping.
         assert_eq!(result.get_text("result").unwrap(), "high");

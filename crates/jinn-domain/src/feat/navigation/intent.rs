@@ -359,19 +359,27 @@ mod tests {
         // Given a state with entries and a viewport of 10.
         let mut state = AppState::default();
         for i in 0..30 {
-            state.active_session_mut().push_entry(ChatEntry::user(format!("line {i}")));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(format!("line {i}")));
         }
         state.active_session_mut().set_viewport_height(10);
         // Set last_max_offset high so scroll operations don't snap to bottom.
         state.active_session_mut().set_last_max_offset(100);
         state.active_session_mut().scroll_up(20);
-        let offset_before = state.active_session().scroll_offset().expect("should have offset");
+        let offset_before = state
+            .active_session()
+            .scroll_offset()
+            .expect("should have offset");
 
         // When handling ScrollUp.
         let _result = handle_scroll_up(&mut state);
 
         // Then the offset decreased by viewport/2 = 5.
-        let offset_after = state.active_session().scroll_offset().expect("should have offset");
+        let offset_after = state
+            .active_session()
+            .scroll_offset()
+            .expect("should have offset");
         assert_eq!(
             offset_before.saturating_sub(5),
             offset_after,
@@ -384,19 +392,27 @@ mod tests {
         // Given a state scrolled up with a viewport of 10.
         let mut state = AppState::default();
         for i in 0..30 {
-            state.active_session_mut().push_entry(ChatEntry::user(format!("line {i}")));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(format!("line {i}")));
         }
         state.active_session_mut().set_viewport_height(10);
         // Set last_max_offset high so scroll_down doesn't snap to bottom.
         state.active_session_mut().set_last_max_offset(100);
         state.active_session_mut().scroll_up(20);
-        let offset_before = state.active_session().scroll_offset().expect("should have offset");
+        let offset_before = state
+            .active_session()
+            .scroll_offset()
+            .expect("should have offset");
 
         // When handling ScrollDown.
         let _result = handle_scroll_down(&mut state);
 
         // Then the offset increased by viewport/2 = 5.
-        let offset_after = state.active_session().scroll_offset().expect("should have offset");
+        let offset_after = state
+            .active_session()
+            .scroll_offset()
+            .expect("should have offset");
         assert_eq!(
             offset_before.saturating_add(5),
             offset_after,
@@ -409,7 +425,9 @@ mod tests {
         // Given history with [user_0, user_1, user_2].
         let mut state = AppState::default();
         for i in 0..3 {
-            state.active_session_mut().push_entry(ChatEntry::user(format!("msg {i}")));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(format!("msg {i}")));
         }
 
         // When scrolling to top.
@@ -424,7 +442,9 @@ mod tests {
         // Given history with [user_0, user_1, user_2].
         let mut state = AppState::default();
         for i in 0..3 {
-            state.active_session_mut().push_entry(ChatEntry::user(format!("msg {i}")));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(format!("msg {i}")));
         }
 
         // When scrolling to bottom.
@@ -438,9 +458,15 @@ mod tests {
     fn scroll_to_top_with_multiple_empty_assistants_at_start() {
         // Given history [empty_asst, empty_asst, user].
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::assistant(""));
-        state.active_session_mut().push_entry(ChatEntry::assistant(""));
-        state.active_session_mut().push_entry(ChatEntry::user("hello"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant(""));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant(""));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
 
         // When scrolling to top.
         let _result = handle_scroll_to_top(&mut state);
@@ -453,9 +479,15 @@ mod tests {
     fn scroll_to_bottom_with_multiple_empty_assistants_at_end() {
         // Given history [user, empty_asst, empty_asst].
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("hello"));
-        state.active_session_mut().push_entry(ChatEntry::assistant(""));
-        state.active_session_mut().push_entry(ChatEntry::assistant(""));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant(""));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant(""));
 
         // When scrolling to bottom.
         let _result = handle_scroll_to_bottom(&mut state);
@@ -470,8 +502,7 @@ mod tests {
         let mut state = AppState::default();
 
         // When handling ChangeCwd with Session root.
-        let result =
-            handle_change_cwd(&mut state, crate::protocol::CwdRoot::Session);
+        let result = handle_change_cwd(&mut state, crate::protocol::CwdRoot::Session);
 
         // Then the signal is set with Session root.
         assert_eq!(
@@ -488,8 +519,7 @@ mod tests {
         let mut state = AppState::default();
 
         // When handling ChangeCwd with Home root.
-        let result =
-            handle_change_cwd(&mut state, crate::protocol::CwdRoot::Home);
+        let result = handle_change_cwd(&mut state, crate::protocol::CwdRoot::Home);
 
         // Then the signal is set with Home root.
         assert_eq!(

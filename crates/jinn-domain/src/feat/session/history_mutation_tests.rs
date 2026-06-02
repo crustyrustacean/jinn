@@ -213,7 +213,10 @@ fn insert_entry_shifts_streaming_entry_index() {
     }]);
 
     // Then streaming_entry_index is shifted to 2.
-    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(2));
+    assert_eq!(
+        session.core.ephemeral.machine.streaming_entry_index(),
+        Some(2)
+    );
 }
 
 #[test]
@@ -225,7 +228,11 @@ fn insert_entry_shifts_streaming_thinking_entry_index() {
     let first_id = session.history()[0].id.clone();
     session.begin_sending();
     session.begin_streaming();
-    session.core.ephemeral.machine.set_streaming_thinking_entry_index(1);
+    session
+        .core
+        .ephemeral
+        .machine
+        .set_streaming_thinking_entry_index(1);
 
     // When inserting before the thinking entry.
     session.apply_mutations(vec![HistoryMutation::InsertEntry {
@@ -235,7 +242,11 @@ fn insert_entry_shifts_streaming_thinking_entry_index() {
 
     // Then streaming_thinking_entry_index is shifted to 2.
     assert_eq!(
-        session.core.ephemeral.machine.streaming_thinking_entry_index(),
+        session
+            .core
+            .ephemeral
+            .machine
+            .streaming_thinking_entry_index(),
         Some(2)
     );
 }
@@ -264,7 +275,10 @@ fn insert_entry_shifts_streaming_tool_call_indices() {
     }]);
 
     // Then the tool call index is shifted to 2.
-    assert_eq!(session.core.ephemeral.machine.streaming_tool_call_indices()[&0], 2);
+    assert_eq!(
+        session.core.ephemeral.machine.streaming_tool_call_indices()[&0],
+        2
+    );
 }
 
 #[test]
@@ -292,7 +306,11 @@ fn insert_entry_shifts_streaming_tool_result_indices() {
 
     // Then the tool result index is shifted to 2.
     assert_eq!(
-        session.core.ephemeral.machine.streaming_tool_result_indices()["call_123"],
+        session
+            .core
+            .ephemeral
+            .machine
+            .streaming_tool_result_indices()["call_123"],
         2
     );
 }

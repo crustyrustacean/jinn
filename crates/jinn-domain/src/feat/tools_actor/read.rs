@@ -113,9 +113,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             if let Some(meta) = truncation_result.meta {
                 let end_line_display = start_line + meta.output_lines - 1;
                 let next_offset = end_line_display + 1;
-                let notice = if meta.truncated_by
-                    == jinn_provider::tool_types::TruncatedBy::Bytes
-                {
+                let notice = if meta.truncated_by == jinn_provider::tool_types::TruncatedBy::Bytes {
                     format!(
                         "\n\n[Showing lines {start_line}-{end_line_display} of {total_file_lines} ({} limit). Use offset={next_offset} to continue.]",
                         format_size(max_bytes)
@@ -361,7 +359,11 @@ mod tests {
         assert_eq!(result.tool_call_id, "call_1");
         assert!(result.success);
         assert!(result.content.contains("file contents here"));
-        assert!(result.content.starts_with('1'), "expected LINE#HASH prefix: {}", result.content);
+        assert!(
+            result.content.starts_with('1'),
+            "expected LINE#HASH prefix: {}",
+            result.content
+        );
     }
 
     #[rstest::rstest]
@@ -439,7 +441,11 @@ mod tests {
         // Then the file is found via CWD resolution.
         assert!(result.success);
         assert!(result.content.contains("relative content"));
-        assert!(result.content.contains('#'), "expected LINE#HASH prefix: {}", result.content);
+        assert!(
+            result.content.contains('#'),
+            "expected LINE#HASH prefix: {}",
+            result.content
+        );
     }
 
     #[rstest::rstest]
@@ -471,7 +477,10 @@ mod tests {
         assert!(result.content.contains("c"));
         // First line should be line 2 (from offset=2)
         let first_line = result.content.lines().next().expect("first line");
-        assert!(first_line.starts_with('2'), "expected line 2, got: {first_line}");
+        assert!(
+            first_line.starts_with('2'),
+            "expected line 2, got: {first_line}"
+        );
     }
 
     // --- Phase 5: Mutation-killing tests ---

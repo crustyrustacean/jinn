@@ -7,7 +7,8 @@
 //! (provider_init) can use it without reloading the file.
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope};
-use crate::feat::provider_infra::{ApiKeysService, ConfigStorageService, ProvidersConfig};
+use crate::common::services::Services;
+use crate::feat::provider_infra::ProvidersConfig;
 use crate::protocol::{Event, EventMsg};
 use wherror::Error;
 
@@ -40,18 +41,14 @@ pub enum EnvInitDirectMsg {
 /// `providers.toml`, resolves API keys, populates `ApiKeysService`,
 /// and emits `EnvironmentLoaded`.
 pub struct EnvInitActor {
-    /// Config storage for loading `providers.toml`.
-    config_storage: ConfigStorageService,
-    /// API keys service to populate.
-    api_keys: ApiKeysService,
+    /// Runtime services.
+    services: Services,
 }
 
 /// Dependencies for [`EnvInitActor`].
 pub struct EnvInitActorDeps {
-    /// Config storage for loading `providers.toml`.
-    pub config_storage: ConfigStorageService,
-    /// API keys service to populate.
-    pub api_keys: ApiKeysService,
+    /// Runtime services.
+    pub services: Services,
 }
 
 impl Actor for EnvInitActor {
@@ -72,8 +69,7 @@ impl Actor for EnvInitActor {
         let _ = self_ref.send(EnvInitDirectMsg::Initialize);
 
         Self {
-            config_storage: deps.config_storage,
-            api_keys: deps.api_keys,
+            services: deps.services,
         }
     }
 
@@ -92,7 +88,7 @@ impl Actor for EnvInitActor {
 impl EnvInitActor {
     /// Loads config, resolves API keys, emits `EnvironmentLoaded`.
     fn on_initialize(&self, ctx: &ActorContext) {
-        let config = match self.config_storage.load() {
+        let config = match self.services.config_storage.load() {
             Ok(config) => config,
             Err(e) => {
                 tracing::error!(err = ?e, "env-init failed to load provider config");
@@ -106,7 +102,7 @@ impl EnvInitActor {
                 && let Ok(value) = std::env::var(env_var)
                 && !value.is_empty()
             {
-                self.api_keys.insert(env_var.clone(), value);
+                self.services.api_keys.insert(env_var.clone(), value);
             }
         }
 
@@ -149,18 +145,12 @@ mod tests {
         let path = dir.path().join("providers.toml");
         let storage = FilesystemConfigStorage::new(path);
 
-        let config_storage = ConfigStorageService::new(Arc::new(storage));
-        let api_keys = ApiKeysService::new(ApiKeys::new());
-
-        let deps = EnvInitActorDeps {
-            config_storage,
-            api_keys: api_keys.clone(),
-        };
+        let services = crate::common::services::test_services::TestServices::builder().build();
+        let api_keys = services.api_keys.clone();
+        let deps = EnvInitActorDeps { services };
         let actor = EnvInitActor::activate(deps, &mut ctx);
         (actor, api_keys, sink, ctx)
     }
-
-    #[rstest::rstest]
     #[tokio::test]
     async fn initialize_emits_environment_loaded() {
         // Given an env init actor.
