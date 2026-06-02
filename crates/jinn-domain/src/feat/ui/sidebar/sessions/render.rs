@@ -185,15 +185,8 @@ impl SidebarSection for SessionsSection {
     }
 
     fn content_height(&self, state: &AppState) -> u16 {
-        // Count only Loaded sessions, matching sorted_open_sessions filter.
-        let session_count = state
-            .session
-            .iter()
-            .filter(|(_, s)| {
-                s.session_state() == crate::feat::session::chat_session::SessionState::Loaded
-            })
-            .count() as u16;
-        let visible = session_count.min(MAX_VISIBLE_SESSIONS as u16);
+        let entry_count = sorted_open_sessions(state).len() as u16;
+        let visible = entry_count.min(MAX_VISIBLE_SESSIONS as u16);
         // entries(N).max(1) + footer(1)
         visible.max(1) + 1 // max(1) for the no-sessions placeholder line
     }
