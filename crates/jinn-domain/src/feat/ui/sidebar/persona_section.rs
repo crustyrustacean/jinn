@@ -5,6 +5,7 @@
 //! Pressing `e` while this section is focused opens the persona picker.
 
 use crate::common::app_state::AppState;
+use crate::common::render_ctx::RenderCtx;
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
@@ -57,7 +58,8 @@ impl SidebarSection for PersonaSection {
         SidebarSectionId::Persona
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+        let state = ctx.state;
         let sidebar_focused = state.frontend.scope_stack.is_sidebar();
         let section_focused = sidebar_focused
             && matches!(
@@ -112,7 +114,7 @@ impl SidebarSection for PersonaSection {
         frame.render_widget(widget, area);
     }
 
-    fn content_height(&self, _state: &AppState) -> u16 {
+    fn content_height(&self, _ctx: &RenderCtx) -> u16 {
         // Header(1) + blank(1) + entry(1) + trailing gap(1) = 4.
         4
     }
@@ -124,6 +126,7 @@ mod tests {
     use super::{PersonaSection, navigate, receive_cursor};
     use crate::Intent;
     use crate::common::app_state::AppState;
+    use crate::common::render_ctx::RenderCtx;
     use crate::feat::persona::Persona;
     use crate::feat::ui::sidebar::section_trait::{
         EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
@@ -156,7 +159,7 @@ mod tests {
         });
 
         // When asking for content height.
-        let height = section.content_height(&state);
+        let height = section.content_height(&{ RenderCtx::new(&state) });
 
         // Then it returns 4 (header + blank + entry + trailing gap).
         assert_eq!(height, 4);
@@ -169,7 +172,7 @@ mod tests {
         let state = AppState::default();
 
         // When asking for content height.
-        let height = section.content_height(&state);
+        let height = section.content_height(&{ RenderCtx::new(&state) });
 
         // Then it returns 4 (consistent layout).
         assert_eq!(height, 4);
@@ -240,7 +243,8 @@ mod tests {
         let (mut terminal, area) = setup_term(width, height);
         terminal
             .draw(|frame| {
-                section.render(frame, area, state);
+                let ctx = RenderCtx::new(&state);
+                section.render(frame, area, &ctx);
             })
             .unwrap();
         let buffer = terminal.backend().buffer();

@@ -1,6 +1,6 @@
 //! Session picker rendering - renders the tree-structured session picker overlay.
 
-use crate::common::app_state::AppState;
+use crate::common::render_ctx::RenderCtx;
 use crate::feat::ui::picker_states::PickerExt;
 use jinn_selection_widget::TreePickerWidget;
 use ratatui::Frame;
@@ -12,7 +12,8 @@ use ratatui::text::Line;
 ///
 /// Telescope-style layout: bordered popup with filter input at top,
 /// horizontal separator, scrollable session entries in tree order, and a footer.
-pub fn render_session_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+pub fn render_session_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    let state = ctx.state;
     let footer = Line::styled(
         "CTRL+N to create a new session",
         Style::default().fg(Color::Rgb(255, 165, 0)),

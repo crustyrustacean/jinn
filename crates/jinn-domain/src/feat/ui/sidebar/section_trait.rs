@@ -1,10 +1,12 @@
 //! [`SidebarSection`] trait and supporting types for pluggable sidebar sections.
 
+use crate::common::render_ctx::RenderCtx;
+
 use crate::Intent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
-use crate::common::app_state::AppState;
+
 
 /// Identifies a sidebar section. Used for focus tracking and dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -78,10 +80,10 @@ pub trait SidebarSection: std::fmt::Debug + 'static {
     fn id(&self) -> SidebarSectionId;
 
     /// Render the section into the given frame area.
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState);
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx);
 
     /// Returns the total content height in rows for the current state.
     ///
     /// Used by the sidebar for scrolling calculations.
-    fn content_height(&self, state: &AppState) -> u16;
+    fn content_height(&self, ctx: &RenderCtx) -> u16;
 }

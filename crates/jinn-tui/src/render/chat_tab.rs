@@ -10,7 +10,7 @@ pub mod queue_display;
 pub mod sidebar;
 pub mod streaming_indicator;
 
-use jinn_domain::AppState;
+use jinn_domain::RenderCtx;
 use jinn_domain::AppUiRegistry;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -31,16 +31,14 @@ pub(super) fn render_chat_tab(
     ui_registry: &mut AppUiRegistry,
     frame: &mut Frame<'_>,
     layout: &AppLayout,
-    state: &AppState,
+    ctx: &RenderCtx,
     rects: &mut Vec<Rect>,
 ) {
-    let sidebar_focused = state.frontend.scope_stack.is_sidebar();
-    let focus_scope = state.frontend.scope_stack.current();
-    let theme = &state.frontend.theme;
+    let sidebar_focused = ctx.state.frontend.scope_stack.is_sidebar();
 
     // Compute sub-areas at the bottom of the content area.
     let content_area = layout.content;
-    let queue_len = state.active_session().queue_len() as u16;
+    let queue_len = ctx.state.active_session().queue_len() as u16;
     let bottom_lines = 2; // indicator + chat bottom line (queue overlays chat log)
 
     let chat_log_area = if content_area.height > bottom_lines {
@@ -61,7 +59,7 @@ pub(super) fn render_chat_tab(
         chat_log_area,
         content_area,
         sidebar_focused,
-        state,
+        ctx,
         rects,
     );
 
@@ -73,7 +71,7 @@ pub(super) fn render_chat_tab(
         width: content_area.width,
         height: 1,
     };
-    streaming_indicator::render_streaming_indicator(ui_registry, frame, indicator_area, state);
+    streaming_indicator::render_streaming_indicator(ui_registry, frame, indicator_area, ctx);
 
     // Queue display - rendered as overlay anchored at bottom of chat log area.
     // This paints over the last N lines of the chat log instead of pushing
@@ -85,12 +83,12 @@ pub(super) fn render_chat_tab(
             width: chat_log_area.width,
             height: queue_len,
         };
-        queue_display::render_queue_display(ui_registry, frame, queue_area, state);
+        queue_display::render_queue_display(ui_registry, frame, queue_area, ctx);
     }
 
     // Cancel stream prompt - overlay at bottom of chat log area.
     // Paints over whatever is behind it (including the queue display).
-    if state.frontend.cancel_stream_prompt {
+    if ctx.state.frontend.cancel_stream_prompt {
         let prompt_area = Rect {
             x: chat_log_area.x,
             y: chat_log_area.y + chat_log_area.height.saturating_sub(1),
@@ -108,25 +106,20 @@ pub(super) fn render_chat_tab(
     chat_bottom_line::render_chat_bottom_line(
         frame,
         content_area,
-        focus_scope,
-        theme.focus_accent,
-        theme.border_unfocused,
+        ctx,
     );
 
     // Input box.
-    input_box::render_input_box(ui_registry, frame, layout.input, state);
+    input_box::render_input_box(ui_registry, frame, layout.input, ctx);
 
     // Autocomplete popup.
-    autocomplete::render_autocomplete(frame, layout.input, state);
+    autocomplete::render_autocomplete(frame, layout.input, ctx);
 
     // Vertical minimap column and `>` arrow overlay.
     minimap::render_minimap(
         frame,
         layout.minimap,
         chat_log_area,
-        state,
-        focus_scope,
-        theme.focus_accent,
-        theme.border_unfocused,
+        ctx,
     );
 }

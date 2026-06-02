@@ -1,6 +1,6 @@
 //! Provider picker rendering - renders the provider picker overlay.
 
-use crate::common::app_state::AppState;
+use crate::common::render_ctx::RenderCtx;
 use crate::feat::ui::picker_states::PickerExt;
 use jinn_selection_widget::SelectionWidget;
 use ratatui::Frame;
@@ -13,7 +13,8 @@ use super::entries;
 ///
 /// Telescope-style layout: bordered popup with filter input at top,
 /// horizontal separator, scrollable results, and a footer line.
-pub fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+pub fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    let state = ctx.state;
     let footer = entries::format_footer(
         state.provider.model_cache.as_ref(),
         area.width as usize,
@@ -30,7 +31,8 @@ pub fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &AppStat
 ///
 /// Shows all provider entries plus a "session default" sentinel at the top,
 /// allowing the user to select which model to use for context compaction.
-pub fn render_compaction_model_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+pub fn render_compaction_model_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    let state = ctx.state;
     let widget = SelectionWidget::new(state.frontend.compaction_model_picker())
         .title(ratatui::text::Line::from(" Compaction Model "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title));

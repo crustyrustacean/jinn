@@ -1,10 +1,9 @@
 //! TUI rendering adapter for the vertical minimap column and arrow overlay.
 
 use jinn_domain::feat::ui::vertical_minimap;
-use jinn_domain::{AppState, FocusScope};
+use jinn_domain::RenderCtx;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::Color;
 
 /// Renders the vertical minimap blocks and the `>` arrow overlay.
 ///
@@ -14,15 +13,16 @@ pub(super) fn render_minimap(
     frame: &mut Frame<'_>,
     minimap_area: Rect,
     chat_log_area: Rect,
-    state: &AppState,
-    focus_scope: &FocusScope,
-    focus_accent: Color,
-    border_unfocused: Color,
+    ctx: &RenderCtx,
 ) {
-    let arrow_color = if matches!(focus_scope, FocusScope::Normal) {
-        focus_accent
+    let state = ctx.state;
+    let focus_scope = state.frontend.scope_stack.current();
+    let theme = &state.frontend.theme;
+
+    let arrow_color = if matches!(focus_scope, jinn_domain::FocusScope::Normal) {
+        theme.focus_accent
     } else {
-        border_unfocused
+        theme.border_unfocused
     };
     let muted_text_color = state.frontend.theme.muted_text;
 

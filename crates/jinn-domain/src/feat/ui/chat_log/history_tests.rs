@@ -1,6 +1,7 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
 use crate::common::app_state::{AppState, FocusScope};
+use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
 use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::feat::ui::chat_log::history::ChatLogElement;
@@ -49,7 +50,7 @@ fn render_few_messages_bottom_aligned() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -65,7 +66,7 @@ fn chat_log_element_is_selectable() {
     let element = ChatLogElement::new();
 
     // When calling is_selectable.
-    let selectable: &dyn UiElement<AppState> = &element;
+    let selectable: &dyn UiElement = &element;
 
     // Then it returns true.
     assert!(selectable.is_selectable());
@@ -89,7 +90,7 @@ fn selected_entry_gutter_col0_has_context_fg_and_col1_has_cursor_bg() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -135,7 +136,7 @@ fn unselected_not_ignored_entry_shows_context_color() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -167,7 +168,7 @@ fn unselected_ignored_entry_shows_gray() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -202,7 +203,7 @@ fn unselected_ignored_pinned_entry_shows_context_color() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -237,7 +238,7 @@ fn selected_entry_gutter_is_dark_gray_when_unfocused() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -270,7 +271,7 @@ fn selected_entry_gutter_is_dark_gray_when_input_focused() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -301,7 +302,7 @@ fn render_stores_viewport_state() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -329,7 +330,7 @@ fn render_pinned_entry_shows_pin_in_gutter() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -363,7 +364,7 @@ fn render_unpinned_entry_has_no_pin_icon() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -399,7 +400,7 @@ fn render_pinned_multi_line_entry_shows_exactly_one_pin() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -442,7 +443,7 @@ fn render_scroll_to_selected_keeps_entry_visible() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -477,7 +478,7 @@ fn render_thinking_entry_appears_above_assistant() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -509,7 +510,7 @@ fn render_pinned_selected_entry_gutter_has_focus_accent_bg() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -544,7 +545,7 @@ fn render_pinned_unselected_entry_gutter_has_default_bg() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -575,7 +576,7 @@ fn render_unpinned_selected_entry_gutter_col0_no_bg_col1_has_cursor_bg() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -615,7 +616,7 @@ fn render_pinned_selected_unfocused_entry_gutter_has_border_unfocused_bg() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -653,7 +654,7 @@ fn render_long_session_shows_last_entry_at_bottom() {
     // When rendering at bottom (auto-scroll).
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -697,7 +698,7 @@ fn render_scroll_to_bottom_shows_full_last_entry() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -738,7 +739,7 @@ fn render_scroll_to_selected_middle_entry_adjusts_viewport() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -784,14 +785,14 @@ fn render_scroll_down_through_tall_entry_works() {
     let (mut terminal, area) = setup_term(40, 10);
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
     // Now scroll up to show the middle of the tall entry.
     state.active_session_mut().scroll_up(20);
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -837,7 +838,7 @@ fn render_tall_entry_snaps_when_completely_below_viewport() {
     // First render to populate last_max_offset.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -845,7 +846,7 @@ fn render_tall_entry_snaps_when_completely_below_viewport() {
     state.active_session_mut().scroll_to_top();
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -882,7 +883,7 @@ fn virtualization_populates_cache_after_render() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -912,7 +913,7 @@ fn expand_collapse_invalidates_and_rerenders() {
     // When rendering (truncated - max_lines=5 by default).
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -933,7 +934,7 @@ fn expand_collapse_invalidates_and_rerenders() {
     state.active_session_mut().toggle_expand_entry(entry_id);
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -967,7 +968,7 @@ fn resize_clears_cache_and_rerenders() {
     let (mut terminal, area) = setup_term(40, 10);
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -975,7 +976,7 @@ fn resize_clears_cache_and_rerenders() {
     let (mut terminal2, area2) = setup_term(60, 10);
     terminal2
         .draw(|frame| {
-            element.render(frame, area2, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area2, &ctx);
         })
         .unwrap();
 
@@ -1016,7 +1017,7 @@ fn streaming_content_change_invalidates_cache() {
     // When rendering with initial streaming content.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -1034,7 +1035,7 @@ fn streaming_content_change_invalidates_cache() {
 
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -1075,7 +1076,7 @@ fn render_transient_entry_has_muted_text_color() {
     // When rendering.
     terminal
         .draw(|frame| {
-            element.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
         })
         .unwrap();
 

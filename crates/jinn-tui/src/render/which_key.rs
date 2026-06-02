@@ -1,8 +1,10 @@
 //! Which-key popup overlay rendering.
 
 use ratatui::Frame;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui_which_key::{PopupPosition, WhichKey};
+
+use jinn_domain::RenderCtx;
 
 use crate::app::WhichKeyInstance;
 
@@ -10,8 +12,9 @@ use crate::app::WhichKeyInstance;
 pub(super) fn render_which_key(
     frame: &mut Frame<'_>,
     state: &mut WhichKeyInstance,
-    focus_accent: Color,
+    ctx: &RenderCtx,
 ) {
+    let focus_accent = ctx.state.frontend.theme.focus_accent;
     let widget = WhichKey::new()
         .position(PopupPosition::BottomRight)
         .border_style(Style::default().fg(focus_accent));

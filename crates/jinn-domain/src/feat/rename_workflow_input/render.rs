@@ -1,6 +1,6 @@
 //! Rename workflow input popup rendering - a centered overlay for renaming a workflow label.
 
-use crate::common::app_state::AppState;
+use crate::common::render_ctx::RenderCtx;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -35,7 +35,8 @@ pub fn rename_workflow_popup_rect(area: Rect) -> Rect {
 /// Shows a centered popup with:
 /// - Title: "Rename Workflow"
 /// - Input line with cursor showing the current value
-pub fn render_rename_workflow_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+pub fn render_rename_workflow_input(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    let state = ctx.state;
     let input_state = &state.frontend.rename_workflow_input;
     let theme = &state.frontend.theme;
 
@@ -106,7 +107,7 @@ mod tests {
         // When rendering the popup.
         terminal
             .draw(|frame| {
-                render_rename_workflow_input(frame, area, &state);
+                let ctx = RenderCtx::new(&state); render_rename_workflow_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -149,7 +150,7 @@ mod tests {
         // When rendering the popup.
         terminal
             .draw(|frame| {
-                render_rename_workflow_input(frame, area, &state);
+                let ctx = RenderCtx::new(&state); render_rename_workflow_input(frame, area, &ctx);
             })
             .unwrap();
 
