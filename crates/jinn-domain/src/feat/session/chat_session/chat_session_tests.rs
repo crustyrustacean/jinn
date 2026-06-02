@@ -2075,6 +2075,171 @@ fn finalize_tool_result_pushes_new_entry_for_unknown_id() {
     }
 }
 
+
+// --- Phase 1 fix: begin_tool_result guard tests ---
+
+#[test]
+fn begin_tool_result_does_not_push_when_not_streaming() {
+    // Given a session NOT in streaming phase (defaults to Idle).
+    let mut session = ChatSessionState::new();
+
+    // When beginning a tool result.
+    session.begin_tool_result("call_1", "bash");
+
+    // Then no entry is pushed (the early return prevented it).
+    assert!(
+        session.history().is_empty(),
+        "expected no entry when not streaming, got {} entries",
+        session.history().len()
+    );
+}
+
+#[test]
+fn begin_tool_result_does_not_push_in_sending_phase() {
+    // Given a session in Sending phase (not Streaming).
+    let mut session = ChatSessionState::new();
+    session.begin_sending();
+
+    // When beginning a tool result.
+    session.begin_tool_result("call_1", "bash");
+
+    // Then no entry is pushed.
+    assert!(
+        session.history().is_empty(),
+        "expected no entry in Sending phase, got {} entries",
+        session.history().len()
+    );
+}
+
+// --- Phase 2 fix: finalize_tool_result history search tests ---
+
+#[test]
+fn finalize_tool_result_updates_existing_pending_by_kind_id() {
+    // Given a session with a manually-pushed pending ToolResult
+    // (simulating the case where begin_tool_result pushed before
+    // the streaming index was available).
+    let mut session = ChatSessionState::new();
+    let pending = ChatEntry::tool_result(
+        "call_1",
+        "bash",
+        "",
+        ToolResultStatus::Pending,
+    );
+    let pending_id = pending.id.clone();
+    session.push_entry(pending);
+    assert_eq!(session.history().len(), 1);
+
+    // When finalizing the tool result (no streaming index available).
+    session.finalize_tool_result("call_1", "bash", "actual output", true, None, None);
+
+    // Then the existing entry was updated in-place (same ChatEntryId).
+    assert_eq!(
+        session.history().len(),
+        1,
+        "expected no new entry, got {} entries",
+        session.history().len()
+    );
+    assert_eq!(
+        session.history()[0].id, pending_id,
+        "entry should be the same (updated in-place)"
+    );
+    match &session.history()[0].kind {
+        ChatEntryKind::ToolResult {
+            content, status, ..
+        } => {
+            assert_eq!(content, "actual output");
+            assert_eq!(*status, ToolResultStatus::Success);
+        }
+        other => panic!("expected ToolResult, got {other:?}"),
+    }
+}
+
+#[test]
+fn finalize_tool_result_updates_existing_with_truncation() {
+    // Given a session with a pending ToolResult.
+    let mut session = ChatSessionState::new();
+    let pending = ChatEntry::tool_result(
+        "call_1",
+        "bash",
+        "",
+        ToolResultStatus::Pending,
+    );
+    let pending_id = pending.id.clone();
+    session.push_entry(pending);
+
+    // When finalizing with truncation data.
+    let meta = jinn_provider::tool_types::TruncationMeta {
+        truncated_by: jinn_provider::tool_types::TruncatedBy::Bytes,
+        total_lines: 50,
+        total_bytes: 1000,
+        output_lines: 25,
+        output_bytes: 500,
+    };
+    session.finalize_tool_result(
+        "call_1",
+        "bash",
+        "truncated output",
+        true,
+        Some("full output...".to_owned()),
+        Some(meta.clone()),
+    );
+
+    // Then the existing entry was updated in-place with truncation data.
+    assert_eq!(session.history().len(), 1);
+    assert_eq!(session.history()[0].id, pending_id);
+    match &session.history()[0].kind {
+        ChatEntryKind::ToolResult {
+            content,
+            status,
+            full_content,
+            truncation,
+            ..
+        } => {
+            assert_eq!(content, "truncated output");
+            assert_eq!(*status, ToolResultStatus::Success);
+            assert_eq!(full_content.as_deref(), Some("full output..."));
+            assert!(truncation.is_some(), "expected truncation meta");
+        }
+        other => panic!("expected ToolResult, got {other:?}"),
+    }
+}
+
+#[test]
+fn finalize_tool_result_pushes_new_with_truncation_when_no_existing() {
+    // Given an empty session.
+    let mut session = ChatSessionState::new();
+
+    // When finalizing with truncation but no existing entry.
+    let meta = jinn_provider::tool_types::TruncationMeta {
+        truncated_by: jinn_provider::tool_types::TruncatedBy::Bytes,
+        total_lines: 50,
+        total_bytes: 1000,
+        output_lines: 25,
+        output_bytes: 500,
+    };
+    session.finalize_tool_result(
+        "call_1",
+        "bash",
+        "truncated",
+        true,
+        Some("full".to_owned()),
+        Some(meta),
+    );
+
+    // Then a new truncated entry was pushed.
+    assert_eq!(session.history().len(), 1);
+    match &session.history()[0].kind {
+        ChatEntryKind::ToolResult {
+            content, full_content, truncation, ..
+        } => {
+            assert_eq!(content, "truncated");
+            assert_eq!(full_content.as_deref(), Some("full"));
+            assert!(truncation.is_some());
+        }
+        other => panic!("expected ToolResult, got {other:?}"),
+    }
+}
+
 // --- LifecycleScriptState transition tests ---
 
 #[rstest::rstest]
