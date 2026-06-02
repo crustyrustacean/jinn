@@ -143,6 +143,18 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
             .push(jinn_domain::feat::rename_session_input::render::rename_session_popup_rect(area));
     }
 
+    // Rename workflow input popup overlay (+ selectable rect).
+    if matches!(
+        state.frontend.scope_stack.current(),
+        FocusScope::RenameWorkflowInput
+    ) {
+        jinn_domain::feat::rename_workflow_input::render::render_rename_workflow_input(
+            frame, area, &state,
+        );
+        rects
+            .push(jinn_domain::feat::rename_workflow_input::render::rename_workflow_popup_rect(area));
+    }
+
     // Release the state read lock before post-render steps.
     drop(state);
 
