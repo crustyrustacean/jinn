@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::common::actor::scan_actor::NoDirectMsg;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope};
-use crate::common::app_paths::AppPaths;
+use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::skills::scan::scan_skills;
 use crate::feat::skills::skill::Skill;
@@ -17,8 +17,8 @@ use crate::protocol::{Command, CommandMsg, Event, EventMsg};
 
 /// Dependencies for [`SkillsScanActor`].
 pub struct SkillsScanActorDeps {
-    /// Application paths for resolving scan directories.
-    pub paths: AppPaths,
+    /// Runtime services.
+    pub services: Services,
     /// Shared application state.
     pub state: State,
 }
@@ -28,8 +28,8 @@ pub struct SkillsScanActorDeps {
 /// On command, scans the skills directory for `*/SKILL.md` files,
 /// writes results to `AppState.context.skills`, and emits `SkillsLoaded`.
 pub struct SkillsScanActor {
-    /// Application paths for resolving scan directories.
-    paths: AppPaths,
+    /// Runtime services.
+    services: Services,
     /// Shared application state.
     state: State,
 }
@@ -42,7 +42,7 @@ impl Actor for SkillsScanActor {
         ctx.set_description("Scans and loads agent skills from ~/.agents/skills");
         ctx.subscribe_command::<ScanSkills>();
         Self {
-            paths: deps.paths,
+            services: deps.services,
             state: deps.state,
         }
     }
@@ -64,7 +64,7 @@ impl SkillsScanActor {
 
     /// Runs the blocking scan and emits the result.
     async fn run_scan(&self, ctx: &ActorContext) {
-        let paths = self.paths.clone();
+        let paths = self.services.paths.clone();
         let result = tokio::task::spawn_blocking(move || scan_skills(&paths.skills_dir())).await;
 
         match result {
@@ -142,10 +142,11 @@ mod tests {
     ) -> (SkillsScanActor, Arc<RecordingSink>, ActorContext) {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
-        let deps = SkillsScanActorDeps {
-            paths: AppPaths::new_in(dir.path()),
-            state,
-        };
+        let mut services = crate::common::services::test_services::TestServices::builder()
+            .paths(AppPaths::new_in(dir.path()))
+            .build();
+        let deps = SkillsScanActorDeps { services, state };
+
         let actor = SkillsScanActor::activate(deps, &mut ctx);
         (actor, sink, ctx)
     }

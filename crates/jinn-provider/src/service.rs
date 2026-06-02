@@ -210,14 +210,12 @@ mod tests {
 
     #[rstest::rstest]
     fn classify_429_as_rate_limited() {
-        let report = classify_http_error(
-            reqwest::StatusCode::TOO_MANY_REQUESTS,
-            "",
-            "test",
-            None,
-        );
+        let report = classify_http_error(reqwest::StatusCode::TOO_MANY_REQUESTS, "", "test", None);
         let err = report.downcast_ref::<LlmServiceError>().expect("downcast");
-        assert!(matches!(err, LlmServiceError::RateLimited { retry_after: None }));
+        assert!(matches!(
+            err,
+            LlmServiceError::RateLimited { retry_after: None }
+        ));
     }
 
     #[rstest::rstest]
@@ -251,12 +249,7 @@ mod tests {
 
     #[rstest::rstest]
     fn classify_4xx_as_provider() {
-        let report = classify_http_error(
-            reqwest::StatusCode::BAD_REQUEST,
-            "bad",
-            "test",
-            None,
-        );
+        let report = classify_http_error(reqwest::StatusCode::BAD_REQUEST, "bad", "test", None);
         let err = report.downcast_ref::<LlmServiceError>().expect("downcast");
         assert!(matches!(err, LlmServiceError::Provider));
     }
@@ -276,7 +269,10 @@ mod tests {
     fn parse_retry_after_hint_returns_none_for_expired() {
         // Even if jiff could parse this, the result would be expired.
         let result = parse_retry_after_hint("reset at 2000-01-01 00:00:00");
-        assert!(result.is_none(), "expired or unparseable should return None");
+        assert!(
+            result.is_none(),
+            "expired or unparseable should return None"
+        );
     }
 
     // --- parse_retry_after_header ---

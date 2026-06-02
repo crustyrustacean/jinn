@@ -2,8 +2,8 @@
 
 use crate::common::app_state::AppState;
 use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
-use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::session::ChatSessionState;
+use crate::feat::session::protocol::session_fork_requested::SessionForkRequested;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{Command, ContextOverride, Event, IntentResult, PinPosition};
 
@@ -188,10 +188,7 @@ pub fn handle_fork_from_entry(state: &mut AppState) -> IntentResult {
     }
 
     let source_session_id = state.session.active_session_id().clone();
-    let Some(at_ordinal) = state
-        .active_session()
-        .selected_history_index()
-    else {
+    let Some(at_ordinal) = state.active_session().selected_history_index() else {
         return IntentResult::empty();
     };
 
@@ -1236,7 +1233,12 @@ mod tests {
         let sweep = state.active_session_mut().take_ignore_sweep();
         assert_eq!(sweep, Some(ContextOverride::ForcedExclude));
         // And a PersistSession command is returned.
-        assert!(result.commands.iter().any(|c| matches!(c, Command::PersistSession(_))));
+        assert!(
+            result
+                .commands
+                .iter()
+                .any(|c| matches!(c, Command::PersistSession(_)))
+        );
     }
 
     #[rstest::rstest]
@@ -1296,14 +1298,21 @@ mod tests {
         // And cursor stays at entry 2 (at bottom, can't advance further).
         assert_eq!(state.active_session().selected_entry_index(), Some(2));
         // And commands are still returned.
-        assert!(result.commands.iter().any(|c| matches!(c, Command::PersistSession(_))));
+        assert!(
+            result
+                .commands
+                .iter()
+                .any(|c| matches!(c, Command::PersistSession(_)))
+        );
     }
 
     #[rstest::rstest]
     fn sweep_stops_at_bottom() {
         // Given a single entry session.
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("only"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("only"));
         state.active_session_mut().select_next_entry();
 
         // When handling ignore selected.
@@ -1336,7 +1345,9 @@ mod tests {
 
         // Expire the sweep by setting a stale timestamp.
         state.active_session_mut().ui.ignore_sweep = Some((
-            std::time::Instant::now().checked_sub(std::time::Duration::from_millis(200)).unwrap(),
+            std::time::Instant::now()
+                .checked_sub(std::time::Duration::from_millis(200))
+                .unwrap(),
             ContextOverride::ForcedExclude,
         ));
 
@@ -1398,9 +1409,9 @@ mod tests {
         // Given entries [user, pinned], entry 0 selected.
         let mut state = AppState::default();
         state.active_session_mut().push_entry(ChatEntry::user("a"));
-        state.active_session_mut().push_entry(
-            ChatEntry::user("pinned").with_pin(PinPosition::Top),
-        );
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("pinned").with_pin(PinPosition::Top));
         state.active_session_mut().select_prev_entry();
 
         // First press - toggles entry 0, advances to entry 1 (pinned).

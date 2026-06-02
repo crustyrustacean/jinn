@@ -371,7 +371,9 @@ fn drain_returns_all_in_order() {
         .into_iter()
         .map(|item| match item {
             crate::feat::session::queue_item::QueueItem::UserMessage(e) => e,
-            crate::feat::session::queue_item::QueueItem::ToolContinuation => panic!("expected UserMessage"),
+            crate::feat::session::queue_item::QueueItem::ToolContinuation => {
+                panic!("expected UserMessage")
+            }
         })
         .collect();
     assert_eq!(entries.len(), 3);
@@ -558,7 +560,11 @@ fn finish_streaming_returns_to_idle() {
     session.begin_sending();
     session.begin_streaming();
     let idx = session.push_entry(ChatEntry::assistant(""));
-    session.core.ephemeral.machine.set_streaming_entry_index(idx);
+    session
+        .core
+        .ephemeral
+        .machine
+        .set_streaming_entry_index(idx);
 
     // When finishing streaming.
     session.finish_streaming(true);
@@ -1952,7 +1958,11 @@ fn begin_tool_result_tracks_history_index() {
             .contains_key("call_1")
     );
     assert_eq!(
-        session.core.ephemeral.machine.streaming_tool_result_indices()["call_1"],
+        session
+            .core
+            .ephemeral
+            .machine
+            .streaming_tool_result_indices()["call_1"],
         1
     );
 }
@@ -3219,12 +3229,6 @@ fn force_exclude_no_tool_calls_is_noop() {
 // Phase 1: Session Phase State Machine Guards
 // ===========================================================================
 
-
-
-
-
-
-
 // --- cancel_stream_and_drain ---
 
 #[rstest::rstest]
@@ -3252,9 +3256,7 @@ fn cancel_stream_and_drain_discards_non_user_items() {
     // Given a streaming session with mixed queue items.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.enqueue(
-        crate::feat::session::queue_item::QueueItem::ToolContinuation,
-    );
+    session.enqueue(crate::feat::session::queue_item::QueueItem::ToolContinuation);
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
         ChatEntry::user("keep this"),
     ));
@@ -3342,7 +3344,10 @@ fn insert_entry_at_shifts_streaming_entry_index() {
     assert_eq!(result, 1);
     assert_eq!(session.history().len(), 5);
     // And streaming_entry_index was shifted from 3 to 4.
-    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(4));
+    assert_eq!(
+        session.core.ephemeral.machine.streaming_entry_index(),
+        Some(4)
+    );
 }
 
 #[rstest::rstest]
@@ -3359,7 +3364,10 @@ fn insert_entry_at_does_not_shift_streaming_index_before_insertion() {
     session.insert_entry_at(2, ChatEntry::system("inserted"));
 
     // Then streaming_entry_index stays at 1.
-    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(1));
+    assert_eq!(
+        session.core.ephemeral.machine.streaming_entry_index(),
+        Some(1)
+    );
 }
 
 #[rstest::rstest]
@@ -3371,14 +3379,22 @@ fn insert_entry_at_shifts_thinking_entry_index() {
     session.push_entry(ChatEntry::assistant("thinking")); // idx 2
     session.begin_sending();
     session.begin_streaming();
-    session.core.ephemeral.machine.set_streaming_thinking_entry_index(2);
+    session
+        .core
+        .ephemeral
+        .machine
+        .set_streaming_thinking_entry_index(2);
 
     // When inserting at index 0.
     session.insert_entry_at(0, ChatEntry::system("inserted"));
 
     // Then thinking index shifted from 2 to 3.
     assert_eq!(
-        session.core.ephemeral.machine.streaming_thinking_entry_index(),
+        session
+            .core
+            .ephemeral
+            .machine
+            .streaming_thinking_entry_index(),
         Some(3)
     );
 }
@@ -3390,14 +3406,22 @@ fn insert_entry_at_does_not_shift_thinking_index_before_insertion() {
     session.push_entry(ChatEntry::assistant("thinking")); // idx 0
     session.begin_sending();
     session.begin_streaming();
-    session.core.ephemeral.machine.set_streaming_thinking_entry_index(0);
+    session
+        .core
+        .ephemeral
+        .machine
+        .set_streaming_thinking_entry_index(0);
 
     // When inserting at index 1 (after thinking).
     session.insert_entry_at(1, ChatEntry::system("inserted"));
 
     // Then thinking index stays at 0.
     assert_eq!(
-        session.core.ephemeral.machine.streaming_thinking_entry_index(),
+        session
+            .core
+            .ephemeral
+            .machine
+            .streaming_thinking_entry_index(),
         Some(0)
     );
 }
@@ -3500,7 +3524,12 @@ fn insert_entry_at_shifts_tool_call_indices() {
 
     // Then tool call history index shifted from 3 to 4.
     assert_eq!(
-        session.core.ephemeral.machine.streaming_tool_call_indices().get(&0),
+        session
+            .core
+            .ephemeral
+            .machine
+            .streaming_tool_call_indices()
+            .get(&0),
         Some(&4)
     );
 }
@@ -3526,7 +3555,12 @@ fn insert_entry_at_does_not_shift_tool_call_indices_before_insertion() {
 
     // Then tool call history index stays at 1.
     assert_eq!(
-        session.core.ephemeral.machine.streaming_tool_call_indices().get(&0),
+        session
+            .core
+            .ephemeral
+            .machine
+            .streaming_tool_call_indices()
+            .get(&0),
         Some(&1)
     );
 }
@@ -3547,7 +3581,10 @@ fn insert_entry_at_shifts_at_exact_boundary() {
     session.insert_entry_at(2, ChatEntry::system("inserted"));
 
     // Then streaming_entry_index was shifted (>= check, not just >).
-    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(3));
+    assert_eq!(
+        session.core.ephemeral.machine.streaming_entry_index(),
+        Some(3)
+    );
 }
 
 #[rstest::rstest]
@@ -3579,7 +3616,11 @@ fn insert_entry_at_shifts_multiple_indices() {
     session.begin_sending();
     session.begin_streaming();
     session.core.ephemeral.machine.set_streaming_entry_index(1);
-    session.core.ephemeral.machine.set_streaming_thinking_entry_index(1);
+    session
+        .core
+        .ephemeral
+        .machine
+        .set_streaming_thinking_entry_index(1);
     session
         .core
         .ephemeral
@@ -3592,13 +3633,25 @@ fn insert_entry_at_shifts_multiple_indices() {
     session.insert_entry_at(0, ChatEntry::system("inserted"));
 
     // Then ALL indices at or after insertion point are shifted.
-    assert_eq!(session.core.ephemeral.machine.streaming_entry_index(), Some(2));
     assert_eq!(
-        session.core.ephemeral.machine.streaming_thinking_entry_index(),
+        session.core.ephemeral.machine.streaming_entry_index(),
         Some(2)
     );
     assert_eq!(
-        session.core.ephemeral.machine.streaming_tool_call_indices().get(&0),
+        session
+            .core
+            .ephemeral
+            .machine
+            .streaming_thinking_entry_index(),
+        Some(2)
+    );
+    assert_eq!(
+        session
+            .core
+            .ephemeral
+            .machine
+            .streaming_tool_call_indices()
+            .get(&0),
         Some(&2)
     );
 }
@@ -4442,9 +4495,7 @@ fn enqueue_front_puts_item_at_front_of_queue() {
     ));
 
     // When enqueuing a ToolContinuation at the front.
-    session.enqueue_front(
-        crate::feat::session::queue_item::QueueItem::ToolContinuation,
-    );
+    session.enqueue_front(crate::feat::session::queue_item::QueueItem::ToolContinuation);
 
     // Then dequeue returns ToolContinuation first.
     let front = session.dequeue();
@@ -4469,4 +4520,3 @@ fn is_workflow_returns_real_value() {
     // Then is_workflow returns true (not hardcoded false).
     assert!(wf_session.is_workflow());
 }
-

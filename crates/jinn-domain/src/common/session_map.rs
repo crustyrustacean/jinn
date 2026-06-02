@@ -8,8 +8,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::feat::session::tree_aggregate::FrozenTreeNode;
 use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session::tree_aggregate::FrozenTreeNode;
 use crate::protocol::SessionId;
 
 /// Session lifecycle state - owned by the session-actor.

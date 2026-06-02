@@ -179,7 +179,9 @@ pub fn find_start_boundary(history: &[ChatEntry]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
+    use crate::feat::session::chat_entry::{
+        ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride,
+    };
 
     #[test]
     fn find_start_boundary_returns_zero_when_no_compaction() {
@@ -224,10 +226,7 @@ mod tests {
 
     #[test]
     fn gather_compactable_excludes_system() {
-        let entries = vec![
-            ChatEntry::system("ready"),
-            ChatEntry::user("hello"),
-        ];
+        let entries = vec![ChatEntry::system("ready"), ChatEntry::user("hello")];
         let (indices, _) = gather_compactable_entries(&entries, 0, 2);
         assert_eq!(indices.len(), 1);
         assert_eq!(indices[0], 1); // Only the user entry
@@ -259,7 +258,10 @@ mod tests {
         // Then it walks forward past both tool groups. The first group (tc1)
         // is complete, but the second group (tc2, no result) is incomplete.
         // The result is past the end of history (6 = len).
-        assert_eq!(adjusted, 6, "should skip past both tool groups to end of history");
+        assert_eq!(
+            adjusted, 6,
+            "should skip past both tool groups to end of history"
+        );
     }
 
     #[test]
@@ -285,7 +287,10 @@ mod tests {
         let adjusted = adjust_cut_to_boundary(&entries, 2);
 
         // Then it stops at the Assistant at index 4 - the tool loop is complete.
-        assert_eq!(adjusted, 4, "should stop at Assistant after complete tool loop");
+        assert_eq!(
+            adjusted, 4,
+            "should stop at Assistant after complete tool loop"
+        );
     }
 
     #[test]
@@ -322,7 +327,13 @@ mod tests {
         let cut = compute_cut_index(&entries, 0, 30, false);
 
         // Then the cut is past the start - older entries don't fit in reserve.
-        assert!(cut > 0, "cut should be past start when entries exceed reserve");
-        assert!(cut < entries.len(), "cut should be before end when some entries fit");
+        assert!(
+            cut > 0,
+            "cut should be past start when entries exceed reserve"
+        );
+        assert!(
+            cut < entries.len(),
+            "cut should be before end when some entries fit"
+        );
     }
 }

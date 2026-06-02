@@ -32,7 +32,9 @@ use jinn_domain::actor_channel::ActorChannelService;
 use jinn_domain::common::actor::protocol::event::{ActorStarted, ActorStarting, AllActorsSpawned};
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 use jinn_domain::feat::workflow::workflow_actor::{WorkflowActor, WorkflowActorDeps};
-use jinn_domain::feat::workflow::workflow_controller_actor::{WorkflowControllerActor, WorkflowControllerActorDeps};
+use jinn_domain::feat::workflow::workflow_controller_actor::{
+    WorkflowControllerActor, WorkflowControllerActorDeps,
+};
 use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
@@ -161,8 +163,7 @@ pub fn create_core_with_actor_host(
         &counter,
         &shutdown_tracker,
         EnvInitActorDeps {
-            config_storage: config_storage.clone(),
-            api_keys: api_keys.clone(),
+            services: services.clone(),
         },
     ));
 
@@ -189,7 +190,7 @@ pub fn create_core_with_actor_host(
         &counter,
         &shutdown_tracker,
         jinn_domain::feat::preferences_actor::preferences_actor::PreferencesActorDeps {
-            storage: user_preferences_storage.clone(),
+            services: services.clone(),
         },
     ));
 
@@ -198,8 +199,8 @@ pub fn create_core_with_actor_host(
         jinn_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActor,
     >("preferences-sync", &sink, handle, &counter, &shutdown_tracker,
         jinn_domain::feat::preferences_actor::preferences_state_sync_actor::PreferencesStateSyncActorDeps {
+            services: services.clone(),
             state: state.clone(),
-            paths: paths.clone(),
         },
     ));
 
@@ -214,7 +215,7 @@ pub fn create_core_with_actor_host(
         &shutdown_tracker,
         jinn_domain::feat::llm_actor::LlmActorDeps {
             factory: llm_service.clone(),
-            services: Some(services.clone()),
+            services: services.clone(),
             state: state.clone(),
         },
     ));
@@ -229,10 +230,8 @@ pub fn create_core_with_actor_host(
         &counter,
         &shutdown_tracker,
         jinn_domain::feat::provider::discover_actor::DiscoverActorDeps {
-            registry: provider_registry.clone(),
-            api_keys: api_keys.clone(),
+            services: services.clone(),
             state: state.clone(),
-            app_paths: paths.clone(),
         },
     ));
 
@@ -245,12 +244,10 @@ pub fn create_core_with_actor_host(
             &counter,
             &shutdown_tracker,
             jinn_domain::feat::tools_actor::ToolOrchestratorActorDeps {
+                services: services.clone(),
                 state: state.clone(),
-                app_paths: paths.clone(),
                 builtin_filter: None,
-                shell: std::env::var("SHELL")
-                    .unwrap_or_else(|_| "/bin/sh".to_owned()),
-                user_preferences_storage: user_preferences_storage.clone(),
+                shell: std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_owned()),
             },
         ),
     );
@@ -302,8 +299,8 @@ pub fn create_core_with_actor_host(
         &shutdown_tracker,
         jinn_domain::feat::session::session_actor::SessionPersistenceActorDeps {
             state: state.clone(),
-            services: Some(services.clone()),
-            store: Some(session_store.clone()),
+            services: services.clone(),
+
             counter: token_counter,
             builtin_registry: {
                 let mut registry =
@@ -328,7 +325,7 @@ pub fn create_core_with_actor_host(
         &counter,
         &shutdown_tracker,
         jinn_domain::feat::context::prompt_scan_actor::PromptScanActorDeps {
-            paths: services.paths.clone(),
+            services: services.clone(),
         },
     ));
 
@@ -342,7 +339,7 @@ pub fn create_core_with_actor_host(
         &counter,
         &shutdown_tracker,
         jinn_domain::feat::skills::skills_scan_actor::SkillsScanActorDeps {
-            paths: services.paths.clone(),
+            services: services.clone(),
             state: state.clone(),
         },
     ));
@@ -357,7 +354,7 @@ pub fn create_core_with_actor_host(
         &counter,
         &shutdown_tracker,
         jinn_domain::feat::persona::persona_scan_actor::PersonaScanActorDeps {
-            paths: services.paths.clone(),
+            services: services.clone(),
         },
     ));
 
@@ -441,11 +438,16 @@ pub fn create_core_with_actor_host(
     // Clones history once per HistoryAppended into Arc<[ChatEntry]>,
     // then emits HistorySnapshotReady for all workers to share.
     {
-        use jinn_domain::feat::history_worker::snapshot_actor::{HistorySnapshotActor, HistorySnapshotActorDeps};
+        use jinn_domain::feat::history_worker::snapshot_actor::{
+            HistorySnapshotActor, HistorySnapshotActorDeps,
+        };
 
         actors.push(spawn::<HistorySnapshotActor>(
             "history-snapshot",
-            &sink, handle, &counter, &shutdown_tracker,
+            &sink,
+            handle,
+            &counter,
+            &shutdown_tracker,
             HistorySnapshotActorDeps {
                 state: state.clone(),
             },
@@ -479,7 +481,6 @@ pub fn create_core_with_actor_host(
                     compaction_prompt,
                 },
             },
-
         ));
     }
 
@@ -545,7 +546,12 @@ pub fn create_core_with_actor_host(
         use jinn_domain::feat::history_worker::actor::{
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
-        let regex_config = user_preferences_storage.load().expect("preferences").auto_prune.regex.clone();
+        let regex_config = user_preferences_storage
+            .load()
+            .expect("preferences")
+            .auto_prune
+            .regex
+            .clone();
 
         if regex_config.enabled && !regex_config.rules.is_empty() {
             match RegexAutoPruneWorker::from_config(&regex_config) {
@@ -556,9 +562,7 @@ pub fn create_core_with_actor_host(
                         handle,
                         &counter,
                         &shutdown_tracker,
-                        HistoryWorkerActorDeps {
-                            worker,
-                        },
+                        HistoryWorkerActorDeps { worker },
                     ));
                 }
                 Err(e) => {

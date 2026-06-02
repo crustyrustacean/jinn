@@ -252,17 +252,17 @@ impl DomainNodeContext {
         self.pending.lock().insert(session_id.clone(), tx);
 
         let entry = ChatEntry::user(&user_prompt);
-        self.services.actor_channel.send_command(
-            Command::EnqueueUserMessage(EnqueueUserMessage { session_id: session_id.clone(), entry }),
-        );
+        self.services
+            .actor_channel
+            .send_command(Command::EnqueueUserMessage(EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry,
+            }));
 
         rx.await
             .map_err(|_| Report::new(NodeError).attach("cloned workflow LLM request cancelled"))
     }
 }
-
-
-
 
 impl NodeContext for DomainNodeContext {
     fn set_node_name(&self, name: &str) {

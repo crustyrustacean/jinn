@@ -225,16 +225,12 @@ fn build_render_lines(list: &TaskList, state: &AppState) -> Vec<Line<'static>> {
                                 style,
                             )));
                         } else {
-                            lines.push(Line::from(Span::styled(
-                                format!("      {segment}"),
-                                style,
-                            )));
+                            lines.push(Line::from(Span::styled(format!("      {segment}"), style)));
                         }
                     }
                 }
             }
         }
-
     }
 
     lines
@@ -268,7 +264,6 @@ fn compute_height(list: &TaskList, state: &AppState) -> u16 {
                 }
             }
         }
-
     }
 
     height as u16
@@ -467,9 +462,10 @@ mod tests {
         let has_reversed = lines.iter().any(|line| {
             let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
             text.contains("Research")
-                && line.spans.iter().any(|s| {
-                    s.style.add_modifier.contains(Modifier::REVERSED)
-                })
+                && line
+                    .spans
+                    .iter()
+                    .any(|s| s.style.add_modifier.contains(Modifier::REVERSED))
         });
         assert!(
             has_reversed,
@@ -628,9 +624,10 @@ mod tests {
         let has_crossed_out = lines.iter().any(|line| {
             let text: String = line.spans.iter().map(|s| s.content.to_string()).collect();
             text.contains("Bad idea")
-                && line.spans.iter().any(|s| {
-                    s.style.add_modifier.contains(Modifier::CROSSED_OUT)
-                })
+                && line
+                    .spans
+                    .iter()
+                    .any(|s| s.style.add_modifier.contains(Modifier::CROSSED_OUT))
         });
         assert!(
             has_crossed_out,
@@ -699,7 +696,11 @@ mod tests {
             "should contain 'wrap' in: {combined}"
         );
         // More lines than collapsed baseline (header + blank + 2 phases + blank = 5).
-        assert!(lines.len() > 5, "expected wrapping to produce extra lines, got {}", lines.len());
+        assert!(
+            lines.len() > 5,
+            "expected wrapping to produce extra lines, got {}",
+            lines.len()
+        );
     }
 
     #[test]

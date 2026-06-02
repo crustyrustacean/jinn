@@ -33,20 +33,16 @@ impl NodeFactory for SourceFactory {
     fn create(
         &self,
         config: serde_json::Value,
-    ) -> Result<
-        Box<dyn WorkflowNode>,
-        error_stack::Report<jinn_workflow::registry::RegistryError>,
-    > {
+    ) -> Result<Box<dyn WorkflowNode>, error_stack::Report<jinn_workflow::registry::RegistryError>>
+    {
         let output = config
             .get("output")
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
-                error_stack::Report::new(
-                    jinn_workflow::registry::RegistryError::CreationFailed {
-                        type_name: "source".to_owned(),
-                        reason: "missing 'output' field".to_owned(),
-                    },
-                )
+                error_stack::Report::new(jinn_workflow::registry::RegistryError::CreationFailed {
+                    type_name: "source".to_owned(),
+                    reason: "missing 'output' field".to_owned(),
+                })
             })?
             .to_owned();
 
@@ -77,10 +73,8 @@ impl NodeFactory for PassthroughFactory {
     fn create(
         &self,
         _config: serde_json::Value,
-    ) -> Result<
-        Box<dyn WorkflowNode>,
-        error_stack::Report<jinn_workflow::registry::RegistryError>,
-    > {
+    ) -> Result<Box<dyn WorkflowNode>, error_stack::Report<jinn_workflow::registry::RegistryError>>
+    {
         Ok(Box::new(DynamicNode::new(
             "passthrough",
             vec![PortDef::text("in")],
@@ -107,10 +101,8 @@ impl NodeFactory for SinkFactory {
     fn create(
         &self,
         _config: serde_json::Value,
-    ) -> Result<
-        Box<dyn WorkflowNode>,
-        error_stack::Report<jinn_workflow::registry::RegistryError>,
-    > {
+    ) -> Result<Box<dyn WorkflowNode>, error_stack::Report<jinn_workflow::registry::RegistryError>>
+    {
         Ok(Box::new(DynamicNode::new(
             "sink",
             vec![PortDef::text("in")],

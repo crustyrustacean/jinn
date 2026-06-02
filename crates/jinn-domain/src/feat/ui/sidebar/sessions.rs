@@ -16,8 +16,6 @@ pub mod render;
 pub mod state;
 pub mod teardown;
 
-
-
 #[cfg(test)]
 mod preview_tests;
 
@@ -34,7 +32,6 @@ pub use close::{
     validate_session_close,
 };
 pub use r#continue::handle_session_continue;
-
 
 pub use navigate::{navigate, receive_cursor, scroll_to_cursor};
 pub use preview::{

@@ -6,7 +6,7 @@
 use serde::Serialize;
 
 use crate::LlmMessage;
-use crate::tool_types::{ToolDefinition};
+use crate::tool_types::ToolDefinition;
 
 /// Top-level request body for OpenAI-compatible chat completions.
 #[derive(Debug, Serialize)]
@@ -229,7 +229,7 @@ fn tool_definition_to_json(def: &ToolDefinition) -> serde_json::Value {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
-    use crate::tool_types::{ServerToolType};
+    use crate::tool_types::ServerToolType;
 
     #[rstest::rstest]
     fn build_request_includes_model_and_stream() {

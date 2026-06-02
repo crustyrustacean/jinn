@@ -24,11 +24,7 @@ impl SessionPersistenceActor {
         _config: &crate::feat::provider_infra::ProvidersConfig,
         ctx: &ActorContext,
     ) {
-        let Some(ref services) = self.services else {
-            return;
-        };
-
-        let prefs = match services.user_preferences_storage.load() {
+        let prefs = match self.services.user_preferences_storage.load() {
             Ok(p) => p,
             Err(e) => {
                 tracing::warn!(err = ?e, "session-actor failed to load preferences on startup");
@@ -70,7 +66,8 @@ impl SessionPersistenceActor {
         // Load unarchived sessions from SQLite into memory.
         // These are sessions with `archived=false` - corresponding to `SessionState::Loaded`.
         // On load they get the default `SessionState::Loaded` and `LifecycleScriptState::NothingRan`.
-        if let Some(ref store) = self.store {
+        {
+            let store = &self.services.session_store;
             let summaries = match store.load_unarchived_summaries().await {
                 Ok(s) => s,
                 Err(e) => {
@@ -108,9 +105,8 @@ impl SessionPersistenceActor {
                     // Archived sessions (e.g., a parent that was archived while its
                     // children remain unarchived) need frozen node snapshots so the
                     // tree summary shows complete historical totals.
-                    if let Some(ref store) = self.store {
-                        self.hydrate_all_tree_frozen_nodes(store).await;
-                    }
+                    self.hydrate_all_tree_frozen_nodes(&self.services.session_store)
+                        .await;
                 }
             }
         }
@@ -123,10 +119,8 @@ impl SessionPersistenceActor {
             })) {
             tracing::warn!(err = ?e, "session-actor failed to send UpdatePreferences on startup");
         }
-
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -238,8 +232,6 @@ mod tests {
         };
         actor
             .services
-            .as_ref()
-            .expect("services")
             .user_preferences_storage
             .save(&prefs)
             .expect("save prefs");
@@ -286,8 +278,6 @@ mod tests {
         };
         actor
             .services
-            .as_ref()
-            .expect("services")
             .user_preferences_storage
             .save(&prefs)
             .expect("save prefs");

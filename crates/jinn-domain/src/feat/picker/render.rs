@@ -62,7 +62,6 @@ pub fn render_workflow_picker(frame: &mut Frame<'_>, area: Rect, state: &AppStat
     widget.render(frame, area);
 }
 
-
 /// Renders the tool picker overlay.
 pub fn render_tool_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let enabled_count = state

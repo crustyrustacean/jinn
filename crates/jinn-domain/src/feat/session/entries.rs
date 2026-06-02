@@ -7,10 +7,10 @@
 use std::collections::HashMap;
 
 use crate::common::app_state::AppState;
-use crate::feat::ui::picker_states::PickerExt;
 use crate::common::services::Services;
 use crate::feat::session::picker_entry::SessionTreeEntry;
 use crate::feat::theme::Theme;
+use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::SessionId;
 
 use super::SessionStoreService;
@@ -196,13 +196,13 @@ pub async fn load_session_picker_items_from_store(
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
-    use crate::feat::session::chat_session::SessionState;
-    use crate::feat::session::chat_session::ChatSessionState;
-    use crate::feat::session::picker_entry::SessionTreeEntry;
-    use crate::feat::theme::default_theme;
-    use crate::feat::session::session_summary::SessionSummary;
     use crate::common::app_state::AppState;
     use crate::common::services::test_services::TestServices;
+    use crate::feat::session::chat_session::ChatSessionState;
+    use crate::feat::session::chat_session::SessionState;
+    use crate::feat::session::picker_entry::SessionTreeEntry;
+    use crate::feat::session::session_summary::SessionSummary;
+    use crate::feat::theme::default_theme;
     use crate::protocol::SessionId;
     use jinn_selection_widget::TreeItem;
 
@@ -264,15 +264,54 @@ mod tests {
 
     #[async_trait::async_trait]
     impl super::super::SessionStore for OneSummaryStore {
-        fn name(&self) -> &'static str { "one-summary" }
-        async fn save(&self, _session: &ChatSessionState) -> Result<(), error_stack::Report<super::super::SessionStoreError>> { Ok(()) }
-        async fn load_summaries(&self) -> Result<Vec<SessionSummary>, error_stack::Report<super::super::SessionStoreError>> { Ok(vec![self.summary.clone()]) }
-        async fn load_session(&self, _session_id: &SessionId) -> Result<Option<ChatSessionState>, error_stack::Report<super::super::SessionStoreError>> { Ok(None) }
-        async fn delete(&self, _session_id: &SessionId) -> Result<(), error_stack::Report<super::super::SessionStoreError>> { Ok(()) }
-        async fn fork(&self, _source_session_id: &SessionId, _at_ordinal: usize) -> Result<SessionId, error_stack::Report<super::super::SessionStoreError>> { Ok(SessionId::new()) }
-        async fn set_archived(&self, _session_id: &SessionId, _archived: bool) -> Result<(), error_stack::Report<super::super::SessionStoreError>> { Ok(()) }
-        async fn load_unarchived_summaries(&self) -> Result<Vec<SessionSummary>, error_stack::Report<super::super::SessionStoreError>> { Ok(vec![self.summary.clone()]) }
-
+        fn name(&self) -> &'static str {
+            "one-summary"
+        }
+        async fn save(
+            &self,
+            _session: &ChatSessionState,
+        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+            Ok(())
+        }
+        async fn load_summaries(
+            &self,
+        ) -> Result<Vec<SessionSummary>, error_stack::Report<super::super::SessionStoreError>>
+        {
+            Ok(vec![self.summary.clone()])
+        }
+        async fn load_session(
+            &self,
+            _session_id: &SessionId,
+        ) -> Result<Option<ChatSessionState>, error_stack::Report<super::super::SessionStoreError>>
+        {
+            Ok(None)
+        }
+        async fn delete(
+            &self,
+            _session_id: &SessionId,
+        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+            Ok(())
+        }
+        async fn fork(
+            &self,
+            _source_session_id: &SessionId,
+            _at_ordinal: usize,
+        ) -> Result<SessionId, error_stack::Report<super::super::SessionStoreError>> {
+            Ok(SessionId::new())
+        }
+        async fn set_archived(
+            &self,
+            _session_id: &SessionId,
+            _archived: bool,
+        ) -> Result<(), error_stack::Report<super::super::SessionStoreError>> {
+            Ok(())
+        }
+        async fn load_unarchived_summaries(
+            &self,
+        ) -> Result<Vec<SessionSummary>, error_stack::Report<super::super::SessionStoreError>>
+        {
+            Ok(vec![self.summary.clone()])
+        }
     }
 
     #[rstest::rstest]
@@ -288,12 +327,11 @@ mod tests {
             session_state: SessionState::Loaded,
             parent_session: None,
         };
-        let store = crate::feat::session::SessionStoreService::new(
-            std::sync::Arc::new(OneSummaryStore { summary }),
-        );
-        let services = TestServices::builder()
-            .session_store(store)
-            .build();
+        let store =
+            crate::feat::session::SessionStoreService::new(std::sync::Arc::new(OneSummaryStore {
+                summary,
+            }));
+        let services = TestServices::builder().session_store(store).build();
 
         // When loading session entries.
         let entries = load_session_entries(&services, &default_theme()).await;
@@ -315,9 +353,10 @@ mod tests {
             session_state: SessionState::Loaded,
             parent_session: None,
         };
-        let store = crate::feat::session::SessionStoreService::new(
-            std::sync::Arc::new(OneSummaryStore { summary }),
-        );
+        let store =
+            crate::feat::session::SessionStoreService::new(std::sync::Arc::new(OneSummaryStore {
+                summary,
+            }));
 
         // When loading session entries from store.
         let entries = load_session_entries_from_store(&store, &default_theme()).await;
@@ -338,12 +377,11 @@ mod tests {
             session_state: SessionState::Loaded,
             parent_session: None,
         };
-        let store = crate::feat::session::SessionStoreService::new(
-            std::sync::Arc::new(OneSummaryStore { summary }),
-        );
-        let services = TestServices::builder()
-            .session_store(store)
-            .build();
+        let store =
+            crate::feat::session::SessionStoreService::new(std::sync::Arc::new(OneSummaryStore {
+                summary,
+            }));
+        let services = TestServices::builder().session_store(store).build();
         let mut state = AppState::default();
 
         // When loading picker items.
@@ -365,9 +403,10 @@ mod tests {
             session_state: SessionState::Loaded,
             parent_session: None,
         };
-        let store = crate::feat::session::SessionStoreService::new(
-            std::sync::Arc::new(OneSummaryStore { summary }),
-        );
+        let store =
+            crate::feat::session::SessionStoreService::new(std::sync::Arc::new(OneSummaryStore {
+                summary,
+            }));
         let mut state = AppState::default();
 
         // When loading picker items from store.

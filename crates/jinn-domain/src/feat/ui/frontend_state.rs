@@ -8,13 +8,13 @@ use crate::feat::preferences_actor::UserPreferences;
 use crate::feat::rename_session_input::state::RenameSessionInputState;
 use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
 use crate::feat::theme::Theme;
-use crate::feat::workflow::workflow_ui_state::WorkflowUiState;
+use crate::feat::ui::picker_states::PickerStates;
 pub use crate::feat::ui::sidebar::persona_section::PersonaSectionState;
 pub use crate::feat::ui::sidebar::pins::state::PinsState;
 pub use crate::feat::ui::sidebar::sessions::SessionsSectionState;
-pub use crate::feat::ui::sidebar::task_list_section::TaskListSectionState;
 use crate::feat::ui::sidebar::state::SidebarState;
-use crate::feat::ui::picker_states::PickerStates;
+pub use crate::feat::ui::sidebar::task_list_section::TaskListSectionState;
+use crate::feat::workflow::workflow_ui_state::WorkflowUiState;
 use crate::protocol::tab::ActiveTab;
 
 /// Theme-sensitive caches owned by the frontend.
@@ -32,7 +32,8 @@ pub struct FrontendCaches {
     /// Populated by the token count actor, read by the minimap render pipeline.
     pub entry_token_cache: RwLock<crate::feat::session::entry_token_cache::EntryTokenCache>,
     /// Cached rendered lines for session preview popups.
-    pub session_preview_cache: RwLock<crate::feat::ui::sidebar::sessions::preview::SessionPreviewCache>,
+    pub session_preview_cache:
+        RwLock<crate::feat::ui::sidebar::sessions::preview::SessionPreviewCache>,
 }
 
 impl FrontendCaches {

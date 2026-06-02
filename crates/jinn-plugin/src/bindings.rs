@@ -152,7 +152,13 @@ mod tests {
         .expect("lua eval");
 
         // When converting to JSON.
-        let json = value_to_json(&lua, &lua.load("return { 'first', foo = 'bar', [5] = 'fifth' }").eval::<Value>().expect("eval")).expect("convert");
+        let json = value_to_json(
+            &lua,
+            &lua.load("return { 'first', foo = 'bar', [5] = 'fifth' }")
+                .eval::<Value>()
+                .expect("eval"),
+        )
+        .expect("convert");
 
         // Then it's a JSON object (not an array) because keys are not sequential 1..N.
         assert!(

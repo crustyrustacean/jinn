@@ -311,7 +311,11 @@ mod tests {
         let mut state = AppState::default();
         let session_id = state.session.active_session_id().clone();
         assert!(
-            !state.session.get(&session_id).expect("session exists").has_interacted(),
+            !state
+                .session
+                .get(&session_id)
+                .expect("session exists")
+                .has_interacted(),
             "fresh session should not be interacted"
         );
         state.frontend.scope_stack.push(FocusScope::SidebarSessions);
@@ -330,7 +334,11 @@ mod tests {
 
         // Then the session is marked as interacted.
         assert!(
-            state.session.get(&session_id).expect("session exists").has_interacted(),
+            state
+                .session
+                .get(&session_id)
+                .expect("session exists")
+                .has_interacted(),
             "session should be marked as interacted after rename"
         );
         // And a PersistSession command is emitted.

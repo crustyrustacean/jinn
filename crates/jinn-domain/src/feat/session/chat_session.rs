@@ -20,16 +20,14 @@ use serde_json::Value as JsonValue;
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::context::strategy::types::StrategyState;
 use crate::feat::session::chat_history::ChatHistory;
+use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
-use crate::feat::session::phase_machine::PhaseKind;
 use crate::protocol::{
     ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId,
     SessionId,
 };
-
-
 
 /// Error returned when a streaming operation fails.
 #[derive(Debug, wherror::Error)]
@@ -100,8 +98,6 @@ impl LifecycleScriptState {
         *self = Self::TeardownRan;
     }
 }
-
-
 
 /// Groups runtime-only fields that are specific to the current running instance
 /// and have no meaning across restarts (stream indices, queues, in-progress flags).
@@ -365,7 +361,6 @@ pub struct SessionUi {
     >,
 }
 
-
 impl Clone for SessionUi {
     fn clone(&self) -> Self {
         Self {
@@ -608,7 +603,6 @@ impl ChatSessionState {
         self.core.is_workflow
     }
 
-
     /// Mark this session as having been meaningfully interacted with by the user.
     /// Once set, the session becomes eligible for persistence.
     pub fn mark_interacted(&mut self) {
@@ -683,7 +677,10 @@ impl ChatSessionState {
         let clamped = index.min(self.core.history.len());
         self.core.history.insert(clamped, entry);
         // Delegate index shifting to the machine (handles all 4 streaming fields).
-        self.core.ephemeral.machine.shift_streaming_indices_for_insert_at(clamped);
+        self.core
+            .ephemeral
+            .machine
+            .shift_streaming_indices_for_insert_at(clamped);
         clamped
     }
 
@@ -693,7 +690,12 @@ impl ChatSessionState {
     /// `begin_tool_call`, or `cancel_streaming`. No-op if the entry
     /// already exists or the session is not streaming.
     fn ensure_assistant_entry(&mut self) {
-        if self.core.ephemeral.machine.streaming_entry_index().is_some()
+        if self
+            .core
+            .ephemeral
+            .machine
+            .streaming_entry_index()
+            .is_some()
             || !matches!(self.core.ephemeral.machine.kind(), PhaseKind::Streaming)
         {
             return;
@@ -702,8 +704,6 @@ impl ChatSessionState {
         let index = self.push_entry(entry);
         self.core.ephemeral.machine.set_streaming_entry_index(index);
     }
-
-
 
     /// Begin a new streaming response.
     //
@@ -797,7 +797,13 @@ impl ChatSessionState {
             );
             return;
         }
-        if self.core.ephemeral.machine.streaming_thinking_entry_index().is_some() {
+        if self
+            .core
+            .ephemeral
+            .machine
+            .streaming_thinking_entry_index()
+            .is_some()
+        {
             tracing::warn!("begin_thinking called while already thinking - ignoring");
             return;
         }
@@ -806,12 +812,16 @@ impl ChatSessionState {
         // already exists. Some providers (OpenRouter) send reasoning tokens
         // AFTER content tokens, so the assistant entry is already in history.
         // The thinking entry should appear before it in the chat log.
-        let index = if let Some(assistant_idx) = self.core.ephemeral.machine.streaming_entry_index() {
+        let index = if let Some(assistant_idx) = self.core.ephemeral.machine.streaming_entry_index()
+        {
             self.insert_entry_at(assistant_idx, entry)
         } else {
             self.push_entry(entry)
         };
-        self.core.ephemeral.machine.set_streaming_thinking_entry_index(index);
+        self.core
+            .ephemeral
+            .machine
+            .set_streaming_thinking_entry_index(index);
     }
 
     /// Append a thinking token to the streaming Thinking entry.
@@ -925,7 +935,12 @@ impl ChatSessionState {
         self.ensure_assistant_entry();
         let entry = ChatEntry::tool_call(id, name, "");
         let history_index = self.push_entry(entry);
-        let Some(indices) = self.core.ephemeral.machine.streaming_tool_call_indices_mut() else {
+        let Some(indices) = self
+            .core
+            .ephemeral
+            .machine
+            .streaming_tool_call_indices_mut()
+        else {
             tracing::warn!(
                 current_phase = ?self.core.ephemeral.machine.kind(),
                 index,
@@ -1029,7 +1044,12 @@ impl ChatSessionState {
         let history_index = self.push_entry(entry);
 
         // Re-acquire the streaming index map after push_entry releases &mut self.
-        if let Some(indices) = self.core.ephemeral.machine.streaming_tool_result_indices_mut() {
+        if let Some(indices) = self
+            .core
+            .ephemeral
+            .machine
+            .streaming_tool_result_indices_mut()
+        {
             indices.insert(tool_call_id.to_owned(), history_index);
         }
     }
@@ -1201,8 +1221,6 @@ impl ChatSessionState {
         self.core.ephemeral.message_queue.drain()
     }
 
-
-
     /// Switch the active prompt strategy for this session.
     pub fn switch_strategy(&mut self, strategy_id: PromptStrategyId) {
         self.core.profile.strategy = strategy_id;
@@ -1318,7 +1336,6 @@ impl ChatSessionState {
 
     /// Transition to Working phase (a background operation started).
     ///
-
 
     // ── Busy count ──────────────────────────────────────────────────────────
 
@@ -2295,8 +2312,6 @@ impl ChatSessionState {
         self.core.lifecycle_script_state.advance_after_teardown();
     }
 
-
-
     /// Force-exclude any `ToolCall` entries that lack matching `ToolResult` entries,
     /// and their empty parent `Assistant` entry.
     ///
@@ -2374,14 +2389,19 @@ impl ChatSessionState {
     /// Queue a batch of mutations for deferred application.
     ///
     /// Empty batches are silently ignored.
-    pub fn queue_mutations(&mut self, batch: Vec<crate::feat::session::history_mutation::HistoryMutation>) {
+    pub fn queue_mutations(
+        &mut self,
+        batch: Vec<crate::feat::session::history_mutation::HistoryMutation>,
+    ) {
         if !batch.is_empty() {
             self.core.ephemeral.pending_mutations.push(batch);
         }
     }
 
     /// Drain all pending mutation batches.
-    pub fn drain_pending_mutations(&mut self) -> Vec<Vec<crate::feat::session::history_mutation::HistoryMutation>> {
+    pub fn drain_pending_mutations(
+        &mut self,
+    ) -> Vec<Vec<crate::feat::session::history_mutation::HistoryMutation>> {
         std::mem::take(&mut self.core.ephemeral.pending_mutations)
     }
 
@@ -2390,7 +2410,10 @@ impl ChatSessionState {
     /// Silently skips mutations targeting nonexistent entries.
     /// Processing order within a batch is preserved - earlier mutations
     /// are visible to later ones in the same batch.
-    pub fn apply_mutations(&mut self, batch: Vec<crate::feat::session::history_mutation::HistoryMutation>) {
+    pub fn apply_mutations(
+        &mut self,
+        batch: Vec<crate::feat::session::history_mutation::HistoryMutation>,
+    ) {
         use crate::feat::session::history_mutation::HistoryMutation;
 
         for mutation in batch {
@@ -2400,7 +2423,10 @@ impl ChatSessionState {
                         entry.context_override = value;
                     }
                 }
-                HistoryMutation::InsertEntry { after_entry_id, entry } => {
+                HistoryMutation::InsertEntry {
+                    after_entry_id,
+                    entry,
+                } => {
                     let insert_at = match after_entry_id {
                         Some(id) => match self.find_entry_index_by_id(&id) {
                             Some(idx) => idx + 1,

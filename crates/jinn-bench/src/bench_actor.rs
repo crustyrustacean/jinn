@@ -20,8 +20,8 @@ use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, PushC
 use jinn_domain::feat::provider::protocol::command::CancelStream;
 use jinn_domain::feat::provider::protocol::event::StreamCompleted;
 use jinn_domain::feat::session::chat_session::ChatSessionState;
-use jinn_domain::feat::session::profile::SessionProfile;
 use jinn_domain::feat::session::phase_machine::PhaseKind;
+use jinn_domain::feat::session::profile::SessionProfile;
 use jinn_domain::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use jinn_domain::feat::session::session_actor::setup_running_msg;
 use jinn_domain::feat::session::token_stats::TokenStats;
@@ -167,10 +167,7 @@ impl BenchActor {
         self.current_pair_index += 1;
 
         // Load preferences from service (outside state lock).
-        let prefs = self
-            .user_preferences_storage
-            .load()
-            .expect("preferences");
+        let prefs = self.user_preferences_storage.load().expect("preferences");
 
         let session_id = {
             let mut state = self.state.write();
@@ -649,7 +646,7 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -684,7 +681,7 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -713,7 +710,7 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -749,7 +746,7 @@ mod tests {
                 state,
                 csv_path: Some(csv_path.clone()),
                 plan: Some(plan),
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink.clone()),
         );
@@ -806,7 +803,7 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -839,7 +836,7 @@ mod tests {
                 state: state.clone(),
                 csv_path: Some(csv_path.clone()),
                 plan: None,
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -892,7 +889,7 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -932,7 +929,7 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink.clone()),
         );
@@ -957,12 +954,13 @@ mod tests {
         actor.handle_stream_completed(
             &StreamCompleted {
                 session_id: session_id.clone(),
-                reason: jinn_domain::feat::provider::protocol::event::StreamCompletedReason::Finished,
+                reason:
+                    jinn_domain::feat::provider::protocol::event::StreamCompletedReason::Finished,
                 assistant_content: None,
                 tool_calls: None,
                 cost: None,
-            provider_completion_tokens: None,
-            thinking_content: None,
+                provider_completion_tokens: None,
+                thinking_content: None,
             },
             &ctx,
         );
@@ -988,7 +986,7 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink.clone()),
         );
@@ -1039,7 +1037,7 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink.clone()),
         );
@@ -1116,7 +1114,7 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: Some(plan),
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ctx,
         );
@@ -1164,7 +1162,7 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink.clone()),
         );
@@ -1228,7 +1226,7 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink.clone()),
         );
@@ -1298,7 +1296,7 @@ mod tests {
                 state,
                 csv_path: Some(csv_path),
                 plan: Some(plan),
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -1329,7 +1327,11 @@ mod tests {
         // Given a plan with 3 tasks.
         let plan = build_plan(
             &["test-model".to_owned()],
-            &["hello-world".to_owned(), "json-parser".to_owned(), "redirect-change-color".to_owned()],
+            &[
+                "hello-world".to_owned(),
+                "json-parser".to_owned(),
+                "redirect-change-color".to_owned(),
+            ],
         )
         .expect("plan");
         let (state, session_id) = test_state_with_session();
@@ -1341,7 +1343,7 @@ mod tests {
                 state,
                 csv_path: Some(csv_path),
                 plan: Some(plan),
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -1365,7 +1367,10 @@ mod tests {
             !state.frontend.should_quit,
             "expected should_quit=false when more pairs remain after setup error"
         );
-        assert_eq!(actor.current_pair_index, 2, "should have advanced to next pair");
+        assert_eq!(
+            actor.current_pair_index, 2,
+            "should have advanced to next pair"
+        );
     }
 
     #[test]
@@ -1379,7 +1384,7 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -1433,7 +1438,7 @@ mod tests {
                 state,
                 csv_path: Some(csv_path.clone()),
                 plan: None,
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -1505,7 +1510,7 @@ mod tests {
                 state,
                 csv_path: Some(csv_path.clone()),
                 plan: None,
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -1566,7 +1571,7 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -1582,8 +1587,14 @@ mod tests {
 
         // After setup, first message was sent. Verify initial counter state.
         let tracked = actor.pending.get(&session_id).expect("tracked");
-        assert_eq!(tracked.messages_remaining, 1, "should have 1 remaining after first send");
-        assert_eq!(tracked.next_message_index, 1, "index should be 1 after first send");
+        assert_eq!(
+            tracked.messages_remaining, 1,
+            "should have 1 remaining after first send"
+        );
+        assert_eq!(
+            tracked.next_message_index, 1,
+            "index should be 1 after first send"
+        );
 
         // When SessionPhaseChanged fires with Idle (intermediate - more messages left).
         actor
@@ -1635,7 +1646,7 @@ mod tests {
                 state: state.clone(),
                 csv_path: None,
                 plan: Some(plan),
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink.clone()),
         );
@@ -1696,7 +1707,11 @@ mod tests {
         // Given a plan with 3 tasks.
         let plan = build_plan(
             &["test-model".to_owned()],
-            &["hello-world".to_owned(), "json-parser".to_owned(), "redirect-change-color".to_owned()],
+            &[
+                "hello-world".to_owned(),
+                "json-parser".to_owned(),
+                "redirect-change-color".to_owned(),
+            ],
         )
         .expect("plan");
 
@@ -1717,7 +1732,7 @@ mod tests {
                 state: state.clone(),
                 csv_path: None,
                 plan: Some(plan),
-            user_preferences_storage: test_prefs_storage(),
+                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink.clone()),
         );

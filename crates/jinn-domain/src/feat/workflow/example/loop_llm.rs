@@ -55,7 +55,11 @@ pub fn build_loop_llm() -> WorkflowGraph {
         "generator".to_owned(),
         "user".to_owned(),
     )
-    .with_output_mapping("result".to_owned(), "generator".to_owned(), "response".to_owned());
+    .with_output_mapping(
+        "result".to_owned(),
+        "generator".to_owned(),
+        "response".to_owned(),
+    );
 
     let mut builder = WorkflowGraphBuilder::new();
     builder.add_node("loop".to_owned(), Box::new(loop_node));

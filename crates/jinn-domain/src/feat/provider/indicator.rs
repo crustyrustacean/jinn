@@ -62,10 +62,7 @@ impl UiElement<AppState> for StreamingIndicatorElement {
         let queue_len = session.queue_len();
 
         let is_busy = session.is_busy();
-        let is_phase_busy = matches!(
-            phase,
-            PhaseKind::Sending | PhaseKind::Streaming
-        );
+        let is_phase_busy = matches!(phase, PhaseKind::Sending | PhaseKind::Streaming);
 
         if !is_busy && !is_phase_busy {
             return;
@@ -115,7 +112,6 @@ mod tests {
         // Then it is "streaming-indicator".
         assert_eq!(name, "streaming-indicator");
     }
-
 
     #[rstest::rstest]
     fn renders_streaming_label_during_sending_phase() {

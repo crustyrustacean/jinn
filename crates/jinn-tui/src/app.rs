@@ -273,11 +273,10 @@ impl TuiApp {
                 jinn_domain::protocol::CwdRoot::Session => {
                     self.core.state.read().active_session().cwd().to_owned()
                 }
-                jinn_domain::protocol::CwdRoot::Home => {
-                    dirs::home_dir().unwrap_or_default()
-                }
+                jinn_domain::protocol::CwdRoot::Home => dirs::home_dir().unwrap_or_default(),
             };
-            self.suspend.request(SuspendAction::ChangeCwd { search_root });
+            self.suspend
+                .request(SuspendAction::ChangeCwd { search_root });
         }
         if let Some(text) = signals.yank_text {
             std::thread::spawn(move || {
