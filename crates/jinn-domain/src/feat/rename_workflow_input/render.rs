@@ -81,3 +81,90 @@ pub fn render_rename_workflow_input(frame: &mut Frame<'_>, area: Rect, state: &A
     let cursor_x = (prefix_len + grapheme_count as u16).min(inner.width.saturating_sub(1));
     frame.set_cursor_position((inner.x.saturating_add(cursor_x), inner.y));
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    use super::*;
+    use crate::common::app_state::{AppState, FocusScope, RenameWorkflowInputState};
+    use jinn_testutil::setup_term;
+
+    #[rstest::rstest]
+    fn rename_workflow_popup_shows_title() {
+        // Given a state in RenameWorkflowInput scope with input.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::RenameWorkflowInput);
+        state.frontend.rename_workflow_input = RenameWorkflowInputState {
+            input: "My Workflow".to_owned(),
+            cursor_pos: 11,
+        };
+        let (mut terminal, area) = setup_term(80, 24);
+
+        // When rendering the popup.
+        terminal
+            .draw(|frame| {
+                render_rename_workflow_input(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the popup title "Rename Workflow" appears in the top border.
+        let buffer = terminal.backend().buffer().clone();
+        let popup_area = rename_workflow_popup_rect(area);
+        let title_line_y = popup_area.y;
+
+        let title_text = " Rename Workflow ";
+        let mut found_title = false;
+        for x in popup_area.x..(popup_area.x + popup_area.width).min(buffer.area().width) {
+            if let Some(cell) = buffer.cell((x, title_line_y)) {
+                let cell_text: &str = cell.symbol();
+                if matches!(cell_text, "┌" | "─" | "┐") {
+                    continue;
+                }
+                if title_text.contains(cell_text) {
+                    found_title = true;
+                    break;
+                }
+            }
+        }
+        assert!(found_title, "title should appear in the top border");
+    }
+
+    #[rstest::rstest]
+    fn rename_workflow_popup_shows_input_text() {
+        // Given a state with input "Hello World".
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::RenameWorkflowInput);
+        state.frontend.rename_workflow_input = RenameWorkflowInputState {
+            input: "Hello World".to_owned(),
+            cursor_pos: 11,
+        };
+        let (mut terminal, area) = setup_term(80, 24);
+
+        // When rendering the popup.
+        terminal
+            .draw(|frame| {
+                render_rename_workflow_input(frame, area, &state);
+            })
+            .unwrap();
+
+        // Then the input line shows "> Hello World".
+        let buffer = terminal.backend().buffer().clone();
+        let popup_area = rename_workflow_popup_rect(area);
+        let inner_y = popup_area.y + 1;
+        let inner_x = popup_area.x + 1;
+
+        let row_text: String = (inner_x..inner_x + 20)
+            .filter_map(|x| buffer.cell((x, inner_y)).map(|c| c.symbol().to_string()))
+            .collect();
+        assert!(
+            row_text.starts_with("> Hello World"),
+            "expected '> Hello World' on input line, got: {row_text}"
+        );
+    }
+}
