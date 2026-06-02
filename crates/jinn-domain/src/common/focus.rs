@@ -27,6 +27,8 @@ pub enum FocusScope {
     ArgInput,
     /// Rename session input popup - editing a session title.
     RenameSessionInput,
+    /// Rename workflow input popup - editing a workflow label.
+    RenameWorkflowInput,
     /// Sidebar resize mode - adjusting sidebar width with h/l keys.
     SidebarResize,
     /// Workflow tab - browsing workflow node status.
@@ -47,7 +49,7 @@ impl FocusScope {
             | Self::SidebarTaskList
             | Self::SidebarResize
             | Self::Workflow => Mode::Normal,
-            Self::Input | Self::ArgInput | Self::RenameSessionInput | Self::WorkflowInput => {
+            Self::Input | Self::ArgInput | Self::RenameSessionInput | Self::RenameWorkflowInput | Self::WorkflowInput => {
                 Mode::Input
             }
             Self::Picker { .. } => Mode::Picker,
@@ -67,12 +69,13 @@ impl std::fmt::Display for FocusScope {
             Self::Picker { kind } => write!(f, "Picker({kind})"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
+            Self::RenameWorkflowInput => write!(f, "RenameWorkflowInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
             Self::Workflow => write!(f, "Workflow"),
             Self::WorkflowInput => write!(f, "WorkflowInput"),
         }
     }
-}
+    }
 
 /// A LIFO stack of [`FocusScope`] layers.
 ///

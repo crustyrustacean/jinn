@@ -63,18 +63,12 @@ impl SessionPersistenceActor {
             || event.reason == StreamCompletedReason::Error
             || event.reason == StreamCompletedReason::Canceled;
 
-        // Count output tokens off the async thread.
-        // Prefer provider-reported tokens (includes thinking, matches billing).
-        // Fall back to local counting (also includes thinking) when unavailable.
-        let output_tokens: Option<tokio::task::JoinHandle<u32>> = if event.reason
-            != StreamCompletedReason::Canceled
-            && event.reason != StreamCompletedReason::Error
-        {
-            if let Some(provider_tokens) = event.provider_completion_tokens {
-                // Provider-reported path: use directly, no local counting needed.
-                Some(tokio::task::spawn_blocking(move || provider_tokens as u32))
-            } else {
-                // Local fallback path: count text + thinking + tool calls.
+        // Count output tokens: always count locally, then take max with provider-reported.
+        // This handles providers that undercount (e.g., excluding tool call arguments).
+        let local_count_handle: Option<tokio::task::JoinHandle<u32>> =
+            if event.reason != StreamCompletedReason::Canceled
+                && event.reason != StreamCompletedReason::Error
+            {
                 event.assistant_content.as_ref().map(|content| {
                     let content = content.clone();
                     let tool_calls = event.tool_calls.clone();
@@ -92,18 +86,26 @@ impl SessionPersistenceActor {
                         tokens
                     })
                 })
-            }
-        } else {
-            None
-        };
+            } else {
+                None
+            };
 
-        // Await token counting outside the lock.
-        let output_tokens: Option<u32> = match output_tokens {
-            Some(handle) => Some(handle.await.unwrap_or_else(|e| {
-                tracing::warn!(err = ?e, "spawn_blocking panicked during output token counting");
-                0
-            })),
-            None => None,
+        let provider_tokens: Option<u32> =
+            event.provider_completion_tokens.map(|t| t as u32);
+
+        // Await local counting outside the lock, then take max with provider.
+        let output_tokens: Option<u32> = match local_count_handle {
+            Some(handle) => {
+                let local = handle.await.unwrap_or_else(|e| {
+                    tracing::warn!(
+                        err = ?e,
+                        "spawn_blocking panicked during output token counting"
+                    );
+                    0
+                });
+                Some(local.max(provider_tokens.unwrap_or(0)))
+            }
+            None => provider_tokens,
         };
 
         let (old_phase, new_phase);
@@ -1358,5 +1360,135 @@ mod tests {
         let session = state.session.get(&session_id).expect("session exists");
         let ledger = session.token_ledger();
         assert_eq!(ledger[0].tokens_received, 9999);
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_takes_max_when_provider_undercounts() {
+        // Given a session with a token record in streaming state.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_token_record(TokenRecord {
+                timestamp: jiff::Timestamp::now(),
+                tokens_sent: 100,
+                tokens_received: 0,
+                cost: None,
+            });
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When provider reports only 3 tokens but tool calls have much more.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::ToolUse,
+            assistant_content: Some("I'll read that file".to_owned()),
+            tool_calls: Some(vec![crate::feat::tools_actor::tool_types::ToolCall {
+                id: "tc-1".to_owned(),
+                name: "read_file".to_owned(),
+                arguments: r#"{"path": "/mnt/zed/repos/jinn/some/very/deep/path/to/a/file.rs"}"#.to_owned(),
+            }]),
+            cost: None,
+            provider_completion_tokens: Some(3),
+            thinking_content: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then tokens_received is the local count (much higher than 3),
+        // because max(local, provider) is used.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        let received = session.token_ledger()[0].tokens_received;
+        assert!(
+            received > 3,
+            "expected local count > 3 (max of local vs provider), got {received}"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_takes_max_when_provider_overcounts() {
+        // Given a session with a token record in streaming state.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_token_record(TokenRecord {
+                timestamp: jiff::Timestamp::now(),
+                tokens_sent: 100,
+                tokens_received: 0,
+                cost: None,
+            });
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When provider reports 50000 tokens but content is tiny.
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: Some("ok".to_owned()),
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: Some(50000),
+            thinking_content: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then tokens_received is 50000 (provider wins the max).
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert_eq!(
+            session.token_ledger()[0].tokens_received, 50000,
+            "expected provider count 50000, got {}",
+            session.token_ledger()[0].tokens_received
+        );
+    }
+
+    #[tokio::test]
+    async fn on_stream_completed_uses_local_count_when_no_provider_report() {
+        // Given a session with a token record in streaming state.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_token_record(TokenRecord {
+                timestamp: jiff::Timestamp::now(),
+                tokens_sent: 100,
+                tokens_received: 0,
+                cost: None,
+            });
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When provider does not report completion tokens.
+        let content = "hello world this is a test";
+        let event = StreamCompleted {
+            session_id: session_id.clone(),
+            reason: StreamCompletedReason::Finished,
+            assistant_content: Some(content.to_owned()),
+            tool_calls: None,
+            cost: None,
+            provider_completion_tokens: None,
+            thinking_content: None,
+        };
+        actor.on_stream_completed(&event, &ctx).await;
+
+        // Then tokens_received equals the local tiktoken count.
+        use crate::feat::context::strategy::token_estimator::TokenCounter;
+        let counter = crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base();
+        let expected = counter.count(content) as u32;
+
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert_eq!(
+            session.token_ledger()[0].tokens_received, expected,
+            "expected local count {expected}, got {}",
+            session.token_ledger()[0].tokens_received
+        );
     }
 }
