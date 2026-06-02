@@ -16,6 +16,7 @@ pub use app_layout::{AppLayout, MIN_HEIGHT, MIN_WIDTH};
 use jinn_domain::{FocusScope, Mode};
 use ratatui::Frame;
 
+use jinn_domain::RenderCtx;
 use crate::TuiApp;
 
 /// Renders the full application frame.
@@ -50,6 +51,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     }
 
     let state = app.core.state.read();
+    let ctx = RenderCtx::new(&state);
 
     let max_input_height = area.height / 2;
     let layout = AppLayout::new(
