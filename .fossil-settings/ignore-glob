@@ -17,3 +17,4 @@ pkg
 .git-fossil-marks
 bench-results.csv
 mutants.out
+*.txt
