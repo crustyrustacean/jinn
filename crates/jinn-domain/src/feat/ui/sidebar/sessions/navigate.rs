@@ -25,6 +25,13 @@ pub fn scroll_to_cursor(state: &mut AppState) {
     } else if index >= *offset + visible {
         *offset = index - visible + 1;
     }
+
+    // Clamp offset so the window doesn't extend past the end of the list.
+    // Without this, archiving sessions can leave the offset too large,
+    // causing fewer entries to render than content_height reports and
+    // the Sessions footer label to shift upward.
+    let max_offset = total.saturating_sub(visible);
+    *offset = (*offset).min(max_offset);
 }
 
 /// Updates the workflow preview based on the current cursor position.
