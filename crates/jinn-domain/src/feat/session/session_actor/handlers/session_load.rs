@@ -272,11 +272,13 @@ mod tests {
                     n: 3,
                     result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
                 },
+                label: "Consensus".to_owned(),
                 trigger: crate::feat::workflow::attached_workflow::WorkflowTrigger::Manual,
                 enabled: true,
                 state: crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready,
             },
         );
+
         let session_id = session.session_id().clone();
 
         let actor = test_actor();
