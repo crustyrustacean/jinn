@@ -93,8 +93,11 @@ impl SessionPersistenceActor {
                     for mut session in loaded {
                         // Mark startup-loaded sessions as interacted - they came from disk.
                         session.mark_interacted();
+                        let session_id = session.session_id().clone();
                         self.load_and_insert(session, ctx);
+                        self.rehydrate_attached_workflows(&session_id);
                     }
+
 
                     // NOTE: We intentionally do NOT switch the active session.
                     // The user should land on the fresh welcome session.
@@ -302,6 +305,92 @@ mod tests {
             state.active_session().profile().model,
             "bench-model",
             "explicitly set model should not be overwritten by saved preference"
+        );
+    }
+
+    #[tokio::test]
+    async fn startup_rehydrates_attached_workflows_for_loaded_sessions() {
+        // Given a session in the store with an attached workflow.
+        let mut store_session = ChatSessionState::new();
+        let wf_id = crate::feat::workflow::workflow_state::WorkflowId::new();
+        store_session.core.attached_workflows.push(
+            crate::feat::workflow::attached_workflow::AttachedWorkflow {
+                id: wf_id.clone(),
+                config: crate::feat::workflow::attached_workflow::WorkflowConfig::Consensus {
+                    n: 3,
+                    result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+                },
+                label: "Consensus".to_owned(),
+                trigger: crate::feat::workflow::attached_workflow::WorkflowTrigger::Manual,
+                enabled: true,
+                state: crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready,
+            },
+        );
+        let (actor, _store) = test_actor_with_store(vec![store_session]);
+        let (_sink, ctx) = test_context();
+
+        // When handling EnvironmentLoaded (startup).
+        actor
+            .on_environment_loaded(
+                &crate::feat::provider_infra::ProvidersConfig {
+                    providers: vec![],
+                    aliases: vec![],
+                    default_provider: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the workflow is registered in the runtime workflow map.
+        let state = actor.state.read();
+        assert!(
+            state.workflow.get(&wf_id).is_some(),
+            "attached workflow should be re-registered in state.workflow after startup"
+        );
+    }
+
+    #[tokio::test]
+    async fn startup_resets_running_workflows_to_ready() {
+        // Given a session in the store with a workflow stuck in Running state (crash simulation).
+        let mut store_session = ChatSessionState::new();
+        let wf_id = crate::feat::workflow::workflow_state::WorkflowId::new();
+        store_session.core.attached_workflows.push(
+            crate::feat::workflow::attached_workflow::AttachedWorkflow {
+                id: wf_id.clone(),
+                config: crate::feat::workflow::attached_workflow::WorkflowConfig::Consensus {
+                    n: 3,
+                    result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+                },
+                label: "Consensus".to_owned(),
+                trigger: crate::feat::workflow::attached_workflow::WorkflowTrigger::Manual,
+                enabled: true,
+                state: crate::feat::workflow::attached_workflow::AttachedWorkflowState::Running,
+            },
+        );
+        let session_id = store_session.session_id().clone();
+        let (actor, _store) = test_actor_with_store(vec![store_session]);
+        let (_sink, ctx) = test_context();
+
+        // When handling EnvironmentLoaded (startup).
+        actor
+            .on_environment_loaded(
+                &crate::feat::provider_infra::ProvidersConfig {
+                    providers: vec![],
+                    aliases: vec![],
+                    default_provider: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the workflow was reset from Running to Ready.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session should be loaded");
+        let aw = &session.core.attached_workflows[0];
+        assert!(
+            matches!(aw.state, crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready),
+            "Running workflow should be reset to Ready on startup, got {:?}",
+            aw.state
         );
     }
 }
