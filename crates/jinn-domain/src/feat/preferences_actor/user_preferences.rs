@@ -246,6 +246,48 @@ impl Default for DoubleEditAutoPruneConfig {
     }
 }
 
+
+/// Default number of consecutive read pairs to keep per file path.
+const DEFAULT_CONSECUTIVE_READS_KEEP_LAST: usize = 3;
+
+/// Default enabled state for consecutive-reads auto-prune.
+const DEFAULT_CONSECUTIVE_READS_ENABLED: bool = true;
+
+/// Consecutive-reads auto-prune configuration.
+///
+/// Serialized as `[auto_prune.consecutive_reads]` in `jinn.toml`.
+/// Controls the auto-prune worker that caps the number of `read`
+/// tool call+result pairs per file path, keeping only the most recent ones.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConsecutiveReadsAutoPruneConfig {
+    /// Whether the consecutive-reads auto-prune worker is active.
+    /// Default: `true`.
+    #[serde(default = "default_consecutive_reads_enabled")]
+    pub enabled: bool,
+    /// Number of most recent `read` tool call+result pairs to keep per file path.
+    /// Older pairs are pruned when this limit is exceeded.
+    /// Minimum 1 (clamped during worker construction).
+    /// Default: 3.
+    #[serde(default = "default_consecutive_reads_keep_last")]
+    pub keep_last: usize,
+}
+
+fn default_consecutive_reads_enabled() -> bool {
+    DEFAULT_CONSECUTIVE_READS_ENABLED
+}
+
+fn default_consecutive_reads_keep_last() -> usize {
+    DEFAULT_CONSECUTIVE_READS_KEEP_LAST
+}
+
+impl Default for ConsecutiveReadsAutoPruneConfig {
+    fn default() -> Self {
+        Self {
+            enabled: DEFAULT_CONSECUTIVE_READS_ENABLED,
+            keep_last: DEFAULT_CONSECUTIVE_READS_KEEP_LAST,
+        }
+    }
+}
 /// Default regex prune rule tool name.
 const DEFAULT_REGEX_TOOL_NAME: &str = "bash";
 
@@ -334,6 +376,9 @@ pub struct AutoPruneConfig {
     /// Double-edit auto-prune strategy configuration.
     #[serde(default)]
     pub double_edit: DoubleEditAutoPruneConfig,
+    /// Consecutive-reads auto-prune strategy configuration.
+    #[serde(default)]
+    pub consecutive_reads: ConsecutiveReadsAutoPruneConfig,
 }
 
 impl Default for AutoPruneConfig {
@@ -344,6 +389,7 @@ impl Default for AutoPruneConfig {
             broken_edit: BrokenEditAutoPruneConfig::default(),
             todo: TodoAutoPruneConfig::default(),
             double_edit: DoubleEditAutoPruneConfig::default(),
+            consecutive_reads: ConsecutiveReadsAutoPruneConfig::default(),
         }
     }
 }
@@ -1402,6 +1448,8 @@ max_tokens = 5000
         let config = AutoPruneConfig::default();
         assert!(config.read_edit.enabled);
         assert!(config.todo.enabled);
+        assert!(config.consecutive_reads.enabled);
+        assert_eq!(config.consecutive_reads.keep_last, 3);
     }
 
     #[rstest::rstest]
@@ -1409,6 +1457,7 @@ max_tokens = 5000
         let prefs = UserPreferences::default();
         assert!(prefs.auto_prune.read_edit.enabled);
         assert!(prefs.auto_prune.todo.enabled);
+        assert!(prefs.auto_prune.consecutive_reads.enabled);
     }
 
     #[rstest::rstest]
@@ -1428,6 +1477,24 @@ enabled = false
     }
 
     #[rstest::rstest]
+    fn load_parses_auto_prune_consecutive_reads_config() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[auto_prune.consecutive_reads]
+enabled = false
+keep_last = 5
+"#,
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+        assert!(!prefs.auto_prune.consecutive_reads.enabled);
+        assert_eq!(prefs.auto_prune.consecutive_reads.keep_last, 5);
+    }
+
+    #[rstest::rstest]
     fn save_then_load_round_trips_auto_prune_config() {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
@@ -1443,11 +1510,13 @@ enabled = false
                 },
                 todo: TodoAutoPruneConfig { enabled: false },
                 double_edit: DoubleEditAutoPruneConfig::default(),
+                consecutive_reads: ConsecutiveReadsAutoPruneConfig::default(),
             },
             ..UserPreferences::default()
         };
 
         save_preferences_to(&prefs, &path).expect("save");
+
         let reloaded = load_preferences_from(&path).expect("load");
         assert!(!reloaded.auto_prune.read_edit.enabled);
         assert!(!reloaded.auto_prune.broken_edit.enabled);
