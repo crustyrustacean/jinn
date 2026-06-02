@@ -93,6 +93,35 @@ fn content_height_capped_at_max_visible() {
     assert_eq!(height, 16);
 }
 
+#[rstest::rstest]
+fn content_height_includes_workflow_entries() {
+    // Given a state with one session that has two attached workflows.
+    let mut state = AppState::default();
+
+    let config = WorkflowConfig::Consensus {
+        n: 2,
+        result_kind: ResultKind::default(),
+    };
+    state
+        .active_session_mut()
+        .core
+        .attached_workflows
+        .push(AttachedWorkflow::new(config.clone(), WorkflowTrigger::Manual));
+    state
+        .active_session_mut()
+        .core
+        .attached_workflows
+        .push(AttachedWorkflow::new(config, WorkflowTrigger::Manual));
+
+    // When computing content height.
+    let section = SessionsSection::new();
+    let height = section.content_height(&state);
+
+    // Then it counts 1 session + 2 workflows + 1 footer = 4.
+    assert_eq!(height, 4, "expected session + 2 workflows + footer = 4, got {height}");
+}
+
+
 // --- Navigation ---
 
 #[rstest::rstest]
