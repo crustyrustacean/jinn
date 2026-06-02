@@ -204,6 +204,48 @@ impl Default for BrokenEditAutoPruneConfig {
     }
 }
 
+/// Default max file edits for double-edit auto-prune.
+const DEFAULT_DOUBLE_EDIT_MAX_FILE_EDITS: usize = 2;
+
+/// Default enabled state for double-edit auto-prune.
+const DEFAULT_DOUBLE_EDIT_ENABLED: bool = true;
+
+/// Double-edit auto-prune configuration.
+///
+/// Serialized as `[auto_prune.double_edit]` in `jinn.toml`.
+/// Controls the auto-prune worker that caps the number of edit/write
+/// tool call+result pairs per file path, keeping only the most recent ones.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DoubleEditAutoPruneConfig {
+    /// Whether the double-edit auto-prune worker is active.
+    /// Default: `true`.
+    #[serde(default = "default_double_edit_enabled")]
+    pub enabled: bool,
+    /// Maximum number of edit/write tool call+result pairs to keep per file path.
+    /// Oldest pairs are pruned when this limit is exceeded.
+    /// Set to 0 to disable pruning (no limit).
+    /// Default: 2.
+    #[serde(default = "default_double_edit_max_file_edits")]
+    pub max_file_edits: usize,
+}
+
+fn default_double_edit_enabled() -> bool {
+    DEFAULT_DOUBLE_EDIT_ENABLED
+}
+
+fn default_double_edit_max_file_edits() -> usize {
+    DEFAULT_DOUBLE_EDIT_MAX_FILE_EDITS
+}
+
+impl Default for DoubleEditAutoPruneConfig {
+    fn default() -> Self {
+        Self {
+            enabled: DEFAULT_DOUBLE_EDIT_ENABLED,
+            max_file_edits: DEFAULT_DOUBLE_EDIT_MAX_FILE_EDITS,
+        }
+    }
+}
+
 /// Default regex prune rule tool name.
 const DEFAULT_REGEX_TOOL_NAME: &str = "bash";
 
@@ -289,6 +331,9 @@ pub struct AutoPruneConfig {
     /// Todo auto-prune strategy configuration.
     #[serde(default)]
     pub todo: TodoAutoPruneConfig,
+    /// Double-edit auto-prune strategy configuration.
+    #[serde(default)]
+    pub double_edit: DoubleEditAutoPruneConfig,
 }
 
 impl Default for AutoPruneConfig {
@@ -298,6 +343,7 @@ impl Default for AutoPruneConfig {
             regex: RegexAutoPruneConfig::default(),
             broken_edit: BrokenEditAutoPruneConfig::default(),
             todo: TodoAutoPruneConfig::default(),
+            double_edit: DoubleEditAutoPruneConfig::default(),
         }
     }
 }
@@ -1396,6 +1442,7 @@ enabled = false
                     min_tail_entries: 3,
                 },
                 todo: TodoAutoPruneConfig { enabled: false },
+                double_edit: DoubleEditAutoPruneConfig::default(),
             },
             ..UserPreferences::default()
         };

@@ -197,6 +197,9 @@ impl IntentHandler {
                 crate::common::app_state::FocusScope::RenameSessionInput => {
                     feat::rename_session_input::intent::handle_paste(state, text)
                 }
+                crate::common::app_state::FocusScope::RenameWorkflowInput => {
+                    feat::rename_workflow_input::intent::handle_paste(state, text)
+                }
                 _ => IntentResult::empty(),
             },
 
@@ -374,9 +377,28 @@ impl IntentHandler {
             }
             Intent::SidebarResizeLeave => feat::sidebar_resize::intent::handle_resize_leave(state),
 
-            // --- Rename Session Input ---
+            // --- Rename Session / Workflow Input ---
             Intent::SidebarRenameSession => {
-                feat::rename_session_input::intent::handle_rename_session_enter(state)
+                // Branch on selected entry kind: session -> session rename, workflow -> workflow rename.
+                let index = state.frontend.sessions_section.selected_index;
+                if let Some(index) = index {
+                    let entries =
+                        feat::ui::sidebar::sessions::sorted_open_sessions(state);
+                    if let Some(entry) = entries.get(index) {
+                        match entry.kind {
+                            feat::ui::sidebar::sessions::state::SessionEntryKind::Session => {
+                                feat::rename_session_input::intent::handle_rename_session_enter(state)
+                            }
+                            feat::ui::sidebar::sessions::state::SessionEntryKind::Workflow => {
+                                feat::rename_workflow_input::intent::handle_rename_workflow_enter(state)
+                            }
+                        }
+                    } else {
+                        IntentResult::empty()
+                    }
+                } else {
+                    IntentResult::empty()
+                }
             }
             Intent::RenameSessionConfirm => {
                 feat::rename_session_input::intent::handle_rename_session_confirm(state)
@@ -399,6 +421,29 @@ impl IntentHandler {
             Intent::RenameDeleteForward => {
                 feat::rename_session_input::intent::handle_delete_forward(state)
             }
+
+            // --- Rename Workflow Input ---
+            Intent::RenameWorkflowConfirm => {
+                feat::rename_workflow_input::intent::handle_rename_workflow_confirm(state)
+            }
+            Intent::RenameWorkflowLeave => {
+                feat::rename_workflow_input::intent::handle_rename_workflow_leave(state)
+            }
+            Intent::RenameWorkflowInsertChar { ch } => {
+                feat::rename_workflow_input::intent::handle_insert_char(state, *ch)
+            }
+            Intent::RenameWorkflowCursorLeft => {
+                feat::rename_workflow_input::intent::handle_cursor_left(state)
+            }
+            Intent::RenameWorkflowCursorRight => {
+                feat::rename_workflow_input::intent::handle_cursor_right(state)
+            }
+            Intent::RenameWorkflowDeleteGrapheme => {
+                feat::rename_workflow_input::intent::handle_delete(state)
+            }
+            Intent::RenameWorkflowDeleteForward => {
+                feat::rename_workflow_input::intent::handle_delete_forward(state)
+            },
 
             Intent::ToggleOneShot { kind } => {
                 let session_id = state.session.active_session_id().clone();
