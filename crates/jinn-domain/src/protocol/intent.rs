@@ -241,96 +241,10 @@ pub enum Intent {
     /// Delete the grapheme after the cursor in rename input.
     RenameDeleteForward,
 
-    // --- Rename Workflow Input ---
-    /// Confirm the rename workflow input and apply.
-    RenameWorkflowConfirm,
-    /// Cancel the rename workflow input popup.
-    RenameWorkflowLeave,
-    /// Insert a character into the rename workflow input.
-    RenameWorkflowInsertChar {
-        /// The character to insert.
-        ch: char,
-    },
-    /// Move cursor left in the rename workflow input.
-    RenameWorkflowCursorLeft,
-    /// Move cursor right in the rename workflow input.
-    RenameWorkflowCursorRight,
-    /// Delete the grapheme before the cursor in rename workflow input.
-    RenameWorkflowDeleteGrapheme,
-    /// Delete the grapheme after the cursor in rename workflow input.
-    RenameWorkflowDeleteForward,
     ToggleOneShot {
         /// Which one-shot workflow to toggle.
         kind: crate::feat::workflow::attached_workflow::OneShotKind,
     },
-
-    // --- Workflow Navigation ---
-    /// Select the nearest node to the left (spatial).
-    WorkflowNodeLeft,
-    /// Select the nearest node downward (spatial).
-    WorkflowNodeDown,
-    /// Select the nearest node upward (spatial).
-    WorkflowNodeUp,
-    /// Select the nearest node to the right (spatial).
-    WorkflowNodeRight,
-    /// Toggle the sticky node inspector popup.
-    WorkflowInspectToggle,
-    /// Scroll the inspector popup up one line.
-    WorkflowInspectScrollUp,
-    /// Scroll the inspector popup down one line.
-    WorkflowInspectScrollDown,
-    /// ESC in workflow scope: first press shows cancel prompt, second confirms cancel.
-    WorkflowEscape,
-    /// Re-run the workflow from the currently selected node.
-    WorkflowRerunNode,
-    /// Run the loaded workflow (or re-run a completed/failed workflow).
-    WorkflowRun,
-    /// Pan the workflow viewport left.
-    WorkflowPanLeft,
-    /// Pan the workflow viewport down.
-    WorkflowPanDown,
-    /// Pan the workflow viewport up.
-    WorkflowPanUp,
-    /// Pan the workflow viewport right.
-    WorkflowPanRight,
-
-    // --- Workflow Input Editing ---
-    /// Enter editing mode on the selected workflow source node.
-    WorkflowEditNode,
-    /// Submit the workflow input buffer (write to node output).
-    WorkflowInputSubmit,
-    /// Cancel workflow input editing (discard changes).
-    WorkflowInputCancel,
-    /// Insert a character into the workflow input buffer.
-    WorkflowInputInsertChar {
-        /// The character to insert.
-        ch: char,
-    },
-    /// Delete grapheme before cursor in workflow input buffer.
-    WorkflowInputDeleteGrapheme,
-    /// Delete grapheme after cursor (forward delete) in workflow input buffer.
-    WorkflowInputDeleteGraphemeForward,
-    /// Paste text into the workflow input buffer.
-    WorkflowInputPasteText {
-        /// The pasted text content.
-        text: String,
-    },
-    /// Move cursor left in workflow input buffer.
-    WorkflowInputCursorLeft,
-    /// Move cursor right in workflow input buffer.
-    WorkflowInputCursorRight,
-    /// Move cursor to start of workflow input buffer.
-    WorkflowInputCursorToStart,
-    /// Move cursor to end of workflow input buffer.
-    WorkflowInputCursorToEnd,
-    /// Move cursor one word left in workflow input buffer.
-    WorkflowInputCursorWordLeft,
-    /// Move cursor one word right in workflow input buffer.
-    WorkflowInputCursorWordRight,
-    /// Move cursor up one visual line in workflow input buffer.
-    WorkflowInputCursorUp,
-    /// Move cursor down one visual line in workflow input buffer.
-    WorkflowInputCursorDown,
 
     // --- CWD Selection ---
     /// Change the session's working directory via an external picker.
@@ -437,54 +351,8 @@ impl std::fmt::Display for Intent {
             Intent::RenameDeleteGrapheme => write!(f, "rename delete"),
             Intent::RenameDeleteForward => write!(f, "rename forward delete"),
 
-            // --- Rename Workflow Input ---
-            Intent::RenameWorkflowConfirm => write!(f, "rename workflow confirm"),
-            Intent::RenameWorkflowLeave => write!(f, "rename workflow leave"),
-            Intent::RenameWorkflowInsertChar { ch } => write!(f, "rename workflow insert '{ch}'"),
-            Intent::RenameWorkflowCursorLeft => write!(f, "rename workflow cursor left"),
-            Intent::RenameWorkflowCursorRight => write!(f, "rename workflow cursor right"),
-            Intent::RenameWorkflowDeleteGrapheme => write!(f, "rename workflow delete"),
-            Intent::RenameWorkflowDeleteForward => write!(f, "rename workflow forward delete"),
-
             Intent::ToggleOneShot { kind } => write!(f, "toggle one-shot {:?}", kind),
 
-            // --- Workflow Navigation ---
-            Intent::WorkflowNodeLeft => write!(f, "workflow node left"),
-            Intent::WorkflowNodeDown => write!(f, "workflow node down"),
-            Intent::WorkflowNodeUp => write!(f, "workflow node up"),
-            Intent::WorkflowNodeRight => write!(f, "workflow node right"),
-            Intent::WorkflowInspectToggle => write!(f, "workflow inspect toggle"),
-            Intent::WorkflowInspectScrollUp => write!(f, "workflow inspect scroll up"),
-            Intent::WorkflowInspectScrollDown => write!(f, "workflow inspect scroll down"),
-            Intent::WorkflowEscape => write!(f, "workflow escape"),
-            Intent::WorkflowRerunNode => write!(f, "workflow rerun node"),
-            Intent::WorkflowRun => write!(f, "workflow run"),
-            Intent::WorkflowPanLeft => write!(f, "workflow pan left"),
-            Intent::WorkflowPanDown => write!(f, "workflow pan down"),
-            Intent::WorkflowPanUp => write!(f, "workflow pan up"),
-            Intent::WorkflowPanRight => write!(f, "workflow pan right"),
-
-            // --- Workflow Input Editing ---
-            Intent::WorkflowEditNode => write!(f, "workflow edit node"),
-            Intent::WorkflowInputSubmit => write!(f, "workflow input submit"),
-            Intent::WorkflowInputCancel => write!(f, "workflow input cancel"),
-            Intent::WorkflowInputInsertChar { ch } => write!(f, "workflow input insert '{ch}'"),
-            Intent::WorkflowInputDeleteGrapheme => write!(f, "workflow input delete"),
-            Intent::WorkflowInputDeleteGraphemeForward => {
-                write!(f, "workflow input forward delete")
-            }
-            Intent::WorkflowInputPasteText { text } => {
-                let line_count = text.lines().count();
-                write!(f, "workflow input paste ({line_count} lines)")
-            }
-            Intent::WorkflowInputCursorLeft => write!(f, "workflow input cursor left"),
-            Intent::WorkflowInputCursorRight => write!(f, "workflow input cursor right"),
-            Intent::WorkflowInputCursorToStart => write!(f, "workflow input cursor home"),
-            Intent::WorkflowInputCursorToEnd => write!(f, "workflow input cursor end"),
-            Intent::WorkflowInputCursorWordLeft => write!(f, "workflow input cursor word left"),
-            Intent::WorkflowInputCursorWordRight => write!(f, "workflow input cursor word right"),
-            Intent::WorkflowInputCursorUp => write!(f, "workflow input cursor up"),
-            Intent::WorkflowInputCursorDown => write!(f, "workflow input cursor down"),
             Intent::ChangeCwd { root } => write!(f, "change cwd ({root})"),
         }
     }

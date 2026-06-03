@@ -102,31 +102,11 @@ pub(crate) fn tree_prefix(entry: &SessionEntry) -> String {
 
 /// Assembles a complete session entry line from its components.
 ///
-/// Combines the throbber indicator, arrow prefix, tree connector prefix,
-/// and styled truncated title into a single [`Line`] ready for rendering.
-/// Builds the indicator span for a workflow entry.
-///
-/// Uses a state-colored symbol instead of the throbber.
-fn workflow_indicator_span(entry: &SessionEntry) -> Span<'static> {
-    use crate::feat::workflow::attached_workflow::AttachedWorkflowState;
-    let enabled = entry.workflow_enabled.unwrap_or(true);
-    let state = entry.workflow_state.as_ref();
-
-    let (symbol, color) = match state {
-        Some(AttachedWorkflowState::Running) => ("⚙", Color::Cyan),
-        Some(AttachedWorkflowState::Failed { .. }) => ("⚙", Color::Red),
-        Some(AttachedWorkflowState::Completed) => ("✓", Color::Green),
-        _ if !enabled => ("⚙", Color::DarkGray),
-        _ => ("⚙", Color::Yellow),
-    };
-    Span::styled(symbol.to_string(), Style::default().fg(color))
-}
 
 /// Assembles a complete session entry line from its components.
 ///
 /// Combines the throbber indicator, arrow prefix, tree connector prefix,
 /// and styled truncated title into a single [`Line`] ready for rendering.
-/// For workflow entries, uses a state-colored indicator and dimmed style when disabled.
 pub(crate) fn assemble_entry_line(
     entry: &SessionEntry,
     is_selected: bool,
@@ -134,10 +114,25 @@ pub(crate) fn assemble_entry_line(
     throbber_state: &ThrobberState,
     theme: &Theme,
 ) -> Line<'static> {
-    let indicator = match entry.kind {
-        SessionEntryKind::Session => indicator_span(entry.is_idle, throbber_state),
-        SessionEntryKind::Workflow => workflow_indicator_span(entry),
-    };
+    match entry.kind {
+        SessionEntryKind::Session => {
+            assemble_session_line(entry, is_selected, max_title_len, throbber_state, theme)
+        }
+        SessionEntryKind::Workflow { enabled } => {
+            assemble_workflow_line(enabled, entry, is_selected, max_title_len, theme)
+        }
+    }
+}
+
+/// Renders a session entry line (indicator + arrow + tree + styled title).
+fn assemble_session_line(
+    entry: &SessionEntry,
+    is_selected: bool,
+    max_title_len: usize,
+    throbber_state: &ThrobberState,
+    theme: &Theme,
+) -> Line<'static> {
+    let indicator = indicator_span(entry.is_idle, throbber_state);
     let arrow = arrow_span(entry.is_active, theme);
     let tree = tree_prefix(entry);
     let tree_len = tree.graphemes(true).count();
@@ -147,21 +142,60 @@ pub(crate) fn assemble_entry_line(
         entry.last_entry_is_error,
         theme,
     );
-    // Dim workflow titles when disabled.
-    let style = if entry.kind == SessionEntryKind::Workflow
-        && !entry.workflow_enabled.unwrap_or(true)
-        && !is_selected
-    {
-        style.add_modifier(Modifier::DIM)
-    } else {
-        style
-    };
-
     let display_title = truncate_str(&entry.title, max_title_len.saturating_sub(tree_len));
     let mut spans = vec![indicator, Span::raw(" "), arrow];
     if !tree.is_empty() {
         spans.push(Span::styled(tree, Style::default().fg(theme.muted_text)));
     }
     spans.push(Span::styled(display_title, style));
+    Line::from(spans)
+}
+
+/// Renders a workflow entry line (gear icon + space + tree + dimmed title).
+///
+/// Workflow entries are informational children of a session. They show the
+/// plugin label with a gear icon prefix. Disabled workflows get an additional
+/// DIM modifier on the title.
+fn assemble_workflow_line(
+    enabled: bool,
+    entry: &SessionEntry,
+    is_selected: bool,
+    max_title_len: usize,
+    theme: &Theme,
+) -> Line<'static> {
+    // Gear icon replaces the throbber indicator.
+    let gear = Span::styled("\u{2699}", Style::default().fg(theme.muted_text));
+    // No arrow for workflows — they are never \"active\".
+    let no_arrow = Span::raw(" ");
+    let tree = tree_prefix(entry);
+    let tree_len = tree.graphemes(true).count();
+
+    let title_style = if enabled {
+        if is_selected {
+            Style::default()
+                .add_modifier(Modifier::REVERSED)
+                .fg(theme.muted_text)
+        } else {
+            Style::default().fg(theme.muted_text)
+        }
+    } else if is_selected {
+        Style::default()
+            .fg(theme.muted_text)
+            .add_modifier(Modifier::REVERSED | Modifier::DIM)
+    } else {
+        Style::default()
+            .fg(theme.muted_text)
+            .add_modifier(Modifier::DIM)
+    };
+
+    let prefix = if enabled { "" } else { "\u{2717} " };
+    let full_title = format!("{prefix}{}", entry.title);
+    let display_title = truncate_str(&full_title, max_title_len.saturating_sub(tree_len));
+
+    let mut spans = vec![gear, Span::raw(" "), no_arrow];
+    if !tree.is_empty() {
+        spans.push(Span::styled(tree, Style::default().fg(theme.muted_text)));
+    }
+    spans.push(Span::styled(display_title, title_style));
     Line::from(spans)
 }

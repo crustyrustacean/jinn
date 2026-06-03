@@ -35,9 +35,6 @@ fn tree_entry(
         depth,
         ancestor_continuations,
         is_last_child,
-        workflow_id: None,
-        workflow_state: None,
-        workflow_enabled: None,
     }
 }
 
@@ -180,9 +177,6 @@ fn assembled_line_includes_tree_prefix_for_non_root() {
         depth: 1,
         ancestor_continuations: vec![true],
         is_last_child: true,
-        workflow_id: None,
-        workflow_state: None,
-        workflow_enabled: None,
     };
     let theme = default_theme();
 
@@ -212,9 +206,6 @@ fn assembled_line_has_no_tree_prefix_for_root() {
         depth: 0,
         ancestor_continuations: vec![],
         is_last_child: true,
-        workflow_id: None,
-        workflow_state: None,
-        workflow_enabled: None,
     };
     let theme = default_theme();
 
@@ -245,9 +236,6 @@ fn assembled_line_has_tree_prefix_span_for_child() {
         depth: 1,
         ancestor_continuations: vec![true],
         is_last_child: false,
-        workflow_id: None,
-        workflow_state: None,
-        workflow_enabled: None,
     };
     let theme = default_theme();
 
@@ -282,9 +270,6 @@ fn title_is_truncated_more_at_higher_depth() {
         depth: 0,
         ancestor_continuations: vec![],
         is_last_child: true,
-        workflow_id: None,
-        workflow_state: None,
-        workflow_enabled: None,
     };
     let child = SessionEntry {
         kind: SessionEntryKind::Session,
@@ -298,9 +283,6 @@ fn title_is_truncated_more_at_higher_depth() {
         depth: 3,
         ancestor_continuations: vec![true, true, true],
         is_last_child: true,
-        workflow_id: None,
-        workflow_state: None,
-        workflow_enabled: None,
     };
     let theme = default_theme();
     let max_len = 20;
@@ -339,9 +321,6 @@ fn active_arrow_shows_at_depth_greater_than_zero() {
         depth: 2,
         ancestor_continuations: vec![true, true],
         is_last_child: true,
-        workflow_id: None,
-        workflow_state: None,
-        workflow_enabled: None,
     };
     let theme = default_theme();
 
@@ -376,9 +355,6 @@ fn tree_prefix_uses_muted_text_color() {
         depth: 1,
         ancestor_continuations: vec![true],
         is_last_child: true,
-        workflow_id: None,
-        workflow_state: None,
-        workflow_enabled: None,
     };
     let theme = default_theme();
 
@@ -423,60 +399,89 @@ fn non_judge_child_at_depth_1_uses_grapheme_count_for_tree() {
 }
 
 // ---------------------------------------------------------------------------
-// assemble_entry_line - workflow title style based on is_active
+// Workflow entry rendering
 // ---------------------------------------------------------------------------
 
-fn workflow_entry(is_active: bool) -> SessionEntry {
+fn workflow_entry(enabled: bool) -> SessionEntry {
     SessionEntry {
-        kind: SessionEntryKind::Workflow,
+        kind: SessionEntryKind::Workflow { enabled },
         id: SessionId::new(),
-        title: "My Workflow".to_owned(),
-        is_active,
+        title: "my-plugin".to_owned(),
+        is_active: false,
         created_at: Timestamp::now(),
         is_idle: true,
         last_entry_is_error: false,
         parent_id: None,
         depth: 1,
-        ancestor_continuations: vec![true],
+        ancestor_continuations: vec![false],
         is_last_child: true,
-        workflow_id: None,
-        workflow_state: None,
-        workflow_enabled: Some(true),
     }
 }
 
-#[rstest::rstest]
-fn inactive_workflow_uses_muted_text() {
-    // Given a workflow entry that is not active (parent session is inactive).
-    let entry = workflow_entry(false);
-    let theme = default_theme();
-
-    // When assembling the entry line.
-    let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
-
-    // Then the title span (last span) uses muted_text color.
-    let title_span = line.spans.last().expect("line should have spans");
-    assert_eq!(
-        title_span.style.fg,
-        Some(theme.muted_text),
-        "inactive workflow title should use muted_text color"
-    );
-}
-
-#[rstest::rstest]
-fn active_workflow_uses_primary_text() {
-    // Given a workflow entry that is active (parent session is active).
+#[test]
+fn render_workflow_entry_shows_plugin_name() {
+    // Given a workflow entry with an enabled plugin.
     let entry = workflow_entry(true);
     let theme = default_theme();
 
     // When assembling the entry line.
     let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
+    let text = line.to_string();
 
-    // Then the title span (last span) uses primary_text color.
-    let title_span = line.spans.last().expect("line should have spans");
-    assert_eq!(
-        title_span.style.fg,
-        Some(theme.primary_text),
-        "active workflow title should use primary_text color"
+    // Then the plugin name appears in the output.
+    assert!(
+        text.contains("my-plugin"),
+        "expected plugin name in rendered line, got: {text}"
+    );
+}
+
+#[test]
+fn render_workflow_entry_shows_gear_icon() {
+    // Given a workflow entry.
+    let entry = workflow_entry(true);
+    let theme = default_theme();
+
+    // When assembling the entry line.
+    let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
+    let text = line.to_string();
+
+    // Then the gear icon appears in the output.
+    assert!(
+        text.contains('\u{2699}'),
+        "expected gear icon in rendered line, got: {text}"
+    );
+}
+
+#[test]
+fn render_workflow_entry_dimmed_when_disabled() {
+    // Given a disabled workflow entry.
+    let entry = workflow_entry(false);
+    let theme = default_theme();
+
+    // When assembling the entry line.
+    let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
+    let text = line.to_string();
+
+    // Then the disabled marker appears.
+    assert!(
+        text.contains('\u{2717}'),
+        "expected disabled marker in rendered line, got: {text}"
+    );
+}
+
+#[test]
+fn render_workflow_entry_enabled_not_dimmed() {
+    // Given an enabled workflow entry.
+    let entry = workflow_entry(true);
+    let theme = default_theme();
+
+    // When assembling the entry line.
+    let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
+    let text = line.to_string();
+
+    // Then no disabled marker appears.
+    assert!(
+        !text.contains('\u{2717}'),
+        "expected no disabled marker in enabled entry, got: {text}"
     );
 }

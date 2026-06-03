@@ -19,7 +19,7 @@ pub mod provider;
 pub mod provider_infra;
 pub mod queue_actor;
 pub mod rename_session_input;
-pub mod rename_workflow_input;
+
 pub mod session;
 pub mod session_lifecycle;
 pub mod sidebar_resize;

@@ -239,39 +239,6 @@ fn len_increases_after_push() {
     assert_eq!(stack.len(), 2);
 }
 
-// --- WorkflowUiState::clone ---
-
-#[rstest::rstest]
-fn workflow_ui_state_clone_preserves_fields() {
-    use std::sync::atomic::Ordering;
-
-    // Given a WorkflowUiState with non-default values.
-    let original = WorkflowUiState {
-        selected_node: Some("node-42".to_owned()),
-        viewport_offset_x: 10,
-        viewport_offset_y: 20,
-        inspector_open: true,
-        inspector_scroll: 5,
-        cancel_prompt: true,
-        ..Default::default()
-    };
-
-    // When cloning.
-    let cloned = original.clone();
-
-    // Then all fields are preserved.
-    assert_eq!(cloned.selected_node, Some("node-42".to_owned()));
-    assert_eq!(cloned.viewport_offset_x, 10);
-    assert_eq!(cloned.viewport_offset_y, 20);
-    assert!(cloned.inspector_open);
-    assert_eq!(cloned.inspector_scroll, 5);
-    assert!(cloned.cancel_prompt);
-    assert_eq!(
-        cloned.inspector_scroll_rendered.load(Ordering::Relaxed),
-        original.inspector_scroll_rendered.load(Ordering::Relaxed)
-    );
-}
-
 // --- active_picker_ops ---
 
 #[rstest::rstest]

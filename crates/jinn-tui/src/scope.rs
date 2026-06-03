@@ -47,15 +47,9 @@ pub enum Scope {
     TokenBudgetInput,
     /// Rename session input mode - editing a session title.
     RenameSessionInput,
-    /// Rename workflow input mode - editing a workflow label.
-    RenameWorkflowInput,
+
     /// Sidebar resize mode - adjusting sidebar width.
     SidebarResize,
-    /// Workflow tab - browsing workflow node status.
-    Workflow,
-    /// Workflow input editing - typing into the source node output buffer.
-    /// Workflow input editing - typing into the source node output buffer.
-    WorkflowInput,
 }
 
 impl std::fmt::Display for Scope {
@@ -79,11 +73,8 @@ impl std::fmt::Display for Scope {
             Self::Input => write!(f, "Input"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
-            Self::RenameSessionInput => write!(f, "RenameSessionInput"),
-            Self::RenameWorkflowInput => write!(f, "RenameWorkflowInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
-            Self::Workflow => write!(f, "Workflow"),
-            Self::WorkflowInput => write!(f, "WorkflowInput"),
+            Self::RenameSessionInput => write!(f, "RenameSessionInput"),
         }
     }
 }
@@ -112,10 +103,8 @@ impl std::str::FromStr for Scope {
             "ArgInput" => Ok(Self::ArgInput),
             "TokenBudgetInput" => Ok(Self::TokenBudgetInput),
             "RenameSessionInput" => Ok(Self::RenameSessionInput),
-            "RenameWorkflowInput" => Ok(Self::RenameWorkflowInput),
             "SidebarResize" => Ok(Self::SidebarResize),
-            "Workflow" => Ok(Self::Workflow),
-            "WorkflowInput" => Ok(Self::WorkflowInput),
+
             _ => Err(()),
         }
     }

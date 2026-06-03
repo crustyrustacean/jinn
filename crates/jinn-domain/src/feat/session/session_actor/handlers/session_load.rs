@@ -119,21 +119,8 @@ impl SessionPersistenceActor {
         let attached_workflows = session.core.attached_workflows.clone();
         let _ = session; // release the shared borrow
 
-        // Re-register each workflow in the runtime WorkflowMap.
-        for aw in &attached_workflows {
-            if state.workflow.get(&aw.id).is_some() {
-                continue; // already registered (e.g. duplicate load)
-            }
-            let execution = std::sync::Arc::new(jinn_workflow::execution::WorkflowExecution::new(
-                aw.config.build_graph(),
-            ));
-            let mut wf_state = crate::feat::workflow::workflow_state::WorkflowState::new(
-                aw.config.label().to_owned(),
-                execution,
-            );
-            wf_state.id = aw.id.clone();
-            state.workflow.register(wf_state);
-        }
+        // No-op: Lua workflows don't need runtime registration.
+        // Just reset Running → Ready for crash/restart safety.
 
         // Reset Running → Ready for all attached workflows (crash/restart safety).
         let Some(session) = state.session.get_mut(session_id) else {
@@ -275,51 +262,6 @@ mod tests {
         assert!(
             loaded.is_persistable(),
             "loaded session should be persistable"
-        );
-    }
-
-    #[tokio::test]
-    async fn session_load_re_registers_attached_workflows_in_runtime_map() {
-        // Given a session with an attached workflow (simulating load from disk).
-        let mut session = ChatSessionState::new();
-        let wf_id = crate::feat::workflow::workflow_state::WorkflowId::new();
-        session.core.attached_workflows.push(
-            crate::feat::workflow::attached_workflow::AttachedWorkflow {
-                id: wf_id.clone(),
-                config: crate::feat::workflow::attached_workflow::WorkflowConfig::Consensus {
-                    n: 3,
-                    result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
-                },
-                label: "Consensus".to_owned(),
-                trigger: crate::feat::workflow::attached_workflow::WorkflowTrigger::Manual,
-                enabled: true,
-                state: crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready,
-            },
-        );
-
-        let session_id = session.session_id().clone();
-
-        let actor = test_actor();
-        let (_sink, ctx) = test_context();
-
-        let payload = SessionLoadCompleted { session };
-
-        // When handling SessionLoadCompleted.
-        actor.handle_session_load_completed(&payload, &ctx).await;
-
-        // Then the workflow is registered in the runtime workflow map.
-        let state = actor.state.read();
-        assert!(
-            state.workflow.get(&wf_id).is_some(),
-            "attached workflow should be re-registered in state.workflow after load"
-        );
-
-        // And the session's attached_workflows list is preserved.
-        let loaded = state.session.get(&session_id).expect("session exists");
-        assert_eq!(
-            loaded.core.attached_workflows.len(),
-            1,
-            "attached_workflows list should still contain the workflow"
         );
     }
 }

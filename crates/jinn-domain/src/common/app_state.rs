@@ -15,10 +15,9 @@ pub use crate::common::session_map::SessionLoadGuard;
 pub use crate::feat::context::assembly_state::ContextAssemblyState;
 pub use crate::feat::provider::ProviderState;
 pub use crate::feat::rename_session_input::state::RenameSessionInputState;
-pub use crate::feat::rename_workflow_input::state::RenameWorkflowInputState;
+
 pub use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
 pub use crate::feat::ui::frontend_state::{FrontendCaches, FrontendState};
-pub use crate::feat::workflow::workflow_ui_state::WorkflowUiState;
 
 use crate::protocol::{ChatEntryId, PickerKind, PinPosition, SessionId};
 
@@ -45,17 +44,16 @@ pub struct AppState {
     /// Frontend / UI state - owned by IntentHandler.
     pub frontend: FrontendState,
     /// Workflow execution state - owned by workflow-actor.
-    pub workflow: crate::feat::workflow::workflow_state::WorkflowMap,
     /// Live executions for running attached workflows. Ephemeral (not persisted).
     /// Keyed by AttachedWorkflow.id (which IS a WorkflowId).
     /// OWNER: workflow-controller-actor.
     pub workflow_executions: std::collections::HashMap<
-        crate::feat::workflow::workflow_state::WorkflowId,
-        crate::feat::workflow::workflow_state::WorkflowExecutionState,
+        crate::feat::workflow::attached_workflow::WorkflowId,
+        LuaExecutionState,
     >,
     pub active_workflow: Option<(
         crate::protocol::SessionId,
-        crate::feat::workflow::workflow_state::WorkflowId,
+        crate::feat::workflow::attached_workflow::WorkflowId,
     )>,
     pub pending_before_turn: std::collections::HashMap<
         crate::protocol::SessionId,
@@ -70,6 +68,9 @@ pub struct AppState {
             crate::feat::workflow::attached_workflow::BeforeTurnMode,
         )>,
     >,
+    /// Discovered Lua plugins from both user and system plugin directories.
+    /// OWNER: startup (actor_wiring) writes once; picker intent handler reads.
+    pub discovered_plugins: Vec<crate::feat::luaworkflow::discovery::PluginMeta>,
 }
 
 impl AppState {
@@ -100,30 +101,6 @@ impl AppState {
     /// Infallible - `SessionMap` guarantees the active session exists.
     pub fn active_session(&self) -> &ChatSessionState {
         self.session.active_session()
-    }
-
-    /// Returns true if the user is currently viewing a workflow (not a chat session).
-    pub fn is_viewing_workflow(&self) -> bool {
-        use crate::common::app_state::FocusScope;
-        self.workflow.active().is_some()
-            && matches!(
-                self.frontend.scope_stack.current(),
-                FocusScope::Workflow | FocusScope::WorkflowInput
-            )
-    }
-
-    /// Returns the workflow being previewed in the sidebar, if any.
-    ///
-    /// Only returns `Some` when the sessions section has a workflow entry under
-    /// the cursor and that workflow exists in `WorkflowMap`.
-    pub fn previewed_workflow(
-        &self,
-    ) -> Option<&crate::feat::workflow::workflow_state::WorkflowState> {
-        self.frontend
-            .sessions_section
-            .previewed_workflow_id
-            .as_ref()
-            .and_then(|id| self.workflow.get(id))
     }
 
     /// Mutable access to the active chat session.
@@ -209,5 +186,23 @@ pub fn pin_sort_key(position: Option<PinPosition>) -> u8 {
         Some(PinPosition::Top) => 0,
         Some(PinPosition::Relative) | None => 1,
         Some(PinPosition::Bottom) => 2,
+    }
+}
+
+/// Ephemeral runtime state for a Lua-based attached workflow execution.
+///
+/// Lives in `AppState::workflow_executions`. Not persisted across restarts.
+pub struct LuaExecutionState {
+    /// Cancellation token for aborting execution.
+    pub cancel: tokio_util::sync::CancellationToken,
+    /// The session that owns this attached workflow.
+    pub session_id: crate::protocol::SessionId,
+}
+
+impl std::fmt::Debug for LuaExecutionState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LuaExecutionState")
+            .field("session_id", &self.session_id)
+            .finish_non_exhaustive()
     }
 }

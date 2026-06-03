@@ -64,7 +64,7 @@ pub struct PickerStates {
     pub session_lifecycle_picker: jinn_selection_widget::SelectionState<SessionLifecycleEntry>,
 
     /// Workflow picker state (items, filter text, selection index).
-    /// OWNER: IntentHandler (workflow picker navigation) + WorkflowActor (entry population).
+    /// OWNER: IntentHandler (workflow picker navigation, entries populated from `AppState.discovered_plugins`).
     pub workflow_picker: jinn_selection_widget::SelectionState<WorkflowPickerEntry>,
 
     /// Compaction model picker state (items, filter text, selection index).
