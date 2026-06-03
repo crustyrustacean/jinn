@@ -302,18 +302,30 @@ impl IntentHandler {
                 feat::picker::intent::handle_open_picker(state, PickerKind::SessionLifecycle)
             }
             Intent::SidebarSessionClose => {
+                if selected_entry_is_workflow(state) {
+                    return IntentResult::empty();
+                }
                 // First press - show confirmation prompt.
                 // The interceptor (try_handle_close_session_prompt) handles the second press.
                 state.frontend.close_session_prompt = true;
                 IntentResult::empty()
             }
             Intent::SidebarSessionTeardown => {
+                if selected_entry_is_workflow(state) {
+                    return IntentResult::empty();
+                }
                 feat::ui::sidebar::sessions::handle_session_teardown(state)
             }
             Intent::SidebarSessionArchive => {
+                if selected_entry_is_workflow(state) {
+                    return IntentResult::empty();
+                }
                 feat::ui::sidebar::sessions::handle_session_archive(state)
             }
             Intent::SidebarSessionContinue => {
+                if selected_entry_is_workflow(state) {
+                    return IntentResult::empty();
+                }
                 feat::ui::sidebar::sessions::handle_session_continue(state)
             }
 
@@ -440,6 +452,23 @@ impl IntentHandler {
         }
     }
 }
+/// Returns `true` when the cursor in the sessions sidebar section is on a workflow entry.
+///
+/// Used by session-management intents to no-op when a workflow is selected,
+/// preventing accidental operations on the parent session.
+fn selected_entry_is_workflow(state: &AppState) -> bool {
+    use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
+
+    let Some(index) = state.frontend.sessions_section.selected_index else {
+        return false;
+    };
+    let entries = feat::ui::sidebar::sessions::sorted_open_sessions(state);
+    matches!(
+        entries.get(index).map(|e| e.kind),
+        Some(SessionEntryKind::Workflow { .. })
+    )
+}
+
 
 /// Cancel stream prompt intercept.
 ///
@@ -1070,5 +1099,85 @@ mod tests {
                     .contains_key(&OneShotKind::Consensus)
             );
         }
+    }
+
+    // --- Session-management intents on workflow entries ---
+
+    /// Helper: create state with a session that has a workflow, cursor on the workflow entry.
+    fn state_with_workflow_selected() -> AppState {
+        use crate::feat::workflow::attached_workflow::{
+            AttachedWorkflow, WorkflowConfig, WorkflowTrigger,
+        };
+
+        let mut state = AppState::default();
+        let session_id = state.session.active_session_id().clone();
+        {
+            let s = state.session.get_mut(&session_id).expect("active session");
+            s.core.attached_workflows.push(AttachedWorkflow::new(
+                WorkflowConfig {
+                    script: "test-plugin".to_owned(),
+                    data: serde_json::json!({}),
+                },
+                WorkflowTrigger::TurnEnd,
+            ));
+        }
+        // entries: [session, workflow]
+        state.frontend.sessions_section.selected_index = Some(1);
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::SidebarSessions);
+        state
+    }
+
+    #[rstest::rstest]
+    fn sidebar_session_close_noop_on_workflow_entry() {
+        // Given the cursor on a workflow entry in the sessions sidebar.
+        let mut state = state_with_workflow_selected();
+
+        // When handling SidebarSessionClose.
+        let result = IntentHandler::handle(&Intent::SidebarSessionClose, &mut state);
+
+        // Then no close prompt is set and no commands are emitted.
+        assert!(!state.frontend.close_session_prompt);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn sidebar_session_teardown_noop_on_workflow_entry() {
+        // Given the cursor on a workflow entry in the sessions sidebar.
+        let mut state = state_with_workflow_selected();
+
+        // When handling SidebarSessionTeardown.
+        let result = IntentHandler::handle(&Intent::SidebarSessionTeardown, &mut state);
+
+        // Then no commands are emitted.
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn sidebar_session_archive_noop_on_workflow_entry() {
+        // Given the cursor on a workflow entry in the sessions sidebar.
+        let mut state = state_with_workflow_selected();
+        let original_count = state.session.session_count();
+
+        // When handling SidebarSessionArchive.
+        let result = IntentHandler::handle(&Intent::SidebarSessionArchive, &mut state);
+
+        // Then no session was removed and no commands emitted.
+        assert_eq!(state.session.session_count(), original_count);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn sidebar_session_continue_noop_on_workflow_entry() {
+        // Given the cursor on a workflow entry in the sessions sidebar.
+        let mut state = state_with_workflow_selected();
+
+        // When handling SidebarSessionContinue.
+        let result = IntentHandler::handle(&Intent::SidebarSessionContinue, &mut state);
+
+        // Then no commands are emitted.
+        assert!(result.commands.is_empty());
     }
 }
