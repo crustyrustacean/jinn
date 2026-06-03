@@ -507,8 +507,6 @@ fn confirm_workflow(state: &mut AppState) -> IntentResult {
     // Pop picker overlay.
     state.frontend.scope_stack.pop();
 
-
-
     state
         .frontend
         .scope_stack
@@ -531,7 +529,6 @@ fn confirm_workflow(state: &mut AppState) -> IntentResult {
 /// Populates the tool picker entries from the global tool definitions.
 ///
 /// Marks each entry as enabled/disabled based on the session's `disabled_tools` set.
-
 fn load_tool_picker_entries(state: &mut AppState) {
     use crate::feat::tools_actor::tool_entry::ToolEntry;
 

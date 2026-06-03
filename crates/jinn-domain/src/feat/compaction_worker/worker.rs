@@ -89,6 +89,10 @@ impl CompactionWorker {
     /// # Errors
     ///
     /// Returns an error if the LLM call fails or the response cannot be parsed.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the preferences subsystem cannot be accessed.
     pub async fn evaluate_for_session(
         &self,
         trigger: &CompactionTrigger,

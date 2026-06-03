@@ -1,6 +1,7 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
 use crate::common::app_state::{AppState, FocusScope};
+use crate::common::render_ctx::RenderCtx;
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
@@ -70,14 +71,14 @@ fn section_id_is_sessions() {
 fn content_height_with_one_session() {
     let section = SessionsSection::new();
     let state = AppState::default();
-    assert_eq!(section.content_height(&state), 2); // 1 session + footer
+    assert_eq!(section.content_height(&{ RenderCtx::new(&state) }), 2); // 1 session + footer
 }
 
 #[rstest::rstest]
 fn content_height_with_three_sessions() {
     let section = SessionsSection::new();
     let state = state_with_sessions(3);
-    assert_eq!(section.content_height(&state), 4); // 3 sessions + footer
+    assert_eq!(section.content_height(&{ RenderCtx::new(&state) }), 4); // 3 sessions + footer
 }
 
 #[rstest::rstest]
@@ -87,7 +88,7 @@ fn content_height_capped_at_max_visible() {
     let state = state_with_sessions(20);
 
     // When computing content height.
-    let height = section.content_height(&state);
+    let height = section.content_height(&{ RenderCtx::new(&state) });
 
     // Then it is capped at 15 + 1 = 16, not 20 + 1 = 21.
     assert_eq!(height, 16);
@@ -115,7 +116,7 @@ fn content_height_includes_workflow_entries() {
 
     // When computing content height.
     let section = SessionsSection::new();
-    let height = section.content_height(&state);
+    let height = section.content_height(&{ RenderCtx::new(&state) });
 
     // Then it counts 1 session + 2 workflows + 1 footer = 4.
     assert_eq!(height, 4, "expected session + 2 workflows + footer = 4, got {height}");
@@ -439,7 +440,7 @@ fn render_rows(
     let (mut terminal, area) = setup_term(width, height);
     terminal
         .draw(|frame| {
-            section.render(frame, area, state);
+            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer();
@@ -589,7 +590,7 @@ fn render_arrow_has_inverted_colors() {
     let (mut terminal, area) = setup_term(30, 20);
     terminal
         .draw(|frame| {
-            section.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -616,7 +617,7 @@ fn render_footer_uses_focus_accent_when_sidebar_focused() {
     let (mut terminal, area) = setup_term(30, 5);
     terminal
         .draw(|frame| {
-            section.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -640,7 +641,7 @@ fn render_footer_uses_border_unfocused_when_sidebar_not_focused() {
     let (mut terminal, area) = setup_term(30, 5);
     terminal
         .draw(|frame| {
-            section.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -668,7 +669,7 @@ fn render_footer_uses_border_unfocused_when_other_sidebar_section_focused() {
     let (mut terminal, area) = setup_term(30, 5);
     terminal
         .draw(|frame| {
-            section.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -841,7 +842,7 @@ fn render_session_title_is_red_when_last_entry_is_error() {
     let (mut terminal, area) = setup_term(30, 5);
     terminal
         .draw(|frame| {
-            section.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -867,7 +868,7 @@ fn render_session_title_is_normal_when_last_entry_is_not_error() {
     let (mut terminal, area) = setup_term(30, 5);
     terminal
         .draw(|frame| {
-            section.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -1587,7 +1588,7 @@ fn render_tree_shows_tree_characters() {
     let (mut terminal, area) = jinn_testutil::setup_term(30, 15);
     terminal
         .draw(|frame| {
-            section.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
         })
         .unwrap();
 

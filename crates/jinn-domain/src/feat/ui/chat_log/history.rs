@@ -30,6 +30,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::common::app_state::AppState;
+use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
 use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::feat::theme::Theme;
@@ -68,7 +69,7 @@ impl ChatLogElement {
     }
 }
 
-impl UiElement<AppState> for ChatLogElement {
+impl UiElement for ChatLogElement {
     fn name(&self) -> String {
         "chat-log".to_owned()
     }
@@ -77,7 +78,8 @@ impl UiElement<AppState> for ChatLogElement {
         true
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+        let state = ctx.state;
         if state.session.is_loading() {
             render_loading(frame, area, &state.frontend.theme);
             return;

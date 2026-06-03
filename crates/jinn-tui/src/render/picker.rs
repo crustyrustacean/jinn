@@ -1,72 +1,72 @@
 //! Picker overlay rendering - dispatches to domain-specific picker renderers.
 
-use jinn_domain::AppState;
+use jinn_domain::RenderCtx;
 use jinn_domain::PickerKind;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
 /// Renders the active picker overlay, dispatching on [`PickerKind`].
-pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    match state.frontend.scope_stack.picker_kind().copied() {
-        Some(PickerKind::Provider) => render_provider_picker(frame, area, state),
-        Some(PickerKind::Session) => render_session_picker(frame, area, state),
-        Some(PickerKind::Persona) => render_persona_picker(frame, area, state),
-        Some(PickerKind::Theme) => render_theme_picker(frame, area, state),
+pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    match ctx.state.frontend.scope_stack.picker_kind().copied() {
+        Some(PickerKind::Provider) => render_provider_picker(frame, area, ctx),
+        Some(PickerKind::Session) => render_session_picker(frame, area, ctx),
+        Some(PickerKind::Persona) => render_persona_picker(frame, area, ctx),
+        Some(PickerKind::Theme) => render_theme_picker(frame, area, ctx),
         Some(PickerKind::SessionLifecycle) => {
-            render_session_lifecycle_picker(frame, area, state);
+            render_session_lifecycle_picker(frame, area, ctx);
         }
         Some(PickerKind::Workflow) => {
-            render_workflow_picker(frame, area, state);
+            render_workflow_picker(frame, area, ctx);
         }
 
         Some(PickerKind::CompactionModel) => {
-            jinn_domain::feat::provider::render::render_compaction_model_picker(frame, area, state);
+            jinn_domain::feat::provider::render::render_compaction_model_picker(frame, area, ctx);
         }
         Some(PickerKind::Tool) => {
-            jinn_domain::feat::picker::render::render_tool_picker(frame, area, state);
+            jinn_domain::feat::picker::render::render_tool_picker(frame, area, ctx);
         }
         Some(PickerKind::Skill) => {
-            jinn_domain::feat::picker::render::render_skill_picker(frame, area, state);
+            jinn_domain::feat::picker::render::render_skill_picker(frame, area, ctx);
         }
         None => {}
     }
 }
 
 /// Renders the provider picker overlay (delegates to slice).
-fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    jinn_domain::feat::provider::render::render_provider_picker(frame, area, state);
+fn render_provider_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    jinn_domain::feat::provider::render::render_provider_picker(frame, area, ctx);
 }
 
 /// Renders the session picker overlay (delegates to slice).
-fn render_session_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    jinn_domain::feat::session::render::render_session_picker(frame, area, state);
+fn render_session_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    jinn_domain::feat::session::render::render_session_picker(frame, area, ctx);
 }
 
 /// Renders the persona picker overlay (delegates to domain render).
-fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    jinn_domain::feat::picker::render::render_persona_picker(frame, area, state);
+fn render_persona_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    jinn_domain::feat::picker::render::render_persona_picker(frame, area, ctx);
 }
 
 /// Renders the theme picker overlay (delegates to domain render).
-fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    jinn_domain::feat::picker::render::render_theme_picker(frame, area, state);
+fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    jinn_domain::feat::picker::render::render_theme_picker(frame, area, ctx);
 }
 
 /// Renders the session lifecycle picker overlay (delegates to domain render).
-fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
     jinn_domain::feat::session_lifecycle::render::render_session_lifecycle_picker(
-        frame, area, state,
+        frame, area, ctx,
     );
 }
 
 /// Renders the workflow picker overlay (delegates to domain render).
-fn render_workflow_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    jinn_domain::feat::picker::render::render_workflow_picker(frame, area, state);
+fn render_workflow_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    jinn_domain::feat::picker::render::render_workflow_picker(frame, area, ctx);
 }
 
 /// Renders the arg input popup (delegates to domain render).
-pub(super) fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    jinn_domain::feat::session_lifecycle::render::render_arg_input(frame, area, state);
+pub(super) fn render_arg_input(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    jinn_domain::feat::session_lifecycle::render::render_arg_input(frame, area, ctx);
 }
 
 #[cfg(test)]

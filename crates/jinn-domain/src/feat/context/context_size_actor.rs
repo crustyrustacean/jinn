@@ -51,10 +51,10 @@ impl Actor for ContextSizeActor {
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
-        if let ActorEnvelope::Event(event) = &msg {
-            if Self::is_context_relevant(event) {
-                self.recalculate();
-            }
+        if let ActorEnvelope::Event(event) = &msg
+            && Self::is_context_relevant(event)
+        {
+            self.recalculate();
         }
     }
 }

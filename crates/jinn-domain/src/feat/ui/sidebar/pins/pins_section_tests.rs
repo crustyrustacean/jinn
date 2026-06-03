@@ -4,6 +4,7 @@ use jinn_testutil::setup_term;
 use ratatui::style::Color;
 
 use crate::common::app_state::{AppState, FocusScope};
+use crate::common::render_ctx::RenderCtx;
 use crate::feat::ui::sidebar::pins::pins_section::*;
 use crate::feat::ui::sidebar::section_trait::{SidebarSection, SidebarSectionId};
 use crate::protocol::{ChatEntry, Command, PinPosition};
@@ -225,7 +226,7 @@ fn content_height_is_zero_when_empty() {
     let state = AppState::default();
 
     // When asking for content height.
-    let height = section.content_height(&state);
+    let height = section.content_height(&{ RenderCtx::new(&state) });
 
     // Then it returns 0 (section is hidden when empty).
     assert_eq!(height, 0);
@@ -238,7 +239,7 @@ fn content_height_matches_entry_count() {
     let state = state_with_pinned(3);
 
     // When asking for content height.
-    let height = section.content_height(&state);
+    let height = section.content_height(&{ RenderCtx::new(&state) });
 
     // Then it returns header(1) + blank(1) + (entry(1) + blank(1)) * 3 - last blank(1) + trailing gap(1) = 8.
     assert_eq!(height, 8);
@@ -255,7 +256,7 @@ fn render_rows(
     let (mut terminal, area) = setup_term(width, height);
     terminal
         .draw(|frame| {
-            section.render(frame, area, state);
+            let ctx = RenderCtx::new(state); section.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer();
@@ -303,7 +304,7 @@ fn render_selected_entry_has_yellow_marker_when_sidebar_focused() {
     let (mut terminal, area) = setup_term(60, 20);
     terminal
         .draw(|frame| {
-            section.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -324,7 +325,7 @@ fn render_selected_entry_has_darkgray_marker_when_not_focused() {
     let (mut terminal, area) = setup_term(60, 20);
     terminal
         .draw(|frame| {
-            section.render(frame, area, &state);
+            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
         })
         .unwrap();
 
