@@ -315,13 +315,15 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
     }
 
     // Fresh press (no active sweep) - validate and toggle.
-    if validator::validate_chat_entry_ignore_selected(state).is_err() {
+
+    // If cursor is on a collapsed block, skip past it before validation.
+    // Validation calls selected_entry() which returns None for collapsed blocks.
+    if state.active_session().is_selected_collapsed_block() {
+        advance_selection_one(state.active_session_mut());
         return IntentResult::empty();
     }
 
-    // If cursor is on a collapsed block, skip past it.
-    if state.active_session().is_selected_collapsed_block() {
-        advance_selection_one(state.active_session_mut());
+    if validator::validate_chat_entry_ignore_selected(state).is_err() {
         return IntentResult::empty();
     }
 
