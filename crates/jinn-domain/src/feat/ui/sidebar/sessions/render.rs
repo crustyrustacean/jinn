@@ -13,9 +13,8 @@ mod entry_line_tests;
 
 use std::time::Instant;
 
-use crate::common::app_state::AppState;
+use crate::common::render_ctx::RenderCtx;
 use crate::feat::ui::sidebar::section_trait::{SidebarSection, SidebarSectionId};
-use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -24,6 +23,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use throbber_widgets_tui::ThrobberState;
 
+use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use super::{ANIMATION_INTERVAL, MAX_VISIBLE_SESSIONS};
 use entry_line::assemble_entry_line;
 use scroll_tag::render_scroll_tag;
@@ -68,7 +68,8 @@ impl SidebarSection for SessionsSection {
         SidebarSectionId::Sessions
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+        let state = ctx.state;
         let sessions = sorted_open_sessions(state);
         let theme = &state.frontend.theme;
         let sidebar_focused = state.frontend.scope_stack.is_sidebar();
@@ -184,7 +185,8 @@ impl SidebarSection for SessionsSection {
         }
     }
 
-    fn content_height(&self, state: &AppState) -> u16 {
+    fn content_height(&self, ctx: &RenderCtx) -> u16 {
+        let state = ctx.state;
         let entry_count = sorted_open_sessions(state).len() as u16;
         let visible = entry_count.min(MAX_VISIBLE_SESSIONS as u16);
         // entries(N).max(1) + footer(1)

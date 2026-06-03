@@ -7,7 +7,7 @@
 
 use std::time::{Duration, Instant};
 
-use crate::common::app_state::AppState;
+use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
 use crate::feat::session::phase_machine::PhaseKind;
 use ratatui::Frame;
@@ -51,12 +51,13 @@ impl Default for StreamingIndicatorElement {
     }
 }
 
-impl UiElement<AppState> for StreamingIndicatorElement {
+impl UiElement for StreamingIndicatorElement {
     fn name(&self) -> String {
         "streaming-indicator".to_owned()
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+        let state = ctx.state;
         let session = state.active_session();
         let phase = session.phase();
         let queue_len = session.queue_len();
@@ -99,6 +100,8 @@ impl UiElement<AppState> for StreamingIndicatorElement {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    use crate::AppState;
+
     use super::*;
 
     #[rstest::rstest]
@@ -124,7 +127,8 @@ mod tests {
         let (mut terminal, area) = setup_term(30, 1);
         terminal
             .draw(|frame| {
-                element.render(frame, area, &state);
+                let ctx = RenderCtx::new(&state);
+                element.render(frame, area, &ctx);
             })
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
@@ -147,7 +151,8 @@ mod tests {
         let (mut terminal, area) = setup_term(30, 1);
         terminal
             .draw(|frame| {
-                element.render(frame, area, &state);
+                let ctx = RenderCtx::new(&state);
+                element.render(frame, area, &ctx);
             })
             .unwrap();
         let buffer = terminal.backend().buffer().clone();
@@ -173,7 +178,8 @@ mod tests {
         let (mut terminal, area) = setup_term(30, 1);
         terminal
             .draw(|frame| {
-                element.render(frame, area, &state);
+                let ctx = RenderCtx::new(&state);
+                element.render(frame, area, &ctx);
             })
             .unwrap();
         let buffer = terminal.backend().buffer().clone();

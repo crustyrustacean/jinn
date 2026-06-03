@@ -139,7 +139,7 @@ impl SessionPhaseMachine {
         let old = self.phase.kind();
         match old {
             PhaseKind::Streaming | PhaseKind::Sending => {}
-            _ => return Err(TransitionError { from: old }),
+            PhaseKind::Idle => return Err(TransitionError { from: old }),
         }
         let old_phase = std::mem::replace(&mut self.phase, Phase::Idle(IdlePhase));
         let old_streaming = match old_phase {

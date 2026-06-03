@@ -126,7 +126,7 @@ pub trait SessionStore: Send + Sync + 'static {
     /// Queries by `json_extract(judge_meta, '$.origin_session')`.
     ///
     /// # Errors
-
+    ///
     /// Shut down the store, performing any cleanup or flush operations.
     ///
     /// Called once during application shutdown. Implementations may use

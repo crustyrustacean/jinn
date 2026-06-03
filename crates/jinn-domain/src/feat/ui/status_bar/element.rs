@@ -4,7 +4,7 @@
 //! on line 2: strategy, pinned count, token stats, turn count, and model.
 //! The model shows `({provider})/{model}` when set, or "no model selected" otherwise.
 
-use crate::common::app_state::AppState;
+use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
 use crate::feat::session::{TokenStats, aggregate_tree_stats};
@@ -75,13 +75,14 @@ fn resolve_context_limit(
     })
 }
 
-impl UiElement<AppState> for StatusBarElement {
+impl UiElement for StatusBarElement {
     fn name(&self) -> String {
         "status-bar".to_owned()
     }
 
     #[allow(clippy::cast_precision_loss, clippy::too_many_lines)]
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+        let state = ctx.state;
         // Split area into cwd line + info line.
         let [cwd_area, info_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(area);
