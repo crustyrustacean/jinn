@@ -1760,4 +1760,77 @@ mod tests {
             ));
         }
     }
+
+    // --- Integration test: TurnEnd trigger fires Lua path end-to-end ---
+
+    #[tokio::test]
+    async fn turn_end_trigger_fires_judge_fail_lua_workflow() {
+        // Given a temp dir with the judge_fail plugin.
+        let temp_dir = tempfile::TempDir::new().expect("temp dir");
+        let plugin_dir = temp_dir
+            .path()
+            .join("share")
+            .join("plugins")
+            .join("judge_fail");
+        std::fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+
+        let lua_script = r#"return {
+    run = function(ctx)
+        ctx.push_user('judgement failed, try again')
+    end
+}"#;
+        let mut f = std::fs::File::create(plugin_dir.join("init.lua")).expect("create init.lua");
+        use std::io::Write;
+        write!(f, "{lua_script}").expect("write init.lua");
+
+        let paths =
+            crate::common::app_paths::AppPaths::new_in(temp_dir.path());
+        let services = TestServices::builder().paths(paths).build();
+        let state = State::new(AppState::default());
+        let session_id = state.read().session.active_session_id().clone();
+
+        let ctx = Arc::new(DomainNodeContext::new(services.clone(), state.clone()));
+        let mut actor = WorkflowControllerActor {
+            ctx,
+            state: state.clone(),
+            services: services.clone(),
+        };
+
+        // Given an attached Judge workflow with TurnEnd trigger.
+        let aw = AttachedWorkflow::new(
+            WorkflowConfig::Judge {
+                prompt: String::new(),
+                approval_tool: "task_complete".to_owned(),
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Silent,
+                script: "judge_fail".to_owned(),
+            },
+            WorkflowTrigger::TurnEnd,
+        );
+        {
+            let mut guard = state.write();
+            let session = guard.session.get_mut(&session_id).expect("session");
+            session.core.attached_workflows.push(aw);
+        }
+
+        // When the session phase changes to Idle (simulating TurnEnd).
+        let payload = SessionPhaseChanged {
+            session_id: session_id.clone(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        };
+        actor.handle_session_phase_changed(&payload).await;
+
+        // Then the Lua script has pushed a user entry to the session.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+        let history = session.history();
+        assert_eq!(history.len(), 1, "expected exactly one entry");
+        let last = history.last().expect("entry exists");
+        match &last.kind {
+            crate::feat::session::chat_entry::ChatEntryKind::User { display, .. } => {
+                assert_eq!(display, "judgement failed, try again");
+            }
+            other => panic!("expected User entry, got {other:?}"),
+        }
+    }
 }
