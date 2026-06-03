@@ -564,36 +564,6 @@ impl ChatSessionState {
         }
     }
 
-    /// Apply the sweep target override to all entries inside a collapsed
-    /// ignored block at the current selection position, then auto-expand
-    /// the block so the entries become visible.
-    ///
-    /// Returns the block's representative entry ID if a collapsed block was
-    /// processed, or `None` if the selection is not on a collapsed block.
-    pub fn apply_sweep_to_collapsed_block(
-        &mut self,
-        override_state: ContextOverride,
-    ) -> Option<crate::protocol::ChatEntryId> {
-        let vi_idx = self.selected_entry_index()?;
-        let items = self.visual_items().clone();
-        let (start, count) = match items.get(vi_idx) {
-            Some(VisualItem::CollapsedIgnoredBlock { start, count }) => (*start, *count),
-            _ => return None,
-        };
-
-        // Apply the override to every entry in the block.
-        for i in start..start + count {
-            if let Some(entry) = self.core.history.get_mut(i) {
-                entry.context_override = override_state;
-            }
-        }
-
-        // Auto-expand the block.
-        let rep_id = self.core.history[start].id.clone();
-        self.ui.shown_ignored_blocks.insert(rep_id.clone());
-
-        Some(rep_id)
-    }
 
     /// After a sweep changes an entry from excluded to in-context, propagate
     /// `shown_ignored_blocks` to any new sub-blocks created by the split.
@@ -2160,6 +2130,13 @@ impl ChatSessionState {
             .get(idx)
             .cloned()
     }
+
+    /// Whether the cursor is currently on a collapsed ignored block.
+    pub fn is_selected_collapsed_block(&self) -> bool {
+        self.selected_visual_item()
+            .is_some_and(|item| matches!(item, VisualItem::CollapsedIgnoredBlock { .. }))
+    }
+
 
     /// Resolve the selected visual-item index to a history index.
     ///
