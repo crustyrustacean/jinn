@@ -639,6 +639,23 @@ impl ChatSessionState {
 
 
 
+
+    /// Rebuild the visual items list from the current history and
+    /// `shown_ignored_blocks`. Needed during sweep operations to keep the
+    /// visual items consistent with mutated entry state between render passes.
+    pub fn rebuild_visual_items(&self) {
+        use crate::feat::ui::chat_log::visual_item::{
+            DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
+        };
+        let items = build_visual_items(
+            &self.core.history,
+            &self.ui.shown_ignored_blocks,
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
+        self.set_visual_items(items);
+    }
+
     /// Returns the sweep target state if an active sweep exists and has not
     /// expired (>100ms since last press). Consumes (clears) the sweep state
     /// regardless of expiry - the caller must re-store it if continuing.
