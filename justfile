@@ -382,3 +382,53 @@ bump LEVEL:
 
     echo "Bumped to ${CANDIDATE}, committed and tagged as v${CANDIDATE}"
 
+
+# Symlink ./target to /dev/shm/<parent-dir> for faster builds
+shm-target:
+    #!/bin/bash
+    set -euo pipefail
+
+    NAME="$(basename '{{justfile_directory()}}')"
+    SHM_DIR="/dev/shm/${NAME}"
+
+    if [ -L target ]; then
+        CURRENT="$(readlink target)"
+        if [ "$CURRENT" = "$SHM_DIR" ]; then
+            echo "target already points to $SHM_DIR"
+            exit 0
+        fi
+        echo "target is a symlink to $CURRENT — removing"
+        rm target
+    fi
+
+    if [ -d target ]; then
+        echo "target/ exists as a directory — removing"
+        rm -rf target
+    fi
+
+    mkdir -p "$SHM_DIR"
+    ln -s "$SHM_DIR" target
+    echo "target -> $SHM_DIR"
+
+# Remove the /dev/shm/<parent-dir> symlink and directory
+unshm-target:
+    #!/bin/bash
+    set -euo pipefail
+
+    NAME="$(basename '{{justfile_directory()}}')"
+    SHM_DIR="/dev/shm/${NAME}"
+
+    if [ -L target ]; then
+        CURRENT="$(readlink target)"
+        if [ "$CURRENT" = "$SHM_DIR" ]; then
+            rm target
+            echo "removed target symlink"
+        fi
+    fi
+
+    if [ -d "$SHM_DIR" ]; then
+        rm -rf "$SHM_DIR"
+        echo "removed $SHM_DIR"
+    else
+        echo "$SHM_DIR does not exist"
+    fi
