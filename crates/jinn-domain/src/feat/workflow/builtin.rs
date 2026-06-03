@@ -232,6 +232,7 @@ mod tests {
             prompt: "Be harsh".to_owned(),
             approval_tool: "task_complete".to_owned(),
             result_kind: ResultKind::Silent,
+            script: "judge_fail".to_owned(),
         };
         let graph = config.build_graph();
         assert_eq!(graph.node_count(), 2);

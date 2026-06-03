@@ -1824,6 +1824,7 @@ dependencies = [
  "fuzzy-matcher",
  "humantime",
  "jiff",
+ "jinn-lua-workflow",
  "jinn-protocol-derive",
  "jinn-provider",
  "jinn-selection-widget",
@@ -1875,6 +1876,24 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "jinn-lua-workflow"
+version = "0.51.0"
+dependencies = [
+ "error-stack",
+ "futures",
+ "kanal",
+ "mlua",
+ "parking_lot",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "wherror",
 ]
 
 [[package]]
@@ -2319,6 +2338,7 @@ dependencies = [
  "bstr",
  "either",
  "erased-serde",
+ "futures-util",
  "mlua-sys",
  "num-traits",
  "parking_lot",
