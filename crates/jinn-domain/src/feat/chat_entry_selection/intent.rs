@@ -93,6 +93,8 @@ pub fn handle_select_prev(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
+
+
 /// Toggles the pin state of the currently selected chat entry.
 ///
 /// If the entry is pinned, sends an `UnpinChatEntry` command.
@@ -234,7 +236,7 @@ pub fn handle_yank_selected(state: &mut AppState) -> IntentResult {
 pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
     // Try to continue an existing sweep.
     if let Some(target) = state.active_session_mut().take_ignore_sweep() {
-        // Sweep continuation - apply fixed state, skip pinned entries.
+        // Sweep continuation - apply fixed state, skip pinned/collapsed.
         loop {
             let session = state.active_session_mut();
 
@@ -243,40 +245,23 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
                 return IntentResult::empty();
             }
 
-            // Check if the currently selected entry is pinned.
+            // Skip pinned entries and collapsed blocks.
             let is_pinned = session
                 .selected_entry()
                 .is_some_and(crate::feat::session::chat_entry::ChatEntry::is_pinned);
-
-            if is_pinned {
-                // Skip pinned - try advancing to the next entry.
+            if is_pinned || session.is_selected_collapsed_block() {
                 if !advance_selection_one(session) {
-                    // At bottom, pinned is the last entry - stop.
                     return IntentResult::empty();
                 }
-                // Loop to check the new entry.
-                continue;
-            }
-
-            // If the cursor is on a collapsed ignored block, skip over it.
-            // The user hid those entries; don't touch them during sweep.
-            if session.is_selected_collapsed_block() {
-                if !advance_selection_one(session) {
-                    // At bottom, collapsed block is the last item - stop.
-                    return IntentResult::empty();
-                }
-                // Loop to check the new entry.
                 continue;
             }
 
             // Apply the captured state directly (not a toggle).
             session.set_entry_context_override(target);
-
-            // Rebuild visual items since the entry's context state changed.
             session.rebuild_visual_items();
 
-            // After rebuild, the cursor may land on a newly-formed collapsed block.
-            // Advance past it and continue the sweep loop.
+            // Rebuild may have moved cursor onto a collapsed block.
+            // If so, advance and loop again.
             if session.selected_entry().is_none() {
                 if !advance_selection_one(session) {
                     let session_id = session.session_id().clone();
@@ -291,7 +276,6 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
             }
 
             let Some(selected) = session.selected_entry() else {
-                // Should not happen after the check above, but be safe.
                 let session_id = session.session_id().clone();
                 session.set_ignore_sweep(target);
                 return IntentResult::with_commands(vec![Command::PersistSession(
@@ -309,8 +293,6 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
 
             // Advance cursor for next press.
             advance_selection_one(session);
-
-            // Re-store sweep state with fresh timestamp.
             session.set_ignore_sweep(target);
 
             let session_id = state.active_session().session_id().clone();
@@ -1718,5 +1700,98 @@ mod tests {
             .skip(11)
             .any(|e| e.context_override == ContextOverride::ForcedExclude);
         assert!(any_after_excluded, "at least one 'after' entry should be ForcedExclude");
+    }
+
+    #[rstest::rstest]
+    #[rstest::rstest]
+    fn sweep_skips_multiple_collapsed_blocks() {
+        // Given: 2 user, 10 ignored (block 1), 2 user, 10 ignored (block 2), 5 user.
+        // Sweep starts on first user, skips collapsed blocks, processes in-between entries.
+        use crate::feat::ui::chat_log::visual_item::{
+            DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
+        };
+
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("a"));
+        state.active_session_mut().push_entry(ChatEntry::user("b"));
+        for _ in 0..10 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("ignored1").with_ignored(true));
+        }
+        state.active_session_mut().push_entry(ChatEntry::user("c"));
+        state.active_session_mut().push_entry(ChatEntry::user("d"));
+        for _ in 0..10 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("ignored2").with_ignored(true));
+        }
+        for _ in 0..5 {
+            state.active_session_mut().push_entry(ChatEntry::user("after"));
+        }
+
+        // Build visual items.
+        let items = build_visual_items(
+            state.active_session().history(),
+            &state.active_session().ui.shown_ignored_blocks,
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
+        state.active_session_mut().set_visual_items(items.clone());
+
+        // Verify two collapsed blocks exist.
+        let collapsed_count = items
+            .iter()
+            .filter(|i| matches!(i, VisualItem::CollapsedIgnoredBlock { .. }))
+            .count();
+        assert_eq!(collapsed_count, 2, "should have two collapsed blocks");
+
+        // The ignored entries inside the blocks should NOT be mutated.
+        let block1_start_id = state.active_session().history()[2].id.clone();
+
+        // Select first entry.
+        let first_vi = items
+            .iter()
+            .position(|i| matches!(i, VisualItem::Entry(0)))
+            .expect("first entry");
+        state.active_session_mut().set_selected_entry_index(first_vi);
+
+        // First press - toggles entry "a" to ForcedExclude.
+        let _result = handle_ignore_selected(&mut state);
+        assert_eq!(
+            state.active_session().history()[0].context_override,
+            ContextOverride::ForcedExclude
+        );
+
+        // Second press - cursor on first collapsed block, skips it.
+        // Lands on entry "c" and applies ForcedExclude.
+        let _result = handle_ignore_selected(&mut state);
+
+        // Entry "b" should NOT be mutated (it was before the block).
+        // The block entries should NOT be mutated (skipped).
+        for i in 2..=11 {
+            assert_eq!(
+                state.active_session().history()[i].context_override,
+                ContextOverride::ForcedExclude,
+                "ignored entry {i} should still be ForcedExclude (untouched by sweep)"
+            );
+        }
+
+        // Entry "c" (index 12) should be processed.
+        assert_eq!(
+            state.active_session().history()[12].context_override,
+            ContextOverride::ForcedExclude,
+            "entry 'c' should be ForcedExclude after sweep past first block"
+        );
+
+        // The block should NOT be expanded.
+        assert!(
+            !state
+                .active_session()
+                .ui
+                .shown_ignored_blocks
+                .contains(&block1_start_id),
+            "first collapsed block should not be expanded"
+        );
     }
 }
