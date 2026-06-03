@@ -10,6 +10,7 @@ pub mod history_worker;
 pub mod intent;
 
 pub mod llm_actor;
+pub mod luaworkflow;
 pub mod navigation;
 pub mod persona;
 pub mod picker;
@@ -19,7 +20,6 @@ pub mod provider_infra;
 pub mod queue_actor;
 pub mod rename_session_input;
 
-pub mod luaworkflow;
 pub mod session;
 pub mod session_lifecycle;
 pub mod sidebar_resize;
