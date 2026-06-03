@@ -40,6 +40,44 @@ pub struct BrokenEditAutoPruneWorker {
     pub config: BrokenEditAutoPruneConfig,
 }
 
+/// Walk forward from an edit ToolCall to find its matching ToolResult.
+///
+/// Returns `Some((entry_id, status))` if a matching result is found.
+/// Returns `None` if no result exists (pending/orphaned) or the result
+/// is already excluded (the pair is already handled).
+fn find_failed_edit_result(
+    history: &[ChatEntry],
+    call_idx: usize,
+    tool_call_id: &str,
+) -> Option<(
+    crate::feat::session::chat_entry::ChatEntryId,
+    ToolResultStatus,
+)> {
+    // ToolResults appear after their ToolCall, so scan forward only.
+    for entry in history.iter().skip(call_idx + 1) {
+        if let ChatEntryKind::ToolResult { id, status, .. } = &entry.kind
+            && id == tool_call_id
+        {
+            // Found the matching result — return its ID and status.
+            return Some((entry.id.clone(), *status));
+        }
+    }
+    // No matching result found — the call is still pending or orphaned.
+    None
+}
+
+/// Count in-context entries that appear after the given index.
+///
+/// Only entries where [`ChatEntry::is_in_context()`] returns true are counted.
+/// Used to determine whether enough conversation has happened after a failed
+/// edit to safely prune it.
+fn count_in_context_after(history: &[ChatEntry], after_idx: usize) -> usize {
+    history[(after_idx + 1)..]
+        .iter()
+        .filter(|e| e.is_in_context())
+        .count()
+}
+
 #[async_trait::async_trait]
 impl HistoryWorker for BrokenEditAutoPruneWorker {
     #[allow(clippy::unnecessary_literal_bound)]
@@ -63,38 +101,27 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
                 _ => continue,
             };
 
-            let edit_call_entry_id = entry.id.clone();
-
-            // Find the corresponding ToolResult (matched by tool call id).
-            let mut result_entry_id = None;
-            let mut result_status = None;
-            for entry_j in history.iter().skip(i + 1) {
-                if let ChatEntryKind::ToolResult { id, status, .. } = &entry_j.kind
-                    && id == &tool_call_id
-                {
-                    result_entry_id = Some(entry_j.id.clone());
-                    result_status = Some(*status);
-                    break;
-                }
+            // Skip if the call is already excluded by a prior prune.
+            if entry.context_override == ContextOverride::ForcedExclude {
+                continue;
             }
 
-            let Some(status) = result_status else {
+            let edit_call_entry_id = entry.id.clone();
+
+            // Walk forward to find the ToolResult for this edit call.
+            // If none found (pending/orphaned), skip — incomplete pairs
+            // can't be pruned.
+            let Some((result_id, status)) = find_failed_edit_result(&history, i, &tool_call_id)
+            else {
                 continue;
             };
 
-            // Only prune failed edits.
+            // Only prune failed edits — successful ones are useful context.
             if status != ToolResultStatus::Failure {
                 continue;
             }
 
-            let Some(result_id) = result_entry_id else {
-                continue;
-            };
-
-            // Skip if either entry is already excluded.
-            if history[i].context_override == ContextOverride::ForcedExclude {
-                continue;
-            }
+            // Skip if the result is already excluded — the pair is already handled.
             let result_already_excluded = history
                 .iter()
                 .skip(i + 1)
@@ -104,11 +131,10 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
                 continue;
             }
 
-            // Count in-context entries after the edit ToolCall.
-            let in_context_count = history[(i + 1)..]
-                .iter()
-                .filter(|e| e.is_in_context())
-                .count();
+            // Only prune once enough in-context entries have accumulated after
+            // the edit. This ensures the failed edit isn't pruned too early,
+            // while the LLM might still benefit from seeing the failure context.
+            let in_context_count = count_in_context_after(&history, i);
 
             if in_context_count >= self.config.min_tail_entries {
                 mutations.push(HistoryMutation::SetContextOverride {

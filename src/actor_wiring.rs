@@ -31,7 +31,7 @@ use jinn_domain::UserPreferencesStorageService;
 use jinn_domain::actor_channel::ActorChannelService;
 use jinn_domain::common::actor::protocol::event::{ActorStarted, ActorStarting, AllActorsSpawned};
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
-use jinn_domain::feat::workflow::workflow_actor::{WorkflowActor, WorkflowActorDeps};
+
 use jinn_domain::feat::workflow::workflow_controller_actor::{
     WorkflowControllerActor, WorkflowControllerActorDeps,
 };
@@ -695,26 +695,18 @@ pub fn create_core_with_actor_host(
         },
     ));
 
-    // Build workflow registry and register built-in workflows.
-    let workflow_registry = Arc::new({
-        let mut registry = jinn_domain::feat::workflow::WorkflowRegistry::new();
-        jinn_domain::feat::workflow::register_all_workflows(&mut registry);
-        registry
-    });
-
-    // Workflow actor - bridges workflow engine to actor bus.
-    actors.push(spawn::<WorkflowActor>(
-        "workflow",
+    actors.push(spawn::<WorkflowControllerActor>(
+        "workflow-controller",
         &sink,
         handle,
         &counter,
         &shutdown_tracker,
-        WorkflowActorDeps {
+        WorkflowControllerActorDeps {
             state: state.clone(),
             services: services.clone(),
-            registry: workflow_registry,
         },
     ));
+
     // Discover Lua plugins.
     {
         let plugins = jinn_domain::feat::luaworkflow::discovery::discover_plugins(&paths);

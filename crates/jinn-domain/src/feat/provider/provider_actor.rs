@@ -124,11 +124,7 @@ impl ProviderActor {
             | Command::FinishSessionTeardown(..)
             | Command::FinishSessionSetup(..)
             | Command::CancelLifecycleCommand(..)
-            | Command::InitWorkflow(..)
-            | Command::StartWorkflow(..)
-            | Command::CancelWorkflow(..)
-            | Command::RerunFromNode(..)
-            | Command::LoadWorkflowPickerEntries(..)
+
             | Command::MarkSessionInteracted(..)
             | Command::SubmitHistoryMutations(..)
             | Command::TriggerCompaction(..)

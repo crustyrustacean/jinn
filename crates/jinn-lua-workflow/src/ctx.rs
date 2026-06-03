@@ -26,7 +26,7 @@ impl<'a> CtxBuilder<'a> {
     ///
     /// The data struct's fields become Lua table keys. Use
     /// `#[serde(rename_all = "snake_case")]` for consistent naming.
-    pub fn new(lua: &'a Lua, data: &impl Serialize) -> Result<Self, Report<LuaError>> {
+    pub fn new<S: Serialize>(lua: &'a Lua, data: &S) -> Result<Self, Report<LuaError>> {
         let table = lua
             .create_table()
             .map_err(|e| LuaError::script(format!("create ctx table: {e}")))?;
@@ -67,7 +67,7 @@ impl<'a> CtxBuilder<'a> {
     }
 
     /// Sets a raw value on the ctx table.
-    pub fn with_value(mut self, name: &str, value: impl Into<Value>) -> Result<Self, Report<LuaError>> {
+    pub fn with_value<V: Into<Value>>(mut self, name: &str, value: V) -> Result<Self, Report<LuaError>> {
         self.table.set(name, value.into()).map_err(|e| {
             LuaError::script(format!("set value '{name}': {e}"))
         })?;
@@ -197,7 +197,7 @@ mod tests {
     #[test]
     fn ctx_builder_empty_data() {
         #[derive(serde::Serialize)]
-        struct EmptyData {}
+        struct EmptyData;
 
         let lua = Lua::new();
         let data = EmptyData {};

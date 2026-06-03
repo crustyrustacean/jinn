@@ -6,7 +6,7 @@ use crate::common::focus::{FocusScope, ScopeStack};
 use crate::common::tui_signals::TuiSignals;
 use crate::feat::preferences_actor::UserPreferences;
 use crate::feat::rename_session_input::state::RenameSessionInputState;
-use crate::feat::rename_workflow_input::state::RenameWorkflowInputState;
+
 use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
 use crate::feat::theme::Theme;
 use crate::feat::ui::picker_states::PickerStates;
@@ -15,7 +15,6 @@ pub use crate::feat::ui::sidebar::pins::state::PinsState;
 pub use crate::feat::ui::sidebar::sessions::SessionsSectionState;
 use crate::feat::ui::sidebar::state::SidebarState;
 pub use crate::feat::ui::sidebar::task_list_section::TaskListSectionState;
-use crate::feat::workflow::workflow_ui_state::WorkflowUiState;
 
 
 /// Theme-sensitive caches owned by the frontend.
@@ -128,19 +127,7 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (rename input editing, confirmation).
     pub rename_session_input: RenameSessionInputState,
 
-    /// Rename workflow input popup state - active when `FocusScope::RenameWorkflowInput` is on the scope stack.
-    /// OWNER: IntentHandler (rename workflow label editing, confirmation).
-    pub rename_workflow_input: RenameWorkflowInputState,
-
-    /// Sidebar width in columns, synced from preferences.
-    /// OWNER: PreferencesStateSyncActor (on PreferencesUpdated).
     pub sidebar_width: u16,
-
-
-
-    /// Workflow tab UI state - selection, viewport, inspector, cancel prompt.
-    /// OWNER: IntentHandler (all workflow UI interactions).
-    pub workflow_ui: WorkflowUiState,
 }
 
 impl Default for FrontendState {
@@ -166,10 +153,9 @@ impl Default for FrontendState {
             system_themes_dir: std::path::PathBuf::new(),
             arg_input: ArgInputState::default(),
             rename_session_input: RenameSessionInputState::default(),
-            rename_workflow_input: RenameWorkflowInputState::default(),
+
             sidebar_width: 30,
 
-            workflow_ui: WorkflowUiState::default(),
         }
     }
 }

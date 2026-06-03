@@ -9,7 +9,7 @@ pub mod status_bar;
 
 pub mod too_small;
 pub mod which_key;
-pub mod workflow_tab;
+
 
 pub use app_layout::{AppLayout, MIN_HEIGHT, MIN_WIDTH};
 
@@ -45,8 +45,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
                 .scroll_to_cursor(inner_height);
         }
 
-        // Pre-render mutation for workflow input buffer.
-        prepare_workflow_input_scroll(&mut wstate, area, &pre_layout);
+
     }
 
     let state = app.core.state.read();
@@ -77,12 +76,8 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         &mut rects,
     );
 
-    // Main content area - chat, workflow, or workflow preview.
-    if state.is_viewing_workflow() {
-        workflow_tab::render_workflow_tab(frame, layout.content, &ctx, 0);
-    } else if let Some(workflow) = state.previewed_workflow() {
-        workflow_tab::render_workflow_preview(frame, layout.content, workflow);
-    } else {
+    // Main content area - chat tab.
+    {
         chat_tab::render_chat_tab(
             &mut app.ui_registry,
             frame,
@@ -130,17 +125,6 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
             .push(jinn_domain::feat::rename_session_input::render::rename_session_popup_rect(area));
     }
 
-    // Rename workflow input popup overlay (+ selectable rect).
-    if matches!(
-        state.frontend.scope_stack.current(),
-        FocusScope::RenameWorkflowInput
-    ) {
-        jinn_domain::feat::rename_workflow_input::render::render_rename_workflow_input(
-            frame, area, &ctx,
-        );
-        rects
-            .push(jinn_domain::feat::rename_workflow_input::render::rename_workflow_popup_rect(area));
-    }
 
     // Release the state read lock before post-render steps.
     drop(state);
@@ -150,38 +134,4 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     clipboard::flush_pending_clipboard(app, frame.buffer_mut());
 }
 
-/// Pre-render mutation for the workflow input buffer.
-///
-/// Sets wrap width and scroll offset so that `wrapped_lines()`, `scroll_offset()`,
-/// and `cursor_row_col()` return correct values during the read-only render pass.
-/// Mirrors the chat input pattern in `render()`.
-fn prepare_workflow_input_scroll(
-    wstate: &mut jinn_domain::AppState,
-    area: ratatui::layout::Rect,
-    pre_layout: &AppLayout,
-) {
-    if wstate.frontend.workflow_ui.editing_node.is_none() {
-        return;
-    }
-    let input_height: u16 = 5; // border (1) + 3 visible lines + padding
-    let content_height = area.height.saturating_sub(pre_layout.status_bar.height);
-    let graph_height = content_height
-        .saturating_sub(input_height)
-        .max(content_height / 2);
-    let actual_input_height = content_height.saturating_sub(graph_height);
-    // Borders::TOP consumes 1 row, indent is 2 chars.
-    let inner_height = actual_input_height.saturating_sub(1) as usize;
-    let text_width = area.width.saturating_sub(2) as usize; // 2-char indent
-    wstate
-        .frontend
-        .workflow_ui
-        .input_buffer
-        .set_wrap_width(text_width);
-    if wstate.frontend.scope_stack.current().mode() == Mode::Input {
-        wstate
-            .frontend
-            .workflow_ui
-            .input_buffer
-            .scroll_to_cursor(inner_height);
-    }
-}
+

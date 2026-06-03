@@ -111,7 +111,6 @@ impl LuaHostHandler {
                 &session_id_typed,
                 prompt.to_owned(),
                 system_prompt.map(std::borrow::ToOwned::to_owned),
-                vec![],
                 None,
             )
             .await
@@ -184,7 +183,7 @@ mod tests {
     use crate::feat::workflow::attached_workflow::{
         AttachedWorkflow, WorkflowConfig, WorkflowTrigger,
     };
-    use crate::feat::workflow::workflow_state::WorkflowId;
+    use crate::feat::workflow::attached_workflow::WorkflowId;
     use crate::protocol::SessionId;
     use tokio::sync::oneshot;
 
@@ -207,11 +206,9 @@ mod tests {
 
         let workflow_id = WorkflowId::new();
         let aw = AttachedWorkflow::new(
-            WorkflowConfig::Judge {
-                prompt: String::new(),
-                approval_tool: "task_complete".to_owned(),
-                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Silent,
+            WorkflowConfig {
                 script: "judge_fail".to_owned(),
+                data: serde_json::json!({}),
             },
             WorkflowTrigger::TurnEnd,
         );
