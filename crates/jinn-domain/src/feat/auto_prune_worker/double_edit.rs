@@ -60,18 +60,25 @@ fn find_matching_result(
     call_idx: usize,
     tool_call_id: &str,
 ) -> Option<ChatEntryId> {
+    // ToolResults appear after their ToolCall, so scan forward only.
     for entry in history.iter().skip(call_idx + 1) {
         if let ChatEntryKind::ToolResult { id, .. } = &entry.kind
             && id == tool_call_id
         {
+            // If the result was already excluded by a prior prune, the whole
+            // pair is already handled — stop looking (don't fall through to a
+            // later ToolResult with the same ID, which shouldn't exist but we
+            // guard against it by returning here).
             if entry.context_override == ContextOverride::ForcedExclude {
                 return None;
             }
             return Some(entry.id.clone());
         }
     }
+    // No matching result found — the call is still pending or orphaned.
     None
 }
+
 
 /// A collected edit/write tool call paired with its result.
 struct EditWritePair {
@@ -105,6 +112,9 @@ impl HistoryWorker for DoubleEditAutoPruneWorker {
 ///
 /// Skips ToolCalls that are already excluded or have no matching ToolResult.
 fn collect_edit_write_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Vec<EditWritePair>> {
+    // First pass: collect every edit/write ToolCall with its history index
+    // and file path. We record indices so the second pass can scan forward
+    // from each call to find its matching ToolResult.
     let mut candidates: Vec<(usize, String)> = Vec::new();
     for (i, entry) in history.iter().enumerate() {
         if let ChatEntryKind::ToolCall {
@@ -117,11 +127,14 @@ fn collect_edit_write_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Ve
         }
     }
 
+    // Second pass: for each candidate, resolve it to a complete call+result
+    // pair and bucket by file path.
     let mut groups: HashMap<String, Vec<EditWritePair>> = HashMap::new();
 
     for (call_idx, path) in &candidates {
         let call_entry = &history[*call_idx];
 
+        // Already excluded by a prior prune — don't count toward the total.
         if call_entry.context_override == ContextOverride::ForcedExclude {
             continue;
         }
@@ -133,6 +146,9 @@ fn collect_edit_write_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Ve
             continue;
         };
 
+        // Walk forward to find the ToolResult that matches this call.
+        // If none found (pending, orphaned, or already excluded), skip it —
+        // incomplete pairs don't count toward the file's total.
         let Some(result_id) = find_matching_result(history, *call_idx, tool_call_id) else {
             continue;
         };
@@ -159,6 +175,9 @@ fn build_prune_mutations(
             continue;
         }
 
+        // Pairs are in history order (oldest first), so .take() selects the
+        // oldest pairs to prune. Both the call and its result must be excluded
+        // so the pruned edit/write disappears entirely from context.
         let to_prune = pairs.len() - max_file_edits;
         for pair in pairs.iter().take(to_prune) {
             mutations.push(HistoryMutation::SetContextOverride {
