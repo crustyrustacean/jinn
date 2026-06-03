@@ -25,7 +25,7 @@ impl SessionPersistenceActor {
                 // Defensive: stream token arrived without phase transition.
                 session.begin_streaming();
             }
-            _ => {
+            PhaseKind::Idle => {
                 tracing::warn!(
                     phase = ?session.phase(),
                     "StreamToken received in unexpected phase"
@@ -65,33 +65,32 @@ impl SessionPersistenceActor {
 
         // Count output tokens: always count locally, then take max with provider-reported.
         // This handles providers that undercount (e.g., excluding tool call arguments).
-        let local_count_handle: Option<tokio::task::JoinHandle<u32>> =
-            if event.reason != StreamCompletedReason::Canceled
-                && event.reason != StreamCompletedReason::Error
-            {
-                event.assistant_content.as_ref().map(|content| {
-                    let content = content.clone();
-                    let tool_calls = event.tool_calls.clone();
-                    let thinking = event.thinking_content.clone().unwrap_or_default();
-                    let counter = self.counter;
-                    tokio::task::spawn_blocking(move || {
-                        let mut tokens = counter.count(&content) as u32;
-                        tokens += counter.count(&thinking) as u32;
-                        if let Some(tool_calls) = tool_calls {
-                            for tc in &tool_calls {
-                                tokens += counter.count(&tc.arguments) as u32;
-                                tokens += counter.count(&tc.name) as u32;
-                            }
+        let local_count_handle: Option<tokio::task::JoinHandle<u32>> = if event.reason
+            != StreamCompletedReason::Canceled
+            && event.reason != StreamCompletedReason::Error
+        {
+            event.assistant_content.as_ref().map(|content| {
+                let content = content.clone();
+                let tool_calls = event.tool_calls.clone();
+                let thinking = event.thinking_content.clone().unwrap_or_default();
+                let counter = self.counter;
+                tokio::task::spawn_blocking(move || {
+                    let mut tokens = counter.count(&content) as u32;
+                    tokens += counter.count(&thinking) as u32;
+                    if let Some(tool_calls) = tool_calls {
+                        for tc in &tool_calls {
+                            tokens += counter.count(&tc.arguments) as u32;
+                            tokens += counter.count(&tc.name) as u32;
                         }
-                        tokens
-                    })
+                    }
+                    tokens
                 })
-            } else {
-                None
-            };
+            })
+        } else {
+            None
+        };
 
-        let provider_tokens: Option<u32> =
-            event.provider_completion_tokens.map(|t| t as u32);
+        let provider_tokens: Option<u32> = event.provider_completion_tokens.map(|t| t as u32);
 
         // Await local counting outside the lock, then take max with provider.
         let output_tokens: Option<u32> = match local_count_handle {
@@ -1388,7 +1387,8 @@ mod tests {
             tool_calls: Some(vec![crate::feat::tools_actor::tool_types::ToolCall {
                 id: "tc-1".to_owned(),
                 name: "read_file".to_owned(),
-                arguments: r#"{"path": "/mnt/zed/repos/jinn/some/very/deep/path/to/a/file.rs"}"#.to_owned(),
+                arguments: r#"{"path": "/mnt/zed/repos/jinn/some/very/deep/path/to/a/file.rs"}"#
+                    .to_owned(),
             }]),
             cost: None,
             provider_completion_tokens: Some(3),
@@ -1441,7 +1441,8 @@ mod tests {
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(
-            session.token_ledger()[0].tokens_received, 50000,
+            session.token_ledger()[0].tokens_received,
+            50000,
             "expected provider count 50000, got {}",
             session.token_ledger()[0].tokens_received
         );
@@ -1449,6 +1450,7 @@ mod tests {
 
     #[tokio::test]
     async fn on_stream_completed_uses_local_count_when_no_provider_report() {
+        use crate::feat::context::strategy::token_estimator::TokenCounter;
         // Given a session with a token record in streaming state.
         let actor = test_actor();
         let (_sink, ctx) = test_context();
@@ -1479,14 +1481,15 @@ mod tests {
         actor.on_stream_completed(&event, &ctx).await;
 
         // Then tokens_received equals the local tiktoken count.
-        use crate::feat::context::strategy::token_estimator::TokenCounter;
-        let counter = crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base();
+        let counter =
+            crate::feat::context::strategy::token_estimator::TiktokenCounter::o200k_base();
         let expected = counter.count(content) as u32;
 
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session exists");
         assert_eq!(
-            session.token_ledger()[0].tokens_received, expected,
+            session.token_ledger()[0].tokens_received,
+            expected,
             "expected local count {expected}, got {}",
             session.token_ledger()[0].tokens_received
         );

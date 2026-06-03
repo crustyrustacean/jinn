@@ -109,7 +109,6 @@ impl SessionStoreService {
 
     /// Loads all non-archived judge sessions targeting the given origin.
     ///
-
     /// Shut down the store, performing any cleanup or flush operations.
     ///
     /// # Errors

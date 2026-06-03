@@ -55,7 +55,6 @@ impl IntentHandler {
     /// Clears TUI signals from the previous call, then processes the intent.
     /// Mutates `state` directly for UI operations.
     /// Returns commands and events for the actor system.
-
     pub fn handle(intent: &Intent, state: &mut AppState) -> IntentResult {
         state.frontend.tui_signals.clear();
 
@@ -449,11 +448,11 @@ impl IntentHandler {
             Intent::ToggleOneShot { kind } => {
                 let session_id = state.session.active_session_id().clone();
                 let session = state.session.get_mut(&session_id).unwrap();
-                if session.ui.pending_one_shots.contains_key(&kind) {
-                    session.ui.pending_one_shots.remove(&kind);
+                if session.ui.pending_one_shots.contains_key(kind) {
+                    session.ui.pending_one_shots.remove(kind);
                 } else {
-                    let config = crate::feat::workflow::attached_workflow::WorkflowConfig::from_one_shot_kind(&kind);
-                    session.ui.pending_one_shots.insert(kind.clone(), config);
+                    let config = crate::feat::workflow::attached_workflow::WorkflowConfig::from_one_shot_kind(kind);
+                    session.ui.pending_one_shots.insert(*kind, config);
                 }
                 IntentResult::empty()
             }
@@ -890,7 +889,7 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
     use crate::feat::intent::IntentHandler;
-    use crate::protocol::{ChatEntry, Event, Intent};
+    use crate::protocol::{ChatEntry, Intent};
 
     #[rstest::rstest]
     fn paste_text_ignored_in_normal_scope() {
@@ -1625,8 +1624,7 @@ mod tests {
 
     #[rstest::rstest]
     fn one_shot_toggle_inserts_and_removes() {
-        use crate::feat::workflow::attached_workflow::{OneShotKind, WorkflowConfig};
-        use std::collections::HashMap;
+        use crate::feat::workflow::attached_workflow::OneShotKind;
 
         // Given an AppState with an active session.
         let mut state = AppState::default();

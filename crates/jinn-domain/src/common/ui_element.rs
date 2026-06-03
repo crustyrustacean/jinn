@@ -8,11 +8,9 @@
 use ratatui::{Frame, layout::Rect};
 
 /// A renderable UI element that draws within an allocated area.
-
 /// Elements get full frame access and an allocated area, allowing both
 /// constrained rendering (within the given area) and escape-hatch drawing
 /// anywhere on the frame if needed.
-
 /// UI elements are separate from command/event handlers. They communicate
 /// through state - handlers mutate state during processing, elements
 /// read state during rendering.
@@ -35,7 +33,12 @@ pub trait UiElement: 'static + std::fmt::Debug {
     /// * `frame` - Full ratatui frame (elements may draw outside `area` if needed).
     /// * `area` - The allocated region where this element should draw.
     /// * `ctx` - Render context with read-only application state.
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &crate::common::render_ctx::RenderCtx);
+    fn render(
+        &mut self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        ctx: &crate::common::render_ctx::RenderCtx,
+    );
 
     /// Returns `true` if this element's content supports text selection.
     ///
