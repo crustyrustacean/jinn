@@ -564,6 +564,81 @@ impl ChatSessionState {
         }
     }
 
+    /// Apply the sweep target override to all entries inside a collapsed
+    /// ignored block at the current selection position, then auto-expand
+    /// the block so the entries become visible.
+    ///
+    /// Returns the block's representative entry ID if a collapsed block was
+    /// processed, or `None` if the selection is not on a collapsed block.
+    pub fn apply_sweep_to_collapsed_block(
+        &mut self,
+        override_state: ContextOverride,
+    ) -> Option<crate::protocol::ChatEntryId> {
+        let vi_idx = self.selected_entry_index()?;
+        let items = self.visual_items().clone();
+        let (start, count) = match items.get(vi_idx) {
+            Some(VisualItem::CollapsedIgnoredBlock { start, count }) => (*start, *count),
+            _ => return None,
+        };
+
+        // Apply the override to every entry in the block.
+        for i in start..start + count {
+            if let Some(entry) = self.core.history.get_mut(i) {
+                entry.context_override = override_state;
+            }
+        }
+
+        // Auto-expand the block.
+        let rep_id = self.core.history[start].id.clone();
+        self.ui.shown_ignored_blocks.insert(rep_id.clone());
+
+        Some(rep_id)
+    }
+
+    /// After a sweep changes an entry from excluded to in-context, propagate
+    /// `shown_ignored_blocks` to any new sub-blocks created by the split.
+    ///
+    /// When an entry inside a shown (expanded) ignored block becomes in-context,
+    /// it splits the block. If the original block was shown, the new forward
+    /// sub-block should also be shown so entries remain visible.
+    ///
+    /// No-op if the entry was not inside a shown block.
+    pub fn propagate_shown_on_unignore(&mut self, entry_id: &ChatEntryId) {
+        let Some(idx) = self.core.history.iter().position(|e| e.id == *entry_id) else {
+            return;
+        };
+
+        // Scan backward to find the containing block's start.
+        let mut block_start = idx;
+        while block_start > 0
+            && !self.core.history[block_start - 1].is_in_context()
+            && self.core.history[block_start - 1].pin_position.is_none()
+        {
+            block_start -= 1;
+        }
+
+        let block_representative = self.core.history[block_start].id.clone();
+        if !self.ui.shown_ignored_blocks.contains(&block_representative) {
+            return; // Block was not shown — nothing to propagate.
+        }
+
+        // Scan forward from the changed entry to find a new forward sub-block.
+        let forward_start = idx + 1;
+        if forward_start >= self.core.history.len() {
+            return;
+        }
+
+        let forward_entry = &self.core.history[forward_start];
+        if forward_entry.is_in_context() || forward_entry.pin_position.is_some() {
+            return; // No excluded entries after — no sub-block to create.
+        }
+
+        // The forward sub-block's representative is its first entry.
+        self.ui.shown_ignored_blocks.insert(forward_entry.id.clone());
+    }
+
+
+
     /// Returns the sweep target state if an active sweep exists and has not
     /// expired (>100ms since last press). Consumes (clears) the sweep state
     /// regardless of expiry - the caller must re-store it if continuing.
