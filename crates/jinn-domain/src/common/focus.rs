@@ -49,9 +49,11 @@ impl FocusScope {
             | Self::SidebarTaskList
             | Self::SidebarResize
             | Self::Workflow => Mode::Normal,
-            Self::Input | Self::ArgInput | Self::RenameSessionInput | Self::RenameWorkflowInput | Self::WorkflowInput => {
-                Mode::Input
-            }
+            Self::Input
+            | Self::ArgInput
+            | Self::RenameSessionInput
+            | Self::RenameWorkflowInput
+            | Self::WorkflowInput => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
         }
     }
@@ -75,7 +77,7 @@ impl std::fmt::Display for FocusScope {
             Self::WorkflowInput => write!(f, "WorkflowInput"),
         }
     }
-    }
+}
 
 /// A LIFO stack of [`FocusScope`] layers.
 ///

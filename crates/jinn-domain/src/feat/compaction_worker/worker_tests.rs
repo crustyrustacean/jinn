@@ -6,7 +6,8 @@
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use jinn_provider::RetryConfig;
 
@@ -106,6 +107,8 @@ fn test_worker(summary_text: &str) -> CompactionWorker {
         state: State::new(AppState::default()),
         config: CompactionConfig::default(),
         compaction_prompt: "Summarize this conversation.".to_owned(),
+        compaction_in_progress: Arc::new(AtomicBool::new(false)),
+        pending_compaction_id: Arc::new(Mutex::new(None)),
     }
 }
 
@@ -140,6 +143,8 @@ fn test_worker_with_session(
         state,
         config: CompactionConfig::default(),
         compaction_prompt: "Summarize this conversation.".to_owned(),
+        compaction_in_progress: Arc::new(AtomicBool::new(false)),
+        pending_compaction_id: Arc::new(Mutex::new(None)),
     };
 
     (worker, session_id)
@@ -161,6 +166,7 @@ fn run_evaluate(
                 "Summarize this conversation.",
                 &RetryConfig::default(),
                 false,
+                ChatEntryId::new(),
             )
             .await
             .expect("evaluate_with_config should succeed")
@@ -480,6 +486,8 @@ fn session_continues_after_background_compaction() {
         state,
         config: CompactionConfig::default(),
         compaction_prompt: "Summarize this conversation.".to_owned(),
+        compaction_in_progress: Arc::new(AtomicBool::new(false)),
+        pending_compaction_id: Arc::new(Mutex::new(None)),
     };
 
     // When evaluating compaction for the session.
@@ -622,6 +630,8 @@ impl ThresholdTestEnv {
             state: self.state.clone(),
             config: CompactionConfig::default(),
             compaction_prompt: "Summarize this conversation.".to_owned(),
+            compaction_in_progress: Arc::new(AtomicBool::new(false)),
+            pending_compaction_id: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -1118,6 +1128,8 @@ fn gate_passes_but_nothing_to_compact_with_empty_history() {
         state,
         config: CompactionConfig::default(),
         compaction_prompt: "Summarize.".to_owned(),
+        compaction_in_progress: Arc::new(AtomicBool::new(false)),
+        pending_compaction_id: Arc::new(Mutex::new(None)),
     };
 
     let rt = tokio::runtime::Runtime::new().expect("test runtime");
@@ -1291,5 +1303,229 @@ fn gate_skips_after_compaction_reduces_context_size() {
     assert!(
         mutations_2.is_empty(),
         "after reassembly below threshold - should not compact"
+    );
+}
+
+// ── Compaction deduplication tests ──────────────────────────────────
+
+fn set_compaction_in_flight(worker: &CompactionWorker, entry_id: ChatEntryId) {
+    worker.compaction_in_progress.store(true, Ordering::SeqCst);
+    *worker.pending_compaction_id.lock().expect("lock") = Some(entry_id);
+}
+
+fn worker_in_flight(worker: &CompactionWorker) -> bool {
+    worker.compaction_in_progress.load(Ordering::SeqCst)
+}
+
+fn worker_pending_id(worker: &CompactionWorker) -> Option<ChatEntryId> {
+    worker.pending_compaction_id.lock().expect("lock").clone()
+}
+
+#[test]
+fn snapshot_skipped_when_compaction_in_flight() {
+    // Given a worker with compaction in flight.
+    let worker = test_worker("summary");
+    let pending_id = ChatEntryId::new();
+    set_compaction_in_flight(&worker, pending_id.clone());
+
+    // And a snapshot that does NOT contain the pending compaction entry.
+    let snapshot: Arc<[ChatEntry]> = Arc::from(alternating_history(5));
+
+    // When evaluating.
+    let rt = tokio::runtime::Runtime::new().expect("test runtime");
+    let mutations = rt.block_on(async { worker.evaluate(&SessionId::new(), snapshot).await });
+
+    // Then no mutations are produced.
+    assert!(
+        mutations.is_empty(),
+        "should skip when compaction is in flight"
+    );
+
+    // And the flag is still set.
+    assert!(worker_in_flight(&worker), "flag should still be set");
+    assert_eq!(worker_pending_id(&worker), Some(pending_id));
+}
+
+#[test]
+fn snapshot_clears_flag_when_compaction_entry_found() {
+    // Given a worker with compaction in flight.
+    let worker = test_worker("summary");
+    let pending_id = ChatEntryId::new();
+    set_compaction_in_flight(&worker, pending_id.clone());
+
+    // And a snapshot that CONTAINS the pending compaction entry.
+    let mut snapshot = vec![compaction_entry("old summary")];
+    snapshot[0].id = pending_id.clone();
+    let snapshot: Arc<[ChatEntry]> = Arc::from(snapshot);
+
+    // When evaluating.
+    let rt = tokio::runtime::Runtime::new().expect("test runtime");
+    let mutations = rt.block_on(async { worker.evaluate(&SessionId::new(), snapshot).await });
+
+    // Then the flag is cleared.
+    assert!(!worker_in_flight(&worker), "flag should be cleared");
+    assert!(
+        worker_pending_id(&worker).is_none(),
+        "pending ID should be cleared"
+    );
+
+    // And mutations are empty (no context_size set, threshold not crossed).
+    assert!(
+        mutations.is_empty(),
+        "no compaction needed after clearing flag"
+    );
+}
+
+#[test]
+fn error_clears_flag_and_allows_retry() {
+    // Given a worker with a failing LLM factory.
+    let failing_factory: Arc<dyn jinn_provider::LlmServiceFactory> = Arc::new(FailingLlmFactory);
+    let services = TestServices::builder()
+        .llm_service(LlmServiceFactoryService::new(failing_factory))
+        .build();
+    let handle = services.handle.clone();
+    let mut session = ChatSessionState::new();
+    session.set_model("provider/model-200k".to_owned());
+    let history = alternating_history(20);
+    for entry in &history {
+        session.push_entry(entry.clone());
+    }
+    let session_id = session.session_id().clone();
+    let state = State::new(AppState::default());
+    {
+        let mut app = state.write();
+        app.session.insert(session);
+    }
+
+    // Set up threshold so evaluation proceeds past the gate.
+    {
+        let mut app = state.write();
+        app.frontend.preferences.compaction = CompactionConfig {
+            threshold: 0.5,
+            ..CompactionConfig::default()
+        };
+        let prefs = app.frontend.preferences.clone();
+        services
+            .user_preferences_storage
+            .save(&prefs)
+            .expect("save");
+    }
+    {
+        let mut app = state.write();
+        if let Some(session) = app.session.get_mut(&session_id) {
+            session.set_context_size(150_000);
+        }
+        app.provider.model_cache = Some(model_cache_with("provider", "model-200k", 200_000));
+    }
+
+    let worker = CompactionWorker {
+        services,
+        handle,
+        state,
+        config: CompactionConfig::default(),
+        compaction_prompt: "Summarize this conversation.".to_owned(),
+        compaction_in_progress: Arc::new(AtomicBool::new(false)),
+        pending_compaction_id: Arc::new(Mutex::new(None)),
+    };
+
+    // When evaluating (LLM will fail).
+    let rt = tokio::runtime::Runtime::new().expect("test runtime");
+    let mutations = rt.block_on(async { worker.evaluate(&session_id, Arc::from([])).await });
+
+    // Then mutations are empty (error swallowed).
+    assert!(mutations.is_empty(), "error path returns empty mutations");
+
+    // And the flag is cleared.
+    assert!(
+        !worker_in_flight(&worker),
+        "flag should be cleared after error"
+    );
+    assert!(
+        worker_pending_id(&worker).is_none(),
+        "pending ID should be cleared after error"
+    );
+}
+
+/// A factory whose LLM service always returns an error on `chat_stream`.
+#[derive(Debug)]
+struct FailingLlmFactory;
+
+#[async_trait::async_trait]
+impl jinn_provider::LlmServiceFactory for FailingLlmFactory {
+    fn create(
+        &self,
+    ) -> Result<
+        Box<dyn jinn_provider::LlmService>,
+        error_stack::Report<jinn_provider::LlmServiceError>,
+    > {
+        Ok(Box::new(FailingLlmService))
+    }
+
+    fn name(&self) -> &'static str {
+        "failing-test"
+    }
+}
+
+#[derive(Debug)]
+struct FailingLlmService;
+
+#[async_trait::async_trait]
+impl jinn_provider::LlmService for FailingLlmService {
+    fn name(&self) -> &'static str {
+        "failing-test"
+    }
+
+    async fn chat_stream(
+        &self,
+        _messages: Vec<jinn_provider::LlmMessage>,
+    ) -> Result<jinn_provider::ChatStream, error_stack::Report<jinn_provider::LlmServiceError>>
+    {
+        Err(
+            error_stack::Report::new(jinn_provider::LlmServiceError::ApiKey)
+                .attach("intentional test failure"),
+        )
+    }
+
+    async fn chat_stream_with_tools(
+        &self,
+        _messages: Vec<jinn_provider::LlmMessage>,
+        _tools: Vec<jinn_provider::ToolDefinition>,
+    ) -> Result<jinn_provider::ToolStream, error_stack::Report<jinn_provider::LlmServiceError>>
+    {
+        Err(
+            error_stack::Report::new(jinn_provider::LlmServiceError::ApiKey)
+                .attach("intentional test failure"),
+        )
+    }
+}
+
+#[test]
+fn manual_compaction_does_not_set_flag() {
+    // Given a worker.
+    let (worker, session_id) = test_worker_with_session("summary", alternating_history(20));
+    let trigger = CompactionTrigger {
+        session_id: session_id.clone(),
+        compact_all: true,
+    };
+
+    // When running manual compaction.
+    let rt = tokio::runtime::Runtime::new().expect("test runtime");
+    let result = rt.block_on(async { worker.evaluate_for_session(&trigger).await });
+
+    // Then it produces mutations.
+    assert!(result.is_ok(), "manual compaction should succeed");
+    assert!(
+        !result.expect("ok").is_empty(),
+        "manual compaction should produce mutations"
+    );
+
+    // And the flag is NOT set.
+    assert!(
+        !worker_in_flight(&worker),
+        "manual compaction should not set the flag"
+    );
+    assert!(
+        worker_pending_id(&worker).is_none(),
+        "manual compaction should not set pending ID"
     );
 }

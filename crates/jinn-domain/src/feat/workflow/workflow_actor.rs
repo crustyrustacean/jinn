@@ -493,7 +493,11 @@ mod tests {
         )
     }
 
-    fn test_init_workflow(name: &str, workflow_id: WorkflowId, session_id: SessionId) -> InitWorkflow {
+    fn test_init_workflow(
+        name: &str,
+        workflow_id: WorkflowId,
+        session_id: SessionId,
+    ) -> InitWorkflow {
         use crate::feat::workflow::attached_workflow::WorkflowConfig;
         InitWorkflow {
             name: name.to_owned(),
@@ -588,7 +592,6 @@ mod tests {
         let session_id = h.state.read().session.active_session_id().clone();
         let workflow_id = WorkflowId::new();
         h.actor.handle_init_workflow(
-
             &test_init_workflow("add-numbers", workflow_id.clone(), session_id),
             &ctx,
         );
