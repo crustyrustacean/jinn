@@ -258,28 +258,14 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
                 continue;
             }
 
-            // If the cursor is on a collapsed ignored block, expand it and
-            // apply the override to all entries inside.
-            if let Some(rep_id) = session.apply_sweep_to_collapsed_block(target) {
-                // Block was expanded and entries were mutated.
-                // Propagate shown state to any new sub-blocks when un-ignoring.
-                if matches!(target, ContextOverride::Default | ContextOverride::ForcedInclude) {
-                    session.propagate_shown_on_unignore(&rep_id);
-                }
-                // Rebuild visual items so the cursor can advance through
-                // the now-expanded entries instead of the stale collapsed block.
-                session.rebuild_visual_items();
-                // Advance past the block and continue.
+            // If the cursor is on a collapsed ignored block, skip over it.
+            // The user hid those entries; don't touch them during sweep.
+            if session.is_selected_collapsed_block() {
                 if !advance_selection_one(session) {
-                    let session_id = session.session_id().clone();
-                    session.set_ignore_sweep(target);
-                    return IntentResult::with_commands(vec![Command::PersistSession(
-                        crate::feat::session_lifecycle::protocol::command::PersistSession {
-                            session_id,
-                        },
-                    )]);
+                    // At bottom, collapsed block is the last item - stop.
+                    return IntentResult::empty();
                 }
-                session.set_ignore_sweep(target);
+                // Loop to check the new entry.
                 continue;
             }
 
@@ -289,11 +275,25 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
             // Rebuild visual items since the entry's context state changed.
             session.rebuild_visual_items();
 
-            // Capture entry_id before advancing.
+            // After rebuild, the cursor may land on a newly-formed collapsed block.
+            // Advance past it and continue the sweep loop.
+            if session.selected_entry().is_none() {
+                if !advance_selection_one(session) {
+                    let session_id = session.session_id().clone();
+                    session.set_ignore_sweep(target);
+                    return IntentResult::with_commands(vec![Command::PersistSession(
+                        crate::feat::session_lifecycle::protocol::command::PersistSession {
+                            session_id,
+                        },
+                    )]);
+                }
+                continue;
+            }
+
             let Some(selected) = session.selected_entry() else {
-                // set_entry_context_override already mutated in memory.
-                // Emit a fallback PersistSession to flush the mutation.
-                let session_id = state.active_session().session_id().clone();
+                // Should not happen after the check above, but be safe.
+                let session_id = session.session_id().clone();
+                session.set_ignore_sweep(target);
                 return IntentResult::with_commands(vec![Command::PersistSession(
                     crate::feat::session_lifecycle::protocol::command::PersistSession {
                         session_id,
@@ -1490,9 +1490,11 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn sweep_through_collapsed_block() {
+    fn sweep_skips_collapsed_block_without_mutating() {
         // Given: 1 user, 10 ignored (will collapse), 5 user.
         // The 10 ignored entries form a collapsed block.
+        // The sweep should skip the collapsed block entirely — no expansion,
+        // no mutation of entries inside.
         use crate::feat::ui::chat_log::visual_item::{
             DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
         };
@@ -1537,29 +1539,34 @@ mod tests {
             ContextOverride::ForcedExclude
         );
 
-        // Second press - should encounter the collapsed block,
-        // expand it, apply ForcedExclude to all entries inside, and advance.
+        // Second press - should skip the collapsed block and land on
+        // an entry after it.
         let _result = handle_ignore_selected(&mut state);
 
-        // All 10 ignored entries should now be ForcedExclude
-        // (they already were, but the sweep applied the override).
-        for i in 1..=10 {
-            assert_eq!(
-                state.active_session().history()[i].context_override,
-                ContextOverride::ForcedExclude,
-                "entry {i} should be ForcedExclude"
-            );
-        }
-
-        // The block should be shown (expanded).
+        // Entries inside the collapsed block should NOT be mutated
+        // (they were already ForcedExclude, no change applied).
+        // Just verify the block was NOT expanded.
         let block_start_id = state.active_session().history()[1].id.clone();
         assert!(
-            state
+            !state
                 .active_session()
                 .ui
                 .shown_ignored_blocks
                 .contains(&block_start_id),
-            "collapsed block should be auto-expanded"
+            "collapsed block should NOT be expanded during sweep"
+        );
+
+        // The cursor should have jumped past the collapsed block
+        // to one of the 'after' entries.
+        let selected = state.active_session().selected_entry();
+        assert!(
+            selected.is_some(),
+            "cursor should be on an entry after the collapsed block"
+        );
+        let selected_text = selected.expect("entry").text();
+        assert!(
+            selected_text.starts_with("after"),
+            "cursor should be on an 'after' entry, got: {selected_text:?}"
         );
     }
 
