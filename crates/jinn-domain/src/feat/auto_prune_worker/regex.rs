@@ -78,6 +78,144 @@ impl Clone for CompiledRegexRule {
     }
 }
 
+/// Walk forward from a ToolCall to find its matching ToolResult by tool call ID.
+///
+/// Returns `None` if no matching result exists (pending/orphaned call).
+fn find_matching_result(
+    history: &[ChatEntry],
+    call_idx: usize,
+    tool_call_id: &str,
+) -> Option<ChatEntryId> {
+    // ToolResults appear after their ToolCall, so scan forward only.
+    for entry in history.iter().skip(call_idx + 1) {
+        if let ChatEntryKind::ToolResult { id, .. } = &entry.kind
+            && id == tool_call_id
+        {
+            return Some(entry.id.clone());
+        }
+    }
+    // No matching result found — the call is still pending or orphaned.
+    None
+}
+
+/// Scan history for ToolCalls matching a single regex rule and collect
+/// (call_entry_id, result_entry_id) pairs.
+///
+/// Matches regardless of exclusion status — already-excluded entries still
+/// count toward `keep_last` positioning so that the "most recent N" window
+/// is stable regardless of prior pruning.
+fn collect_matching_pairs(
+    history: &[ChatEntry],
+    rule: &CompiledRegexRule,
+) -> Vec<(ChatEntryId, ChatEntryId)> {
+    let mut matched_pairs: Vec<(ChatEntryId, ChatEntryId)> = Vec::new();
+
+    for (i, entry) in history.iter().enumerate() {
+        // Only interested in ToolCall entries matching the rule's tool_name.
+        let tool_call_id = match &entry.kind {
+            ChatEntryKind::ToolCall { id, name, .. } if name == &rule.tool_name => id.clone(),
+            _ => continue,
+        };
+
+        // Run regex against the full text() output: "{name}: {arguments}".
+        // Match regardless of current exclusion status so that already-excluded
+        // entries still count toward keep_last positioning.
+        let text = entry.text();
+        let matched = rule.regex.is_match(&text);
+        tracing::info!(
+            entry_id = %entry.id,
+            text = %text,
+            matched,
+            "regex match attempt"
+        );
+        if !matched {
+            continue;
+        }
+
+        // Walk forward to find the ToolResult for this matching call.
+        // If none found (pending/orphaned), skip — incomplete pairs don't
+        // count toward keep_last positioning.
+        if let Some(result_id) = find_matching_result(history, i, &tool_call_id) {
+            tracing::info!(
+                call_id = %entry.id,
+                result_id = %result_id,
+                "matched pair"
+            );
+            matched_pairs.push((entry.id.clone(), result_id));
+        } else {
+            tracing::warn!(call_id = %entry.id, "no matching result found");
+        }
+    }
+
+    matched_pairs
+}
+
+/// For each rule, prune all but the last `keep_last` matching pairs.
+///
+/// Pairs are in history order (oldest first), so `.take()` selects the
+/// oldest pairs to prune. Only emits mutations for entries not already excluded.
+fn build_prune_mutations(
+    history: &[ChatEntry],
+    rules: &[CompiledRegexRule],
+) -> Vec<HistoryMutation> {
+    let mut mutations = Vec::new();
+
+    for rule in rules {
+        let matched_pairs = collect_matching_pairs(history, rule);
+
+        tracing::info!(
+            rule = %rule.regex,
+            matched_count = matched_pairs.len(),
+            keep_last = rule.keep_last,
+            "pruning decision"
+        );
+
+        if matched_pairs.len() <= rule.keep_last {
+            continue;
+        }
+
+        // Pairs are oldest-first. Prune the oldest ones beyond keep_last.
+        let prune_count = matched_pairs.len() - rule.keep_last;
+        let rule_ident = rule.regex.as_str();
+        for (idx, (call_id, result_id)) in matched_pairs.iter().take(prune_count).enumerate() {
+            // Only emit mutations for entries not already excluded.
+            let call_already_excluded = history
+                .iter()
+                .any(|e| e.id == *call_id && e.context_override == ContextOverride::ForcedExclude);
+            let result_already_excluded = history.iter().any(|e| {
+                e.id == *result_id && e.context_override == ContextOverride::ForcedExclude
+            });
+
+            if !call_already_excluded {
+                tracing::info!(
+                    rule = %rule_ident,
+                    pair_index = idx,
+                    entry_id = %call_id,
+                    "emitting ForcedExclude for call"
+                );
+                mutations.push(HistoryMutation::SetContextOverride {
+                    entry_id: call_id.clone(),
+                    value: ContextOverride::ForcedExclude,
+                });
+            }
+            if !result_already_excluded {
+                tracing::info!(
+                    rule = %rule_ident,
+                    pair_index = idx,
+                    entry_id = %result_id,
+                    "emitting ForcedExclude for result"
+                );
+                mutations.push(HistoryMutation::SetContextOverride {
+                    entry_id: result_id.clone(),
+                    value: ContextOverride::ForcedExclude,
+                });
+            }
+        }
+    }
+
+    mutations
+}
+
 #[async_trait::async_trait]
 impl HistoryWorker for RegexAutoPruneWorker {
     #[allow(clippy::unnecessary_literal_bound)]
@@ -90,119 +228,7 @@ impl HistoryWorker for RegexAutoPruneWorker {
         _session_id: &SessionId,
         history: std::sync::Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
-        let mut mutations = Vec::new();
-
-        for rule in &self.rules {
-            // Phase 1: Collect matching (call_entry_id, result_entry_id) pairs.
-            let mut matched_pairs: Vec<(ChatEntryId, ChatEntryId)> = Vec::new();
-
-            tracing::info!(
-                rule = %rule.regex,
-                tool_name = %rule.tool_name,
-                keep_last = rule.keep_last,
-                history_len = history.len(),
-                "regex worker evaluating rule"
-            );
-
-            for i in 0..history.len() {
-                let entry = &history[i];
-
-                // Only interested in ToolCall entries matching tool_name.
-                let tool_call_id = match &entry.kind {
-                    ChatEntryKind::ToolCall { id, name, .. } if name == &rule.tool_name => {
-                        id.clone()
-                    }
-                    _ => continue,
-                };
-
-                // Run regex against the full text() output: "{name}: {arguments}".
-                // Note: we match regardless of current exclusion status so that
-                // already-excluded entries still count toward keep_last positioning.
-                let text = entry.text();
-                let matched = rule.regex.is_match(&text);
-                tracing::info!(
-                    entry_id = %entry.id,
-                    text = %text,
-                    matched,
-                    "regex match attempt"
-                );
-                if !matched {
-                    continue;
-                }
-
-                // Find the corresponding ToolResult by tool call ID.
-                let mut result_entry_id = None;
-                for entry_j in history.iter().skip(i + 1) {
-                    if let ChatEntryKind::ToolResult { id, .. } = &entry_j.kind
-                        && id == &tool_call_id
-                    {
-                        result_entry_id = Some(entry_j.id.clone());
-                        break;
-                    }
-                }
-
-                // Track the pair even if already excluded, so it counts
-                // toward keep_last positioning.
-                if let Some(result_id) = result_entry_id {
-                    tracing::info!(
-                        call_id = %entry.id,
-                        result_id = %result_id,
-                        "matched pair"
-                    );
-                    matched_pairs.push((entry.id.clone(), result_id));
-                } else {
-                    tracing::warn!(call_id = %entry.id, "no matching result found");
-                }
-            }
-
-            // Phase 2: Prune all but the last keep_last pairs.
-            tracing::info!(
-                rule = %rule.regex,
-                matched_count = matched_pairs.len(),
-                keep_last = rule.keep_last,
-                "phase 2: pruning decision"
-            );
-            if matched_pairs.len() <= rule.keep_last {
-                continue;
-            }
-
-            let prune_count = matched_pairs.len() - rule.keep_last;
-            let _rule_ident = rule.regex.as_str();
-            for (idx, (call_id, result_id)) in matched_pairs.iter().take(prune_count).enumerate() {
-                // Only emit mutations for entries not already excluded.
-                let call_already_excluded = history.iter().any(|e| {
-                    e.id == *call_id && e.context_override == ContextOverride::ForcedExclude
-                });
-                let result_already_excluded = history.iter().any(|e| {
-                    e.id == *result_id && e.context_override == ContextOverride::ForcedExclude
-                });
-
-                if !call_already_excluded {
-                    tracing::info!(
-                        rule = %_rule_ident,
-                        pair_index = idx,
-                        entry_id = %call_id,
-                        "emitting ForcedExclude for call"
-                    );
-                    mutations.push(HistoryMutation::SetContextOverride {
-                        entry_id: call_id.clone(),
-                        value: ContextOverride::ForcedExclude,
-                    });
-                }
-                if !result_already_excluded {
-                    tracing::info!(
-                        rule = %_rule_ident,
-                        pair_index = idx,
-                        entry_id = %result_id,
-                        "emitting ForcedExclude for result"
-                    );
-                    mutations.push(HistoryMutation::SetContextOverride {
-                        entry_id: result_id.clone(),
-                        value: ContextOverride::ForcedExclude,
-                    });
-                }
-            }
-        }
+        let mutations = build_prune_mutations(&history, &self.rules);
 
         tracing::info!(total_mutations = mutations.len(), "regex worker done");
         mutations
@@ -561,7 +587,7 @@ mod tests {
 
         let mutations = evaluate(&worker, history);
 
-        // Pattern matches "bash: {\"command\": \"cargo check\"}".
+        // Pattern matches "bash: {"command": "cargo check"}".
         assert_eq!(mutations.len(), 2, "should prune the older pair");
     }
 

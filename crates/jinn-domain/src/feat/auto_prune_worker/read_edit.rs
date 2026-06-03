@@ -80,7 +80,28 @@ fn extract_path_from_arguments(arguments: &str) -> Option<String> {
         .map(std::borrow::ToOwned::to_owned)
 }
 
-/// Walk backward from a read tool call at index `read_index` and prune all
+/// Walk forward from a ToolCall at `call_idx` to find its matching ToolResult.
+///
+/// Returns `Some((result_entry_id, result_index))` if a match is found.
+/// Returns `None` if no result exists (pending/orphaned).
+fn find_matching_result(
+    history: &[ChatEntry],
+    call_idx: usize,
+    tool_call_id: &str,
+) -> Option<(crate::feat::session::chat_entry::ChatEntryId, usize)> {
+    // ToolResults appear after their ToolCall, so scan forward only.
+    for (j, entry) in history.iter().enumerate().skip(call_idx + 1) {
+        if let ChatEntryKind::ToolResult { id, .. } = &entry.kind
+            && id == tool_call_id
+        {
+            return Some((entry.id.clone(), j));
+        }
+    }
+    // No matching result found — the call is still pending or orphaned.
+    None
+}
+
+/// Walk backward from a read tool call at `read_index` and prune all
 /// edit/write ToolCall+ToolResult pairs on the same file path.
 ///
 /// Runs regardless of whether the read itself is excluded — stale edits are
@@ -91,10 +112,11 @@ fn prune_backward(
     read_path: &str,
     mutations: &mut Vec<HistoryMutation>,
 ) {
+    // Walk backward from the read to find prior edit/write calls on the same file.
     for j in (0..read_index).rev() {
         let back_entry = &history[j];
 
-        // Only interested in edit/write tool calls on the same file.
+        // Only interested in edit/write tool calls targeting the same file path.
         let back_call_id = match &back_entry.kind {
             ChatEntryKind::ToolCall {
                 name,
@@ -111,23 +133,15 @@ fn prune_backward(
         let back_call_entry_id = back_entry.id.clone();
         let back_call_excluded = back_entry.context_override == ContextOverride::ForcedExclude;
 
-        // Find the corresponding ToolResult for this edit/write.
-        let mut back_result_entry_id = None;
-        let mut back_result_index = None;
-        for (k, entry_k) in history.iter().enumerate().skip(j + 1) {
-            if let ChatEntryKind::ToolResult { id, .. } = &entry_k.kind
-                && id == &back_call_id
-            {
-                back_result_entry_id = Some(entry_k.id.clone());
-                back_result_index = Some(k);
-                break;
-            }
-        }
+        // Walk forward from this edit/write call to find its matching ToolResult.
+        // The result may appear anywhere after the call (not necessarily right after).
+        let back_result = find_matching_result(history, j, &back_call_id);
 
-        let back_result_excluded = back_result_index
-            .is_some_and(|k| history[k].context_override == ContextOverride::ForcedExclude);
+        let back_result_excluded = back_result
+            .as_ref()
+            .is_some_and(|(_, k)| history[*k].context_override == ContextOverride::ForcedExclude);
 
-        // Skip if both are already excluded.
+        // Skip if both call and result are already excluded — nothing to do.
         if back_call_excluded && back_result_excluded {
             continue;
         }
@@ -138,13 +152,42 @@ fn prune_backward(
                 value: ContextOverride::ForcedExclude,
             });
         }
-        if let Some(result_id) = back_result_entry_id.filter(|_| !back_result_excluded) {
+        if let Some((result_id, _)) = back_result.filter(|_| !back_result_excluded) {
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: result_id,
                 value: ContextOverride::ForcedExclude,
             });
         }
     }
+}
+
+/// Count how many edit/write ToolCalls on the same file path appear after
+/// the given index. Stops early once the count reaches `threshold`.
+///
+/// This determines whether the read's contents are stale — once enough
+/// modifications have happened after the read, the read output no longer
+/// represents the file's current state.
+fn count_subsequent_modifications(
+    history: &[ChatEntry],
+    after_idx: usize,
+    file_path: &str,
+    threshold: usize,
+) -> usize {
+    let mut count: usize = 0;
+    for entry in history.iter().skip(after_idx + 1) {
+        if let ChatEntryKind::ToolCall {
+            name, arguments, ..
+        } = &entry.kind
+            && is_modify_tool(name)
+            && extract_path_from_arguments(arguments).is_some_and(|p| p == file_path)
+        {
+            count += 1;
+            if count >= threshold {
+                break;
+            }
+        }
+    }
+    count
 }
 
 #[async_trait::async_trait]
@@ -164,7 +207,7 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
         for i in 0..history.len() {
             let entry = &history[i];
 
-            // Only interested in "read" tool calls.
+            // Only interested in "read" tool calls with a parseable file path.
             let (tool_call_id, read_path) = match &entry.kind {
                 ChatEntryKind::ToolCall {
                     name,
@@ -187,48 +230,28 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
             // pairs on the same file. Runs regardless of the read's exclusion
             // state — stale edits are noise even if the read itself is excluded.
             prune_backward(&history, i, &read_path, &mut mutations);
-            // ── Forward pruning ─────────────────────���─────────────────────
-            // Find the read's corresponding ToolResult.
-            let mut result_entry_id = None;
-            let mut result_index = None;
-            for (j, entry_j) in history.iter().enumerate().skip(i + 1) {
-                if let ChatEntryKind::ToolResult { id, .. } = &entry_j.kind
-                    && id == &tool_call_id
-                {
-                    result_entry_id = Some(entry_j.id.clone());
-                    result_index = Some(j);
-                    break;
-                }
-            }
 
-            let Some(result_idx) = result_index else {
-                // No result for this read — skip forward pruning.
+            // ── Forward pruning ──────────────────────────────────────────
+            // Find the read's corresponding ToolResult. If none found,
+            // skip forward pruning — an orphaned read has no pair to prune.
+            let Some((result_entry_id, result_idx)) =
+                find_matching_result(&history, i, &tool_call_id)
+            else {
                 continue;
             };
 
             let result_already_excluded =
                 history[result_idx].context_override == ContextOverride::ForcedExclude;
 
-            // Skip forward pruning if both are already excluded.
+            // Skip forward pruning if both call and result are already excluded.
             if call_already_excluded && result_already_excluded {
                 continue;
             }
 
-            // Walk forward counting edit/write calls on the same file path.
-            let mut modify_count: usize = 0;
-            for entry_j in history.iter().skip(i + 1) {
-                if let ChatEntryKind::ToolCall {
-                    name, arguments, ..
-                } = &entry_j.kind
-                    && is_modify_tool(name)
-                    && extract_path_from_arguments(arguments).is_some_and(|p| p == read_path)
-                {
-                    modify_count += 1;
-                    if modify_count >= WRITE_THRESHOLD {
-                        break;
-                    }
-                }
-            }
+            // Count how many edit/write calls to the same file appear after
+            // this read. Once the threshold is reached, the read is stale.
+            let modify_count =
+                count_subsequent_modifications(&history, i, &read_path, WRITE_THRESHOLD);
 
             if modify_count >= WRITE_THRESHOLD {
                 if !call_already_excluded {
@@ -239,7 +262,7 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
                 }
                 if !result_already_excluded {
                     mutations.push(HistoryMutation::SetContextOverride {
-                        entry_id: result_entry_id.expect("result_entry_id was set above"),
+                        entry_id: result_entry_id,
                         value: ContextOverride::ForcedExclude,
                     });
                 }

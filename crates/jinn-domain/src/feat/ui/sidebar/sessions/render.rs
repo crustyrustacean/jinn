@@ -23,8 +23,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use throbber_widgets_tui::ThrobberState;
 
-use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use super::{ANIMATION_INTERVAL, MAX_VISIBLE_SESSIONS};
+use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use entry_line::assemble_entry_line;
 use scroll_tag::render_scroll_tag;
 
