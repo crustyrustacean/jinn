@@ -246,8 +246,6 @@ pub enum Intent {
         kind: crate::feat::workflow::attached_workflow::OneShotKind,
     },
 
-
-
     // --- CWD Selection ---
     /// Change the session's working directory via an external picker.
     ChangeCwd {
@@ -353,10 +351,7 @@ impl std::fmt::Display for Intent {
             Intent::RenameDeleteGrapheme => write!(f, "rename delete"),
             Intent::RenameDeleteForward => write!(f, "rename forward delete"),
 
-
-
             Intent::ToggleOneShot { kind } => write!(f, "toggle one-shot {:?}", kind),
-
 
             Intent::ChangeCwd { root } => write!(f, "change cwd ({root})"),
         }

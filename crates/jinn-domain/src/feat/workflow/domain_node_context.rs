@@ -140,8 +140,9 @@ impl DomainNodeContext {
                 entry,
             }));
 
-        rx.await
-            .map_err(|_| Report::new(DomainContextError).attach("cloned workflow LLM request cancelled"))
+        rx.await.map_err(|_| {
+            Report::new(DomainContextError).attach("cloned workflow LLM request cancelled")
+        })
     }
 }
 

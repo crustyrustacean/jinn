@@ -54,7 +54,10 @@ pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
     // Always return to Normal when leaving sidebar.
     state.active_session_mut().discard_saved_history_position();
     state.active_session_mut().scroll_to_selected();
-    state.frontend.scope_stack.swap_base(crate::common::app_state::FocusScope::Normal);
+    state
+        .frontend
+        .scope_stack
+        .swap_base(crate::common::app_state::FocusScope::Normal);
     IntentResult::empty()
 }
 
@@ -343,6 +346,4 @@ mod tests {
             "scroll_offset should be concrete after leaving sidebar from pins"
         );
     }
-
-
 }

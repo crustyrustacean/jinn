@@ -30,7 +30,6 @@ pub enum FocusScope {
 
     /// Sidebar resize mode - adjusting sidebar width with h/l keys.
     SidebarResize,
-
 }
 
 impl FocusScope {
@@ -44,13 +43,10 @@ impl FocusScope {
             | Self::SidebarSessions
             | Self::SidebarTaskList
             | Self::SidebarResize => Mode::Normal,
-            Self::Input
-            | Self::ArgInput
-            | Self::RenameSessionInput => Mode::Input,
+            Self::Input | Self::ArgInput | Self::RenameSessionInput => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
+        }
     }
-}
-
 }
 
 impl std::fmt::Display for FocusScope {
@@ -66,7 +62,6 @@ impl std::fmt::Display for FocusScope {
             Self::ArgInput => write!(f, "ArgInput"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
-
         }
     }
 }

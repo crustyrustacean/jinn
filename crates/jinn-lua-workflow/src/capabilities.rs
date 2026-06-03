@@ -16,7 +16,10 @@ use crate::registry::LuaError;
 /// Creates the `ctx.llm(prompt)` async capability.
 ///
 /// Sends a [`HostRequest::Llm`] through the host channel and awaits the response.
-#[expect(clippy::missing_errors_doc, reason = "Lua bridge functions use mlua error reporting")]
+#[expect(
+    clippy::missing_errors_doc,
+    reason = "Lua bridge functions use mlua error reporting"
+)]
 pub fn make_llm(
     lua: &Lua,
     host_tx: kanal::Sender<HostRequest>,
@@ -52,7 +55,10 @@ pub fn make_llm(
 /// Creates the `ctx.push_user(text)` async capability.
 ///
 /// Sends a [`HostRequest::PushUser`] through the host channel.
-#[expect(clippy::missing_errors_doc, reason = "Lua bridge functions use mlua error reporting")]
+#[expect(
+    clippy::missing_errors_doc,
+    reason = "Lua bridge functions use mlua error reporting"
+)]
 pub fn make_push_user(
     lua: &Lua,
     host_tx: kanal::Sender<HostRequest>,
@@ -85,7 +91,10 @@ pub fn make_push_user(
 /// Creates the `ctx.push_system(text)` async capability.
 ///
 /// Sends a [`HostRequest::PushSystem`] through the host channel.
-#[expect(clippy::missing_errors_doc, reason = "Lua bridge functions use mlua error reporting")]
+#[expect(
+    clippy::missing_errors_doc,
+    reason = "Lua bridge functions use mlua error reporting"
+)]
 pub fn make_push_system(
     lua: &Lua,
     host_tx: kanal::Sender<HostRequest>,
@@ -118,7 +127,10 @@ pub fn make_push_system(
 /// Creates the `ctx.turn_off()` async capability.
 ///
 /// Sends a [`HostRequest::TurnOff`] through the host channel.
-#[expect(clippy::missing_errors_doc, reason = "Lua bridge functions use mlua error reporting")]
+#[expect(
+    clippy::missing_errors_doc,
+    reason = "Lua bridge functions use mlua error reporting"
+)]
 pub fn make_turn_off(
     lua: &Lua,
     host_tx: kanal::Sender<HostRequest>,
@@ -152,7 +164,10 @@ pub fn make_turn_off(
 /// Takes a Lua table of functions, runs them all concurrently, and returns
 /// a table of results. Does NOT go through the host channel — concurrency
 /// is handled within the VM task itself.
-#[expect(clippy::missing_errors_doc, reason = "Lua bridge functions use mlua error reporting")]
+#[expect(
+    clippy::missing_errors_doc,
+    reason = "Lua bridge functions use mlua error reporting"
+)]
 pub fn make_gather(lua: &Lua) -> Result<Function, Report<LuaError>> {
     lua.create_async_function(|lua: Lua, functions: Table| async move {
         let mut futures = Vec::new();

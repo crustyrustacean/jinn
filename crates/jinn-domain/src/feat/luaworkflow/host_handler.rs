@@ -48,7 +48,9 @@ impl LuaHostHandler {
                 system_prompt,
                 respond_to,
             } => {
-                let result = self.handle_llm(&session_id, &prompt, system_prompt.as_deref()).await;
+                let result = self
+                    .handle_llm(&session_id, &prompt, system_prompt.as_deref())
+                    .await;
                 let _ = respond_to.send(result);
             }
             HostRequest::PushUser {
@@ -180,10 +182,10 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::common::services::test_services::TestServices;
     use crate::feat::session::chat_session::ChatSessionState;
+    use crate::feat::workflow::attached_workflow::WorkflowId;
     use crate::feat::workflow::attached_workflow::{
         AttachedWorkflow, WorkflowConfig, WorkflowTrigger,
     };
-    use crate::feat::workflow::attached_workflow::WorkflowId;
     use crate::protocol::SessionId;
     use tokio::sync::oneshot;
 

@@ -16,7 +16,6 @@ pub use crate::feat::ui::sidebar::sessions::SessionsSectionState;
 use crate::feat::ui::sidebar::state::SidebarState;
 pub use crate::feat::ui::sidebar::task_list_section::TaskListSectionState;
 
-
 /// Theme-sensitive caches owned by the frontend.
 ///
 /// All caches that store pre-rendered styled data (which embeds theme colors)
@@ -155,7 +154,6 @@ impl Default for FrontendState {
             rename_session_input: RenameSessionInputState::default(),
 
             sidebar_width: 30,
-
         }
     }
 }

@@ -38,7 +38,6 @@ use crate::feat;
 
 use crate::IntentResult;
 
-
 /// Processes user intents - the single decision point for all user input.
 ///
 /// For each [`Intent`] variant: call the validator, then act.
@@ -378,14 +377,20 @@ impl IntentHandler {
                 // Branch on selected entry kind: session -> session rename, workflow -> workflow rename.
                 let index = state.frontend.sessions_section.selected_index;
                 if let Some(index) = index {
-                    let entries =
-                        feat::ui::sidebar::sessions::sorted_open_sessions(state);
+                    let entries = feat::ui::sidebar::sessions::sorted_open_sessions(state);
                     if let Some(entry) = entries.get(index) {
                         match entry.kind {
                             feat::ui::sidebar::sessions::state::SessionEntryKind::Session => {
-                                feat::rename_session_input::intent::handle_rename_session_enter(state)
+                                feat::rename_session_input::intent::handle_rename_session_enter(
+                                    state,
+                                )
                             }
-
+                            feat::ui::sidebar::sessions::state::SessionEntryKind::Workflow {
+                                ..
+                            } => {
+                                // Workflow entries are not renamable from the sidebar.
+                                IntentResult::empty()
+                            }
                         }
                     } else {
                         IntentResult::empty()
@@ -416,20 +421,17 @@ impl IntentHandler {
                 feat::rename_session_input::intent::handle_delete_forward(state)
             }
 
-
-
             Intent::ToggleOneShot { kind } => {
                 let session_id = state.session.active_session_id().clone();
                 let session = state.session.get_mut(&session_id).unwrap();
                 if session.ui.pending_one_shots.contains_key(kind) {
                     session.ui.pending_one_shots.remove(kind);
                 } else {
-                let config = kind.default_config();
+                    let config = kind.default_config();
                     session.ui.pending_one_shots.insert(*kind, config);
                 }
                 IntentResult::empty()
             }
-
 
             // --- CWD Selection ---
             Intent::ChangeCwd { root } => {
@@ -438,8 +440,6 @@ impl IntentHandler {
         }
     }
 }
-
-
 
 /// Cancel stream prompt intercept.
 ///
@@ -513,8 +513,6 @@ fn try_handle_close_session_prompt(intent: &Intent, state: &mut AppState) -> Opt
     // Re-validates in case session became busy between taps.
     Some(feat::ui::sidebar::sessions::handle_session_close_with_lifecycle(state))
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -672,7 +670,6 @@ mod tests {
         assert_eq!(state.frontend.rename_session_input.cursor_pos, 1);
         assert!(result.commands.is_empty());
     }
-
 
     // --- Mutant-killing tests for ArgInput scope guards ---
 
@@ -986,8 +983,6 @@ mod tests {
         assert!(result.commands.is_empty());
         assert!(result.events.is_empty());
     }
-
-
 
     #[rstest::rstest]
     fn active_session_changed_emitted_on_session_switch() {

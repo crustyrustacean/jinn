@@ -34,9 +34,8 @@ pub fn handle_session_activate(state: &mut AppState) {
             state.session.set_active(entry.id.clone());
             state.frontend.scope_stack.swap_base(FocusScope::Normal);
         }
-
+        SessionEntryKind::Workflow { .. } => {
+            // Workflow entries are informational only; activating them is a no-op.
+        }
     }
-
-
 }
-

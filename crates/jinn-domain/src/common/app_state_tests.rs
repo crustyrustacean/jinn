@@ -239,7 +239,6 @@ fn len_increases_after_push() {
     assert_eq!(stack.len(), 2);
 }
 
-
 // --- active_picker_ops ---
 
 #[rstest::rstest]

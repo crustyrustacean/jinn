@@ -19,7 +19,6 @@ pub use crate::feat::rename_session_input::state::RenameSessionInputState;
 pub use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
 pub use crate::feat::ui::frontend_state::{FrontendCaches, FrontendState};
 
-
 use crate::protocol::{ChatEntryId, PickerKind, PinPosition, SessionId};
 
 use crate::common::session_map::SessionMap;
@@ -71,7 +70,7 @@ pub struct AppState {
     >,
     /// Discovered Lua plugins from both user and system plugin directories.
     /// OWNER: startup (actor_wiring) writes once; picker intent handler reads.
-    pub discovered_plugins: Vec<crate::feat::luaworkflow::discovery::PluginMeta>, 
+    pub discovered_plugins: Vec<crate::feat::luaworkflow::discovery::PluginMeta>,
 }
 
 impl AppState {
@@ -103,10 +102,6 @@ impl AppState {
     pub fn active_session(&self) -> &ChatSessionState {
         self.session.active_session()
     }
-
-
-
-
 
     /// Mutable access to the active chat session.
     ///
