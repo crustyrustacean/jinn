@@ -2075,7 +2075,6 @@ fn finalize_tool_result_pushes_new_entry_for_unknown_id() {
     }
 }
 
-
 // --- Phase 1 fix: begin_tool_result guard tests ---
 
 #[test]
@@ -2119,12 +2118,7 @@ fn finalize_tool_result_updates_existing_pending_by_kind_id() {
     // (simulating the case where begin_tool_result pushed before
     // the streaming index was available).
     let mut session = ChatSessionState::new();
-    let pending = ChatEntry::tool_result(
-        "call_1",
-        "bash",
-        "",
-        ToolResultStatus::Pending,
-    );
+    let pending = ChatEntry::tool_result("call_1", "bash", "", ToolResultStatus::Pending);
     let pending_id = pending.id.clone();
     session.push_entry(pending);
     assert_eq!(session.history().len(), 1);
@@ -2140,7 +2134,8 @@ fn finalize_tool_result_updates_existing_pending_by_kind_id() {
         session.history().len()
     );
     assert_eq!(
-        session.history()[0].id, pending_id,
+        session.history()[0].id,
+        pending_id,
         "entry should be the same (updated in-place)"
     );
     match &session.history()[0].kind {
@@ -2158,12 +2153,7 @@ fn finalize_tool_result_updates_existing_pending_by_kind_id() {
 fn finalize_tool_result_updates_existing_with_truncation() {
     // Given a session with a pending ToolResult.
     let mut session = ChatSessionState::new();
-    let pending = ChatEntry::tool_result(
-        "call_1",
-        "bash",
-        "",
-        ToolResultStatus::Pending,
-    );
+    let pending = ChatEntry::tool_result("call_1", "bash", "", ToolResultStatus::Pending);
     let pending_id = pending.id.clone();
     session.push_entry(pending);
 
@@ -2230,7 +2220,10 @@ fn finalize_tool_result_pushes_new_with_truncation_when_no_existing() {
     assert_eq!(session.history().len(), 1);
     match &session.history()[0].kind {
         ChatEntryKind::ToolResult {
-            content, full_content, truncation, ..
+            content,
+            full_content,
+            truncation,
+            ..
         } => {
             assert_eq!(content, "truncated");
             assert_eq!(full_content.as_deref(), Some("full"));

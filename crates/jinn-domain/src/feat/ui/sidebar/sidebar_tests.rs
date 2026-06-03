@@ -55,7 +55,8 @@ fn render_clears_area_with_sidebar_background() {
     // When rendering.
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); sidebar.render(frame, ratatui::layout::Rect::new(0, 0, 30, 10), &ctx);
+            let ctx = RenderCtx::new(&state);
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, 30, 10), &ctx);
         })
         .unwrap();
 
@@ -434,11 +435,8 @@ fn sessions_header_anchored_to_bottom() {
     // When rendering.
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); sidebar.render(
-                frame,
-                ratatui::layout::Rect::new(0, 0, width, height),
-                &ctx,
-            );
+            let ctx = RenderCtx::new(&state);
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
 
@@ -474,11 +472,8 @@ fn sessions_header_below_persona_when_sidebar_is_short() {
     // When rendering.
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); sidebar.render(
-                frame,
-                ratatui::layout::Rect::new(0, 0, width, height),
-                &ctx,
-            );
+            let ctx = RenderCtx::new(&state);
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
 
@@ -514,11 +509,8 @@ fn sessions_footer_highlights_s_in_accent_action() {
     // When rendering.
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); sidebar.render(
-                frame,
-                ratatui::layout::Rect::new(0, 0, width, height),
-                &ctx,
-            );
+            let ctx = RenderCtx::new(&state);
+            sidebar.render(frame, ratatui::layout::Rect::new(0, 0, width, height), &ctx);
         })
         .unwrap();
 

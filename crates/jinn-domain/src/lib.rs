@@ -37,8 +37,8 @@ pub use common::app_state::{
     AppState, ContextAssemblyState, FocusScope, FrontendState, ProviderState, ScopeStack,
     SessionState,
 };
-pub use common::state::{State, StateReadGuard, StateWriteGuard};
 pub use common::render_ctx::RenderCtx;
+pub use common::state::{State, StateReadGuard, StateWriteGuard};
 pub use common::tui_signals::TuiSignals;
 pub use common::{AppUiRegistry, register_all_ui_elements};
 pub use feat::context::prompt_template::PromptTemplateStore;
@@ -95,8 +95,8 @@ pub use common::services::actor_channel;
 // Re-export protocol types at crate root
 pub use protocol::entries_to_messages;
 pub use protocol::{
-    ActorName, AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Command, Event, Intent,
-    IntentResult, Key, KeyEvent, Mode, Modifiers, PickerKind, PinPosition, PromptTemplate,
+    ActorName, AppMsg, ChatEntry, ChatEntryId, ChatEntryKind, Command, Event, Intent, IntentResult,
+    Key, KeyEvent, Mode, Modifiers, PickerKind, PinPosition, PromptTemplate,
 };
 pub use protocol::{
     CommandMsg, CommandName, DynamicCommand, DynamicEvent, EventMsg, EventTypeName, PickerEntry,

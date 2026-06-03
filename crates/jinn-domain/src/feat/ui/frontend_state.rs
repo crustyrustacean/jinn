@@ -17,7 +17,6 @@ use crate::feat::ui::sidebar::state::SidebarState;
 pub use crate::feat::ui::sidebar::task_list_section::TaskListSectionState;
 use crate::feat::workflow::workflow_ui_state::WorkflowUiState;
 
-
 /// Theme-sensitive caches owned by the frontend.
 ///
 /// All caches that store pre-rendered styled data (which embeds theme colors)
@@ -135,8 +134,6 @@ pub struct FrontendState {
     /// Sidebar width in columns, synced from preferences.
     /// OWNER: PreferencesStateSyncActor (on PreferencesUpdated).
     pub sidebar_width: u16,
-
-
 
     /// Workflow tab UI state - selection, viewport, inspector, cancel prompt.
     /// OWNER: IntentHandler (all workflow UI interactions).

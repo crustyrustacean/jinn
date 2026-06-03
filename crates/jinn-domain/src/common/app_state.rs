@@ -116,8 +116,12 @@ impl AppState {
     ///
     /// Only returns `Some` when the sessions section has a workflow entry under
     /// the cursor and that workflow exists in `WorkflowMap`.
-    pub fn previewed_workflow(&self) -> Option<&crate::feat::workflow::workflow_state::WorkflowState> {
-        self.frontend.sessions_section.previewed_workflow_id
+    pub fn previewed_workflow(
+        &self,
+    ) -> Option<&crate::feat::workflow::workflow_state::WorkflowState> {
+        self.frontend
+            .sessions_section
+            .previewed_workflow_id
             .as_ref()
             .and_then(|id| self.workflow.get(id))
     }
