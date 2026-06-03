@@ -9,11 +9,7 @@ use jinn_domain::RenderCtx;
 /// Renders the horizontal separator line (`─`) at the bottom of the content area.
 ///
 /// Color reflects the current focus scope.
-pub(super) fn render_chat_bottom_line(
-    frame: &mut Frame<'_>,
-    content_area: Rect,
-    ctx: &RenderCtx,
-) {
+pub(super) fn render_chat_bottom_line(frame: &mut Frame<'_>, content_area: Rect, ctx: &RenderCtx) {
     let focus_scope = ctx.state.frontend.scope_stack.current();
     let theme = &ctx.state.frontend.theme;
 

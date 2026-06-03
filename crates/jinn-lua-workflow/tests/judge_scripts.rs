@@ -16,7 +16,7 @@ mod tests {
 
     use std::path::PathBuf;
 
-    use jinn_lua_workflow::{spawn_one_shot, CtxConfig, HostRequest};
+    use jinn_lua_workflow::{CtxConfig, HostRequest, spawn_one_shot};
 
     fn read_script(name: &str) -> String {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -51,7 +51,12 @@ mod tests {
         let (host_tx, host_rx) = kanal::unbounded::<HostRequest>();
         let script = read_script("judge_fail");
 
-        let handle = spawn_one_shot(script, "judge_fail".to_owned(), host_tx, judge_fail_config());
+        let handle = spawn_one_shot(
+            script,
+            "judge_fail".to_owned(),
+            host_tx,
+            judge_fail_config(),
+        );
 
         // Receive and verify the PushUser request.
         let req = host_rx.recv().expect("should receive request");
@@ -78,7 +83,12 @@ mod tests {
         let (host_tx, host_rx) = kanal::unbounded::<HostRequest>();
         let script = read_script("judge_pass");
 
-        let handle = spawn_one_shot(script, "judge_pass".to_owned(), host_tx, judge_pass_config());
+        let handle = spawn_one_shot(
+            script,
+            "judge_pass".to_owned(),
+            host_tx,
+            judge_pass_config(),
+        );
 
         // First request: PushSystem.
         let req1 = host_rx.recv().expect("should receive first request");

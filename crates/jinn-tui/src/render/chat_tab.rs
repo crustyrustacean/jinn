@@ -10,8 +10,8 @@ pub mod queue_display;
 pub mod sidebar;
 pub mod streaming_indicator;
 
-use jinn_domain::RenderCtx;
 use jinn_domain::AppUiRegistry;
+use jinn_domain::RenderCtx;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
@@ -103,11 +103,7 @@ pub(super) fn render_chat_tab(
     }
 
     // Chat bottom line.
-    chat_bottom_line::render_chat_bottom_line(
-        frame,
-        content_area,
-        ctx,
-    );
+    chat_bottom_line::render_chat_bottom_line(frame, content_area, ctx);
 
     // Input box.
     input_box::render_input_box(ui_registry, frame, layout.input, ctx);
@@ -116,10 +112,5 @@ pub(super) fn render_chat_tab(
     autocomplete::render_autocomplete(frame, layout.input, ctx);
 
     // Vertical minimap column and `>` arrow overlay.
-    minimap::render_minimap(
-        frame,
-        layout.minimap,
-        chat_log_area,
-        ctx,
-    );
+    minimap::render_minimap(frame, layout.minimap, chat_log_area, ctx);
 }

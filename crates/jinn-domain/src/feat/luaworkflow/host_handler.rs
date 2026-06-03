@@ -48,7 +48,9 @@ impl LuaHostHandler {
                 system_prompt,
                 respond_to,
             } => {
-                let result = self.handle_llm(&session_id, &prompt, system_prompt.as_deref()).await;
+                let result = self
+                    .handle_llm(&session_id, &prompt, system_prompt.as_deref())
+                    .await;
                 let _ = respond_to.send(result);
             }
             HostRequest::PushUser {

@@ -1,7 +1,7 @@
 //! TUI rendering adapter for the vertical minimap column and arrow overlay.
 
-use jinn_domain::feat::ui::vertical_minimap;
 use jinn_domain::RenderCtx;
+use jinn_domain::feat::ui::vertical_minimap;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
