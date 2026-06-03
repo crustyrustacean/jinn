@@ -70,6 +70,10 @@ pub struct AppState {
             crate::feat::workflow::attached_workflow::BeforeTurnMode,
         )>,
     >,
+    /// Discovered Lua plugins from both user and system plugin directories.
+    /// OWNER: startup (actor_wiring) writes once; picker intent handler reads.
+
+    pub discovered_plugins: Vec<crate::feat::luaworkflow::discovery::PluginMeta>,
 }
 
 impl AppState {
