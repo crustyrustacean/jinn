@@ -79,7 +79,6 @@ fn find_matching_result(
     None
 }
 
-
 /// A collected edit/write tool call paired with its result.
 struct EditWritePair {
     call_entry_id: ChatEntryId,
