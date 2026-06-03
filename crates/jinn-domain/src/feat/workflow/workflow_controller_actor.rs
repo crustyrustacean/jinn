@@ -596,11 +596,7 @@ impl WorkflowControllerActor {
         tokio::spawn(async move {
             let handler = LuaHostHandler::new(state.clone(), handler_ctx);
 
-            // Process host requests synchronously.
-            // The VM sends requests via kanal (sync channel) and blocks
-            
-            // the handler processes them here. We poll the channel while
-            // waiting for the VM to complete.
+            // Process host requests until the VM completes.
             let mut vm_done = false;
             loop {
                 if vm_done && host_rx.is_empty() {
@@ -612,6 +608,7 @@ impl WorkflowControllerActor {
                         HostRequest::Shutdown => break,
                         request => {
                             handler.handle_request(request).await;
+
                         }
                     }
                 }
@@ -643,7 +640,6 @@ impl WorkflowControllerActor {
             Ok(Vec::new())
         })
     }
-
 
 
     /// Apply a workflow result to the session.
@@ -1579,4 +1575,86 @@ mod tests {
         assert_eq!(queue.len(), 1);
         assert!(guard.pending_before_turn.contains_key(&session_id));
     }
+
+    // --- Integration test: judge_fail end-to-end ---
+
+
+    #[tokio::test]
+    async fn judge_fail_pushes_user_entry_to_session() {
+        use std::io::Write as _;
+
+        // Given a temp dir with the judge_fail plugin.
+        let temp_dir = tempfile::TempDir::new().expect("temp dir");
+        let plugin_dir = temp_dir.path().join("share").join("plugins").join("judge_fail");
+        std::fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+        let mut f = std::fs::File::create(plugin_dir.join("init.lua")).expect("create init.lua");
+        write!(
+            f,
+            r"return {{
+                run = function(ctx)
+                    ctx.push_user('judgement failed, try again')
+                end
+            }}"
+        )
+        .expect("write init.lua");
+
+        let paths = crate::common::app_paths::AppPaths::new_in(temp_dir.path());
+        let services = TestServices::builder().paths(paths).build();
+        let state = State::new(AppState::default());
+        let ctx = Arc::new(DomainNodeContext::new(services.clone(), state.clone()));
+
+        // Given a session with an attached Judge workflow.
+        let session_id = state.read().session.active_session_id().clone();
+        let workflow_id = WorkflowId::new();
+        let aw = AttachedWorkflow::new(
+            WorkflowConfig::Judge {
+                prompt: String::new(),
+                approval_tool: "task_complete".to_owned(),
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Silent,
+            },
+            WorkflowTrigger::TurnEnd,
+        );
+        {
+            let mut guard = state.write();
+            let session = guard.session.get_mut(&session_id).expect("session");
+            let mut custom_aw = aw;
+            custom_aw.id = workflow_id.clone();
+            session.core.attached_workflows.push(custom_aw);
+        }
+
+        let actor = WorkflowControllerActor {
+            ctx,
+            state: state.clone(),
+            services,
+        };
+
+        // When spawning the Lua workflow.
+        let handle = actor.spawn_lua_workflow(
+            &WorkflowConfig::Judge {
+                prompt: String::new(),
+                approval_tool: "task_complete".to_owned(),
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Silent,
+            },
+            &session_id,
+            &workflow_id,
+            &WorkflowTrigger::TurnEnd,
+        );
+
+        let result = handle.await.expect("join");
+
+        assert!(result.is_ok(), "workflow failed: {:?}", result);
+
+        // Then a user entry was pushed to session history.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session");
+
+        let last = session.history().last().expect("entry exists");
+        match &last.kind {
+            crate::feat::session::chat_entry::ChatEntryKind::User { display, .. } => {
+                assert_eq!(display, "judgement failed, try again");
+            }
+            other => panic!("expected User entry, got {other:?}"),
+        }
+    }
+
 }
