@@ -51,26 +51,12 @@ pub fn handle_sidebar_focus(state: &mut AppState) -> IntentResult {
 /// This ensures ESC always matches what's currently being rendered,
 /// regardless of what was showing when the sidebar was opened.
 pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
-    use crate::common::app_state::FocusScope;
-
-    // Derive scope from current render state, not scope stack.
-    let has_active_workflow = state.workflow.active().is_some();
-    let target_scope = if has_active_workflow {
-        FocusScope::Workflow
-    } else {
-        FocusScope::Normal
-    };
-
-    // Run chat-specific side effects only when returning to Normal.
-    if matches!(target_scope, FocusScope::Normal) {
-        state.active_session_mut().discard_saved_history_position();
-        state.active_session_mut().scroll_to_selected();
-    }
-
-    state.frontend.scope_stack.swap_base(target_scope);
+    // Always return to Normal when leaving sidebar.
+    state.active_session_mut().discard_saved_history_position();
+    state.active_session_mut().scroll_to_selected();
+    state.frontend.scope_stack.swap_base(crate::common::app_state::FocusScope::Normal);
     IntentResult::empty()
 }
-
 
 /// Handles `SidebarFocusSessions` \u{2014} jumps directly to the Sessions sidebar section.
 ///
@@ -342,7 +328,6 @@ mod tests {
         state.frontend.scope_stack.push(FocusScope::SidebarPins);
         crate::feat::ui::sidebar::pins::pins_section::receive_cursor(
             &mut state,
-
             crate::feat::ui::sidebar::section_trait::EnterFrom::Top,
         );
 
@@ -359,89 +344,5 @@ mod tests {
         );
     }
 
-    fn test_graph() -> jinn_workflow::graph::WorkflowGraph {
-        use jinn_workflow::node::code::CodeNode;
-        use jinn_workflow::port::{PortDef, PortValue, PortValues, ScalarValue};
-        let source = CodeNode::new(
-            "source".to_owned(),
-            vec![],
-            vec![PortDef::text("out")],
-            |_inputs, _ctx| {
-                Box::pin(async move {
-                    let mut out = PortValues::new();
-                    out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text("data".to_owned())));
-                    Ok(out)
-                })
-            },
-        );
-        let mut builder = jinn_workflow::graph::WorkflowGraphBuilder::new();
-        builder.add_node("source".to_owned(), Box::new(source));
-        builder.build().expect("test graph should build")
-    }
 
-    #[rstest::rstest]
-    fn sidebar_leave_with_active_workflow_goes_to_workflow() {
-        // Given a state with an active workflow in WorkflowMap.
-        let mut state = AppState::default();
-        let execution = std::sync::Arc::new(
-            jinn_workflow::execution::WorkflowExecution::new(test_graph()),
-        );
-        let wf_state =
-            crate::feat::workflow::workflow_state::WorkflowState::new("test".into(), execution);
-        state.workflow.insert(wf_state);
-        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
-
-        // When handling sidebar leave.
-        let _result = handle_sidebar_leave(&mut state);
-
-        // Then scope is Workflow (derived from active workflow, not stale base).
-        assert_eq!(
-            state.frontend.scope_stack.current(),
-            &FocusScope::Workflow
-        );
-    }
-
-    #[rstest::rstest]
-    fn sidebar_leave_without_active_workflow_goes_to_normal() {
-        // Given a state with no active workflow.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
-
-        // When handling sidebar leave.
-        let _result = handle_sidebar_leave(&mut state);
-
-        // Then scope is Normal.
-        assert_eq!(
-            state.frontend.scope_stack.current(),
-            &FocusScope::Normal
-        );
-    }
-
-    #[rstest::rstest]
-    fn sidebar_leave_skips_chat_side_effects_when_workflow() {
-        // Given a state with an active workflow.
-        let mut state = AppState::default();
-        let execution = std::sync::Arc::new(
-            jinn_workflow::execution::WorkflowExecution::new(test_graph()),
-        );
-        let wf_state =
-            crate::feat::workflow::workflow_state::WorkflowState::new("test".into(), execution);
-        state.workflow.insert(wf_state);
-        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
-        // Set scroll offset on session.
-        state.active_session_mut().ui.scroll_offset = Some(5);
-
-        // When handling sidebar leave.
-        let _result = handle_sidebar_leave(&mut state);
-
-        // Then scope is Workflow and scroll offset is preserved (not reset).
-        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Workflow);
-        assert_eq!(
-            state.active_session().ui.scroll_offset,
-            Some(5),
-            "scroll offset should be preserved when returning to workflow"
-        );
-    }
 }
-
-

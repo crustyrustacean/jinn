@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::ConsecutiveReadsAutoPruneConfig;
-use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
+use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
 
@@ -53,10 +53,115 @@ fn extract_path_from_arguments(arguments: &str) -> Option<String> {
         .map(std::borrow::ToOwned::to_owned)
 }
 
+/// Walk forward from a read ToolCall to find its matching ToolResult.
+///
+/// Returns `None` if no matching result exists (pending/orphaned call).
+fn find_matching_result(
+    history: &[ChatEntry],
+    call_idx: usize,
+    tool_call_id: &str,
+) -> Option<ChatEntryId> {
+    // ToolResults appear after their ToolCall, so scan forward only.
+    for entry in history.iter().skip(call_idx + 1) {
+        if let ChatEntryKind::ToolResult { id, .. } = &entry.kind
+            && id == tool_call_id
+        {
+            return Some(entry.id.clone());
+        }
+    }
+    // No matching result found — the call is still pending or orphaned.
+    None
+}
+
 /// A matched read pair (ToolCall + its corresponding ToolResult).
 struct ReadPair {
-    call_entry_id: crate::feat::session::chat_entry::ChatEntryId,
-    result_entry_id: crate::feat::session::chat_entry::ChatEntryId,
+    call_entry_id: ChatEntryId,
+    result_entry_id: ChatEntryId,
+}
+
+/// Scan history for read ToolCalls, resolve each to its result,
+/// and group into pairs by file path.
+///
+/// Skips ToolCalls with no parseable path or no matching ToolResult.
+fn collect_read_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Vec<ReadPair>> {
+    let mut pairs_by_path: HashMap<String, Vec<ReadPair>> = HashMap::new();
+
+    for (i, entry) in history.iter().enumerate() {
+        // Only interested in "read" tool calls with a parseable file path.
+        let (tool_call_id, read_path) = match &entry.kind {
+            ChatEntryKind::ToolCall {
+                name,
+                arguments,
+                id,
+            } if name == "read" => {
+                let Some(path) = extract_path_from_arguments(arguments) else {
+                    continue;
+                };
+                (id.clone(), path)
+            }
+            _ => continue,
+        };
+
+        // Walk forward to find the ToolResult for this read call.
+        // If none found (pending/orphaned), skip — incomplete pairs
+        // don't count toward the file's total.
+        let Some(result_id) = find_matching_result(history, i, &tool_call_id) else {
+            continue;
+        };
+
+        pairs_by_path.entry(read_path).or_default().push(ReadPair {
+            call_entry_id: entry.id.clone(),
+            result_entry_id: result_id,
+        });
+    }
+
+    pairs_by_path
+}
+
+/// For each path group exceeding `keep_last`, emit `SetContextOverride` mutations
+/// for the oldest pairs that are not already excluded.
+///
+/// Pairs are in history order (oldest first), so `.take()` selects the
+/// oldest pairs to prune.
+fn build_prune_mutations(
+    history: &[ChatEntry],
+    groups: &HashMap<String, Vec<ReadPair>>,
+    keep_last: usize,
+) -> Vec<HistoryMutation> {
+    let mut mutations = Vec::new();
+
+    for pairs in groups.values() {
+        if pairs.len() <= keep_last {
+            continue;
+        }
+
+        // Pairs are oldest-first. Prune the oldest ones beyond keep_last.
+        let prune_count = pairs.len() - keep_last;
+        for pair in pairs.iter().take(prune_count) {
+            // Only emit mutations for entries not already excluded.
+            let call_already_excluded = history.iter().any(|e| {
+                e.id == pair.call_entry_id && e.context_override == ContextOverride::ForcedExclude
+            });
+            let result_already_excluded = history.iter().any(|e| {
+                e.id == pair.result_entry_id && e.context_override == ContextOverride::ForcedExclude
+            });
+
+            if !call_already_excluded {
+                mutations.push(HistoryMutation::SetContextOverride {
+                    entry_id: pair.call_entry_id.clone(),
+                    value: ContextOverride::ForcedExclude,
+                });
+            }
+            if !result_already_excluded {
+                mutations.push(HistoryMutation::SetContextOverride {
+                    entry_id: pair.result_entry_id.clone(),
+                    value: ContextOverride::ForcedExclude,
+                });
+            }
+        }
+    }
+
+    mutations
 }
 
 #[async_trait::async_trait]
@@ -73,86 +178,8 @@ impl HistoryWorker for ConsecutiveReadsAutoPruneWorker {
     ) -> Vec<HistoryMutation> {
         let keep_last = self.config.keep_last.max(1);
 
-        // Phase 1: Collect all read pairs, grouped by file path.
-        let mut pairs_by_path: HashMap<String, Vec<ReadPair>> = HashMap::new();
-
-        for i in 0..history.len() {
-            let entry = &history[i];
-
-            // Only interested in "read" tool calls.
-            let (tool_call_id, read_path) = match &entry.kind {
-                ChatEntryKind::ToolCall {
-                    name,
-                    arguments,
-                    id,
-                } if name == "read" => {
-                    let Some(path) = extract_path_from_arguments(arguments) else {
-                        continue;
-                    };
-                    (id.clone(), path)
-                }
-                _ => continue,
-            };
-
-            let call_entry_id = entry.id.clone();
-
-            // Find the corresponding ToolResult (matched by tool call id).
-            let mut result_entry_id = None;
-            for entry_j in history.iter().skip(i + 1) {
-                if let ChatEntryKind::ToolResult { id, .. } = &entry_j.kind
-                    && id == &tool_call_id
-                {
-                    result_entry_id = Some(entry_j.id.clone());
-                    break;
-                }
-            }
-
-            let Some(result_id) = result_entry_id else {
-                continue;
-            };
-
-            pairs_by_path.entry(read_path).or_default().push(ReadPair {
-                call_entry_id,
-                result_entry_id: result_id,
-            });
-        }
-
-        // Phase 2: For each path, prune older pairs exceeding keep_last.
-        let mut mutations = Vec::new();
-
-        for pairs in pairs_by_path.values() {
-            if pairs.len() <= keep_last {
-                continue;
-            }
-
-            let prune_count = pairs.len() - keep_last;
-            for pair in pairs.iter().take(prune_count) {
-                // Only emit mutations for entries not already excluded.
-                let call_already_excluded = history.iter().any(|e| {
-                    e.id == pair.call_entry_id
-                        && e.context_override == ContextOverride::ForcedExclude
-                });
-                let result_already_excluded = history.iter().any(|e| {
-                    e.id == pair.result_entry_id
-                        && e.context_override == ContextOverride::ForcedExclude
-                });
-
-                if !call_already_excluded {
-                    mutations.push(HistoryMutation::SetContextOverride {
-                        entry_id: pair.call_entry_id.clone(),
-                        value: ContextOverride::ForcedExclude,
-                    });
-                }
-                if !result_already_excluded {
-                    mutations.push(HistoryMutation::SetContextOverride {
-                        entry_id: pair.result_entry_id.clone(),
-                        value: ContextOverride::ForcedExclude,
-                    });
-                }
-            }
-        }
-
-        mutations
+        let groups = collect_read_pairs_by_path(&history);
+        build_prune_mutations(&history, &groups, keep_last)
     }
 }
 

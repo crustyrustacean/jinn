@@ -121,10 +121,6 @@ pub enum Command {
     /// Persist a session's full state to SQLite immediately.
     PersistSession(PersistSession),
     /// Submit a batch of history mutations for deferred application.
-    ///
-    /// Workers produce `Vec<HistoryMutation>` batches and send them via this
-    /// command. The session actor queues them for application at the next
-    /// safe drain point (tool batch completion or stream completion).
     SubmitHistoryMutations(SubmitHistoryMutations),
     /// Finish an async teardown shell command (result from spawned task).
     FinishSessionTeardown(FinishSessionTeardown),
@@ -132,16 +128,6 @@ pub enum Command {
     FinishSessionSetup(FinishSessionSetup),
     /// Request to cancel a running lifecycle command.
     CancelLifecycleCommand(CancelLifecycleCommand),
-    /// Request to load (initialize) a named workflow without executing it.
-    InitWorkflow(crate::feat::workflow::protocol::command::InitWorkflow),
-    /// Request to start a named workflow.
-    StartWorkflow(crate::feat::workflow::protocol::command::StartWorkflow),
-    /// Request to cancel a running workflow.
-    CancelWorkflow(crate::feat::workflow::protocol::command::CancelWorkflow),
-    /// Request to re-run a workflow from a specific node.
-    RerunFromNode(crate::feat::workflow::protocol::command::RerunFromNode),
-    /// Load entries for the workflow picker.
-    LoadWorkflowPickerEntries(crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries),
     /// Attach a workflow to a session.
     AttachWorkflow(crate::feat::workflow::protocol::command::AttachWorkflow),
     /// Detach a workflow from a session.
@@ -154,10 +140,6 @@ pub enum Command {
     FireBeforeTurn(crate::feat::workflow::protocol::command::FireBeforeTurn),
 
     /// A dynamic command from a plugin, carrying an arbitrary JSON payload.
-    ///
-    /// Routed by the runtime [`name`](DynamicCommand::name) field, not the
-    /// static `CommandMsg::NAME`. If no actor subscribes to that name, the
-    /// command is silently dropped.
     Dynamic(DynamicCommand),
     /// Trigger compaction for a session (from /compact or /compact-all).
     TriggerCompaction(crate::feat::session::protocol::trigger_compaction::TriggerCompaction),
@@ -209,21 +191,6 @@ impl Command {
             Self::FinishSessionTeardown(..) => Some(FinishSessionTeardown::NAME),
             Self::FinishSessionSetup(..) => Some(FinishSessionSetup::NAME),
             Self::CancelLifecycleCommand(..) => Some(CancelLifecycleCommand::NAME),
-            Self::InitWorkflow(..) => {
-                Some(crate::feat::workflow::protocol::command::InitWorkflow::NAME)
-            }
-            Self::StartWorkflow(..) => {
-                Some(crate::feat::workflow::protocol::command::StartWorkflow::NAME)
-            }
-            Self::CancelWorkflow(..) => {
-                Some(crate::feat::workflow::protocol::command::CancelWorkflow::NAME)
-            }
-            Self::RerunFromNode(..) => {
-                Some(crate::feat::workflow::protocol::command::RerunFromNode::NAME)
-            }
-            Self::LoadWorkflowPickerEntries(..) => {
-                Some(crate::feat::workflow::protocol::command::LoadWorkflowPickerEntries::NAME)
-            }
             Self::AttachWorkflow(..) => {
                 Some(crate::feat::workflow::protocol::command::AttachWorkflow::NAME)
             }
@@ -248,10 +215,6 @@ impl Command {
     }
 
     /// Returns the routing key for bus dispatch.
-    ///
-    /// Typed variants return their static command name as an owned `Cow`.
-    /// `Dynamic` returns the runtime `.name` field as a borrowed `Cow`,
-    /// allowing plugins to define arbitrary routing keys.
     #[must_use]
     pub fn routing_key(&self) -> Option<Cow<'_, str>> {
         match self {
@@ -377,33 +340,6 @@ impl std::fmt::Display for Command {
                     payload.session_id
                 )
             }
-            Command::InitWorkflow(payload) => {
-                write!(
-                    f,
-                    "init workflow '{}' ({})",
-                    payload.name, payload.workflow_id
-                )
-            }
-            Command::StartWorkflow(payload) => {
-                write!(
-                    f,
-                    "start workflow '{}' ({})",
-                    payload.name, payload.workflow_id
-                )
-            }
-            Command::CancelWorkflow(payload) => {
-                write!(f, "cancel workflow {}", payload.workflow_id)
-            }
-            Command::RerunFromNode(payload) => {
-                write!(
-                    f,
-                    "rerun workflow {} from node '{}'",
-                    payload.workflow_id, payload.node_name
-                )
-            }
-            Command::LoadWorkflowPickerEntries(..) => {
-                write!(f, "load workflow picker entries")
-            }
             Command::AttachWorkflow(payload) => {
                 write!(f, "attach workflow to {}", payload.session_id)
             }
@@ -454,9 +390,6 @@ mod tests {
 
     #[rstest::rstest]
     fn command_name_returns_name_for_routable_commands() {
-        // Given routable command variants.
-        // When calling command_name().
-        // Then they return their routing name.
         assert_eq!(
             Command::PushChatEntry(PushChatEntry {
                 session_id: SessionId::new(),
@@ -476,13 +409,10 @@ mod tests {
 
     #[rstest::rstest]
     fn command_name_uses_derived_constant_for_session_load_requested() {
-        // Given a SessionLoadRequested command.
         let cmd = Command::SessionLoadRequested(SessionLoadRequested {
             session_id: SessionId::new(),
         });
 
-        // When calling command_name().
-        // Then it returns the derived NAME constant (not a hardcoded string).
         assert_eq!(
             cmd.command_name(),
             Some(SessionLoadRequested::NAME),
@@ -499,30 +429,22 @@ mod tests {
 
     #[rstest::rstest]
     fn routing_key_returns_runtime_name_for_dynamic() {
-        // Given a Dynamic command with a custom name.
         let cmd = Command::Dynamic(DynamicCommand {
             name: "welcome::show".to_owned(),
             payload: serde_json::Value::Null,
         });
 
-        // When calling routing_key().
         let key = cmd.routing_key().expect("should have routing key");
-
-        // Then it returns the runtime name, not the static "dynamic".
         assert_eq!(&*key, "welcome::show");
     }
 
     #[rstest::rstest]
     fn routing_key_returns_static_name_for_typed_command() {
-        // Given a typed command.
         let cmd = Command::CancelStream(CancelStream {
             session_id: SessionId::new(),
         });
 
-        // When calling routing_key().
         let key = cmd.routing_key().expect("should have routing key");
-
-        // Then it returns the static command name.
         assert_eq!(&*key, CancelStream::NAME);
     }
 }

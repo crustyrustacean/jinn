@@ -19,12 +19,12 @@ pub struct LuaError;
 
 impl LuaError {
     /// Creates a task-failed error.
-    pub fn task_failed(msg: impl Into<String>) -> Report<Self> {
+    pub fn task_failed<S: Into<String>>(msg: S) -> Report<Self> {
         Report::new(Self).attach(msg.into())
     }
 
     /// Creates a script error.
-    pub fn script(msg: impl Into<String>) -> Report<Self> {
+    pub fn script<S: Into<String>>(msg: S) -> Report<Self> {
         Report::new(Self).attach(msg.into())
     }
 }
@@ -92,7 +92,7 @@ impl LuaRegistry {
     }
 
     /// Inserts a VM handle, replacing any existing handle with the same name.
-    pub fn insert(&mut self, name: impl Into<String>, handle: VmHandle) {
+    pub fn insert<S: Into<String>>(&mut self, name: S, handle: VmHandle) {
         self.handles.insert(name.into(), handle);
     }
 

@@ -5,22 +5,46 @@
 //!
 //! Key types:
 //! - [`AttachedWorkflow`] — the persistent attachment on a session
-//! - [`WorkflowConfig`] — both the kind identifier and parameter source
+//! - [`WorkflowConfig`] — identifies which Lua plugin to run and with what data
 //! - [`WorkflowTrigger`] — when the workflow fires
 //! - [`OneShotKind`] — keybind toggle keys for one-shot workflows
 
 use serde::{Deserialize, Serialize};
 
-use super::workflow_state::WorkflowId;
+/// Unique identifier for a workflow attachment.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+pub struct WorkflowId(String);
+
+impl WorkflowId {
+    /// Create a new unique workflow ID.
+    #[must_use]
+    pub fn new() -> Self {
+        Self(uuid::Uuid::now_v7().to_string())
+    }
+}
+
+impl std::fmt::Display for WorkflowId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl Default for WorkflowId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// A workflow that is persistently attached to a session.
 ///
 /// Stored in `SessionCore::attached_workflows`. Persists across restarts.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AttachedWorkflow {
-    /// Unique ID for this attachment. Used as the key in `AppState::workflow_executions`.
+    /// Unique ID for this attachment.
     pub id: WorkflowId,
-    /// The configuration (kind + parameters) for this workflow.
+    /// The configuration (plugin name + data) for this workflow.
     pub config: WorkflowConfig,
     /// User-editable display label. Initialized from `config.label()` at construction.
     /// Falls back to `config.label()` when empty (backward compat with old persisted data).
@@ -63,111 +87,27 @@ impl AttachedWorkflow {
     }
 }
 
-/// The workflow configuration — both the kind identifier and parameter source.
+/// The workflow configuration — identifies a Lua plugin and provides optional data.
 ///
-/// Each variant fully describes what to build. No separate `kind` string needed.
+/// The `script` field is the plugin directory name (e.g., `"judge_fail"`).
+/// The `data` field is arbitrary JSON injected into the Lua `ctx` at spawn time.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum WorkflowConfig {
-    Consensus {
-        /// Number of parallel clones.
-        n: u32,
-        /// What kind of entry the result gets pushed as.
-        result_kind: ResultKind,
-    },
-    Judge {
-        /// System prompt for the judge. Empty string triggers fallback loading
-        /// from config directory (underscore-prefixed filename).
-        #[serde(default)]
-        prompt: String,
-        /// Name of the tool that signals approval.
-        #[serde(default = "default_approval_tool")]
-        approval_tool: String,
-        /// What kind of entry the result gets pushed as.
-        result_kind: ResultKind,
-        /// Lua plugin name to execute for this judge.
-        #[serde(default = "default_judge_script")]
-        script: String,
-    },
-    Divergence {
-        /// Number of parallel clones with temperature variation.
-        n: u32,
-        /// Base temperature for clones.
-        #[serde(default = "default_temperature")]
-        temperature: f32,
-        /// What kind of entry the result gets pushed as.
-        result_kind: ResultKind,
-    },
-    /// User-defined workflow with arbitrary JSON configuration.
-    Custom(serde_json::Value),
-}
-
-fn default_approval_tool() -> String {
-    "task_complete".to_owned()
-}
-
-fn default_judge_script() -> String {
-    "judge_fail".to_owned()
-}
-
-fn default_temperature() -> f32 {
-    0.7
+pub struct WorkflowConfig {
+    /// Plugin name — selects which `init.lua` to run.
+    pub script: String,
+    /// Arbitrary data injected into the Lua ctx at spawn time.
+    #[serde(default)]
+    pub data: serde_json::Value,
 }
 
 impl WorkflowConfig {
-    /// Returns a human-readable label for this config variant.
+    /// Returns the script name as the human-readable label.
     #[must_use]
     pub fn label(&self) -> &str {
-        match self {
-            Self::Consensus { .. } => "Consensus",
-            Self::Judge { .. } => "Judge",
-            Self::Divergence { .. } => "Divergence",
-            Self::Custom(_) => "Custom",
-        }
-    }
-
-    /// Create a config from an [`OneShotKind`].
-    /// Used by the ToggleOneShot intent handler.
-    #[must_use]
-    pub fn from_one_shot_kind(kind: &OneShotKind) -> Self {
-        match kind {
-            OneShotKind::Consensus => Self::Consensus {
-                n: 3,
-                result_kind: ResultKind::Assistant,
-            },
-            OneShotKind::Judge => Self::Judge {
-                prompt: String::new(),
-                approval_tool: String::from("approve"),
-                result_kind: ResultKind::System,
-                script: "judge_fail".to_owned(),
-            },
-        }
-    }
-
-    /// Build a WorkflowGraph from this config.
-    ///
-    /// NOTE: Only callable after Phase 7+ (builtin.rs must exist).
-    /// Phase 1 defines the type; Phase 7-9 implement the builders.
-    #[must_use]
-    pub fn build_graph(&self) -> jinn_workflow::graph::WorkflowGraph {
-        match self {
-            Self::Consensus { n, .. } => super::builtin::build_consensus(*n),
-            Self::Judge {
-                prompt,
-                approval_tool,
-                ..
-            } => super::builtin::build_judge(prompt, approval_tool),
-            Self::Divergence { n, temperature, .. } => {
-                super::builtin::build_divergence(*n, *temperature)
-            }
-            Self::Custom(_) => {
-                // Custom workflows use the WorkflowRegistry lookup, not build_graph.
-                // Fallback: build a minimal pass-through graph.
-                super::builtin::build_consensus(1)
-            }
-        }
+        &self.script
     }
 }
+
 /// When an attached workflow fires.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -211,18 +151,6 @@ pub enum PromptMergeStrategy {
     Append,
 }
 
-/// What kind of chat entry a workflow result becomes.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ResultKind {
-    #[default]
-    Assistant,
-    User,
-    System,
-    /// No entry pushed — workflow runs silently.
-    Silent,
-}
-
 /// Execution state of an attached workflow.
 ///
 /// Persisted as part of `SessionCore`. On crash/restart, `Running` is reset to `Ready`.
@@ -263,15 +191,13 @@ impl OneShotKind {
     #[must_use]
     pub fn default_config(&self) -> WorkflowConfig {
         match self {
-            Self::Consensus => WorkflowConfig::Consensus {
-                n: 3,
-                result_kind: ResultKind::Assistant,
-            },
-            Self::Judge => WorkflowConfig::Judge {
-                prompt: String::new(), // loaded from config dir via fallback
-                approval_tool: "task_complete".to_owned(),
-                result_kind: ResultKind::Silent,
+            Self::Consensus => WorkflowConfig {
                 script: "judge_fail".to_owned(),
+                data: serde_json::json!({}),
+            },
+            Self::Judge => WorkflowConfig {
+                script: "judge_fail".to_owned(),
+                data: serde_json::json!({}),
             },
         }
     }
@@ -288,9 +214,9 @@ mod tests {
     #[rstest::rstest]
     fn attached_workflow_default_state_is_ready_enabled() {
         let aw = AttachedWorkflow::new(
-            WorkflowConfig::Consensus {
-                n: 3,
-                result_kind: ResultKind::Assistant,
+            WorkflowConfig {
+                script: "judge_fail".to_owned(),
+                data: serde_json::json!({}),
             },
             WorkflowTrigger::TurnEnd,
         );
@@ -298,55 +224,23 @@ mod tests {
         assert!(matches!(aw.state, AttachedWorkflowState::Ready));
     }
 
-    // --- Test 2: workflow_config_label_returns_correct_name ---
+    // --- Test 2: workflow_config_label_returns_script_name ---
 
     #[rstest::rstest]
-    fn workflow_config_label_returns_correct_name() {
-        assert_eq!(
-            WorkflowConfig::Consensus {
-                n: 3,
-                result_kind: ResultKind::Assistant
-            }
-            .label(),
-            "Consensus"
-        );
-        assert_eq!(
-            WorkflowConfig::Judge {
-                prompt: String::new(),
-                approval_tool: "task_complete".to_owned(),
-                result_kind: ResultKind::Silent,
-                script: "judge_fail".to_owned(),
-            }
-            .label(),
-            "Judge"
-        );
-        assert_eq!(
-            WorkflowConfig::Divergence {
-                n: 3,
-                temperature: 0.7,
-                result_kind: ResultKind::Assistant
-            }
-            .label(),
-            "Divergence"
-        );
-        assert_eq!(
-            WorkflowConfig::Custom(serde_json::json!({})).label(),
-            "Custom"
-        );
+    fn workflow_config_label_returns_script_name() {
+        let config = WorkflowConfig {
+            script: "my_plugin".to_owned(),
+            data: serde_json::json!({}),
+        };
+        assert_eq!(config.label(), "my_plugin");
     }
 
-    // --- Test 3: one_shot_kind_default_config_matches_kind ---
+    // --- Test 3: one_shot_kind_default_config_has_judge_fail_script ---
 
     #[rstest::rstest]
-    fn one_shot_kind_default_config_matches_kind() {
-        let consensus_cfg = OneShotKind::Consensus.default_config();
-        assert!(matches!(
-            consensus_cfg,
-            WorkflowConfig::Consensus { n: 3, .. }
-        ));
-
-        let judge_cfg = OneShotKind::Judge.default_config();
-        assert!(matches!(judge_cfg, WorkflowConfig::Judge { .. }));
+    fn one_shot_kind_default_config_has_judge_fail_script() {
+        let cfg = OneShotKind::Judge.default_config();
+        assert_eq!(cfg.script, "judge_fail");
     }
 
     // --- Test 4: pending_one_shots_default_empty ---
@@ -358,22 +252,14 @@ mod tests {
         assert!(map.is_empty());
     }
 
-    // --- Test 5: pending_user_text_default_none ---
-
-    #[rstest::rstest]
-    fn pending_user_text_default_none() {
-        let pending: Option<String> = None;
-        assert!(pending.is_none());
-    }
-
-    // --- Test 6: attached_workflow_serialize_deserialize_roundtrip ---
+    // --- Test 5: attached_workflow_serialize_deserialize_roundtrip ---
 
     #[rstest::rstest]
     fn attached_workflow_serialize_deserialize_roundtrip() {
         let aw = AttachedWorkflow::new(
-            WorkflowConfig::Consensus {
-                n: 5,
-                result_kind: ResultKind::System,
+            WorkflowConfig {
+                script: "my_plugin".to_owned(),
+                data: serde_json::json!({"key": "value"}),
             },
             WorkflowTrigger::TurnEndOneShot,
         );
@@ -382,38 +268,23 @@ mod tests {
         assert_eq!(aw.id, back.id);
         assert_eq!(aw.enabled, back.enabled);
         assert!(matches!(back.state, AttachedWorkflowState::Ready));
+        assert_eq!(back.config.script, "my_plugin");
     }
 
-    // --- Test 7: workflow_config_serialize_deserialize_roundtrip ---
+    // --- Test 6: workflow_config_serialize_deserialize_roundtrip ---
 
     #[rstest::rstest]
     fn workflow_config_serialize_deserialize_roundtrip() {
-        let configs = vec![
-            WorkflowConfig::Consensus {
-                n: 3,
-                result_kind: ResultKind::Assistant,
-            },
-            WorkflowConfig::Judge {
-                prompt: "Be harsh".to_owned(),
-                approval_tool: "approve".to_owned(),
-                result_kind: ResultKind::Silent,
-                script: "judge_fail".to_owned(),
-            },
-            WorkflowConfig::Divergence {
-                n: 5,
-                temperature: 1.2,
-                result_kind: ResultKind::User,
-            },
-            WorkflowConfig::Custom(serde_json::json!({"key": "value"})),
-        ];
-        for config in configs {
-            let json = serde_json::to_string(&config).expect("serialize");
-            let back: WorkflowConfig = serde_json::from_str(&json).expect("deserialize");
-            assert_eq!(config.label(), back.label());
-        }
+        let config = WorkflowConfig {
+            script: "test_plugin".to_owned(),
+            data: serde_json::json!({"n": 3}),
+        };
+        let json = serde_json::to_string(&config).expect("serialize");
+        let back: WorkflowConfig = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(config.script, back.script);
     }
 
-    // --- Test 8: workflow_trigger_serialize_deserialize_roundtrip ---
+    // --- Test 7: workflow_trigger_serialize_deserialize_roundtrip ---
 
     #[rstest::rstest]
     fn workflow_trigger_serialize_deserialize_roundtrip() {
@@ -431,12 +302,12 @@ mod tests {
         for trigger in triggers {
             let json = serde_json::to_string(&trigger).expect("serialize");
             let back: WorkflowTrigger = serde_json::from_str(&json).expect("deserialize");
-            // Can't derive PartialEq easily with String variants, so re-serialize and compare
-            assert_eq!(json, serde_json::to_string(&back).expect("re-serialize"));
+            let json2 = serde_json::to_string(&back).expect("re-serialize");
+            assert_eq!(json, json2);
         }
     }
 
-    // --- Test 9: one_shot_hashmap_insert_remove_toggles ---
+    // --- Test 8: one_shot_hashmap_insert_remove_toggles ---
 
     #[rstest::rstest]
     fn one_shot_hashmap_insert_remove_toggles() {
@@ -456,7 +327,7 @@ mod tests {
         assert!(map.is_empty());
     }
 
-    // --- Test 10: attached_workflow_state_serialize_deserialize_roundtrip ---
+    // --- Test 9: attached_workflow_state_serialize_deserialize_roundtrip ---
 
     #[rstest::rstest]
     fn attached_workflow_state_serialize_deserialize_roundtrip() {
@@ -476,43 +347,28 @@ mod tests {
         }
     }
 
-    // --- Test 11: result_kind_default_is_assistant ---
-
-    #[rstest::rstest]
-    fn result_kind_default_is_assistant() {
-        assert_eq!(ResultKind::default(), ResultKind::Assistant);
-    }
-
-    // --- Test 12: prompt_merge_strategy_default_is_replace ---
-
-    #[rstest::rstest]
-    fn prompt_merge_strategy_default_is_replace() {
-    assert_eq!(PromptMergeStrategy::default(), PromptMergeStrategy::Replace);
-    }
-
-
-    // --- Test 13: new_initializes_label_from_config ---
+    // --- Test 10: new_initializes_label_from_config ---
 
     #[rstest::rstest]
     fn new_initializes_label_from_config() {
         let aw = AttachedWorkflow::new(
-            WorkflowConfig::Consensus {
-                n: 3,
-                result_kind: ResultKind::Assistant,
+            WorkflowConfig {
+                script: "my_plugin".to_owned(),
+                data: serde_json::json!({}),
             },
             WorkflowTrigger::TurnEnd,
         );
-        assert_eq!(aw.label, "Consensus");
+        assert_eq!(aw.label, "my_plugin");
     }
 
-    // --- Test 14: label_or_default_returns_label_when_nonempty ---
+    // --- Test 11: label_or_default_returns_label_when_nonempty ---
 
     #[rstest::rstest]
     fn label_or_default_returns_label_when_nonempty() {
         let mut aw = AttachedWorkflow::new(
-            WorkflowConfig::Consensus {
-                n: 3,
-                result_kind: ResultKind::Assistant,
+            WorkflowConfig {
+                script: "my_plugin".to_owned(),
+                data: serde_json::json!({}),
             },
             WorkflowTrigger::TurnEnd,
         );
@@ -520,47 +376,49 @@ mod tests {
         assert_eq!(aw.label_or_default(), "My Custom Name");
     }
 
-    // --- Test 15: label_or_default_falls_back_to_config_label_when_empty ---
+    // --- Test 12: label_or_default_falls_back_to_config_label_when_empty ---
 
     #[rstest::rstest]
     fn label_or_default_falls_back_to_config_label_when_empty() {
         let mut aw = AttachedWorkflow::new(
-            WorkflowConfig::Judge {
-                prompt: String::new(),
-                approval_tool: "task_complete".to_owned(),
-                result_kind: ResultKind::Silent,
+            WorkflowConfig {
                 script: "judge_fail".to_owned(),
+                data: serde_json::json!({}),
             },
             WorkflowTrigger::TurnEnd,
         );
         // Simulate old persisted data: label is empty.
         aw.label = String::new();
-        assert_eq!(aw.label_or_default(), "Judge");
+        assert_eq!(aw.label_or_default(), "judge_fail");
     }
 
-    // --- Test 16: deserialize_without_label_field_uses_default ---
-
-    // --- Test 16: deserialize_without_label_field_uses_default ---
+    // --- Test 13: deserialize_without_label_field_uses_default ---
 
     #[rstest::rstest]
     fn deserialize_without_label_field_uses_default() {
-        // Create a valid AttachedWorkflow, serialize it, remove the label field,
-        // then deserialize to verify backward compat.
         let aw = AttachedWorkflow::new(
-            WorkflowConfig::Consensus {
-                n: 3,
-                result_kind: ResultKind::Assistant,
+            WorkflowConfig {
+                script: "my_plugin".to_owned(),
+                data: serde_json::json!({}),
             },
             WorkflowTrigger::TurnEnd,
         );
         let mut val = serde_json::to_value(&aw).expect("serialize");
         // Remove the label field to simulate old persisted data.
         val.as_object_mut().expect("object").remove("label");
-        let back: AttachedWorkflow =
-            serde_json::from_value(val).expect("should deserialize");
+        let back: AttachedWorkflow = serde_json::from_value(val).expect("should deserialize");
         // label defaults to empty string (serde default).
         assert!(back.label.is_empty());
         // But label_or_default() falls back to config label.
-        assert_eq!(back.label_or_default(), "Consensus");
+        assert_eq!(back.label_or_default(), "my_plugin");
+    }
+
+    // --- Test 14: workflow_id_default_creates_unique ---
+
+    #[rstest::rstest]
+    fn workflow_id_default_creates_unique() {
+        let id1 = WorkflowId::default();
+        let id2 = WorkflowId::default();
+        assert_ne!(id1, id2);
     }
 }

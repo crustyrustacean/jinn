@@ -35,6 +35,16 @@ use std::sync::Arc;
 /// Tool names that this worker prunes.
 const TOOL_NAMES: &[&str] = &["todo_get_task_list", "todo_complete_task"];
 
+/// A matched ToolCall with its index and the tool_call_id used to find its ToolResult.
+struct CallInfo {
+    /// Index of the ToolCall in history.
+    index: usize,
+    /// The entry ID of the ToolCall.
+    entry_id: crate::feat::session::chat_entry::ChatEntryId,
+    /// The tool_call_id used to match ToolCall → ToolResult.
+    tool_call_id: String,
+}
+
 /// Todo auto-prune worker.
 ///
 /// For each tool name in [`TOOL_NAMES`], scans history for all `ToolCall` +
@@ -45,6 +55,85 @@ const TOOL_NAMES: &[&str] = &["todo_get_task_list", "todo_complete_task"];
 pub struct TodoAutoPruneWorker {
     /// Configuration for the todo auto-prune strategy.
     pub config: TodoAutoPruneConfig,
+}
+
+/// Collect all ToolCalls and ToolResults for a given tool name from history.
+///
+/// Returns a list of call info (in history order) and a map from tool_call_id
+/// to (result_index, result_entry_id). This single-pass approach avoids the
+/// forward-scan loops used by other workers — ToolResults are collected into
+/// a HashMap by their `id` field, which directly matches the ToolCall's `id`.
+fn collect_tool_pairs(
+    history: &[ChatEntry],
+    tool_name: &str,
+) -> (
+    Vec<CallInfo>,
+    HashMap<String, (usize, crate::feat::session::chat_entry::ChatEntryId)>,
+) {
+    // ToolCalls in history order — their position determines which are "oldest".
+    let mut calls: Vec<CallInfo> = Vec::new();
+    // ToolResults keyed by tool_call_id — one result per call.
+    let mut result_map: HashMap<String, (usize, crate::feat::session::chat_entry::ChatEntryId)> =
+        HashMap::new();
+
+    for (i, entry) in history.iter().enumerate() {
+        match &entry.kind {
+            ChatEntryKind::ToolCall { name, id, .. } if name == tool_name => {
+                calls.push(CallInfo {
+                    index: i,
+                    entry_id: entry.id.clone(),
+                    tool_call_id: id.clone(),
+                });
+            }
+            ChatEntryKind::ToolResult { id, name, .. } if name == tool_name => {
+                // Each ToolResult's `id` matches exactly one ToolCall's `id`.
+                result_map.insert(id.clone(), (i, entry.id.clone()));
+            }
+            _ => {}
+        }
+    }
+
+    (calls, result_map)
+}
+
+/// Build prune mutations for all-but-the-last call for a given tool name.
+///
+/// Calls are in history order (oldest first). All calls except the last
+/// (most recent) are pruned. Only emits mutations for entries not already excluded.
+fn build_prune_mutations(
+    history: &[ChatEntry],
+    calls: &[CallInfo],
+    result_map: &HashMap<String, (usize, crate::feat::session::chat_entry::ChatEntryId)>,
+) -> Vec<HistoryMutation> {
+    // Need at least 2 calls to have something to prune.
+    if calls.len() <= 1 {
+        return Vec::new();
+    }
+
+    let mut mutations = Vec::new();
+
+    // Prune all calls except the last one (most recent).
+    for call_info in calls.iter().take(calls.len() - 1) {
+        // Prune the ToolCall if not already excluded.
+        if history[call_info.index].context_override != ContextOverride::ForcedExclude {
+            mutations.push(HistoryMutation::SetContextOverride {
+                entry_id: call_info.entry_id.clone(),
+                value: ContextOverride::ForcedExclude,
+            });
+        }
+
+        // Prune the corresponding ToolResult if it exists and isn't already excluded.
+        if let Some((result_idx, result_entry_id)) = result_map.get(&call_info.tool_call_id)
+            && history[*result_idx].context_override != ContextOverride::ForcedExclude
+        {
+            mutations.push(HistoryMutation::SetContextOverride {
+                entry_id: result_entry_id.clone(),
+                value: ContextOverride::ForcedExclude,
+            });
+        }
+    }
+
+    mutations
 }
 
 #[async_trait::async_trait]
@@ -62,52 +151,8 @@ impl HistoryWorker for TodoAutoPruneWorker {
         let mut mutations = Vec::new();
 
         for tool_name in TOOL_NAMES {
-            // Collect all ToolCall entries for this tool name: (index, entry_id, tool_call_id).
-            let mut calls: Vec<(usize, crate::feat::session::chat_entry::ChatEntryId, String)> =
-                Vec::new();
-            // Map tool_call_id → (result_index, result_entry_id).
-            let mut result_map: HashMap<
-                String,
-                (usize, crate::feat::session::chat_entry::ChatEntryId),
-            > = HashMap::new();
-
-            for (i, entry) in history.iter().enumerate() {
-                match &entry.kind {
-                    ChatEntryKind::ToolCall { name, id, .. } if name == tool_name => {
-                        calls.push((i, entry.id.clone(), id.clone()));
-                    }
-                    ChatEntryKind::ToolResult { id, name, .. } if name == tool_name => {
-                        result_map.insert(id.clone(), (i, entry.id.clone()));
-                    }
-                    _ => {}
-                }
-            }
-
-            // Need at least 2 calls to have something to prune.
-            if calls.len() <= 1 {
-                continue;
-            }
-
-            // Prune all calls except the last one (most recent).
-            for (idx, call_entry_id, tool_call_id) in calls.iter().take(calls.len() - 1) {
-                // Prune the ToolCall.
-                if history[*idx].context_override != ContextOverride::ForcedExclude {
-                    mutations.push(HistoryMutation::SetContextOverride {
-                        entry_id: call_entry_id.clone(),
-                        value: ContextOverride::ForcedExclude,
-                    });
-                }
-
-                // Prune the corresponding ToolResult.
-                if let Some((result_idx, result_entry_id)) = result_map.get(tool_call_id)
-                    && history[*result_idx].context_override != ContextOverride::ForcedExclude
-                {
-                    mutations.push(HistoryMutation::SetContextOverride {
-                        entry_id: result_entry_id.clone(),
-                        value: ContextOverride::ForcedExclude,
-                    });
-                }
-            }
+            let (calls, result_map) = collect_tool_pairs(&history, tool_name);
+            mutations.extend(build_prune_mutations(&history, &calls, &result_map));
         }
 
         mutations

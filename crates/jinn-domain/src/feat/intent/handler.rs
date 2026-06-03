@@ -37,7 +37,7 @@ use crate::Intent;
 use crate::feat;
 
 use crate::IntentResult;
-use jinn_workflow::spatial_layout::SpatialDirection;
+
 
 /// Processes user intents - the single decision point for all user input.
 ///
@@ -196,12 +196,8 @@ impl IntentHandler {
                 crate::common::app_state::FocusScope::RenameSessionInput => {
                     feat::rename_session_input::intent::handle_paste(state, text)
                 }
-                crate::common::app_state::FocusScope::RenameWorkflowInput => {
-                    feat::rename_workflow_input::intent::handle_paste(state, text)
-                }
                 _ => IntentResult::empty(),
             },
-
             // --- Navigation ---
             Intent::ScrollUp => feat::navigation::intent::handle_scroll_up(state),
             Intent::ScrollDown => feat::navigation::intent::handle_scroll_down(state),
@@ -389,9 +385,7 @@ impl IntentHandler {
                             feat::ui::sidebar::sessions::state::SessionEntryKind::Session => {
                                 feat::rename_session_input::intent::handle_rename_session_enter(state)
                             }
-                            feat::ui::sidebar::sessions::state::SessionEntryKind::Workflow => {
-                                feat::rename_workflow_input::intent::handle_rename_workflow_enter(state)
-                            }
+
                         }
                     } else {
                         IntentResult::empty()
@@ -422,28 +416,7 @@ impl IntentHandler {
                 feat::rename_session_input::intent::handle_delete_forward(state)
             }
 
-            // --- Rename Workflow Input ---
-            Intent::RenameWorkflowConfirm => {
-                feat::rename_workflow_input::intent::handle_rename_workflow_confirm(state)
-            }
-            Intent::RenameWorkflowLeave => {
-                feat::rename_workflow_input::intent::handle_rename_workflow_leave(state)
-            }
-            Intent::RenameWorkflowInsertChar { ch } => {
-                feat::rename_workflow_input::intent::handle_insert_char(state, *ch)
-            }
-            Intent::RenameWorkflowCursorLeft => {
-                feat::rename_workflow_input::intent::handle_cursor_left(state)
-            }
-            Intent::RenameWorkflowCursorRight => {
-                feat::rename_workflow_input::intent::handle_cursor_right(state)
-            }
-            Intent::RenameWorkflowDeleteGrapheme => {
-                feat::rename_workflow_input::intent::handle_delete(state)
-            }
-            Intent::RenameWorkflowDeleteForward => {
-                feat::rename_workflow_input::intent::handle_delete_forward(state)
-            },
+
 
             Intent::ToggleOneShot { kind } => {
                 let session_id = state.session.active_session_id().clone();
@@ -451,100 +424,12 @@ impl IntentHandler {
                 if session.ui.pending_one_shots.contains_key(kind) {
                     session.ui.pending_one_shots.remove(kind);
                 } else {
-                    let config = crate::feat::workflow::attached_workflow::WorkflowConfig::from_one_shot_kind(kind);
+                let config = kind.default_config();
                     session.ui.pending_one_shots.insert(*kind, config);
                 }
                 IntentResult::empty()
             }
 
-
-
-            // --- Workflow Navigation ---
-            Intent::WorkflowNodeLeft => handle_workflow_node_spatial(state, SpatialDirection::Left),
-            Intent::WorkflowNodeDown => handle_workflow_node_spatial(state, SpatialDirection::Down),
-            Intent::WorkflowNodeUp => handle_workflow_node_spatial(state, SpatialDirection::Up),
-            Intent::WorkflowNodeRight => handle_workflow_node_spatial(state, SpatialDirection::Right),
-            Intent::WorkflowInspectToggle => handle_workflow_inspect_toggle(state),
-            Intent::WorkflowInspectScrollUp => handle_workflow_inspect_scroll_up(state),
-            Intent::WorkflowInspectScrollDown => handle_workflow_inspect_scroll_down(state),
-            Intent::WorkflowEscape => handle_workflow_escape(state),
-            Intent::WorkflowRun => handle_workflow_run(state),
-            Intent::WorkflowRerunNode => handle_workflow_rerun_node(state),
-            Intent::WorkflowPanLeft => handle_workflow_pan(state, 5, 0),
-            Intent::WorkflowPanDown => handle_workflow_pan(state, 0, -5),
-            Intent::WorkflowPanUp => handle_workflow_pan(state, 0, 5),
-            Intent::WorkflowPanRight => handle_workflow_pan(state, -5, 0),
-
-            // --- Workflow Input Editing ---
-            Intent::WorkflowEditNode => {
-                crate::feat::workflow::workflow_input::intent::handle_workflow_edit_node(state)
-            }
-            Intent::WorkflowInputSubmit => {
-                crate::feat::workflow::workflow_input::intent::handle_workflow_input_submit(state)
-            }
-            Intent::WorkflowInputCancel => {
-                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cancel(state)
-            }
-            Intent::WorkflowInputInsertChar { ch } => {
-                crate::feat::workflow::workflow_input::intent::handle_workflow_input_insert_char(
-                    *ch, state,
-                )
-            }
-            Intent::WorkflowInputDeleteGrapheme => {
-                crate::feat::workflow::workflow_input::intent::handle_workflow_input_delete_grapheme(
-                    state,
-                )
-            }
-            Intent::WorkflowInputDeleteGraphemeForward => {
-                crate::feat::workflow::workflow_input::intent::handle_workflow_input_delete_grapheme_forward(
-                    state,
-                )
-            }
-            Intent::WorkflowInputPasteText { text } => {
-                crate::feat::workflow::workflow_input::intent::handle_workflow_input_paste_text(
-                    text, state,
-                )
-            }
-            Intent::WorkflowInputCursorLeft => {
-                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_left(
-                    state,
-                )
-            }
-            Intent::WorkflowInputCursorRight => {
-                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_right(
-                    state,
-                )
-            }
-            Intent::WorkflowInputCursorToStart => {
-                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_to_start(
-                    state,
-                )
-            }
-            Intent::WorkflowInputCursorToEnd => {
-                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_to_end(
-                    state,
-                )
-            }
-            Intent::WorkflowInputCursorWordLeft => {
-                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_word_left(
-                    state,
-                )
-            }
-            Intent::WorkflowInputCursorWordRight => {
-                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_word_right(
-                    state,
-                )
-            }
-            Intent::WorkflowInputCursorUp => {
-                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_up(
-                    state,
-                )
-            }
-            Intent::WorkflowInputCursorDown => {
-                crate::feat::workflow::workflow_input::intent::handle_workflow_input_cursor_down(
-                    state,
-                )
-            }
 
             // --- CWD Selection ---
             Intent::ChangeCwd { root } => {
@@ -553,6 +438,8 @@ impl IntentHandler {
         }
     }
 }
+
+
 
 /// Cancel stream prompt intercept.
 ///
@@ -627,262 +514,7 @@ fn try_handle_close_session_prompt(intent: &Intent, state: &mut AppState) -> Opt
     Some(feat::ui::sidebar::sessions::handle_session_close_with_lifecycle(state))
 }
 
-// --- Workflow Intent Handlers ---
 
-/// Navigate to the spatially nearest node in the given direction.
-///
-/// Uses the cached spatial index (`node_rects`) to find the nearest node
-/// in the pressed direction. Falls back to graph-traversal (first source)
-/// when no node is currently selected.
-fn handle_workflow_node_spatial(state: &mut AppState, direction: SpatialDirection) -> IntentResult {
-    state.frontend.workflow_ui.cancel_prompt = false;
-
-    let Some(workflow) = state.workflow.active() else {
-        return IntentResult::empty();
-    };
-    let snapshot = workflow.execution.snapshot();
-
-    // Recompute spatial index if empty (cache invalidation).
-    if state.frontend.workflow_ui.node_rects.is_empty() {
-        state.frontend.workflow_ui.node_rects =
-            jinn_workflow::spatial_layout::compute_spatial_layout(snapshot.structure());
-    }
-
-    let rects = &state.frontend.workflow_ui.node_rects;
-
-    // If no node selected, select the first source node.
-    let Some(current_name) = &state.frontend.workflow_ui.selected_node else {
-        let sources = snapshot.structure().sources();
-        if let Some(first) = sources.first() {
-            state.frontend.workflow_ui.selected_node = Some(first.clone());
-        }
-        return IntentResult::empty();
-    };
-
-    let Some(current_rect) = rects.get(current_name) else {
-        return IntentResult::empty();
-    };
-
-    let next = jinn_workflow::spatial_layout::spatial_nearest(
-        current_rect,
-        direction,
-        rects,
-        current_name,
-    );
-
-    if let Some(next_name) = next {
-        state.frontend.workflow_ui.selected_node = Some(next_name);
-        state.frontend.workflow_ui.inspector_scroll = 0;
-        state
-            .frontend
-            .workflow_ui
-            .inspector_scroll_rendered
-            .store(0, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    IntentResult::empty()
-}
-
-/// Toggle the sticky inspector popup.
-fn handle_workflow_inspect_toggle(state: &mut AppState) -> IntentResult {
-    state.frontend.workflow_ui.cancel_prompt = false;
-    state.frontend.workflow_ui.inspector_open = !state.frontend.workflow_ui.inspector_open;
-    if state.frontend.workflow_ui.inspector_open {
-        state.frontend.workflow_ui.inspector_scroll = 0;
-    }
-    IntentResult::empty()
-}
-
-/// Scroll the inspector popup up.
-fn handle_workflow_inspect_scroll_up(state: &mut AppState) -> IntentResult {
-    state.frontend.workflow_ui.cancel_prompt = false;
-    let base = state
-        .frontend
-        .workflow_ui
-        .inspector_scroll_rendered
-        .load(std::sync::atomic::Ordering::Relaxed);
-    state.frontend.workflow_ui.inspector_scroll = base.saturating_sub(1);
-    IntentResult::empty()
-}
-
-/// Scroll the inspector popup down.
-fn handle_workflow_inspect_scroll_down(state: &mut AppState) -> IntentResult {
-    state.frontend.workflow_ui.cancel_prompt = false;
-    let base = state
-        .frontend
-        .workflow_ui
-        .inspector_scroll_rendered
-        .load(std::sync::atomic::Ordering::Relaxed);
-    state.frontend.workflow_ui.inspector_scroll = base.saturating_add(1);
-    IntentResult::empty()
-}
-
-/// ESC in workflow scope: two-press cancel with confirmation.
-fn handle_workflow_escape(state: &mut AppState) -> IntentResult {
-    // If no active workflow, or workflow has no running nodes, just reset prompt and no-op.
-    let has_running = state.workflow.active().is_some_and(|w| {
-        w.execution
-            .snapshot()
-            .statuses()
-            .any(|(_, s)| s == jinn_workflow::engine::NodeStatus::Running)
-    });
-
-    if !has_running {
-        // Workflow is idle or completed - ESC just resets any stale prompt state.
-        state.frontend.workflow_ui.cancel_prompt = false;
-        return IntentResult::empty();
-    }
-
-    // Workflow has running nodes - use two-press cancel confirmation.
-    if state.frontend.workflow_ui.cancel_prompt {
-        // Second ESC - confirm cancel.
-        state.frontend.workflow_ui.cancel_prompt = false;
-        let Some(workflow) = state.workflow.active() else {
-            return IntentResult::empty();
-        };
-        let workflow_id = workflow.id.clone();
-        IntentResult::with_commands(vec![Command::CancelWorkflow(
-            crate::feat::workflow::protocol::command::CancelWorkflow { workflow_id },
-        )])
-    } else {
-        // First ESC - show prompt.
-        state.frontend.workflow_ui.cancel_prompt = true;
-        IntentResult::empty()
-    }
-}
-
-/// Run the loaded workflow.
-///
-/// Validates that an active workflow exists and is in a runnable state
-/// (all nodes Pending = first run, or has result from previous run = re-run).
-/// Emits StartWorkflow to trigger engine execution.
-fn handle_workflow_run(state: &mut AppState) -> IntentResult {
-    state.frontend.workflow_ui.cancel_prompt = false;
-
-    let Some(workflow) = state.workflow.active() else {
-        return IntentResult::empty();
-    };
-
-    let snapshot = workflow.execution.snapshot();
-
-    // Check if any node is currently Running - if so, no-op (already executing).
-    let has_running = snapshot
-        .statuses()
-        .any(|(_, s)| s == jinn_workflow::engine::NodeStatus::Running);
-    if has_running {
-        return IntentResult::empty();
-    }
-
-    // Check if any source node is still awaiting user input.
-    let has_awaiting_input = snapshot
-        .statuses()
-        .any(|(_, s)| s == jinn_workflow::engine::NodeStatus::AwaitingInput);
-    if has_awaiting_input {
-        return IntentResult::empty();
-    }
-
-    let workflow_id = workflow.id.clone();
-    let name = workflow.name.clone();
-
-    // If any node has completed/failed/skipped, this is a re-run.
-    // Invalidate all nodes to reset to Pending before running.
-    let has_terminal = snapshot.statuses().any(|(_, s)| s.is_terminal());
-    if has_terminal {
-        // Save source node outputs before invalidation clears them.
-        // Source nodes that had user-provided data must retain it across re-runs.
-        let sources = snapshot.structure().sources();
-        let saved_outputs: Vec<(String, jinn_workflow::port::PortValues)> = sources
-            .iter()
-            .filter_map(|name| {
-                snapshot
-                    .node_state(name)
-                    .and_then(|s| s.outputs.as_ref())
-                    .map(|arc| (name.clone(), (**arc).clone()))
-            })
-            .collect();
-
-        for node_name in snapshot.structure().node_names() {
-            workflow.execution.invalidate_from(node_name);
-        }
-
-        // Restore source node outputs so they survive the re-run.
-        for (name, outputs) in &saved_outputs {
-            workflow.execution.set_node_outputs(name, outputs.clone());
-            workflow
-                .execution
-                .set_status(name, jinn_workflow::engine::NodeStatus::Pending);
-        }
-
-        // Replace cancellation token with fresh one.
-        if let Some(w) = state.workflow.active_mut() {
-            w.cancel = tokio_util::sync::CancellationToken::new();
-        }
-    }
-
-    IntentResult::with_commands(vec![Command::StartWorkflow(
-        crate::feat::workflow::protocol::command::StartWorkflow { name, workflow_id },
-    )])
-}
-
-/// Re-run the workflow from the currently selected node.
-fn handle_workflow_rerun_node(state: &mut AppState) -> IntentResult {
-    state.frontend.workflow_ui.cancel_prompt = false;
-
-    let Some(node_name) = state.frontend.workflow_ui.selected_node.clone() else {
-        return IntentResult::empty();
-    };
-
-    let Some(workflow) = state.workflow.active() else {
-        return IntentResult::empty();
-    };
-
-    // Validate: node must be Completed or Failed.
-    let snapshot = workflow.execution.snapshot();
-    let status = snapshot.status_of(&node_name);
-    match status {
-        Some(
-            jinn_workflow::engine::NodeStatus::Completed
-            | jinn_workflow::engine::NodeStatus::Failed,
-        ) => {}
-        _ => return IntentResult::empty(),
-    }
-
-    let workflow_id = workflow.id.clone();
-    let execution = workflow.execution.clone();
-
-    // Invalidate from the selected node downstream.
-    execution.invalidate_from(&node_name);
-    // Seed inputs from upstream cached outputs.
-    execution.seed_inputs(&node_name);
-
-    // Replace the cancellation token with a fresh one.
-    if let Some(w) = state.workflow.active_mut() {
-        w.cancel = tokio_util::sync::CancellationToken::new();
-    }
-
-    IntentResult::with_commands(vec![Command::RerunFromNode(
-        crate::feat::workflow::protocol::command::RerunFromNode {
-            workflow_id,
-            node_name,
-        },
-    )])
-}
-
-/// Pan the workflow viewport.
-fn handle_workflow_pan(state: &mut AppState, dx: i32, dy: i32) -> IntentResult {
-    state.frontend.workflow_ui.cancel_prompt = false;
-    state.frontend.workflow_ui.viewport_offset_x = state
-        .frontend
-        .workflow_ui
-        .viewport_offset_x
-        .saturating_add(dx);
-    state.frontend.workflow_ui.viewport_offset_y = state
-        .frontend
-        .workflow_ui
-        .viewport_offset_y
-        .saturating_add(dy);
-    IntentResult::empty()
-}
 
 #[cfg(test)]
 mod tests {
@@ -1041,121 +673,6 @@ mod tests {
         assert!(result.commands.is_empty());
     }
 
-    #[test]
-    fn workflow_run_rejects_when_source_node_awaiting_input() {
-        // Given an initialized workflow where a source node has AwaitingInput status.
-        let mut state = AppState::default();
-        let execution = std::sync::Arc::new(jinn_workflow::execution::WorkflowExecution::new(
-            source_graph_for_test(),
-        ));
-        let workflow_state = crate::feat::workflow::workflow_state::WorkflowState::new(
-            "test".to_owned(),
-            execution.clone(),
-        );
-        state.workflow.insert(workflow_state);
-        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
-
-        // Mark source node as AwaitingInput.
-        execution.set_status("source", jinn_workflow::engine::NodeStatus::AwaitingInput);
-
-        // When handling WorkflowRun.
-        let result = IntentHandler::handle(&Intent::WorkflowRun, &mut state);
-
-        // Then no StartWorkflow command is emitted.
-        assert!(result.commands.is_empty());
-    }
-
-    #[test]
-    fn workflow_run_accepts_after_source_nodes_provided() {
-        // Given a workflow where the source node has been given data (Pending status).
-        let mut state = AppState::default();
-        let execution = std::sync::Arc::new(jinn_workflow::execution::WorkflowExecution::new(
-            source_graph_for_test(),
-        ));
-        let workflow_state = crate::feat::workflow::workflow_state::WorkflowState::new(
-            "test".to_owned(),
-            execution.clone(),
-        );
-        state.workflow.insert(workflow_state);
-        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
-
-        // Source node is Pending (user has provided data).
-        execution.set_status("source", jinn_workflow::engine::NodeStatus::Pending);
-
-        // When handling WorkflowRun.
-        let result = IntentHandler::handle(&Intent::WorkflowRun, &mut state);
-
-        // Then a StartWorkflow command is emitted.
-        assert!(!result.commands.is_empty());
-        let cmd = &result.commands[0];
-        assert!(matches!(cmd, crate::protocol::Command::StartWorkflow(_)));
-    }
-
-    /// Verifies that re-running a workflow preserves source node outputs.
-    /// `invalidate_from` clears outputs, but `handle_workflow_run` saves/restores
-    /// source node outputs so user-provided data survives across re-runs.
-    #[test]
-    fn workflow_run_preserves_source_outputs_on_rerun() {
-        // Given a workflow where the source node has Completed (simulating first run).
-        let mut state = AppState::default();
-        let execution = std::sync::Arc::new(jinn_workflow::execution::WorkflowExecution::new(
-            source_graph_for_test(),
-        ));
-        let workflow_state = crate::feat::workflow::workflow_state::WorkflowState::new(
-            "test".to_owned(),
-            execution.clone(),
-        );
-        state.workflow.insert(workflow_state);
-        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
-
-        // Set source node to Completed with user-provided output.
-        let mut outputs = jinn_workflow::port::PortValues::new();
-        outputs.insert(
-            "out".to_owned(),
-            jinn_workflow::port::PortValue::Single(jinn_workflow::port::ScalarValue::Text(
-                "user_data".to_owned(),
-            )),
-        );
-        execution.set_node_outputs("source", outputs);
-        execution.set_status("source", jinn_workflow::engine::NodeStatus::Completed);
-
-        // When handling WorkflowRun (re-run because Completed is terminal).
-        let result = IntentHandler::handle(&Intent::WorkflowRun, &mut state);
-
-        // Then a StartWorkflow command is emitted.
-        assert!(!result.commands.is_empty());
-
-        // And the source node's output is preserved after the invalidation cycle.
-        let snapshot = execution.snapshot();
-        let node_state = snapshot.node_state("source").expect("node exists");
-        let outputs = node_state.outputs.as_ref().expect("has outputs");
-        assert_eq!(outputs.get_text("out").unwrap(), "user_data");
-    }
-
-    /// Helper: builds a minimal source-only graph for testing.
-    fn source_graph_for_test() -> jinn_workflow::graph::WorkflowGraph {
-        use jinn_workflow::node::code::CodeNode;
-        use jinn_workflow::port::{PortDef, PortValue, PortValues, ScalarValue};
-
-        let source = CodeNode::new(
-            "source".to_owned(),
-            vec![],
-            vec![PortDef::text("out")],
-            |_inputs, _ctx| {
-                Box::pin(async move {
-                    let mut out = PortValues::new();
-                    out.insert(
-                        "out".to_owned(),
-                        PortValue::Single(ScalarValue::Text("data".to_owned())),
-                    );
-                    Ok(out)
-                })
-            },
-        );
-        let mut builder = jinn_workflow::graph::WorkflowGraphBuilder::new();
-        builder.add_node("source".to_owned(), Box::new(source));
-        builder.build().expect("graph should be valid")
-    }
 
     // --- Mutant-killing tests for ArgInput scope guards ---
 
@@ -1470,122 +987,7 @@ mod tests {
         assert!(result.events.is_empty());
     }
 
-    // --- Mutant-killing tests for workflow handlers ---
 
-    #[test]
-    fn workflow_inspect_toggle_flips_state() {
-        // Given a workflow context.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
-        assert!(!state.frontend.workflow_ui.inspector_open);
-
-        // When toggling inspector.
-        let _result = IntentHandler::handle(&Intent::WorkflowInspectToggle, &mut state);
-
-        // Then inspector is open.
-        assert!(state.frontend.workflow_ui.inspector_open);
-
-        // When toggling again.
-        let _result = IntentHandler::handle(&Intent::WorkflowInspectToggle, &mut state);
-
-        // Then inspector is closed.
-        assert!(!state.frontend.workflow_ui.inspector_open);
-    }
-
-    #[test]
-    fn workflow_escape_no_running_resets_prompt() {
-        // Given a workflow scope with no active workflow.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
-        state.frontend.workflow_ui.cancel_prompt = true;
-
-        // When handling WorkflowEscape.
-        let _result = IntentHandler::handle(&Intent::WorkflowEscape, &mut state);
-
-        // Then cancel_prompt is reset to false (no running nodes).
-        assert!(!state.frontend.workflow_ui.cancel_prompt);
-    }
-
-    #[test]
-    fn workflow_rerun_node_rejects_pending_node() {
-        // Given a workflow with a pending node selected.
-        let mut state = AppState::default();
-        let execution = std::sync::Arc::new(jinn_workflow::execution::WorkflowExecution::new(
-            source_graph_for_test(),
-        ));
-        let workflow_state = crate::feat::workflow::workflow_state::WorkflowState::new(
-            "test".to_owned(),
-            execution.clone(),
-        );
-        state.workflow.insert(workflow_state);
-        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
-        state.frontend.workflow_ui.selected_node = Some("source".to_owned());
-        execution.set_status("source", jinn_workflow::engine::NodeStatus::Pending);
-
-        // When handling WorkflowRerunNode.
-        let result = IntentHandler::handle(&Intent::WorkflowRerunNode, &mut state);
-
-        // Then no commands are emitted (node must be Completed or Failed).
-        assert!(result.commands.is_empty());
-    }
-
-    #[test]
-    fn workflow_rerun_node_accepts_completed_node() {
-        // Given a workflow with a Completed node selected.
-        let mut state = AppState::default();
-        let execution = std::sync::Arc::new(jinn_workflow::execution::WorkflowExecution::new(
-            source_graph_for_test(),
-        ));
-        let workflow_state = crate::feat::workflow::workflow_state::WorkflowState::new(
-            "test".to_owned(),
-            execution.clone(),
-        );
-        state.workflow.insert(workflow_state);
-        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
-        state.frontend.workflow_ui.selected_node = Some("source".to_owned());
-        execution.set_status("source", jinn_workflow::engine::NodeStatus::Completed);
-
-        // When handling WorkflowRerunNode.
-        let result = IntentHandler::handle(&Intent::WorkflowRerunNode, &mut state);
-
-        // Then a RerunFromNode command is emitted.
-        assert!(
-            result
-                .commands
-                .iter()
-                .any(|c| matches!(c, crate::protocol::Command::RerunFromNode(_))),
-            "should emit RerunFromNode: {:?}",
-            result.commands
-        );
-    }
-
-    #[test]
-    fn workflow_pan_left_decrements_offset() {
-        // Given workflow scope.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
-        state.frontend.workflow_ui.viewport_offset_x = 10;
-
-        // When panning left.
-        let _result = IntentHandler::handle(&Intent::WorkflowPanLeft, &mut state);
-
-        // Then offset_x increased by 5 (panning left = viewport moves right in content).
-        assert_eq!(state.frontend.workflow_ui.viewport_offset_x, 15);
-    }
-
-    #[test]
-    fn workflow_pan_right_decrements_offset() {
-        // Given workflow scope.
-        let mut state = AppState::default();
-        state.frontend.scope_stack.swap_base(FocusScope::Workflow);
-        state.frontend.workflow_ui.viewport_offset_x = 10;
-
-        // When panning right.
-        let _result = IntentHandler::handle(&Intent::WorkflowPanRight, &mut state);
-
-        // Then offset_x decreased by 5.
-        assert_eq!(state.frontend.workflow_ui.viewport_offset_x, 5);
-    }
 
     #[rstest::rstest]
     fn active_session_changed_emitted_on_session_switch() {

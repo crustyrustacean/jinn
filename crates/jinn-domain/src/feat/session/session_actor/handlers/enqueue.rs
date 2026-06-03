@@ -524,9 +524,9 @@ mod tests {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
             let aw = AttachedWorkflow::new(
-                WorkflowConfig::Consensus {
-                    n: 1,
-                    result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+                WorkflowConfig {
+                    script: "test".to_owned(),
+                    data: serde_json::json!({}),
                 },
                 WorkflowTrigger::BeforeTurn(BeforeTurnMode::AutoSend {
                     strategy: PromptMergeStrategy::Replace,
@@ -578,9 +578,9 @@ mod tests {
             let session = state.active_session_mut();
             session.ui.pending_one_shots.insert(
                 OneShotKind::Consensus,
-                WorkflowConfig::Consensus {
-                    n: 3,
-                    result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+                WorkflowConfig {
+                    script: "test".to_owned(),
+                    data: serde_json::json!({}),
                 },
             );
             state.session.active_session_id().clone()
@@ -629,18 +629,16 @@ mod tests {
             let session = state.active_session_mut();
             session.ui.pending_one_shots.insert(
                 OneShotKind::Consensus,
-                WorkflowConfig::Consensus {
-                    n: 3,
-                    result_kind: crate::feat::workflow::attached_workflow::ResultKind::Assistant,
+                WorkflowConfig {
+                    script: "test".to_owned(),
+                    data: serde_json::json!({}),
                 },
             );
             session.ui.pending_one_shots.insert(
                 OneShotKind::Judge,
-                WorkflowConfig::Judge {
-                    prompt: String::new(),
-                    approval_tool: "approve".into(),
-                    result_kind: crate::feat::workflow::attached_workflow::ResultKind::System,
+                WorkflowConfig {
                     script: "judge_fail".to_owned(),
+                    data: serde_json::json!({}),
                 },
             );
             state.session.active_session_id().clone()

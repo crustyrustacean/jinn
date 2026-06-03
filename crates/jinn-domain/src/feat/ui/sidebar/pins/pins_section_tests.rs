@@ -256,7 +256,8 @@ fn render_rows(
     let (mut terminal, area) = setup_term(width, height);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(state); section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(state);
+            section.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer();
@@ -304,7 +305,8 @@ fn render_selected_entry_has_yellow_marker_when_sidebar_focused() {
     let (mut terminal, area) = setup_term(60, 20);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            section.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -325,7 +327,8 @@ fn render_selected_entry_has_darkgray_marker_when_not_focused() {
     let (mut terminal, area) = setup_term(60, 20);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            section.render(frame, area, &ctx);
         })
         .unwrap();
 

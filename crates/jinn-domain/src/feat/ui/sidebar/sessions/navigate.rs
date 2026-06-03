@@ -34,27 +34,8 @@ pub fn scroll_to_cursor(state: &mut AppState) {
     *offset = (*offset).min(max_offset);
 }
 
-/// Updates the workflow preview based on the current cursor position.
-///
-/// If the cursor is on a workflow entry whose workflow exists in `WorkflowMap`,
-/// sets `previewed_workflow_id`. Otherwise clears it.
-fn update_preview(state: &mut AppState) {
-    let preview = state
-        .frontend
-        .sessions_section
-        .selected_index
-        .and_then(|idx| {
-            let sessions = sorted_open_sessions(state);
-            let entry = sessions.get(idx)?;
-            if entry.kind != SessionEntryKind::Workflow {
-                return None;
-            }
-            let wf_id = entry.workflow_id.as_ref()?;
-            state.workflow.get(wf_id)?;
-            entry.workflow_id.clone()
-        });
-    state.frontend.sessions_section.previewed_workflow_id = preview;
-}
+/// No-op: workflow preview removed with node-graph.
+fn update_preview(_state: &mut AppState) {}
 
 /// Navigate within the sessions section.
 ///
