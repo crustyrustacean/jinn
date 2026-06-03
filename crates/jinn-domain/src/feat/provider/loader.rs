@@ -37,6 +37,10 @@ pub fn load_provider_picker_items(services: &Services, state: &mut AppState) {
 /// Prepends a "session default" sentinel entry (representing "no compaction model set;
 /// fall back to the session's model") followed by all available provider entries.
 /// Marks the active compaction model (or the sentinel if `compaction.model` is `None`).
+///
+/// # Panics
+///
+/// Panics if accessing the preferences subsystem fails.
 pub fn load_compaction_model_picker_items(services: &Services, state: &mut AppState) {
     // Load preferences from service.
     let prefs = services

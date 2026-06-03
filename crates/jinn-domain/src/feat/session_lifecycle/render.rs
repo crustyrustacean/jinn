@@ -81,7 +81,7 @@ pub fn arg_input_popup_rect(area: Rect, ctx: &RenderCtx) -> Rect {
 /// Shows all available lifecycles (including the implicit blank) with
 /// descriptions and an args indicator.
 pub fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
-        let state = ctx.state;
+    let state = ctx.state;
     let widget = SelectionWidget::new(state.frontend.session_lifecycle_picker())
         .title(Line::from(" New Session (with scripted lifecycle) "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
@@ -97,8 +97,8 @@ pub fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, ctx: &
 ///   and syntax highlighting for placeholders/substituted values
 /// - Input line at bottom showing current text with cursor
 pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
-        let state = ctx.state;
-        let arg_state = &state.frontend.arg_input;
+    let state = ctx.state;
+    let arg_state = &state.frontend.arg_input;
 
     // Parse the command template to extract parameter info.
     let template = state
@@ -229,6 +229,7 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
+    use crate::AppState;
     use crate::common::app_state::ArgInputState;
     use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
     use jinn_testutil::setup_term;
@@ -274,7 +275,8 @@ mod tests {
         // When rendering the arg input popup.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state); render_arg_input(frame, area, &ctx);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -309,7 +311,8 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state); render_arg_input(frame, area, &ctx);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -344,7 +347,8 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state); render_arg_input(frame, area, &ctx);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -387,7 +391,8 @@ mod tests {
         // When rendering - should not panic.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state); render_arg_input(frame, area, &ctx);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -430,7 +435,8 @@ mod tests {
         // Then draw the arg input popup on top.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state); render_arg_input(frame, area, &ctx);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -462,7 +468,8 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state); render_arg_input(frame, area, &ctx);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -509,7 +516,8 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state); render_arg_input(frame, area, &ctx);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -555,7 +563,8 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state); render_arg_input(frame, area, &ctx);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -591,7 +600,8 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state); render_arg_input(frame, area, &ctx);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 

@@ -149,6 +149,13 @@ pub fn kill_shared_child(child_arc: &SharedChild) {
 /// The [`SharedChild`] can be used to kill the process via [`kill_shared_child`].
 /// The reader task awaits exit, reads stdout/stderr, and produces the
 /// canonicalized CWD path.
+///
+/// # Errors
+///
+/// Returns an error under any of these circumstances:
+/// - spawning command fails
+/// - joining fails
+/// - the returned path cannot be canonicalized
 pub fn spawn_setup_command(
     command: &str,
     shell: &str,

@@ -109,8 +109,7 @@ fn prune_backward(
         };
 
         let back_call_entry_id = back_entry.id.clone();
-        let back_call_excluded =
-            back_entry.context_override == ContextOverride::ForcedExclude;
+        let back_call_excluded = back_entry.context_override == ContextOverride::ForcedExclude;
 
         // Find the corresponding ToolResult for this edit/write.
         let mut back_result_entry_id = None;
@@ -125,9 +124,8 @@ fn prune_backward(
             }
         }
 
-        let back_result_excluded = back_result_index.is_some_and(|k| {
-            history[k].context_override == ContextOverride::ForcedExclude
-        });
+        let back_result_excluded = back_result_index
+            .is_some_and(|k| history[k].context_override == ContextOverride::ForcedExclude);
 
         // Skip if both are already excluded.
         if back_call_excluded && back_result_excluded {
@@ -254,7 +252,12 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::similar_names,
+        reason = "test code"
+    )]
 
     use super::*;
     use crate::feat::preferences_actor::user_preferences::ReadEditAutoPruneConfig;
@@ -300,7 +303,9 @@ mod tests {
     }
 
     /// Collect mutation entry IDs from a list of mutations.
-    fn mutation_ids(mutations: &[HistoryMutation]) -> Vec<crate::feat::session::chat_entry::ChatEntryId> {
+    fn mutation_ids(
+        mutations: &[HistoryMutation],
+    ) -> Vec<crate::feat::session::chat_entry::ChatEntryId> {
         mutations
             .iter()
             .filter_map(|m| match m {
@@ -403,7 +408,10 @@ mod tests {
 
         let ids = mutation_ids(&mutations);
         assert!(ids.contains(&read[0].id), "read ToolCall should be pruned");
-        assert!(ids.contains(&read[1].id), "read ToolResult should be pruned");
+        assert!(
+            ids.contains(&read[1].id),
+            "read ToolResult should be pruned"
+        );
     }
 
     #[test]
@@ -523,7 +531,11 @@ mod tests {
         let mutations = evaluate(history);
         // 2 mutations per read (call+result) × 2 reads = 4 forward-pruning mutations.
         // No backward pruning because no edits precede any read.
-        assert_eq!(mutations.len(), 4, "both reads should be pruned (call+result each)");
+        assert_eq!(
+            mutations.len(),
+            4,
+            "both reads should be pruned (call+result each)"
+        );
 
         let ids = mutation_ids(&mutations);
         assert!(ids.contains(&read1[0].id));
@@ -716,7 +728,11 @@ mod tests {
 
         let mutations = evaluate(history);
         // edit1 call+result + edit2 call+result = 4 backward mutations.
-        assert_eq!(mutations.len(), 4, "both prior edits should be backward-pruned");
+        assert_eq!(
+            mutations.len(),
+            4,
+            "both prior edits should be backward-pruned"
+        );
 
         let ids = mutation_ids(&mutations);
         assert!(ids.contains(&edit1[0].id));
@@ -739,7 +755,11 @@ mod tests {
         history.push(read[1].clone());
 
         let mutations = evaluate(history);
-        assert_eq!(mutations.len(), 4, "both prior writes should be backward-pruned");
+        assert_eq!(
+            mutations.len(),
+            4,
+            "both prior writes should be backward-pruned"
+        );
 
         let ids = mutation_ids(&mutations);
         assert!(ids.contains(&write1[0].id));
@@ -762,7 +782,11 @@ mod tests {
         history.push(read[1].clone());
 
         let mutations = evaluate(history);
-        assert_eq!(mutations.len(), 4, "prior edit and write should both be backward-pruned");
+        assert_eq!(
+            mutations.len(),
+            4,
+            "prior edit and write should both be backward-pruned"
+        );
 
         let ids = mutation_ids(&mutations);
         assert!(ids.contains(&edit1[0].id));
@@ -793,7 +817,10 @@ mod tests {
         history.push(read[1].clone());
 
         let mutations = evaluate(history);
-        assert!(mutations.is_empty(), "edit on different file should not be pruned");
+        assert!(
+            mutations.is_empty(),
+            "edit on different file should not be pruned"
+        );
     }
 
     #[test]
@@ -833,7 +860,11 @@ mod tests {
 
         let mutations = evaluate(history);
         // Even though the read is fully excluded, backward pruning should still run.
-        assert_eq!(mutations.len(), 2, "prior edit should still be backward-pruned");
+        assert_eq!(
+            mutations.len(),
+            2,
+            "prior edit should still be backward-pruned"
+        );
 
         let ids = mutation_ids(&mutations);
         assert!(ids.contains(&edit1[0].id));
@@ -861,18 +892,20 @@ mod tests {
         let ids = mutation_ids(&mutations);
         assert!(ids.contains(&edit1[0].id));
         assert!(ids.contains(&edit1[1].id));
-        assert!(!ids.contains(&read[0].id), "read should not be forward-pruned");
-        assert!(!ids.contains(&read[1].id), "read result should not be forward-pruned");
+        assert!(
+            !ids.contains(&read[0].id),
+            "read should not be forward-pruned"
+        );
+        assert!(
+            !ids.contains(&read[1].id),
+            "read result should not be forward-pruned"
+        );
     }
 
     #[test]
     fn backward_skips_edit_without_result() {
         let mut history = Vec::new();
-        let orphan_entry = ChatEntry::tool_call(
-            "tc-orphan",
-            "edit",
-            r#"{"path": "/foo.rs"}"#,
-        );
+        let orphan_entry = ChatEntry::tool_call("tc-orphan", "edit", r#"{"path": "/foo.rs"}"#);
         let orphan_id = orphan_entry.id.clone();
         history.push(orphan_entry);
         let read = read_call_result("tc-2", "/foo.rs", "contents");
@@ -881,7 +914,11 @@ mod tests {
 
         let mutations = evaluate(history);
         // The orphan edit call has no result to find. The call itself should be pruned.
-        assert_eq!(mutations.len(), 1, "orphan edit call should still be pruned");
+        assert_eq!(
+            mutations.len(),
+            1,
+            "orphan edit call should still be pruned"
+        );
 
         let ids = mutation_ids(&mutations);
         assert!(
@@ -914,8 +951,14 @@ mod tests {
         assert_eq!(mutations.len(), 4);
 
         let ids = mutation_ids(&mutations);
-        assert!(ids.contains(&edit_before[0].id), "backward: edit_before call");
-        assert!(ids.contains(&edit_before[1].id), "backward: edit_before result");
+        assert!(
+            ids.contains(&edit_before[0].id),
+            "backward: edit_before call"
+        );
+        assert!(
+            ids.contains(&edit_before[1].id),
+            "backward: edit_before result"
+        );
         assert!(ids.contains(&read[0].id), "forward: read call");
         assert!(ids.contains(&read[1].id), "forward: read result");
     }

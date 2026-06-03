@@ -77,7 +77,7 @@ pub struct LlmActor {
     /// Runtime services (provider registry, API keys for per-request factory creation).
     services: Services,
     /// Shared application state (for reading tool definitions).
-    state: State,
+    _state: State,
     /// Active stream tasks, keyed by session ID.
     tasks: HashMap<SessionId, tokio::task::JoinHandle<()>>,
     /// Per-session state.
@@ -107,7 +107,7 @@ impl Actor for LlmActor {
         Self {
             factory: deps.factory,
             services: deps.services,
-            state: deps.state,
+            _state: deps.state,
             tasks: HashMap::new(),
             sessions: HashMap::new(),
         }
@@ -596,7 +596,7 @@ mod tests {
         LlmActor {
             factory,
             services: crate::common::services::Services::new(),
-            state: State::new(AppState::default()),
+            _state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
         }
@@ -826,7 +826,7 @@ mod tests {
         let mut actor = LlmActor {
             factory,
             services: crate::common::services::Services::new(),
-            state: State::new(AppState::default()),
+            _state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
         };
@@ -892,7 +892,7 @@ mod tests {
         let mut actor = LlmActor {
             factory,
             services: crate::common::services::Services::new(),
-            state: State::new(AppState::default()),
+            _state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
         };
@@ -938,7 +938,7 @@ mod tests {
         let mut actor = LlmActor {
             factory,
             services: crate::common::services::Services::new(),
-            state: State::new(AppState::default()),
+            _state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
         };
@@ -978,7 +978,7 @@ mod tests {
         let mut actor = LlmActor {
             factory,
             services: crate::common::services::Services::new(),
-            state: State::new(AppState::default()),
+            _state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
         };

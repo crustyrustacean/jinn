@@ -1172,12 +1172,7 @@ impl ChatSessionState {
                         meta,
                     ));
                 } else {
-                    self.push_entry(ChatEntry::tool_result(
-                        tool_call_id,
-                        name,
-                        content,
-                        status,
-                    ));
+                    self.push_entry(ChatEntry::tool_result(tool_call_id, name, content, status));
                 }
             }
         }
@@ -1336,9 +1331,6 @@ impl ChatSessionState {
 
     /// Transition to Working phase (a background operation started).
     ///
-
-    // ── Busy count ──────────────────────────────────────────────────────────
-
     /// Increment the busy counter. Called when a background operation starts.
     /// The count is ephemeral (not persisted).
     pub fn begin_busy(&mut self) {
