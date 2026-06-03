@@ -349,7 +349,6 @@ fn reject_cancel_while_idle() {
 }
 
 #[test]
-#[test]
 fn cancel_during_sending() {
     // Given a machine in Sending.
     let mut m = sending_machine();

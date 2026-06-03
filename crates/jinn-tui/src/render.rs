@@ -13,7 +13,7 @@ pub mod workflow_tab;
 
 pub use app_layout::{AppLayout, MIN_HEIGHT, MIN_WIDTH};
 
-use jinn_domain::{FocusScope, Mode};
+use jinn_domain::{FocusScope, Mode, RenderCtx};
 use ratatui::Frame;
 
 use crate::TuiApp;
@@ -50,6 +50,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     }
 
     let state = app.core.state.read();
+    let ctx = RenderCtx::new(&state);
 
     let max_input_height = area.height / 2;
     let layout = AppLayout::new(
@@ -61,21 +62,10 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 
     let mut rects = vec![];
 
-
-
     let sidebar_focused = state.frontend.scope_stack.is_sidebar();
-    let focus_scope = state.frontend.scope_stack.current();
 
     // Vertical border between main and sidebar.
-    let theme = &state.frontend.theme;
-    chat_tab::border::render_border(
-        frame,
-        layout.border,
-        focus_scope,
-        theme.focus_accent,
-        theme.border_unfocused,
-        theme.sidebar_resize_accent,
-    );
+    chat_tab::border::render_border(frame, layout.border, &ctx);
 
     // Sidebar - always rendered regardless of content view.
     chat_tab::sidebar::render_sidebar(
@@ -83,13 +73,13 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         frame,
         layout.sidebar,
         sidebar_focused,
-        &state,
+        &ctx,
         &mut rects,
     );
 
     // Main content area - chat, workflow, or workflow preview.
     if state.is_viewing_workflow() {
-        workflow_tab::render_workflow_tab(frame, layout.content, &state, 0);
+        workflow_tab::render_workflow_tab(frame, layout.content, &ctx, 0);
     } else if let Some(workflow) = state.previewed_workflow() {
         workflow_tab::render_workflow_preview(frame, layout.content, workflow);
     } else {
@@ -97,7 +87,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
             &mut app.ui_registry,
             frame,
             &layout,
-            &state,
+            &ctx,
             &mut rects,
         );
     }
@@ -106,29 +96,26 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         frame,
         layout.sidebar,
         area,
-        &state,
+        &ctx,
     );
 
     // Status bar - always visible at bottom.
-    status_bar::render_status_bar(&mut app.ui_registry, frame, layout.status_bar, &state);
+    status_bar::render_status_bar(&mut app.ui_registry, frame, layout.status_bar, &ctx);
 
     // Which-key popup overlay.
-    {
-        let theme = &state.frontend.theme;
-        which_key::render_which_key(frame, &mut app.which_key, theme.focus_accent);
-    }
+    which_key::render_which_key(frame, &mut app.which_key, &ctx);
 
     // Picker overlay + selectable rect.
     if state.frontend.scope_stack.is_picker() {
-        picker::render_picker(frame, area, &state);
+        picker::render_picker(frame, area, &ctx);
         rects.push(jinn_selection_widget::compute_popup_rect(area));
     }
 
     // Arg input popup overlay (+ selectable rect).
     if matches!(state.frontend.scope_stack.current(), FocusScope::ArgInput) {
-        picker::render_arg_input(frame, area, &state);
+        picker::render_arg_input(frame, area, &ctx);
         rects
-            .push(jinn_domain::feat::session_lifecycle::render::arg_input_popup_rect(area, &state));
+            .push(jinn_domain::feat::session_lifecycle::render::arg_input_popup_rect(area, &ctx));
     }
 
     // Rename session input popup overlay (+ selectable rect).
@@ -137,7 +124,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         FocusScope::RenameSessionInput
     ) {
         jinn_domain::feat::rename_session_input::render::render_rename_session_input(
-            frame, area, &state,
+            frame, area, &ctx,
         );
         rects
             .push(jinn_domain::feat::rename_session_input::render::rename_session_popup_rect(area));
@@ -149,7 +136,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
         FocusScope::RenameWorkflowInput
     ) {
         jinn_domain::feat::rename_workflow_input::render::render_rename_workflow_input(
-            frame, area, &state,
+            frame, area, &ctx,
         );
         rects
             .push(jinn_domain::feat::rename_workflow_input::render::rename_workflow_popup_rect(area));

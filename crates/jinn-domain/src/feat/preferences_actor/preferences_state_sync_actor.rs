@@ -96,7 +96,6 @@ mod tests {
     use crate::common::actor::{
         Actor as _, ActorContext, ActorEnvelope, MessageSink, RecordingSink,
     };
-    use crate::common::app_paths::AppPaths;
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;

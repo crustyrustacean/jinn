@@ -2,7 +2,7 @@
 //!
 //! Renders the graph widget, status line, inspector popup, and cancel prompt.
 
-use jinn_domain::AppState;
+use jinn_domain::RenderCtx;
 use jinn_domain::common::app_state::WorkflowUiState;
 use jinn_domain::feat::ui::chat_log::{RenderContext, entry_to_lines};
 use jinn_workflow_tui::widget::WorkflowWidget;
@@ -20,7 +20,8 @@ use unicode_segmentation::UnicodeSegmentation;
 /// If a workflow is active, renders the `WorkflowWidget`, status line,
 /// inspector popup (if open), and cancel prompt (if showing).
 /// Otherwise, renders a placeholder message.
-pub fn render_workflow_tab(frame: &mut Frame<'_>, area: Rect, state: &AppState, tick: u8) {
+pub fn render_workflow_tab(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx, tick: u8) {
+    let state = ctx.state;
     let Some(workflow) = state.workflow.active() else {
         render_no_workflow_placeholder(frame, area);
         return;
@@ -63,7 +64,7 @@ pub fn render_workflow_tab(frame: &mut Frame<'_>, area: Rect, state: &AppState, 
     frame.render_widget(widget, graph_area);
 
     // Status line at the bottom of the graph area.
-    render_status_line(frame, graph_area, state);
+    render_status_line(frame, graph_area, ctx);
 
     // Cancel prompt overlay.
     if state.frontend.workflow_ui.cancel_prompt {
@@ -72,12 +73,12 @@ pub fn render_workflow_tab(frame: &mut Frame<'_>, area: Rect, state: &AppState, 
 
     // Inspector popup overlay.
     if state.frontend.workflow_ui.inspector_open {
-        render_inspector(frame, graph_area, state);
+        render_inspector(frame, graph_area, ctx);
     }
 
     // Workflow input buffer - bottom area.
     if state.frontend.workflow_ui.editing_node.is_some() && input_area.height > 0 {
-        render_workflow_input(frame, input_area, state);
+        render_workflow_input(frame, input_area, ctx);
     }
 }
 
@@ -142,7 +143,8 @@ fn render_no_workflow_placeholder(frame: &mut Frame<'_>, area: Rect) {
 ///
 /// Shows the selected node's name, status, and port counts.
 /// If no node is selected, shows a navigation hint.
-fn render_status_line(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+fn render_status_line(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    let state = ctx.state;
     let ui = &state.frontend.workflow_ui;
     let line = match &ui.selected_node {
         Some(name) => {
@@ -213,8 +215,9 @@ fn build_inspector_lines(
     node_state: Option<&jinn_workflow::execution::NodeState>,
     status: &str,
     content_width: u16,
-    state: &AppState,
+    ctx: &RenderCtx,
 ) -> Vec<Line<'static>> {
+    let state = ctx.state;
     let mut lines: Vec<Line<'_>> = vec![];
 
     // Status line.
@@ -292,7 +295,7 @@ fn build_inspector_lines(
             "Session",
             Style::default().add_modifier(Modifier::BOLD),
         )));
-        let ctx = RenderContext {
+        let render_ctx = RenderContext {
             content_width,
             is_selected: false,
             is_expanded: false,
@@ -302,7 +305,7 @@ fn build_inspector_lines(
             is_streaming: false,
         };
         for entry in session.history() {
-            lines.extend(entry_to_lines(entry, &ctx));
+            lines.extend(entry_to_lines(entry, &render_ctx));
         }
     }
 
@@ -311,7 +314,7 @@ fn build_inspector_lines(
 
 /// Looks up the session associated with a workflow node.
 fn lookup_node_session<'a>(
-    state: &'a AppState,
+    state: &'a jinn_domain::AppState,
     node_name: &str,
 ) -> Option<&'a jinn_domain::feat::session::chat_session::ChatSessionState> {
     let workflow = state.workflow.active()?;
@@ -320,7 +323,8 @@ fn lookup_node_session<'a>(
 }
 
 /// Renders the sticky inspector popup overlay.
-fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+fn render_inspector(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    let state = ctx.state;
     let ui = &state.frontend.workflow_ui;
     let Some(node_name) = &ui.selected_node else {
         return;
@@ -351,7 +355,7 @@ fn render_inspector(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
 
     // Build lines - pass inner content width.
     let inner_width = popup_width.saturating_sub(2); // inside borders
-    let lines = build_inspector_lines(node_name, node_state, &status, inner_width, state);
+    let lines = build_inspector_lines(node_name, node_state, &status, inner_width, ctx);
 
     let content_height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
     let desired_height = content_height.saturating_add(3); // +2 for borders, +1 for footer
@@ -522,7 +526,8 @@ fn port_value_lines(
 ///
 /// Shows an accent-colored "Editing Output" title on the top border, and the
 /// buffer content with word-wrap. Positions the cursor when in Input mode.
-fn render_workflow_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+fn render_workflow_input(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    let state = ctx.state;
     let input_mode =
         state.frontend.scope_stack.current().mode() == jinn_domain::protocol::Mode::Input;
     let theme = &state.frontend.theme;

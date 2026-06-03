@@ -10,11 +10,11 @@
 //! See the tests in this crate for usage patterns.
 
 use std::cell::RefCell;
-use std::marker::PhantomData;
 use std::rc::Rc;
 
 use ratatui::{Frame, layout::Rect};
 
+use super::render_ctx::RenderCtx;
 use super::ui_element::UiElement;
 
 /// Recorded render call data: the allocated area and a snapshot of the input buffer.
@@ -25,44 +25,35 @@ pub type RenderCall = (Rect, String);
 /// The call log remains accessible to the test even after the element
 /// is moved into the registry.
 #[derive(Debug)]
-pub struct FakeUiElement<S> {
+pub struct FakeUiElement {
     /// Element name used for lookup.
     name: String,
     /// Recorded render invocations.
     render_calls: Rc<RefCell<Vec<RenderCall>>>,
-    /// Marker for the unused state type parameter.
-    _phantom: PhantomData<S>,
 }
 
-impl<S> FakeUiElement<S> {
+impl FakeUiElement {
     /// Create a new fake element with the given name.
     ///
     /// Returns a tuple of `(element, call_log)`. The element should be
     /// registered with a [`UiRegistry`](super::UiRegistry); the call log
     /// is kept by the test for assertions.
-    pub fn new<S2>(name: S2) -> (Self, Rc<RefCell<Vec<RenderCall>>>)
-    where
-        S2: AsRef<str>,
-    {
+    pub fn new<S: AsRef<str>>(name: S) -> (Self, Rc<RefCell<Vec<RenderCall>>>) {
         let render_calls = Rc::new(RefCell::new(Vec::new()));
         let element = Self {
             name: name.as_ref().to_owned(),
             render_calls: Rc::clone(&render_calls),
-            _phantom: PhantomData,
         };
         (element, render_calls)
     }
 }
 
-impl<S> UiElement<S> for FakeUiElement<S>
-where
-    S: std::fmt::Debug + 'static,
-{
+impl UiElement for FakeUiElement {
     fn name(&self) -> String {
         self.name.clone()
     }
 
-    fn render(&mut self, _frame: &mut Frame<'_>, area: Rect, _state: &S) {
+    fn render(&mut self, _frame: &mut Frame<'_>, area: Rect, _ctx: &RenderCtx) {
         self.render_calls.borrow_mut().push((area, String::new()));
     }
 }
@@ -70,21 +61,22 @@ where
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
+    use jinn_testutil::setup_term;
+    use ratatui::layout::Rect;
 
     use super::*;
+    use crate::common::app_state::AppState;
 
     /// Helper to render an element via a real ratatui frame.
     ///
     /// Uses `Terminal::draw()` to obtain a frame, which is the standard
     /// way to create a `Frame` in ratatui 0.30+.
-    fn render_element(element: &mut dyn super::UiElement<()>, area: Rect, state: ()) {
-        let backend = TestBackend::new(80, 24);
-        let mut terminal = Terminal::new(backend).expect("test backend should init");
+    fn render_element(element: &mut dyn UiElement, area: Rect, state: &AppState) {
+        let (mut terminal, _area) = setup_term(area.width, area.height);
         terminal
             .draw(|frame| {
-                element.render(frame, area, &state);
+                let ctx = RenderCtx::new(state);
+                element.render(frame, area, &ctx);
             })
             .expect("draw should succeed");
     }
@@ -92,7 +84,7 @@ mod tests {
     #[rstest::rstest]
     fn name_returns_correct_value() {
         // Given a fake element.
-        let (element, _calls): (FakeUiElement<()>, _) = FakeUiElement::new("chat-input");
+        let (element, _calls): (FakeUiElement, _) = FakeUiElement::new("chat-input");
 
         // When querying the name.
         let name = element.name();
@@ -104,12 +96,12 @@ mod tests {
     #[rstest::rstest]
     fn records_render_calls() {
         // Given a fake element.
-        let (mut element, calls): (FakeUiElement<()>, _) = FakeUiElement::new("test");
-        let state = ();
+        let (mut element, calls): (FakeUiElement, _) = FakeUiElement::new("test");
+        let state = AppState::default();
 
         // When rendering with a specific area.
         let area = Rect::new(0, 0, 80, 3);
-        render_element(&mut element, area, state);
+        render_element(&mut element, area, &state);
 
         // Then the call was recorded.
         assert_eq!(calls.borrow().len(), 1);
@@ -120,7 +112,7 @@ mod tests {
     #[rstest::rstest]
     fn shared_call_log_after_move() {
         // Given a fake element whose call_log is cloned.
-        let (element, calls): (FakeUiElement<()>, _) = FakeUiElement::new("test");
+        let (element, calls): (FakeUiElement, _) = FakeUiElement::new("test");
         let calls_clone = Rc::clone(&calls);
 
         // When moving the element (simulating registry registration).
@@ -133,14 +125,14 @@ mod tests {
     #[rstest::rstest]
     fn multiple_render_calls_accumulate() {
         // Given a fake element.
-        let (mut element, calls): (FakeUiElement<()>, _) = FakeUiElement::new("test");
-        let state = ();
+        let (mut element, calls): (FakeUiElement, _) = FakeUiElement::new("test");
+        let state = AppState::default();
         let area1 = Rect::new(0, 0, 40, 10);
         let area2 = Rect::new(0, 10, 40, 10);
 
         // When rendering the element twice.
-        render_element(&mut element, area1, state);
-        render_element(&mut element, area2, state);
+        render_element(&mut element, area1, &state);
+        render_element(&mut element, area2, &state);
 
         // Then both calls were recorded.
         assert_eq!(calls.borrow().len(), 2);

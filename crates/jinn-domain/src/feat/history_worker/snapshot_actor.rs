@@ -105,7 +105,6 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::session::chat_entry::ChatEntry;
     use crate::feat::session::protocol::history_appended::HistoryAppended;
-    use crate::feat::session::protocol::history_snapshot_ready::HistorySnapshotReady;
     use crate::protocol::{Event, SessionId};
 
     use super::{HistorySnapshotActor, HistorySnapshotActorDeps};

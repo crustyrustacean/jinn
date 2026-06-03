@@ -7,6 +7,7 @@
 use std::borrow::Cow;
 
 use crate::common::app_state::AppState;
+use crate::common::render_ctx::RenderCtx;
 use crate::feat::todo_list::{TaskList, TaskStatus};
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
@@ -87,7 +88,8 @@ impl SidebarSection for TaskListSection {
         SidebarSectionId::TaskList
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+        let state = ctx.state;
         let list = state.active_session().task_list();
         if list.is_empty() {
             return;
@@ -98,7 +100,8 @@ impl SidebarSection for TaskListSection {
         frame.render_widget(widget, area);
     }
 
-    fn content_height(&self, state: &AppState) -> u16 {
+    fn content_height(&self, ctx: &RenderCtx) -> u16 {
+        let state = ctx.state;
         let list = state.active_session().task_list();
         if list.is_empty() {
             return 0;
@@ -273,6 +276,7 @@ fn compute_height(list: &TaskList, state: &AppState) -> u16 {
 mod tests {
     use super::*;
     use crate::common::app_state::AppState;
+    use crate::common::render_ctx::RenderCtx;
     use crate::common::focus::FocusScope;
     use crate::feat::todo_list::TaskPosition;
 
@@ -315,14 +319,14 @@ mod tests {
     fn content_height_is_zero_when_empty() {
         let app = AppState::default();
         let section = TaskListSection;
-        assert_eq!(section.content_height(&app), 0);
+        assert_eq!(section.content_height(&{ RenderCtx::new(&app) }), 0);
     }
 
     #[test]
     fn content_height_is_nonzero_when_has_phases() {
         let app = setup_with_tasks();
         let section = TaskListSection;
-        let height = section.content_height(&app);
+        let height = section.content_height(&{ RenderCtx::new(&app) });
         assert!(height > 0, "expected non-zero height, got {height}");
     }
 

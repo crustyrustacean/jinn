@@ -11,7 +11,7 @@ use super::section_trait::{
 };
 use super::{persona_section, pins, sessions, task_list_section};
 use crate::common::app_state::AppState;
-
+use crate::common::render_ctx::RenderCtx;
 /// The sidebar container.
 ///
 /// Holds registered sections in order, manages focus, and handles
@@ -48,17 +48,17 @@ impl Sidebar {
     /// Applies a dark gray background to the entire sidebar area,
     /// then renders each section in registration order, stacking vertically.
     /// Sections receive their computed sub-area based on content height.
-    pub fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    pub fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
         // Clear sidebar area with dark gray background.
         let background =
-            Block::default().style(Style::default().bg(state.frontend.theme.gutter_bg));
+            Block::default().style(Style::default().bg(ctx.state.frontend.theme.gutter_bg));
         frame.render_widget(background, area);
 
         // Pre-compute all section heights so we don't fight the borrow checker.
         let heights: Vec<u16> = self
             .sections
             .iter()
-            .map(|s| s.content_height(state))
+            .map(|s| s.content_height(ctx))
             .collect();
         let n = self.sections.len();
 
@@ -80,7 +80,7 @@ impl Sidebar {
                 width: area.width,
                 height: section_height,
             };
-            section.render(frame, section_area, state);
+            section.render(frame, section_area, ctx);
             y_offset += section_height;
         }
 
@@ -99,7 +99,7 @@ impl Sidebar {
                     width: area.width,
                     height: section_height,
                 };
-                self.sections[last_idx].render(frame, section_area, state);
+                self.sections[last_idx].render(frame, section_area, ctx);
             }
         }
     }

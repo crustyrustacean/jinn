@@ -1,6 +1,6 @@
 //! Session lifecycle picker and arg input popup rendering.
 
-use crate::common::app_state::AppState;
+use crate::common::render_ctx::RenderCtx;
 use crate::feat::session_lifecycle::command_template::{CommandTemplate, split_preserving_quotes};
 use crate::feat::ui::picker_states::PickerExt;
 use jinn_selection_widget::SelectionWidget;
@@ -51,7 +51,8 @@ fn compute_arg_input_popup_rect(area: Rect, content_rows: u16) -> Rect {
 /// This is used by the TUI layer to register the popup's selectable rect.
 /// The popup height is dynamic based on the command's `&&` split and number of params.
 #[must_use]
-pub fn arg_input_popup_rect(area: Rect, state: &AppState) -> Rect {
+pub fn arg_input_popup_rect(area: Rect, ctx: &RenderCtx) -> Rect {
+    let state = ctx.state;
     let arg_state = &state.frontend.arg_input;
 
     let content_rows = state
@@ -79,7 +80,8 @@ pub fn arg_input_popup_rect(area: Rect, state: &AppState) -> Rect {
 ///
 /// Shows all available lifecycles (including the implicit blank) with
 /// descriptions and an args indicator.
-pub fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+pub fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    let state = ctx.state;
     let widget = SelectionWidget::new(state.frontend.session_lifecycle_picker())
         .title(Line::from(" New Session (with scripted lifecycle) "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
@@ -94,7 +96,8 @@ pub fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, state:
 /// - Multi-line command display split on `&&`, with parameter substitution
 ///   and syntax highlighting for placeholders/substituted values
 /// - Input line at bottom showing current text with cursor
-pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    let state = ctx.state;
     let arg_state = &state.frontend.arg_input;
 
     // Parse the command template to extract parameter info.
@@ -226,6 +229,7 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
+    use crate::AppState;
     use crate::common::app_state::ArgInputState;
     use crate::feat::preferences_actor::user_preferences::SessionLifecycle;
     use jinn_testutil::setup_term;
@@ -271,7 +275,8 @@ mod tests {
         // When rendering the arg input popup.
         terminal
             .draw(|frame| {
-                render_arg_input(frame, area, &state);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -306,7 +311,8 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                render_arg_input(frame, area, &state);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -341,7 +347,8 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                render_arg_input(frame, area, &state);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -384,7 +391,8 @@ mod tests {
         // When rendering - should not panic.
         terminal
             .draw(|frame| {
-                render_arg_input(frame, area, &state);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -427,7 +435,8 @@ mod tests {
         // Then draw the arg input popup on top.
         terminal
             .draw(|frame| {
-                render_arg_input(frame, area, &state);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -459,7 +468,8 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                render_arg_input(frame, area, &state);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -506,7 +516,8 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                render_arg_input(frame, area, &state);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -552,7 +563,8 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                render_arg_input(frame, area, &state);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -588,7 +600,8 @@ mod tests {
         // When rendering.
         terminal
             .draw(|frame| {
-                render_arg_input(frame, area, &state);
+                let ctx = RenderCtx::new(&state);
+                render_arg_input(frame, area, &ctx);
             })
             .unwrap();
 

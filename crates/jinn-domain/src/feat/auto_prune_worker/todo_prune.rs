@@ -99,13 +99,13 @@ impl HistoryWorker for TodoAutoPruneWorker {
                 }
 
                 // Prune the corresponding ToolResult.
-                if let Some((result_idx, result_entry_id)) = result_map.get(tool_call_id) {
-                    if history[*result_idx].context_override != ContextOverride::ForcedExclude {
-                        mutations.push(HistoryMutation::SetContextOverride {
-                            entry_id: result_entry_id.clone(),
-                            value: ContextOverride::ForcedExclude,
-                        });
-                    }
+                if let Some((result_idx, result_entry_id)) = result_map.get(tool_call_id)
+                    && history[*result_idx].context_override != ContextOverride::ForcedExclude
+                {
+                    mutations.push(HistoryMutation::SetContextOverride {
+                        entry_id: result_entry_id.clone(),
+                        value: ContextOverride::ForcedExclude,
+                    });
                 }
             }
         }

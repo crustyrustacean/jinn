@@ -111,19 +111,16 @@ impl HistoryWorker for ConsecutiveReadsAutoPruneWorker {
                 continue;
             };
 
-            pairs_by_path
-                .entry(read_path)
-                .or_default()
-                .push(ReadPair {
-                    call_entry_id,
-                    result_entry_id: result_id,
-                });
+            pairs_by_path.entry(read_path).or_default().push(ReadPair {
+                call_entry_id,
+                result_entry_id: result_id,
+            });
         }
 
         // Phase 2: For each path, prune older pairs exceeding keep_last.
         let mut mutations = Vec::new();
 
-        for (_path, pairs) in &pairs_by_path {
+        for pairs in pairs_by_path.values() {
             if pairs.len() <= keep_last {
                 continue;
             }
@@ -181,11 +178,7 @@ mod tests {
     fn history_with_n_reads(path: &str, count: usize) -> Vec<ChatEntry> {
         let mut history = Vec::new();
         for i in 0..count {
-            let pair = read_call_result(
-                &format!("tc-{i}"),
-                path,
-                &format!("contents v{i}"),
-            );
+            let pair = read_call_result(&format!("tc-{i}"), path, &format!("contents v{i}"));
             history.push(pair[0].clone());
             history.push(pair[1].clone());
         }
@@ -206,11 +199,7 @@ mod tests {
         history: Vec<ChatEntry>,
     ) -> Vec<HistoryMutation> {
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        rt.block_on(async {
-            worker
-                .evaluate(&SessionId::new(), Arc::from(history))
-                .await
-        })
+        rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(history)).await })
     }
 
     // --- Worker evaluate() tests ---
@@ -319,6 +308,7 @@ mod tests {
         assert!(mutations.is_empty());
     }
 
+    #[test]
     fn already_excluded_call_only_prunes_result() {
         let mut history = history_with_n_reads("/foo.rs", 4);
         // Mark only the call as excluded.
@@ -339,6 +329,7 @@ mod tests {
         }
     }
 
+    #[test]
     fn already_excluded_result_only_prunes_call() {
         let mut history = history_with_n_reads("/foo.rs", 4);
         // Mark only the result as excluded.
@@ -361,13 +352,11 @@ mod tests {
 
     #[test]
     fn orphaned_call_without_result_is_skipped() {
-        let mut history = Vec::new();
-        // Read tool call but no corresponding tool result.
-        history.push(ChatEntry::tool_call(
+        let history = vec![ChatEntry::tool_call(
             "tc-orphan",
             "read",
             r#"{"path": "/foo.rs"}"#,
-        ));
+        )];
 
         let worker = worker_with_keep_last(3);
         let mutations = evaluate(&worker, history);
@@ -376,15 +365,10 @@ mod tests {
 
     #[test]
     fn read_without_path_argument_is_skipped() {
-        let mut history = Vec::new();
-        // ToolCall with name "read" but no "path" in arguments.
-        history.push(ChatEntry::tool_call("tc-1", "read", r#"{"offset": 1}"#));
-        history.push(ChatEntry::tool_result(
-            "tc-1",
-            "read",
-            "some output",
-            ToolResultStatus::Success,
-        ));
+        let history = vec![
+            ChatEntry::tool_call("tc-1", "read", r#"{"offset": 1}"#),
+            ChatEntry::tool_result("tc-1", "read", "some output", ToolResultStatus::Success),
+        ];
 
         let worker = worker_with_keep_last(3);
         let mutations = evaluate(&worker, history);

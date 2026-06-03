@@ -4,7 +4,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 
 use jinn_domain::feat::ui::chat_log::GUTTER_WIDTH;
-use jinn_domain::{AppState, AppUiRegistry};
+use jinn_domain::{AppUiRegistry, RenderCtx};
 
 /// Renders the chat log element and registers it as selectable when not sidebar-focused.
 pub(super) fn render_chat_log(
@@ -13,11 +13,11 @@ pub(super) fn render_chat_log(
     chat_log_area: Rect,
     content_area: Rect,
     sidebar_focused: bool,
-    state: &AppState,
+    ctx: &RenderCtx,
     rects: &mut Vec<Rect>,
 ) {
     if let Some(element) = ui_registry.get_mut("chat-log") {
-        element.render(frame, chat_log_area, state);
+        element.render(frame, chat_log_area, ctx);
         if element.is_selectable() && !sidebar_focused {
             let select_area = Rect {
                 x: content_area.x + GUTTER_WIDTH,
