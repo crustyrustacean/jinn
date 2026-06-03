@@ -2132,22 +2132,22 @@ fn state_with_session_and_workflows(workflow_count: usize) -> AppState {
 }
 
 #[test]
-fn navigate_down_skips_workflow_entries() {
+fn navigate_down_lands_on_workflow_entry() {
     // Given a session with 2 workflow attachments, cursor at index 0.
     let mut state = state_with_session_and_workflows(2);
     state.frontend.sessions_section.selected_index = Some(0);
 
-    // When navigating down past the workflow entries.
+    // When navigating down from the session entry.
     // entries: [session0, wf-0, wf-1]
-    // pressing down from session0 should skip wf-0 and wf-1 and return Exhausted.
     let result = navigate(&SidebarIntent::MoveDown, &mut state);
 
-    // Then navigation returns Exhausted (no next session).
-    assert_eq!(result, SectionNavResult::Exhausted);
+    // Then the cursor lands on the first workflow entry.
+    assert_eq!(result, SectionNavResult::Moved);
+    assert_eq!(state.frontend.sessions_section.selected_index, Some(1));
 }
 
 #[test]
-fn navigate_up_skips_workflow_entries() {
+fn navigate_up_lands_on_workflow_entry() {
     // Given two sessions, first with a workflow, cursor at second session.
     use crate::feat::workflow::attached_workflow::{
         AttachedWorkflow, WorkflowConfig, WorkflowTrigger,
@@ -2178,9 +2178,12 @@ fn navigate_up_skips_workflow_entries() {
     // When navigating up from session1.
     let result = navigate(&SidebarIntent::MoveUp, &mut state);
 
-    // Then cursor lands on session0 (skipping the workflow entry).
+    // Then the cursor lands on the workflow entry (not skipping it).
     assert_eq!(result, SectionNavResult::Moved);
-    assert_eq!(state.frontend.sessions_section.selected_index, Some(0));
+    assert_eq!(
+        state.frontend.sessions_section.selected_index,
+        Some(session1_idx - 1)
+    );
 }
 
 #[test]
