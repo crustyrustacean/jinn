@@ -150,6 +150,10 @@ impl BenchActor {
     ///
     /// Creates a new session in AppState with the correct model and lifecycle_name,
     /// then emits setup commands. Does nothing if no plan or all pairs are done.
+    #[expect(
+        clippy::expect_used,
+        reason = "Should always be available; Programming error on crash"
+    )]
     fn start_next_pair(&mut self, ctx: &ActorContext) {
         let Some(ref plan) = self.plan else {
             return;
@@ -599,7 +603,6 @@ mod tests {
 
     use jinn_domain::RecordingSink;
 
-    use super::*;
     use super::*;
     use crate::orchestrator::build_plan;
 

@@ -106,7 +106,6 @@ impl Default for MinimapConfig {
     }
 }
 
-
 /// Default enabled state for read-edit auto-prune.
 const DEFAULT_READ_EDIT_ENABLED: bool = true;
 
@@ -127,8 +126,6 @@ pub struct ReadEditAutoPruneConfig {
 fn default_read_edit_enabled() -> bool {
     DEFAULT_READ_EDIT_ENABLED
 }
-
-
 
 impl Default for ReadEditAutoPruneConfig {
     fn default() -> Self {
@@ -246,7 +243,6 @@ impl Default for DoubleEditAutoPruneConfig {
     }
 }
 
-
 /// Default number of consecutive read pairs to keep per file path.
 const DEFAULT_CONSECUTIVE_READS_KEEP_LAST: usize = 3;
 
@@ -359,7 +355,7 @@ impl Default for RegexAutoPruneConfig {
 ///
 /// Serialized as `[auto_prune]` in `jinn.toml`.
 /// Groups all auto-prune strategy configurations.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct AutoPruneConfig {
     /// Read-edit auto-prune strategy configuration.
     #[serde(default)]
@@ -379,19 +375,6 @@ pub struct AutoPruneConfig {
     /// Consecutive-reads auto-prune strategy configuration.
     #[serde(default)]
     pub consecutive_reads: ConsecutiveReadsAutoPruneConfig,
-}
-
-impl Default for AutoPruneConfig {
-    fn default() -> Self {
-        Self {
-            read_edit: ReadEditAutoPruneConfig::default(),
-            regex: RegexAutoPruneConfig::default(),
-            broken_edit: BrokenEditAutoPruneConfig::default(),
-            todo: TodoAutoPruneConfig::default(),
-            double_edit: DoubleEditAutoPruneConfig::default(),
-            consecutive_reads: ConsecutiveReadsAutoPruneConfig::default(),
-        }
-    }
 }
 
 /// Default token threshold for auto-compaction.
@@ -1500,9 +1483,7 @@ keep_last = 5
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
             auto_prune: AutoPruneConfig {
-                read_edit: ReadEditAutoPruneConfig {
-                    enabled: false,
-                },
+                read_edit: ReadEditAutoPruneConfig { enabled: false },
                 regex: RegexAutoPruneConfig::default(),
                 broken_edit: BrokenEditAutoPruneConfig {
                     enabled: false,
@@ -1528,11 +1509,7 @@ keep_last = 5
     fn load_without_auto_prune_section_uses_defaults() {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
-        std::fs::write(
-            &path,
-            r##"last_model = 'ollama/llama3'"##,
-        )
-        .expect("write");
+        std::fs::write(&path, r##"last_model = 'ollama/llama3'"##).expect("write");
 
         let prefs = load_preferences_from(&path).expect("load");
         assert!(prefs.auto_prune.read_edit.enabled);

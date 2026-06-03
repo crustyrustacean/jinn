@@ -215,7 +215,7 @@ mod tests {
 
     use super::*;
     use crate::feat::preferences_actor::user_preferences::{RegexAutoPruneConfig, RegexPruneRule};
-    use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ContextOverride};
+    use crate::feat::session::chat_entry::{ChatEntry, ContextOverride};
     use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::protocol::SessionId;
 
@@ -574,14 +574,11 @@ mod tests {
 
     #[test]
     fn tool_call_without_matching_result_is_skipped() {
-        let mut history = Vec::new();
-
-        // Orphaned tool call (no result).
-        history.push(ChatEntry::tool_call(
+        let history = vec![ChatEntry::tool_call(
             "tc-orphan",
             "bash",
             r#"{"command": "cargo check"}"#,
-        ));
+        )];
 
         let worker = worker_for_cargo_check(1);
         let mutations = evaluate(&worker, history);

@@ -89,15 +89,14 @@ pub fn handle_rename_workflow_confirm(state: &mut AppState) -> IntentResult {
     let session_id = entry.id.clone();
 
     // Update the workflow label.
-    if let Some(session) = state.session.get_mut(&session_id) {
-        if let Some(aw) = session
+    if let Some(session) = state.session.get_mut(&session_id)
+        && let Some(aw) = session
             .core
             .attached_workflows
             .iter_mut()
             .find(|aw| &aw.id == workflow_id)
-        {
-            aw.label = text;
-        }
+    {
+        aw.label = text;
     }
 
     // Pop scope and clear state.
@@ -200,9 +199,8 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::common::app_state::FocusScope;
-    use crate::feat::session::chat_session::ChatSessionState;
     use crate::feat::workflow::attached_workflow::{
-        AttachedWorkflow, AttachedWorkflowState, ResultKind, WorkflowConfig, WorkflowTrigger,
+        AttachedWorkflow, ResultKind, WorkflowConfig, WorkflowTrigger,
     };
     use crate::protocol::ChatEntry;
 
@@ -220,9 +218,12 @@ mod tests {
             WorkflowTrigger::TurnEnd,
         );
         aw.label = label.to_owned();
-        let wf_id = aw.id.clone();
 
-        state.session_mut(&session_id).core.attached_workflows.push(aw);
+        state
+            .session_mut(&session_id)
+            .core
+            .attached_workflows
+            .push(aw);
 
         // Set up sidebar state: select the workflow entry.
         state.frontend.scope_stack.push(FocusScope::SidebarSessions);
@@ -310,7 +311,10 @@ mod tests {
     fn confirm_updates_workflow_label() {
         // Given a state in RenameWorkflowInput scope with input "New Label".
         let (mut state, session_id) = state_with_workflow("Old Label");
-        state.frontend.scope_stack.push(FocusScope::RenameWorkflowInput);
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::RenameWorkflowInput);
         state.frontend.rename_workflow_input = RenameWorkflowInputState {
             input: "New Label".to_owned(),
             cursor_pos: 9,
@@ -321,7 +325,11 @@ mod tests {
 
         // Then the workflow label is updated.
         let session = state.session.get(&session_id).expect("session exists");
-        let aw = session.core.attached_workflows.first().expect("has workflow");
+        let aw = session
+            .core
+            .attached_workflows
+            .first()
+            .expect("has workflow");
         assert_eq!(aw.label, "New Label");
         // And scope is popped back.
         assert!(matches!(
@@ -344,7 +352,10 @@ mod tests {
     fn confirm_rejects_empty_input() {
         // Given a state with empty input.
         let (mut state, _sid) = state_with_workflow("Old");
-        state.frontend.scope_stack.push(FocusScope::RenameWorkflowInput);
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::RenameWorkflowInput);
         state.frontend.rename_workflow_input = RenameWorkflowInputState {
             input: String::new(),
             cursor_pos: 0,
@@ -366,7 +377,10 @@ mod tests {
     fn leave_discards_changes() {
         // Given a state in RenameWorkflowInput scope.
         let (mut state, session_id) = state_with_workflow("Original");
-        state.frontend.scope_stack.push(FocusScope::RenameWorkflowInput);
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::RenameWorkflowInput);
         state.frontend.rename_workflow_input = RenameWorkflowInputState {
             input: "Changed".to_owned(),
             cursor_pos: 7,
@@ -384,10 +398,7 @@ mod tests {
         assert!(state.frontend.rename_workflow_input.input.is_empty());
         // And workflow label is unchanged.
         let session = state.session.get(&session_id).expect("session exists");
-        assert_eq!(
-            session.core.attached_workflows[0].label,
-            "Original"
-        );
+        assert_eq!(session.core.attached_workflows[0].label, "Original");
         assert!(result.commands.is_empty());
     }
 

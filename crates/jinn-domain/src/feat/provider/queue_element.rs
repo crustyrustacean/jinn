@@ -3,8 +3,9 @@
 //! Renders stacked dimmed "QUEUED: ⟨first line⟩" entries above the input box
 //! when messages are waiting in the queue.
 
-use crate::common::app_state::AppState;
+use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
+
 use crate::protocol::ChatEntryKind;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -17,12 +18,13 @@ use unicode_segmentation::UnicodeSegmentation as _;
 #[derive(Debug)]
 pub struct QueueDisplayElement;
 
-impl UiElement<AppState> for QueueDisplayElement {
+impl UiElement for QueueDisplayElement {
     fn name(&self) -> String {
         "queue-display".to_owned()
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+        let state = ctx.state;
         let queue = state.active_session().queue();
         if queue.is_empty() {
             return;

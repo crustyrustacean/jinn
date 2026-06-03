@@ -3,6 +3,7 @@
 //! Provider picker render tests.
 
 use crate::common::app_state::{AppState, FocusScope};
+use crate::common::render_ctx::RenderCtx;
 use crate::common::services::Services;
 use crate::feat::provider_infra::{ProviderEntry, ProvidersConfig};
 use crate::protocol::PickerKind;
@@ -58,7 +59,7 @@ fn render_provider_picker_shows_telescope_layout() {
     terminal
         .draw(|frame| {
             let area = frame.area();
-            render_provider_picker(frame, area, &state);
+            let ctx = RenderCtx::new(&state); render_provider_picker(frame, area, &ctx);
         })
         .unwrap();
 
@@ -88,7 +89,7 @@ fn render_provider_picker_uses_dark_gray_border() {
     terminal
         .draw(|frame| {
             let area = frame.area();
-            render_provider_picker(frame, area, &state);
+            let ctx = RenderCtx::new(&state); render_provider_picker(frame, area, &ctx);
         })
         .unwrap();
 
@@ -118,7 +119,7 @@ fn render_provider_picker_shows_active_model_marker() {
     terminal
         .draw(|frame| {
             let area = frame.area();
-            render_provider_picker(frame, area, &state);
+            let ctx = RenderCtx::new(&state); render_provider_picker(frame, area, &ctx);
         })
         .unwrap();
 

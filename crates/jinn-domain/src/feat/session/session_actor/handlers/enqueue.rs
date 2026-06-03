@@ -569,11 +569,10 @@ mod tests {
     #[tokio::test]
     async fn drain_pending_creates_one_shot_attachments() {
         use crate::feat::workflow::attached_workflow::{OneShotKind, WorkflowConfig};
-        use std::collections::HashMap;
 
         // Given an idle session with pending one-shots.
         let actor = test_actor();
-        let (sink, ctx) = test_context();
+        let (_, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
@@ -621,7 +620,6 @@ mod tests {
     #[tokio::test]
     async fn multiple_one_shots_create_multiple_attachments() {
         use crate::feat::workflow::attached_workflow::{OneShotKind, WorkflowConfig};
-        use std::collections::HashMap;
 
         // Given an idle session with two pending one-shots.
         let actor = test_actor();

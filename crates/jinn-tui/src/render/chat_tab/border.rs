@@ -1,9 +1,9 @@
 //! Vertical border line between main column and sidebar.
 
-use jinn_domain::FocusScope;
+use jinn_domain::RenderCtx;
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 
 /// Draws the vertical border line (`│`) between the main column and sidebar.
 ///
@@ -11,18 +11,18 @@ use ratatui::style::{Color, Style};
 pub fn render_border(
     frame: &mut Frame<'_>,
     border: Rect,
-    focus_scope: &FocusScope,
-    focus_accent: Color,
-    border_unfocused: Color,
-    sidebar_resize_accent: Color,
+    ctx: &RenderCtx,
 ) {
+    let focus_scope = ctx.state.frontend.scope_stack.current();
+    let theme = &ctx.state.frontend.theme;
+
     let border_color = match focus_scope {
-        FocusScope::SidebarResize => sidebar_resize_accent,
-        FocusScope::SidebarPersona
-        | FocusScope::SidebarPins
-        | FocusScope::SidebarSessions
-        | FocusScope::SidebarTaskList => focus_accent,
-        _ => border_unfocused,
+        jinn_domain::FocusScope::SidebarResize => theme.sidebar_resize_accent,
+        jinn_domain::FocusScope::SidebarPersona
+        | jinn_domain::FocusScope::SidebarPins
+        | jinn_domain::FocusScope::SidebarSessions
+        | jinn_domain::FocusScope::SidebarTaskList => theme.focus_accent,
+        _ => theme.border_unfocused,
     };
     let border_style = Style::default().fg(border_color);
     for y in border.y..(border.y + border.height) {

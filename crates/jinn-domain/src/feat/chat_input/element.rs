@@ -9,7 +9,7 @@
 //! by two spaces. When the content exceeds the visible area, it scrolls to keep the
 //! cursor visible.
 
-use crate::common::app_state::AppState;
+use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
 use crate::feat::chat_input::state::wrap::WrappedLine;
 use crate::protocol::Mode;
@@ -25,12 +25,13 @@ use unicode_width::UnicodeWidthStr;
 #[derive(Debug)]
 pub struct ChatInputBoxElement;
 
-impl UiElement<AppState> for ChatInputBoxElement {
+impl UiElement for ChatInputBoxElement {
     fn name(&self) -> String {
         "chat-input-box".to_owned()
     }
 
-    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    fn render(&mut self, frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+        let state = ctx.state;
         let input_mode = state.frontend.scope_stack.current().mode() == Mode::Input;
         let theme = &state.frontend.theme;
 
