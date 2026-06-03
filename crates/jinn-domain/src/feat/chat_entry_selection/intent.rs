@@ -266,6 +266,9 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
                 if matches!(target, ContextOverride::Default | ContextOverride::ForcedInclude) {
                     session.propagate_shown_on_unignore(&rep_id);
                 }
+                // Rebuild visual items so the cursor can advance through
+                // the now-expanded entries instead of the stale collapsed block.
+                session.rebuild_visual_items();
                 // Advance past the block and continue.
                 if !advance_selection_one(session) {
                     let session_id = session.session_id().clone();
@@ -282,6 +285,9 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
 
             // Apply the captured state directly (not a toggle).
             session.set_entry_context_override(target);
+
+            // Rebuild visual items since the entry's context state changed.
+            session.rebuild_visual_items();
 
             // Capture entry_id before advancing.
             let Some(selected) = session.selected_entry() else {
@@ -1633,5 +1639,77 @@ mod tests {
                 .contains(&forward_block_id),
             "forward sub-block should be auto-shown after un-ignore split"
         );
+    }
+
+    #[rstest::rstest]
+    fn sweep_continues_past_collapsed_block_to_entries_beyond() {
+        // Given: 1 user (in-context), 10 ignored (collapsed block), 3 user (in-context).
+        // Sweep starts on the first user entry, should continue through the
+        // collapsed block and reach the user entries after it.
+        use crate::feat::ui::chat_log::visual_item::{
+            DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
+        };
+
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("before"));
+        for _ in 0..10 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("ignored").with_ignored(true));
+        }
+        state.active_session_mut().push_entry(ChatEntry::user("after1"));
+        state.active_session_mut().push_entry(ChatEntry::user("after2"));
+        state.active_session_mut().push_entry(ChatEntry::user("after3"));
+
+        // Build visual items.
+        let items = build_visual_items(
+            state.active_session().history(),
+            &state.active_session().ui.shown_ignored_blocks,
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
+        state.active_session_mut().set_visual_items(items.clone());
+
+        // Verify layout: Entry(0), CollapsedIgnoredBlock(1, 10), Entry(11), Entry(12), Entry(13).
+        let collapsed = items.iter().find(|i| matches!(i, VisualItem::CollapsedIgnoredBlock { .. }));
+        assert!(collapsed.is_some(), "should have a collapsed block");
+
+        // Select first user entry ("before").
+        let first_vi = items
+            .iter()
+            .position(|i| matches!(i, VisualItem::Entry(0)))
+            .expect("first entry");
+        state.active_session_mut().set_selected_entry_index(first_vi);
+
+        // First press - toggles "before" to ForcedExclude, advances to collapsed block.
+        let _result = handle_ignore_selected(&mut state);
+        assert_eq!(
+            state.active_session().history()[0].context_override,
+            ContextOverride::ForcedExclude
+        );
+
+        // Second press - should expand collapsed block, apply override, advance past it.
+        let _result = handle_ignore_selected(&mut state);
+
+        // The sweep should have continued — cursor should now be on an entry
+        // after the collapsed block (not stuck on it).
+        let selected_idx = state.active_session().selected_entry_index();
+        assert!(selected_idx.is_some(), "cursor should have a selection after sweep through block");
+
+        // The selected entry should be one of the "after" entries (history index 11+).
+        let selected_entry = state.active_session().selected_entry().expect("entry");
+        assert!(
+            selected_entry.text().starts_with("after"),
+            "cursor should be on an 'after' entry, got: {:?}",
+            selected_entry.text()
+        );
+
+        // Third press - should continue sweeping the "after" entries.
+        let _result = handle_ignore_selected(&mut state);
+        // Verify one of the after entries got ForcedExclude.
+        let any_after_excluded = state.active_session().history().iter()
+            .skip(11)
+            .any(|e| e.context_override == ContextOverride::ForcedExclude);
+        assert!(any_after_excluded, "at least one 'after' entry should be ForcedExclude");
     }
 }
