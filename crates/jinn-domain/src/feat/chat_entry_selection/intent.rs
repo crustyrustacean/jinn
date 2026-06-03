@@ -258,6 +258,28 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
                 continue;
             }
 
+            // If the cursor is on a collapsed ignored block, expand it and
+            // apply the override to all entries inside.
+            if let Some(rep_id) = session.apply_sweep_to_collapsed_block(target) {
+                // Block was expanded and entries were mutated.
+                // Propagate shown state to any new sub-blocks when un-ignoring.
+                if matches!(target, ContextOverride::Default | ContextOverride::ForcedInclude) {
+                    session.propagate_shown_on_unignore(&rep_id);
+                }
+                // Advance past the block and continue.
+                if !advance_selection_one(session) {
+                    let session_id = session.session_id().clone();
+                    session.set_ignore_sweep(target);
+                    return IntentResult::with_commands(vec![Command::PersistSession(
+                        crate::feat::session_lifecycle::protocol::command::PersistSession {
+                            session_id,
+                        },
+                    )]);
+                }
+                session.set_ignore_sweep(target);
+                continue;
+            }
+
             // Apply the captured state directly (not a toggle).
             session.set_entry_context_override(target);
 
@@ -273,6 +295,11 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
                 )]);
             };
             let entry_id = selected.id.clone();
+
+            // Propagate shown state to new sub-blocks when un-ignoring.
+            if matches!(target, ContextOverride::Default | ContextOverride::ForcedInclude) {
+                session.propagate_shown_on_unignore(&entry_id);
+            }
 
             // Advance cursor for next press.
             advance_selection_one(session);
@@ -312,15 +339,15 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
     let captured = selected.context_override;
     let entry_id = selected.id.clone();
 
+    // Propagate shown blocks if this toggle brought an entry into context
+    // and split a previously shown excluded block.
+    state.active_session_mut().propagate_shown_on_unignore(&entry_id);
+
     // Advance cursor.
     advance_selection_one(state.active_session_mut());
 
-    // Store sweep state for potential continuation - only when the result
-    // is a forced override. A Default result means the user reverted an entry
-    // to its kind default; that's not a sweep action.
-    if captured != ContextOverride::Default {
-        state.active_session_mut().set_ignore_sweep(captured);
-    }
+    // Store sweep state for potential continuation.
+    state.active_session_mut().set_ignore_sweep(captured);
 
     let session_id = state.active_session().session_id().clone();
     IntentResult::with_commands_and_events(
@@ -1431,7 +1458,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn sweep_not_started_on_toggle_to_default() {
+    fn sweep_started_on_toggle_to_default() {
         // Given a session with 2 user entries, entry 0 already ForcedExclude.
         let mut state = AppState::default();
         state
@@ -1451,10 +1478,160 @@ mod tests {
         );
         // And cursor has advanced.
         assert_eq!(state.active_session().selected_entry_index(), Some(1));
-        // And NO sweep state is stored (Default is not a sweep target).
+        // And sweep state IS stored (Default is a valid sweep target for un-ignore).
+        let sweep = state.active_session_mut().take_ignore_sweep();
+        assert_eq!(sweep, Some(ContextOverride::Default));
+    }
+
+    #[rstest::rstest]
+    fn sweep_through_collapsed_block() {
+        // Given: 1 user, 10 ignored (will collapse), 5 user.
+        // The 10 ignored entries form a collapsed block.
+        use crate::feat::ui::chat_log::visual_item::{
+            DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
+        };
+
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("before"));
+        for _ in 0..10 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("ignored").with_ignored(true));
+        }
+        for _ in 0..5 {
+            state.active_session_mut().push_entry(ChatEntry::user("after"));
+        }
+
+        // Build visual items so the collapsed block exists.
+        let items = build_visual_items(
+            state.active_session().history(),
+            &state.active_session().ui.shown_ignored_blocks,
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
+        state.active_session_mut().set_visual_items(items.clone());
+
+        // Verify we have a collapsed block.
+        let collapsed = items
+            .iter()
+            .find(|i| matches!(i, VisualItem::CollapsedIgnoredBlock { .. }));
+        assert!(collapsed.is_some(), "should have a collapsed block");
+
+        // Select first user entry.
+        let first_vi = items
+            .iter()
+            .position(|i| matches!(i, VisualItem::Entry(0)))
+            .expect("first entry");
+        state.active_session_mut().set_selected_entry_index(first_vi);
+
+        // First press - toggles entry 0 to ForcedExclude, advances.
+        let _result = handle_ignore_selected(&mut state);
+        assert_eq!(
+            state.active_session().history()[0].context_override,
+            ContextOverride::ForcedExclude
+        );
+
+        // Second press - should encounter the collapsed block,
+        // expand it, apply ForcedExclude to all entries inside, and advance.
+        let _result = handle_ignore_selected(&mut state);
+
+        // All 10 ignored entries should now be ForcedExclude
+        // (they already were, but the sweep applied the override).
+        for i in 1..=10 {
+            assert_eq!(
+                state.active_session().history()[i].context_override,
+                ContextOverride::ForcedExclude,
+                "entry {i} should be ForcedExclude"
+            );
+        }
+
+        // The block should be shown (expanded).
+        let block_start_id = state.active_session().history()[1].id.clone();
         assert!(
-            state.active_session_mut().take_ignore_sweep().is_none(),
-            "toggling to Default should not start a sweep"
+            state
+                .active_session()
+                .ui
+                .shown_ignored_blocks
+                .contains(&block_start_id),
+            "collapsed block should be auto-expanded"
+        );
+    }
+
+    #[rstest::rstest]
+    fn sweep_unignore_propagates_shown_to_new_block() {
+        // Given: 1 user, 15 ignored in a shown (expanded) block, 5 user.
+        // Sweep un-ignore will bring entries into context, splitting the block.
+        // The new forward sub-block should auto-expand.
+        use crate::feat::ui::chat_log::visual_item::{
+            DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
+        };
+
+        let mut state = AppState::default();
+        state.active_session_mut().push_entry(ChatEntry::user("before"));
+        for _ in 0..15 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("ignored").with_ignored(true));
+        }
+        for _ in 0..5 {
+            state.active_session_mut().push_entry(ChatEntry::user("after"));
+        }
+
+        // Show (expand) the block first.
+        let block_start_id = state.active_session().history()[1].id.clone();
+        state
+            .active_session_mut()
+            .ui
+            .shown_ignored_blocks
+            .insert(block_start_id.clone());
+
+        // Build visual items (now expanded - individual entries).
+        let items = build_visual_items(
+            state.active_session().history(),
+            &state.active_session().ui.shown_ignored_blocks,
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
+        state.active_session_mut().set_visual_items(items.clone());
+
+        // Select entry at history index 1 (first ignored entry).
+        let vi_idx = items
+            .iter()
+            .position(|i| {
+                matches!(
+                    i,
+                    crate::feat::ui::chat_log::visual_item::VisualItem::Entry(1)
+                )
+            })
+            .expect("entry at history index 1");
+        state.active_session_mut().set_selected_entry_index(vi_idx);
+
+        // First press - toggles entry 1 from ForcedExclude → Default.
+        let _result = handle_ignore_selected(&mut state);
+        assert_eq!(
+            state.active_session().history()[1].context_override,
+            ContextOverride::Default
+        );
+        // Sweep state is Default (un-ignore sweep).
+        assert_eq!(
+            state.active_session_mut().take_ignore_sweep(),
+            Some(ContextOverride::Default)
+        );
+        // Restore sweep since we consumed it.
+        state
+            .active_session_mut()
+            .set_ignore_sweep(ContextOverride::Default);
+
+        // Propagation should have shown the forward sub-block.
+        // Entry 2 is the start of the forward excluded sub-block.
+        let forward_block_id = state.active_session().history()[2].id.clone();
+        assert!(
+            state
+                .active_session()
+                .ui
+                .shown_ignored_blocks
+                .contains(&forward_block_id),
+            "forward sub-block should be auto-shown after un-ignore split"
         );
     }
 }
