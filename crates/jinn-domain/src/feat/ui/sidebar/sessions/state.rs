@@ -59,10 +59,10 @@ pub(crate) struct SessionEntry {
     pub(crate) is_last_child: bool,
     /// Workflow-specific fields (None for Session entries).
     pub(crate) workflow_id: Option<crate::feat::workflow::workflow_state::WorkflowId>,
-    pub(crate) workflow_state: Option<crate::feat::workflow::attached_workflow::AttachedWorkflowState>,
+    pub(crate) workflow_state:
+        Option<crate::feat::workflow::attached_workflow::AttachedWorkflowState>,
     pub(crate) workflow_enabled: Option<bool>,
 }
-
 
 /// Collects all loaded sessions in tree order (DFS).
 ///
@@ -73,7 +73,10 @@ pub(crate) struct SessionEntry {
 ///
 /// Only includes sessions with `SessionState::Loaded` - archived sessions
 /// are not in the `SessionMap` and thus excluded automatically.
-#[expect(clippy::too_many_lines, reason = "session tree + workflow assembly is inherently long")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "session tree + workflow assembly is inherently long"
+)]
 pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
     let active_id = state.session.active_session_id();
 
@@ -85,26 +88,24 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
             session.session_state() == crate::feat::session::chat_session::SessionState::Loaded
                 && !session.is_workflow()
         })
-        .map(|(id, session)| {
-            SessionEntry {
-                kind: SessionEntryKind::Session,
-                id: id.clone(),
-                title: session.title().unwrap_or("Untitled Session").to_owned(),
-                is_active: id == active_id,
-                created_at: *session.created_at(),
-                is_idle: matches!(session.phase(), PhaseKind::Idle) && !session.is_busy(),
-                last_entry_is_error: session
-                    .history()
-                    .last()
-                    .is_some_and(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::Error(..))),
-                parent_id: session.parent_session().clone(),
-                depth: 0,
-                ancestor_continuations: vec![],
-                is_last_child: false,
-                workflow_id: None,
-                workflow_state: None,
-                workflow_enabled: None,
-            }
+        .map(|(id, session)| SessionEntry {
+            kind: SessionEntryKind::Session,
+            id: id.clone(),
+            title: session.title().unwrap_or("Untitled Session").to_owned(),
+            is_active: id == active_id,
+            created_at: *session.created_at(),
+            is_idle: matches!(session.phase(), PhaseKind::Idle) && !session.is_busy(),
+            last_entry_is_error: session
+                .history()
+                .last()
+                .is_some_and(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::Error(..))),
+            parent_id: session.parent_session().clone(),
+            depth: 0,
+            ancestor_continuations: vec![],
+            is_last_child: false,
+            workflow_id: None,
+            workflow_state: None,
+            workflow_enabled: None,
         })
         .collect();
 
@@ -232,7 +233,6 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
     }
 
     result
-
 }
 
 /// Updates the visual-parent index when a session is about to be removed.
@@ -342,9 +342,11 @@ pub fn clear_visual_parents_on_load(state: &mut AppState, loaded_id: &SessionId)
 ///
 /// `ancestor_continuations` tracks whether each ancestor level has younger
 /// siblings - used to draw `│` continuation lines.
-#[expect(clippy::too_many_arguments, reason = "DFS traversal needs session tree + workflow data + state accumulators")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "DFS traversal needs session tree + workflow data + state accumulators"
+)]
 fn dfs_children(
-
     parent_id: &SessionId,
     children_map: &HashMap<SessionId, Vec<SessionId>>,
     entry_map: &HashMap<SessionId, SessionEntry>,
@@ -355,7 +357,10 @@ fn dfs_children(
     parent_is_last: bool,
 ) {
     let children = children_map.get(parent_id).cloned().unwrap_or_default();
-    let workflows = workflows_by_session.get(parent_id).cloned().unwrap_or_default();
+    let workflows = workflows_by_session
+        .get(parent_id)
+        .cloned()
+        .unwrap_or_default();
     let total_children = children.len() + workflows.len();
 
     if total_children == 0 {

@@ -43,14 +43,12 @@ pub fn handle_session_activate(state: &mut AppState) {
                 state.workflow.set_active(wf_id);
                 state.frontend.scope_stack.swap_base(FocusScope::Workflow);
             }
-
         }
     }
 
     // Clear preview after activation decision.
     state.frontend.sessions_section.previewed_workflow_id = None;
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -59,7 +57,9 @@ mod tests {
     use crate::common::app_state::FocusScope;
     use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
     use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
-    use crate::feat::workflow::attached_workflow::{AttachedWorkflow, AttachedWorkflowState, WorkflowConfig, WorkflowTrigger};
+    use crate::feat::workflow::attached_workflow::{
+        AttachedWorkflow, AttachedWorkflowState, WorkflowConfig, WorkflowTrigger,
+    };
     use crate::feat::workflow::workflow_state::{WorkflowId, WorkflowState};
     use crate::protocol::SessionId;
 
@@ -73,7 +73,10 @@ mod tests {
             |_inputs, _ctx| {
                 Box::pin(async move {
                     let mut out = PortValues::new();
-                    out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text("data".to_owned())));
+                    out.insert(
+                        "out".to_owned(),
+                        PortValue::Single(ScalarValue::Text("data".to_owned())),
+                    );
                     Ok(out)
                 })
             },
@@ -106,7 +109,11 @@ mod tests {
             &FocusScope::Normal,
             "base should be Normal after activating session"
         );
-        assert_eq!(state.frontend.scope_stack.len(), 1, "sidebar overlay should be gone");
+        assert_eq!(
+            state.frontend.scope_stack.len(),
+            1,
+            "sidebar overlay should be gone"
+        );
     }
 
     #[rstest::rstest]
@@ -114,11 +121,9 @@ mod tests {
         // Given a state with a workflow in WorkflowMap and sidebar overlay.
         let mut state = AppState::default();
         let wf_id = WorkflowId::new();
-        let execution = std::sync::Arc::new(
-            jinn_workflow::execution::WorkflowExecution::new(
-                test_graph(),
-            ),
-        );
+        let execution = std::sync::Arc::new(jinn_workflow::execution::WorkflowExecution::new(
+            test_graph(),
+        ));
 
         let wf_state = WorkflowState::new("test".into(), execution);
         state.workflow.insert(WorkflowState {
@@ -127,16 +132,20 @@ mod tests {
         });
         // Add AttachedWorkflow to session.
         let session_id = state.session.active_session_id().clone();
-        state.session.get_mut(&session_id).unwrap().core.attached_workflows.push(
-            AttachedWorkflow {
+        state
+            .session
+            .get_mut(&session_id)
+            .unwrap()
+            .core
+            .attached_workflows
+            .push(AttachedWorkflow {
                 id: wf_id.clone(),
                 config: WorkflowConfig::Custom(serde_json::json!({})),
                 label: "Custom".to_owned(),
                 trigger: WorkflowTrigger::Manual,
                 enabled: true,
                 state: AttachedWorkflowState::Ready,
-            },
-        );
+            });
         state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         // Position cursor on the workflow entry.
         state.frontend.sessions_section.selected_index = Some(1);
@@ -150,7 +159,11 @@ mod tests {
             &FocusScope::Workflow,
             "base should be Workflow after activating workflow"
         );
-        assert_eq!(state.frontend.scope_stack.len(), 1, "sidebar overlay should be gone");
+        assert_eq!(
+            state.frontend.scope_stack.len(),
+            1,
+            "sidebar overlay should be gone"
+        );
     }
 
     #[rstest::rstest]
@@ -167,26 +180,28 @@ mod tests {
 
         // Add a workflow to the second session.
         let wf_id = WorkflowId::new();
-        let execution = std::sync::Arc::new(
-            jinn_workflow::execution::WorkflowExecution::new(
-                test_graph(),
-            ),
-        );
+        let execution = std::sync::Arc::new(jinn_workflow::execution::WorkflowExecution::new(
+            test_graph(),
+        ));
         let wf_state = WorkflowState::new("test".into(), execution);
         state.workflow.insert(WorkflowState {
             id: wf_id.clone(),
             ..wf_state
         });
-        state.session.get_mut(&second_id).unwrap().core.attached_workflows.push(
-            AttachedWorkflow {
+        state
+            .session
+            .get_mut(&second_id)
+            .unwrap()
+            .core
+            .attached_workflows
+            .push(AttachedWorkflow {
                 id: wf_id.clone(),
                 config: WorkflowConfig::Custom(serde_json::json!({})),
                 label: "Custom".to_owned(),
                 trigger: WorkflowTrigger::Manual,
                 enabled: true,
                 state: AttachedWorkflowState::Ready,
-            },
-        );
+            });
         state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         // Position cursor on the workflow entry (index 1: second_session[0], workflow[1], first_session[2]).
         state.frontend.sessions_section.selected_index = Some(1);
@@ -208,4 +223,4 @@ mod tests {
             "activating a workflow should also activate its owning session"
         );
     }
-    }
+}

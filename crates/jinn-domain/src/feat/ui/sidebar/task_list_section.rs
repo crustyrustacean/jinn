@@ -276,8 +276,8 @@ fn compute_height(list: &TaskList, state: &AppState) -> u16 {
 mod tests {
     use super::*;
     use crate::common::app_state::AppState;
-    use crate::common::render_ctx::RenderCtx;
     use crate::common::focus::FocusScope;
+    use crate::common::render_ctx::RenderCtx;
     use crate::feat::todo_list::TaskPosition;
 
     fn setup_with_tasks() -> AppState {

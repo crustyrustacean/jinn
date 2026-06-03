@@ -33,8 +33,8 @@ pub struct RerunFromNode {
     pub node_name: String,
 }
 
-use crate::protocol::SessionId;
 use super::super::attached_workflow::{AttachedWorkflowState, WorkflowConfig, WorkflowTrigger};
+use crate::protocol::SessionId;
 
 /// Request to load (initialize) a named workflow without executing it.
 /// Also attaches the workflow to a session as an `AttachedWorkflow`.
@@ -53,15 +53,12 @@ pub struct InitWorkflow {
     pub trigger: WorkflowTrigger,
 }
 
-
 /// Request to load workflow picker entries from the registry.
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("workflow")]
 pub struct LoadWorkflowPickerEntries;
 
-
 // --- Attached workflow commands ---
-
 
 /// Attach a workflow to a session.
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]

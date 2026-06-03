@@ -107,7 +107,10 @@ fn content_height_includes_workflow_entries() {
         .active_session_mut()
         .core
         .attached_workflows
-        .push(AttachedWorkflow::new(config.clone(), WorkflowTrigger::Manual));
+        .push(AttachedWorkflow::new(
+            config.clone(),
+            WorkflowTrigger::Manual,
+        ));
     state
         .active_session_mut()
         .core
@@ -119,9 +122,11 @@ fn content_height_includes_workflow_entries() {
     let height = section.content_height(&{ RenderCtx::new(&state) });
 
     // Then it counts 1 session + 2 workflows + 1 footer = 4.
-    assert_eq!(height, 4, "expected session + 2 workflows + footer = 4, got {height}");
+    assert_eq!(
+        height, 4,
+        "expected session + 2 workflows + footer = 4, got {height}"
+    );
 }
-
 
 // --- Navigation ---
 
@@ -395,7 +400,10 @@ fn busy_session_is_not_idle() {
 
     // Then the session entry is not idle (busy_count > 0 shows throbber).
     assert_eq!(sessions.len(), 1);
-    assert!(!sessions[0].is_idle, "busy session should show throbber in sidebar");
+    assert!(
+        !sessions[0].is_idle,
+        "busy session should show throbber in sidebar"
+    );
 }
 
 #[rstest::rstest]
@@ -408,9 +416,11 @@ fn idle_and_not_busy_is_idle() {
 
     // Then the session entry is idle.
     assert_eq!(sessions.len(), 1);
-    assert!(sessions[0].is_idle, "idle session with no busy ops should be idle");
+    assert!(
+        sessions[0].is_idle,
+        "idle session with no busy ops should be idle"
+    );
 }
-
 
 #[rstest::rstest]
 fn working_complete_returns_to_idle() {
@@ -440,7 +450,8 @@ fn render_rows(
     let (mut terminal, area) = setup_term(width, height);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            section.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer();
@@ -590,7 +601,8 @@ fn render_arrow_has_inverted_colors() {
     let (mut terminal, area) = setup_term(30, 20);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            section.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -617,7 +629,8 @@ fn render_footer_uses_focus_accent_when_sidebar_focused() {
     let (mut terminal, area) = setup_term(30, 5);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            section.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -641,7 +654,8 @@ fn render_footer_uses_border_unfocused_when_sidebar_not_focused() {
     let (mut terminal, area) = setup_term(30, 5);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            section.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -669,7 +683,8 @@ fn render_footer_uses_border_unfocused_when_other_sidebar_section_focused() {
     let (mut terminal, area) = setup_term(30, 5);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            section.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -842,7 +857,8 @@ fn render_session_title_is_red_when_last_entry_is_error() {
     let (mut terminal, area) = setup_term(30, 5);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            section.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -868,7 +884,8 @@ fn render_session_title_is_normal_when_last_entry_is_not_error() {
     let (mut terminal, area) = setup_term(30, 5);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            section.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -1588,7 +1605,8 @@ fn render_tree_shows_tree_characters() {
     let (mut terminal, area) = jinn_testutil::setup_term(30, 15);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); section.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            section.render(frame, area, &ctx);
         })
         .unwrap();
 
@@ -2005,16 +2023,10 @@ fn state_with_attached_workflow() -> (AppState, WorkflowId) {
     state.workflow.insert(ws);
 
     // Attach the workflow to the active session.
-    state
-        .active_session_mut()
-        .core
-        .attached_workflows
-        .push(aw);
+    state.active_session_mut().core.attached_workflows.push(aw);
 
     (state, wf_id)
 }
-
-
 
 #[rstest::rstest]
 fn navigate_to_workflow_entry_sets_preview() {
@@ -2142,11 +2154,7 @@ fn preview_not_set_when_workflow_missing_from_map() {
     };
     let aw = AttachedWorkflow::new(config, WorkflowTrigger::Manual);
     // The aw.id is NOT inserted into WorkflowMap.
-    state
-        .active_session_mut()
-        .core
-        .attached_workflows
-        .push(aw);
+    state.active_session_mut().core.attached_workflows.push(aw);
     // Cursor on session (index 0).
     state.frontend.sessions_section.selected_index = Some(0);
 
