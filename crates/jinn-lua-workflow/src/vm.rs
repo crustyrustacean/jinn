@@ -42,7 +42,7 @@ pub struct CtxConfig {
 
 impl CtxConfig {
     /// Creates a config with only data fields (no capabilities).
-    pub fn data_only(data: &impl Serialize) -> Self {
+    pub fn data_only<S: Serialize>(data: &S) -> Self {
         Self {
             data: serde_json::to_value(data).unwrap_or_default(),
             llm: false,

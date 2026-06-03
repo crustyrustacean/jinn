@@ -134,14 +134,7 @@ pub enum Event {
     ),
     /// A session has been fully loaded from persistent storage.
     SessionLoadCompleted(Box<SessionLoadCompleted>),
-    /// A workflow has been loaded (initialized) but not yet started.
-    WorkflowInitialized(crate::feat::workflow::protocol::event::WorkflowInitialized),
-    /// A workflow execution started.
-    WorkflowStarted(crate::feat::workflow::protocol::event::WorkflowStarted),
-    /// A workflow execution completed.
-    WorkflowCompleted(crate::feat::workflow::protocol::event::WorkflowCompleted),
-    /// A workflow node status changed.
-    WorkflowNodeStatusChanged(crate::feat::workflow::protocol::event::WorkflowNodeStatusChanged),
+
     /// An attached workflow was added to a session.
     WorkflowAttached(crate::feat::workflow::protocol::event::WorkflowAttached),
     /// An attached workflow was removed from a session.
@@ -225,18 +218,6 @@ impl Event {
                 Some(crate::feat::session::protocol::history_snapshot_ready::HistorySnapshotReady::TYPE_NAME)
             }
             Self::SessionLoadCompleted(..) => Some(SessionLoadCompleted::TYPE_NAME),
-            Self::WorkflowInitialized(..) => {
-                Some(crate::feat::workflow::protocol::event::WorkflowInitialized::TYPE_NAME)
-            }
-            Self::WorkflowStarted(..) => {
-                Some(crate::feat::workflow::protocol::event::WorkflowStarted::TYPE_NAME)
-            }
-            Self::WorkflowCompleted(..) => {
-                Some(crate::feat::workflow::protocol::event::WorkflowCompleted::TYPE_NAME)
-            }
-            Self::WorkflowNodeStatusChanged(..) => {
-                Some(crate::feat::workflow::protocol::event::WorkflowNodeStatusChanged::TYPE_NAME)
-            }
             Self::WorkflowAttached(..) => {
                 Some(crate::feat::workflow::protocol::event::WorkflowAttached::TYPE_NAME)
             }

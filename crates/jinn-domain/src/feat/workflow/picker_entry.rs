@@ -9,9 +9,9 @@ use crate::feat::theme::Theme;
 /// A workflow shown in the workflow picker.
 #[derive(Debug, Clone)]
 pub struct WorkflowPickerEntry {
-    /// The workflow name (used as the registry key and `StartWorkflow` command argument).
+    /// The Lua plugin name (used to locate the `init.lua` script at spawn time).
     pub name: String,
-    /// Optional description from the workflow graph metadata.
+    /// Optional description parsed from the plugin's `-- description:` header comment.
     pub description: Option<String>,
     /// Theme for rendering.
     pub theme: Theme,

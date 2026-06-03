@@ -293,11 +293,6 @@ impl SessionPersistenceActor {
             | Command::ScanSkills
             | Command::RescanPersonas(..)
             | Command::UpdatePreferences(..)
-            | Command::InitWorkflow(..)
-            | Command::StartWorkflow(..)
-            | Command::CancelWorkflow(..)
-            | Command::RerunFromNode(..)
-            | Command::LoadWorkflowPickerEntries(..)
             | Command::LoadCompactionModelPickerEntries(..)
             | Command::TriggerCompaction(..)
             | Command::Dynamic(..)

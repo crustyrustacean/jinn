@@ -6,10 +6,12 @@ use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::ui::sidebar::section_trait::{
     EnterFrom, SectionNavResult, SidebarIntent, SidebarSection, SidebarSectionId,
 };
+use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
 use crate::feat::ui::sidebar::sessions::{
     SessionCloseError, SessionsSection, handle_session_activate, handle_session_close, navigate,
     receive_cursor, scroll_to_cursor, sorted_open_sessions, validate_session_close,
 };
+
 use crate::protocol::ChatEntry;
 use ratatui::style::Color;
 
@@ -93,43 +95,6 @@ fn content_height_capped_at_max_visible() {
     // Then it is capped at 15 + 1 = 16, not 20 + 1 = 21.
     assert_eq!(height, 16);
 }
-
-#[rstest::rstest]
-fn content_height_includes_workflow_entries() {
-    // Given a state with one session that has two attached workflows.
-    let mut state = AppState::default();
-
-    let config = WorkflowConfig::Consensus {
-        n: 2,
-        result_kind: ResultKind::default(),
-    };
-    state
-        .active_session_mut()
-        .core
-        .attached_workflows
-        .push(AttachedWorkflow::new(
-            config.clone(),
-            WorkflowTrigger::Manual,
-        ));
-    state
-        .active_session_mut()
-        .core
-        .attached_workflows
-        .push(AttachedWorkflow::new(config, WorkflowTrigger::Manual));
-
-    // When computing content height.
-    let section = SessionsSection::new();
-    let height = section.content_height(&{ RenderCtx::new(&state) });
-
-    // Then it counts 1 session + 2 workflows + 1 footer = 4.
-    assert_eq!(
-        height, 4,
-        "expected session + 2 workflows + footer = 4, got {height}"
-    );
-}
-
-// --- Navigation ---
-
 #[rstest::rstest]
 fn navigate_down_moves_cursor_without_switching() {
     // Given state with 3 sessions, cursor at index 0.
@@ -1988,201 +1953,262 @@ fn clear_visual_parents_on_load_actually_removes_entries() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// Workflow preview tests
-// ---------------------------------------------------------------------------
+// --- Workflow entries in sorted_open_sessions ---
 
-use crate::feat::workflow::attached_workflow::{
-    AttachedWorkflow, ResultKind, WorkflowConfig, WorkflowTrigger,
-};
-use crate::feat::workflow::example::add_numbers;
-use crate::feat::workflow::workflow_state::{WorkflowId, WorkflowState};
-use std::sync::Arc;
+fn state_with_workflows() -> AppState {
+    use crate::feat::workflow::attached_workflow::{
+        AttachedWorkflow, WorkflowConfig, WorkflowTrigger,
+    };
 
-/// Helper: create a state with one session that has an attached workflow.
-/// The workflow is also inserted into `WorkflowMap` so it can be looked up.
-///
-/// Returns `(state, attached_workflow_id)`.
-fn state_with_attached_workflow() -> (AppState, WorkflowId) {
     let mut state = AppState::default();
 
-    // Create an attached workflow on the active session.
-    let config = WorkflowConfig::Consensus {
-        n: 2,
-        result_kind: ResultKind::default(),
-    };
-    let aw = AttachedWorkflow::new(config, WorkflowTrigger::Manual);
+    // Create root session.
+    let mut root = ChatSessionState::new();
+    root.set_title("main session".to_owned());
+    let root_id = root.session_id().clone();
+    state.session.insert(root);
 
-    // Insert a matching WorkflowState into WorkflowMap so lookup succeeds.
-    // The WorkflowState ID must match the AttachedWorkflow ID.
-    let graph = add_numbers::build_add_numbers();
-    let execution = Arc::new(jinn_workflow::execution::WorkflowExecution::new(graph));
-    let mut ws = WorkflowState::new("test-workflow".to_owned(), execution);
-    ws.id = aw.id.clone();
-    let wf_id = aw.id.clone();
-    state.workflow.insert(ws);
+    // Create a child session under root.
+    let mut child = ChatSessionState::new();
+    child.set_title("child session".to_owned());
+    child.set_parent_session(root_id.clone());
+    let _child_id = child.session_id().clone();
+    state.session.insert(child);
 
-    // Attach the workflow to the active session.
-    state.active_session_mut().core.attached_workflows.push(aw);
+    // Remove the default session if different from root.
+    let default_id = state.session.active_session_id().clone();
+    if default_id != root_id {
+        state.session.remove(&default_id);
+    }
+    state.session.set_active(root_id.clone());
 
-    (state, wf_id)
+    // Attach two workflows to root session.
+    let root_session = state.session.get_mut(&root_id).expect("root session");
+    root_session
+        .core
+        .attached_workflows
+        .push(AttachedWorkflow::new(
+            WorkflowConfig {
+                script: "consensus".to_owned(),
+                data: serde_json::json!({}),
+            },
+            WorkflowTrigger::TurnEnd,
+        ));
+    root_session
+        .core
+        .attached_workflows
+        .push(AttachedWorkflow::new(
+            WorkflowConfig {
+                script: "judge_fail".to_owned(),
+                data: serde_json::json!({}),
+            },
+            WorkflowTrigger::Manual,
+        ));
+
+    state
 }
 
 #[rstest::rstest]
-fn navigate_to_workflow_entry_sets_preview() {
-    // Given a state with one session that has an attached workflow.
-    let (mut state, wf_id) = state_with_attached_workflow();
+fn sorted_open_sessions_includes_attached_workflows() {
+    // Given a session with two attached workflows.
+    let state = state_with_workflows();
+
+    // When collecting sorted sessions.
     let sessions = sorted_open_sessions(&state);
-    // Expect: [session, workflow]
-    assert_eq!(sessions.len(), 2, "expected session + workflow entry");
+
+    // Then the session entry appears, followed by its child session, then two workflow entries.
+    let titles: Vec<&str> = sessions.iter().map(|s| s.title.as_str()).collect();
+    assert!(
+        titles.contains(&"main session"),
+        "root session should be present"
+    );
+    assert!(
+        titles.contains(&"child session"),
+        "child session should be present"
+    );
+    assert!(
+        titles.contains(&"consensus"),
+        "consensus workflow should be present"
+    );
+    assert!(
+        titles.contains(&"judge_fail"),
+        "judge_fail workflow should be present"
+    );
+
+    // And workflow entries have the Workflow kind.
+    let workflow_entries: Vec<_> = sessions
+        .iter()
+        .filter(|s| matches!(s.kind, SessionEntryKind::Workflow { .. }))
+        .collect();
+    assert_eq!(workflow_entries.len(), 2, "should have 2 workflow entries");
+
+    // And workflow entries are children of root session (depth = root depth + 1).
+    let root_entry = sessions
+        .iter()
+        .find(|s| s.title == "main session")
+        .expect("root");
+    let root_depth = root_entry.depth;
+    for wf in &workflow_entries {
+        assert_eq!(
+            wf.depth,
+            root_depth + 1,
+            "workflow should be one level deeper than its parent session"
+        );
+        assert_eq!(
+            wf.parent_id,
+            Some(root_entry.id.clone()),
+            "workflow parent should be root session"
+        );
+    }
+}
+
+#[rstest::rstest]
+fn sorted_open_sessions_no_workflows_when_none_attached() {
+    // Given a session with no attached workflows.
+    let state = AppState::default();
+
+    // When collecting sorted sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then there are no workflow entries.
+    let workflow_count = sessions
+        .iter()
+        .filter(|s| matches!(s.kind, SessionEntryKind::Workflow { .. }))
+        .count();
+    assert_eq!(workflow_count, 0, "should have no workflow entries");
+}
+
+#[rstest::rstest]
+fn sorted_open_sessions_workflows_after_real_children() {
+    // Given a session with a child session and two attached workflows.
+    let state = state_with_workflows();
+
+    // When collecting sorted sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then child session appears before workflow entries.
+    let child_pos = sessions
+        .iter()
+        .position(|s| s.title == "child session")
+        .expect("child");
+    let wf1_pos = sessions
+        .iter()
+        .position(|s| s.title == "consensus")
+        .expect("consensus");
+    let wf2_pos = sessions
+        .iter()
+        .position(|s| s.title == "judge_fail")
+        .expect("judge_fail");
+    assert!(
+        child_pos < wf1_pos,
+        "child session should appear before workflow entries"
+    );
+    assert!(wf1_pos < wf2_pos, "workflows should appear in order");
+}
+
+// --- Workflow entry navigation and activation ---
+
+fn state_with_session_and_workflows(workflow_count: usize) -> AppState {
+    use crate::feat::workflow::attached_workflow::{
+        AttachedWorkflow, WorkflowConfig, WorkflowTrigger,
+    };
+
+    let mut state = AppState::default();
+    let session = state.session.active_session_id().clone();
+    {
+        let s = state.session.get_mut(&session).expect("active session");
+        for i in 0..workflow_count {
+            let aw = AttachedWorkflow::new(
+                WorkflowConfig {
+                    script: format!("plugin-{i}"),
+                    data: serde_json::json!({}),
+                },
+                WorkflowTrigger::TurnEnd,
+            );
+            s.core.attached_workflows.push(aw);
+        }
+    }
+    state
+}
+
+#[test]
+fn navigate_down_skips_workflow_entries() {
+    // Given a session with 2 workflow attachments, cursor at index 0.
+    let mut state = state_with_session_and_workflows(2);
     state.frontend.sessions_section.selected_index = Some(0);
 
-    // When navigating down to the workflow entry (index 1).
+    // When navigating down past the workflow entries.
+    // entries: [session0, wf-0, wf-1]
+    // pressing down from session0 should skip wf-0 and wf-1 and return Exhausted.
     let result = navigate(&SidebarIntent::MoveDown, &mut state);
 
-    // Then the result is Moved and preview is set.
-    assert_eq!(result, SectionNavResult::Moved);
-    assert_eq!(
-        state.frontend.sessions_section.previewed_workflow_id,
-        Some(wf_id),
-        "preview should be set to the workflow under cursor"
-    );
+    // Then navigation returns Exhausted (no next session).
+    assert_eq!(result, SectionNavResult::Exhausted);
 }
 
-#[rstest::rstest]
-fn navigate_away_from_workflow_clears_preview() {
-    // Given cursor on a workflow entry with preview set.
-    let (mut state, wf_id) = state_with_attached_workflow();
-    let _sessions = sorted_open_sessions(&state);
-    state.frontend.sessions_section.selected_index = Some(1); // workflow entry
-    state.frontend.sessions_section.previewed_workflow_id = Some(wf_id);
+#[test]
+fn navigate_up_skips_workflow_entries() {
+    // Given two sessions, first with a workflow, cursor at second session.
+    use crate::feat::workflow::attached_workflow::{
+        AttachedWorkflow, WorkflowConfig, WorkflowTrigger,
+    };
+    let mut state = state_with_sessions(2);
+    {
+        let sessions: Vec<_> = state.session.iter().collect();
+        let first_id = sessions[0].0.clone();
+        let s = state.session.get_mut(&first_id).expect("first session");
+        let aw = AttachedWorkflow::new(
+            WorkflowConfig {
+                script: "my-plugin".to_owned(),
+                data: serde_json::json!({}),
+            },
+            WorkflowTrigger::TurnEnd,
+        );
+        s.core.attached_workflows.push(aw);
+    }
+    // entries: [session0, wf, session1]
+    // cursor on session1
+    let entries = sorted_open_sessions(&state);
+    let session1_idx = entries
+        .iter()
+        .rposition(|e| matches!(e.kind, SessionEntryKind::Session))
+        .expect("session1");
+    state.frontend.sessions_section.selected_index = Some(session1_idx);
 
-    // When navigating up to the session entry (index 0).
+    // When navigating up from session1.
     let result = navigate(&SidebarIntent::MoveUp, &mut state);
 
-    // Then the result is Moved and preview is cleared.
+    // Then cursor lands on session0 (skipping the workflow entry).
     assert_eq!(result, SectionNavResult::Moved);
-    assert_eq!(
-        state.frontend.sessions_section.previewed_workflow_id, None,
-        "preview should be cleared when moving off workflow entry"
-    );
+    assert_eq!(state.frontend.sessions_section.selected_index, Some(0));
 }
 
-#[rstest::rstest]
-fn receive_cursor_on_workflow_sets_preview() {
-    // Given a state with one session + attached workflow.
-    let (mut state, wf_id) = state_with_attached_workflow();
-
-    // When receiving cursor from bottom (lands on workflow at last index).
-    receive_cursor(&mut state, EnterFrom::Bottom);
-    let sessions = sorted_open_sessions(&state);
-    let last_idx = sessions.len() - 1;
-
-    // Then preview is set to the workflow at the bottom.
-    assert_eq!(
-        state.frontend.sessions_section.previewed_workflow_id,
-        Some(wf_id),
-        "preview should be set when entering section onto a workflow"
-    );
-    assert_eq!(
-        state.frontend.sessions_section.selected_index,
-        Some(last_idx)
-    );
-}
-
-#[rstest::rstest]
-fn receive_cursor_on_session_does_not_set_preview() {
-    // Given a state with one session + attached workflow.
-    let (mut state, _wf_id) = state_with_attached_workflow();
-
-    // When receiving cursor from top (lands on session entry at index 0).
-    receive_cursor(&mut state, EnterFrom::Top);
-
-    // Then preview is NOT set (session entry, not workflow).
-    assert_eq!(
-        state.frontend.sessions_section.previewed_workflow_id, None,
-        "preview should not be set on a session entry"
-    );
-}
-
-#[rstest::rstest]
-fn clear_cursor_clears_preview() {
-    // Given a state with preview set.
-    let (mut state, wf_id) = state_with_attached_workflow();
-    state.frontend.sessions_section.previewed_workflow_id = Some(wf_id.clone());
+#[test]
+fn activate_on_workflow_entry_is_noop() {
+    // Given a session with a workflow attachment, cursor on the workflow entry.
+    let mut state = state_with_session_and_workflows(1);
+    let original_active = state.session.active_session_id().clone();
+    // entries: [session0, wf-0]
     state.frontend.sessions_section.selected_index = Some(1);
 
-    // When clearing cursor for Sessions section.
-    crate::feat::ui::sidebar::sidebar::clear_cursor(SidebarSectionId::Sessions, &mut state);
+    // When activating the workflow entry.
+    handle_session_activate(&mut state);
 
-    // Then both selected_index and preview are cleared.
-    assert_eq!(state.frontend.sessions_section.selected_index, None);
-    assert_eq!(
-        state.frontend.sessions_section.previewed_workflow_id, None,
-        "clear_cursor should clear preview"
-    );
+    // Then the active session did not change.
+    assert_eq!(*state.session.active_session_id(), original_active);
 }
 
-#[rstest::rstest]
-fn exhausted_boundary_preserves_preview() {
-    // Given cursor on the last entry (a workflow) with preview set.
-    let (mut state, wf_id) = state_with_attached_workflow();
-    let sessions = sorted_open_sessions(&state);
-    let last_idx = sessions.len() - 1;
-    state.frontend.sessions_section.selected_index = Some(last_idx);
-    state.frontend.sessions_section.previewed_workflow_id = Some(wf_id.clone());
+#[test]
+fn close_on_workflow_entry_is_rejected() {
+    // Given a session with a workflow attachment, cursor on the workflow entry.
+    let mut state = state_with_session_and_workflows(1);
+    // entries: [session0, wf-0]
+    state.frontend.sessions_section.selected_index = Some(1);
+    state.frontend.close_session_prompt = true;
 
-    // When navigating down (exhausted — at boundary).
-    let result = navigate(&SidebarIntent::MoveDown, &mut state);
+    // When attempting to close the workflow entry.
+    let result = validate_session_close(&state);
 
-    // Then result is Exhausted and preview is unchanged.
-    assert_eq!(result, SectionNavResult::Exhausted);
-    assert_eq!(
-        state.frontend.sessions_section.previewed_workflow_id,
-        Some(wf_id),
-        "preview should be preserved when cursor doesn't move"
-    );
-}
-
-#[rstest::rstest]
-fn preview_not_set_when_workflow_missing_from_map() {
-    // Given a session with an attached workflow that has NO matching entry in WorkflowMap.
-    let mut state = AppState::default();
-    let config = WorkflowConfig::Consensus {
-        n: 2,
-        result_kind: ResultKind::default(),
-    };
-    let aw = AttachedWorkflow::new(config, WorkflowTrigger::Manual);
-    // The aw.id is NOT inserted into WorkflowMap.
-    state.active_session_mut().core.attached_workflows.push(aw);
-    // Cursor on session (index 0).
-    state.frontend.sessions_section.selected_index = Some(0);
-
-    // When navigating down to the workflow entry.
-    let result = navigate(&SidebarIntent::MoveDown, &mut state);
-
-    // Then the result is Moved but preview is NOT set (workflow not in map).
-    assert_eq!(result, SectionNavResult::Moved);
-    assert_eq!(
-        state.frontend.sessions_section.previewed_workflow_id, None,
-        "preview should not be set when workflow is not in WorkflowMap"
-    );
-}
-
-#[rstest::rstest]
-fn jump_to_section_clears_preview() {
-    // Given a state with preview set and sidebar focused on Sessions.
-    let (mut state, wf_id) = state_with_attached_workflow();
-    state.frontend.sessions_section.previewed_workflow_id = Some(wf_id.clone());
-    // Push sidebar scope and set to Sessions.
-    state.frontend.scope_stack.push(FocusScope::SidebarSessions);
-
-    // When jumping to another section.
-    crate::feat::ui::sidebar::sidebar::jump_to_section(&SidebarIntent::MoveUp, &mut state);
-
-    // Then preview is cleared.
-    assert_eq!(
-        state.frontend.sessions_section.previewed_workflow_id, None,
-        "jump_to_section should clear preview when leaving Sessions"
-    );
+    // Then validation rejects it.
+    assert!(result.is_err());
 }

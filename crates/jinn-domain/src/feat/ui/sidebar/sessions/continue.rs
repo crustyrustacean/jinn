@@ -2,7 +2,7 @@
 
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
-use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
+use crate::feat::ui::sidebar::sessions::state::{SessionEntryKind, sorted_open_sessions};
 use crate::protocol::{ChatEntry, Command, IntentResult};
 
 /// Queues a "Continue" user message to the session under the sidebar cursor.
@@ -27,6 +27,11 @@ pub fn handle_session_continue(state: &mut AppState) -> IntentResult {
     let Some(entry) = sessions.get(index) else {
         return IntentResult::empty();
     };
+
+    // Workflow entries are not sessions — continuing a workflow is a no-op.
+    if !matches!(entry.kind, SessionEntryKind::Session) {
+        return IntentResult::empty();
+    }
 
     let session_id = entry.id.clone();
 

@@ -4,6 +4,7 @@
 //! a host handler that processes [`HostRequest`] variants against the
 //! domain's session state and LLM infrastructure.
 
+pub mod discovery;
 pub mod host_handler;
 
 pub use host_handler::LuaHostHandler;
