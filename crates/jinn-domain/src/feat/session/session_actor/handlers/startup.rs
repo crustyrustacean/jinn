@@ -98,7 +98,6 @@ impl SessionPersistenceActor {
                         self.rehydrate_attached_workflows(&session_id);
                     }
 
-
                     // NOTE: We intentionally do NOT switch the active session.
                     // The user should land on the fresh welcome session.
                     // Previously loaded sessions appear in the sidebar but
@@ -385,10 +384,16 @@ mod tests {
 
         // Then the workflow was reset from Running to Ready.
         let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session should be loaded");
+        let session = state
+            .session
+            .get(&session_id)
+            .expect("session should be loaded");
         let aw = &session.core.attached_workflows[0];
         assert!(
-            matches!(aw.state, crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready),
+            matches!(
+                aw.state,
+                crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready
+            ),
             "Running workflow should be reset to Ready on startup, got {:?}",
             aw.state
         );

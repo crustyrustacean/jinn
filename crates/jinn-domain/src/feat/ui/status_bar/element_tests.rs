@@ -20,7 +20,8 @@ fn render_shows_no_model_selected_when_unset() {
     let (mut terminal, area) = setup_term(50, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -39,7 +40,8 @@ fn render_shows_provider_and_model() {
     let (mut terminal, area) = setup_term(50, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -58,7 +60,8 @@ fn render_right_aligns_text() {
     let (mut terminal, area) = setup_term(50, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -79,7 +82,8 @@ fn render_shows_provider_with_slash_in_model() {
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -101,7 +105,8 @@ fn render_shows_non_default_strategy() {
     let (mut terminal, area) = setup_term(50, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -120,7 +125,8 @@ fn render_shows_token_counts_with_zero_values() {
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -149,7 +155,8 @@ fn render_shows_token_counts_with_values() {
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -180,7 +187,8 @@ fn render_shows_zero_percent_max_when_context_size_but_no_limit() {
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -197,7 +205,8 @@ fn render_shows_zero_percent_max_when_no_context_size() {
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -221,7 +230,8 @@ fn render_shows_zero_turns_when_no_history() {
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -253,7 +263,8 @@ fn render_shows_turn_count_with_history() {
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -289,7 +300,8 @@ fn render_turn_count_skips_tool_loop_intermediates() {
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -308,7 +320,8 @@ fn render_shows_cwd_on_first_line() {
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -331,7 +344,8 @@ fn render_shows_absolute_path_for_non_home_cwd() {
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -356,7 +370,8 @@ fn render_shows_tilde_for_home_cwd() {
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -383,7 +398,8 @@ fn render_shows_tilde_substitution_for_path_under_home() {
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -431,7 +447,8 @@ fn render_shows_context_limit_with_usage_and_percentage() {
     let (mut terminal, area) = setup_term(100, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -474,7 +491,8 @@ fn render_falls_back_when_no_context_limit_in_cache() {
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -508,7 +526,8 @@ fn render_falls_back_when_no_model_cache() {
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -548,7 +567,8 @@ fn render_shows_zero_percent_with_max_when_no_messages_sent() {
     let (mut terminal, area) = setup_term(100, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -584,7 +604,8 @@ fn render_shows_used_over_unknown_when_no_context_length() {
     let (mut terminal, area) = setup_term(100, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -609,7 +630,8 @@ fn render_shows_token_budget_when_token_budget_strategy_active() {
     let (mut terminal, area) = setup_term(100, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -633,7 +655,8 @@ fn render_hides_token_budget_for_passthrough_strategy() {
     let (mut terminal, area) = setup_term(100, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -655,7 +678,8 @@ fn render_always_shows_cost_even_when_zero() {
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -685,7 +709,8 @@ fn render_shows_cost_with_non_zero_value() {
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -721,7 +746,8 @@ fn render_shows_cost_before_turns_indicator() {
     let (mut terminal, area) = setup_term(80, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -750,7 +776,8 @@ fn render_hides_tree_aggregate_for_single_session() {
     let (mut terminal, area) = setup_term(120, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -798,7 +825,8 @@ fn render_shows_tree_aggregate_when_parent_has_child() {
     let (mut terminal, area) = setup_term(120, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();
@@ -845,7 +873,8 @@ fn render_shows_tree_aggregate_from_child_viewpoint() {
     let (mut terminal, area) = setup_term(120, 2);
     terminal
         .draw(|frame| {
-            let ctx = RenderCtx::new(&state); element.render(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
         })
         .unwrap();
     let buffer = terminal.backend().buffer().clone();

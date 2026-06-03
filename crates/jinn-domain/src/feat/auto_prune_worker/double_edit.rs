@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::DoubleEditAutoPruneConfig;
-use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ChatEntryId, ContextOverride};
+use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
 
@@ -52,6 +52,27 @@ fn extract_path_from_arguments(arguments: &str) -> Option<String> {
         .map(std::borrow::ToOwned::to_owned)
 }
 
+/// Walk forward from a ToolCall to find its matching ToolResult.
+///
+/// Returns `None` if the result is missing, pending, or already excluded.
+fn find_matching_result(
+    history: &[ChatEntry],
+    call_idx: usize,
+    tool_call_id: &str,
+) -> Option<ChatEntryId> {
+    for entry in history.iter().skip(call_idx + 1) {
+        if let ChatEntryKind::ToolResult { id, .. } = &entry.kind
+            && id == tool_call_id
+        {
+            if entry.context_override == ContextOverride::ForcedExclude {
+                return None;
+            }
+            return Some(entry.id.clone());
+        }
+    }
+    None
+}
+
 /// A collected edit/write tool call paired with its result.
 struct EditWritePair {
     call_entry_id: ChatEntryId,
@@ -70,91 +91,88 @@ impl HistoryWorker for DoubleEditAutoPruneWorker {
         _session_id: &SessionId,
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
-        // max_file_edits == 0 means no limit.
         if self.config.max_file_edits == 0 {
             return Vec::new();
         }
 
-        let mut mutations = Vec::new();
-
-        // Collect all edit/write ToolCalls with their paths.
-        let mut candidates: Vec<(usize, String)> = Vec::new();
-        for (i, entry) in history.iter().enumerate() {
-            if let ChatEntryKind::ToolCall {
-                name, arguments, ..
-            } = &entry.kind
-                && (name == "edit" || name == "write")
-                && let Some(path) = extract_path_from_arguments(arguments)
-            {
-                candidates.push((i, path));
-            }
-        }
-
-        // For each candidate, find its ToolResult and build pairs grouped by path.
-        let mut groups: HashMap<String, Vec<EditWritePair>> = HashMap::new();
-
-        for (call_idx, path) in &candidates {
-            let call_entry = &history[*call_idx];
-
-            // Skip if call already excluded.
-            if call_entry.context_override == ContextOverride::ForcedExclude {
-                continue;
-            }
-
-            let ChatEntryKind::ToolCall { id: tool_call_id, .. } = &call_entry.kind else {
-                continue;
-            };
-
-            // Find matching ToolResult.
-            let mut result_entry_id = None;
-            for entry_j in history.iter().skip(call_idx + 1) {
-                if let ChatEntryKind::ToolResult { id, .. } = &entry_j.kind
-                    && id == tool_call_id
-                {
-                    // Skip if result already excluded.
-                    if entry_j.context_override == ContextOverride::ForcedExclude {
-                        break;
-                    }
-                    result_entry_id = Some(entry_j.id.clone());
-                    break;
-                }
-            }
-
-            let Some(result_id) = result_entry_id else {
-                // No result yet (pending or already excluded) — skip.
-                continue;
-            };
-
-            groups
-                .entry(path.clone())
-                .or_default()
-                .push(EditWritePair {
-                    call_entry_id: call_entry.id.clone(),
-                    result_entry_id: result_id,
-                });
-        }
-
-        // For each group, prune oldest entries exceeding max_file_edits.
-        for (_path, pairs) in groups {
-            if pairs.len() <= self.config.max_file_edits {
-                continue;
-            }
-
-            let to_prune = pairs.len() - self.config.max_file_edits;
-            for pair in pairs.iter().take(to_prune) {
-                mutations.push(HistoryMutation::SetContextOverride {
-                    entry_id: pair.call_entry_id.clone(),
-                    value: ContextOverride::ForcedExclude,
-                });
-                mutations.push(HistoryMutation::SetContextOverride {
-                    entry_id: pair.result_entry_id.clone(),
-                    value: ContextOverride::ForcedExclude,
-                });
-            }
-        }
-
-        mutations
+        let groups = collect_edit_write_pairs_by_path(&history);
+        build_prune_mutations(groups, self.config.max_file_edits)
     }
+}
+
+/// Scan history for edit/write ToolCalls, resolve each to its result,
+/// and group into pairs by file path.
+///
+/// Skips ToolCalls that are already excluded or have no matching ToolResult.
+fn collect_edit_write_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Vec<EditWritePair>> {
+    let mut candidates: Vec<(usize, String)> = Vec::new();
+    for (i, entry) in history.iter().enumerate() {
+        if let ChatEntryKind::ToolCall {
+            name, arguments, ..
+        } = &entry.kind
+            && (name == "edit" || name == "write")
+            && let Some(path) = extract_path_from_arguments(arguments)
+        {
+            candidates.push((i, path));
+        }
+    }
+
+    let mut groups: HashMap<String, Vec<EditWritePair>> = HashMap::new();
+
+    for (call_idx, path) in &candidates {
+        let call_entry = &history[*call_idx];
+
+        if call_entry.context_override == ContextOverride::ForcedExclude {
+            continue;
+        }
+
+        let ChatEntryKind::ToolCall {
+            id: tool_call_id, ..
+        } = &call_entry.kind
+        else {
+            continue;
+        };
+
+        let Some(result_id) = find_matching_result(history, *call_idx, tool_call_id) else {
+            continue;
+        };
+
+        groups.entry(path.clone()).or_default().push(EditWritePair {
+            call_entry_id: call_entry.id.clone(),
+            result_entry_id: result_id,
+        });
+    }
+
+    groups
+}
+
+/// For each path group exceeding the limit, emit `SetContextOverride` mutations
+/// for the oldest pairs.
+fn build_prune_mutations(
+    groups: HashMap<String, Vec<EditWritePair>>,
+    max_file_edits: usize,
+) -> Vec<HistoryMutation> {
+    let mut mutations = Vec::new();
+
+    for (_path, pairs) in groups {
+        if pairs.len() <= max_file_edits {
+            continue;
+        }
+
+        let to_prune = pairs.len() - max_file_edits;
+        for pair in pairs.iter().take(to_prune) {
+            mutations.push(HistoryMutation::SetContextOverride {
+                entry_id: pair.call_entry_id.clone(),
+                value: ContextOverride::ForcedExclude,
+            });
+            mutations.push(HistoryMutation::SetContextOverride {
+                entry_id: pair.result_entry_id.clone(),
+                value: ContextOverride::ForcedExclude,
+            });
+        }
+    }
+
+    mutations
 }
 
 #[cfg(test)]
@@ -196,11 +214,7 @@ mod tests {
         history: Vec<ChatEntry>,
     ) -> Vec<HistoryMutation> {
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        rt.block_on(async {
-            worker
-                .evaluate(&SessionId::new(), Arc::from(history))
-                .await
-        })
+        rt.block_on(async { worker.evaluate(&SessionId::new(), Arc::from(history)).await })
     }
 
     fn collect_pruned_ids(mutations: Vec<HistoryMutation>) -> Vec<ChatEntryId> {

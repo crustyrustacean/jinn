@@ -6,8 +6,6 @@ use crate::Intent;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
-
-
 /// Identifies a sidebar section. Used for focus tracking and dispatch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum SidebarSectionId {

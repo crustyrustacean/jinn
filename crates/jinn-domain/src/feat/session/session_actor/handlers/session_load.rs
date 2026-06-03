@@ -42,7 +42,6 @@ impl SessionPersistenceActor {
                 loaded.model().to_owned()
             };
 
-
             // Insert loaded session into HashMap.
             state.session.insert(loaded);
 
@@ -51,7 +50,6 @@ impl SessionPersistenceActor {
                 &mut state,
                 &session_id,
             );
-
 
             #[expect(clippy::expect_used, reason = "just inserted into sessions map above")]
             let session = state.session.get_mut(&session_id).expect("just inserted");
@@ -70,7 +68,6 @@ impl SessionPersistenceActor {
         // Must be called after the write lock above is released, since
         // rehydrate_attached_workflows acquires its own write lock.
         self.rehydrate_attached_workflows(&session_id);
-
 
         // Validate CWD - fallback to default if non-existent on disk.
         // This check is async (tokio::fs), so it runs outside the state lock.
@@ -127,14 +124,13 @@ impl SessionPersistenceActor {
             if state.workflow.get(&aw.id).is_some() {
                 continue; // already registered (e.g. duplicate load)
             }
-            let execution = std::sync::Arc::new(
-                jinn_workflow::execution::WorkflowExecution::new(aw.config.build_graph()),
+            let execution = std::sync::Arc::new(jinn_workflow::execution::WorkflowExecution::new(
+                aw.config.build_graph(),
+            ));
+            let mut wf_state = crate::feat::workflow::workflow_state::WorkflowState::new(
+                aw.config.label().to_owned(),
+                execution,
             );
-            let mut wf_state =
-                crate::feat::workflow::workflow_state::WorkflowState::new(
-                    aw.config.label().to_owned(),
-                    execution,
-                );
             wf_state.id = aw.id.clone();
             state.workflow.register(wf_state);
         }
@@ -148,8 +144,7 @@ impl SessionPersistenceActor {
                 aw.state,
                 crate::feat::workflow::attached_workflow::AttachedWorkflowState::Running
             ) {
-                aw.state =
-                    crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready;
+                aw.state = crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready;
             }
         }
     }

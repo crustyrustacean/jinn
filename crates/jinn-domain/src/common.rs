@@ -10,6 +10,7 @@ mod app_state_tests;
 pub mod core;
 pub mod focus;
 pub mod frontmatter;
+pub mod render_ctx;
 pub mod services;
 pub mod session_map;
 pub mod state;
@@ -18,7 +19,6 @@ pub mod tui_signals;
 pub mod ui_element;
 pub mod ui_element_fake;
 pub mod ui_registry;
-pub mod render_ctx;
 
 /// Standard UI registry type for the jinn application.
 pub type AppUiRegistry = ui_registry::UiRegistry;

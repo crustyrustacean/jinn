@@ -59,7 +59,8 @@ fn render_provider_picker_shows_telescope_layout() {
     terminal
         .draw(|frame| {
             let area = frame.area();
-            let ctx = RenderCtx::new(&state); render_provider_picker(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            render_provider_picker(frame, area, &ctx);
         })
         .unwrap();
 
@@ -89,7 +90,8 @@ fn render_provider_picker_uses_dark_gray_border() {
     terminal
         .draw(|frame| {
             let area = frame.area();
-            let ctx = RenderCtx::new(&state); render_provider_picker(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            render_provider_picker(frame, area, &ctx);
         })
         .unwrap();
 
@@ -119,7 +121,8 @@ fn render_provider_picker_shows_active_model_marker() {
     terminal
         .draw(|frame| {
             let area = frame.area();
-            let ctx = RenderCtx::new(&state); render_provider_picker(frame, area, &ctx);
+            let ctx = RenderCtx::new(&state);
+            render_provider_picker(frame, area, &ctx);
         })
         .unwrap();
 
