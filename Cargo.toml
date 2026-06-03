@@ -12,7 +12,7 @@ headless-chrome = ["jinn-web-fetch/headless-chrome"]
 members = ["crates/*", "tests/*", "vendor/*"]
 
 [workspace.package]
-version = "0.51.0"
+version = "0.52.0"
 edition = "2024"
 
 [profile.release]
