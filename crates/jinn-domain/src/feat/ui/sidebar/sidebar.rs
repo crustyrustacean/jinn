@@ -209,7 +209,6 @@ pub(crate) fn clear_cursor(id: SidebarSectionId, state: &mut AppState) {
         SidebarSectionId::TaskList => state.frontend.task_list_section.selected_phase_index = None,
         SidebarSectionId::Sessions => {
             state.frontend.sessions_section.selected_index = None;
-
         }
     }
 }
@@ -263,8 +262,6 @@ pub fn jump_to_section(direction: &SidebarIntent, state: &mut AppState) {
             if focused == SidebarSectionId::Pins && target != SidebarSectionId::Pins {
                 state.active_session_mut().restore_history_position();
             }
-
-
 
             state.frontend.scope_stack.set_sidebar_section(target);
 

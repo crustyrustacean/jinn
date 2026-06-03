@@ -149,17 +149,20 @@ fn build_ctx_from_config(
     }
 
     if config.push_user {
-        let f = crate::capabilities::make_push_user(lua, host_tx.clone(), config.session_id.clone())?;
+        let f =
+            crate::capabilities::make_push_user(lua, host_tx.clone(), config.session_id.clone())?;
         builder = builder.with_function("push_user", f)?;
     }
 
     if config.push_system {
-        let f = crate::capabilities::make_push_system(lua, host_tx.clone(), config.session_id.clone())?;
+        let f =
+            crate::capabilities::make_push_system(lua, host_tx.clone(), config.session_id.clone())?;
         builder = builder.with_function("push_system", f)?;
     }
 
     if config.turn_off {
-        let f = crate::capabilities::make_turn_off(lua, host_tx.clone(), config.workflow_id.clone())?;
+        let f =
+            crate::capabilities::make_turn_off(lua, host_tx.clone(), config.workflow_id.clone())?;
         builder = builder.with_function("turn_off", f)?;
     }
 
@@ -456,9 +459,7 @@ mod tests {
         "#
         .to_owned();
 
-        let config = empty_config()
-            .with_llm()
-            .session_id("session-1".to_owned());
+        let config = empty_config().with_llm().session_id("session-1".to_owned());
 
         let handle = spawn_one_shot(script, "test-llm".to_owned(), host_tx, config);
 
@@ -466,9 +467,7 @@ mod tests {
         let req = host_rx.recv().expect("receive request");
         match req {
             HostRequest::Llm {
-                prompt,
-                respond_to,
-                ..
+                prompt, respond_to, ..
             } => {
                 assert_eq!(prompt, "hello world");
                 respond_to
@@ -504,9 +503,7 @@ mod tests {
         let req = host_rx.recv().expect("receive request");
         match req {
             HostRequest::PushUser {
-                text,
-                respond_to,
-                ..
+                text, respond_to, ..
             } => {
                 assert_eq!(text, "judgement failed, try again");
                 respond_to.send(Ok(())).expect("respond");
@@ -540,9 +537,7 @@ mod tests {
         let req = host_rx.recv().expect("receive request");
         match req {
             HostRequest::PushSystem {
-                text,
-                respond_to,
-                ..
+                text, respond_to, ..
             } => {
                 assert_eq!(text, "judgement passed");
                 respond_to.send(Ok(())).expect("respond");

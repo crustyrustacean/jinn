@@ -10,6 +10,7 @@ use crate::protocol::SessionId;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SessionEntryKind {
     Session,
+    Workflow { enabled: bool },
 }
 
 /// Sessions section cursor state - stored on `FrontendState`.
@@ -174,7 +175,129 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
         );
     }
 
+    // Post-DFS pass: insert workflow child entries under each session.
+    // For each Session entry, find where its subtree ends, then insert
+    // workflow entries for each attached workflow.
+    insert_workflow_entries(state, &mut result);
+
     result
+}
+/// Post-DFS pass that inserts workflow child entries under their parent sessions.
+///
+/// After the DFS builds the session tree, this function scans the result list
+/// and for each `Session` entry, looks up its `attached_workflows` from state.
+/// Workflow entries are inserted after the session's last real child (or immediately
+/// after the session if it has no children). Tree metadata (depth, continuations,
+/// `is_last_child`) is computed to maintain visual consistency.
+///
+/// Sessions that previously were the last child of *their* parent but now have
+/// workflow children appended need their own `is_last_child` unchanged (they remain
+/// last among *session* siblings). The workflow entries become their new children at
+/// depth + 1.
+fn insert_workflow_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
+    // Collect (insert_index, session_id, workflows) for each session with workflows.
+    // We scan the result list and find the boundary where each session's subtree ends.
+    let mut insertions: Vec<(
+        usize,
+        SessionId,
+        Vec<crate::feat::workflow::attached_workflow::AttachedWorkflow>,
+    )> = Vec::new();
+
+    let mut i = 0;
+    while i < entries.len() {
+        let entry = &entries[i];
+        if !matches!(entry.kind, SessionEntryKind::Session) {
+            i += 1;
+            continue;
+        }
+
+        let session_id = entry.id.clone();
+        let session_depth = entry.depth;
+
+        // Find where this session's subtree ends.
+        // The subtree includes the session itself and all descendants (depth > session_depth).
+        let subtree_end = entries[i + 1..]
+            .iter()
+            .position(|e| e.depth <= session_depth)
+            .map_or(entries.len(), |p| i + 1 + p);
+
+        // Look up attached workflows for this session.
+        let Some(session) = state.session.get(&session_id) else {
+            i = subtree_end;
+            continue;
+        };
+
+        let workflows = session.core.attached_workflows.clone();
+        if !workflows.is_empty() {
+            insertions.push((subtree_end, session_id, workflows));
+        }
+
+        i = subtree_end;
+    }
+
+    // Insert workflow entries in reverse order so indices remain valid.
+    for (insert_idx, parent_id, workflows) in insertions.into_iter().rev() {
+        let parent_entry = entries
+            .iter()
+            .find(|e| matches!(e.kind, SessionEntryKind::Session) && e.id == parent_id);
+        let Some(parent) = parent_entry else { continue };
+        let parent_depth = parent.depth;
+        let parent_continuations = parent.ancestor_continuations.clone();
+        let parent_created_at = parent.created_at;
+
+        // Build the ancestor_continuations for workflow children: parent's continuations + whether parent has younger siblings.
+        // Since workflows are appended *after* all real children, the parent effectively
+        // has workflow children — but the continuation line depends on whether the parent
+        // is the last child of *its* parent.
+        let workflow_depth = parent_depth + 1;
+        let mut workflow_continuations = parent_continuations;
+        // The parent's is_last_child determines if we draw │ or space at the parent level.
+        // But we need to know if the parent has younger session siblings. If parent.is_last_child, no continuation.
+        // If not, draw │.
+        // However, the parent's own is_last_child may need re-evaluation if we add workflow children
+        // after the last real child. Actually, the parent's is_last_child refers to its position among
+        // its *session* siblings, which is unchanged by adding workflow children.
+        let parent_continues = !parent.is_last_child;
+        workflow_continuations.push(parent_continues);
+
+        let wf_count = workflows.len();
+        for (j, aw) in workflows.into_iter().enumerate() {
+            let is_last = j == wf_count - 1;
+            let wf_entry = SessionEntry {
+                kind: SessionEntryKind::Workflow {
+                    enabled: aw.enabled,
+                },
+                id: parent_id.clone(),
+                title: aw.label_or_default().to_owned(),
+                is_active: false,
+                created_at: parent_created_at,
+                is_idle: true,
+                last_entry_is_error: false,
+                parent_id: Some(parent_id.clone()),
+                depth: workflow_depth,
+                ancestor_continuations: workflow_continuations.clone(),
+                is_last_child: is_last,
+            };
+            entries.insert(insert_idx + j, wf_entry);
+        }
+
+        // Fix is_last_child of the parent's last *real* child if the parent previously had children.
+        // The last real child might have had is_last_child = true, but now workflow entries come after it.
+        // We need to set it to false so it renders as ├─ instead of └─.
+        // Walk backwards from insert_idx to find the last entry that belongs to this parent's subtree
+        // and has depth == workflow_depth.
+        if insert_idx > 0 {
+            for k in (0..insert_idx).rev() {
+                if entries[k].depth == workflow_depth
+                    && entries[k].parent_id.as_ref() == Some(&parent_id)
+                    && matches!(entries[k].kind, SessionEntryKind::Session)
+                {
+                    entries[k].is_last_child = false;
+                    break;
+                }
+            }
+        }
+    }
 }
 
 /// Updates the visual-parent index when a session is about to be removed.

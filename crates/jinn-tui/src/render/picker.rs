@@ -1,7 +1,7 @@
 //! Picker overlay rendering - dispatches to domain-specific picker renderers.
 
-use jinn_domain::RenderCtx;
 use jinn_domain::PickerKind;
+use jinn_domain::RenderCtx;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 
@@ -54,9 +54,7 @@ fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
 
 /// Renders the session lifecycle picker overlay (delegates to domain render).
 fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
-    jinn_domain::feat::session_lifecycle::render::render_session_lifecycle_picker(
-        frame, area, ctx,
-    );
+    jinn_domain::feat::session_lifecycle::render::render_session_lifecycle_picker(frame, area, ctx);
 }
 
 /// Renders the workflow picker overlay (delegates to domain render).

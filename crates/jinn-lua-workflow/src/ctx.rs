@@ -38,9 +38,9 @@ impl<'a> CtxBuilder<'a> {
         if let serde_json::Value::Object(map) = json {
             for (key, value) in map {
                 let lua_value = json_to_lua_value(lua, &value)?;
-                table.set(key, lua_value).map_err(|e| {
-                    LuaError::script(format!("set ctx field: {e}"))
-                })?;
+                table
+                    .set(key, lua_value)
+                    .map_err(|e| LuaError::script(format!("set ctx field: {e}")))?;
             }
         }
 
@@ -60,17 +60,21 @@ impl<'a> CtxBuilder<'a> {
     /// The caller is responsible for creating the function (sync or async).
     /// This gives full control over the function signature and lifetime.
     pub fn with_function(mut self, name: &str, func: Function) -> Result<Self, Report<LuaError>> {
-        self.table.set(name, func).map_err(|e| {
-            LuaError::script(format!("set method '{name}': {e}"))
-        })?;
+        self.table
+            .set(name, func)
+            .map_err(|e| LuaError::script(format!("set method '{name}': {e}")))?;
         Ok(self)
     }
 
     /// Sets a raw value on the ctx table.
-    pub fn with_value<V: Into<Value>>(mut self, name: &str, value: V) -> Result<Self, Report<LuaError>> {
-        self.table.set(name, value.into()).map_err(|e| {
-            LuaError::script(format!("set value '{name}': {e}"))
-        })?;
+    pub fn with_value<V: Into<Value>>(
+        mut self,
+        name: &str,
+        value: V,
+    ) -> Result<Self, Report<LuaError>> {
+        self.table
+            .set(name, value.into())
+            .map_err(|e| LuaError::script(format!("set value '{name}': {e}")))?;
         Ok(self)
     }
 
@@ -87,7 +91,6 @@ impl<'a> CtxBuilder<'a> {
 
 /// Converts a `serde_json::Value` to a `mlua::Value`.
 pub fn json_to_lua_value(lua: &Lua, value: &serde_json::Value) -> Result<Value, Report<LuaError>> {
-
     match value {
         serde_json::Value::Null => Ok(Value::Nil),
         serde_json::Value::Bool(b) => Ok(Value::Boolean(*b)),
@@ -99,35 +102,32 @@ pub fn json_to_lua_value(lua: &Lua, value: &serde_json::Value) -> Result<Value, 
             }
         }
         serde_json::Value::String(s) => {
-            let lua_str = lua.create_string(s).map_err(|e| {
-                LuaError::script(format!("create string: {e}"))
-            })?;
+            let lua_str = lua
+                .create_string(s)
+                .map_err(|e| LuaError::script(format!("create string: {e}")))?;
             Ok(Value::String(lua_str))
         }
         serde_json::Value::Array(arr) => {
-            let table = lua.create_table().map_err(|e| {
-                LuaError::script(format!("create array table: {e}"))
-            })?;
+            let table = lua
+                .create_table()
+                .map_err(|e| LuaError::script(format!("create array table: {e}")))?;
             for (i, v) in arr.iter().enumerate() {
                 let lua_v = json_to_lua_value(lua, v)?;
                 table
-                    .set(
-                        i64::try_from(i + 1).unwrap_or(0),
-                        lua_v,
-                    )
+                    .set(i64::try_from(i + 1).unwrap_or(0), lua_v)
                     .map_err(|e| LuaError::script(format!("set array element: {e}")))?;
             }
             Ok(Value::Table(table))
         }
         serde_json::Value::Object(map) => {
-            let table = lua.create_table().map_err(|e| {
-                LuaError::script(format!("create object table: {e}"))
-            })?;
+            let table = lua
+                .create_table()
+                .map_err(|e| LuaError::script(format!("create object table: {e}")))?;
             for (k, v) in map {
                 let lua_v = json_to_lua_value(lua, v)?;
-                table.set(k.as_str(), lua_v).map_err(|e| {
-                    LuaError::script(format!("set object field: {e}"))
-                })?;
+                table
+                    .set(k.as_str(), lua_v)
+                    .map_err(|e| LuaError::script(format!("set object field: {e}")))?;
             }
             Ok(Value::Table(table))
         }
@@ -204,10 +204,7 @@ mod tests {
         let builder = CtxBuilder::new(&lua, &data).expect("builder");
         let ctx = builder.build();
 
-        let pairs: Vec<(Value, Value)> = ctx
-            .pairs()
-            .collect::<Result<Vec<_>, _>>()
-            .expect("pairs");
+        let pairs: Vec<(Value, Value)> = ctx.pairs().collect::<Result<Vec<_>, _>>().expect("pairs");
         assert!(pairs.is_empty());
     }
 

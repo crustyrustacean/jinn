@@ -293,7 +293,6 @@ impl SessionPersistenceActor {
             | Command::ScanSkills
             | Command::RescanPersonas(..)
             | Command::UpdatePreferences(..)
-
             | Command::LoadCompactionModelPickerEntries(..)
             | Command::TriggerCompaction(..)
             | Command::Dynamic(..)

@@ -264,5 +264,4 @@ mod tests {
             "loaded session should be persistable"
         );
     }
-
 }

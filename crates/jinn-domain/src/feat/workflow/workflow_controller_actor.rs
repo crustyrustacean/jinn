@@ -26,14 +26,13 @@ use crate::feat::workflow::protocol::command::{
     AttachWorkflow, DetachWorkflow, FireBeforeTurn, ToggleWorkflow, TriggerWorkflow,
 };
 
-use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, SetChatInputText};
 use crate::common::app_state::LuaExecutionState;
-
+use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, SetChatInputText};
 
 use crate::protocol::{Command, Event};
 
 use crate::feat::luaworkflow::host_handler::LuaHostHandler;
-use jinn_lua_workflow::{spawn_one_shot, CtxConfig, HostRequest};
+use jinn_lua_workflow::{CtxConfig, HostRequest, spawn_one_shot};
 
 /// The workflow controller actor.
 ///
@@ -70,7 +69,10 @@ impl Actor for WorkflowControllerActor {
 
         ctx.set_description("Orchestrates attached workflow lifecycle");
 
-        let domain_ctx = Arc::new(DomainNodeContext::new(deps.services.clone(), deps.state.clone()));
+        let domain_ctx = Arc::new(DomainNodeContext::new(
+            deps.services.clone(),
+            deps.state.clone(),
+        ));
 
         let actor = Self {
             ctx: domain_ctx,
@@ -431,7 +433,11 @@ impl WorkflowControllerActor {
                 Err(e) => Err(format!("join error: {e}")),
             };
 
-            let actor = WorkflowControllerActor { ctx, state, services };
+            let actor = WorkflowControllerActor {
+                ctx,
+                state,
+                services,
+            };
             actor.apply_workflow_result(&session_id_clone, &workflow_id, response);
 
             {
@@ -518,12 +524,7 @@ impl WorkflowControllerActor {
         let (host_tx, host_rx) = kanal::unbounded::<HostRequest>();
 
         // Spawn the Lua VM.
-        let mut vm_handle = spawn_one_shot(
-            script_source,
-            script_name.clone(),
-            host_tx,
-            ctx_config,
-        );
+        let mut vm_handle = spawn_one_shot(script_source, script_name.clone(), host_tx, ctx_config);
 
         // Spawn handler task that processes host requests.
         let state = self.state.clone();
@@ -546,7 +547,6 @@ impl WorkflowControllerActor {
                         HostRequest::Shutdown => break,
                         request => {
                             handler.handle_request(request).await;
-
                         }
                     }
                 }
@@ -576,9 +576,8 @@ impl WorkflowControllerActor {
 
             // Side effects are already applied by the host handler.
             Ok(())
-        })
+        });
     }
-
 
     /// Apply a workflow result to the session.
     fn apply_workflow_result(
@@ -759,5 +758,3 @@ impl WorkflowControllerActor {
         }
     }
 }
-
-

@@ -27,7 +27,6 @@ pub struct AppLayout {
     pub input: Rect,
     /// The status bar area (1 row at very bottom).
     pub status_bar: Rect,
-
 }
 
 impl AppLayout {
@@ -81,7 +80,6 @@ impl AppLayout {
             Constraint::Length(2),
         ])
         .areas(main);
-
 
         // Minimap column: same height as the chat log area (content minus
         // the bottom indicator line and chat-bottom-line).

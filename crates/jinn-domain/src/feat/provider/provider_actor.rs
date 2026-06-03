@@ -124,7 +124,6 @@ impl ProviderActor {
             | Command::FinishSessionTeardown(..)
             | Command::FinishSessionSetup(..)
             | Command::CancelLifecycleCommand(..)
-
             | Command::MarkSessionInteracted(..)
             | Command::SubmitHistoryMutations(..)
             | Command::TriggerCompaction(..)

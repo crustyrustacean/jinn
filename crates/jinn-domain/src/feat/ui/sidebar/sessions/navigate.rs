@@ -37,11 +37,51 @@ pub fn scroll_to_cursor(state: &mut AppState) {
 /// No-op: workflow preview removed with node-graph.
 fn update_preview(_state: &mut AppState) {}
 
+/// Find the next session entry starting from `start` (inclusive), searching in `direction`.
+///
+/// Returns `None` if no session entry is found before hitting the list boundary.
+fn next_session_index(
+    entries: &[crate::feat::ui::sidebar::sessions::state::SessionEntry],
+    start: usize,
+    direction: Direction,
+) -> Option<usize> {
+    match direction {
+        Direction::Down => {
+            let mut i = start;
+            while i < entries.len() {
+                if matches!(entries[i].kind, SessionEntryKind::Session) {
+                    return Some(i);
+                }
+                i += 1;
+            }
+            None
+        }
+        Direction::Up => {
+            let mut i = start;
+            loop {
+                if matches!(entries[i].kind, SessionEntryKind::Session) {
+                    return Some(i);
+                }
+                if i == 0 {
+                    return None;
+                }
+                i -= 1;
+            }
+        }
+    }
+}
+
+enum Direction {
+    Down,
+    Up,
+}
+
 /// Navigate within the sessions section.
 ///
 /// Moves the cursor within the sessions list and immediately switches
 /// the active session. Returns `Exhausted` when at a boundary or when
-/// the list is empty.
+/// the list is empty. Skips over workflow entries — the cursor only lands
+/// on session entries.
 pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResult {
     let sessions = sorted_open_sessions(state);
     if sessions.is_empty() {
@@ -51,10 +91,10 @@ pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResul
     let result = match intent {
         SidebarIntent::MoveDown => {
             let current = state.frontend.sessions_section.selected_index.unwrap_or(0);
-            if current >= sessions.len() - 1 {
+            let start = current.saturating_add(1);
+            let Some(new_index) = next_session_index(&sessions, start, Direction::Down) else {
                 return SectionNavResult::Exhausted;
-            }
-            let new_index = current + 1;
+            };
             state.frontend.sessions_section.selected_index = Some(new_index);
             SectionNavResult::Moved
         }
@@ -63,7 +103,10 @@ pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResul
             if current == 0 {
                 return SectionNavResult::Exhausted;
             }
-            let new_index = current - 1;
+            let start = current - 1;
+            let Some(new_index) = next_session_index(&sessions, start, Direction::Up) else {
+                return SectionNavResult::Exhausted;
+            };
             state.frontend.sessions_section.selected_index = Some(new_index);
             SectionNavResult::Moved
         }
@@ -78,17 +121,19 @@ pub fn navigate(intent: &SidebarIntent, state: &mut AppState) -> SectionNavResul
 /// Place the cursor on this section from a given direction.
 ///
 /// Positions at the edge of the list: index 0 from top, last index from bottom.
-/// This keeps the linear `j`/`k` scroll model consistent.
+/// Skips over workflow entries so the cursor lands on a session.
 pub fn receive_cursor(state: &mut AppState, enter_from: EnterFrom) {
     let sessions = sorted_open_sessions(state);
     if sessions.is_empty() {
         return;
     }
     let index = match enter_from {
-        EnterFrom::Top => 0,
-        EnterFrom::Bottom => sessions.len() - 1,
+        EnterFrom::Top => next_session_index(&sessions, 0, Direction::Down),
+        EnterFrom::Bottom => next_session_index(&sessions, sessions.len() - 1, Direction::Up),
     };
-    state.frontend.sessions_section.selected_index = Some(index);
-    scroll_to_cursor(state);
-    update_preview(state);
+    if let Some(index) = index {
+        state.frontend.sessions_section.selected_index = Some(index);
+        scroll_to_cursor(state);
+        update_preview(state);
+    }
 }

@@ -669,16 +669,18 @@ pub fn create_core_with_actor_host(
             .unwrap_or_default();
 
         if config.enabled {
-            actors.push(spawn::<HistoryWorkerActor<ConsecutiveReadsAutoPruneWorker>>(
-                "history-worker-auto-prune-consecutive-reads",
-                &sink,
-                handle,
-                &counter,
-                &shutdown_tracker,
-                HistoryWorkerActorDeps {
-                    worker: ConsecutiveReadsAutoPruneWorker { config },
-                },
-            ));
+            actors.push(
+                spawn::<HistoryWorkerActor<ConsecutiveReadsAutoPruneWorker>>(
+                    "history-worker-auto-prune-consecutive-reads",
+                    &sink,
+                    handle,
+                    &counter,
+                    &shutdown_tracker,
+                    HistoryWorkerActorDeps {
+                        worker: ConsecutiveReadsAutoPruneWorker { config },
+                    },
+                ),
+            );
         }
     }
     // Sidebar state actor - keeps sidebar cursor in sync after session removal.

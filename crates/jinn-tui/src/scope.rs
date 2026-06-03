@@ -50,7 +50,6 @@ pub enum Scope {
 
     /// Sidebar resize mode - adjusting sidebar width.
     SidebarResize,
-
 }
 
 impl std::fmt::Display for Scope {
@@ -76,7 +75,6 @@ impl std::fmt::Display for Scope {
             Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
-
         }
     }
 }
@@ -106,7 +104,6 @@ impl std::str::FromStr for Scope {
             "TokenBudgetInput" => Ok(Self::TokenBudgetInput),
             "RenameSessionInput" => Ok(Self::RenameSessionInput),
             "SidebarResize" => Ok(Self::SidebarResize),
-
 
             _ => Err(()),
         }

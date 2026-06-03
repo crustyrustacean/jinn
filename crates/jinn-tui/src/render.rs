@@ -10,7 +10,6 @@ pub mod status_bar;
 pub mod too_small;
 pub mod which_key;
 
-
 pub use app_layout::{AppLayout, MIN_HEIGHT, MIN_WIDTH};
 
 use jinn_domain::{FocusScope, Mode, RenderCtx};
@@ -44,8 +43,6 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
                 .active_chat_input_mut()
                 .scroll_to_cursor(inner_height);
         }
-
-
     }
 
     let state = app.core.state.read();
@@ -78,13 +75,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
 
     // Main content area - chat tab.
     {
-        chat_tab::render_chat_tab(
-            &mut app.ui_registry,
-            frame,
-            &layout,
-            &ctx,
-            &mut rects,
-        );
+        chat_tab::render_chat_tab(&mut app.ui_registry, frame, &layout, &ctx, &mut rects);
     }
     // Session preview popup - when sidebar sessions section is focused.
     jinn_domain::feat::ui::sidebar::sessions::render_session_preview_for_state(
@@ -109,8 +100,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     // Arg input popup overlay (+ selectable rect).
     if matches!(state.frontend.scope_stack.current(), FocusScope::ArgInput) {
         picker::render_arg_input(frame, area, &ctx);
-        rects
-            .push(jinn_domain::feat::session_lifecycle::render::arg_input_popup_rect(area, &ctx));
+        rects.push(jinn_domain::feat::session_lifecycle::render::arg_input_popup_rect(area, &ctx));
     }
 
     // Rename session input popup overlay (+ selectable rect).
@@ -125,7 +115,6 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
             .push(jinn_domain::feat::rename_session_input::render::rename_session_popup_rect(area));
     }
 
-
     // Release the state read lock before post-render steps.
     drop(state);
 
@@ -133,5 +122,3 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     selection_highlight::apply_selection_highlight(app, frame.buffer_mut());
     clipboard::flush_pending_clipboard(app, frame.buffer_mut());
 }
-
-
