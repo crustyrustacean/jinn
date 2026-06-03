@@ -1,25 +1,22 @@
 //! Todo auto-prune worker.
 //!
-//! Detects repeated `todo_get_task_list` and `todo_complete_task` tool calls
-//! in conversation history. For each tool name, keeps only the most recent
-//! `ToolCall` + `ToolResult` pair and marks all older pairs as
-//! [`ForcedExclude`]. This removes stale todo state from the LLM context
-//! window.
+//! Detects all `todo_`-prefixed tool calls in conversation history and treats
+//! them as one unified group. Keeps only the most recent `ToolCall` +
+//! `ToolResult` pair and marks all older pairs as [`ForcedExclude`].
+//! This removes stale todo state from the LLM context window.
 //!
 //! Pruning is immediate — no threshold or delay.
 //!
 //! # Example
 //!
 //! ```text
-//! X  [Tool Call]: todo_get_task_list
+//! X  [Tool Call]: todo_add_task("Write code")
 //! X  [Tool Result] (OK): <stale task list>
 //! X  [Tool Call]: todo_complete_task("t1")
-//! X  [Tool Result] (OK): task completed
-//!    [Tool Call]: todo_get_task_list
+//! X  [Tool Result] (OK): <stale task list>
+//!    [Tool Call]: todo_add_phase("Test")
 //!    [Tool Result] (OK): <current task list>
-//!    [Tool Call]: todo_complete_task("t2")
-//!    [Tool Result] (OK): task completed
-//!    [Assistant]: all tasks done
+//!    [Assistant]: all done
 //! ```
 //!
 //! [`ForcedExclude`]: crate::feat::session::chat_entry::ContextOverride::ForcedExclude
@@ -32,8 +29,10 @@ use crate::protocol::SessionId;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// Tool names that this worker prunes.
-const TOOL_NAMES: &[&str] = &["todo_get_task_list", "todo_complete_task"];
+/// Returns true if a tool name belongs to the todo tool group.
+fn is_todo_tool(name: &str) -> bool {
+    name.starts_with("todo_")
+}
 
 /// A matched ToolCall with its index and the tool_call_id used to find its ToolResult.
 struct CallInfo {
@@ -47,8 +46,8 @@ struct CallInfo {
 
 /// Todo auto-prune worker.
 ///
-/// For each tool name in [`TOOL_NAMES`], scans history for all `ToolCall` +
-/// `ToolResult` pairs. Marks every pair except the most recent one as
+/// Scans history for all `todo_`-prefixed tool calls as one unified group.
+/// Marks every pair except the most recent one as
 /// [`ContextOverride::ForcedExclude`]. Pruning is immediate — no delay
 /// threshold.
 #[derive(Clone)]
@@ -57,15 +56,14 @@ pub struct TodoAutoPruneWorker {
     pub config: TodoAutoPruneConfig,
 }
 
-/// Collect all ToolCalls and ToolResults for a given tool name from history.
+/// Collect all ToolCalls and ToolResults for any `todo_` tool from history.
 ///
 /// Returns a list of call info (in history order) and a map from tool_call_id
 /// to (result_index, result_entry_id). This single-pass approach avoids the
 /// forward-scan loops used by other workers — ToolResults are collected into
 /// a HashMap by their `id` field, which directly matches the ToolCall's `id`.
-fn collect_tool_pairs(
+fn collect_all_todo_pairs(
     history: &[ChatEntry],
-    tool_name: &str,
 ) -> (
     Vec<CallInfo>,
     HashMap<String, (usize, crate::feat::session::chat_entry::ChatEntryId)>,
@@ -78,14 +76,14 @@ fn collect_tool_pairs(
 
     for (i, entry) in history.iter().enumerate() {
         match &entry.kind {
-            ChatEntryKind::ToolCall { name, id, .. } if name == tool_name => {
+            ChatEntryKind::ToolCall { name, id, .. } if is_todo_tool(name) => {
                 calls.push(CallInfo {
                     index: i,
                     entry_id: entry.id.clone(),
                     tool_call_id: id.clone(),
                 });
             }
-            ChatEntryKind::ToolResult { id, name, .. } if name == tool_name => {
+            ChatEntryKind::ToolResult { id, name, .. } if is_todo_tool(name) => {
                 // Each ToolResult's `id` matches exactly one ToolCall's `id`.
                 result_map.insert(id.clone(), (i, entry.id.clone()));
             }
@@ -148,14 +146,8 @@ impl HistoryWorker for TodoAutoPruneWorker {
         _session_id: &SessionId,
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
-        let mut mutations = Vec::new();
-
-        for tool_name in TOOL_NAMES {
-            let (calls, result_map) = collect_tool_pairs(&history, tool_name);
-            mutations.extend(build_prune_mutations(&history, &calls, &result_map));
-        }
-
-        mutations
+        let (calls, result_map) = collect_all_todo_pairs(&history);
+        build_prune_mutations(&history, &calls, &result_map)
     }
 }
 
@@ -192,6 +184,31 @@ mod tests {
                 content,
                 ToolResultStatus::Success,
             ),
+        ]
+    }
+
+    /// Helper: create a `todo_add_phase` ToolCall + ToolResult pair.
+    fn add_phase_call_result(call_id: &str, content: &str) -> [ChatEntry; 2] {
+        [
+            ChatEntry::tool_call(call_id, "todo_add_phase", r#"{"description":"Build"}"#),
+            ChatEntry::tool_result(
+                call_id,
+                "todo_add_phase",
+                content,
+                ToolResultStatus::Success,
+            ),
+        ]
+    }
+
+    /// Helper: create a `todo_add_task` ToolCall + ToolResult pair.
+    fn add_task_call_result(call_id: &str, content: &str) -> [ChatEntry; 2] {
+        [
+            ChatEntry::tool_call(
+                call_id,
+                "todo_add_task",
+                r#"{"phase_id":"p1","description":"Write code"}"#,
+            ),
+            ChatEntry::tool_result(call_id, "todo_add_task", content, ToolResultStatus::Success),
         ]
     }
 
@@ -310,7 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn interleaved_tool_names_pruned_independently() {
+    fn interleaved_todo_tools_pruned_as_group() {
         let mut history = Vec::new();
         // get_task_list v1 (older — should be pruned)
         let g1 = get_task_list_call_result("g-1", "list v1");
@@ -320,7 +337,7 @@ mod tests {
         let c1 = complete_task_call_result("c-1", "completed t1");
         history.push(c1[0].clone());
         history.push(c1[1].clone());
-        // get_task_list v2 (most recent — kept)
+        // get_task_list v2 (older — should be pruned)
         let g2 = get_task_list_call_result("g-2", "list v2");
         history.push(g2[0].clone());
         history.push(g2[1].clone());
@@ -330,8 +347,9 @@ mod tests {
         history.push(c2[1].clone());
 
         let mutations = evaluate(history);
-        // 2 mutations for g-1 (call + result) + 2 mutations for c-1 (call + result) = 4.
-        assert_eq!(mutations.len(), 4);
+        // Unified pruning: only c-2 survives. g-1, c-1, g-2 are pruned.
+        // 2 mutations each for g-1, c-1, g-2 = 6.
+        assert_eq!(mutations.len(), 6);
 
         let mutation_ids: Vec<_> = mutations
             .iter()
@@ -341,14 +359,14 @@ mod tests {
             })
             .collect();
 
-        // g-1 and c-1 should be pruned.
+        // g-1 and c-1 and g-2 should be pruned.
         assert!(mutation_ids.contains(&g1[0].id));
         assert!(mutation_ids.contains(&g1[1].id));
         assert!(mutation_ids.contains(&c1[0].id));
         assert!(mutation_ids.contains(&c1[1].id));
-        // g-2 and c-2 should NOT be pruned.
-        assert!(!mutation_ids.contains(&g2[0].id));
-        assert!(!mutation_ids.contains(&g2[1].id));
+        assert!(mutation_ids.contains(&g2[0].id));
+        assert!(mutation_ids.contains(&g2[1].id));
+        // c-2 (most recent) should NOT be pruned.
         assert!(!mutation_ids.contains(&c2[0].id));
         assert!(!mutation_ids.contains(&c2[1].id));
     }
@@ -465,27 +483,82 @@ mod tests {
     }
 
     #[test]
-    fn only_partial_already_excluded() {
+    fn different_todo_tools_prunes_older() {
         let mut history = Vec::new();
-        let cr1 = get_task_list_call_result("tc-1", "v1");
-        let mut call = cr1[0].clone();
-        call.context_override = ContextOverride::ForcedExclude; // call already excluded
-        history.push(call);
-        history.push(cr1[1].clone()); // result NOT excluded
-
-        let cr2 = get_task_list_call_result("tc-2", "v2");
-        history.push(cr2[0].clone());
-        history.push(cr2[1].clone());
+        // add_task (older — should be pruned)
+        let a1 = add_task_call_result("a-1", "created t1");
+        history.push(a1[0].clone());
+        history.push(a1[1].clone());
+        // add_phase (newer — should be kept)
+        let a2 = add_phase_call_result("a-2", "created phase");
+        history.push(a2[0].clone());
+        history.push(a2[1].clone());
 
         let mutations = evaluate(history);
-        // Only 1 mutation: the tc-1 ToolResult (call was already excluded).
-        assert_eq!(mutations.len(), 1);
-        match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value } => {
-                assert_eq!(*entry_id, cr1[1].id, "should target tc-1 ToolResult");
-                assert_eq!(*value, ContextOverride::ForcedExclude);
-            }
-            other => panic!("expected SetContextOverride, got {other:?}"),
-        }
+        // a-1 call + result = 2 mutations.
+        assert_eq!(mutations.len(), 2);
+
+        let mutation_ids: Vec<_> = mutations
+            .iter()
+            .filter_map(|m| match m {
+                HistoryMutation::SetContextOverride { entry_id, .. } => Some(entry_id.clone()),
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            mutation_ids.contains(&a1[0].id),
+            "a-1 ToolCall should be pruned"
+        );
+        assert!(
+            mutation_ids.contains(&a1[1].id),
+            "a-1 ToolResult should be pruned"
+        );
+        assert!(
+            !mutation_ids.contains(&a2[0].id),
+            "a-2 ToolCall should be kept"
+        );
+        assert!(
+            !mutation_ids.contains(&a2[1].id),
+            "a-2 ToolResult should be kept"
+        );
+    }
+
+    #[test]
+    fn mixed_todo_tools_keeps_only_last() {
+        let mut history = Vec::new();
+        // add_task (oldest)
+        let a1 = add_task_call_result("a-1", "created t1");
+        history.push(a1[0].clone());
+        history.push(a1[1].clone());
+        // add_phase (middle)
+        let a2 = add_phase_call_result("a-2", "created phase");
+        history.push(a2[0].clone());
+        history.push(a2[1].clone());
+        // get_task_list (newest — should be kept)
+        let g1 = get_task_list_call_result("g-1", "list v1");
+        history.push(g1[0].clone());
+        history.push(g1[1].clone());
+
+        let mutations = evaluate(history);
+        // a-1 pair + a-2 pair = 4 mutations.
+        assert_eq!(mutations.len(), 4);
+
+        let mutation_ids: Vec<_> = mutations
+            .iter()
+            .filter_map(|m| match m {
+                HistoryMutation::SetContextOverride { entry_id, .. } => Some(entry_id.clone()),
+                _ => None,
+            })
+            .collect();
+
+        // a-1 and a-2 pruned.
+        assert!(mutation_ids.contains(&a1[0].id));
+        assert!(mutation_ids.contains(&a1[1].id));
+        assert!(mutation_ids.contains(&a2[0].id));
+        assert!(mutation_ids.contains(&a2[1].id));
+        // g-1 (most recent) NOT pruned.
+        assert!(!mutation_ids.contains(&g1[0].id));
+        assert!(!mutation_ids.contains(&g1[1].id));
     }
 }
