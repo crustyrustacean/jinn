@@ -247,6 +247,7 @@ impl IntentHandler {
             Intent::RescanPromptTemplates => {
                 feat::session::intent::handle_rescan_prompt_templates(state)
             }
+            Intent::RefreshSkills => feat::picker::intent::handle_refresh_skills(state),
 
             // --- Sidebar ---
             Intent::SidebarFocus => feat::ui::sidebar::intent::handle_sidebar_focus(state),
