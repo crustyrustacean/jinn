@@ -512,7 +512,7 @@ impl WorkflowControllerActor {
     ) -> tokio::task::JoinHandle<Result<Vec<WorkflowResponse>, String>> {
         // Determine script name from config.
         let script_name = match config {
-            WorkflowConfig::Judge { .. } => "judge_fail".to_owned(),
+            WorkflowConfig::Judge { script, .. } => script.clone(),
             other => {
                 let label = other.label().to_owned();
                 return tokio::spawn(async move {
@@ -1611,6 +1611,7 @@ mod tests {
                 prompt: String::new(),
                 approval_tool: "task_complete".to_owned(),
                 result_kind: crate::feat::workflow::attached_workflow::ResultKind::Silent,
+                script: "judge_fail".to_owned(),
             },
             WorkflowTrigger::TurnEnd,
         );
@@ -1634,6 +1635,7 @@ mod tests {
                 prompt: String::new(),
                 approval_tool: "task_complete".to_owned(),
                 result_kind: crate::feat::workflow::attached_workflow::ResultKind::Silent,
+                script: "judge_fail".to_owned(),
             },
             &session_id,
             &workflow_id,
@@ -1657,4 +1659,105 @@ mod tests {
         }
     }
 
+    // --- Integration test: judge_pass end-to-end ---
+
+    #[tokio::test]
+    async fn judge_pass_pushes_system_entry_and_disables_workflow() {
+        // Given a temp dir with the judge_pass plugin.
+        let temp_dir = tempfile::TempDir::new().expect("temp dir");
+        let plugin_dir = temp_dir
+            .path()
+            .join("share")
+            .join("plugins")
+            .join("judge_pass");
+        std::fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+
+        let lua_script = r#"return {
+    run = function(ctx)
+        ctx.push_system('judgement passed')
+        ctx.turn_off()
+    end
+}
+"#;
+        let mut f = std::fs::File::create(plugin_dir.join("init.lua")).expect("create init.lua");
+        use std::io::Write;
+        write!(f, "{lua_script}").expect("write init.lua");
+
+        let paths =
+            crate::common::app_paths::AppPaths::new_in(temp_dir.path());
+        let services = TestServices::builder().paths(paths).build();
+        let state = State::new(AppState::default());
+        let session_id = state.read().session.active_session_id().clone();
+
+        let ctx = Arc::new(DomainNodeContext::new(services.clone(), state.clone()));
+        let actor = WorkflowControllerActor {
+            ctx,
+            state: state.clone(),
+            services: services.clone(),
+        };
+
+        let workflow_id = WorkflowId::new();
+        {
+            let mut guard = state.write();
+            let session = guard.session.get_mut(&session_id).expect("session");
+            let aw = AttachedWorkflow::new(
+                WorkflowConfig::Judge {
+                    prompt: String::new(),
+                    approval_tool: "task_complete".to_owned(),
+                    result_kind: crate::feat::workflow::attached_workflow::ResultKind::Silent,
+                    script: "judge_pass".to_owned(),
+                },
+                WorkflowTrigger::TurnEnd,
+            );
+            let mut custom_aw = aw;
+            custom_aw.id = workflow_id.clone();
+            session.core.attached_workflows.push(custom_aw);
+        }
+
+        // When spawning the judge_pass workflow.
+        let handle = actor.spawn_lua_workflow(
+            &WorkflowConfig::Judge {
+                prompt: String::new(),
+                approval_tool: "task_complete".to_owned(),
+                result_kind: crate::feat::workflow::attached_workflow::ResultKind::Silent,
+                script: "judge_pass".to_owned(),
+            },
+            &session_id,
+            &workflow_id,
+            &WorkflowTrigger::TurnEnd,
+        );
+
+        let result = handle.await.expect("join");
+        assert!(result.is_ok(), "workflow failed: {:?}", result);
+
+        // Then a system entry was pushed to session history.
+        {
+            let guard = state.read();
+            let session = guard.session.get(&session_id).expect("session");
+            let last = session.history().last().expect("entry exists");
+            match &last.kind {
+                crate::feat::session::chat_entry::ChatEntryKind::System(text) => {
+                    assert_eq!(text, "judgement passed");
+                }
+                other => panic!("expected System entry, got {other:?}"),
+            }
+        }
+
+        // And the attached workflow is disabled.
+        {
+            let guard = state.read();
+            let session = guard.session.get(&session_id).expect("session");
+            let aw = session
+                .core
+                .attached_workflows
+                .iter()
+                .find(|aw| aw.id == workflow_id)
+                .expect("workflow");
+            assert!(!aw.enabled);
+            assert!(matches!(
+                aw.state,
+                crate::feat::workflow::attached_workflow::AttachedWorkflowState::Completed
+            ));
+        }
+    }
 }

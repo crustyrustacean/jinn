@@ -642,6 +642,7 @@ mod tests {
                     prompt: String::new(),
                     approval_tool: "approve".into(),
                     result_kind: crate::feat::workflow::attached_workflow::ResultKind::System,
+                    script: "judge_fail".to_owned(),
                 },
             );
             state.session.active_session_id().clone()

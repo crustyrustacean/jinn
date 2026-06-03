@@ -211,6 +211,7 @@ mod tests {
                 prompt: String::new(),
                 approval_tool: "task_complete".to_owned(),
                 result_kind: crate::feat::workflow::attached_workflow::ResultKind::Silent,
+                script: "judge_fail".to_owned(),
             },
             WorkflowTrigger::TurnEnd,
         );
