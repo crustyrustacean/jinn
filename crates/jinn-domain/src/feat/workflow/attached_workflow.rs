@@ -476,9 +476,8 @@ mod tests {
 
     #[rstest::rstest]
     fn prompt_merge_strategy_default_is_replace() {
-    assert_eq!(PromptMergeStrategy::default(), PromptMergeStrategy::Replace);
+        assert_eq!(PromptMergeStrategy::default(), PromptMergeStrategy::Replace);
     }
-
 
     // --- Test 13: new_initializes_label_from_config ---
 
@@ -544,8 +543,7 @@ mod tests {
         let mut val = serde_json::to_value(&aw).expect("serialize");
         // Remove the label field to simulate old persisted data.
         val.as_object_mut().expect("object").remove("label");
-        let back: AttachedWorkflow =
-            serde_json::from_value(val).expect("should deserialize");
+        let back: AttachedWorkflow = serde_json::from_value(val).expect("should deserialize");
         // label defaults to empty string (serde default).
         assert!(back.label.is_empty());
         // But label_or_default() falls back to config label.

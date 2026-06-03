@@ -107,7 +107,8 @@ mod tests {
         // When rendering the popup.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state); render_rename_workflow_input(frame, area, &ctx);
+                let ctx = RenderCtx::new(&state);
+                render_rename_workflow_input(frame, area, &ctx);
             })
             .unwrap();
 
@@ -150,7 +151,8 @@ mod tests {
         // When rendering the popup.
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state); render_rename_workflow_input(frame, area, &ctx);
+                let ctx = RenderCtx::new(&state);
+                render_rename_workflow_input(frame, area, &ctx);
             })
             .unwrap();
 

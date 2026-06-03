@@ -214,7 +214,6 @@ pub(crate) fn clear_cursor(id: SidebarSectionId, state: &mut AppState) {
     }
 }
 
-
 fn receive_cursor(id: SidebarSectionId, enter_from: EnterFrom, state: &mut AppState) {
     match id {
         SidebarSectionId::Persona => persona_section::receive_cursor(state, enter_from),
@@ -269,7 +268,6 @@ pub fn jump_to_section(direction: &SidebarIntent, state: &mut AppState) {
             if focused == SidebarSectionId::Sessions {
                 state.frontend.sessions_section.previewed_workflow_id = None;
             }
-
 
             state.frontend.scope_stack.set_sidebar_section(target);
 

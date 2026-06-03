@@ -71,7 +71,6 @@ pub fn handle_sidebar_leave(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-
 /// Handles `SidebarFocusSessions` \u{2014} jumps directly to the Sessions sidebar section.
 ///
 /// If already in the sidebar, switches to Sessions section (clearing the
@@ -342,7 +341,6 @@ mod tests {
         state.frontend.scope_stack.push(FocusScope::SidebarPins);
         crate::feat::ui::sidebar::pins::pins_section::receive_cursor(
             &mut state,
-
             crate::feat::ui::sidebar::section_trait::EnterFrom::Top,
         );
 
@@ -369,7 +367,10 @@ mod tests {
             |_inputs, _ctx| {
                 Box::pin(async move {
                     let mut out = PortValues::new();
-                    out.insert("out".to_owned(), PortValue::Single(ScalarValue::Text("data".to_owned())));
+                    out.insert(
+                        "out".to_owned(),
+                        PortValue::Single(ScalarValue::Text("data".to_owned())),
+                    );
                     Ok(out)
                 })
             },
@@ -383,9 +384,9 @@ mod tests {
     fn sidebar_leave_with_active_workflow_goes_to_workflow() {
         // Given a state with an active workflow in WorkflowMap.
         let mut state = AppState::default();
-        let execution = std::sync::Arc::new(
-            jinn_workflow::execution::WorkflowExecution::new(test_graph()),
-        );
+        let execution = std::sync::Arc::new(jinn_workflow::execution::WorkflowExecution::new(
+            test_graph(),
+        ));
         let wf_state =
             crate::feat::workflow::workflow_state::WorkflowState::new("test".into(), execution);
         state.workflow.insert(wf_state);
@@ -395,10 +396,7 @@ mod tests {
         let _result = handle_sidebar_leave(&mut state);
 
         // Then scope is Workflow (derived from active workflow, not stale base).
-        assert_eq!(
-            state.frontend.scope_stack.current(),
-            &FocusScope::Workflow
-        );
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Workflow);
     }
 
     #[rstest::rstest]
@@ -411,19 +409,16 @@ mod tests {
         let _result = handle_sidebar_leave(&mut state);
 
         // Then scope is Normal.
-        assert_eq!(
-            state.frontend.scope_stack.current(),
-            &FocusScope::Normal
-        );
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
     }
 
     #[rstest::rstest]
     fn sidebar_leave_skips_chat_side_effects_when_workflow() {
         // Given a state with an active workflow.
         let mut state = AppState::default();
-        let execution = std::sync::Arc::new(
-            jinn_workflow::execution::WorkflowExecution::new(test_graph()),
-        );
+        let execution = std::sync::Arc::new(jinn_workflow::execution::WorkflowExecution::new(
+            test_graph(),
+        ));
         let wf_state =
             crate::feat::workflow::workflow_state::WorkflowState::new("test".into(), execution);
         state.workflow.insert(wf_state);
@@ -443,5 +438,3 @@ mod tests {
         );
     }
 }
-
-
