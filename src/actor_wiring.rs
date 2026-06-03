@@ -28,6 +28,7 @@ use jinn_domain::ProviderRegistryService;
 use jinn_domain::Services;
 use jinn_domain::SessionStoreService;
 use jinn_domain::UserPreferencesStorageService;
+
 use jinn_domain::actor_channel::ActorChannelService;
 use jinn_domain::common::actor::protocol::event::{ActorStarted, ActorStarting, AllActorsSpawned};
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
@@ -473,13 +474,13 @@ pub fn create_core_with_actor_host(
             &counter,
             &shutdown_tracker,
             HistoryWorkerActorDeps {
-                worker: CompactionWorker {
-                    services: services.clone(),
-                    handle: handle.clone(),
-                    state: state.clone(),
+                worker: CompactionWorker::new(
+                    services.clone(),
+                    handle.clone(),
+                    state.clone(),
                     config,
                     compaction_prompt,
-                },
+                ),
             },
         ));
     }
@@ -503,13 +504,13 @@ pub fn create_core_with_actor_host(
             &counter,
             &shutdown_tracker,
             CompactionTriggerActorDeps {
-                worker: CompactionWorker {
-                    services: services.clone(),
-                    handle: handle.clone(),
-                    state: state.clone(),
+                worker: CompactionWorker::new(
+                    services.clone(),
+                    handle.clone(),
+                    state.clone(),
                     config,
                     compaction_prompt,
-                },
+                ),
             },
         ));
     }

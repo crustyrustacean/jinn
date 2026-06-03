@@ -4,7 +4,8 @@
 //! exclude old entries and insert a compaction summary. Runs asynchronously
 //! (LLM call for summarization).
 
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use error_stack::ResultExt as _;
 use futures::{StreamExt, pin_mut};
@@ -64,6 +65,65 @@ pub struct CompactionWorker {
     pub config: CompactionConfig,
     /// System prompt for compaction summarization.
     pub compaction_prompt: String,
+    /// Whether an auto-compaction is currently in flight.
+    ///
+    /// Set before starting the LLM call, cleared when the compaction
+    /// summary entry is found in a subsequent snapshot (meaning mutations
+    /// were applied) or on error.
+    pub(crate) compaction_in_progress: Arc<AtomicBool>,
+    /// The `ChatEntryId` of the pending compaction summary entry.
+    ///
+    /// Used to detect when mutations have been applied by scanning the snapshot.
+    /// `None` when no compaction is in flight.
+    pub(crate) pending_compaction_id: Arc<Mutex<Option<ChatEntryId>>>,
+}
+
+impl CompactionWorker {
+    /// Creates a new compaction worker.
+    pub fn new(
+        services: Services,
+        handle: Handle,
+        state: State,
+        config: CompactionConfig,
+        compaction_prompt: String,
+    ) -> Self {
+        Self {
+            services,
+            handle,
+            state,
+            config,
+            compaction_prompt,
+            compaction_in_progress: Arc::new(AtomicBool::new(false)),
+            pending_compaction_id: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    /// Check whether the compaction summary from a previous auto-compaction
+    /// has been applied by scanning the provided snapshot for its entry ID.
+    ///
+    /// If found, clears the in-progress flag and pending ID. Returns true
+    /// if the flag was cleared (compaction applied), false if still in flight.
+    fn check_compaction_applied(&self, history: &[ChatEntry]) -> bool {
+        let guard = self.pending_compaction_id.lock().expect("lock");
+        let Some(pending_id) = guard.as_ref() else {
+            return false;
+        };
+        let found = history.iter().any(|entry| entry.id == *pending_id);
+        drop(guard);
+
+        if found {
+            self.clear_compaction_state();
+            tracing::info!("compaction summary found in snapshot, clearing in-progress flag");
+        }
+
+        found
+    }
+
+    /// Clear the compaction in-progress state (flag and pending ID).
+    fn clear_compaction_state(&self) {
+        self.compaction_in_progress.store(false, Ordering::SeqCst);
+        *self.pending_compaction_id.lock().expect("lock") = None;
+    }
 }
 
 #[async_trait::async_trait]
@@ -128,6 +188,7 @@ impl CompactionWorker {
                 &compaction_prompt,
                 &retry_config,
                 trigger.compact_all,
+                ChatEntryId::new(),
             )
             .await;
 
@@ -153,8 +214,24 @@ impl CompactionWorker {
     async fn evaluate_history(
         &self,
         session_id: &SessionId,
-        _history: &[ChatEntry],
+        history: &[ChatEntry],
     ) -> Vec<HistoryMutation> {
+        // --- Compaction deduplication gate ---
+        // If a previous auto-compaction is in flight, check whether the
+        // snapshot contains the compaction summary entry. If found, the
+        // mutations were applied — clear the flag and proceed. If not found,
+        // the LLM call or mutation application is still pending — skip.
+        if self.compaction_in_progress.load(Ordering::SeqCst) {
+            if !self.check_compaction_applied(history) {
+                tracing::info!(
+                    session_id = %session_id,
+                    "auto-compaction in flight, skipping snapshot"
+                );
+                return vec![];
+            }
+            // Compaction was applied. Fall through to normal evaluation.
+        }
+
         // Load preferences from service (outside state lock).
         let prefs = self
             .services
@@ -222,6 +299,11 @@ impl CompactionWorker {
             (config, model_name, compaction_prompt, retry_config, history)
         };
 
+        // Pre-generate the compaction entry ID and mark as in-flight.
+        let compaction_entry_id = ChatEntryId::new();
+        self.compaction_in_progress.store(true, Ordering::SeqCst);
+        *self.pending_compaction_id.lock().expect("lock") = Some(compaction_entry_id.clone());
+
         let result = self
             .evaluate_with_config(
                 &full_history,
@@ -230,13 +312,20 @@ impl CompactionWorker {
                 &compaction_prompt,
                 &retry_config,
                 false, // Not compact_all for auto-trigger
+                compaction_entry_id,
             )
             .await;
 
         match result {
+            Ok(mutations) if mutations.is_empty() => {
+                // Nothing to compact — clear flag so next snapshot can re-evaluate.
+                self.clear_compaction_state();
+                mutations
+            }
             Ok(mutations) => mutations,
             Err(e) => {
                 tracing::error!(error = %e, "compaction worker evaluation failed");
+                self.clear_compaction_state();
                 vec![]
             }
         }
@@ -255,6 +344,7 @@ impl CompactionWorker {
         compaction_prompt: &str,
         retry_config: &jinn_provider::RetryConfig,
         compact_all: bool,
+        compaction_entry_id: ChatEntryId,
     ) -> Result<Vec<HistoryMutation>, error_stack::Report<CompactionError>> {
         // Step 1: Find start boundary.
         let start_index = find_start_boundary(history);
@@ -333,7 +423,8 @@ impl CompactionWorker {
         // 8b: Insert compaction summary entry after the last gathered entry.
         let tokens_after = CharRatioEstimator.estimate(&summary);
         let compaction_entry = ChatEntry {
-            id: ChatEntryId::new(),
+            id: compaction_entry_id,
+
             timestamp: jiff::Timestamp::now(),
             kind: ChatEntryKind::Compaction {
                 summary,

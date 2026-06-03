@@ -115,6 +115,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
             .push(jinn_domain::feat::rename_session_input::render::rename_session_popup_rect(area));
     }
 
+
     // Release the state read lock before post-render steps.
     drop(state);
 
