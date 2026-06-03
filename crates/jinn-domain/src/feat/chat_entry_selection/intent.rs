@@ -93,8 +93,6 @@ pub fn handle_select_prev(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-
-
 /// Toggles the pin state of the currently selected chat entry.
 ///
 /// If the entry is pinned, sends an `UnpinChatEntry` command.
@@ -233,6 +231,7 @@ pub fn handle_yank_selected(state: &mut AppState) -> IntentResult {
 ///
 /// Returns gracefully if the selected entry cannot be resolved after
 /// validation (e.g. collapsed ignored block).
+// FIXME: fix this absolute shitshow
 pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
     // Try to continue an existing sweep.
     if let Some(target) = state.active_session_mut().take_ignore_sweep() {
@@ -287,7 +286,10 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
             let entry_id = selected.id.clone();
 
             // Propagate shown state to new sub-blocks when un-ignoring.
-            if matches!(target, ContextOverride::Default | ContextOverride::ForcedInclude) {
+            if matches!(
+                target,
+                ContextOverride::Default | ContextOverride::ForcedInclude
+            ) {
                 session.propagate_shown_on_unignore(&entry_id);
             }
 
@@ -317,6 +319,12 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     }
 
+    // If cursor is on a collapsed block, skip past it.
+    if state.active_session().is_selected_collapsed_block() {
+        advance_selection_one(state.active_session_mut());
+        return IntentResult::empty();
+    }
+
     // Toggle the entry's ignore state.
     state.active_session_mut().toggle_entry_ignored();
 
@@ -329,7 +337,9 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
 
     // Propagate shown blocks if this toggle brought an entry into context
     // and split a previously shown excluded block.
-    state.active_session_mut().propagate_shown_on_unignore(&entry_id);
+    state
+        .active_session_mut()
+        .propagate_shown_on_unignore(&entry_id);
 
     // Advance cursor.
     advance_selection_one(state.active_session_mut());
@@ -1482,14 +1492,18 @@ mod tests {
         };
 
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("before"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("before"));
         for _ in 0..10 {
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("ignored").with_ignored(true));
         }
         for _ in 0..5 {
-            state.active_session_mut().push_entry(ChatEntry::user("after"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("after"));
         }
 
         // Build visual items so the collapsed block exists.
@@ -1512,7 +1526,9 @@ mod tests {
             .iter()
             .position(|i| matches!(i, VisualItem::Entry(0)))
             .expect("first entry");
-        state.active_session_mut().set_selected_entry_index(first_vi);
+        state
+            .active_session_mut()
+            .set_selected_entry_index(first_vi);
 
         // First press - toggles entry 0 to ForcedExclude, advances.
         let _result = handle_ignore_selected(&mut state);
@@ -1562,14 +1578,18 @@ mod tests {
         };
 
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("before"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("before"));
         for _ in 0..15 {
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("ignored").with_ignored(true));
         }
         for _ in 0..5 {
-            state.active_session_mut().push_entry(ChatEntry::user("after"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("after"));
         }
 
         // Show (expand) the block first.
@@ -1640,15 +1660,23 @@ mod tests {
         };
 
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("before"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("before"));
         for _ in 0..10 {
             state
                 .active_session_mut()
                 .push_entry(ChatEntry::user("ignored").with_ignored(true));
         }
-        state.active_session_mut().push_entry(ChatEntry::user("after1"));
-        state.active_session_mut().push_entry(ChatEntry::user("after2"));
-        state.active_session_mut().push_entry(ChatEntry::user("after3"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("after1"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("after2"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("after3"));
 
         // Build visual items.
         let items = build_visual_items(
@@ -1660,7 +1688,9 @@ mod tests {
         state.active_session_mut().set_visual_items(items.clone());
 
         // Verify layout: Entry(0), CollapsedIgnoredBlock(1, 10), Entry(11), Entry(12), Entry(13).
-        let collapsed = items.iter().find(|i| matches!(i, VisualItem::CollapsedIgnoredBlock { .. }));
+        let collapsed = items
+            .iter()
+            .find(|i| matches!(i, VisualItem::CollapsedIgnoredBlock { .. }));
         assert!(collapsed.is_some(), "should have a collapsed block");
 
         // Select first user entry ("before").
@@ -1668,7 +1698,9 @@ mod tests {
             .iter()
             .position(|i| matches!(i, VisualItem::Entry(0)))
             .expect("first entry");
-        state.active_session_mut().set_selected_entry_index(first_vi);
+        state
+            .active_session_mut()
+            .set_selected_entry_index(first_vi);
 
         // First press - toggles "before" to ForcedExclude, advances to collapsed block.
         let _result = handle_ignore_selected(&mut state);
@@ -1683,7 +1715,10 @@ mod tests {
         // The sweep should have continued — cursor should now be on an entry
         // after the collapsed block (not stuck on it).
         let selected_idx = state.active_session().selected_entry_index();
-        assert!(selected_idx.is_some(), "cursor should have a selection after sweep through block");
+        assert!(
+            selected_idx.is_some(),
+            "cursor should have a selection after sweep through block"
+        );
 
         // The selected entry should be one of the "after" entries (history index 11+).
         let selected_entry = state.active_session().selected_entry().expect("entry");
@@ -1696,10 +1731,16 @@ mod tests {
         // Third press - should continue sweeping the "after" entries.
         let _result = handle_ignore_selected(&mut state);
         // Verify one of the after entries got ForcedExclude.
-        let any_after_excluded = state.active_session().history().iter()
+        let any_after_excluded = state
+            .active_session()
+            .history()
+            .iter()
             .skip(11)
             .any(|e| e.context_override == ContextOverride::ForcedExclude);
-        assert!(any_after_excluded, "at least one 'after' entry should be ForcedExclude");
+        assert!(
+            any_after_excluded,
+            "at least one 'after' entry should be ForcedExclude"
+        );
     }
 
     #[rstest::rstest]
@@ -1727,7 +1768,9 @@ mod tests {
                 .push_entry(ChatEntry::user("ignored2").with_ignored(true));
         }
         for _ in 0..5 {
-            state.active_session_mut().push_entry(ChatEntry::user("after"));
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user("after"));
         }
 
         // Build visual items.
@@ -1754,7 +1797,9 @@ mod tests {
             .iter()
             .position(|i| matches!(i, VisualItem::Entry(0)))
             .expect("first entry");
-        state.active_session_mut().set_selected_entry_index(first_vi);
+        state
+            .active_session_mut()
+            .set_selected_entry_index(first_vi);
 
         // First press - toggles entry "a" to ForcedExclude.
         let _result = handle_ignore_selected(&mut state);
