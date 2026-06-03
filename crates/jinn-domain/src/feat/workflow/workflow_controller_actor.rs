@@ -758,4 +758,3 @@ impl WorkflowControllerActor {
         }
     }
 }
-

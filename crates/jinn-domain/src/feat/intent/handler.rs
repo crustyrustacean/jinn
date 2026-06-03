@@ -469,7 +469,6 @@ fn selected_entry_is_workflow(state: &AppState) -> bool {
     )
 }
 
-
 /// Cancel stream prompt intercept.
 ///
 /// If the cancel-stream confirmation prompt is showing:
@@ -1123,10 +1122,7 @@ mod tests {
         }
         // entries: [session, workflow]
         state.frontend.sessions_section.selected_index = Some(1);
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::SidebarSessions);
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         state
     }
 

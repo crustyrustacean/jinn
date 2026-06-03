@@ -564,7 +564,6 @@ impl ChatSessionState {
         }
     }
 
-
     /// After a sweep changes an entry from excluded to in-context, propagate
     /// `shown_ignored_blocks` to any new sub-blocks created by the split.
     ///
@@ -604,11 +603,10 @@ impl ChatSessionState {
         }
 
         // The forward sub-block's representative is its first entry.
-        self.ui.shown_ignored_blocks.insert(forward_entry.id.clone());
+        self.ui
+            .shown_ignored_blocks
+            .insert(forward_entry.id.clone());
     }
-
-
-
 
     /// Rebuild the visual items list from the current history and
     /// `shown_ignored_blocks`. Needed during sweep operations to keep the
@@ -2136,7 +2134,6 @@ impl ChatSessionState {
         self.selected_visual_item()
             .is_some_and(|item| matches!(item, VisualItem::CollapsedIgnoredBlock { .. }))
     }
-
 
     /// Resolve the selected visual-item index to a history index.
     ///
