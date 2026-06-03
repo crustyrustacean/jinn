@@ -564,6 +564,68 @@ impl ChatSessionState {
         }
     }
 
+
+    /// After a sweep changes an entry from excluded to in-context, propagate
+    /// `shown_ignored_blocks` to any new sub-blocks created by the split.
+    ///
+    /// When an entry inside a shown (expanded) ignored block becomes in-context,
+    /// it splits the block. If the original block was shown, the new forward
+    /// sub-block should also be shown so entries remain visible.
+    ///
+    /// No-op if the entry was not inside a shown block.
+    pub fn propagate_shown_on_unignore(&mut self, entry_id: &ChatEntryId) {
+        let Some(idx) = self.core.history.iter().position(|e| e.id == *entry_id) else {
+            return;
+        };
+
+        // Scan backward to find the containing block's start.
+        let mut block_start = idx;
+        while block_start > 0
+            && !self.core.history[block_start - 1].is_in_context()
+            && self.core.history[block_start - 1].pin_position.is_none()
+        {
+            block_start -= 1;
+        }
+
+        let block_representative = self.core.history[block_start].id.clone();
+        if !self.ui.shown_ignored_blocks.contains(&block_representative) {
+            return; // Block was not shown — nothing to propagate.
+        }
+
+        // Scan forward from the changed entry to find a new forward sub-block.
+        let forward_start = idx + 1;
+        if forward_start >= self.core.history.len() {
+            return;
+        }
+
+        let forward_entry = &self.core.history[forward_start];
+        if forward_entry.is_in_context() || forward_entry.pin_position.is_some() {
+            return; // No excluded entries after — no sub-block to create.
+        }
+
+        // The forward sub-block's representative is its first entry.
+        self.ui.shown_ignored_blocks.insert(forward_entry.id.clone());
+    }
+
+
+
+
+    /// Rebuild the visual items list from the current history and
+    /// `shown_ignored_blocks`. Needed during sweep operations to keep the
+    /// visual items consistent with mutated entry state between render passes.
+    pub fn rebuild_visual_items(&self) {
+        use crate::feat::ui::chat_log::visual_item::{
+            DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
+        };
+        let items = build_visual_items(
+            &self.core.history,
+            &self.ui.shown_ignored_blocks,
+            PROXIMITY_COUNT,
+            DEFAULT_MIN_COLLAPSE_COUNT,
+        );
+        self.set_visual_items(items);
+    }
+
     /// Returns the sweep target state if an active sweep exists and has not
     /// expired (>100ms since last press). Consumes (clears) the sweep state
     /// regardless of expiry - the caller must re-store it if continuing.
@@ -2068,6 +2130,13 @@ impl ChatSessionState {
             .get(idx)
             .cloned()
     }
+
+    /// Whether the cursor is currently on a collapsed ignored block.
+    pub fn is_selected_collapsed_block(&self) -> bool {
+        self.selected_visual_item()
+            .is_some_and(|item| matches!(item, VisualItem::CollapsedIgnoredBlock { .. }))
+    }
+
 
     /// Resolve the selected visual-item index to a history index.
     ///
