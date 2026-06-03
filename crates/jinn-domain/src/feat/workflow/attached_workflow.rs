@@ -85,6 +85,9 @@ pub enum WorkflowConfig {
         approval_tool: String,
         /// What kind of entry the result gets pushed as.
         result_kind: ResultKind,
+        /// Lua plugin name to execute for this judge.
+        #[serde(default = "default_judge_script")]
+        script: String,
     },
     Divergence {
         /// Number of parallel clones with temperature variation.
@@ -101,6 +104,10 @@ pub enum WorkflowConfig {
 
 fn default_approval_tool() -> String {
     "task_complete".to_owned()
+}
+
+fn default_judge_script() -> String {
+    "judge_fail".to_owned()
 }
 
 fn default_temperature() -> f32 {
@@ -132,6 +139,7 @@ impl WorkflowConfig {
                 prompt: String::new(),
                 approval_tool: String::from("approve"),
                 result_kind: ResultKind::System,
+                script: "judge_fail".to_owned(),
             },
         }
     }
@@ -263,6 +271,7 @@ impl OneShotKind {
                 prompt: String::new(), // loaded from config dir via fallback
                 approval_tool: "task_complete".to_owned(),
                 result_kind: ResultKind::Silent,
+                script: "judge_fail".to_owned(),
             },
         }
     }
@@ -305,7 +314,8 @@ mod tests {
             WorkflowConfig::Judge {
                 prompt: String::new(),
                 approval_tool: "task_complete".to_owned(),
-                result_kind: ResultKind::Silent
+                result_kind: ResultKind::Silent,
+                script: "judge_fail".to_owned(),
             }
             .label(),
             "Judge"
@@ -387,6 +397,7 @@ mod tests {
                 prompt: "Be harsh".to_owned(),
                 approval_tool: "approve".to_owned(),
                 result_kind: ResultKind::Silent,
+                script: "judge_fail".to_owned(),
             },
             WorkflowConfig::Divergence {
                 n: 5,
@@ -517,6 +528,7 @@ mod tests {
                 prompt: String::new(),
                 approval_tool: "task_complete".to_owned(),
                 result_kind: ResultKind::Silent,
+                script: "judge_fail".to_owned(),
             },
             WorkflowTrigger::TurnEnd,
         );
