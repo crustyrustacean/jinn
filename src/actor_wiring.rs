@@ -715,18 +715,12 @@ pub fn create_core_with_actor_host(
             registry: workflow_registry,
         },
     ));
-    // Workflow controller actor - orchestrates attached workflow lifecycle.
-    actors.push(spawn::<WorkflowControllerActor>(
-        "workflow-controller",
-        &sink,
-        handle,
-        &counter,
-        &shutdown_tracker,
-        WorkflowControllerActorDeps {
-            state: state.clone(),
-            services: services.clone(),
-        },
-    ));
+    // Discover Lua plugins.
+    {
+        let plugins = jinn_domain::feat::luaworkflow::discovery::discover_plugins(&paths);
+        tracing::info!(count = plugins.len(), "discovered Lua plugins");
+        state.write().discovered_plugins = plugins;
+    }
 
     // ── Plugin actor ─────────────────────────────────────────────────────
     // The PluginActor receives domain events and dispatches them to Lua plugin
