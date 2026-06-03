@@ -34,7 +34,7 @@ use crate::feat::workflow::workflow_state::{WorkflowExecutionState, WorkflowId};
 use crate::protocol::{Command, Event};
 
 use crate::feat::luaworkflow::host_handler::LuaHostHandler;
-use jinn_lua_workflow::{spawn_one_shot, CtxConfig, HostRequest};
+use jinn_lua_workflow::{CtxConfig, HostRequest, spawn_one_shot};
 
 /// The workflow controller actor.
 ///
@@ -71,7 +71,10 @@ impl Actor for WorkflowControllerActor {
 
         ctx.set_description("Orchestrates attached workflow lifecycle");
 
-        let domain_ctx = Arc::new(DomainNodeContext::new(deps.services.clone(), deps.state.clone()));
+        let domain_ctx = Arc::new(DomainNodeContext::new(
+            deps.services.clone(),
+            deps.state.clone(),
+        ));
 
         let actor = Self {
             ctx: domain_ctx,
@@ -486,7 +489,11 @@ impl WorkflowControllerActor {
                 Err(e) => Err(format!("join error: {e}")),
             };
 
-            let actor = WorkflowControllerActor { ctx, state, services };
+            let actor = WorkflowControllerActor {
+                ctx,
+                state,
+                services,
+            };
             actor.apply_workflow_result(&session_id_clone, &workflow_id, response);
 
             {
@@ -515,9 +522,9 @@ impl WorkflowControllerActor {
             WorkflowConfig::Judge { script, .. } => script.clone(),
             other => {
                 let label = other.label().to_owned();
-                return tokio::spawn(async move {
-                    Err(format!("unsupported Lua config: {label}"))
-                });
+                return tokio::spawn(
+                    async move { Err(format!("unsupported Lua config: {label}")) },
+                );
             }
         };
 
@@ -580,12 +587,7 @@ impl WorkflowControllerActor {
         let (host_tx, host_rx) = kanal::unbounded::<HostRequest>();
 
         // Spawn the Lua VM.
-        let mut vm_handle = spawn_one_shot(
-            script_source,
-            script_name.clone(),
-            host_tx,
-            ctx_config,
-        );
+        let mut vm_handle = spawn_one_shot(script_source, script_name.clone(), host_tx, ctx_config);
 
         // Spawn handler task that processes host requests.
         let state = self.state.clone();
@@ -608,7 +610,6 @@ impl WorkflowControllerActor {
                         HostRequest::Shutdown => break,
                         request => {
                             handler.handle_request(request).await;
-
                         }
                     }
                 }
@@ -640,7 +641,6 @@ impl WorkflowControllerActor {
             Ok(Vec::new())
         })
     }
-
 
     /// Apply a workflow result to the session.
     fn apply_workflow_result(
@@ -889,14 +889,14 @@ mod tests {
 
     use super::*;
     use crate::common::app_state::AppState;
-    use crate::common::services::test_services::TestServices;
     use crate::common::services::Services;
+    use crate::common::services::test_services::TestServices;
 
+    use crate::feat::session::chat_entry::ChatEntryKind;
     use crate::feat::session::chat_session::ChatSessionState;
     use crate::feat::workflow::attached_workflow::{
         AttachedWorkflowState, OneShotKind, WorkflowConfig, WorkflowTrigger,
     };
-    use crate::feat::session::chat_entry::ChatEntryKind;
     use crate::protocol::SessionId;
 
     struct TestHarness {
@@ -1029,7 +1029,11 @@ mod tests {
         let services = TestServices::builder().build();
         let state = h.state.clone();
         let ctx = Arc::new(DomainNodeContext::new(services, state.clone()));
-        let mut actor = WorkflowControllerActor { ctx, state, services: h.services.clone() };
+        let mut actor = WorkflowControllerActor {
+            ctx,
+            state,
+            services: h.services.clone(),
+        };
 
         let session = ChatSessionState::new();
         let session_id = session.session_id().clone();
@@ -1061,7 +1065,11 @@ mod tests {
         let services = TestServices::builder().build();
         let state = h.state.clone();
         let ctx = Arc::new(DomainNodeContext::new(services, state.clone()));
-        let mut actor = WorkflowControllerActor { ctx, state, services: h.services.clone() };
+        let mut actor = WorkflowControllerActor {
+            ctx,
+            state,
+            services: h.services.clone(),
+        };
 
         let mut session = ChatSessionState::new();
         let aw = AttachedWorkflow::new(
@@ -1094,7 +1102,11 @@ mod tests {
         let services = TestServices::builder().build();
         let state = h.state.clone();
         let ctx = Arc::new(DomainNodeContext::new(services, state.clone()));
-        let mut actor = WorkflowControllerActor { ctx, state, services: h.services.clone() };
+        let mut actor = WorkflowControllerActor {
+            ctx,
+            state,
+            services: h.services.clone(),
+        };
 
         let mut session = ChatSessionState::new();
         let aw = AttachedWorkflow::new(
@@ -1139,7 +1151,11 @@ mod tests {
         let services = TestServices::builder().build();
         let state = h.state.clone();
         let ctx = Arc::new(DomainNodeContext::new(services, state.clone()));
-        let actor = WorkflowControllerActor { ctx, state, services: h.services.clone() };
+        let actor = WorkflowControllerActor {
+            ctx,
+            state,
+            services: h.services.clone(),
+        };
 
         let mut session = ChatSessionState::new();
         let aw = AttachedWorkflow::new(
@@ -1173,7 +1189,11 @@ mod tests {
         let services = TestServices::builder().build();
         let state = h.state.clone();
         let ctx = Arc::new(DomainNodeContext::new(services, state.clone()));
-        let actor = WorkflowControllerActor { ctx, state, services: h.services.clone() };
+        let actor = WorkflowControllerActor {
+            ctx,
+            state,
+            services: h.services.clone(),
+        };
 
         let mut session = ChatSessionState::new();
         let aw = AttachedWorkflow::new(
@@ -1210,7 +1230,11 @@ mod tests {
 
         let state = h.state.clone();
         let ctx = Arc::new(DomainNodeContext::new(services, state.clone()));
-        let actor = WorkflowControllerActor { ctx, state, services: h.services.clone() };
+        let actor = WorkflowControllerActor {
+            ctx,
+            state,
+            services: h.services.clone(),
+        };
 
         let mut session = ChatSessionState::new();
         let aw = AttachedWorkflow::new(
@@ -1244,7 +1268,11 @@ mod tests {
         let services = TestServices::builder().build();
         let state = h.state.clone();
         let ctx = Arc::new(DomainNodeContext::new(services, state.clone()));
-        let mut actor = WorkflowControllerActor { ctx, state, services: h.services.clone() };
+        let mut actor = WorkflowControllerActor {
+            ctx,
+            state,
+            services: h.services.clone(),
+        };
 
         let mut session = ChatSessionState::new();
         let aw = AttachedWorkflow::new(
@@ -1282,7 +1310,11 @@ mod tests {
         let services = TestServices::builder().build();
         let state = h.state.clone();
         let ctx = Arc::new(DomainNodeContext::new(services, state.clone()));
-        let mut actor = WorkflowControllerActor { ctx, state, services: h.services.clone() };
+        let mut actor = WorkflowControllerActor {
+            ctx,
+            state,
+            services: h.services.clone(),
+        };
 
         let mut session = ChatSessionState::new();
         let aw = AttachedWorkflow::new(
@@ -1578,14 +1610,17 @@ mod tests {
 
     // --- Integration test: judge_fail end-to-end ---
 
-
     #[tokio::test]
     async fn judge_fail_pushes_user_entry_to_session() {
         use std::io::Write as _;
 
         // Given a temp dir with the judge_fail plugin.
         let temp_dir = tempfile::TempDir::new().expect("temp dir");
-        let plugin_dir = temp_dir.path().join("share").join("plugins").join("judge_fail");
+        let plugin_dir = temp_dir
+            .path()
+            .join("share")
+            .join("plugins")
+            .join("judge_fail");
         std::fs::create_dir_all(&plugin_dir).expect("create plugin dir");
         let mut f = std::fs::File::create(plugin_dir.join("init.lua")).expect("create init.lua");
         write!(
@@ -1683,8 +1718,7 @@ mod tests {
         use std::io::Write;
         write!(f, "{lua_script}").expect("write init.lua");
 
-        let paths =
-            crate::common::app_paths::AppPaths::new_in(temp_dir.path());
+        let paths = crate::common::app_paths::AppPaths::new_in(temp_dir.path());
         let services = TestServices::builder().paths(paths).build();
         let state = State::new(AppState::default());
         let session_id = state.read().session.active_session_id().clone();
@@ -1783,8 +1817,7 @@ mod tests {
         use std::io::Write;
         write!(f, "{lua_script}").expect("write init.lua");
 
-        let paths =
-            crate::common::app_paths::AppPaths::new_in(temp_dir.path());
+        let paths = crate::common::app_paths::AppPaths::new_in(temp_dir.path());
         let services = TestServices::builder().paths(paths).build();
         let state = State::new(AppState::default());
         let session_id = state.read().session.active_session_id().clone();
