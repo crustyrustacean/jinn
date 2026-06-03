@@ -591,9 +591,10 @@ impl WorkflowControllerActor {
         let state = self.state.clone();
         let handler_sid = session_id.clone();
         let handler_wid = workflow_id.clone();
+        let handler_ctx = self.ctx.clone();
 
         tokio::spawn(async move {
-            let handler = LuaHostHandler::new(state.clone());
+            let handler = LuaHostHandler::new(state.clone(), handler_ctx);
 
             // Process host requests synchronously.
             // The VM sends requests via kanal (sync channel) and blocks
@@ -610,7 +611,7 @@ impl WorkflowControllerActor {
                     match req {
                         HostRequest::Shutdown => break,
                         request => {
-                            handler.handle_request(request);
+                            handler.handle_request(request).await;
                         }
                     }
                 }

@@ -8,33 +8,39 @@
 //! - `PushSystem` → pushes a [`ChatEntry::system`] into session history
 //! - `TurnOff` → disables an attached workflow
 
+use std::sync::Arc;
+
 use jinn_lua_workflow::HostRequest;
 
 use crate::common::state::State;
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::workflow::attached_workflow::AttachedWorkflowState;
+use crate::feat::workflow::domain_node_context::DomainNodeContext;
 
 /// Host-side handler for Lua VM requests.
 ///
 /// Processes [`HostRequest`] variants against the domain layer.
-/// Holds shared state for accessing sessions and workflow attachments.
+/// Holds shared state for accessing sessions and workflow attachments,
+/// and a [`DomainNodeContext`] for LLM calls.
 #[derive(Clone)]
 pub struct LuaHostHandler {
     /// Shared application state.
     state: State,
+    /// Domain node context for LLM access.
+    ctx: Arc<DomainNodeContext>,
 }
 
 impl LuaHostHandler {
     /// Creates a new host handler.
-    pub fn new(state: State) -> Self {
-        Self { state }
+    pub fn new(state: State, ctx: Arc<DomainNodeContext>) -> Self {
+        Self { state, ctx }
     }
 
-    /// Handles a single host request.
+    /// Handles a single host request asynchronously.
     ///
     /// Processes the request and sends the response through the
     /// oneshot channel included in the request variant.
-    pub fn handle_request(&self, request: HostRequest) {
+    pub async fn handle_request(&self, request: HostRequest) {
         match request {
             HostRequest::Llm {
                 session_id,
@@ -42,7 +48,7 @@ impl LuaHostHandler {
                 system_prompt,
                 respond_to,
             } => {
-                let result = self.handle_llm(&session_id, &prompt, system_prompt.as_deref());
+                let result = self.handle_llm(&session_id, &prompt, system_prompt.as_deref()).await;
                 let _ = respond_to.send(result);
             }
             HostRequest::PushUser {
@@ -80,26 +86,36 @@ impl LuaHostHandler {
             if matches!(request, HostRequest::Shutdown) {
                 break;
             }
-            self.handle_request(request);
+            self.handle_request(request).await;
         }
         tracing::debug!("lua host handler shutting down");
     }
 
     /// Handles an LLM request.
     ///
-    /// For this iteration, returns an error since LLM integration
-    /// requires `DomainNodeContext` which needs actor infrastructure.
-    /// Full LLM support will be added when wiring into the actor system.
-    fn handle_llm(
+    /// Calls [`DomainNodeContext::send_llm_request_cloned`] to invoke the LLM
+    /// in a cloned session. The response is returned through the oneshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error string if the session is not found or the LLM call fails.
+    async fn handle_llm(
         &self,
-        _session_id: &str,
-        _prompt: &str,
-        _system_prompt: Option<&str>,
+        session_id: &str,
+        prompt: &str,
+        system_prompt: Option<&str>,
     ) -> Result<String, String> {
-        // TODO: Wire through DomainNodeContext::send_llm_request_cloned
-        // This requires the host handler to have access to DomainNodeContext,
-        // which will be provided when integrating with the actor system.
-        Err("llm capability not yet wired to domain layer".to_owned())
+        let session_id_typed = crate::protocol::SessionId::from(session_id.to_owned());
+        self.ctx
+            .send_llm_request_cloned(
+                &session_id_typed,
+                prompt.to_owned(),
+                system_prompt.map(std::borrow::ToOwned::to_owned),
+                vec![],
+                None,
+            )
+            .await
+            .map_err(|e| format!("llm request failed: {e}"))
     }
 
     /// Handles a PushUser request.
@@ -163,13 +179,21 @@ mod tests {
 
     use super::*;
     use crate::common::app_state::AppState;
+    use crate::common::services::test_services::TestServices;
     use crate::feat::session::chat_session::ChatSessionState;
     use crate::feat::workflow::attached_workflow::{
         AttachedWorkflow, WorkflowConfig, WorkflowTrigger,
     };
-    use crate::protocol::SessionId;
     use crate::feat::workflow::workflow_state::WorkflowId;
+    use crate::protocol::SessionId;
     use tokio::sync::oneshot;
+
+    /// Creates a handler with test services for non-LLM tests.
+    fn make_handler(state: State) -> LuaHostHandler {
+        let services = TestServices::builder().build();
+        let ctx = Arc::new(DomainNodeContext::new(services, state.clone()));
+        LuaHostHandler::new(state, ctx)
+    }
 
     fn make_state_with_session() -> (State, SessionId) {
         let state = State::new(AppState::default());
@@ -191,12 +215,13 @@ mod tests {
             WorkflowTrigger::TurnEnd,
         );
         // Override the ID to our known value.
-        let mut guard = state.write();
-        let session = guard.session.get_mut(&session_id).expect("session");
-        let mut custom_aw = aw;
-        custom_aw.id = workflow_id.clone();
-        session.core.attached_workflows.push(custom_aw);
-        drop(guard);
+        {
+            let mut guard = state.write();
+            let session = guard.session.get_mut(&session_id).expect("session");
+            let mut custom_aw = aw;
+            custom_aw.id = workflow_id.clone();
+            session.core.attached_workflows.push(custom_aw);
+        }
         (state, session_id, workflow_id)
     }
 
@@ -205,14 +230,16 @@ mod tests {
     #[tokio::test]
     async fn push_user_creates_user_entry_in_session() {
         let (state, session_id) = make_state_with_session();
-        let handler = LuaHostHandler::new(state.clone());
+        let handler = make_handler(state.clone());
 
         let (resp_tx, resp_rx) = oneshot::channel();
-        handler.handle_request(HostRequest::PushUser {
-            session_id: session_id.to_string(),
-            text: "judgement failed, try again".to_owned(),
-            respond_to: resp_tx,
-        });
+        handler
+            .handle_request(HostRequest::PushUser {
+                session_id: session_id.to_string(),
+                text: "judgement failed, try again".to_owned(),
+                respond_to: resp_tx,
+            })
+            .await;
 
         resp_rx.await.expect("response").expect("push_user");
 
@@ -231,32 +258,36 @@ mod tests {
     #[tokio::test]
     async fn push_user_returns_error_for_unknown_session() {
         let (state, _) = make_state_with_session();
-        let handler = LuaHostHandler::new(state);
+        let handler = make_handler(state);
 
         let (resp_tx, resp_rx) = oneshot::channel();
-        handler.handle_request(HostRequest::PushUser {
-            session_id: "nonexistent".to_owned(),
-            text: "test".to_owned(),
-            respond_to: resp_tx,
-        });
+        handler
+            .handle_request(HostRequest::PushUser {
+                session_id: "nonexistent".to_owned(),
+                text: "test".to_owned(),
+                respond_to: resp_tx,
+            })
+            .await;
 
         let result = resp_rx.await.expect("response");
         assert!(result.is_err());
     }
 
-    // ── PushSystem ────────────────────���────────────────────────────────
+    // ── PushSystem ─────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn push_system_creates_system_entry_in_session() {
         let (state, session_id) = make_state_with_session();
-        let handler = LuaHostHandler::new(state.clone());
+        let handler = make_handler(state.clone());
 
         let (resp_tx, resp_rx) = oneshot::channel();
-        handler.handle_request(HostRequest::PushSystem {
-            session_id: session_id.to_string(),
-            text: "judgement passed".to_owned(),
-            respond_to: resp_tx,
-        });
+        handler
+            .handle_request(HostRequest::PushSystem {
+                session_id: session_id.to_string(),
+                text: "judgement passed".to_owned(),
+                respond_to: resp_tx,
+            })
+            .await;
 
         resp_rx.await.expect("response").expect("push_system");
 
@@ -277,13 +308,15 @@ mod tests {
     #[tokio::test]
     async fn turn_off_disables_attached_workflow() {
         let (state, session_id, workflow_id) = make_state_with_session_and_workflow();
-        let handler = LuaHostHandler::new(state.clone());
+        let handler = make_handler(state.clone());
 
         let (resp_tx, resp_rx) = oneshot::channel();
-        handler.handle_request(HostRequest::TurnOff {
-            workflow_id: workflow_id.to_string(),
-            respond_to: resp_tx,
-        });
+        handler
+            .handle_request(HostRequest::TurnOff {
+                workflow_id: workflow_id.to_string(),
+                respond_to: resp_tx,
+            })
+            .await;
 
         resp_rx.await.expect("response").expect("turn_off");
 
@@ -302,24 +335,26 @@ mod tests {
     #[tokio::test]
     async fn turn_off_returns_error_for_unknown_workflow() {
         let (state, _, _) = make_state_with_session_and_workflow();
-        let handler = LuaHostHandler::new(state);
+        let handler = make_handler(state);
 
         let (resp_tx, resp_rx) = oneshot::channel();
-        handler.handle_request(HostRequest::TurnOff {
-            workflow_id: "nonexistent".to_owned(),
-            respond_to: resp_tx,
-        });
+        handler
+            .handle_request(HostRequest::TurnOff {
+                workflow_id: "nonexistent".to_owned(),
+                respond_to: resp_tx,
+            })
+            .await;
 
         let result = resp_rx.await.expect("response");
         assert!(result.is_err());
     }
 
-    // ── Run loop ───────────────────────────────────────────────────────
+    // ── Run loop ──────────────────────���────────────────────────────────
 
     #[tokio::test]
     async fn run_loop_processes_requests_until_shutdown() {
         let (state, session_id) = make_state_with_session();
-        let handler = LuaHostHandler::new(state.clone());
+        let handler = make_handler(state.clone());
 
         let (tx, rx) = kanal::unbounded::<HostRequest>();
 
