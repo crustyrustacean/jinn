@@ -63,6 +63,7 @@ impl TuiWorld {
             user_preferences_storage: jinn_domain::UserPreferencesStorageService::new(Arc::new(
                 jinn_domain::InMemoryUserPreferencesStorage::new(),
             )),
+            tempdir: None,
         };
 
         let app = TuiApp::test_builder().services(services).build();
