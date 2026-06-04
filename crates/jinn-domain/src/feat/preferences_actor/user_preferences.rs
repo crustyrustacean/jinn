@@ -882,10 +882,8 @@ where
             .change_context(UserPreferencesError::Parse)
             .attach("failed to serialize UserPreferences")?;
 
-        let new_table = match &new_value {
-            toml::Value::Table(t) => t,
-            _ => unreachable!("UserPreferences always serializes to a table"),
-        };
+        let toml::Value::Table(new_table) = &new_value
+            else { unreachable!("UserPreferences always serializes to a table") };
         let mut patcher = DocumentPatcher::new();
         patcher.register_array_key(["session_lifecycle"], "name");
         patcher.register_array_key(["auto_prune", "regex", "rules"], "pattern");
