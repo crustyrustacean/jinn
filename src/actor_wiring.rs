@@ -50,7 +50,7 @@ use jinn_domain::{
     wait_for_system_ready,
 };
 
-use crate::plugin_actor::{PluginActor, PluginActorDeps};
+
 
 /// Creates an `AppCore` with all actors registered and the async forwarding task started.
 ///
@@ -717,52 +717,16 @@ pub fn create_core_with_actor_host(
         state.write().discovered_plugins = plugins;
     }
 
-    // ── Plugin actor ─────────────────────────────────────────────────────
-    // The PluginActor receives domain events and dispatches them to Lua plugin
-    // VMs. The `!Send` PluginRegistry is created on a dedicated OS thread.
-    let startup_session_id = state.read().session.active_session_id().to_string();
-    let plugin_paths = paths.clone();
-    let plugin_sink = sink.clone();
-    actors.push(spawn::<PluginActor>(
-        "plugin-dispatch",
-        &sink,
-        handle,
-        &counter,
-        &shutdown_tracker,
-        PluginActorDeps {
-            registry_factory: Box::new(move || {
-                let translator = crate::plugin_wiring::build_translator();
-                let cmd_sender_sink = plugin_sink.clone();
-                let cmd_sender =
-                    jinn_plugin::CommandSender::new(move |cmd: jinn_domain::Command| {
-                        let _ = cmd_sender_sink.send_command(cmd);
-                    });
-                let registry = jinn_plugin::PluginRegistry::new(translator, cmd_sender);
-
-                // Load system plugins.
-                let mut plugin_count = 0usize;
-                let system_dir = plugin_paths.system_plugins_dir();
-                if system_dir.is_dir() {
-                    let infos = registry.load_all(&system_dir);
-                    plugin_count += infos.len();
-                }
-
-                // Load user plugins.
-                let user_dir = plugin_paths.plugins_dir();
-                if user_dir.is_dir() {
-                    let infos = registry.load_all(&user_dir);
-                    plugin_count += infos.len();
-                }
-
-                if plugin_count > 0 {
-                    tracing::info!(count = plugin_count, "loaded plugins");
-                }
-
-                registry
-            }),
-            startup_session_id,
-        },
-    ));
+    // ── Plugin system ───────────────────────────────────────────────
+    // TODO(Phase 7): Replace with PluginSystem::new once all consumers are
+    // updated. For now, this is a stub to keep compilation green.
+    {
+        let user_plugins = jinn_plugin::discover_plugins(
+            &paths.plugins_dir(),
+            &paths.system_plugins_dir(),
+        );
+        tracing::info!(count = user_plugins.len(), "discovered plugins (stub)");
+    }
 
     // ── Bench actor (conditional) ─────────────────────────────────────────
     if bench_csv_path.is_some() {
