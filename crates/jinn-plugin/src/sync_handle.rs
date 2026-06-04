@@ -64,6 +64,6 @@ impl PluginSyncHandle {
             .map_err(|e| format!("send to plugin thread: {e}"))?;
         respond_rx
             .recv()
-            .map_err(|_| "plugin thread died".to_owned())?
+            .map_err(|_e| "plugin thread died".to_owned())?
     }
 }

@@ -133,7 +133,7 @@ pub fn create_core_with_actor_host(
 
     // Store discovered plugin metadata in state for the sidebar.
     {
-        let plugins = jinn_plugin::discover_from_paths(
+        let plugins = jinn_plugin::discover_plugins(
             &paths.plugins_dir(),
             &paths.system_plugins_dir(),
         );

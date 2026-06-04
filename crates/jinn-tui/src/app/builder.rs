@@ -24,6 +24,8 @@ pub struct TuiAppBuilder {
     state: Option<jinn_domain::AppState>,
     /// Optional plugins override (defaults to empty SyncPlugins).
     plugins: Option<jinn_plugin::SyncPlugins>,
+}
+
 
 impl TuiAppBuilder {
     /// Override the default services.
@@ -38,6 +40,7 @@ impl TuiAppBuilder {
     pub fn state(mut self, state: jinn_domain::AppState) -> Self {
         self.state = Some(state);
         self
+    }
 
     /// Override the default plugins.
     #[must_use]
