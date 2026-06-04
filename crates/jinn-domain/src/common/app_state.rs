@@ -44,30 +44,11 @@ pub struct AppState {
     /// Frontend / UI state - owned by IntentHandler.
     pub frontend: FrontendState,
     /// Workflow execution state - owned by workflow-actor.
-    /// Live executions for running attached workflows. Ephemeral (not persisted).
-    /// Keyed by AttachedWorkflow.id (which IS a WorkflowId).
-    /// OWNER: workflow-controller-actor.
-    pub workflow_executions: std::collections::HashMap<
-        crate::feat::workflow::attached_workflow::WorkflowId,
-        LuaExecutionState,
-    >,
+    /// Active workflow tracking for UI.
     pub active_workflow: Option<(
         crate::protocol::SessionId,
         crate::feat::workflow::attached_workflow::WorkflowId,
     )>,
-    pub pending_before_turn: std::collections::HashMap<
-        crate::protocol::SessionId,
-        crate::feat::workflow::attached_workflow::BeforeTurnMode,
-    >,
-    /// Queue of remaining BeforeTurn attachments for sequential execution.
-    /// Key: session_id, Value: ordered list of (AttachedWorkflow, BeforeTurnMode) pairs.
-    pub before_turn_queue: std::collections::HashMap<
-        crate::protocol::SessionId,
-        Vec<(
-            crate::feat::workflow::attached_workflow::AttachedWorkflow,
-            crate::feat::workflow::attached_workflow::BeforeTurnMode,
-        )>,
-    >,
     /// Discovered Lua plugins from both user and system plugin directories.
     /// OWNER: startup (actor_wiring) writes once; picker intent handler reads.
     pub discovered_plugins: Vec<crate::feat::luaworkflow::discovery::PluginMeta>,
@@ -191,7 +172,7 @@ pub fn pin_sort_key(position: Option<PinPosition>) -> u8 {
 
 /// Ephemeral runtime state for a Lua-based attached workflow execution.
 ///
-/// Lives in `AppState::workflow_executions`. Not persisted across restarts.
+/// Lives in `WorkflowControllerActor::workflow_executions`. Not persisted across restarts.
 pub struct LuaExecutionState {
     /// Cancellation token for aborting execution.
     pub cancel: tokio_util::sync::CancellationToken,
