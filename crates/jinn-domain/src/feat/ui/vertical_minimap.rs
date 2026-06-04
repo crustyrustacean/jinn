@@ -12,6 +12,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
+use unicode_width::UnicodeWidthStr;
 
 use crate::common::app_state::AppState;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
@@ -142,9 +143,12 @@ fn compute_minimap_scroll(
 pub struct MinimapArrow {
     pub row: u16,
     pub token_count: Option<u32>,
-    /// Cumulative token count of all `is_in_context()` entries from the
-    /// start of history up to and including the cursor position.
-    pub cumulative_tokens: Option<u32>,
+    /// Sum of cached token counts for `is_in_context()` entries strictly
+    /// before the cursor's occupied history range.
+    pub tokens_above: Option<u32>,
+    /// Sum of cached token counts for `is_in_context()` entries strictly
+    /// after the cursor's occupied history range.
+    pub tokens_below: Option<u32>,
 }
 
 pub fn render_vertical_minimap(
@@ -207,58 +211,85 @@ pub fn render_vertical_minimap(
 
     let arrow_row = midpoint as u16;
     let selected_token_count = visible.get(selected_block).and_then(|e| e.token_count);
-    let cumulative_tokens = {
+    let (cursor_start, cursor_end) = {
         let session = state.active_session();
         let items = session.visual_items();
-        let history = session.history();
-        let boundary = selected_history_boundary(&items, selected_idx)
-            .or_else(|| history.len().checked_sub(1));
-        boundary.and_then(|b| compute_cumulative_tokens(state, b))
+        let history_len = session.history().len();
+        // When the user has not yet placed the cursor, fall back to the last
+        // visual item so above/below indicators render immediately. This
+        // mirrors `find_block_index`'s `None`-arm fallback.
+        let effective_idx = selected_idx.or_else(|| items.len().checked_sub(1));
+        cursor_history_range(&items, effective_idx, history_len)
     };
+    let tokens_above = compute_tokens_above(state, cursor_start);
+    let tokens_below = compute_tokens_below(state, cursor_end);
+
     Some(MinimapArrow {
         row: arrow_row,
         token_count: selected_token_count,
-        cumulative_tokens,
+        tokens_above,
+        tokens_below,
     })
 }
 
-/// Returns the history index boundary for the selected visual item.
+/// Returns the cursor's occupied history range as `[start, end)`.
 ///
-/// For `Entry(hist_idx)` returns `hist_idx`.
-/// For `CollapsedIgnoredBlock { start, count }` returns `start + count - 1`
-/// (the last entry in the block).
-fn selected_history_boundary(
+/// - For `Entry(hist_idx)` → `[hist_idx, hist_idx + 1)`.
+/// - For `CollapsedIgnoredBlock { start, count }` → `[start, start + count)`.
+/// - When no visual item is selected (or the index is out of range) →
+///   `[0, history_len)` (full range; both above and below sums become empty).
+fn cursor_history_range(
     items: &[VisualItem],
     selected_vi_idx: Option<usize>,
-) -> Option<usize> {
-    let vi_idx = selected_vi_idx?;
-    let item = items.get(vi_idx)?;
-    match item {
-        VisualItem::Entry(hist_idx) => Some(*hist_idx),
-        VisualItem::CollapsedIgnoredBlock { start, count } => Some(start + count.saturating_sub(1)),
+    history_len: usize,
+) -> (usize, usize) {
+    match selected_vi_idx {
+        Some(idx) => match items.get(idx) {
+            Some(VisualItem::Entry(hist_idx)) => (*hist_idx, hist_idx.saturating_add(1)),
+            Some(VisualItem::CollapsedIgnoredBlock { start, count }) => {
+                (*start, start.saturating_add(*count))
+            }
+            None => (0, history_len),
+        },
+        None => (0, history_len),
     }
 }
 
-/// Sums cached token counts for all `is_in_context()` entries
-/// from index 0 through `up_to_history_idx` (inclusive).
-///
-/// Returns `Some(sum)` if any cached count was found, `None` if no
-/// entries had cached counts.
-fn compute_cumulative_tokens(state: &AppState, up_to_history_idx: usize) -> Option<u32> {
+/// Sums cached token counts for all `is_in_context()` entries in
+/// history range `0..end` (exclusive upper bound). Returns `Some(0)`
+/// when the range is empty or all entries are excluded.
+fn compute_tokens_above(state: &AppState, end: usize) -> Option<u32> {
+    compute_token_sum_in_range(state, 0, end)
+}
+
+/// Sums cached token counts for all `is_in_context()` entries in
+/// history range `start..history.len()` (exclusive lower bound).
+/// Returns `Some(0)` when the range is empty or all entries are excluded.
+fn compute_tokens_below(state: &AppState, start: usize) -> Option<u32> {
+    let history_len = state.active_session().history().len();
+    compute_token_sum_in_range(state, start, history_len)
+}
+
+fn compute_token_sum_in_range(
+    state: &AppState,
+    start: usize,
+    end: usize,
+) -> Option<u32> {
     let session = state.active_session();
     let history = session.history();
     let token_cache = state.frontend.caches.entry_token_cache.read();
 
-    let end = (up_to_history_idx + 1).min(history.len());
+    let end = end.min(history.len());
+    let start = start.min(end);
     let mut sum: u32 = 0;
-    for entry in &history[..end] {
-        if entry.is_in_context() {
-            if let Some(count) = token_cache.get(&entry.id) {
-                sum = sum.saturating_add(count);
-            }
+    for entry in &history[start..end] {
+        if entry.is_in_context()
+            && let Some(count) = token_cache.get(&entry.id)
+        {
+            sum = sum.saturating_add(count);
         }
     }
-    (sum > 0).then_some(sum)
+    Some(sum)
 }
 
 fn render_scroll_arrows(
@@ -356,31 +387,60 @@ pub fn render_minimap_arrow(
         }
     }
 
-    // Render cumulative token count line below the arrow.
-    if let Some(cumulative) = arrow.cumulative_tokens {
-        let formatted = format_entry_tokens(cumulative);
-        let text = format!("{formatted} ^");
-        let width = text.len() as u16;
+    // Render ▲ token-count line above the arrow (strict-above: cursor excluded).
+    if arrow.row > 0 {
+        let row = arrow.row - 1;
+        let text = match arrow.tokens_above {
+            Some(n) => format!("{} ▲", format_entry_tokens(n)),
+            _ => "▲".to_owned(),
+        };
+        let width = text.as_str().width() as u16;
         let x = chat_log_area
             .x
             .saturating_add(chat_log_area.width)
             .saturating_sub(width);
-        let cum_row = arrow.row + 1;
-        if cum_row >= chat_log_area.height {
-            return;
-        }
-        let cum_y = chat_log_area.y + cum_row;
-        let paragraph = Paragraph::new(Line::from(Span::styled(
-            text,
-            Style::default().fg(arrow_color),
-        )));
-        let cum_area = Rect {
+        let area = Rect {
             x,
-            y: cum_y,
+            y: chat_log_area.y + row,
             width: width.min(chat_log_area.width),
             height: 1,
         };
-        frame.render_widget(paragraph, cum_area);
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                text,
+                Style::default().fg(arrow_color),
+            ))),
+            area,
+        );
+    }
+
+    // Render ▼ token-count line below the arrow (strict-below: cursor excluded).
+    {
+        let row = arrow.row + 1;
+        if row < chat_log_area.height {
+            let text = match arrow.tokens_below {
+            Some(n) => format!("{} ▼", format_entry_tokens(n)),
+                _ => "▼".to_owned(),
+            };
+            let width = text.as_str().width() as u16;
+            let x = chat_log_area
+                .x
+                .saturating_add(chat_log_area.width)
+                .saturating_sub(width);
+            let area = Rect {
+                x,
+                y: chat_log_area.y + row,
+                width: width.min(chat_log_area.width),
+                height: 1,
+            };
+            frame.render_widget(
+                Paragraph::new(Line::from(Span::styled(
+                    text,
+                    Style::default().fg(arrow_color),
+                ))),
+                area,
+            );
+        }
     }
 }
 
@@ -588,7 +648,8 @@ mod tests {
         let arrow = MinimapArrow {
             row: 3,
             token_count: None,
-            cumulative_tokens: None,
+            tokens_above: None,
+            tokens_below: None,
         };
         let theme = default_theme();
         terminal
@@ -779,7 +840,8 @@ mod tests {
         let arrow = MinimapArrow {
             row: 3,
             token_count: Some(3000),
-            cumulative_tokens: None,
+            tokens_above: None,
+            tokens_below: None,
         };
         let theme = default_theme();
         terminal
@@ -798,7 +860,8 @@ mod tests {
         let arrow = MinimapArrow {
             row: 3,
             token_count: None,
-            cumulative_tokens: None,
+            tokens_above: None,
+            tokens_below: None,
         };
         let theme = default_theme();
         terminal
@@ -811,10 +874,11 @@ mod tests {
         assert!(!rows[3].contains('k'));
     }
 
-    // ── Cumulative computation tests ──
+    // ── Strict-above / strict-below computation tests ──
 
     #[rstest::rstest]
-    fn cumulative_with_single_in_context_entry() {
+    fn tokens_above_and_below_for_single_entry() {
+        // Single in-context entry selected: both sides are empty.
         let mut state = AppState::default();
         let entry = ChatEntry::user("hello");
         let entry_id = entry.id.clone();
@@ -827,14 +891,19 @@ mod tests {
             .insert(entry_id, 100);
         setup_visual_items(&state);
         let items = state.active_session().visual_items();
-        // selected_idx = 0 (last entry, auto-selected)
-        let boundary = selected_history_boundary(&items, Some(0));
-        let cumulative = boundary.and_then(|b| compute_cumulative_tokens(&state, b));
-        assert_eq!(cumulative, Some(100));
+        let history_len = state.active_session().history().len();
+        let (start, end) = cursor_history_range(&items, Some(0), history_len);
+        let above = compute_tokens_above(&state, start);
+        let below = compute_tokens_below(&state, end);
+        // Empty range → Some(0).
+        assert_eq!(above, Some(0));
+        assert_eq!(below, Some(0));
     }
 
     #[rstest::rstest]
-    fn cumulative_skips_excluded_entries() {
+    fn tokens_above_and_below_skip_excluded_entries() {
+        // Two entries: [thinking (excluded), user (in-context, selected)].
+        // Above-skipped because thinking is not in context; below-empty.
         let mut state = AppState::default();
         let thinking = ChatEntry::thinking("reasoning");
         let user = ChatEntry::user("hello");
@@ -849,18 +918,21 @@ mod tests {
             .insert(user_id, 200);
         setup_visual_items(&state);
         let items = state.active_session().visual_items();
-        // Visual items: [Entry(0) = thinking (collapsed or shown depending on proximity),
-        //               Entry(1) = user]
-        // Selected is the last visual item (user at vi_index = last).
-        // We want the boundary for the user entry.
+        let history_len = state.active_session().history().len();
+        // Cursor on the user entry — the last visual item.
         let last_vi = items.len() - 1;
-        let boundary = selected_history_boundary(&items, Some(last_vi));
-        let cumulative = boundary.and_then(|b| compute_cumulative_tokens(&state, b));
-        assert_eq!(cumulative, Some(200));
+        let (start, end) = cursor_history_range(&items, Some(last_vi), history_len);
+        let above = compute_tokens_above(&state, start);
+        let below = compute_tokens_below(&state, end);
+        // thinking's 0 cached count is skipped; nothing remains above.
+        // No in-context entries above → Some(0); nothing below → Some(0).
+        assert_eq!(above, Some(0));
+        assert_eq!(below, Some(0));
     }
 
     #[rstest::rstest]
-    fn cumulative_sums_multiple_in_context() {
+    fn tokens_above_excludes_cursor_tokens_below_sums_after_cursor() {
+        // Three in-context entries [user100, assistant200, user300].
         let mut state = AppState::default();
         let e1 = ChatEntry::user("a");
         let e2 = ChatEntry::assistant("b");
@@ -879,15 +951,32 @@ mod tests {
             .bulk_insert([(id1, 100), (id2, 200), (id3, 300)]);
         setup_visual_items(&state);
         let items = state.active_session().visual_items();
-        // Last visual item is the user entry at history index 2.
+        let history_len = state.active_session().history().len();
+
+        // Case 1: cursor on the LAST entry (history idx 2, last visual item).
         let last_vi = items.len() - 1;
-        let boundary = selected_history_boundary(&items, Some(last_vi));
-        let cumulative = boundary.and_then(|b| compute_cumulative_tokens(&state, b));
-        assert_eq!(cumulative, Some(600));
+        let (start, end) = cursor_history_range(&items, Some(last_vi), history_len);
+        let above = compute_tokens_above(&state, start);
+        let below = compute_tokens_below(&state, end);
+        assert_eq!(above, Some(300)); // e1 + e2
+        // Empty range below last cursor → Some(0).
+        assert_eq!(below, Some(0));
+
+        // Case 2: cursor on the MIDDLE entry (history idx 1).
+        // Find the visual item index for history index 1.
+        let mid_vi = items
+            .iter()
+            .position(|i| matches!(i, VisualItem::Entry(1)))
+            .expect("history idx 1 must be a visual item");
+        let (start, end) = cursor_history_range(&items, Some(mid_vi), history_len);
+        let above = compute_tokens_above(&state, start);
+        let below = compute_tokens_below(&state, end);
+        assert_eq!(above, Some(100));
+        assert_eq!(below, Some(300));
     }
 
     #[rstest::rstest]
-    fn cumulative_with_no_cached_counts_is_none() {
+    fn tokens_above_and_below_are_zero_when_no_cached_counts() {
         let mut state = AppState::default();
         state
             .active_session_mut()
@@ -897,21 +986,84 @@ mod tests {
             .push_entry(ChatEntry::assistant("world"));
         setup_visual_items(&state);
         let items = state.active_session().visual_items();
+        let history_len = state.active_session().history().len();
         let last_vi = items.len() - 1;
-        let boundary = selected_history_boundary(&items, Some(last_vi));
-        let cumulative = boundary.and_then(|b| compute_cumulative_tokens(&state, b));
-        assert_eq!(cumulative, None);
+        let (start, end) = cursor_history_range(&items, Some(last_vi), history_len);
+        let above = compute_tokens_above(&state, start);
+        let below = compute_tokens_below(&state, end);
+        // Cache is empty: sum is 0 → Some(0). Renderer now shows "0 ▲"/
+        // "0 ▼" rather than glyph-alone, because the user wants to see
+        // explicit zero counts.
+        assert_eq!(above, Some(0));
+        assert_eq!(below, Some(0));
     }
 
-    // ── Cumulative rendering tests ──
+    #[rstest::rstest]
+    fn collapsed_ignored_block_cursor_excludes_entire_block() {
+        // History indices: 0=user(100), 1=thinking(50), 2=thinking(60), 3=thinking(70),
+        // 4=user(200), 5=user(300). Cursor sits on the collapsed block covering
+        // indices 1..4.
+        let mut state = AppState::default();
+        let entries: Vec<ChatEntry> = vec![
+            ChatEntry::user("first"),
+            ChatEntry::thinking("t1"),
+            ChatEntry::thinking("t2"),
+            ChatEntry::thinking("t3"),
+            ChatEntry::user("second"),
+            ChatEntry::user("third"),
+        ];
+        let ids: Vec<_> = entries.iter().map(|e| e.id.clone()).collect();
+        for entry in entries {
+            state.active_session_mut().push_entry(entry);
+        }
+        state
+            .frontend
+            .caches
+            .entry_token_cache
+            .write()
+            .bulk_insert([
+                (ids[0].clone(), 100),
+                (ids[1].clone(), 50),
+                (ids[2].clone(), 60),
+                (ids[3].clone(), 70),
+                (ids[4].clone(), 200),
+                (ids[5].clone(), 300),
+            ]);
+
+        // Manually install visual items with a collapsed block.
+        let items = vec![
+            VisualItem::Entry(0),
+            VisualItem::CollapsedIgnoredBlock { start: 1, count: 3 },
+            VisualItem::Entry(4),
+            VisualItem::Entry(5),
+        ];
+        state.active_session().set_visual_items(items);
+
+        // Cursor on the collapsed block (vi_idx = 1).
+        let items = state.active_session().visual_items();
+        let history_len = state.active_session().history().len();
+        let (start, end) = cursor_history_range(&items, Some(1), history_len);
+        assert_eq!(start, 1);
+        assert_eq!(end, 4);
+        let above = compute_tokens_above(&state, start);
+        let below = compute_tokens_below(&state, end);
+        // Above excludes the block (only user(0) = 100).
+        assert_eq!(above, Some(100));
+        // Below excludes the block (user(4) + user(5) = 500).
+        assert_eq!(below, Some(500));
+    }
+
+    // ── Above/below rendering tests ──
 
     #[rstest::rstest]
-    fn cumulative_line_renders_below_arrow() {
+    fn above_and_below_lines_flank_arrow() {
+        // Arrow on row 3 with token counts on both sides.
         let (mut terminal, area) = jinn_testutil::setup_term(40, 10);
         let arrow = MinimapArrow {
             row: 3,
             token_count: Some(1000),
-            cumulative_tokens: Some(6000),
+            tokens_above: Some(6000),
+            tokens_below: Some(1500),
         };
         let theme = default_theme();
         terminal
@@ -920,24 +1072,28 @@ mod tests {
             })
             .unwrap();
         let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 40, 10);
-        // Arrow row has the token count and >
+        // Arrow row has the cursor tokens and `>`.
         assert!(rows[3].contains('1'));
         assert!(rows[3].contains('>'));
-        // Row below has cumulative and ^
-        assert!(rows[4].contains('6'));
-        assert!(rows[4].contains('^'));
-        // Row below does NOT have >
+        // Row ABOVE has 6.0k and ▲.
+        assert!(rows[2].contains('6'));
+        assert!(rows[2].contains('▲'));
+        assert!(!rows[2].contains('>'));
+        // Row BELOW has 1.5k and ▼.
+        assert!(rows[4].contains('1'));
+        assert!(rows[4].contains('▼'));
         assert!(!rows[4].contains('>'));
     }
 
     #[rstest::rstest]
-    fn cumulative_line_skipped_when_arrow_at_last_row() {
+    fn below_line_skipped_when_arrow_at_last_row_above_still_renders() {
+        // Arrow at row 9 (last) — ▼ cannot fit below, but ▲ on row 8 still renders.
         let (mut terminal, area) = jinn_testutil::setup_term(40, 10);
-        // Arrow at the last row (row 9) — cumulative can't fit below.
         let arrow = MinimapArrow {
             row: 9,
             token_count: Some(100),
-            cumulative_tokens: Some(500),
+            tokens_above: Some(500),
+            tokens_below: Some(999),
         };
         let theme = default_theme();
         terminal
@@ -946,18 +1102,46 @@ mod tests {
             })
             .unwrap();
         let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 40, 10);
-        // Row 9 should have the arrow (>) but NOT the cumulative (^).
+        // Row 9 has the arrow (>) but NO ▼.
         assert!(rows[9].contains('>'));
-        assert!(!rows[9].contains('^'));
+        assert!(!rows[9].contains('▼'));
+        // Row 8 still has ▲.
+        assert!(rows[8].contains('▲'));
     }
 
     #[rstest::rstest]
-    fn no_cumulative_line_when_no_counts() {
+    fn above_line_skipped_when_arrow_at_row_zero() {
+        // Arrow at row 0 — ▲ cannot fit above, but ▼ on row 1 still renders.
+        let (mut terminal, area) = jinn_testutil::setup_term(40, 10);
+        let arrow = MinimapArrow {
+            row: 0,
+            token_count: Some(100),
+            tokens_above: Some(500),
+            tokens_below: Some(999),
+        };
+        let theme = default_theme();
+        terminal
+            .draw(|frame| {
+                render_minimap_arrow(frame, area, &arrow, theme.border_unfocused);
+            })
+            .unwrap();
+        let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 40, 10);
+        // Row 0 has the arrow (>) but NO ▲.
+        assert!(rows[0].contains('>'));
+        assert!(!rows[0].contains('▲'));
+        // Row 1 has ▼.
+        assert!(rows[1].contains('▼'));
+    }
+
+    #[rstest::rstest]
+    fn glyph_alone_rendered_when_no_cached_counts() {
+        // tokens_above = None and tokens_below = None: glyph alone on both rows.
         let (mut terminal, area) = jinn_testutil::setup_term(40, 10);
         let arrow = MinimapArrow {
             row: 3,
             token_count: None,
-            cumulative_tokens: None,
+            tokens_above: None,
+            tokens_below: None,
         };
         let theme = default_theme();
         terminal
@@ -966,7 +1150,77 @@ mod tests {
             })
             .unwrap();
         let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 40, 10);
-        // Row 4 should not have ^
-        assert!(!rows[4].contains('^'));
+        // Row above has ▲ alone (no digit).
+        assert!(rows[2].contains('▲'));
+        assert!(!rows[2].chars().any(|c| c.is_ascii_digit()));
+        // Row below has ▼ alone (no digit).
+        assert!(rows[4].contains('▼'));
+        assert!(!rows[4].chars().any(|c| c.is_ascii_digit()));
+    }
+
+    /// Fix 1: `Some(0)` should render as `"0 ▲"` / `"0 ▼"`, not glyph-alone.
+    /// Glyph-alone is reserved for `None` (no cached counts at all).
+    #[rstest::rstest]
+    fn zero_count_renders_with_digit() {
+        let mut state = AppState::default();
+        for i in 0..3 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(format!("msg {i}")));
+        }
+        state.active_session_mut().set_selected_entry_index(1);
+        // No token cache populated — render_minimap_arrow with a literal arrow.
+        let arrow = MinimapArrow {
+            row: 3,
+            token_count: None,
+            tokens_above: Some(0),
+            tokens_below: Some(0),
+        };
+        let (mut terminal, area) = jinn_testutil::setup_term(40, 10);
+        let theme = default_theme();
+        terminal
+            .draw(|frame| {
+                render_minimap_arrow(frame, area, &arrow, theme.border_unfocused);
+            })
+            .unwrap();
+        let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 40, 10);
+        // Row above has `0 ▲` (digit + glyph).
+        assert!(rows[2].contains('0'));
+        assert!(rows[2].contains('▲'));
+        // Row below has `0 ▼` (digit + glyph).
+        assert!(rows[4].contains('0'));
+        assert!(rows[4].contains('▼'));
+    }
+
+    /// Fix 2: when no cursor has been placed (`selected_entry_index() == None`),
+    /// the cursor is treated as the last visual item so the above/below
+    /// counts are meaningful immediately on first render.
+    #[rstest::rstest]
+    fn no_cursor_falls_back_to_last_visual_item() {
+        let mut state = AppState::default();
+        for i in 0..3 {
+            let entry = ChatEntry::user(format!("msg {i}"));
+            state.active_session_mut().push_entry(entry);
+        }
+        let cache_pairs: Vec<_> = state
+            .active_session()
+            .history()
+            .iter()
+            .enumerate()
+            .map(|(i, e)| (e.id.clone(), (i as u32 + 1) * 100))
+            .collect();
+        state
+            .frontend
+            .caches
+            .entry_token_cache
+            .write()
+            .bulk_insert(cache_pairs);
+        // Deliberately do NOT call set_selected_entry_index.
+        let (arrow, _rows) = render_to_buffer(&state, 1, 10);
+        let arrow = arrow.expect("arrow should render even without cursor");
+        // History: [100, 200, 300]. Cursor defaults to last → above = 100+200 = 300.
+        assert_eq!(arrow.tokens_above, Some(300));
+        // Below = no entries after cursor → Some(0).
+        assert_eq!(arrow.tokens_below, Some(0));
     }
 }
