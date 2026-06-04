@@ -272,6 +272,13 @@ impl WorkflowControllerActor {
                 session.core.ephemeral.busy_count += 1;
                 for aw in &mut session.core.attached_workflows {
                     if aw.id == wf_id {
+                        aw.state = AttachedWorkflowState::Running;
+                        break;
+                    }
+                }
+            }
+        }
+
         // Spawn fire-and-forget — don't block the actor.
         let state = self.state.clone();
         let handle = self.spawn_attached_workflow(&session_id, attachment);
@@ -283,6 +290,7 @@ impl WorkflowControllerActor {
             apply_result_to_state(&state, &session_id, &wf_id, result);
         });
     }
+
     /// Handle `FireBeforeTurn` — fire all BeforeTurn workflows for the session,
     /// then merge the output with the deferred user text and either auto-send or put back.
     async fn handle_fire_before_turn(&mut self, payload: &FireBeforeTurn) {
@@ -430,6 +438,7 @@ impl WorkflowControllerActor {
                 };
                 apply_result_to_state(&state, &sid, &wf_id, result);
             });
+        }
     }
 
     /// Spawn an attached workflow using Lua.
