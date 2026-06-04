@@ -193,6 +193,28 @@ let c = {
 };
 ```
 
+### TOML Persistence (Comment-Preserving)
+
+User-editable TOML files (`providers.toml`, `jinn.toml`) must be written via the
+`DocumentPatcher` in `crates/jinn-domain/src/common/toml_patch.rs`, **never** via
+`toml::to_string_pretty` directly. The plain serializer wipes every comment,
+blank line, and field-ordering choice on every save.
+
+Pattern: behind the `ConfigStorage` / `UserPreferencesStorage` traits, the
+`Filesystem*::save` impl reads the on-disk document, applies the new struct as
+a patch, and writes it back. `InMemory*` test impls stay simple.
+
+Why: the trait is the mutation boundary; patching preserves user comments,
+ordering, and unknown keys (forward-compat for newer jinn versions) for free.
+
+Adding a new scalar or sub-table field to `ProvidersConfig` / `UserPreferences`
+requires **zero** storage-layer changes — `Serialize` produces the new key and
+the patcher writes it through. Adding a new array-of-tables requires one
+`DocumentPatcher::register_array_key` call so the patcher can match entries
+by their key field (`name`, `pattern`, etc.).
+
+Read-only TOML files (themes, prompt frontmatter) are unaffected.
+
 ## 3. Architecture
 
 ### Data Flow
