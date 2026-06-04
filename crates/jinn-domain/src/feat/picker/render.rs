@@ -100,9 +100,14 @@ pub fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
         .filter(|s| s.enabled)
         .count();
     let total = state.frontend.skill_picker().items().len();
-    let footer = Line::from(format!(
-        " TAB toggle \u{00b7} {enabled_count}/{total} enabled \u{00b7} Enter confirm \u{00b7} ESC cancel "
-    ));
+    let gray = Style::default().fg(state.frontend.theme.muted_text);
+    let orange = Style::default().fg(state.frontend.theme.accent_action);
+    let footer = Line::from(vec![
+        ratatui::text::Span::styled("CTRL+R to refresh ".to_owned(), orange),
+        ratatui::text::Span::styled(format!(
+            "\u{00b7} {enabled_count}/{total} enabled \u{00b7} Enter confirm \u{00b7} ESC cancel"
+        ), gray),
+    ]);
     let widget = PreviewSelectionWidget::new(state.frontend.skill_picker())
         .title(Line::from(" Skills "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
