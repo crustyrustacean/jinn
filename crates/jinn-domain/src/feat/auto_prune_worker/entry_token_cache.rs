@@ -68,7 +68,7 @@ impl HistoryWorkerChatEntryTokenCache {
     pub fn insert(&self, session_id: SessionId, entry_id: ChatEntryId, count: u32) {
         self.inner
             .entry(session_id)
-            .or_insert_with(DashMap::new)
+            .or_default()
             .insert(entry_id, count);
     }
 
@@ -98,14 +98,13 @@ impl HistoryWorkerChatEntryTokenCache {
         let session_map = self
             .inner
             .entry(session_id)
-            .or_insert_with(DashMap::new);
+            .or_default();
 
         // inner entry() holds the inner shard guard briefly;
         // or_insert_with runs the closure only on first call for this key.
-        session_map
+        *session_map
             .entry(entry_id)
             .or_insert_with(compute)
-            .clone()
     }
 
     /// Evict all cached counts for a session.

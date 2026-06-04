@@ -105,7 +105,7 @@ fn push_entry_indices(items: &mut Vec<VisualItem>, start: usize, count: usize) {
 fn find_ignored_block_end(history: &[ChatEntry], start: usize, protected_start: usize) -> usize {
     history[start..]
         .iter()
-        .take_while(|e| e.is_in_context() == false && e.pin_position.is_none())
+        .take_while(|e| !e.is_in_context() && e.pin_position.is_none())
         .enumerate()
         .take_while(|(i, _)| start + i < protected_start)
         .count()
