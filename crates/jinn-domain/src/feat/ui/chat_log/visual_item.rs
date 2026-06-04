@@ -71,29 +71,15 @@ pub fn build_visual_items(
             // Start of a potential collapsed block. Accumulate contiguous
             // ignored entries that are also eligible.
             let block_start = i;
-            let mut block_count = 0usize;
+            let block_count = find_ignored_block_end(history, i, protected_start);
+            i += block_count;
 
-            while i < len {
-                let e = &history[i];
-                if e.is_in_context() || e.pin_position.is_some() || i >= protected_start {
-                    break;
-                }
-                block_count += 1;
-                i += 1;
-            }
-
-            // Check if the user has expanded this block.
+            // Check if the user has expanded this block, or the block is too small to collapse.
             let block_representative_id = &history[block_start].id;
-            if shown_ignored_blocks.contains(block_representative_id) {
-                // User expanded - show individually.
-                for j in block_start..block_start + block_count {
-                    items.push(VisualItem::Entry(j));
-                }
-            } else if block_count < min_collapse_count {
-                // Below threshold - show individually, don't collapse.
-                for j in block_start..block_start + block_count {
-                    items.push(VisualItem::Entry(j));
-                }
+            if shown_ignored_blocks.contains(block_representative_id)
+                || block_count < min_collapse_count
+            {
+                push_entry_indices(&mut items, block_start, block_count);
             } else {
                 items.push(VisualItem::CollapsedIgnoredBlock {
                     start: block_start,
@@ -107,6 +93,22 @@ pub fn build_visual_items(
     }
 
     items
+}
+
+/// Push `count` `VisualItem::Entry`s starting at `start`.
+fn push_entry_indices(items: &mut Vec<VisualItem>, start: usize, count: usize) {
+    items.extend((start..start + count).map(VisualItem::Entry));
+}
+
+/// Count contiguous ignored entries starting at `start`, stopping at the first
+/// protected or in-context entry.
+fn find_ignored_block_end(history: &[ChatEntry], start: usize, protected_start: usize) -> usize {
+    history[start..]
+        .iter()
+        .take_while(|e| e.is_in_context() == false && e.pin_position.is_none())
+        .enumerate()
+        .take_while(|(i, _)| start + i < protected_start)
+        .count()
 }
 
 /// Find the visual-item index for a given entry ID.
