@@ -436,7 +436,7 @@ fn render_workflow_entry_shows_plugin_name() {
 }
 
 #[test]
-fn render_workflow_entry_shows_gear_icon() {
+fn render_workflow_entry_shows_lightning_icon() {
     // Given a workflow entry.
     let entry = workflow_entry(true);
     let theme = default_theme();
@@ -445,10 +445,10 @@ fn render_workflow_entry_shows_gear_icon() {
     let line = assemble_entry_line(&entry, false, 30, &idle_throbber(), &theme);
     let text = line.to_string();
 
-    // Then the gear icon appears in the output.
+    // Then the lightning bolt icon appears in the output.
     assert!(
-        text.contains('\u{2699}'),
-        "expected gear icon in rendered line, got: {text}"
+        text.contains('\u{26A1}'),
+        "expected lightning bolt icon in rendered line, got: {text}"
     );
 }
 
