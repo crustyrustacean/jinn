@@ -331,9 +331,11 @@ mod tests {
 
     #[tokio::test]
     async fn turn_off_disables_attached_workflow() {
+        // Given a session with an attached workflow.
         let (state, session_id, workflow_id) = make_state_with_session_and_workflow();
         let handler = make_handler(state.clone());
 
+        // When handling a TurnOff request for that workflow.
         let (resp_tx, resp_rx) = oneshot::channel();
         handler
             .handle_request(HostRequest::TurnOff {
@@ -342,8 +344,10 @@ mod tests {
             })
             .await;
 
+        // Then the response is Ok.
         resp_rx.await.expect("response").expect("turn_off");
 
+        // And the workflow is disabled and Completed.
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
         let aw = session
@@ -358,9 +362,11 @@ mod tests {
 
     #[tokio::test]
     async fn turn_off_returns_error_for_unknown_workflow() {
+        // Given a session with an attached workflow.
         let (state, _, _) = make_state_with_session_and_workflow();
         let handler = make_handler(state);
 
+        // When handling a TurnOff request for a nonexistent workflow.
         let (resp_tx, resp_rx) = oneshot::channel();
         handler
             .handle_request(HostRequest::TurnOff {
@@ -369,6 +375,7 @@ mod tests {
             })
             .await;
 
+        // Then the response is an error.
         let result = resp_rx.await.expect("response");
         assert!(result.is_err());
     }
