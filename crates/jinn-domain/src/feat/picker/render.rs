@@ -104,9 +104,12 @@ pub fn render_skill_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
     let orange = Style::default().fg(state.frontend.theme.accent_action);
     let footer = Line::from(vec![
         ratatui::text::Span::styled("CTRL+R to refresh ".to_owned(), orange),
-        ratatui::text::Span::styled(format!(
-            "\u{00b7} {enabled_count}/{total} enabled \u{00b7} Enter confirm \u{00b7} ESC cancel"
-        ), gray),
+        ratatui::text::Span::styled(
+            format!(
+                "\u{00b7} {enabled_count}/{total} enabled \u{00b7} Enter confirm \u{00b7} ESC cancel"
+            ),
+            gray,
+        ),
     ]);
     let widget = PreviewSelectionWidget::new(state.frontend.skill_picker())
         .title(Line::from(" Skills "))

@@ -10,15 +10,15 @@
 
 use std::sync::Arc;
 
-use jinn_lua_workflow::HostRequest;
 use error_stack::{Report, ResultExt};
+use jinn_lua_workflow::HostRequest;
 use wherror::Error;
 
 use crate::common::state::State;
+use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::workflow::attached_workflow::AttachedWorkflowState;
 use crate::feat::workflow::domain_node_context::DomainNodeContext;
-use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::protocol::Command;
 
 /// Error type for Lua host handler operations.
@@ -67,16 +67,16 @@ impl LuaHostHandler {
                 text,
                 respond_to,
             } => {
-                let result = self.handle_push_user(&session_id, &text);
-                let _ = respond_to.send(result.map_err(|r| format!("{r:#}")));
+                self.handle_push_user(&session_id, &text);
+                let _ = respond_to.send(Ok(()));
             }
             HostRequest::PushSystem {
                 session_id,
                 text,
                 respond_to,
             } => {
-                let result = self.handle_push_system(&session_id, &text);
-                let _ = respond_to.send(result.map_err(|r| format!("{r:#}")));
+                self.handle_push_system(&session_id, &text);
+                let _ = respond_to.send(Ok(()));
             }
             HostRequest::TurnOff {
                 workflow_id,
@@ -133,28 +133,26 @@ impl LuaHostHandler {
     ///
     /// Dispatches a [`Command::PushChatEntry`] with a [`ChatEntry::user`] through
     /// the domain node context. The session actor processes the command asynchronously.
-    fn handle_push_user(&self, session_id: &str, text: &str) -> Result<(), Report<LuaHostHandlerError>> {
+    fn handle_push_user(&self, session_id: &str, text: &str) {
         let session_id_typed = crate::protocol::SessionId::from(session_id.to_owned());
         let entry = ChatEntry::user(text);
         self.ctx.send_command(Command::PushChatEntry(PushChatEntry {
             session_id: session_id_typed,
             entry,
         }));
-        Ok(())
     }
 
     /// Handles a PushSystem request.
     ///
     /// Dispatches a [`Command::PushChatEntry`] with a [`ChatEntry::system`] through
     /// the domain node context. The session actor processes the command asynchronously.
-    fn handle_push_system(&self, session_id: &str, text: &str) -> Result<(), Report<LuaHostHandlerError>> {
+    fn handle_push_system(&self, session_id: &str, text: &str) {
         let session_id_typed = crate::protocol::SessionId::from(session_id.to_owned());
         let entry = ChatEntry::system(text);
         self.ctx.send_command(Command::PushChatEntry(PushChatEntry {
             session_id: session_id_typed,
             entry,
         }));
-        Ok(())
     }
 
     /// Handles a TurnOff request.
@@ -268,7 +266,7 @@ mod tests {
         let msg = rx.try_recv().ok().flatten().expect("command");
         let command = match msg {
             AppMsg::Command { command, .. } => command,
-            other => panic!("expected Command, got {other:?}"),
+            other @ AppMsg::Event { .. } => panic!("expected Command, got {other:?}"),
         };
         match command {
             Command::PushChatEntry(pce) => {
@@ -283,8 +281,6 @@ mod tests {
             other => panic!("expected PushChatEntry, got {other:?}"),
         }
     }
-
-
 
     // ── PushSystem ─────────────────────────────────────────────────────
 
@@ -311,7 +307,7 @@ mod tests {
         let msg = rx.try_recv().ok().flatten().expect("command");
         let command = match msg {
             AppMsg::Command { command, .. } => command,
-            other => panic!("expected Command, got {other:?}"),
+            other @ AppMsg::Event { .. } => panic!("expected Command, got {other:?}"),
         };
         match command {
             Command::PushChatEntry(pce) => {
@@ -408,17 +404,15 @@ mod tests {
         let msg = rx.try_recv().ok().flatten().expect("command");
         let command = match msg {
             AppMsg::Command { command, .. } => command,
-            other => panic!("expected Command, got {other:?}"),
+            other @ AppMsg::Event { .. } => panic!("expected Command, got {other:?}"),
         };
         match command {
-            Command::PushChatEntry(pce) => {
-                match &pce.entry.kind {
-                    crate::feat::session::chat_entry::ChatEntryKind::User { display, .. } => {
-                        assert_eq!(display, "from loop");
-                    }
-                    other => panic!("expected User entry, got {other:?}"),
+            Command::PushChatEntry(pce) => match &pce.entry.kind {
+                crate::feat::session::chat_entry::ChatEntryKind::User { display, .. } => {
+                    assert_eq!(display, "from loop");
                 }
-            }
+                other => panic!("expected User entry, got {other:?}"),
+            },
             other => panic!("expected PushChatEntry, got {other:?}"),
         }
     }
