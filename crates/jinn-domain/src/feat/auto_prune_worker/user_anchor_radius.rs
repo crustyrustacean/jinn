@@ -128,9 +128,8 @@ fn distances_to_nearest_users(
     // Binary search: Ok gives exact match (impossible: a user index cannot
     // equal an assistant index in our callers). Err gives the insertion
     // point - the count of user indices strictly less than `idx`.
-    let insertion = match user_indices.binary_search(&idx) {
-        Ok(_) => return (None, None), // defensive: treat as no anchor
-        Err(i) => i,
+    let Err(insertion) = user_indices.binary_search(&idx) else {
+        return (None, None); // defensive: treat as no anchor
     };
 
     // Preceding user = user_indices[insertion - 1] if insertion > 0.
