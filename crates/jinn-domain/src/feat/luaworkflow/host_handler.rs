@@ -11,11 +11,18 @@
 use std::sync::Arc;
 
 use jinn_lua_workflow::HostRequest;
+use error_stack::{Report, ResultExt};
+use wherror::Error;
 
 use crate::common::state::State;
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::workflow::attached_workflow::AttachedWorkflowState;
 use crate::feat::workflow::domain_node_context::DomainNodeContext;
+
+/// Error type for Lua host handler operations.
+#[derive(Debug, Error)]
+#[error(debug)]
+pub struct LuaHostHandlerError;
 
 /// Host-side handler for Lua VM requests.
 ///
@@ -51,7 +58,7 @@ impl LuaHostHandler {
                 let result = self
                     .handle_llm(&session_id, &prompt, system_prompt.as_deref())
                     .await;
-                let _ = respond_to.send(result);
+                let _ = respond_to.send(result.map_err(|r| format!("{r:#}")));
             }
             HostRequest::PushUser {
                 session_id,
@@ -59,7 +66,7 @@ impl LuaHostHandler {
                 respond_to,
             } => {
                 let result = self.handle_push_user(&session_id, &text);
-                let _ = respond_to.send(result);
+                let _ = respond_to.send(result.map_err(|r| format!("{r:#}")));
             }
             HostRequest::PushSystem {
                 session_id,
@@ -67,14 +74,14 @@ impl LuaHostHandler {
                 respond_to,
             } => {
                 let result = self.handle_push_system(&session_id, &text);
-                let _ = respond_to.send(result);
+                let _ = respond_to.send(result.map_err(|r| format!("{r:#}")));
             }
             HostRequest::TurnOff {
                 workflow_id,
                 respond_to,
             } => {
                 let result = self.handle_turn_off(&workflow_id);
-                let _ = respond_to.send(result);
+                let _ = respond_to.send(result.map_err(|r| format!("{r:#}")));
             }
             HostRequest::Shutdown => {
                 // Nothing to do — the VM task will exit.
@@ -100,13 +107,13 @@ impl LuaHostHandler {
     ///
     /// # Errors
     ///
-    /// Returns an error string if the session is not found or the LLM call fails.
+    /// Returns a Report if the session is not found or the LLM call fails.
     async fn handle_llm(
         &self,
         session_id: &str,
         prompt: &str,
         system_prompt: Option<&str>,
-    ) -> Result<String, String> {
+    ) -> Result<String, Report<LuaHostHandlerError>> {
         let session_id_typed = crate::protocol::SessionId::from(session_id.to_owned());
         self.ctx
             .send_llm_request_cloned(
@@ -116,18 +123,19 @@ impl LuaHostHandler {
                 None,
             )
             .await
-            .map_err(|e| format!("llm request failed: {e}"))
+            .change_context(LuaHostHandlerError)
+            .attach("llm request failed")
     }
 
     /// Handles a PushUser request.
     ///
     /// Creates a `ChatEntry::user(text)` and pushes it into the session history.
-    fn handle_push_user(&self, session_id: &str, text: &str) -> Result<(), String> {
+    fn handle_push_user(&self, session_id: &str, text: &str) -> Result<(), Report<LuaHostHandlerError>> {
         let entry = ChatEntry::user(text);
         let mut guard = self.state.write();
         let session_id_typed = crate::protocol::SessionId::from(session_id.to_owned());
         let Some(session) = guard.session.get_mut(&session_id_typed) else {
-            return Err(format!("session not found: {session_id}"));
+            return Err(Report::new(LuaHostHandlerError).attach(format!("session not found: {session_id}")));
         };
         session.push_entry(entry);
         Ok(())
@@ -136,12 +144,12 @@ impl LuaHostHandler {
     /// Handles a PushSystem request.
     ///
     /// Creates a `ChatEntry::system(text)` and pushes it into the session history.
-    fn handle_push_system(&self, session_id: &str, text: &str) -> Result<(), String> {
+    fn handle_push_system(&self, session_id: &str, text: &str) -> Result<(), Report<LuaHostHandlerError>> {
         let entry = ChatEntry::system(text);
         let mut guard = self.state.write();
         let session_id_typed = crate::protocol::SessionId::from(session_id.to_owned());
         let Some(session) = guard.session.get_mut(&session_id_typed) else {
-            return Err(format!("session not found: {session_id}"));
+            return Err(Report::new(LuaHostHandlerError).attach(format!("session not found: {session_id}")));
         };
         session.push_entry(entry);
         Ok(())
@@ -150,7 +158,7 @@ impl LuaHostHandler {
     /// Handles a TurnOff request.
     ///
     /// Finds the attached workflow by ID and sets `enabled = false` and `state = Completed`.
-    fn handle_turn_off(&self, workflow_id: &str) -> Result<(), String> {
+    fn handle_turn_off(&self, workflow_id: &str) -> Result<(), Report<LuaHostHandlerError>> {
         let mut guard = self.state.write();
 
         // Search the active session for the matching attached workflow.
@@ -164,7 +172,7 @@ impl LuaHostHandler {
             }
         }
 
-        Err(format!("workflow not found: {workflow_id}"))
+        Err(Report::new(LuaHostHandlerError).attach(format!("workflow not found: {workflow_id}")))
     }
 }
 
