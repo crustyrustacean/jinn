@@ -260,8 +260,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         }
 
         // Restore permissions on temp file before rename
-        if let Some(mode) = orig_mode {
-            if let Err(e) = std::fs::set_permissions(&tmp_path, mode) {
+        if let Some(mode) = orig_mode
+            && let Err(e) = std::fs::set_permissions(&tmp_path, mode) {
                 let _ = std::fs::remove_file(&tmp_path);
                 return ToolResult {
                     tool_call_id: call.id,
@@ -272,7 +272,6 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     truncation: None,
                 };
             }
-        }
 
         if let Err(e) = std::fs::rename(&tmp_path, &resolved) {
             let _ = std::fs::remove_file(&tmp_path);

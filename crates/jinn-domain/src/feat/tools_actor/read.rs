@@ -179,7 +179,7 @@ fn annotate_lines(content: &str, start_line: usize) -> String {
         let line_num = start_line + i;
         let h = hash::compute_line_hash(line_num, line);
         use std::fmt::Write as _;
-        let _ = writeln!(out, "{line_num:>width$}#{h}|{line}", width = width);
+        let _ = writeln!(out, "{line_num:>width$}#{h}|{line}");
     }
 
     out

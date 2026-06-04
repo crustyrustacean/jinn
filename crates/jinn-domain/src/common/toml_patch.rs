@@ -48,7 +48,7 @@
 
 use std::collections::HashMap;
 
-use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, Value};
+use toml_edit::{ArrayOfTables, Item, Table, Value};
 use wherror::Error;
 
 /// Errors that can occur during document patching.
@@ -126,7 +126,6 @@ impl DocumentPatcher {
     /// Applies `value` onto `doc`, preserving comments and unknown fields.
     ///
     /// # Errors
-
     /// Returns [`PatchError`] if the document has an unexpected shape at any
     /// path the patcher walks. Attach a `Report` context at the call site to
     /// make the error actionable.
@@ -148,11 +147,11 @@ fn apply_table_inner(
     for (key, child_value) in new {
         let mut child_path = path.to_vec();
         child_path.push(key.clone());
-        if !target.contains_key(key) {
-            target.insert(key.as_str(), value_to_item(child_value));
-        } else {
+        if target.contains_key(key) {
             let child_item: &mut Item = target.get_mut(key).expect("just checked contains_key");
             apply_value(child_value, child_item, registry, &child_path)?;
+        } else {
+            target.insert(key.as_str(), value_to_item(child_value));
         }
     }
     Ok(())
@@ -195,11 +194,11 @@ fn apply_table(
     for (key, child_value) in new {
         let mut child_path = path.to_vec();
         child_path.push(key.clone());
-        if !table.contains_key(key) {
-            table.insert(key, value_to_item(child_value));
-        } else {
+        if table.contains_key(key) {
             let child_item: &mut Item = table.get_mut(key).expect("just checked contains_key");
             apply_value(child_value, child_item, registry, &child_path)?;
+        } else {
+            table.insert(key, value_to_item(child_value));
         }
     }
     Ok(())
@@ -257,9 +256,13 @@ fn apply_array_of_tables_by_key(
             continue;
         };
         let key_str = value_to_string_key(key_val);
-        if !new_by_key.contains_key(&key_str) {
-            new_keys_in_order.push(key_str.clone());
-            new_by_key.insert(key_str, entry);
+        use std::collections::hash_map::Entry;
+        match new_by_key.entry(key_str.clone()) {
+            Entry::Vacant(v) => {
+                new_keys_in_order.push(key_str);
+                v.insert(entry);
+            }
+            Entry::Occupied(_) => {}
         }
     }
 
@@ -294,9 +297,7 @@ fn apply_array_of_tables_by_key(
         };
         let entry_mut: &mut Table = array.get_mut(idx).expect("idx in range");
         for (k, child_value) in repl_t {
-            if !entry_mut.contains_key(k) {
-                entry_mut.insert(k, value_to_item(child_value));
-            } else {
+            if entry_mut.contains_key(k) {
                 let child_item: &mut Item =
                     entry_mut.get_mut(k).expect("just checked contains_key");
                 // For nested arrays-of-tables inside an array entry, look up
@@ -306,6 +307,8 @@ fn apply_array_of_tables_by_key(
                 // arrays would wholesale-replace.
                 let empty_reg = KeyRegistry::new();
                 apply_value(child_value, child_item, &empty_reg, &[])?;
+            } else {
+                entry_mut.insert(k, value_to_item(child_value));
             }
         }
     }
@@ -338,12 +341,11 @@ fn apply_array_of_tables_by_key(
 }
 
 fn entry_exists_with_key(array: &ArrayOfTables, key_field: &str, key_value: &str) -> bool {
-    for entry in array.iter() {
-        if let Some(actual) = entry.get(key_field).and_then(item_to_string_key) {
-            if actual == key_value {
+    for entry in array {
+        if let Some(actual) = entry.get(key_field).and_then(item_to_string_key)
+            && actual == key_value {
                 return true;
             }
-        }
     }
     false
 }
@@ -423,7 +425,7 @@ fn value_to_value_edit(v: &toml::Value) -> Value {
         toml::Value::Integer(i) => Value::Integer(toml_edit::Formatted::new(*i)),
         toml::Value::Float(f) => Value::Float(toml_edit::Formatted::new(*f)),
         toml::Value::Boolean(b) => Value::Boolean(toml_edit::Formatted::new(*b)),
-        toml::Value::Datetime(d) => Value::Datetime(toml_edit::Formatted::new(d.clone())),
+        toml::Value::Datetime(d) => Value::Datetime(toml_edit::Formatted::new(*d)),
         toml::Value::Array(a) => {
             let mut arr = toml_edit::Array::new();
             for entry in a {

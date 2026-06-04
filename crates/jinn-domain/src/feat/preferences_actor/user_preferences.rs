@@ -1399,28 +1399,6 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         assert!(content.contains("42"));
     }
 
-    fn sample_user_preferences() -> UserPreferences {
-        UserPreferences {
-            last_model: Some("ollama/llama3".to_owned()),
-            last_strategy: None,
-            tool_entry_max_lines: Some(99),
-            min_collapse_count: None,
-            theme_name: None,
-            persona_name: None,
-            session_lifecycles: vec![],
-            sidebar_width: Some(42),
-            max_tool_output_lines: None,
-            max_tool_output_bytes: None,
-            compaction: CompactionConfig::default(),
-            context_sliding_window: ContextSlidingWindowConfig::default(),
-            request_retry: RequestRetryConfig::default(),
-            web_fetch: WebFetchConfig::default(),
-            openrouter_web_search: OpenrouterWebSearchConfig::default(),
-            cwd_selector: CwdSelectorConfig::default(),
-            minimap: MinimapConfig::default(),
-            auto_prune: AutoPruneConfig::default(),
-        }
-    }
 
     #[rstest::rstest]
     fn save_preferences_preserves_user_comments() {
