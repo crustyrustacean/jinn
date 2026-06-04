@@ -156,8 +156,10 @@ pub enum PromptMergeStrategy {
 /// Persisted as part of `SessionCore`. On crash/restart, `Running` is reset to `Ready`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
+#[derive(Default)]
 pub enum AttachedWorkflowState {
     /// Ready to fire on next trigger.
+    #[default]
     Ready,
     /// Currently executing.
     Running,
@@ -170,11 +172,6 @@ pub enum AttachedWorkflowState {
     },
 }
 
-impl Default for AttachedWorkflowState {
-    fn default() -> Self {
-        Self::Ready
-    }
-}
 
 /// Keybind toggle keys for one-shot workflows.
 ///

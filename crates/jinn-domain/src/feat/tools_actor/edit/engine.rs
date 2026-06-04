@@ -334,9 +334,9 @@ pub fn format_mismatch_error(mismatches: &[HashMismatch], file_lines: &[&str]) -
         let content = file_lines[num - 1];
         let h = compute_line_hash(num, content);
         if mismatch_lines.contains(&num) {
-            out.push_str(&format!(">>> {num:>width$}#{h}|{content}\n", width = width));
+            out.push_str(&format!(">>> {num:>width$}#{h}|{content}\n"));
         } else {
-            out.push_str(&format!("    {num:>width$}#{h}|{content}\n", width = width));
+            out.push_str(&format!("    {num:>width$}#{h}|{content}\n"));
         }
     }
 
@@ -604,9 +604,9 @@ fn resolve_edit_to_span(
                             "[E_NOT_FOUND] replace_text: \"{old_text}\" not found in file."
                         ));
                     }
-                    return Err(format!(
+                    Err(format!(
                         "[E_NOT_UNIQUE] replace_text: \"{old_text}\" appears more than once."
-                    ));
+                    ))
                 }
                 Some((start, end)) => Ok(Some(ResolvedSpan {
                     kind: "replace",
@@ -675,7 +675,7 @@ fn check_boundary_duplication(
     };
     let last_repl = lines.last().expect("lines non-empty").trim();
     if !last_repl.is_empty()
-        && last_repl.chars().any(|c| c.is_alphanumeric())
+        && last_repl.chars().any(char::is_alphanumeric)
         && last_repl == next.trim()
     {
         let next_tag = format_tag(end_line + 1, next);

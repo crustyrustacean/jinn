@@ -97,7 +97,7 @@ pub fn compute_line_hash(line_num: usize, line: &str) -> &str {
 /// Returns `true` if the line contains at least one letter or digit.
 fn has_significant_char(s: &str) -> bool {
     s.graphemes(true)
-        .any(|g| g.chars().any(|c| c.is_alphanumeric()))
+        .any(|g| g.chars().any(char::is_alphanumeric))
 }
 
 /// Formats a line reference as `"LINE#HASH"` (e.g., `"5#WS"`).
@@ -118,9 +118,7 @@ pub fn format_hashline_region(lines: &[&str], start_line: usize) -> String {
         let hash = compute_line_hash(line_num, line);
         let _ = writeln!(
             out,
-            "{:>width$}#{hash}|{line}",
-            line_num,
-            width = line_number_width
+            "{line_num:>line_number_width$}#{hash}|{line}"
         );
     }
     out
@@ -250,8 +248,7 @@ pub fn assert_no_display_prefixes(lines: &[String]) -> Result<(), String> {
             || DIFF_MINUS_RE.is_match(line)
         {
             return Err(format!(
-                "[E_INVALID_PATCH] \"lines\" must contain literal file content, not rendered \"LINE#HASH|\" or diff \"+/-\" prefixes. Offending line: {}",
-                line
+                "[E_INVALID_PATCH] \"lines\" must contain literal file content, not rendered \"LINE#HASH|\" or diff \"+/-\" prefixes. Offending line: {line}"
             ));
         }
     }
