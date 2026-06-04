@@ -18,6 +18,7 @@ pub mod double_edit;
 pub mod read_edit;
 pub mod regex;
 pub mod todo_prune;
+pub mod tool_age_window;
 
 pub use broken_edit::BrokenEditAutoPruneWorker;
 pub use consecutive_reads::ConsecutiveReadsAutoPruneWorker;
@@ -25,3 +26,4 @@ pub use double_edit::DoubleEditAutoPruneWorker;
 pub use read_edit::ReadEditAutoPruneWorker;
 pub use regex::RegexAutoPruneWorker;
 pub use todo_prune::TodoAutoPruneWorker;
+pub use tool_age_window::ToolAgeWindowAutoPruneWorker;
