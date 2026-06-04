@@ -34,9 +34,11 @@ pub mod loader;
 pub mod plugin_data;
 pub mod sync_state;
 pub mod plugin_fire_impl;
+pub mod sync_handle;
 pub mod system;
 
 pub use async_handle::AsyncPluginHandle;
+pub use sync_handle::PluginSyncHandle;
 pub use async_thread::RequestHandler;
 pub use command::PluginCommand;
 pub use loader::{PluginMeta, discover_plugins};
