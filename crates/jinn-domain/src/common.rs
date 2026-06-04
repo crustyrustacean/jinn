@@ -15,6 +15,7 @@ pub mod services;
 pub mod session_map;
 pub mod state;
 pub mod system_resource;
+pub mod toml_patch;
 pub mod tui_signals;
 pub mod ui_element;
 pub mod ui_element_fake;
