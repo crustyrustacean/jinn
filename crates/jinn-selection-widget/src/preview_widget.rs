@@ -139,6 +139,13 @@ where
             b.inner(popup_area)
         };
 
+        // Reserve one row at the bottom for the footer.
+        let [content_area, footer_area] = Layout::vertical([
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
+        .areas(inner);
+
         // Build a temporary struct holding the remaining fields for the split renderers.
         let borrowed = RenderCtx {
             state,
@@ -148,10 +155,12 @@ where
         };
 
         if popup_area.width >= VERTICAL_SPLIT_MIN_WIDTH {
-            borrowed.render_vertical_split(frame, inner);
+            borrowed.render_vertical_split(frame, content_area);
         } else {
-            borrowed.render_horizontal_split(frame, inner);
+            borrowed.render_horizontal_split(frame, content_area);
         }
+
+        borrowed.render_footer(frame, footer_area);
     }
 
     // Forward to RenderCtx methods below are replaced by the RenderCtx struct.
@@ -161,7 +170,7 @@ where
 struct RenderCtx<'a, T: PickerItem + PreviewContent> {
     /// Shared picker state.
     state: &'a SelectionState<T>,
-    #[expect(dead_code, reason = "footer rendering to be added")]
+
     /// Optional footer line.
     footer: Option<&'a Line<'a>>,
     /// Color configuration.
@@ -288,6 +297,17 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
 
         let paragraph = Paragraph::new(padded).style(Style::default().fg(self.colors.filter_text));
         frame.render_widget(paragraph, area);
+    }
+
+    /// Renders the footer line at the bottom of the popup, right-aligned.
+    fn render_footer(&self, frame: &mut Frame<'_>, area: Rect) {
+        let footer_paragraph = match self.footer {
+            Some(line) => Paragraph::new(line.clone())
+                .style(Style::default().fg(self.colors.footer))
+                .right_aligned(),
+            None => Paragraph::new(""),
+        };
+        frame.render_widget(footer_paragraph, area);
     }
 }
 

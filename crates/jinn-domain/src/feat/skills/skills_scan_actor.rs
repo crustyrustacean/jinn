@@ -71,10 +71,11 @@ impl SkillsScanActor {
             Ok(skills) => {
                 tracing::info!(count = skills.len(), "scanned agent skills");
 
-                // Write skills to shared state.
+                // Write skills to shared state and reload picker entries.
                 {
                     let mut guard = self.state.write();
                     guard.context.skills.clone_from(&skills);
+                    super::reload::reload_skill_picker_entries(&mut guard);
                 }
 
                 let _ = ctx.send_event(Event::SkillsLoaded(SkillsLoaded {

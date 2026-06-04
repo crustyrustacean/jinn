@@ -31,6 +31,7 @@ use crate::feat::chat_input::protocol::command::{
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::feat::provider::protocol::command::SendMessage;
 use crate::feat::provider::protocol::event::{ModelsRefreshed, StreamCompleted, StreamToken};
+use crate::feat::skills::skills_scan_actor::SkillsLoaded;
 use crate::feat::session::protocol::close_session::CloseSession;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::mark_session_interacted::MarkSessionInteracted;
@@ -133,6 +134,7 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_event::<crate::feat::context::protocol::event::ChatEntryPinChanged>();
         ctx.subscribe_event::<crate::feat::session::protocol::task_list_updated::TaskListUpdated>();
         ctx.subscribe_event::<ModelsRefreshed>();
+        ctx.subscribe_event::<crate::feat::skills::skills_scan_actor::SkillsLoaded>();
         ctx.subscribe_event::<EnvironmentLoaded>();
         ctx.subscribe_event::<crate::feat::session::protocol::user_interacted::UserInteracted>();
 
@@ -189,6 +191,9 @@ impl SessionPersistenceActor {
             }
             Event::ModelsRefreshed(payload) => {
                 self.on_models_refreshed(payload);
+            }
+            Event::SkillsLoaded(payload) => {
+                self.on_skills_loaded(payload);
             }
             Event::EnvironmentLoaded(payload) => {
                 self.on_environment_loaded(&payload.config, ctx).await;
