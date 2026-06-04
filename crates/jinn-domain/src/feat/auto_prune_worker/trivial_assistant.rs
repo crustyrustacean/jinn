@@ -30,9 +30,20 @@
 //!   candidates anyway.
 //! - Already-`ForcedExclude` entries do not receive duplicate
 //!   `SetContextOverride` mutations.
+//! - Pinned entries are never pruned. Pin beats `ForcedExclude`.
 //! - Tokens are counted with the same `TiktokenCounter::o200k_base()`
 //!   encoder used by the token-count actor and the UI minimap, so the
 //!   `max_tokens` cutoff matches what users see.
+//!
+//! # Token-cache integration
+//!
+//! Per-entry counts are looked up via
+//! [`HistoryWorkerChatEntryTokenCache::get_or_insert_with`]. The first
+//! worker to evaluate a session pays the tiktoken cost; subsequent
+//! evaluations and concurrent workers (e.g., `UserAnchorRadiusAutoPruneWorker`)
+//! hit the cache.
+//!
+//! [`HistoryWorkerChatEntryTokenCache::get_or_insert_with`]: crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache::get_or_insert_with
 //!
 //! # Safety: pruning `Assistant` is unconditionally safe
 //!
@@ -56,6 +67,7 @@
 
 use std::sync::Arc;
 
+use crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache;
 use crate::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCounter};
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::TrivialAssistantAutoPruneConfig;
@@ -72,6 +84,13 @@ use crate::protocol::SessionId;
 pub struct TrivialAssistantAutoPruneWorker {
     /// Configuration for the trivial-assistant auto-prune strategy.
     pub config: TrivialAssistantAutoPruneConfig,
+    /// Shared per-session, per-entry token-count cache. Cheap clone (inner is
+    /// `Arc`-shared).
+    pub token_cache: HistoryWorkerChatEntryTokenCache,
+    /// Long-lived tiktoken counter. Cheap copy (`Copy` type with `&'static`
+    /// encoder reference). Kept as a field so swapping in a non-static
+    /// counter later is a one-line wiring change.
+    pub counter: TiktokenCounter,
 }
 
 /// Compute the index of the first entry inside the keep window.
@@ -104,13 +123,16 @@ fn compute_keep_window_start(history: &[ChatEntry], max_age: usize) -> Option<us
 /// 1. Find the keep window start index (the `max_age`-th entry from the
 ///    end of raw history, regardless of in-context status).
 /// 2. For every `Assistant` entry at an index strictly less than the keep
-///    window start, estimate its token count via `counter`.
-/// 3. If the count is `<= max_tokens` AND the entry is not already
-///    `ForcedExclude`, emit a `SetContextOverride::ForcedExclude` mutation.
+///    window start, look up (or compute and cache) the token count via the
+///    shared `HistoryWorkerChatEntryTokenCache`. Skips empty, pinned, or
+///    already-excluded entries.
+/// 3. If the count is `<= max_tokens`, emit a `SetContextOverride::ForcedExclude` mutation.
 fn build_trivial_assistant_mutations(
     history: &[ChatEntry],
     max_age: usize,
-    max_tokens: usize,
+    max_tokens: u32,
+    session_id: &SessionId,
+    token_cache: &HistoryWorkerChatEntryTokenCache,
     counter: &TiktokenCounter,
 ) -> Vec<HistoryMutation> {
     let max_tokens = max_tokens.max(1);
@@ -137,12 +159,21 @@ fn build_trivial_assistant_mutations(
             continue;
         }
 
+        // Skip pinned entries — pin beats ForcedExclude.
+        if entry.is_pinned() {
+            continue;
+        }
+
         // Skip already-excluded entries to avoid duplicate mutations.
         if entry.context_override == ContextOverride::ForcedExclude {
             continue;
         }
 
-        let tokens = counter.count(text);
+        // Look up or compute token count. The closure only fires on first
+        // miss for this (session, entry) pair; sibling workers sharing the
+        // cache hit on first sight.
+        let tokens =
+            token_cache.get_or_insert_with(session_id, &entry.id, || counter.count(text) as u32);
         if tokens <= max_tokens {
             tracing::debug!(
                 entry_id = %entry.id,
@@ -170,15 +201,16 @@ impl HistoryWorker for TrivialAssistantAutoPruneWorker {
 
     async fn evaluate(
         &self,
-        _session_id: &SessionId,
+        session_id: &SessionId,
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
-        let counter = TiktokenCounter::o200k_base();
         let mutations = build_trivial_assistant_mutations(
             &history,
             self.config.max_age_entries,
-            self.config.max_tokens,
-            &counter,
+            self.config.max_tokens as u32,
+            session_id,
+            &self.token_cache,
+            &self.counter,
         );
         tracing::debug!(
             mutations = mutations.len(),
@@ -208,6 +240,8 @@ mod tests {
                 max_age_entries: max_age,
                 max_tokens,
             },
+            token_cache: HistoryWorkerChatEntryTokenCache::new(),
+            counter: TiktokenCounter::o200k_base(),
         }
     }
 
@@ -514,5 +548,177 @@ mod tests {
         for id in &expected_ids {
             assert!(excluded.contains(id), "expected {id} to be pruned");
         }
+    }
+
+    // ------------------------------------------------------------------
+    // 13. token_cache_populated_after_evaluate
+    //
+    // First evaluate populates the shared cache; verify by direct read.
+    // ------------------------------------------------------------------
+    #[test]
+    fn token_cache_populated_after_evaluate() {
+        let w = worker(100, 80);
+        let session_id = SessionId::new();
+        let asst = trivial_assistant("done");
+        let asst_id = asst.id.clone();
+        let mut history = vec![asst];
+        history.extend(users(100));
+
+        let history: Arc<[ChatEntry]> = history.into();
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        rt.block_on(async { w.evaluate(&session_id, history).await });
+
+        assert_eq!(
+            w.token_cache.get(&session_id, &asst_id),
+            Some(1),
+            "'done' is 1 o200k_base token and must be cached after evaluate"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // 14. second_evaluate_uses_cached_tokens_not_recomputed
+    //
+    // Sabotage the cache between two evaluate calls. The sabotage value
+    // is `max_tokens + 1` (81), which causes the worker to SKIP (since
+    // `tokens <= max_tokens` is `81 <= 80` = false). If the worker
+    // recomputed, it would see 1 token and PRUNE. So a passing test
+    // proves the cache was consulted.
+    // ------------------------------------------------------------------
+    #[test]
+    fn second_evaluate_uses_cached_tokens_not_recomputed() {
+        let w = worker(100, 80);
+        let session_id = SessionId::new();
+        let asst = trivial_assistant("done");
+        let asst_id = asst.id.clone();
+        let mut history = vec![asst];
+        history.extend(users(100));
+        let history: Arc<[ChatEntry]> = history.into();
+
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+
+        // Sanity: first call prunes the entry.
+        let first = rt.block_on(async { w.evaluate(&session_id, history.clone()).await });
+        assert!(
+            excluded_ids(&first).contains(&asst_id),
+            "first evaluate must prune 'done' (1 token, outside window)"
+        );
+
+        // Sabotage cache: 81 > 80 = max_tokens → "too large to be trivial".
+        // If the worker reads from cache on second evaluate, it will skip;
+        // if it recomputes, it will see 1 token and prune.
+        w.token_cache
+            .insert(session_id.clone(), asst_id.clone(), 81);
+
+        // Reset context_override so the idempotency skip doesn't hide the result.
+        let mut history2 = (*history).to_vec();
+        for e in &mut history2 {
+            e.context_override = ContextOverride::Default;
+        }
+
+        let second = rt.block_on(async { w.evaluate(&session_id, history2.into()).await });
+        assert!(
+            !excluded_ids(&second).contains(&asst_id),
+            "second evaluate must read sabotaged cache (81 > 80) and skip; \"
+             if it recomputed it would see 1 token and prune"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // 15. pinned_trivial_assistant_outside_window_is_not_pruned
+    //
+    // The new pin-skip guard must prevent a pinned trivial assistant from
+    // receiving a ForcedExclude mutation, even when the entry is well
+    // outside the keep window and would otherwise qualify for pruning.
+    // ------------------------------------------------------------------
+    #[test]
+    fn pinned_trivial_assistant_outside_window_is_not_pruned() {
+        use crate::feat::session::chat_entry::PinPosition;
+        let w = worker(100, 80);
+        let mut asst = trivial_assistant("done");
+        asst.pin_position = Some(PinPosition::Top);
+        let asst_id = asst.id.clone();
+        let mut history = vec![asst];
+        history.extend(users(100));
+
+        let mutations = evaluate(&w, history);
+        assert!(
+            !excluded_ids(&mutations).contains(&asst_id),
+            "pinned trivial assistant must not be pruned even outside window"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // 16. anchor_worker_reads_external_cache_writes
+    //
+    // Cross-worker sharing test: the trivial worker and the
+    // user-anchor-radius worker share a cache handle. We don't need to
+    // actually run the trivial worker — sabotaging the cache substitutes
+    // for a first write. The point is to prove the anchor worker honors
+    // cache writes from outside its own evaluate path.
+    //
+    // Proof strategy: target entry "ok" has 1 o200k_base token. Sabotage
+    // the cache with 999. The anchor worker's MIN_CANDIDATE_TOKENS is 81,
+    // so a recomputed count of 1 would be skipped, but a cached count of
+    // 999 would be classified as a candidate (then pruned because d_back
+    // = 101 > radius 5).
+    // ------------------------------------------------------------------
+    #[test]
+    fn anchor_worker_reads_external_cache_writes() {
+        use crate::feat::auto_prune_worker::user_anchor_radius::UserAnchorRadiusAutoPruneWorker;
+        use crate::feat::preferences_actor::user_preferences::UserAnchorRadiusAutoPruneConfig;
+
+        let shared_cache = HistoryWorkerChatEntryTokenCache::new();
+        let session_id = SessionId::new();
+
+        // Trivial worker constructed against the shared handle — proves
+        // both workers can hold the same cache instance (type-check).
+        let _trivial = TrivialAssistantAutoPruneWorker {
+            config: TrivialAssistantAutoPruneConfig {
+                enabled: true,
+                max_age_entries: 100,
+                max_tokens: 80,
+            },
+            token_cache: shared_cache.clone(),
+            counter: TiktokenCounter::o200k_base(),
+        };
+
+        let anchor = UserAnchorRadiusAutoPruneWorker {
+            config: UserAnchorRadiusAutoPruneConfig {
+                enabled: true,
+                radius: 5,
+            },
+            token_cache: shared_cache.clone(),
+            counter: TiktokenCounter::o200k_base(),
+        };
+
+        // History: User at index 0, 100 trivial-step padding entries,
+        // target "ok" at index 101.
+        let mut history = vec![ChatEntry::user("anchor")];
+        history.extend(std::iter::repeat_n(trivial_assistant("step"), 100));
+        let target = trivial_assistant("ok");
+        let target_id = target.id.clone();
+        history.push(target);
+
+        // Sabotage: cache "ok" as 999 tokens.
+        shared_cache.insert(session_id.clone(), target_id.clone(), 999);
+
+        let history: Arc<[ChatEntry]> = history.into();
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        let mutations =
+            rt.block_on(async { anchor.evaluate(&session_id, history).await });
+
+        assert!(
+            excluded_ids(&mutations).contains(&target_id),
+            "anchor worker must read sabotaged cache value (999 > 81 → candidate); \"
+             if it recomputed it would see 1 token and skip"
+        );
+
+        // Belt-and-suspenders: the anchor worker's get_or_insert_with
+        // must not overwrite an existing cache entry.
+        assert_eq!(
+            shared_cache.get(&session_id, &target_id),
+            Some(999),
+            "anchor worker must not overwrite an existing cache entry"
+        );
     }
 }
