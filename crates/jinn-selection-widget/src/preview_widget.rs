@@ -140,11 +140,8 @@ where
         };
 
         // Reserve one row at the bottom for the footer.
-        let [content_area, footer_area] = Layout::vertical([
-            Constraint::Min(0),
-            Constraint::Length(1),
-        ])
-        .areas(inner);
+        let [content_area, footer_area] =
+            Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(inner);
 
         // Build a temporary struct holding the remaining fields for the split renderers.
         let borrowed = RenderCtx {

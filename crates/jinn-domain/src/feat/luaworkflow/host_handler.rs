@@ -4,18 +4,27 @@
 //! and processes each variant against the domain layer:
 //!
 //! - `Llm` → calls the LLM via [`DomainNodeContext`]
-//! - `PushUser` → pushes a [`ChatEntry::user`] into session history
-//! - `PushSystem` → pushes a [`ChatEntry::system`] into session history
+//! - `PushUser` → dispatches a [`Command::PushChatEntry`] with a [`ChatEntry::user`]
+//! - `PushSystem` → dispatches a [`Command::PushChatEntry`] with a [`ChatEntry::system`]
 //! - `TurnOff` → disables an attached workflow
 
 use std::sync::Arc;
 
+use error_stack::{Report, ResultExt};
 use jinn_lua_workflow::HostRequest;
+use wherror::Error;
 
 use crate::common::state::State;
+use crate::feat::chat_input::protocol::command::PushChatEntry;
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::workflow::attached_workflow::AttachedWorkflowState;
 use crate::feat::workflow::domain_node_context::DomainNodeContext;
+use crate::protocol::Command;
+
+/// Error type for Lua host handler operations.
+#[derive(Debug, Error)]
+#[error(debug)]
+pub struct LuaHostHandlerError;
 
 /// Host-side handler for Lua VM requests.
 ///
@@ -51,30 +60,30 @@ impl LuaHostHandler {
                 let result = self
                     .handle_llm(&session_id, &prompt, system_prompt.as_deref())
                     .await;
-                let _ = respond_to.send(result);
+                let _ = respond_to.send(result.map_err(|r| format!("{r:#}")));
             }
             HostRequest::PushUser {
                 session_id,
                 text,
                 respond_to,
             } => {
-                let result = self.handle_push_user(&session_id, &text);
-                let _ = respond_to.send(result);
+                self.handle_push_user(&session_id, &text);
+                let _ = respond_to.send(Ok(()));
             }
             HostRequest::PushSystem {
                 session_id,
                 text,
                 respond_to,
             } => {
-                let result = self.handle_push_system(&session_id, &text);
-                let _ = respond_to.send(result);
+                self.handle_push_system(&session_id, &text);
+                let _ = respond_to.send(Ok(()));
             }
             HostRequest::TurnOff {
                 workflow_id,
                 respond_to,
             } => {
                 let result = self.handle_turn_off(&workflow_id);
-                let _ = respond_to.send(result);
+                let _ = respond_to.send(result.map_err(|r| format!("{r:#}")));
             }
             HostRequest::Shutdown => {
                 // Nothing to do — the VM task will exit.
@@ -100,13 +109,13 @@ impl LuaHostHandler {
     ///
     /// # Errors
     ///
-    /// Returns an error string if the session is not found or the LLM call fails.
+    /// Returns a Report if the session is not found or the LLM call fails.
     async fn handle_llm(
         &self,
         session_id: &str,
         prompt: &str,
         system_prompt: Option<&str>,
-    ) -> Result<String, String> {
+    ) -> Result<String, Report<LuaHostHandlerError>> {
         let session_id_typed = crate::protocol::SessionId::from(session_id.to_owned());
         self.ctx
             .send_llm_request_cloned(
@@ -116,41 +125,40 @@ impl LuaHostHandler {
                 None,
             )
             .await
-            .map_err(|e| format!("llm request failed: {e}"))
+            .change_context(LuaHostHandlerError)
+            .attach("llm request failed")
     }
 
     /// Handles a PushUser request.
     ///
-    /// Creates a `ChatEntry::user(text)` and pushes it into the session history.
-    fn handle_push_user(&self, session_id: &str, text: &str) -> Result<(), String> {
-        let entry = ChatEntry::user(text);
-        let mut guard = self.state.write();
+    /// Dispatches a [`Command::PushChatEntry`] with a [`ChatEntry::user`] through
+    /// the domain node context. The session actor processes the command asynchronously.
+    fn handle_push_user(&self, session_id: &str, text: &str) {
         let session_id_typed = crate::protocol::SessionId::from(session_id.to_owned());
-        let Some(session) = guard.session.get_mut(&session_id_typed) else {
-            return Err(format!("session not found: {session_id}"));
-        };
-        session.push_entry(entry);
-        Ok(())
+        let entry = ChatEntry::user(text);
+        self.ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            session_id: session_id_typed,
+            entry,
+        }));
     }
 
     /// Handles a PushSystem request.
     ///
-    /// Creates a `ChatEntry::system(text)` and pushes it into the session history.
-    fn handle_push_system(&self, session_id: &str, text: &str) -> Result<(), String> {
-        let entry = ChatEntry::system(text);
-        let mut guard = self.state.write();
+    /// Dispatches a [`Command::PushChatEntry`] with a [`ChatEntry::system`] through
+    /// the domain node context. The session actor processes the command asynchronously.
+    fn handle_push_system(&self, session_id: &str, text: &str) {
         let session_id_typed = crate::protocol::SessionId::from(session_id.to_owned());
-        let Some(session) = guard.session.get_mut(&session_id_typed) else {
-            return Err(format!("session not found: {session_id}"));
-        };
-        session.push_entry(entry);
-        Ok(())
+        let entry = ChatEntry::system(text);
+        self.ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            session_id: session_id_typed,
+            entry,
+        }));
     }
 
     /// Handles a TurnOff request.
     ///
     /// Finds the attached workflow by ID and sets `enabled = false` and `state = Completed`.
-    fn handle_turn_off(&self, workflow_id: &str) -> Result<(), String> {
+    fn handle_turn_off(&self, workflow_id: &str) -> Result<(), Report<LuaHostHandlerError>> {
         let mut guard = self.state.write();
 
         // Search the active session for the matching attached workflow.
@@ -164,7 +172,7 @@ impl LuaHostHandler {
             }
         }
 
-        Err(format!("workflow not found: {workflow_id}"))
+        Err(Report::new(LuaHostHandlerError).attach(format!("workflow not found: {workflow_id}")))
     }
 }
 
@@ -181,15 +189,23 @@ mod tests {
     use super::*;
     use crate::common::app_state::AppState;
     use crate::common::services::test_services::TestServices;
-    use crate::feat::session::chat_session::ChatSessionState;
     use crate::feat::workflow::attached_workflow::WorkflowId;
     use crate::feat::workflow::attached_workflow::{
         AttachedWorkflow, WorkflowConfig, WorkflowTrigger,
     };
-    use crate::protocol::SessionId;
+    use crate::protocol::{AppMsg, SessionId};
     use tokio::sync::oneshot;
 
-    /// Creates a handler with test services for non-LLM tests.
+    /// Creates a handler with test services and returns the actor channel receiver
+    /// for verifying dispatched commands.
+    fn make_handler_with_channel(state: State) -> (LuaHostHandler, kanal::Receiver<AppMsg>) {
+        let (tx, rx) = kanal::unbounded::<AppMsg>();
+        let services = TestServices::builder().actor_channel(tx).build();
+        let ctx = Arc::new(DomainNodeContext::new(services, state.clone()));
+        (LuaHostHandler::new(state, ctx), rx)
+    }
+
+    /// Creates a handler with test services for tests that don't inspect commands.
     fn make_handler(state: State) -> LuaHostHandler {
         let services = TestServices::builder().build();
         let ctx = Arc::new(DomainNodeContext::new(services, state.clone()));
@@ -228,10 +244,12 @@ mod tests {
     // ── PushUser ───────────────────────────────────────────────────────
 
     #[tokio::test]
-    async fn push_user_creates_user_entry_in_session() {
+    async fn push_user_dispatches_push_chat_entry_command() {
+        // Given a handler with a session and command channel.
         let (state, session_id) = make_state_with_session();
-        let handler = make_handler(state.clone());
+        let (handler, rx) = make_handler_with_channel(state);
 
+        // When handling a PushUser request.
         let (resp_tx, resp_rx) = oneshot::channel();
         handler
             .handle_request(HostRequest::PushUser {
@@ -241,45 +259,38 @@ mod tests {
             })
             .await;
 
+        // Then the response is Ok.
         resp_rx.await.expect("response").expect("push_user");
 
-        let guard = state.read();
-        let session = guard.session.get(&session_id).expect("session");
-        let history = session.history();
-        let last = history.last().expect("entry exists");
-        match &last.kind {
-            crate::feat::session::chat_entry::ChatEntryKind::User { display, .. } => {
-                assert_eq!(display, "judgement failed, try again");
+        // And a PushChatEntry command was dispatched with a User entry.
+        let msg = rx.try_recv().ok().flatten().expect("command");
+        let command = match msg {
+            AppMsg::Command { command, .. } => command,
+            other @ AppMsg::Event { .. } => panic!("expected Command, got {other:?}"),
+        };
+        match command {
+            Command::PushChatEntry(pce) => {
+                assert_eq!(pce.session_id, session_id);
+                match &pce.entry.kind {
+                    crate::feat::session::chat_entry::ChatEntryKind::User { display, .. } => {
+                        assert_eq!(display, "judgement failed, try again");
+                    }
+                    other => panic!("expected User entry, got {other:?}"),
+                }
             }
-            other => panic!("expected User entry, got {other:?}"),
+            other => panic!("expected PushChatEntry, got {other:?}"),
         }
-    }
-
-    #[tokio::test]
-    async fn push_user_returns_error_for_unknown_session() {
-        let (state, _) = make_state_with_session();
-        let handler = make_handler(state);
-
-        let (resp_tx, resp_rx) = oneshot::channel();
-        handler
-            .handle_request(HostRequest::PushUser {
-                session_id: "nonexistent".to_owned(),
-                text: "test".to_owned(),
-                respond_to: resp_tx,
-            })
-            .await;
-
-        let result = resp_rx.await.expect("response");
-        assert!(result.is_err());
     }
 
     // ── PushSystem ─────────────────────────────────────────────────────
 
     #[tokio::test]
-    async fn push_system_creates_system_entry_in_session() {
+    async fn push_system_dispatches_push_chat_entry_command() {
+        // Given a handler with a session and command channel.
         let (state, session_id) = make_state_with_session();
-        let handler = make_handler(state.clone());
+        let (handler, rx) = make_handler_with_channel(state);
 
+        // When handling a PushSystem request.
         let (resp_tx, resp_rx) = oneshot::channel();
         handler
             .handle_request(HostRequest::PushSystem {
@@ -289,17 +300,26 @@ mod tests {
             })
             .await;
 
+        // Then the response is Ok.
         resp_rx.await.expect("response").expect("push_system");
 
-        let guard = state.read();
-        let session = guard.session.get(&session_id).expect("session");
-        let history = session.history();
-        let last = history.last().expect("entry exists");
-        match &last.kind {
-            crate::feat::session::chat_entry::ChatEntryKind::System(text) => {
-                assert_eq!(text, "judgement passed");
+        // And a PushChatEntry command was dispatched with a System entry.
+        let msg = rx.try_recv().ok().flatten().expect("command");
+        let command = match msg {
+            AppMsg::Command { command, .. } => command,
+            other @ AppMsg::Event { .. } => panic!("expected Command, got {other:?}"),
+        };
+        match command {
+            Command::PushChatEntry(pce) => {
+                assert_eq!(pce.session_id, session_id);
+                match &pce.entry.kind {
+                    crate::feat::session::chat_entry::ChatEntryKind::System(text) => {
+                        assert_eq!(text, "judgement passed");
+                    }
+                    other => panic!("expected System entry, got {other:?}"),
+                }
             }
-            other => panic!("expected System entry, got {other:?}"),
+            other => panic!("expected PushChatEntry, got {other:?}"),
         }
     }
 
@@ -307,9 +327,11 @@ mod tests {
 
     #[tokio::test]
     async fn turn_off_disables_attached_workflow() {
+        // Given a session with an attached workflow.
         let (state, session_id, workflow_id) = make_state_with_session_and_workflow();
         let handler = make_handler(state.clone());
 
+        // When handling a TurnOff request for that workflow.
         let (resp_tx, resp_rx) = oneshot::channel();
         handler
             .handle_request(HostRequest::TurnOff {
@@ -318,8 +340,10 @@ mod tests {
             })
             .await;
 
+        // Then the response is Ok.
         resp_rx.await.expect("response").expect("turn_off");
 
+        // And the workflow is disabled and Completed.
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session");
         let aw = session
@@ -334,9 +358,11 @@ mod tests {
 
     #[tokio::test]
     async fn turn_off_returns_error_for_unknown_workflow() {
+        // Given a session with an attached workflow.
         let (state, _, _) = make_state_with_session_and_workflow();
         let handler = make_handler(state);
 
+        // When handling a TurnOff request for a nonexistent workflow.
         let (resp_tx, resp_rx) = oneshot::channel();
         handler
             .handle_request(HostRequest::TurnOff {
@@ -345,6 +371,7 @@ mod tests {
             })
             .await;
 
+        // Then the response is an error.
         let result = resp_rx.await.expect("response");
         assert!(result.is_err());
     }
@@ -353,12 +380,12 @@ mod tests {
 
     #[tokio::test]
     async fn run_loop_processes_requests_until_shutdown() {
+        // Given a handler with a session and command channel.
         let (state, session_id) = make_state_with_session();
-        let handler = make_handler(state.clone());
+        let (handler, rx) = make_handler_with_channel(state);
 
-        let (tx, rx) = kanal::unbounded::<HostRequest>();
-
-        // Send a push_user then a shutdown.
+        // When sending a PushUser then a Shutdown through the run loop.
+        let (tx, host_rx) = kanal::unbounded::<HostRequest>();
         let (resp_tx, resp_rx) = oneshot::channel();
         tx.send(HostRequest::PushUser {
             session_id: session_id.to_string(),
@@ -368,18 +395,25 @@ mod tests {
         .expect("send");
         tx.send(HostRequest::Shutdown).expect("send");
 
-        handler.run(rx).await;
+        handler.run(host_rx).await;
 
-        // Verify the push was processed.
+        // Then the response is Ok.
         resp_rx.await.expect("response").expect("push_user");
-        let guard = state.read();
-        let session = guard.session.get(&session_id).expect("session");
-        let last = session.history().last().expect("entry");
-        match &last.kind {
-            crate::feat::session::chat_entry::ChatEntryKind::User { display, .. } => {
-                assert_eq!(display, "from loop");
-            }
-            other => panic!("expected User entry, got {other:?}"),
+
+        // And a PushChatEntry command was dispatched.
+        let msg = rx.try_recv().ok().flatten().expect("command");
+        let command = match msg {
+            AppMsg::Command { command, .. } => command,
+            other @ AppMsg::Event { .. } => panic!("expected Command, got {other:?}"),
+        };
+        match command {
+            Command::PushChatEntry(pce) => match &pce.entry.kind {
+                crate::feat::session::chat_entry::ChatEntryKind::User { display, .. } => {
+                    assert_eq!(display, "from loop");
+                }
+                other => panic!("expected User entry, got {other:?}"),
+            },
+            other => panic!("expected PushChatEntry, got {other:?}"),
         }
     }
 }
