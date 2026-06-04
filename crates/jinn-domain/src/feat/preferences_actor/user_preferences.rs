@@ -288,28 +288,29 @@ impl Default for ConsecutiveReadsAutoPruneConfig {
 /// Default enabled state for tool-age-window auto-prune.
 const DEFAULT_TOOL_AGE_WINDOW_ENABLED: bool = true;
 
-/// Default number of in-context entries to keep before pruning older tool pairs.
+/// Default number of entries to keep before pruning older tool pairs.
 const DEFAULT_TOOL_AGE_WINDOW_MAX_AGE_ENTRIES: usize = 100;
 
 /// Tool-age-window auto-prune configuration.
 ///
 /// Serialized as `[auto_prune.tool_age_window]` in `jinn.toml`.
 /// Controls the auto-prune worker that excludes any `ToolCall`/`ToolResult`
-/// pair older than `max_age_entries` in-context entries from the end of
-/// history. Both halves of a pair are always excluded together.
+/// pair older than `max_age_entries` entries from the end of history. Both
+/// halves of a pair are always excluded together.
 ///
-/// The threshold counts only entries that are currently in LLM context
-/// (per `ChatEntry::is_in_context()`); already-excluded entries do not
-/// count toward the limit.
+/// The window counts every entry in raw history regardless of in-context
+/// status, so that multiple auto-prune workers compose cleanly: each
+/// worker's prune region is fixed by raw history length alone, not by what
+/// has already been `ForcedExclude`d by other workers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolAgeWindowAutoPruneConfig {
     /// Whether the tool-age-window auto-prune worker is active.
     /// Default: `true`.
     #[serde(default = "default_tool_age_window_enabled")]
     pub enabled: bool,
-    /// Number of most recent in-context entries to keep before pruning
-    /// older tool pairs. Minimum 1 (clamped at worker construction).
-    /// Default: `100`.
+    /// Number of most recent entries to keep before pruning older tool
+    /// pairs. Counts every entry, regardless of in-context status.
+    /// Minimum 1 (clamped at worker construction).
     #[serde(default = "default_tool_age_window_max_age_entries")]
     pub max_age_entries: usize,
 }
@@ -334,7 +335,7 @@ impl Default for ToolAgeWindowAutoPruneConfig {
 /// Default enabled state for trivial-assistant auto-prune.
 const DEFAULT_TRIVIAL_ASSISTANT_ENABLED: bool = true;
 
-/// Default number of in-context entries to keep before pruning older trivial
+/// Default number of entries to keep before pruning older trivial
 /// assistant entries.
 const DEFAULT_TRIVIAL_ASSISTANT_MAX_AGE_ENTRIES: usize = 100;
 
@@ -346,22 +347,24 @@ const DEFAULT_TRIVIAL_ASSISTANT_MAX_TOKENS: usize = 80;
 ///
 /// Serialized as `[auto_prune.trivial_assistant]` in `jinn.toml`.
 /// Controls the auto-prune worker that excludes any `Assistant` entry that
-/// (a) is older than `max_age_entries` in-context entries from the end of
-/// history and (b) is at most `max_tokens` tokens long.
+/// (a) is older than `max_age_entries` entries from the end of history and
+/// (b) is at most `max_tokens` tokens long.
 ///
-/// The threshold counts only entries that are currently in LLM context
-/// (per `ChatEntry::is_in_context()`); already-excluded entries do not
-/// count toward the limit. Tokens are counted via the same tiktoken
-/// `o200k_base` encoder used by the token-count actor and minimap.
+/// The window counts every entry in raw history regardless of in-context
+/// status, so that multiple auto-prune workers compose cleanly: each
+/// worker's prune region is fixed by raw history length alone, not by what
+/// has already been `ForcedExclude`d by other workers. Tokens are counted
+/// via the same tiktoken `o200k_base` encoder used by the token-count
+/// actor and minimap.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrivialAssistantAutoPruneConfig {
     /// Whether the trivial-assistant auto-prune worker is active.
     /// Default: `true`.
     #[serde(default = "default_trivial_assistant_enabled")]
     pub enabled: bool,
-    /// Number of most recent in-context entries to keep before pruning
-    /// older trivial assistant entries. Minimum 1 (clamped at evaluation
-    /// time).
+    /// Number of most recent entries to keep before pruning older trivial
+    /// assistant entries. Counts every entry, regardless of in-context
+    /// status. Minimum 1 (clamped at evaluation time).
     /// Default: `100`.
     #[serde(default = "default_trivial_assistant_max_age_entries")]
     pub max_age_entries: usize,
@@ -394,7 +397,6 @@ impl Default for TrivialAssistantAutoPruneConfig {
         }
     }
 }
-
 
 /// Default regex prune rule tool name.
 const DEFAULT_REGEX_TOOL_NAME: &str = "bash";
