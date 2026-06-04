@@ -210,7 +210,7 @@ pub fn render_vertical_minimap(
     let cumulative_tokens = {
         let session = state.active_session();
         let items = session.visual_items();
-        selected_history_boundary(&*items, selected_idx)
+        selected_history_boundary(&items, selected_idx)
             .and_then(|boundary| compute_cumulative_tokens(state, boundary))
     };
     Some(MinimapArrow {
@@ -825,7 +825,7 @@ mod tests {
         setup_visual_items(&state);
         let items = state.active_session().visual_items();
         // selected_idx = 0 (last entry, auto-selected)
-        let boundary = selected_history_boundary(&*items, Some(0));
+        let boundary = selected_history_boundary(&items, Some(0));
         let cumulative = boundary.and_then(|b| compute_cumulative_tokens(&state, b));
         assert_eq!(cumulative, Some(100));
     }
@@ -851,7 +851,7 @@ mod tests {
         // Selected is the last visual item (user at vi_index = last).
         // We want the boundary for the user entry.
         let last_vi = items.len() - 1;
-        let boundary = selected_history_boundary(&*items, Some(last_vi));
+        let boundary = selected_history_boundary(&items, Some(last_vi));
         let cumulative = boundary.and_then(|b| compute_cumulative_tokens(&state, b));
         assert_eq!(cumulative, Some(200));
     }
@@ -878,7 +878,7 @@ mod tests {
         let items = state.active_session().visual_items();
         // Last visual item is the user entry at history index 2.
         let last_vi = items.len() - 1;
-        let boundary = selected_history_boundary(&*items, Some(last_vi));
+        let boundary = selected_history_boundary(&items, Some(last_vi));
         let cumulative = boundary.and_then(|b| compute_cumulative_tokens(&state, b));
         assert_eq!(cumulative, Some(600));
     }
@@ -891,7 +891,7 @@ mod tests {
         setup_visual_items(&state);
         let items = state.active_session().visual_items();
         let last_vi = items.len() - 1;
-        let boundary = selected_history_boundary(&*items, Some(last_vi));
+        let boundary = selected_history_boundary(&items, Some(last_vi));
         let cumulative = boundary.and_then(|b| compute_cumulative_tokens(&state, b));
         assert_eq!(cumulative, None);
     }
