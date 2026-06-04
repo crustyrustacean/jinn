@@ -256,15 +256,15 @@ fn cursor_history_range(
 }
 
 /// Sums cached token counts for all `is_in_context()` entries in
-/// history range `0..end` (exclusive upper bound). Returns `None`
-/// when no cached count contributes to the sum.
+/// history range `0..end` (exclusive upper bound). Returns `Some(0)`
+/// when the range is empty or all entries are excluded.
 fn compute_tokens_above(state: &AppState, end: usize) -> Option<u32> {
     compute_token_sum_in_range(state, 0, end)
 }
 
 /// Sums cached token counts for all `is_in_context()` entries in
 /// history range `start..history.len()` (exclusive lower bound).
-/// Returns `None` when no cached count contributes to the sum.
+/// Returns `Some(0)` when the range is empty or all entries are excluded.
 fn compute_tokens_below(state: &AppState, start: usize) -> Option<u32> {
     let history_len = state.active_session().history().len();
     compute_token_sum_in_range(state, start, history_len)
@@ -289,7 +289,7 @@ fn compute_token_sum_in_range(
             sum = sum.saturating_add(count);
         }
     }
-    (sum > 0).then_some(sum)
+    Some(sum)
 }
 
 fn render_scroll_arrows(
@@ -895,8 +895,9 @@ mod tests {
         let (start, end) = cursor_history_range(&items, Some(0), history_len);
         let above = compute_tokens_above(&state, start);
         let below = compute_tokens_below(&state, end);
-        assert_eq!(above, None);
-        assert_eq!(below, None);
+        // Empty range → Some(0).
+        assert_eq!(above, Some(0));
+        assert_eq!(below, Some(0));
     }
 
     #[rstest::rstest]
@@ -924,8 +925,9 @@ mod tests {
         let above = compute_tokens_above(&state, start);
         let below = compute_tokens_below(&state, end);
         // thinking's 0 cached count is skipped; nothing remains above.
-        assert_eq!(above, None);
-        assert_eq!(below, None);
+        // No in-context entries above → Some(0); nothing below → Some(0).
+        assert_eq!(above, Some(0));
+        assert_eq!(below, Some(0));
     }
 
     #[rstest::rstest]
@@ -957,7 +959,8 @@ mod tests {
         let above = compute_tokens_above(&state, start);
         let below = compute_tokens_below(&state, end);
         assert_eq!(above, Some(300)); // e1 + e2
-        assert_eq!(below, None);
+        // Empty range below last cursor → Some(0).
+        assert_eq!(below, Some(0));
 
         // Case 2: cursor on the MIDDLE entry (history idx 1).
         // Find the visual item index for history index 1.
@@ -973,7 +976,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn tokens_above_and_below_are_none_when_no_cached_counts() {
+    fn tokens_above_and_below_are_zero_when_no_cached_counts() {
         let mut state = AppState::default();
         state
             .active_session_mut()
@@ -988,8 +991,11 @@ mod tests {
         let (start, end) = cursor_history_range(&items, Some(last_vi), history_len);
         let above = compute_tokens_above(&state, start);
         let below = compute_tokens_below(&state, end);
-        assert_eq!(above, None);
-        assert_eq!(below, None);
+        // Cache is empty: sum is 0 → Some(0). Renderer now shows "0 ▲"/
+        // "0 ▼" rather than glyph-alone, because the user wants to see
+        // explicit zero counts.
+        assert_eq!(above, Some(0));
+        assert_eq!(below, Some(0));
     }
 
     #[rstest::rstest]
@@ -1214,7 +1220,7 @@ mod tests {
         let arrow = arrow.expect("arrow should render even without cursor");
         // History: [100, 200, 300]. Cursor defaults to last → above = 100+200 = 300.
         assert_eq!(arrow.tokens_above, Some(300));
-        // Below = no entries after cursor → `None`.
-        assert_eq!(arrow.tokens_below, None);
+        // Below = no entries after cursor → Some(0).
+        assert_eq!(arrow.tokens_below, Some(0));
     }
 }
