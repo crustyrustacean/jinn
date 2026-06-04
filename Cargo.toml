@@ -120,6 +120,7 @@ clap_complete = "4"
 # Other
 dirs = "6"
 toml = "0.8"
+toml_edit = "0.22"
 dotenvy = "0.15"
 unicode-segmentation = "1"
 unicode-width = "0.2"
