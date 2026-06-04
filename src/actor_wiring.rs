@@ -124,6 +124,7 @@ pub fn create_core_with_actor_host(
         config_storage: config_storage.clone(),
         session_store: session_store.clone(),
         user_preferences_storage: user_preferences_storage.clone(),
+        tempdir: None,
     };
 
     // ── Infrastructure actors (no lifecycle events) ──────────────────────
