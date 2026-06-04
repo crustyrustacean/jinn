@@ -174,7 +174,8 @@ pub fn compute_spatial_layout(structure: &WorkflowStructure) -> HashMap<String, 
             continue;
         };
 
-        let x_offset = compute_x_offset(&node_sizes, &column_nodes, col);
+        let node_widths: HashMap<&str, u16> = node_sizes.iter().map(|(k, (w, _))| (*k, *w)).collect();
+        let x_offset = compute_x_offset(&node_widths, &column_nodes, col);
 
         let mut y_cursor: u16 = 0;
         for name in col_names {
@@ -199,7 +200,7 @@ pub fn compute_spatial_layout(structure: &WorkflowStructure) -> HashMap<String, 
 /// Computes the topological column for each node.
 ///
 /// Source nodes get column 0. Every other node gets `max(parent_columns) + 1`.
-fn compute_columns(structure: &WorkflowStructure) -> HashMap<&str, usize> {
+pub fn compute_columns(structure: &WorkflowStructure) -> HashMap<&str, usize> {
     let mut columns: HashMap<&str, usize> = HashMap::new();
 
     // Initialize source nodes at column 0.
@@ -241,8 +242,11 @@ fn compute_columns(structure: &WorkflowStructure) -> HashMap<&str, usize> {
 }
 
 /// Computes the x offset for a given column.
-fn compute_x_offset(
-    node_sizes: &HashMap<&str, (u16, u16)>,
+///
+/// Takes a map of node-name → width. Callers must pre-project their node
+/// collections to width-only before invoking.
+pub fn compute_x_offset(
+    node_widths: &HashMap<&str, u16>,
     column_nodes: &HashMap<usize, Vec<&str>>,
     target_col: usize,
 ) -> u16 {
@@ -251,7 +255,7 @@ fn compute_x_offset(
         let max_width = column_nodes.get(&col).map_or(0, |names| {
             names
                 .iter()
-                .filter_map(|n| node_sizes.get(n).map(|(w, _)| *w))
+                .filter_map(|n| node_widths.get(n).copied())
                 .max()
                 .unwrap_or(0)
         });
@@ -963,13 +967,13 @@ mod tests {
     // Kills: compute_x_offset -> 0, compute_x_offset -> 1
     #[test]
     fn compute_x_offset_column_1_is_non_zero() {
-        let node_sizes: HashMap<&str, (u16, u16)> = [("a", (10u16, 5u16)), ("b", (8u16, 4u16))]
+        let node_widths: HashMap<&str, u16> = [("a", 10u16), ("b", 8u16)]
             .into_iter()
             .collect();
         let column_nodes: HashMap<usize, Vec<&str>> = [(0usize, vec!["a"]), (1usize, vec!["b"])]
             .into_iter()
             .collect();
-        let offset = compute_x_offset(&node_sizes, &column_nodes, 1);
+        let offset = compute_x_offset(&node_widths, &column_nodes, 1);
         // offset = 0 + max_width(10) + H_SPACING(5) = 15
         assert_eq!(offset, 15, "x_offset for col 1 must be 10+5=15, not 0 or 1");
     }
@@ -977,10 +981,10 @@ mod tests {
     // Kills: compute_x_offset + -> *, + -> -
     #[test]
     fn compute_x_offset_accumulates_across_columns() {
-        let node_sizes: HashMap<&str, (u16, u16)> = [
-            ("a", (10u16, 5u16)),
-            ("b", (8u16, 4u16)),
-            ("c", (12u16, 6u16)),
+        let node_widths: HashMap<&str, u16> = [
+            ("a", 10u16),
+            ("b", 8u16),
+            ("c", 12u16),
         ]
         .into_iter()
         .collect();
@@ -991,7 +995,7 @@ mod tests {
         ]
         .into_iter()
         .collect();
-        let offset = compute_x_offset(&node_sizes, &column_nodes, 2);
+        let offset = compute_x_offset(&node_widths, &column_nodes, 2);
         // col 0: max_width=10, col 1: max_width=8
         // offset = 0 + 10 + 5 + 8 + 5 = 28
         assert_eq!(offset, 28, "x_offset for col 2 must be 10+5+8+5=28");

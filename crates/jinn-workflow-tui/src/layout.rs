@@ -7,6 +7,7 @@ use std::collections::HashMap;
 
 use jinn_workflow::engine::NodeStatus;
 use jinn_workflow::execution::{ExecutionSnapshot, WorkflowStructure};
+use jinn_workflow::spatial_layout::{compute_columns, compute_x_offset};
 
 use crate::node::VisualNode;
 
@@ -52,7 +53,7 @@ impl GraphLayout {
 /// Computes the layout for a workflow graph.
 ///
 /// Assigns each node a column based on topological depth, then stacks
-/// nodes within each column vertically with spacing.
+/// nodes within a column vertically with spacing.
 ///
 /// # Panics
 ///
@@ -60,128 +61,90 @@ impl GraphLayout {
 #[must_use]
 pub fn compute(snapshot: &ExecutionSnapshot) -> GraphLayout {
     let structure = snapshot.structure();
-    let mut nodes = Vec::new();
-
     let all_names: Vec<&str> = structure.node_names().collect();
     if all_names.is_empty() {
-        return GraphLayout { nodes };
+        return GraphLayout { nodes: Vec::new() };
     }
 
     let columns = compute_columns(structure);
-
-    let mut column_nodes: HashMap<usize, Vec<&str>> = HashMap::new();
-    for name in &all_names {
-        let col = columns.get(*name).copied().unwrap_or(0);
-        column_nodes.entry(col).or_default().push(name);
-    }
-
+    let column_nodes = bin_names_by_column(&all_names, &columns);
     let max_col = columns.values().copied().max().unwrap_or(0);
 
-    // First pass: compute all VisualNodes to get widths/heights.
-    let mut visual_nodes: HashMap<&str, VisualNode> = HashMap::new();
-    for name in &all_names {
-        let input_defs = structure.node_input_ports(name).unwrap_or_default();
-        let output_defs = structure.node_output_ports(name).unwrap_or_default();
-        let status = snapshot.status_of(name).unwrap_or(NodeStatus::Pending);
-        let node = VisualNode::compute(name.to_string(), input_defs, output_defs, status);
-        visual_nodes.insert(name, node);
-    }
+    let mut visual_nodes = build_visual_nodes(structure, snapshot, &all_names);
+    assign_positions(&mut visual_nodes, &column_nodes, max_col);
 
-    // Second pass: assign positions by column.
+    let nodes = all_names
+        .into_iter()
+        .filter_map(|name| visual_nodes.remove(name))
+        .collect();
+    GraphLayout { nodes }
+}
+
+/// Bin node names by their topological column.
+fn bin_names_by_column<'a>(
+    all_names: &[&'a str],
+    columns: &HashMap<&str, usize>,
+) -> HashMap<usize, Vec<&'a str>> {
+    let mut column_nodes: HashMap<usize, Vec<&'a str>> = HashMap::new();
+    for name in all_names {
+        let col = columns.get(*name).copied().unwrap_or(0);
+        column_nodes.entry(col).or_default().push(*name);
+    }
+    column_nodes
+}
+
+/// Build a `VisualNode` for every name in `all_names`.
+fn build_visual_nodes<'a>(
+    structure: &WorkflowStructure,
+    snapshot: &ExecutionSnapshot,
+    all_names: &[&'a str],
+) -> HashMap<&'a str, VisualNode> {
+    all_names
+        .iter()
+        .map(|&name| {
+            let input_defs = structure.node_input_ports(name).unwrap_or_default();
+            let output_defs = structure.node_output_ports(name).unwrap_or_default();
+            let status = snapshot.status_of(name).unwrap_or(NodeStatus::Pending);
+            let node = VisualNode::compute(name.to_string(), input_defs, output_defs, status);
+            (name, node)
+        })
+        .collect()
+}
+
+/// Assign `(x, y)` positions to each `VisualNode` based on its column.
+///
+/// Single explicit loop over columns; per-node assignment within a column
+/// is an iterator chain.
+fn assign_positions(
+    visual_nodes: &mut HashMap<&str, VisualNode>,
+    column_nodes: &HashMap<usize, Vec<&str>>,
+    max_col: usize,
+) {
     for col in 0..=max_col {
         let Some(col_names) = column_nodes.get(&col) else {
             continue;
         };
 
-        let x_offset = compute_x_offset(&visual_nodes, &column_nodes, col);
+        let widths: HashMap<&str, u16> = visual_nodes
+            .iter()
+            .map(|(name, node)| (*name, node.width))
+            .collect();
+        let x_offset = compute_x_offset(&widths, column_nodes, col);
 
         let mut y_cursor: u16 = 0;
         for name in col_names {
-            #[expect(clippy::expect_used, reason = "node was created in first pass")]
+            #[expect(clippy::expect_used, reason = "node was created in build_visual_nodes")]
             let node = visual_nodes
-                .get_mut(name)
-                .expect("node was created in first pass");
+                .get_mut(*name)
+                .expect("node was created in build_visual_nodes");
             node.x = x_offset;
             node.y = y_cursor;
             y_cursor = y_cursor + node.height + V_SPACING;
         }
     }
-
-    // Collect into Vec preserving insertion order (all_names).
-    for name in all_names {
-        if let Some(node) = visual_nodes.remove(name) {
-            nodes.push(node);
-        }
-    }
-
-    GraphLayout { nodes }
 }
 
-/// Computes the topological column for each node.
-///
-/// Source nodes get column 0. Every other node gets `max(parent_columns) + 1`.
-fn compute_columns(structure: &WorkflowStructure) -> HashMap<&str, usize> {
-    let mut columns: HashMap<&str, usize> = HashMap::new();
 
-    // Initialize source nodes at column 0.
-    for name in structure.sources() {
-        columns.insert(name.as_str(), 0);
-    }
-
-    // Also handle nodes with no incoming edges that aren't in sources()
-    // (e.g., nodes with no input ports).
-    for name in structure.node_names() {
-        let has_inputs = structure
-            .node_input_ports(name)
-            .is_some_and(|ports| !ports.is_empty());
-        if !has_inputs {
-            columns.insert(name, 0);
-        }
-    }
-
-    // Propagate: for each edge, target column = max(target column, source column + 1).
-    // Iterate until stable.
-    let mut changed = true;
-    while changed {
-        changed = false;
-        for edge in structure.edges() {
-            let src_col = columns.get(edge.source_node.as_str()).copied().unwrap_or(0);
-            let tgt_col = columns.get(edge.target_node.as_str()).copied().unwrap_or(0);
-            let new_col = src_col + 1;
-            if new_col > tgt_col {
-                columns.insert(edge.target_node.as_str(), new_col);
-                changed = true;
-            }
-        }
-    }
-
-    // Assign column 0 to any remaining nodes (disconnected, no edges).
-    for name in structure.node_names() {
-        columns.entry(name).or_insert(0);
-    }
-
-    columns
-}
-
-/// Computes the x offset for a given column.
-fn compute_x_offset(
-    visual_nodes: &HashMap<&str, VisualNode>,
-    column_nodes: &HashMap<usize, Vec<&str>>,
-    target_col: usize,
-) -> u16 {
-    let mut x: u16 = 0;
-    for col in 0..target_col {
-        let max_width = column_nodes.get(&col).map_or(0, |names| {
-            names
-                .iter()
-                .filter_map(|n| visual_nodes.get(n).map(|node| node.width))
-                .max()
-                .unwrap_or(0)
-        });
-        x = x + max_width + H_SPACING;
-    }
-    x
-}
 
 #[cfg(test)]
 mod tests {
