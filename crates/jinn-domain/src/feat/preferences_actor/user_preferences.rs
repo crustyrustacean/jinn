@@ -1451,6 +1451,33 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         // The alpha lifecycle is preserved.
         assert!(written.contains("\"alpha\""), "alpha kept");
     }
+
+    #[rstest::rstest]
+    fn save_preferences_preserves_inner_block_comment_when_field_is_mutated() {
+        // Given a jinn.toml with a comment between two session_lifecycle fields.
+        // (The comment attaches to the next field's key decor, not its value.)
+        let original = "[[session_lifecycle]]\nname = \"cwd test\"\n# am i preserved?\ndescription = \"Open a fossil branch in a new worktree\"\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, original).expect("write");
+
+        // When loading and mutating the field after the comment.
+        let mut prefs = load_preferences_from(&path).expect("load");
+        prefs.session_lifecycles[0].description =
+            Some("UPDATED DESCRIPTION".to_owned());
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the inner comment survives AND the field is updated.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            written.contains("# am i preserved?"),
+            "inner comment lost on mutation:\n{written}"
+        );
+        assert!(
+            written.contains("UPDATED DESCRIPTION"),
+            "description updated:\n{written}"
+        );
+    }
     // --- S-Tier: Kill mutants for load_preferences / save_preferences ---
 
     #[rstest::rstest]

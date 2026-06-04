@@ -748,4 +748,31 @@ mod tests {
             "user field order must be preserved, got: {out}"
         );
     }
+
+    #[test]
+    fn patch_preserves_comment_between_fields_when_next_field_is_mutated() {
+        // Given a document where an interior comment sits between two fields
+        // (the comment attaches to the next field's key decor).
+        let original = "[[items]]\nname = \"a\"\n# inner comment\nvalue = 1\n";
+        let mut d = doc(original);
+
+        // When patching with the `value` field mutated.
+        let mut item = toml::value::Table::new();
+        item.insert("name".to_owned(), toml::Value::String("a".to_owned()));
+        item.insert("value".to_owned(), toml::Value::Integer(99));
+        let mut new = toml::value::Table::new();
+        new.insert(
+            "items".to_owned(),
+            toml::Value::Array(vec![toml::Value::Table(item)]),
+        );
+
+        let mut p = DocumentPatcher::new();
+        p.register_array_key(["items"], "name");
+        p.apply(&new, d.as_table_mut()).expect("apply");
+
+        // Then the inner comment survives and the mutation applies.
+        let out = d.to_string();
+        assert!(out.contains("# inner comment"), "inner comment lost:\n{out}");
+        assert!(out.contains("value = 99"), "value updated");
+    }
 }
