@@ -179,21 +179,3 @@ pub fn pin_sort_key(position: Option<PinPosition>) -> u8 {
         Some(PinPosition::Bottom) => 2,
     }
 }
-
-/// Ephemeral runtime state for a Lua-based attached workflow execution.
-///
-/// Lives in `WorkflowControllerActor::workflow_executions`. Not persisted across restarts.
-pub struct LuaExecutionState {
-    /// Cancellation token for aborting execution.
-    pub cancel: tokio_util::sync::CancellationToken,
-    /// The session that owns this attached workflow.
-    pub session_id: crate::protocol::SessionId,
-}
-
-impl std::fmt::Debug for LuaExecutionState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LuaExecutionState")
-            .field("session_id", &self.session_id)
-            .finish_non_exhaustive()
-    }
-}

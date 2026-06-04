@@ -36,6 +36,7 @@ use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 use jinn_domain::feat::workflow::workflow_controller_actor::{
     WorkflowControllerActor, WorkflowControllerActorDeps,
 };
+use jinn_domain::feat::plugin_lifecycle::{PluginLifecycleActor, PluginLifecycleActorDeps};
 use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
@@ -748,6 +749,18 @@ pub fn create_core_with_actor_host(
         },
     ));
 
+    // ── Plugin lifecycle actor ─────────────────────────────────────────
+    actors.push(spawn::<PluginLifecycleActor>(
+        "plugin-lifecycle",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        PluginLifecycleActorDeps {
+            services: services.clone(),
+            startup_session_id: state.read().session.active_session_id().to_string(),
+        },
+    ));
 
     // ── Bench actor (conditional) ─────────────────────────────────────────
     if bench_csv_path.is_some() {
