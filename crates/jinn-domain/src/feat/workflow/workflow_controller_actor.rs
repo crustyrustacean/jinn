@@ -26,13 +26,12 @@ use crate::feat::workflow::protocol::command::{
     AttachWorkflow, DetachWorkflow, FireBeforeTurn, ToggleWorkflow, TriggerWorkflow,
 };
 
-use crate::common::app_state::LuaExecutionState;
+
 use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, SetChatInputText};
 
 use crate::protocol::{Command, Event};
 
-use crate::feat::luaworkflow::host_handler::LuaHostHandler;
-use jinn_lua_workflow::{CtxConfig, HostRequest, spawn_one_shot};
+use serde::Serialize;
 
 /// The workflow controller actor.
 ///
@@ -49,10 +48,9 @@ pub struct WorkflowControllerActor {
     state: State,
     /// Runtime services.
     services: Services,
-    /// Live executions for running attached workflows. Ephemeral (not persisted).
-    /// Keyed by AttachedWorkflow.id.
-    workflow_executions: HashMap<WorkflowId, LuaExecutionState>,
-    /// BeforeTurn mode awaiting post-processing after workflow completes.
+    /// Plugin fire handle for async hook execution.
+    plugin_fire: std::sync::Arc<dyn crate::feat::workflow::PluginFire>,
+
     pending_before_turn: HashMap<crate::protocol::SessionId, BeforeTurnMode>,
     /// Queue of remaining BeforeTurn attachments for sequential execution.
     /// Key: session_id, Value: ordered list of (AttachedWorkflow, BeforeTurnMode) pairs.
@@ -66,6 +64,8 @@ pub struct WorkflowControllerActorDeps {
     pub state: State,
     /// Runtime services.
     pub services: Services,
+    /// Plugin system handle for async hook firing.
+    pub async_plugins: std::sync::Arc<dyn crate::feat::workflow::PluginFire>,
 }
 
 impl Actor for WorkflowControllerActor {
@@ -91,7 +91,7 @@ impl Actor for WorkflowControllerActor {
             ctx: domain_ctx,
             state: deps.state.clone(),
             services: deps.services,
-            workflow_executions: HashMap::new(),
+            plugin_fire: deps.async_plugins,
             pending_before_turn: HashMap::new(),
             before_turn_queue: HashMap::new(),
         };
@@ -191,11 +191,8 @@ impl WorkflowControllerActor {
         let session_id = &payload.session_id;
         let workflow_id = &payload.workflow_id;
 
-        // Cancel running execution if present (actor field — no lock).
-        if let Some(exec_state) = self.workflow_executions.remove(workflow_id) {
-            exec_state.cancel.cancel();
-            tracing::info!(id = %workflow_id, "cancelled running attached workflow on detach");
-        }
+        // No workflow_executions tracking in new plugin system.
+        // Cancellation is handled by the plugin system itself.
 
         // Remove from session.
         {
@@ -470,42 +467,22 @@ impl WorkflowControllerActor {
         )
     }
 
-    /// Spawns a Lua one-shot workflow for the given config.
-    /// Reads the script from `res/plugins/{script_name}/init.lua`, builds
-    /// a ctx table with capabilities, and runs it through `spawn_one_shot`.
-    /// The host handler processes capability requests concurrently.
+    /// Spawns a plugin hook fire for the given attached workflow.
+    ///
+    /// Uses the new plugin system: fires `on_turn_end` through the
+    /// `PluginFire` trait. The plugin system handles script loading,
+    /// ctx building, and capability execution.
     fn spawn_lua_workflow(
         &self,
         config: &WorkflowConfig,
         session_id: &crate::protocol::SessionId,
         workflow_id: &WorkflowId,
-        _trigger: &WorkflowTrigger,
+        trigger: &WorkflowTrigger,
     ) -> tokio::task::JoinHandle<Result<(), String>> {
-        let script_name = config.script.clone();
-
-        // Read the Lua script source.
-        let script_source = {
-            let plugins_dir = self.services.paths.plugins_dir();
-            let user_path = plugins_dir.join(&script_name).join("init.lua");
-            let system_plugins_dir = self.services.paths.system_plugins_dir();
-            let system_path = system_plugins_dir.join(&script_name).join("init.lua");
-            if user_path.is_file() {
-                std::fs::read_to_string(&user_path)
-            } else if system_path.is_file() {
-                std::fs::read_to_string(&system_path)
-            } else {
-                Err(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    format!("no init.lua for {script_name}"),
-                ))
-            }
-            .map_err(|e| format!("read script: {e}"))
-        };
-        let script_source = match script_source {
-            Ok(s) => s,
-            Err(e) => {
-                return tokio::spawn(async move { Err(e) });
-            }
+        let hook_name = match trigger {
+            WorkflowTrigger::TurnEnd | WorkflowTrigger::TurnEndOneShot => "on_turn_end",
+            WorkflowTrigger::BeforeTurn(_) => "on_before_turn",
+            WorkflowTrigger::Manual => "on_manual_trigger",
         };
 
         // Get last assistant message for ctx data.
@@ -527,74 +504,25 @@ impl WorkflowControllerActor {
                 .unwrap_or_default()
         };
 
-        // Build ctx config with capabilities.
-        let ctx_config = CtxConfig::data_only(&serde_json::json!({
+        let ctx = serde_json::json!({
             "last_assistant_message": last_assistant_message,
             "session_id": session_id.to_string(),
-        }))
-        .with_push_user()
-        .with_push_system()
-        .with_turn_off()
-        .session_id(session_id.to_string())
-        .workflow_id(workflow_id.to_string());
-
-        // Create channel for host requests.
-        let (host_tx, host_rx) = kanal::unbounded::<HostRequest>();
-
-        // Spawn the Lua VM.
-        let mut vm_handle = spawn_one_shot(script_source, script_name.clone(), host_tx, ctx_config);
-
-        // Spawn handler task that processes host requests.
-        let state = self.state.clone();
-        let _handler_sid = session_id.clone();
-        let _handler_wid = workflow_id.clone();
-        let handler_ctx = self.ctx.clone();
-
-        return tokio::spawn(async move {
-            let handler = LuaHostHandler::new(state.clone(), handler_ctx);
-
-            // Process host requests until the VM completes.
-            let mut vm_done = false;
-            loop {
-                if vm_done && host_rx.is_empty() {
-                    break;
-                }
-                // Non-blocking drain of pending requests.
-                while let Ok(Some(req)) = host_rx.try_recv() {
-                    match req {
-                        HostRequest::Shutdown => break,
-                        request => {
-                            handler.handle_request(request).await;
-                        }
-                    }
-                }
-                if vm_done {
-                    break;
-                }
-                // Check if VM is done (non-blocking poll).
-                // Use a small sleep to avoid busy-waiting.
-                tokio::select! {
-                    _ = tokio::time::sleep(std::time::Duration::from_millis(10)) => {}
-                    result = &mut vm_handle => {
-                        vm_done = true;
-                        match result {
-                            Ok(Ok(_)) => {
-                                tracing::info!(script = %script_name, "lua workflow completed");
-                            }
-                            Ok(Err(e)) => {
-                                tracing::error!(script = %script_name, err = %e, "lua workflow failed");
-                            }
-                            Err(e) => {
-                                tracing::error!(script = %script_name, err = %e, "lua task panicked");
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Side effects are already applied by the host handler.
-            Ok(())
+            "workflow_id": workflow_id.to_string(),
         });
+
+        let plugin_fire = self.plugin_fire.clone();
+        let script_name = config.script.clone();
+
+        tokio::spawn(async move {
+            tracing::debug!(script = %script_name, hook = hook_name, "firing plugin hook");
+            plugin_fire
+                .fire_async_json(hook_name, &ctx)
+                .await
+                .map_err(|e| {
+                    tracing::error!(script = %script_name, err = %e, "plugin hook failed");
+                    e
+                })
+        })
     }
 
     /// Apply a workflow result to the session.
@@ -608,8 +536,7 @@ impl WorkflowControllerActor {
         workflow_id: &WorkflowId,
         result: Result<(), String>,
     ) {
-        // Clean up execution state — actor field, no lock.
-        self.workflow_executions.remove(workflow_id);
+        // Workflow state cleanup handled by spawn_workflow callback.
 
         match result {
             Ok(()) => {

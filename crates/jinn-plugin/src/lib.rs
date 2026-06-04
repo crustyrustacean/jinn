@@ -33,6 +33,7 @@ pub mod command;
 pub mod loader;
 pub mod plugin_data;
 pub mod sync_state;
+pub mod plugin_fire_impl;
 pub mod system;
 
 pub use async_handle::AsyncPluginHandle;
