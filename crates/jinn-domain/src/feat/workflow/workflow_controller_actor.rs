@@ -154,10 +154,10 @@ impl WorkflowControllerActor {
                 self.handle_toggle_workflow(payload);
             }
             Command::TriggerWorkflow(payload) => {
-                self.handle_trigger_workflow(payload);
+                self.handle_trigger_workflow(payload).await;
             }
             Command::FireBeforeTurn(payload) => {
-                self.handle_fire_before_turn(payload);
+                self.handle_fire_before_turn(payload).await;
             }
 
             _ => {}
@@ -240,7 +240,7 @@ impl WorkflowControllerActor {
     }
 
     /// Handle `TriggerWorkflow` — manually fire a workflow.
-    fn handle_trigger_workflow(&mut self, payload: &TriggerWorkflow) {
+    async fn handle_trigger_workflow(&mut self, payload: &TriggerWorkflow) {
         let session_id = payload.session_id.clone();
         let workflow_id = payload.workflow_id.clone();
 
@@ -267,13 +267,36 @@ impl WorkflowControllerActor {
             return;
         };
 
-        // Fire it.
-        self.spawn_attached_workflow(&session_id, attachment);
+        let wf_id = attachment.id.clone();
+
+        // Set state to Running + begin busy — single write lock.
+        {
+            let mut guard = self.state.write();
+            if let Some(session) = guard.session.get_mut(&session_id) {
+                session.core.ephemeral.busy_count += 1;
+                for aw in &mut session.core.attached_workflows {
+                    if aw.id == wf_id {
+                        aw.state = AttachedWorkflowState::Running;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Spawn execution and await result.
+        let handle = self.spawn_attached_workflow(&session_id, attachment);
+        let result = match handle.await {
+            Ok(ok) => ok,
+            Err(e) => Err(format!("join error: {e}")),
+        };
+
+        // Apply result — single write lock inside.
+        self.apply_workflow_result(&session_id, &wf_id, result);
     }
 
     /// Handle `FireBeforeTurn` — fire all BeforeTurn workflows for the session,
     /// then merge the output with the deferred user text and either auto-send or put back.
-    fn handle_fire_before_turn(&mut self, payload: &FireBeforeTurn) {
+    async fn handle_fire_before_turn(&mut self, payload: &FireBeforeTurn) {
         let session_id = payload.session_id.clone();
 
         // Collect all enabled BeforeTurn attachments in Ready state.
@@ -304,6 +327,7 @@ impl WorkflowControllerActor {
 
         // Take the first attachment to fire now, queue the rest.
         let first = before_turn_attachments.remove(0);
+        let workflow_id = first.id.clone();
         let before_turn_mode = match &first.trigger {
             WorkflowTrigger::BeforeTurn(mode) => mode.clone(),
             _ => return,
@@ -329,8 +353,28 @@ impl WorkflowControllerActor {
         self.pending_before_turn
             .insert(session_id.clone(), before_turn_mode);
 
-        // Fire the first attachment.
-        self.spawn_attached_workflow(&session_id, first);
+        // Mark as Running + increment busy_count (single write lock).
+        {
+            let mut guard = self.state.write();
+            if let Some(session) = guard.session.get_mut(&session_id) {
+                for aw in &mut session.core.attached_workflows {
+                    if aw.id == workflow_id {
+                        aw.state = AttachedWorkflowState::Running;
+                        break;
+                    }
+                }
+                session.core.ephemeral.busy_count += 1;
+            }
+        }
+
+        // Spawn + await + apply result.
+        let handle = self.spawn_attached_workflow(&session_id, first);
+        let result = match handle.await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(e),
+            Err(e) => Err(format!("join error: {e}")),
+        };
+        self.apply_workflow_result(&session_id, &workflow_id, result);
     }
 
     /// Handle `SessionPhaseChanged` — check for TurnEnd workflows.
