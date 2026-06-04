@@ -124,6 +124,7 @@ pub fn create_core_with_actor_host(
         config_storage: config_storage.clone(),
         session_store: session_store.clone(),
         user_preferences_storage: user_preferences_storage.clone(),
+        tempdir: None,
     };
 
     // ── Infrastructure actors (no lifecycle events) ──────────────────────
@@ -685,6 +686,29 @@ pub fn create_core_with_actor_host(
         }
     }
 
+
+    // Shared entry-token cache for history workers.
+    //
+    // Constructed once, cloned into any worker (or peer actor) that needs
+    // per-entry token counts. Eviction is handled by
+    // HistoryWorkerChatEntryTokenCacheEvictionActor below.
+    let entry_token_cache =
+        jinn_domain::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache::new();
+
+    // HistoryWorkerChatEntryTokenCache eviction actor — single instance,
+    // owns session lifecycle.
+    actors.push(spawn::<
+        jinn_domain::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCacheEvictionActor,
+    >(
+        "history-worker-token-cache-eviction",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        jinn_domain::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCacheEvictionActorDeps {
+            cache: entry_token_cache.clone(),
+        },
+    ));
     // Auto-prune worker: tool-age-window context pruning.
     {
         use jinn_domain::feat::auto_prune_worker::ToolAgeWindowAutoPruneWorker;
@@ -706,6 +730,32 @@ pub fn create_core_with_actor_host(
                 &shutdown_tracker,
                 HistoryWorkerActorDeps {
                     worker: ToolAgeWindowAutoPruneWorker { config },
+                },
+            ));
+        }
+    }
+
+    // Auto-prune worker: trivial-assistant context pruning.
+    {
+        use jinn_domain::feat::auto_prune_worker::TrivialAssistantAutoPruneWorker;
+        use jinn_domain::feat::history_worker::actor::{
+            HistoryWorkerActor, HistoryWorkerActorDeps,
+        };
+
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.auto_prune.trivial_assistant.clone())
+            .unwrap_or_default();
+
+        if config.enabled {
+            actors.push(spawn::<HistoryWorkerActor<TrivialAssistantAutoPruneWorker>>(
+                "history-worker-auto-prune-trivial-assistant",
+                &sink,
+                handle,
+                &counter,
+                &shutdown_tracker,
+                HistoryWorkerActorDeps {
+                    worker: TrivialAssistantAutoPruneWorker { config },
                 },
             ));
         }

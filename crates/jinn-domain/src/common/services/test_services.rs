@@ -6,7 +6,7 @@
 //! with all fake/noop implementations, suitable for unit tests that need
 //! a [`Services`] but don't test provider behavior.
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use crate::feat::preferences_actor::{
     InMemoryUserPreferencesStorage, UserPreferencesStorageService,
@@ -21,10 +21,35 @@ use crate::protocol::{AppMsg, SessionId};
 use async_trait::async_trait;
 use error_stack::Report;
 use kanal::Sender;
-use tokio::runtime::Handle;
+use tokio::runtime::{Handle, Runtime};
 
 use super::Services;
 use super::actor_channel::ActorChannelService;
+
+/// Single shared tokio runtime for the entire test binary.
+///
+/// Initializes exactly once via `LazyLock`. Without this, every
+/// `Services::new()` / `TestServices::build()` call leaked a fresh
+/// `Runtime` via `Box::leak`, which (across 3000+ parallel tests)
+/// exhausted the FD limit (`EMFILE`).
+///
+/// The `Runtime` itself is intentionally leaked via `Box::leak` at
+/// static-init time; it lives for the lifetime of the test binary.
+/// The `Handle` is cheaply cloneable and shared by all tests.
+static TEST_RUNTIME: LazyLock<Handle> = LazyLock::new(|| {
+    let rt = Box::leak(Box::new(Runtime::new().expect("shared test runtime")));
+    rt.handle().clone()
+});
+
+/// Returns a clone of the shared test runtime handle.
+///
+/// # Panics
+///
+/// Panics if the underlying tokio runtime fails to create (extremely
+/// unlikely in tests).
+pub(crate) fn shared_test_handle() -> Handle {
+    TEST_RUNTIME.clone()
+}
 
 /// A no-op session store for tests.
 ///
@@ -174,7 +199,7 @@ impl TestServices {
 
     /// Build the [`Services`] instance.
     ///
-    /// Leaks a tokio runtime if no custom handle is provided - acceptable for unit tests.
+    /// Uses the shared process-wide test runtime if no custom handle is provided.
     ///
     /// # Panics
     ///
@@ -182,20 +207,21 @@ impl TestServices {
     #[must_use]
     #[expect(clippy::expect_used, reason = "test-only code, panics are acceptable")]
     pub fn build(self) -> Services {
-        let handle = self.handle.unwrap_or_else(|| {
-            let rt = Box::leak(Box::new(
-                tokio::runtime::Runtime::new().expect("test runtime"),
-            ));
-            rt.handle().clone()
-        });
+        let handle = self.handle.unwrap_or_else(shared_test_handle);
 
-        let temp_dir = Box::leak(Box::new(tempfile::TempDir::new().expect("test temp dir")));
+        let (paths, tempdir) = if let Some(p) = self.paths {
+            (p, None)
+        } else {
+            let td = Arc::new(tempfile::TempDir::new().expect("test temp dir"));
+            (
+                crate::common::app_paths::AppPaths::new_in(td.path()),
+                Some(td),
+            )
+        };
 
         let (actor_tx, _actor_rx) = kanal::unbounded::<AppMsg>();
         Services {
-            paths: self
-                .paths
-                .unwrap_or_else(|| crate::common::app_paths::AppPaths::new_in(temp_dir.path())),
+            paths,
             handle,
             actor_channel: ActorChannelService::new(self.actor_channel_sender.unwrap_or(actor_tx)),
             llm_service: self.llm_service.unwrap_or_else(|| {
@@ -214,6 +240,7 @@ impl TestServices {
             user_preferences_storage: UserPreferencesStorageService::new(Arc::new(
                 InMemoryUserPreferencesStorage::new(),
             )),
+            tempdir,
         }
     }
 }

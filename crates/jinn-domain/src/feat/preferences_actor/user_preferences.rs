@@ -288,28 +288,29 @@ impl Default for ConsecutiveReadsAutoPruneConfig {
 /// Default enabled state for tool-age-window auto-prune.
 const DEFAULT_TOOL_AGE_WINDOW_ENABLED: bool = true;
 
-/// Default number of in-context entries to keep before pruning older tool pairs.
+/// Default number of entries to keep before pruning older tool pairs.
 const DEFAULT_TOOL_AGE_WINDOW_MAX_AGE_ENTRIES: usize = 100;
 
 /// Tool-age-window auto-prune configuration.
 ///
 /// Serialized as `[auto_prune.tool_age_window]` in `jinn.toml`.
 /// Controls the auto-prune worker that excludes any `ToolCall`/`ToolResult`
-/// pair older than `max_age_entries` in-context entries from the end of
-/// history. Both halves of a pair are always excluded together.
+/// pair older than `max_age_entries` entries from the end of history. Both
+/// halves of a pair are always excluded together.
 ///
-/// The threshold counts only entries that are currently in LLM context
-/// (per `ChatEntry::is_in_context()`); already-excluded entries do not
-/// count toward the limit.
+/// The window counts every entry in raw history regardless of in-context
+/// status, so that multiple auto-prune workers compose cleanly: each
+/// worker's prune region is fixed by raw history length alone, not by what
+/// has already been `ForcedExclude`d by other workers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolAgeWindowAutoPruneConfig {
     /// Whether the tool-age-window auto-prune worker is active.
     /// Default: `true`.
     #[serde(default = "default_tool_age_window_enabled")]
     pub enabled: bool,
-    /// Number of most recent in-context entries to keep before pruning
-    /// older tool pairs. Minimum 1 (clamped at worker construction).
-    /// Default: `100`.
+    /// Number of most recent entries to keep before pruning older tool
+    /// pairs. Counts every entry, regardless of in-context status.
+    /// Minimum 1 (clamped at worker construction).
     #[serde(default = "default_tool_age_window_max_age_entries")]
     pub max_age_entries: usize,
 }
@@ -327,6 +328,72 @@ impl Default for ToolAgeWindowAutoPruneConfig {
         Self {
             enabled: DEFAULT_TOOL_AGE_WINDOW_ENABLED,
             max_age_entries: DEFAULT_TOOL_AGE_WINDOW_MAX_AGE_ENTRIES,
+        }
+    }
+}
+
+/// Default enabled state for trivial-assistant auto-prune.
+const DEFAULT_TRIVIAL_ASSISTANT_ENABLED: bool = true;
+
+/// Default number of entries to keep before pruning older trivial
+/// assistant entries.
+const DEFAULT_TRIVIAL_ASSISTANT_MAX_AGE_ENTRIES: usize = 100;
+
+/// Default token threshold below which an assistant entry is considered
+/// "trivial" (small enough to prune when it lands outside the window).
+const DEFAULT_TRIVIAL_ASSISTANT_MAX_TOKENS: usize = 80;
+
+/// Trivial-assistant auto-prune configuration.
+///
+/// Serialized as `[auto_prune.trivial_assistant]` in `jinn.toml`.
+/// Controls the auto-prune worker that excludes any `Assistant` entry that
+/// (a) is older than `max_age_entries` entries from the end of history and
+/// (b) is at most `max_tokens` tokens long.
+///
+/// The window counts every entry in raw history regardless of in-context
+/// status, so that multiple auto-prune workers compose cleanly: each
+/// worker's prune region is fixed by raw history length alone, not by what
+/// has already been `ForcedExclude`d by other workers. Tokens are counted
+/// via the same tiktoken `o200k_base` encoder used by the token-count
+/// actor and minimap.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrivialAssistantAutoPruneConfig {
+    /// Whether the trivial-assistant auto-prune worker is active.
+    /// Default: `true`.
+    #[serde(default = "default_trivial_assistant_enabled")]
+    pub enabled: bool,
+    /// Number of most recent entries to keep before pruning older trivial
+    /// assistant entries. Counts every entry, regardless of in-context
+    /// status. Minimum 1 (clamped at evaluation time).
+    /// Default: `100`.
+    #[serde(default = "default_trivial_assistant_max_age_entries")]
+    pub max_age_entries: usize,
+    /// Maximum number of tokens (tiktoken `o200k_base`) below which an
+    /// `Assistant` entry is considered trivial. Minimum 1 (clamped at
+    /// evaluation time).
+    /// Default: `80`.
+    #[serde(default = "default_trivial_assistant_max_tokens")]
+    pub max_tokens: usize,
+}
+
+fn default_trivial_assistant_enabled() -> bool {
+    DEFAULT_TRIVIAL_ASSISTANT_ENABLED
+}
+
+fn default_trivial_assistant_max_age_entries() -> usize {
+    DEFAULT_TRIVIAL_ASSISTANT_MAX_AGE_ENTRIES
+}
+
+fn default_trivial_assistant_max_tokens() -> usize {
+    DEFAULT_TRIVIAL_ASSISTANT_MAX_TOKENS
+}
+
+impl Default for TrivialAssistantAutoPruneConfig {
+    fn default() -> Self {
+        Self {
+            enabled: DEFAULT_TRIVIAL_ASSISTANT_ENABLED,
+            max_age_entries: DEFAULT_TRIVIAL_ASSISTANT_MAX_AGE_ENTRIES,
+            max_tokens: DEFAULT_TRIVIAL_ASSISTANT_MAX_TOKENS,
         }
     }
 }
@@ -425,6 +492,9 @@ pub struct AutoPruneConfig {
     /// Tool-age-window auto-prune strategy configuration.
     #[serde(default)]
     pub tool_age_window: ToolAgeWindowAutoPruneConfig,
+    /// Trivial-assistant auto-prune strategy configuration.
+    #[serde(default)]
+    pub trivial_assistant: TrivialAssistantAutoPruneConfig,
 }
 
 /// Default token threshold for auto-compaction.
@@ -1485,6 +1555,9 @@ max_tokens = 5000
         assert_eq!(config.consecutive_reads.keep_last, 3);
         assert!(config.tool_age_window.enabled);
         assert_eq!(config.tool_age_window.max_age_entries, 100);
+        assert!(config.trivial_assistant.enabled);
+        assert_eq!(config.trivial_assistant.max_age_entries, 100);
+        assert_eq!(config.trivial_assistant.max_tokens, 80);
     }
 
     #[rstest::rstest]
@@ -1494,6 +1567,9 @@ max_tokens = 5000
         assert!(prefs.auto_prune.todo.enabled);
         assert!(prefs.auto_prune.consecutive_reads.enabled);
         assert!(prefs.auto_prune.tool_age_window.enabled);
+        assert!(prefs.auto_prune.trivial_assistant.enabled);
+        assert_eq!(prefs.auto_prune.trivial_assistant.max_age_entries, 100);
+        assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
     }
 
     #[rstest::rstest]
@@ -1567,6 +1643,11 @@ max_age_entries = 50
                     enabled: false,
                     max_age_entries: 7,
                 },
+                trivial_assistant: TrivialAssistantAutoPruneConfig {
+                    enabled: false,
+                    max_age_entries: 50,
+                    max_tokens: 40,
+                },
             },
             ..UserPreferences::default()
         };
@@ -1580,6 +1661,9 @@ max_age_entries = 50
         assert!(!reloaded.auto_prune.todo.enabled);
         assert!(!reloaded.auto_prune.tool_age_window.enabled);
         assert_eq!(reloaded.auto_prune.tool_age_window.max_age_entries, 7);
+        assert!(!reloaded.auto_prune.trivial_assistant.enabled);
+        assert_eq!(reloaded.auto_prune.trivial_assistant.max_age_entries, 50);
+        assert_eq!(reloaded.auto_prune.trivial_assistant.max_tokens, 40);
     }
 
     #[rstest::rstest]
@@ -1593,6 +1677,9 @@ max_age_entries = 50
         assert!(prefs.auto_prune.todo.enabled);
         assert!(prefs.auto_prune.tool_age_window.enabled);
         assert_eq!(prefs.auto_prune.tool_age_window.max_age_entries, 100);
+        assert!(prefs.auto_prune.trivial_assistant.enabled);
+        assert_eq!(prefs.auto_prune.trivial_assistant.max_age_entries, 100);
+        assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
     }
 
     #[rstest::rstest]
