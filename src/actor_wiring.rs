@@ -685,6 +685,29 @@ pub fn create_core_with_actor_host(
         }
     }
 
+
+    // Shared entry-token cache for history workers.
+    //
+    // Constructed once, cloned into any worker (or peer actor) that needs
+    // per-entry token counts. Eviction is handled by
+    // HistoryWorkerChatEntryTokenCacheEvictionActor below.
+    let entry_token_cache =
+        jinn_domain::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache::new();
+
+    // HistoryWorkerChatEntryTokenCache eviction actor — single instance,
+    // owns session lifecycle.
+    actors.push(spawn::<
+        jinn_domain::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCacheEvictionActor,
+    >(
+        "history-worker-token-cache-eviction",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        jinn_domain::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCacheEvictionActorDeps {
+            cache: entry_token_cache.clone(),
+        },
+    ));
     // Auto-prune worker: tool-age-window context pruning.
     {
         use jinn_domain::feat::auto_prune_worker::ToolAgeWindowAutoPruneWorker;
