@@ -165,9 +165,13 @@ fn build_models_refresh_table(event: &ModelsRefreshed) -> String {
 }
 
 /// Builds a markdown message listing discovered skills.
-fn build_skills_refresh_message(skills: &[crate::feat::skills::Skill]) -> String {
-    let names: Vec<&str> = skills.iter().map(|s| s.name.as_str()).collect();
-    format!("Skills refreshed: {}", names.join(", "))
+fn build_skills_refresh_message(skills: &[crate::feat::skills::Skill]) -> String
+{
+    let mut msg = format!("Skills refreshed: {} found\n\n", skills.len());
+    for skill in skills {
+        msg.push_str(&format!("- {}\n", skill.name));
+    }
+    msg
 }
 
 #[cfg(test)]
