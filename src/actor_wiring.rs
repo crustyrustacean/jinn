@@ -760,6 +760,39 @@ pub fn create_core_with_actor_host(
             ));
         }
     }
+
+    // Auto-prune worker: user-anchor-radius context pruning.
+    // Prunes large (>80 token) Assistant entries whose index distance to the
+    // nearest User entry exceeds a configurable radius (in either direction).
+    {
+        use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
+        use jinn_domain::feat::auto_prune_worker::UserAnchorRadiusAutoPruneWorker;
+        use jinn_domain::feat::history_worker::actor::{
+            HistoryWorkerActor, HistoryWorkerActorDeps,
+        };
+
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.auto_prune.user_anchor_radius.clone())
+            .unwrap_or_default();
+
+        if config.enabled {
+            actors.push(spawn::<HistoryWorkerActor<UserAnchorRadiusAutoPruneWorker>>(
+                "history-worker-auto-prune-user-anchor-radius",
+                &sink,
+                handle,
+                &counter,
+                &shutdown_tracker,
+                HistoryWorkerActorDeps {
+                    worker: UserAnchorRadiusAutoPruneWorker {
+                        config,
+                        token_cache: entry_token_cache.clone(),
+                        counter: TiktokenCounter::o200k_base(),
+                    },
+                },
+            ));
+        }
+    }
     // Sidebar state actor - keeps sidebar cursor in sync after session removal.
     actors.push(spawn::<
         jinn_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor,
