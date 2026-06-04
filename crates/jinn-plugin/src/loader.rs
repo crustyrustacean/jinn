@@ -1,94 +1,173 @@
-//! Plugin directory scanner.
+//! Plugin discovery and loading.
 //!
-//! Scans a directory for subdirectories containing `init.lua` files,
-//! skipping hidden directories and files.
+//! Scans plugin directories for `init.lua` files. Each plugin directory
+//! becomes a [`PluginMeta`]. Scripts are loaded into Lua states with
+//! per-script `_ENV` isolation via `set_environment`.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// Scans `plugins_dir` for plugin directories.
+use mlua::{Lua, RegistryKey};
+
+use crate::sync_state::PluginHooks;
+
+// ── Plugin Discovery ─────────────────────────────────────────────────────
+
+/// Metadata for a discovered plugin.
+#[derive(Debug, Clone)]
+pub struct PluginMeta {
+    /// Plugin name (directory name).
+    pub name: String,
+    /// Path to the plugin directory.
+    pub path: PathBuf,
+    /// Human-readable description from header comment.
+    pub description: Option<String>,
+}
+
+/// Discover all plugins from user and system plugin directories.
 ///
-/// A plugin directory is a non-hidden subdirectory that contains an `init.lua`
-/// file. Returns paths sorted alphabetically by directory name.
-///
-/// # Errors
-///
-/// Returns an error if `plugins_dir` does not exist or is not a directory.
-pub fn scan(plugins_dir: &Path) -> Result<Vec<PathBuf>, ScanError> {
-    if !plugins_dir.is_dir() {
-        return Err(ScanError::NotADirectory {
-            path: plugins_dir.to_path_buf(),
-        });
+/// User plugins override system plugins by name. Results sorted alphabetically.
+pub fn discover_plugins(user_dir: &Path, system_dir: &Path) -> Vec<PluginMeta> {
+    let mut seen: HashMap<String, PluginMeta> = HashMap::new();
+
+    // System plugins first (lower priority).
+    for meta in scan_dir(system_dir) {
+        seen.entry(meta.name.clone()).or_insert(meta);
     }
 
-    let entries = plugins_dir
-        .read_dir()
-        .map_err(|e| ScanError::Io {
-            path: plugins_dir.to_path_buf(),
-            source: e,
-        })?
-        .filter_map(|entry| {
-            let entry = entry.ok()?;
-            let name = entry.file_name();
-            let name_str = name.to_string_lossy();
+    // User plugins override system.
+    for meta in scan_dir(user_dir) {
+        seen.insert(meta.name.clone(), meta);
+    }
 
-            // Skip hidden directories.
-            if name_str.starts_with('.') {
-                return None;
-            }
-
-            let path = entry.path();
-            if path.is_dir() && path.join("init.lua").is_file() {
-                return Some(path);
-            }
-
-            None
-        })
-        .collect::<Vec<_>>();
-
-    let mut sorted = entries;
-    sorted.sort();
-
-    Ok(sorted)
+    let mut plugins: Vec<PluginMeta> = seen.into_values().collect();
+    plugins.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    plugins
 }
 
-/// Errors from scanning a plugin directory.
-#[derive(Debug)]
-pub enum ScanError {
-    /// The provided path is not a directory.
-    NotADirectory {
-        /// The invalid path.
-        path: PathBuf,
-    },
-    /// An I/O error occurred.
-    Io {
-        /// The path being read.
-        path: PathBuf,
-        /// The underlying I/O error.
-        source: std::io::Error,
-    },
+/// Scan a single directory for plugin subdirectories containing `init.lua`.
+fn scan_dir(dir: &Path) -> Vec<PluginMeta> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+
+    let mut plugins = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let init_lua = path.join("init.lua");
+        if !init_lua.is_file() {
+            continue;
+        }
+        let name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n.to_owned(),
+            None => continue,
+        };
+        // Skip hidden directories.
+        if name.starts_with('.') {
+            continue;
+        }
+        let description = parse_description(&init_lua);
+        plugins.push(PluginMeta { name, path, description });
+    }
+    plugins
 }
 
-impl std::fmt::Display for ScanError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NotADirectory { path } => {
-                write!(f, "not a directory: {}", path.display())
-            }
-            Self::Io { path, source } => {
-                write!(f, "I/O error reading {}: {source}", path.display())
+/// Parse description from the first line of a Lua script.
+///
+/// Looks for `-- description: <text>` or `--- description: <text>`.
+fn parse_description(path: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let first_line = content.lines().next()?;
+    if first_line.is_empty() {
+        return None;
+    }
+
+    let trimmed = first_line.trim_start();
+    if let Some(rest) = trimmed
+        .strip_prefix("--")
+        .map(|s| s.strip_prefix('-').unwrap_or(s))
+    {
+        let rest = rest.trim();
+        if let Some(desc) = rest.strip_prefix("description:") {
+            let desc = desc.trim();
+            if !desc.is_empty() {
+                return Some(desc.to_owned());
             }
         }
     }
+    None
 }
 
-impl std::error::Error for ScanError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Io { source, .. } => Some(source),
-            Self::NotADirectory { .. } => None,
+// ── Plugin Loading ───────────────────────────────────────────────────────
+
+/// Load all plugins into a Lua state with `_ENV` isolation.
+///
+/// Each script is loaded with `set_environment` so globals from one plugin
+/// are invisible to another. The returned table is stored in the Lua registry.
+///
+/// Returns a map of plugin name → [`PluginHooks`].
+pub fn load_all(lua: &Lua, plugins: &[PluginMeta]) -> HashMap<String, PluginHooks> {
+    let mut hooks = HashMap::new();
+
+    for meta in plugins {
+        let script_path = meta.path.join("init.lua");
+        let source = match std::fs::read_to_string(&script_path) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(plugin = meta.name, err = %e, "failed to read plugin");
+                continue;
+            }
+        };
+
+        match load_plugin(lua, &source) {
+            Ok(table_key) => {
+                hooks.insert(
+                    meta.name.clone(),
+                    PluginHooks {
+                        table: table_key,
+                        hook_cache: std::cell::RefCell::new(std::collections::HashSet::new()),
+                    },
+                );
+                tracing::debug!(plugin = meta.name, "loaded plugin");
+            }
+            Err(e) => {
+                tracing::error!(plugin = meta.name, err = %e, "failed to load plugin");
+            }
         }
     }
+
+    hooks
 }
+
+/// Load a single plugin script into the Lua state with `_ENV` isolation.
+///
+/// The script must return a table (the hook table). The returned table
+/// is stored in the Lua registry.
+fn load_plugin(lua: &Lua, source: &str) -> Result<RegistryKey, String> {
+    // Create isolated environment for this script.
+    let env = lua
+        .create_table()
+        .map_err(|e| format!("create env: {e}"))?;
+
+    // Load and evaluate with isolated _ENV.
+    let result: mlua::Table = lua
+        .load(source)
+        .set_environment(env)
+        .eval()
+        .map_err(|e| format!("eval script: {e}"))?;
+
+    // Store the returned table in the Lua registry.
+    let key = lua
+        .create_registry_value(result)
+        .map_err(|e| format!("registry insert: {e}"))?;
+
+    Ok(key)
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -96,66 +175,145 @@ mod tests {
         clippy::expect_used,
         clippy::indexing_slicing,
         clippy::panic,
-        reason = "test code, panics are acceptable"
+        reason = "test code"
     )]
-    use std::fs;
 
     use super::*;
 
-    #[rstest::rstest]
-    fn scan_finds_init_lua_in_plugin_dirs() {
-        // Given a plugins directory with 3 valid plugin subdirectories.
-        let dir = tempfile::tempdir().expect("create temp dir");
-        for name in ["alpha", "beta", "gamma"] {
-            let plugin_dir = dir.path().join(name);
-            fs::create_dir_all(&plugin_dir).expect("create plugin dir");
-            fs::write(plugin_dir.join("init.lua"), "-- plugin").expect("write init.lua");
-        }
-
-        // When scanning.
-        let result = scan(dir.path()).expect("scan succeeds");
-
-        // Then it finds 3 plugins sorted alphabetically.
-        assert_eq!(result.len(), 3);
-        assert_eq!(result[0].file_name().expect("name"), "alpha");
-        assert_eq!(result[1].file_name().expect("name"), "beta");
-        assert_eq!(result[2].file_name().expect("name"), "gamma");
+    fn make_plugin(dir: &Path, name: &str, init_content: &str) {
+        let plugin_dir = dir.join(name);
+        std::fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+        std::fs::write(plugin_dir.join("init.lua"), init_content).expect("write init.lua");
     }
 
-    #[rstest::rstest]
-    fn scan_ignores_dirs_without_init_lua() {
-        // Given a plugins directory with one valid and one invalid subdirectory.
-        let dir = tempfile::tempdir().expect("create temp dir");
+    // --- scan_dir ---
 
-        let valid = dir.path().join("valid");
-        fs::create_dir_all(&valid).expect("create dir");
-        fs::write(valid.join("init.lua"), "-- plugin").expect("write init.lua");
+    #[test]
+    fn scan_dir_finds_plugins_with_init_lua() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        make_plugin(dir.path(), "alpha", "-- plugin alpha");
 
-        let invalid = dir.path().join("invalid");
-        fs::create_dir_all(&invalid).expect("create dir");
-        fs::write(invalid.join("readme.txt"), "not a plugin").expect("write readme");
-
-        // When scanning.
-        let result = scan(dir.path()).expect("scan succeeds");
-
-        // Then only the valid plugin is found.
+        let result = scan_dir(dir.path());
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].file_name().expect("name"), "valid");
+        assert_eq!(result[0].name, "alpha");
     }
 
-    #[rstest::rstest]
-    fn scan_ignores_hidden_dirs() {
-        // Given a plugins directory with a hidden subdirectory containing init.lua.
-        let dir = tempfile::tempdir().expect("create temp dir");
+    #[test]
+    fn scan_dir_skips_dirs_without_init_lua() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join("empty")).expect("create dir");
 
-        let hidden = dir.path().join(".hidden");
-        fs::create_dir_all(&hidden).expect("create dir");
-        fs::write(hidden.join("init.lua"), "-- hidden plugin").expect("write init.lua");
+        let result = scan_dir(dir.path());
+        assert!(result.is_empty());
+    }
 
-        // When scanning.
-        let result = scan(dir.path()).expect("scan succeeds");
+    #[test]
+    fn scan_dir_skips_hidden_dirs() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        make_plugin(dir.path(), ".hidden", "-- hidden");
 
-        // Then the hidden directory is skipped.
-        assert!(result.is_empty(), "hidden directories should be skipped");
+        let result = scan_dir(dir.path());
+        assert!(result.is_empty());
+    }
+
+    // --- discover_plugins ---
+
+    #[test]
+    fn discover_plugins_user_overrides_system() {
+        let user_dir = tempfile::tempdir().expect("tempdir");
+        let system_dir = tempfile::tempdir().expect("tempdir");
+
+        make_plugin(system_dir.path(), "shared", "-- description: System");
+        make_plugin(user_dir.path(), "shared", "-- description: User");
+
+        let result = discover_plugins(user_dir.path(), system_dir.path());
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].description, Some("User".to_owned()));
+    }
+
+    #[test]
+    fn discover_plugins_returns_sorted() {
+        let user_dir = tempfile::tempdir().expect("tempdir");
+        let system_dir = tempfile::tempdir().expect("tempdir");
+
+        make_plugin(user_dir.path(), "charlie", "");
+        make_plugin(user_dir.path(), "alpha", "");
+        make_plugin(user_dir.path(), "bravo", "");
+
+        let result = discover_plugins(user_dir.path(), system_dir.path());
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].name, "alpha");
+        assert_eq!(result[1].name, "bravo");
+        assert_eq!(result[2].name, "charlie");
+    }
+
+    // --- load_all / isolation ---
+
+    #[test]
+    fn load_all_isolates_plugin_globals() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        make_plugin(
+            dir.path(),
+            "alpha",
+            "x = 1\nreturn { on_test = function() return x end }",
+        );
+        make_plugin(
+            dir.path(),
+            "beta",
+            "x = 2\nreturn { on_test = function() return x end }",
+        );
+
+        let plugins = discover_plugins(dir.path(), Path::new("/nonexistent"));
+        let lua = Lua::new();
+        let hooks = load_all(&lua, &plugins);
+
+        assert_eq!(hooks.len(), 2);
+
+        // Plugin alpha returns 1, plugin beta returns 2.
+        for (name, ph) in &hooks {
+            let table: mlua::Table = lua.registry_value(&ph.table).expect("get table");
+            let func: mlua::Function = table.get("on_test").expect("get func");
+            let result: i64 = func.call(()).expect("call");
+            match name.as_str() {
+                "alpha" => assert_eq!(result, 1),
+                "beta" => assert_eq!(result, 2),
+                _ => panic!("unknown plugin: {name}"),
+            }
+        }
+    }
+
+    #[test]
+    fn load_all_skips_syntax_errors() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        make_plugin(dir.path(), "good", "return { on_test = function() end }");
+        make_plugin(dir.path(), "bad_syntax", "this is not lua {{{");
+
+        let plugins = discover_plugins(dir.path(), Path::new("/nonexistent"));
+        let lua = Lua::new();
+        let hooks = load_all(&lua, &plugins);
+
+        // Only the good plugin should load.
+        assert_eq!(hooks.len(), 1);
+        assert!(hooks.contains_key("good"));
+    }
+
+    #[test]
+    fn parse_description_extracts_from_header_comment() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("init.lua");
+        std::fs::write(&file, "-- description: Hello world\nlocal x = 1").expect("write");
+
+        let result = parse_description(&file);
+        assert_eq!(result, Some("Hello world".to_owned()));
+    }
+
+    #[test]
+    fn parse_description_returns_none_for_no_comment() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("init.lua");
+        std::fs::write(&file, "local x = 1\n").expect("write");
+
+        let result = parse_description(&file);
+        assert!(result.is_none());
     }
 }

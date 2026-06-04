@@ -12,11 +12,13 @@ tracing = { workspace = true }
 parking_lot = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
+dashmap = { workspace = true }
+tokio = { workspace = true }
+kanal = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
 tempfile = { workspace = true }
-kanal = { workspace = true }
 
 [lints]
 workspace = true
