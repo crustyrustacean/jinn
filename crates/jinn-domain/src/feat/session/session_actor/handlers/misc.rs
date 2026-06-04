@@ -6,11 +6,12 @@
 use super::super::SessionPersistenceActor;
 use crate::feat::provider::protocol::event::ModelsRefreshed;
 use crate::feat::skills::skills_scan_actor::SkillsLoaded;
+use crate::protocol::{ChatEntry, PickerKind};
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 use crate::feat::ui::picker_states::PickerExt;
-use crate::protocol::ChatEntry;
+
 
 impl SessionPersistenceActor {
     /// Pushes a transient markdown entry after model refresh.
@@ -42,6 +43,17 @@ impl SessionPersistenceActor {
         &self,
         event: &crate::feat::skills::SkillsLoaded,
     ) {
+        // Only show a message when the skill picker is active (manual refresh).
+        // Startup scans arrive while no picker is open.
+        let is_picker_active = {
+            let state = self.state.read();
+            state.frontend.scope_stack.picker_kind() == Some(&PickerKind::Skill)
+        };
+
+        if !is_picker_active {
+            return;
+        }
+
         let content = if let Some(err) = &event.error {
             format!("Skills refresh failed: {err}")
         } else if event.skills.is_empty() {
@@ -154,11 +166,8 @@ fn build_models_refresh_table(event: &ModelsRefreshed) -> String {
 
 /// Builds a markdown message listing discovered skills.
 fn build_skills_refresh_message(skills: &[crate::feat::skills::Skill]) -> String {
-    let mut msg = format!("Skills refreshed: {} found\n\n", skills.len());
-    for skill in skills {
-        msg.push_str(&format!("- **{}**: {}\n", skill.name, skill.description));
-    }
-    msg
+    let names: Vec<&str> = skills.iter().map(|s| s.name.as_str()).collect();
+    format!("Skills refreshed: {}", names.join(", "))
 }
 
 #[cfg(test)]
