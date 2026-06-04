@@ -35,6 +35,7 @@ jinn-web-fetch = { workspace = true, features = ["headless-chrome"] }
 clap_complete = { workspace = true }
 tokio = { workspace = true }
 kanal = { workspace = true }
+async-trait = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
 serde_json = { workspace = true }

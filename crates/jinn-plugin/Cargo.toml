@@ -15,6 +15,7 @@ error-stack = { workspace = true }
 dashmap = { workspace = true }
 tokio = { workspace = true }
 kanal = { workspace = true }
+async-trait = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }

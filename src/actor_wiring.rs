@@ -698,6 +698,46 @@ pub fn create_core_with_actor_host(
         },
     ));
 
+    // ── Plugin system ───────────────────────────────────────────────
+    //
+    // Build before the workflow controller so we can pass
+    // the async handle as a PluginFire impl.
+    let plugin_command_sink = sink.clone();
+    let plugin_command_dispatcher: jinn_plugin::CommandDispatcher =
+        std::sync::Arc::new(move |cmd| {
+            crate::plugin_wiring::handle_plugin_command(cmd, &*plugin_command_sink);
+        });
+    let plugin_request_handler: jinn_plugin::RequestHandler =
+        std::sync::Arc::new(|name, data| {
+            crate::plugin_wiring::handle_plugin_request(name, data)
+        });
+    let user_plugins_dir = paths.plugins_dir();
+    let system_plugins_dir = paths.system_plugins_dir();
+    let (_sync_plugins, async_plugins) = jinn_plugin::PluginSystem::new(
+        &user_plugins_dir,
+        &system_plugins_dir,
+        handle.clone(),
+        plugin_command_dispatcher,
+        plugin_request_handler,
+    );
+
+    // Store discovered plugin metadata in state for the sidebar.
+    {
+        let plugins = jinn_plugin::discover_plugins(
+            &paths.plugins_dir(),
+            &paths.system_plugins_dir(),
+        );
+        tracing::info!(count = plugins.len(), "discovered plugins");
+        let plugins: Vec<jinn_domain::feat::luaworkflow::discovery::PluginMeta> = plugins
+            .into_iter()
+            .map(|p| jinn_domain::feat::luaworkflow::discovery::PluginMeta {
+                name: p.name,
+                description: p.description,
+            })
+            .collect();
+        state.write().discovered_plugins = plugins;
+    }
+
     actors.push(spawn::<WorkflowControllerActor>(
         "workflow-controller",
         &sink,
@@ -707,26 +747,11 @@ pub fn create_core_with_actor_host(
         WorkflowControllerActorDeps {
             state: state.clone(),
             services: services.clone(),
+            async_plugins: std::sync::Arc::new(async_plugins)
+                as std::sync::Arc<dyn jinn_domain::feat::workflow::PluginFire>,
         },
     ));
 
-    // Discover Lua plugins.
-    {
-        let plugins = jinn_domain::feat::luaworkflow::discovery::discover_plugins(&paths);
-        tracing::info!(count = plugins.len(), "discovered Lua plugins");
-        state.write().discovered_plugins = plugins;
-    }
-
-    // ── Plugin system ───────────────────────────────────────────────
-    // TODO(Phase 7): Replace with PluginSystem::new once all consumers are
-    // updated. For now, this is a stub to keep compilation green.
-    {
-        let user_plugins = jinn_plugin::discover_plugins(
-            &paths.plugins_dir(),
-            &paths.system_plugins_dir(),
-        );
-        tracing::info!(count = user_plugins.len(), "discovered plugins (stub)");
-    }
 
     // ── Bench actor (conditional) ─────────────────────────────────────────
     if bench_csv_path.is_some() {

@@ -1769,6 +1769,7 @@ dependencies = [
 name = "jinn"
 version = "0.53.0"
 dependencies = [
+ "async-trait",
  "clap",
  "clap-verbosity-flag",
  "clap_complete",
@@ -1920,6 +1921,7 @@ dependencies = [
 name = "jinn-plugin"
 version = "0.53.0"
 dependencies = [
+ "async-trait",
  "dashmap",
  "error-stack",
  "jinn-domain",
