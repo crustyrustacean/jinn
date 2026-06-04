@@ -1,11 +1,13 @@
--- Judge fail workflow — pushes a user message telling the LLM to try again.
---
--- This is a one-shot workflow: it runs once per trigger, pushes a canned
--- "judgement failed" message, and returns. The workflow stays active so
--- it fires again on the next TurnEnd.
+-- description: Judgement fail — prompts user to retry
+-- Fires on turn end if judgement failed.
 
-return {
-    run = function(ctx)
-        ctx.push_user("judgement failed, try again")
-    end
-}
+local M = {}
+
+function M.on_turn_end(ctx)
+    ctx.emit("push_chat_entry", {
+        session_id = ctx.session_id,
+        message = "judgement failed, try again",
+    })
+end
+
+return M

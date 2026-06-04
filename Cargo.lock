@@ -1845,7 +1845,6 @@ dependencies = [
  "fuzzy-matcher",
  "humantime",
  "jiff",
- "jinn-lua-workflow",
  "jinn-protocol-derive",
  "jinn-provider",
  "jinn-selection-widget",
@@ -1897,24 +1896,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
-]
-
-[[package]]
-name = "jinn-lua-workflow"
-version = "0.53.0"
-dependencies = [
- "error-stack",
- "futures",
- "kanal",
- "mlua",
- "parking_lot",
- "rstest",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
- "wherror",
 ]
 
 [[package]]

@@ -728,9 +728,9 @@ pub fn create_core_with_actor_host(
             &paths.system_plugins_dir(),
         );
         tracing::info!(count = plugins.len(), "discovered plugins");
-        let plugins: Vec<jinn_domain::feat::luaworkflow::discovery::PluginMeta> = plugins
+        let plugins: Vec<jinn_domain::common::app_state::DiscoveredPlugin> = plugins
             .into_iter()
-            .map(|p| jinn_domain::feat::luaworkflow::discovery::PluginMeta {
+            .map(|p| jinn_domain::common::app_state::DiscoveredPlugin {
                 name: p.name,
                 description: p.description,
             })
