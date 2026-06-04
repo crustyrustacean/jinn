@@ -206,8 +206,13 @@ fn assign_spatial_rects(
 
         let mut y_cursor: u16 = 0;
         for name in col_names {
-            #[expect(clippy::expect_used, reason = "size was computed in compute_node_sizes")]
-            let &(width, height) = node_sizes.get(name).expect("size computed in compute_node_sizes");
+            #[expect(
+                clippy::expect_used,
+                reason = "size was computed in compute_node_sizes"
+            )]
+            let &(width, height) = node_sizes
+                .get(name)
+                .expect("size computed in compute_node_sizes");
             result.insert(
                 (*name).to_owned(),
                 SpatialRect {
@@ -993,9 +998,7 @@ mod tests {
     // Kills: compute_x_offset -> 0, compute_x_offset -> 1
     #[test]
     fn compute_x_offset_column_1_is_non_zero() {
-        let node_widths: HashMap<&str, u16> = [("a", 10u16), ("b", 8u16)]
-            .into_iter()
-            .collect();
+        let node_widths: HashMap<&str, u16> = [("a", 10u16), ("b", 8u16)].into_iter().collect();
         let column_nodes: HashMap<usize, Vec<&str>> = [(0usize, vec!["a"]), (1usize, vec!["b"])]
             .into_iter()
             .collect();
@@ -1007,13 +1010,9 @@ mod tests {
     // Kills: compute_x_offset + -> *, + -> -
     #[test]
     fn compute_x_offset_accumulates_across_columns() {
-        let node_widths: HashMap<&str, u16> = [
-            ("a", 10u16),
-            ("b", 8u16),
-            ("c", 12u16),
-        ]
-        .into_iter()
-        .collect();
+        let node_widths: HashMap<&str, u16> = [("a", 10u16), ("b", 8u16), ("c", 12u16)]
+            .into_iter()
+            .collect();
         let column_nodes: HashMap<usize, Vec<&str>> = [
             (0usize, vec!["a"]),
             (1usize, vec!["b"]),

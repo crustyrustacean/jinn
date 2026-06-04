@@ -207,10 +207,9 @@ fn seed_tracking_per_node(
             if let Some(cached) = cached_inputs {
                 let satisfied = cached.len();
                 state.pending_inputs.insert(name.clone(), cached);
-                state.pending_count.insert(
-                    name.clone(),
-                    input_port_count.saturating_sub(satisfied),
-                );
+                state
+                    .pending_count
+                    .insert(name.clone(), input_port_count.saturating_sub(satisfied));
             } else {
                 state.pending_inputs.insert(name.clone(), PortValues::new());
                 state.pending_count.insert(name.clone(), input_port_count);
@@ -475,8 +474,13 @@ pub async fn run_pending(
     let snapshot = execution.snapshot();
 
     // Initialize tracking.
-    let TrackingState { mut statuses, mut pending_inputs, mut pending_count, mut outputs, .. } =
-        initialize_tracking(&snapshot, &execution, &node_map, inner, name_to_index);
+    let TrackingState {
+        mut statuses,
+        mut pending_inputs,
+        mut pending_count,
+        mut outputs,
+        ..
+    } = initialize_tracking(&snapshot, &execution, &node_map, inner, name_to_index);
 
     // Channel for completion messages.
     let (tx, mut rx) = tokio::sync::mpsc::channel::<CompletionMsg>(64);
