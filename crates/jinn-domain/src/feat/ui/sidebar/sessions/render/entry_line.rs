@@ -151,10 +151,10 @@ fn assemble_session_line(
     Line::from(spans)
 }
 
-/// Renders a workflow entry line (gear icon + space + tree + dimmed title).
+/// Renders a workflow entry line (lightning bolt icon + space + tree + dimmed title).
 ///
 /// Workflow entries are informational children of a session. They show the
-/// plugin label with a gear icon prefix. Disabled workflows get an additional
+/// plugin label with a lightning bolt icon prefix. Disabled workflows get an additional
 /// DIM modifier on the title.
 fn assemble_workflow_line(
     enabled: bool,
@@ -163,9 +163,9 @@ fn assemble_workflow_line(
     max_title_len: usize,
     theme: &Theme,
 ) -> Line<'static> {
-    // Gear icon replaces the throbber indicator.
-    let gear = Span::styled("\u{2699}", Style::default().fg(theme.muted_text));
-    // No arrow for workflows — they are never \"active\".
+    // Lightning bolt icon replaces the throbber indicator.
+    let icon = Span::styled("\u{26A1}", Style::default().fg(theme.muted_text));
+    // No arrow for workflows — they are never active.
     let no_arrow = Span::raw(" ");
     let tree = tree_prefix(entry);
     let tree_len = tree.graphemes(true).count();
@@ -192,7 +192,7 @@ fn assemble_workflow_line(
     let full_title = format!("{prefix}{}", entry.title);
     let display_title = truncate_str(&full_title, max_title_len.saturating_sub(tree_len));
 
-    let mut spans = vec![gear, Span::raw(" "), no_arrow];
+    let mut spans = vec![icon, Span::raw(" "), no_arrow];
     if !tree.is_empty() {
         spans.push(Span::styled(tree, Style::default().fg(theme.muted_text)));
     }
