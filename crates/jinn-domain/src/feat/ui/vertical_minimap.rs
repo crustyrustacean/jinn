@@ -278,10 +278,10 @@ fn compute_token_sum_in_range(
     let start = start.min(end);
     let mut sum: u32 = 0;
     for entry in &history[start..end] {
-        if entry.is_in_context() {
-            if let Some(count) = token_cache.get(&entry.id) {
-                sum = sum.saturating_add(count);
-            }
+        if entry.is_in_context()
+            && let Some(count) = token_cache.get(&entry.id)
+        {
+            sum = sum.saturating_add(count);
         }
     }
     (sum > 0).then_some(sum)
