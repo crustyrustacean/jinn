@@ -73,7 +73,6 @@ jinn-workflow-tui = { path = "crates/jinn-workflow-tui" }
 jinn-bench = { path = "crates/jinn-bench" }
 jinn-theme = { path = "crates/jinn-theme" }
 jinn-web-fetch = { path = "crates/jinn-web-fetch" }
-jinn-lua-workflow = { path = "crates/jinn-lua-workflow" }
 
 # Error handling
 wherror = "2.3.1"

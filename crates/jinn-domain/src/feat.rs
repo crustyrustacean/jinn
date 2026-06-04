@@ -10,7 +10,6 @@ pub mod history_worker;
 pub mod intent;
 
 pub mod llm_actor;
-pub mod luaworkflow;
 pub mod navigation;
 pub mod persona;
 pub mod picker;

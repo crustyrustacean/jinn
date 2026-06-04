@@ -1019,7 +1019,7 @@ mod tests {
     // --- Workflow picker tests ---
 
     fn setup_state_with_plugins() -> AppState {
-        use crate::feat::luaworkflow::discovery::PluginMeta;
+        use crate::common::app_state::DiscoveredPlugin;
 
         let mut state = AppState::default();
         let origin = ChatSessionState::new();
@@ -1029,11 +1029,11 @@ mod tests {
             .set_active(state.session.active_session_id().clone());
 
         state.discovered_plugins = vec![
-            PluginMeta {
+            DiscoveredPlugin {
                 name: "judge-fail".to_owned(),
                 description: Some("Runs judge on failure".to_owned()),
             },
-            PluginMeta {
+            DiscoveredPlugin {
                 name: "consensus".to_owned(),
                 description: Some("Multi-model consensus".to_owned()),
             },

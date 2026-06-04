@@ -51,8 +51,18 @@ pub struct AppState {
     )>,
     /// Discovered Lua plugins from both user and system plugin directories.
     /// OWNER: startup (actor_wiring) writes once; picker intent handler reads.
-    pub discovered_plugins: Vec<crate::feat::luaworkflow::discovery::PluginMeta>,
+    pub discovered_plugins: Vec<DiscoveredPlugin>,
 }
+
+/// Metadata for a discovered Lua plugin.
+#[derive(Debug, Clone)]
+pub struct DiscoveredPlugin {
+    /// Plugin name (directory name).
+    pub name: String,
+    /// Human-readable description from header comment.
+    pub description: Option<String>,
+}
+
 
 impl AppState {
     /// Returns a mutable reference to the active picker's navigation interface.

@@ -1,11 +1,13 @@
--- Judge pass workflow — pushes a system message and turns off the workflow.
---
--- This is a one-shot workflow: it runs once, pushes a "judgement passed"
--- system message, and disables the workflow attachment so it won't fire again.
+-- description: Judgement pass — acknowledges and disables workflow
+-- Fires on turn end when judgement passes.
 
-return {
-    run = function(ctx)
-        ctx.push_system("judgement passed")
-        ctx.turn_off()
-    end
-}
+local M = {}
+
+function M.on_turn_end(ctx)
+    ctx.emit("push_chat_entry", {
+        session_id = ctx.session_id,
+        message = "judgement passed",
+    })
+end
+
+return M
