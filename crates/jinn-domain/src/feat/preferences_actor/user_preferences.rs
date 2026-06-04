@@ -1311,6 +1311,24 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         assert!(alpha_pos < beta_pos);
         assert!(written.contains("# existing"));
     }
+    #[rstest::rstest]
+    fn first_save_of_jinn_toml_emits_no_comments() {
+        // Given: no jinn.toml exists yet.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        assert!(!path.exists());
+
+        // When: saving for the first time.
+        let prefs = UserPreferences::default();
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then: the written file contains no comment characters at all.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            !written.contains('#'),
+            "first save of jinn.toml must be comment-free, got: {written}"
+        );
+    }
 
     #[rstest::rstest]
     fn save_preferences_preserves_user_comments_in_auto_prune_section() {
@@ -1332,6 +1350,106 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         assert!(written.contains("# auto-prune rules"));
         assert!(written.contains("# matches foo"));
         assert!(written.contains("keep_last = 99"));
+    }
+    #[rstest::rstest]
+    fn save_preferences_comprehensive_comment_round_trip_preserves_all_styles() {
+        // Given a jinn.toml fixture using every comment style we promise to
+        // preserve: top-of-file banner, section header, mid-table inline,
+        // array-of-tables block headers.
+        let original = r#"# my jinn preferences - hand-edited
+                                                            
+        # main prefs
+        last_model = "openrouter/anthropic/claude-sonnet-4-20250514"
+                                                            
+        # compaction
+        [compaction]
+        enabled = true        # always compact
+        threshold = 100       # tokens
+                                                            
+        # session lifecycles
+        [[session_lifecycle]]
+        name = "fossil-branch"
+        description = "Open a fossil branch in a new workdir"
+                                                            
+        [[session_lifecycle]]
+        name = "cleanup"
+        description = "Tidy up after session"
+                                                            
+        # auto-prune
+        [auto_prune.regex]
+        enabled = true
+                                                            
+        # matches todo-related files
+        [[auto_prune.regex.rules]]
+        pattern = "TODO\\.md"
+        keep_last = 2
+                                                            
+        # matches build artifacts
+        [[auto_prune.regex.rules]]
+        pattern = "target/"
+        keep_last = 1
+        "#;
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, original).expect("write");
+
+        // When loading and immediately re-saving without changes.
+        let prefs = load_preferences_from(&path).expect("load");
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then every comment style is preserved byte-for-byte.
+        let written = std::fs::read_to_string(&path).expect("read");
+        for expected in [
+            "# my jinn preferences - hand-edited",
+            "# main prefs",
+            "# compaction",
+            "# always compact",   // inline trailing
+            "# tokens",           // inline trailing
+            "# session lifecycles",
+            "# auto-prune",
+            "# matches todo-related files",
+            "# matches build artifacts",
+        ] {
+            assert!(
+                written.contains(expected),
+                "comment lost: {expected:?}\nGot:\n{written}"
+            );
+        }
+    }
+
+    #[rstest::rstest]
+    fn save_preferences_mixed_mutations_preserve_unrelated_comments() {
+        // Given a jinn.toml with comments sprinkled across several sections.
+        let original = "\
+# main preferences\nlast_model = \"ollama/llama3\"\n\n# width in chars\nsidebar_width = 80\n\n# keep context compact\n[compaction]\n# always compact\nenabled = true\n# 50k tokens\ntokens = 50000\n\n# my lifecycles\n[[session_lifecycle]]\nname = \"alpha\"\n\n# deprecated lifecycle\n[[session_lifecycle]]\nname = \"beta\"\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, original).expect("write");
+
+        // When applying a mixed mutation set:
+        //   - change last_model (scalar update)
+        //   - delete beta session_lifecycle (array entry removal)
+        //   - leave sidebar_width and compaction untouched
+        let mut prefs = load_preferences_from(&path).expect("load");
+        prefs.last_model = Some("openrouter/gpt-4o".to_owned());
+        prefs.session_lifecycles.retain(|l| l.name == "alpha");
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then all unrelated comments survive and the targeted changes applied.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(written.contains("# main preferences"), "top comment kept");
+        assert!(written.contains("# width in chars"), "sidebar comment kept");
+        assert!(written.contains("sidebar_width = 80"), "untouched field kept");
+        assert!(written.contains("# keep context compact"), "compaction comment kept");
+        assert!(written.contains("# always compact"), "nested comment kept");
+        assert!(written.contains("# 50k tokens"), "second nested comment kept");
+        assert!(written.contains("# my lifecycles"), "lifecycles comment kept");
+        assert!(!written.contains("# deprecated lifecycle"), "beta comment removed with beta");
+        assert!(!written.contains("\"beta\""), "beta removed");
+        assert!(written.contains("openrouter/gpt-4o"), "last_model updated");
+        assert!(!written.contains("ollama/llama3"), "old last_model gone");
+        // The alpha lifecycle is preserved.
+        assert!(written.contains("\"alpha\""), "alpha kept");
     }
     // --- S-Tier: Kill mutants for load_preferences / save_preferences ---
 
