@@ -183,7 +183,6 @@ pub fn save_config(config: &ProvidersConfig) -> Result<(), Report<ConfigError>> 
     save_config_to(config, &path)
 }
 
-/// Saves config to a specific path.
 pub(crate) fn save_config_to<P>(
     config: &ProvidersConfig,
     path: P,
@@ -191,11 +190,55 @@ pub(crate) fn save_config_to<P>(
 where
     P: AsRef<Path>,
 {
+    let path = path.as_ref();
+
+    // If the file already exists, patch it in place to preserve user-written
+    // comments, blank lines, and field ordering.
+    if path.exists() {
+        let existing = std::fs::read_to_string(path)
+            .change_context(ConfigError::Io)
+            .attach("failed to read existing providers config")?;
+        let mut doc: toml_edit::DocumentMut = existing
+            .parse()
+            .map_err(|err: toml_edit::TomlError| {
+                Report::new(ConfigError::Parse)
+                    .attach("failed to parse existing providers config")
+                    .attach(err.to_string())
+            })?;
+
+        let mut patcher = crate::common::toml_patch::DocumentPatcher::new();
+        patcher.register_array_key(["providers"], "name");
+        patcher.register_array_key(["aliases"], "name");
+
+        let new_table: toml::value::Table =
+            toml::Value::try_from(config)
+                .map(|v: toml::Value| match v {
+                    toml::Value::Table(t) => t,
+                    _ => unreachable!("ProvidersConfig is always a table"),
+                })
+                .map_err(|_| {
+                    Report::new(ConfigError::Parse)
+                        .attach("failed to serialize ProvidersConfig")
+                })?;
+
+        patcher.apply(&new_table, doc.as_table_mut()).map_err(|err| {
+            Report::new(ConfigError::Parse)
+                .attach("failed to patch providers config document")
+                .attach(err.to_string())
+        })?;
+
+        std::fs::write(path, doc.to_string())
+            .change_context(ConfigError::Io)
+            .attach("failed to write providers config")?;
+        return Ok(());
+    }
+
+    // First-save path: emit a clean, comment-free serialization.
     let content = toml::to_string_pretty(config)
         .change_context(ConfigError::Parse)
         .attach("failed to serialize providers config")?;
 
-    std::fs::write(path.as_ref(), content)
+    std::fs::write(path, content)
         .change_context(ConfigError::Io)
         .attach("failed to write providers config")
 }
@@ -380,6 +423,106 @@ tool_stream = true
             .as_ref()
             .expect("extra_body");
         assert_eq!(extra["enable_thinking"], true);
+    }
+
+    #[rstest::rstest]
+    fn save_config_preserves_user_comments() {
+        // Given a comment-rich providers.toml written by the user.
+        let original = "# my favorite provider\n[[providers]]\nname = \"ollama\"\nbackend = \"ollama\"\nmodels = [\"llama3\"]\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, original).expect("write");
+
+        // When loading, mutating default_provider, and saving.
+        let mut config = load_config_from(&path).expect("load");
+        config.default_provider = Some("ollama".to_owned());
+        save_config_to(&config, &path).expect("save");
+
+        // Then the original comment is preserved verbatim.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            written.contains("# my favorite provider"),
+            "comment was wiped: {written}"
+        );
+        assert!(written.contains("default_provider = \"ollama\""));
+    }
+
+    #[rstest::rstest]
+    fn save_config_deletes_provider_block_on_struct_removal() {
+        // Given a config with two providers, only one of which we want to keep.
+        let original = "# keep me\n[[providers]]\nname = \"alpha\"\nbackend = \"x\"\nmodels = [\"a\"]\n\n# delete me\n[[providers]]\nname = \"beta\"\nbackend = \"x\"\nmodels = [\"b\"]\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, original).expect("write");
+
+        // When saving a config containing only alpha.
+        let config = ProvidersConfig {
+            providers: vec![ProviderEntry {
+                name: "alpha".to_owned(),
+                backend: "x".to_owned(),
+                models: vec!["a".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: None,
+            }],
+            aliases: vec![],
+            default_provider: None,
+        };
+        save_config_to(&config, &path).expect("save");
+
+        // Then beta's block (and its comment) is removed, alpha's preserved.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(written.contains("# keep me"));
+        assert!(written.contains("name = \"alpha\""));
+        assert!(!written.contains("beta"), "beta still present: {written}");
+        assert!(!written.contains("# delete me"));
+    }
+
+    #[rstest::rstest]
+    fn save_config_appends_new_provider_at_end() {
+        // Given a single-provider config.
+        let original = "# existing\n[[providers]]\nname = \"alpha\"\nbackend = \"x\"\nmodels = [\"a\"]\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, original).expect("write");
+
+        // When saving a config with alpha + beta.
+        let config = ProvidersConfig {
+            providers: vec![
+                ProviderEntry {
+                    name: "alpha".to_owned(),
+                    backend: "x".to_owned(),
+                    models: vec!["a".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: None,
+                },
+                ProviderEntry {
+                    name: "beta".to_owned(),
+                    backend: "x".to_owned(),
+                    models: vec!["b".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: None,
+                },
+            ],
+            aliases: vec![],
+            default_provider: None,
+        };
+        save_config_to(&config, &path).expect("save");
+
+        // Then beta appears after alpha (appended).
+        let written = std::fs::read_to_string(&path).expect("read");
+        let alpha_pos = written.find("name = \"alpha\"").expect("alpha");
+        let beta_pos = written.find("name = \"beta\"").expect("beta");
+        assert!(alpha_pos < beta_pos, "beta not appended after alpha");
+        assert!(written.contains("# existing"));
     }
 
     // --- S-Tier: Kill mutants for save_config, create_default_config, default_true ---
