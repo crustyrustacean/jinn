@@ -18,6 +18,8 @@ use crate::common::state::State;
 use crate::feat::session::chat_entry::ChatEntry;
 use crate::feat::workflow::attached_workflow::AttachedWorkflowState;
 use crate::feat::workflow::domain_node_context::DomainNodeContext;
+use crate::feat::chat_input::protocol::command::PushChatEntry;
+use crate::protocol::Command;
 
 /// Error type for Lua host handler operations.
 #[derive(Debug, Error)]
@@ -129,29 +131,29 @@ impl LuaHostHandler {
 
     /// Handles a PushUser request.
     ///
-    /// Creates a `ChatEntry::user(text)` and pushes it into the session history.
+    /// Dispatches a [`Command::PushChatEntry`] with a [`ChatEntry::user`] through
+    /// the domain node context. The session actor processes the command asynchronously.
     fn handle_push_user(&self, session_id: &str, text: &str) -> Result<(), Report<LuaHostHandlerError>> {
-        let entry = ChatEntry::user(text);
-        let mut guard = self.state.write();
         let session_id_typed = crate::protocol::SessionId::from(session_id.to_owned());
-        let Some(session) = guard.session.get_mut(&session_id_typed) else {
-            return Err(Report::new(LuaHostHandlerError).attach(format!("session not found: {session_id}")));
-        };
-        session.push_entry(entry);
+        let entry = ChatEntry::user(text);
+        self.ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            session_id: session_id_typed,
+            entry,
+        }));
         Ok(())
     }
 
     /// Handles a PushSystem request.
     ///
-    /// Creates a `ChatEntry::system(text)` and pushes it into the session history.
+    /// Dispatches a [`Command::PushChatEntry`] with a [`ChatEntry::system`] through
+    /// the domain node context. The session actor processes the command asynchronously.
     fn handle_push_system(&self, session_id: &str, text: &str) -> Result<(), Report<LuaHostHandlerError>> {
-        let entry = ChatEntry::system(text);
-        let mut guard = self.state.write();
         let session_id_typed = crate::protocol::SessionId::from(session_id.to_owned());
-        let Some(session) = guard.session.get_mut(&session_id_typed) else {
-            return Err(Report::new(LuaHostHandlerError).attach(format!("session not found: {session_id}")));
-        };
-        session.push_entry(entry);
+        let entry = ChatEntry::system(text);
+        self.ctx.send_command(Command::PushChatEntry(PushChatEntry {
+            session_id: session_id_typed,
+            entry,
+        }));
         Ok(())
     }
 
@@ -189,15 +191,23 @@ mod tests {
     use super::*;
     use crate::common::app_state::AppState;
     use crate::common::services::test_services::TestServices;
-    use crate::feat::session::chat_session::ChatSessionState;
     use crate::feat::workflow::attached_workflow::WorkflowId;
     use crate::feat::workflow::attached_workflow::{
         AttachedWorkflow, WorkflowConfig, WorkflowTrigger,
     };
-    use crate::protocol::SessionId;
+    use crate::protocol::{AppMsg, SessionId};
     use tokio::sync::oneshot;
 
-    /// Creates a handler with test services for non-LLM tests.
+    /// Creates a handler with test services and returns the actor channel receiver
+    /// for verifying dispatched commands.
+    fn make_handler_with_channel(state: State) -> (LuaHostHandler, kanal::Receiver<AppMsg>) {
+        let (tx, rx) = kanal::unbounded::<AppMsg>();
+        let services = TestServices::builder().actor_channel(tx).build();
+        let ctx = Arc::new(DomainNodeContext::new(services, state.clone()));
+        (LuaHostHandler::new(state, ctx), rx)
+    }
+
+    /// Creates a handler with test services for tests that don't inspect commands.
     fn make_handler(state: State) -> LuaHostHandler {
         let services = TestServices::builder().build();
         let ctx = Arc::new(DomainNodeContext::new(services, state.clone()));
@@ -236,10 +246,12 @@ mod tests {
     // ── PushUser ───────────────────────────────────────────────────────
 
     #[tokio::test]
-    async fn push_user_creates_user_entry_in_session() {
+    async fn push_user_dispatches_push_chat_entry_command() {
+        // Given a handler with a session and command channel.
         let (state, session_id) = make_state_with_session();
-        let handler = make_handler(state.clone());
+        let (handler, rx) = make_handler_with_channel(state);
 
+        // When handling a PushUser request.
         let (resp_tx, resp_rx) = oneshot::channel();
         handler
             .handle_request(HostRequest::PushUser {
@@ -249,45 +261,40 @@ mod tests {
             })
             .await;
 
+        // Then the response is Ok.
         resp_rx.await.expect("response").expect("push_user");
 
-        let guard = state.read();
-        let session = guard.session.get(&session_id).expect("session");
-        let history = session.history();
-        let last = history.last().expect("entry exists");
-        match &last.kind {
-            crate::feat::session::chat_entry::ChatEntryKind::User { display, .. } => {
-                assert_eq!(display, "judgement failed, try again");
+        // And a PushChatEntry command was dispatched with a User entry.
+        let msg = rx.try_recv().ok().flatten().expect("command");
+        let command = match msg {
+            AppMsg::Command { command, .. } => command,
+            other => panic!("expected Command, got {other:?}"),
+        };
+        match command {
+            Command::PushChatEntry(pce) => {
+                assert_eq!(pce.session_id, session_id);
+                match &pce.entry.kind {
+                    crate::feat::session::chat_entry::ChatEntryKind::User { display, .. } => {
+                        assert_eq!(display, "judgement failed, try again");
+                    }
+                    other => panic!("expected User entry, got {other:?}"),
+                }
             }
-            other => panic!("expected User entry, got {other:?}"),
+            other => panic!("expected PushChatEntry, got {other:?}"),
         }
     }
 
-    #[tokio::test]
-    async fn push_user_returns_error_for_unknown_session() {
-        let (state, _) = make_state_with_session();
-        let handler = make_handler(state);
 
-        let (resp_tx, resp_rx) = oneshot::channel();
-        handler
-            .handle_request(HostRequest::PushUser {
-                session_id: "nonexistent".to_owned(),
-                text: "test".to_owned(),
-                respond_to: resp_tx,
-            })
-            .await;
-
-        let result = resp_rx.await.expect("response");
-        assert!(result.is_err());
-    }
 
     // ── PushSystem ─────────────────────────────────────────────────────
 
     #[tokio::test]
-    async fn push_system_creates_system_entry_in_session() {
+    async fn push_system_dispatches_push_chat_entry_command() {
+        // Given a handler with a session and command channel.
         let (state, session_id) = make_state_with_session();
-        let handler = make_handler(state.clone());
+        let (handler, rx) = make_handler_with_channel(state);
 
+        // When handling a PushSystem request.
         let (resp_tx, resp_rx) = oneshot::channel();
         handler
             .handle_request(HostRequest::PushSystem {
@@ -297,17 +304,26 @@ mod tests {
             })
             .await;
 
+        // Then the response is Ok.
         resp_rx.await.expect("response").expect("push_system");
 
-        let guard = state.read();
-        let session = guard.session.get(&session_id).expect("session");
-        let history = session.history();
-        let last = history.last().expect("entry exists");
-        match &last.kind {
-            crate::feat::session::chat_entry::ChatEntryKind::System(text) => {
-                assert_eq!(text, "judgement passed");
+        // And a PushChatEntry command was dispatched with a System entry.
+        let msg = rx.try_recv().ok().flatten().expect("command");
+        let command = match msg {
+            AppMsg::Command { command, .. } => command,
+            other => panic!("expected Command, got {other:?}"),
+        };
+        match command {
+            Command::PushChatEntry(pce) => {
+                assert_eq!(pce.session_id, session_id);
+                match &pce.entry.kind {
+                    crate::feat::session::chat_entry::ChatEntryKind::System(text) => {
+                        assert_eq!(text, "judgement passed");
+                    }
+                    other => panic!("expected System entry, got {other:?}"),
+                }
             }
-            other => panic!("expected System entry, got {other:?}"),
+            other => panic!("expected PushChatEntry, got {other:?}"),
         }
     }
 
@@ -361,12 +377,12 @@ mod tests {
 
     #[tokio::test]
     async fn run_loop_processes_requests_until_shutdown() {
+        // Given a handler with a session and command channel.
         let (state, session_id) = make_state_with_session();
-        let handler = make_handler(state.clone());
+        let (handler, rx) = make_handler_with_channel(state);
 
-        let (tx, rx) = kanal::unbounded::<HostRequest>();
-
-        // Send a push_user then a shutdown.
+        // When sending a PushUser then a Shutdown through the run loop.
+        let (tx, host_rx) = kanal::unbounded::<HostRequest>();
         let (resp_tx, resp_rx) = oneshot::channel();
         tx.send(HostRequest::PushUser {
             session_id: session_id.to_string(),
@@ -376,18 +392,27 @@ mod tests {
         .expect("send");
         tx.send(HostRequest::Shutdown).expect("send");
 
-        handler.run(rx).await;
+        handler.run(host_rx).await;
 
-        // Verify the push was processed.
+        // Then the response is Ok.
         resp_rx.await.expect("response").expect("push_user");
-        let guard = state.read();
-        let session = guard.session.get(&session_id).expect("session");
-        let last = session.history().last().expect("entry");
-        match &last.kind {
-            crate::feat::session::chat_entry::ChatEntryKind::User { display, .. } => {
-                assert_eq!(display, "from loop");
+
+        // And a PushChatEntry command was dispatched.
+        let msg = rx.try_recv().ok().flatten().expect("command");
+        let command = match msg {
+            AppMsg::Command { command, .. } => command,
+            other => panic!("expected Command, got {other:?}"),
+        };
+        match command {
+            Command::PushChatEntry(pce) => {
+                match &pce.entry.kind {
+                    crate::feat::session::chat_entry::ChatEntryKind::User { display, .. } => {
+                        assert_eq!(display, "from loop");
+                    }
+                    other => panic!("expected User entry, got {other:?}"),
+                }
             }
-            other => panic!("expected User entry, got {other:?}"),
+            other => panic!("expected PushChatEntry, got {other:?}"),
         }
     }
 }
