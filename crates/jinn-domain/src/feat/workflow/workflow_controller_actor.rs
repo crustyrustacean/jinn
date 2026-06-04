@@ -272,24 +272,17 @@ impl WorkflowControllerActor {
                 session.core.ephemeral.busy_count += 1;
                 for aw in &mut session.core.attached_workflows {
                     if aw.id == wf_id {
-                        aw.state = AttachedWorkflowState::Running;
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Spawn execution and await result.
+        // Spawn fire-and-forget — don't block the actor.
+        let state = self.state.clone();
         let handle = self.spawn_attached_workflow(&session_id, attachment);
-        let result = match handle.await {
-            Ok(ok) => ok,
-            Err(e) => Err(format!("join error: {e}")),
-        };
-
-        // Apply result — single write lock inside.
-        self.apply_workflow_result(&session_id, &wf_id, result);
+        tokio::spawn(async move {
+            let result = match handle.await {
+                Ok(ok) => ok,
+                Err(e) => Err(format!("join error: {e}")),
+            };
+            apply_result_to_state(&state, &session_id, &wf_id, result);
+        });
     }
-
     /// Handle `FireBeforeTurn` — fire all BeforeTurn workflows for the session,
     /// then merge the output with the deferred user text and either auto-send or put back.
     async fn handle_fire_before_turn(&mut self, payload: &FireBeforeTurn) {
@@ -407,9 +400,8 @@ impl WorkflowControllerActor {
             return;
         }
 
-        // Fire all matching attachments.
-        let mut handles = Vec::new();
-
+        // Spawn each workflow as a fire-and-forget task.
+        // The task applies the result directly to State — no actor blocking.
         for attachment in attachments {
             let wf_id = attachment.id.clone();
 
@@ -427,26 +419,17 @@ impl WorkflowControllerActor {
                 }
             }
 
-            // Spawn execution.
+            // Spawn execution as background task — don't await.
             let handle = self.spawn_attached_workflow(session_id, attachment);
-            handles.push((wf_id, handle));
-        }
-
-        // Await all handles.
-        let mut results = Vec::new();
-        for (wf_id, handle) in handles {
-            let result = match handle.await {
-                Ok(Ok(outputs)) => Ok(outputs),
-                Ok(Err(e)) => Err(e),
-                Err(e) => Err(format!("join error: {e}")),
-            };
-            results.push((wf_id, result));
-        }
-
-        // Apply results in order (each call uses a single write lock).
-        for (wf_id, result) in results {
-            self.apply_workflow_result(session_id, &wf_id, result);
-        }
+            let state = self.state.clone();
+            let sid = session_id.clone();
+            tokio::spawn(async move {
+                let result = match handle.await {
+                    Ok(ok) => ok,
+                    Err(e) => Err(format!("join error: {e}")),
+                };
+                apply_result_to_state(&state, &sid, &wf_id, result);
+            });
     }
 
     /// Spawn an attached workflow using Lua.
@@ -674,5 +657,50 @@ impl WorkflowControllerActor {
                 }
             }
         }
+    }
+}
+
+/// Apply a workflow result directly to State (no actor fields needed).
+///
+/// Used by background tasks that fire hooks without blocking the actor.
+/// Handles the common case: mark workflow Completed/Failed and decrement busy_count.
+/// Does NOT handle BeforeTurn post-processing (which requires actor fields).
+fn apply_result_to_state(
+    state: &State,
+    session_id: &crate::protocol::SessionId,
+    workflow_id: &WorkflowId,
+    result: Result<(), String>,
+) {
+    let mut guard = state.write();
+    if let Some(session) = guard.session.get_mut(session_id) {
+        match result {
+            Ok(()) => {
+                for aw in &mut session.core.attached_workflows {
+                    if aw.id == *workflow_id {
+                        aw.state = AttachedWorkflowState::Completed;
+                        break;
+                    }
+                }
+            }
+            Err(ref reason) => {
+                tracing::error!(
+                    session = %session_id,
+                    workflow = %workflow_id,
+                    reason = %reason,
+                    "attached workflow failed"
+                );
+                for aw in &mut session.core.attached_workflows {
+                    if aw.id == *workflow_id {
+                        aw.state = AttachedWorkflowState::Failed {
+                            reason: reason.clone(),
+                        };
+                        break;
+                    }
+                }
+                session.push_entry(ChatEntry::system(&format!("[Workflow] Failed: {reason}")));
+            }
+        }
+        session.core.ephemeral.busy_count =
+            session.core.ephemeral.busy_count.saturating_sub(1);
     }
 }
