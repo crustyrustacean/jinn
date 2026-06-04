@@ -149,38 +149,65 @@ pub fn compute_spatial_layout(structure: &WorkflowStructure) -> HashMap<String, 
     }
 
     let columns = compute_columns(structure);
+    let column_nodes = bin_names_by_column(&all_names, &columns);
+    let max_col = columns.values().copied().max().unwrap_or(0);
 
-    let mut column_nodes: HashMap<usize, Vec<&str>> = HashMap::new();
-    for name in &all_names {
+    let node_sizes = compute_node_sizes(structure, &all_names);
+    assign_spatial_rects(&node_sizes, &column_nodes, max_col)
+}
+
+/// Bin node names by their topological column.
+fn bin_names_by_column<'a>(
+    all_names: &[&'a str],
+    columns: &HashMap<&str, usize>,
+) -> HashMap<usize, Vec<&'a str>> {
+    let mut column_nodes: HashMap<usize, Vec<&'a str>> = HashMap::new();
+    for name in all_names {
         let col = columns.get(*name).copied().unwrap_or(0);
         column_nodes.entry(col).or_default().push(name);
     }
+    column_nodes
+}
 
-    let max_col = columns.values().copied().max().unwrap_or(0);
+/// Compute the `(width, height)` size for every name in `all_names`.
+fn compute_node_sizes<'a>(
+    structure: &WorkflowStructure,
+    all_names: &[&'a str],
+) -> HashMap<&'a str, (u16, u16)> {
+    all_names
+        .iter()
+        .map(|&name| {
+            let input_defs = structure.node_input_ports(name).unwrap_or_default();
+            let output_defs = structure.node_output_ports(name).unwrap_or_default();
+            let (w, h) = compute_node_size(name, input_defs, output_defs);
+            (name, (w, h))
+        })
+        .collect()
+}
 
-    // First pass: compute all node sizes.
-    let mut node_sizes: HashMap<&str, (u16, u16)> = HashMap::new();
-    for name in &all_names {
-        let input_defs = structure.node_input_ports(name).unwrap_or_default();
-        let output_defs = structure.node_output_ports(name).unwrap_or_default();
-        let (w, h) = compute_node_size(name, input_defs, output_defs);
-        node_sizes.insert(name, (w, h));
-    }
+/// Assign `(x, y, width, height)` rects per node, stacked vertically within each column.
+///
+/// Single explicit loop over columns; per-node assignment within a column
+/// is an iterator chain.
+fn assign_spatial_rects(
+    node_sizes: &HashMap<&str, (u16, u16)>,
+    column_nodes: &HashMap<usize, Vec<&str>>,
+    max_col: usize,
+) -> HashMap<String, SpatialRect> {
+    let node_widths: HashMap<&str, u16> = node_sizes.iter().map(|(k, (w, _))| (*k, *w)).collect();
 
-    // Second pass: assign positions by column.
-    let mut result = HashMap::new();
+    let mut result: HashMap<String, SpatialRect> = HashMap::new();
     for col in 0..=max_col {
         let Some(col_names) = column_nodes.get(&col) else {
             continue;
         };
 
-        let node_widths: HashMap<&str, u16> = node_sizes.iter().map(|(k, (w, _))| (*k, *w)).collect();
-        let x_offset = compute_x_offset(&node_widths, &column_nodes, col);
+        let x_offset = compute_x_offset(&node_widths, column_nodes, col);
 
         let mut y_cursor: u16 = 0;
         for name in col_names {
-            #[expect(clippy::expect_used, reason = "size was computed in first pass")]
-            let &(width, height) = node_sizes.get(name).expect("size computed in first pass");
+            #[expect(clippy::expect_used, reason = "size was computed in compute_node_sizes")]
+            let &(width, height) = node_sizes.get(name).expect("size computed in compute_node_sizes");
             result.insert(
                 (*name).to_owned(),
                 SpatialRect {
@@ -193,7 +220,6 @@ pub fn compute_spatial_layout(structure: &WorkflowStructure) -> HashMap<String, 
             y_cursor = y_cursor + height + V_SPACING;
         }
     }
-
     result
 }
 
