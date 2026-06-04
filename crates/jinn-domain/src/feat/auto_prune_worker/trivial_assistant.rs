@@ -1,19 +1,23 @@
 //! Trivial-assistant auto-prune worker.
 //!
-//! Keeps the most recent `max_age_entries` (default: 100) in-context
-//! entries' worth of history untouched, and prunes any `Assistant` entry
-//! outside that window whose estimated token count is at most
-//! `max_tokens` (default: 80). Targets low-value "narration" turns the
-//! model emits between tool calls during autonomous coding.
+//! Keeps the most recent `max_age_entries` (default: 100) entries' worth
+//! of history untouched, and prunes any `Assistant` entry outside that
+//! window whose estimated token count is at most `max_tokens` (default:
+//! 80). Targets low-value "narration" turns the model emits between tool
+//! calls during autonomous coding.
 //!
 //! # Semantics
 //!
-//! - The threshold counts only entries where [`ChatEntry::is_in_context()`]
-//!   returns `true`. Already-excluded, thinking, transient, system, error,
-//!   and pending-result entries do not count.
-//! - The window is measured from the end of history backward. Once
-//!   `max_age_entries` in-context entries have been counted, everything
-//!   older is in the prune window.
+//! - The threshold counts every entry in raw history — already-excluded,
+//!   thinking, transient, system, error, and pending-result entries all
+//!   count. This makes the window position independent of what other
+//!   auto-prune workers have already `ForcedExclude`d, so multiple workers
+//!   compose cleanly: each worker's prune region is fixed by raw history
+//!   length alone, not by what has already been `ForcedExclude`d by other
+//!   workers.
+//! - The window is measured from the end of history backward: the last
+//!   `max_age_entries` entries form the keep region, everything older is
+//!   the prune window.
 //! - Only `ChatEntryKind::Assistant(_)` entries are candidates. Non-assistant
 //!   entries in the prune region are never targeted.
 //! - Assistant entries inside the window are never pruned, regardless of
@@ -38,7 +42,7 @@
 //! `Assistant` entry therefore cannot orphan a `ToolCall` or produce an
 //! invalid provider request.
 //!
-//! # Example (max_age_entries = 4, max_tokens = 80, all entries in-context)
+//! # Example (max_age_entries = 4, max_tokens = 80)
 //!
 //! ```text
 //! X  [User]                  ← index 0 (untouched — not Assistant)
@@ -72,24 +76,22 @@ pub struct TrivialAssistantAutoPruneWorker {
 
 /// Compute the index of the first entry inside the keep window.
 ///
-/// Walks backward from the end of history, counting entries where
-/// [`ChatEntry::is_in_context()`] is `true`. Once `max_age` in-context
-/// entries have been counted, the index where the count reached `max_age`
-/// is the **first** in-context entry inside the keep window.
+/// The keep window is the last `max_age` entries in raw history, regardless
+/// of whether each entry is currently in LLM context. Counting every entry
+/// (rather than only `is_in_context()` entries) makes the window position
+/// independent of decisions made by other auto-prune workers, so the
+/// workers compose cleanly: each worker's prune region is fixed by raw
+/// history length alone, not by what has already been `ForcedExclude`d.
 ///
-/// Returns `None` if fewer than `max_age` in-context entries exist in
-/// history (nothing to prune).
+/// `max_age` is clamped to a minimum of 1.
+///
+/// Returns `None` if `history.len() < max_age` (nothing to prune).
 fn compute_keep_window_start(history: &[ChatEntry], max_age: usize) -> Option<usize> {
-    let mut counted = 0usize;
-    for i in (0..history.len()).rev() {
-        if history[i].is_in_context() {
-            counted += 1;
-            if counted == max_age {
-                return Some(i);
-            }
-        }
+    let max_age = max_age.max(1);
+    if history.len() < max_age {
+        return None;
     }
-    None
+    Some(history.len() - max_age)
 }
 
 /// Build the list of `SetContextOverride::ForcedExclude` mutations for a
@@ -99,8 +101,8 @@ fn compute_keep_window_start(history: &[ChatEntry], max_age: usize) -> Option<us
 /// spinning up a tokio runtime.
 ///
 /// Algorithm:
-/// 1. Find the keep window start index (first in-context entry inside the
-///    window).
+/// 1. Find the keep window start index (the `max_age`-th entry from the
+///    end of raw history, regardless of in-context status).
 /// 2. For every `Assistant` entry at an index strictly less than the keep
 ///    window start, estimate its token count via `counter`.
 /// 3. If the count is `<= max_tokens` AND the entry is not already
@@ -111,11 +113,10 @@ fn build_trivial_assistant_mutations(
     max_tokens: usize,
     counter: &TiktokenCounter,
 ) -> Vec<HistoryMutation> {
-    let max_age = max_age.max(1);
     let max_tokens = max_tokens.max(1);
 
     let Some(keep_window_start) = compute_keep_window_start(history, max_age) else {
-        // Fewer than max_age in-context entries — nothing to prune.
+        // Fewer than max_age entries — nothing to prune.
         return Vec::new();
     };
 
@@ -128,11 +129,10 @@ fn build_trivial_assistant_mutations(
             _ => continue,
         };
 
-        // Defensive: empty assistant entries are already out of context
-        // (is_empty_assistant() returns true → is_in_context() returns
-        // false → they don't count toward the window and aren't eligible
-        // for pruning). Skip explicitly to avoid emitting useless
-        // mutations.
+        // Defensive: empty assistant entries are placeholders for
+        // tool-call-only responses and carry no pruneable text. Skip
+        // explicitly to avoid emitting useless mutations (they are also
+        // already out of context via `is_empty_assistant()`).
         if text.is_empty() {
             continue;
         }
@@ -285,8 +285,8 @@ mod tests {
     // ------------------------------------------------------------------
     // 3. history_exactly_at_threshold_produces_no_mutations
     //
-    // 100 in-context entries (no overflow). Trivial assistant at idx 0
-    // is inside the window → not pruned.
+    // 100 entries total. Trivial assistant at idx 0 is inside the window
+    // → not pruned.
     // ------------------------------------------------------------------
     #[test]
     fn history_exactly_at_threshold_produces_no_mutations() {
@@ -308,7 +308,7 @@ mod tests {
         let asst = trivial_assistant("done");
         let asst_id = asst.id.clone();
         history.push(asst);
-        // 100 user entries → total 101 in-context. Window covers last 100
+        // 100 user entries → total 101. Window covers last 100
         // (positions 1..=100). Position 0 (the assistant) is outside.
         history.extend(users(100));
 
@@ -368,11 +368,8 @@ mod tests {
         let asst = trivial_assistant("ok");
         let asst_id = asst.id.clone();
         history.push(asst);
-        // total = 101 in-context, window covers last 100 = idx 1..=100,
-        // wait — 101 entries → window covers idx 1..=100? No, window is
-        // the LAST 100 in-context entries. With 101 in-context, the
-        // window starts at idx 1 (idx 0 is outside). The assistant at
-        // idx 100 is inside the window.
+        // total = 101 entries. Window is last 100 (positions 1..=100).
+        // The assistant at idx 100 is inside the window.
         let mutations = evaluate(&w, history);
         let excluded = excluded_ids(&mutations);
         assert!(!excluded.contains(&asst_id));
@@ -444,62 +441,11 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // 10. non_in_context_entries_do_not_count_toward_threshold
+    // 10. max_age_entries_clamped_to_1
     //
-    // 100 Thinking (not in-context) + 50 in-context (incl 1 assistant at
-    // the start). Only 50 in-context → below threshold of 100 → no prune.
-    // ------------------------------------------------------------------
-    #[test]
-    fn non_in_context_entries_do_not_count_toward_threshold() {
-        let w = worker(100, 80);
-        let mut history = Vec::new();
-        for i in 0..100 {
-            history.push(ChatEntry::thinking(format!("thought {i}")));
-        }
-        history.push(trivial_assistant("ok"));
-        history.extend(users(49));
-
-        let mutations = evaluate(&w, history);
-        assert!(
-            mutations.is_empty(),
-            "with only 50 in-context entries (below threshold), nothing prunes"
-        );
-    }
-
-    // ------------------------------------------------------------------
-    // 11. forced_include_entries_count_toward_threshold
-    //
-    // Trivial assistant + ForcedInclude entry + 99 users = 101 in-context.
-    // Window covers last 100 → trivial assistant (idx 0) pruned. This
-    // confirms ForcedInclude entries count toward the threshold (otherwise
-    // total in-context would be 100 and nothing would prune).
-    // ------------------------------------------------------------------
-    #[test]
-    fn forced_include_entries_count_toward_threshold() {
-        let w = worker(100, 80);
-        let mut history = Vec::new();
-        let mut fi = ChatEntry::user("forced");
-        fi.context_override = ContextOverride::ForcedInclude;
-        history.push(fi);
-        let asst = trivial_assistant("done");
-        let asst_id = asst.id.clone();
-        history.push(asst);
-        let mut fi = ChatEntry::user("forced");
-        fi.context_override = ContextOverride::ForcedInclude;
-        history.push(fi);
-        history.extend(users(99));
-
-        let mutations = evaluate(&w, history);
-        let excluded = excluded_ids(&mutations);
-        assert!(excluded.contains(&asst_id));
-    }
-
-    // ------------------------------------------------------------------
-    // 12. max_age_entries_clamped_to_1
-    //
-    // max_age = 0 → clamped to 1. Two in-context entries (user, trivial
-    // assistant). Window covers only the last entry (user). The trivial
-    // assistant at idx 0 is outside the (clamped) window → pruned.
+    // max_age = 0 → clamped to 1. Two entries (trivial assistant, user).
+    // Window covers only the last entry (user). The trivial assistant at
+    // idx 0 is outside the (clamped) window → pruned.
     // ------------------------------------------------------------------
     #[test]
     fn max_age_entries_clamped_to_1() {
@@ -516,10 +462,9 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // 13. max_tokens_clamped_to_1
+    // 11. max_tokens_clamped_to_1
     //
-    // max_tokens = 0 → clamped to 1. Any non-empty assistant counts as
-    // ≤1 token? No — clamping to 1 means "prune if tokens <= 1". A
+    // max_tokens = 0 → clamped to 1. "Prune if tokens <= 1". A
     // single-word assistant like "ok" is exactly 1 o200k_base token.
     // ------------------------------------------------------------------
     #[test]
@@ -545,7 +490,7 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // 14. multiple_trivial_assistants_all_pruned_when_old
+    // 12. multiple_trivial_assistants_all_pruned_when_old
     //
     // 5 trivial assistants scattered in the first 100 positions of a
     // 200-entry history. All 5 should be excluded.
@@ -560,7 +505,7 @@ mod tests {
             expected_ids.push(asst.id.clone());
             history.push(asst);
         }
-        // 195 user entries → total 200 in-context. Window covers last 100.
+        // 195 user entries → total 200 entries. Window covers last 100.
         history.extend(users(195));
 
         let mutations = evaluate(&w, history);
