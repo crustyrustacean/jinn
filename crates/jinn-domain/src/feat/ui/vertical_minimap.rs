@@ -227,14 +227,15 @@ pub fn render_vertical_minimap(
 /// For `Entry(hist_idx)` returns `hist_idx`.
 /// For `CollapsedIgnoredBlock { start, count }` returns `start + count - 1`
 /// (the last entry in the block).
-fn selected_history_boundary(items: &[VisualItem], selected_vi_idx: Option<usize>) -> Option<usize> {
+fn selected_history_boundary(
+    items: &[VisualItem],
+    selected_vi_idx: Option<usize>,
+) -> Option<usize> {
     let vi_idx = selected_vi_idx?;
     let item = items.get(vi_idx)?;
     match item {
         VisualItem::Entry(hist_idx) => Some(*hist_idx),
-        VisualItem::CollapsedIgnoredBlock { start, count } => {
-            Some(start + count.saturating_sub(1))
-        }
+        VisualItem::CollapsedIgnoredBlock { start, count } => Some(start + count.saturating_sub(1)),
     }
 }
 
@@ -888,8 +889,12 @@ mod tests {
     #[rstest::rstest]
     fn cumulative_with_no_cached_counts_is_none() {
         let mut state = AppState::default();
-        state.active_session_mut().push_entry(ChatEntry::user("hello"));
-        state.active_session_mut().push_entry(ChatEntry::assistant("world"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::user("hello"));
+        state
+            .active_session_mut()
+            .push_entry(ChatEntry::assistant("world"));
         setup_visual_items(&state);
         let items = state.active_session().visual_items();
         let last_vi = items.len() - 1;

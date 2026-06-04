@@ -94,16 +94,17 @@ mod tests {
         state.context.skills = make_skills();
         let mut disabled = std::collections::HashSet::new();
         disabled.insert("web-coder".to_owned());
-        state
-            .active_session_mut()
-            .set_disabled_skills(disabled);
+        state.active_session_mut().set_disabled_skills(disabled);
 
         // When reloading.
         reload_skill_picker_entries(&mut state);
 
         // Then the disabled skill entry has enabled: false.
         let items = state.frontend.skill_picker().items();
-        let web_coder = items.iter().find(|e| e.name == "web-coder").expect("should exist");
+        let web_coder = items
+            .iter()
+            .find(|e| e.name == "web-coder")
+            .expect("should exist");
         assert!(!web_coder.enabled);
         let phased = items
             .iter()
