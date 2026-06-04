@@ -284,6 +284,53 @@ impl Default for ConsecutiveReadsAutoPruneConfig {
         }
     }
 }
+
+/// Default enabled state for tool-age-window auto-prune.
+const DEFAULT_TOOL_AGE_WINDOW_ENABLED: bool = true;
+
+/// Default number of in-context entries to keep before pruning older tool pairs.
+const DEFAULT_TOOL_AGE_WINDOW_MAX_AGE_ENTRIES: usize = 100;
+
+/// Tool-age-window auto-prune configuration.
+///
+/// Serialized as `[auto_prune.tool_age_window]` in `jinn.toml`.
+/// Controls the auto-prune worker that excludes any `ToolCall`/`ToolResult`
+/// pair older than `max_age_entries` in-context entries from the end of
+/// history. Both halves of a pair are always excluded together.
+///
+/// The threshold counts only entries that are currently in LLM context
+/// (per `ChatEntry::is_in_context()`); already-excluded entries do not
+/// count toward the limit.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolAgeWindowAutoPruneConfig {
+    /// Whether the tool-age-window auto-prune worker is active.
+    /// Default: `true`.
+    #[serde(default = "default_tool_age_window_enabled")]
+    pub enabled: bool,
+    /// Number of most recent in-context entries to keep before pruning
+    /// older tool pairs. Minimum 1 (clamped at worker construction).
+    /// Default: `100`.
+    #[serde(default = "default_tool_age_window_max_age_entries")]
+    pub max_age_entries: usize,
+}
+
+fn default_tool_age_window_enabled() -> bool {
+    DEFAULT_TOOL_AGE_WINDOW_ENABLED
+}
+
+fn default_tool_age_window_max_age_entries() -> usize {
+    DEFAULT_TOOL_AGE_WINDOW_MAX_AGE_ENTRIES
+}
+
+impl Default for ToolAgeWindowAutoPruneConfig {
+    fn default() -> Self {
+        Self {
+            enabled: DEFAULT_TOOL_AGE_WINDOW_ENABLED,
+            max_age_entries: DEFAULT_TOOL_AGE_WINDOW_MAX_AGE_ENTRIES,
+        }
+    }
+}
+
 /// Default regex prune rule tool name.
 const DEFAULT_REGEX_TOOL_NAME: &str = "bash";
 
@@ -375,6 +422,9 @@ pub struct AutoPruneConfig {
     /// Consecutive-reads auto-prune strategy configuration.
     #[serde(default)]
     pub consecutive_reads: ConsecutiveReadsAutoPruneConfig,
+    /// Tool-age-window auto-prune strategy configuration.
+    #[serde(default)]
+    pub tool_age_window: ToolAgeWindowAutoPruneConfig,
 }
 
 /// Default token threshold for auto-compaction.
@@ -1433,6 +1483,8 @@ max_tokens = 5000
         assert!(config.todo.enabled);
         assert!(config.consecutive_reads.enabled);
         assert_eq!(config.consecutive_reads.keep_last, 3);
+        assert!(config.tool_age_window.enabled);
+        assert_eq!(config.tool_age_window.max_age_entries, 100);
     }
 
     #[rstest::rstest]
@@ -1441,6 +1493,7 @@ max_tokens = 5000
         assert!(prefs.auto_prune.read_edit.enabled);
         assert!(prefs.auto_prune.todo.enabled);
         assert!(prefs.auto_prune.consecutive_reads.enabled);
+        assert!(prefs.auto_prune.tool_age_window.enabled);
     }
 
     #[rstest::rstest]
@@ -1478,6 +1531,24 @@ keep_last = 5
     }
 
     #[rstest::rstest]
+    fn load_parses_auto_prune_tool_age_window_config() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[auto_prune.tool_age_window]
+enabled = false
+max_age_entries = 50
+"#,
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+        assert!(!prefs.auto_prune.tool_age_window.enabled);
+        assert_eq!(prefs.auto_prune.tool_age_window.max_age_entries, 50);
+    }
+
+    #[rstest::rstest]
     fn save_then_load_round_trips_auto_prune_config() {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
@@ -1492,6 +1563,10 @@ keep_last = 5
                 todo: TodoAutoPruneConfig { enabled: false },
                 double_edit: DoubleEditAutoPruneConfig::default(),
                 consecutive_reads: ConsecutiveReadsAutoPruneConfig::default(),
+                tool_age_window: ToolAgeWindowAutoPruneConfig {
+                    enabled: false,
+                    max_age_entries: 7,
+                },
             },
             ..UserPreferences::default()
         };
@@ -1503,6 +1578,8 @@ keep_last = 5
         assert!(!reloaded.auto_prune.broken_edit.enabled);
         assert_eq!(reloaded.auto_prune.broken_edit.min_tail_entries, 3);
         assert!(!reloaded.auto_prune.todo.enabled);
+        assert!(!reloaded.auto_prune.tool_age_window.enabled);
+        assert_eq!(reloaded.auto_prune.tool_age_window.max_age_entries, 7);
     }
 
     #[rstest::rstest]
@@ -1514,6 +1591,8 @@ keep_last = 5
         let prefs = load_preferences_from(&path).expect("load");
         assert!(prefs.auto_prune.read_edit.enabled);
         assert!(prefs.auto_prune.todo.enabled);
+        assert!(prefs.auto_prune.tool_age_window.enabled);
+        assert_eq!(prefs.auto_prune.tool_age_window.max_age_entries, 100);
     }
 
     #[rstest::rstest]
