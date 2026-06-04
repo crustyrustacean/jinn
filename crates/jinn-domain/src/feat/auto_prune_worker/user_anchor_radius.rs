@@ -708,6 +708,66 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
+    // 15b. second_evaluate_uses_cached_tokens_not_recomputed
+    //
+    // Accepcance criterion AC6 requires that the second evaluation of a
+    // session reads tokens from the cache rather than recomputing them.
+    //
+    // Proof strategy: first call populates the cache with the true count
+    // (>80). We then *sabotage* the cache by overwriting the count with a
+    // small value (10). If the second call recomputes, it will get >80
+    // again and emit a prune mutation. If it reads from cache, it will
+    // see 10 tokens and skip the entry entirely.
+    //
+    // We reset `context_override` to `Default` between calls to avoid the
+    // idempotency skip hiding the recomputation.
+    // ------------------------------------------------------------------
+    #[test]
+    fn second_evaluate_uses_cached_tokens_not_recomputed() {
+        let w = worker(1);
+        let session_id = SessionId::new();
+        let asst = large_assistant();
+        let asst_id = asst.id.clone();
+        let history: Arc<[ChatEntry]> =
+            vec![ChatEntry::user("anchor"), asst].into();
+
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+
+        // First call populates the cache and (would) emit a prune mutation.
+        let _ = rt.block_on(async { w.evaluate(&session_id, history.clone()).await });
+
+        // Sanity: cache now holds a real count >80.
+        let cached = w
+            .token_cache
+            .get(&session_id, &asst_id)
+            .expect("first evaluate must populate cache");
+        assert!(
+            cached >= MIN_CANDIDATE_TOKENS,
+            "real token count must be >80, got {cached}"
+        );
+
+        // Sabotage the cache so the cached value is now below threshold.
+        w.token_cache
+            .insert(session_id.clone(), asst_id.clone(), MIN_CANDIDATE_TOKENS - 1);
+
+        // Reset context_override on a fresh history copy so the worker
+        // doesn't take the idempotency path.
+        let mut history2 = (*history).to_vec();
+        for e in &mut history2 {
+            e.context_override = ContextOverride::Default;
+        }
+
+        let mutations =
+            rt.block_on(async { w.evaluate(&session_id, history2.into()).await });
+        let excluded = excluded_ids(&mutations);
+        assert!(
+            !excluded.contains(&asst_id),
+            "second evaluate must read sabotaged cache and skip the entry; \
+             if it recomputed, the entry would be pruned again"
+        );
+    }
+
+    // ------------------------------------------------------------------
     // 16. radius_clamped_to_minimum_one
     // ------------------------------------------------------------------
     #[test]
