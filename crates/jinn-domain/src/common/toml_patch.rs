@@ -47,6 +47,7 @@
 //!   inherent to `toml_edit`'s document model.
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 use toml_edit::{ArrayOfTables, Item, Table, Value};
 use wherror::Error;
@@ -259,7 +260,7 @@ fn apply_array_of_tables_by_key(
             continue;
         };
         let key_str = value_to_string_key(key_val);
-        use std::collections::hash_map::Entry;
+
         match new_by_key.entry(key_str.clone()) {
             Entry::Vacant(v) => {
                 new_keys_in_order.push(key_str);
@@ -271,8 +272,7 @@ fn apply_array_of_tables_by_key(
 
     // Walk existing array entries; mark which were matched.
     let mut matched: Vec<bool> = vec![false; array.len()];
-    for idx in 0..array.len() {
-        let entry: &Table = array.get(idx).expect("idx in range");
+    for (idx, entry) in array.iter().enumerate() {
         let actual_key: Option<String> = entry
             .get(key_field)
             .and_then(item_to_string_key);
@@ -284,20 +284,18 @@ fn apply_array_of_tables_by_key(
     }
 
     // Apply in-place updates to matched entries.
-    for idx in 0..array.len() {
-        if !matched[idx] {
-            continue;
-        }
-        let entry: &Table = array.get(idx).expect("idx in range");
-        let Some(actual_key) = entry.get(key_field).and_then(item_to_string_key) else {
-            continue;
-        };
-        let Some(&replacement) = new_by_key.get(&actual_key) else {
-            continue;
-        };
-        let toml::Value::Table(repl_t) = replacement else {
-            continue;
-        };
+    let matched_keys: Vec<(usize, String)> = array
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, entry)| {
+            let k = entry.get(key_field).and_then(item_to_string_key)?;
+            if new_by_key.contains_key(&k) { Some((idx, k)) } else { None }
+        })
+        .collect();
+
+    for (idx, actual_key) in matched_keys {
+        let Some(&replacement) = new_by_key.get(&actual_key) else { continue };
+        let toml::Value::Table(repl_t) = replacement else { continue };
         let entry_mut: &mut Table = array.get_mut(idx).expect("idx in range");
         for (k, child_value) in repl_t {
             if entry_mut.contains_key(k) {
@@ -317,7 +315,7 @@ fn apply_array_of_tables_by_key(
     }
 
     // Remove unmatched entries (their key was removed from the struct).
-    for i in (0..matched.len()).rev() {
+    for i in (0..array.len()).rev() {
         if !matched[i] {
             array.remove(i);
         }
@@ -723,5 +721,31 @@ mod tests {
 
         let out = d.to_string();
         assert!(!out.contains("alpha"), "all entries removed");
+    }
+
+    #[test]
+    fn patch_preserves_user_chosen_field_order() {
+        // Given a document where the user has chosen a non-alphabetical field order.
+        let original = "zeta = 1\nalpha = 2\nmid = 3\n";
+        let mut d = doc(original);
+
+        // When patching with all three keys present.
+        let mut new = toml::value::Table::new();
+        new.insert("zeta".to_owned(), toml::Value::Integer(99));
+        new.insert("alpha".to_owned(), toml::Value::Integer(2));
+        new.insert("mid".to_owned(), toml::Value::Integer(3));
+
+        let p = DocumentPatcher::new();
+        p.apply(&new, d.as_table_mut()).expect("apply");
+
+        // Then the user's ordering is preserved (no alphabetization).
+        let out = d.to_string();
+        let zeta_pos = out.find("zeta").expect("zeta present");
+        let alpha_pos = out.find("alpha").expect("alpha present");
+        let mid_pos = out.find("mid").expect("mid present");
+        assert!(
+            zeta_pos < alpha_pos && alpha_pos < mid_pos,
+            "user field order must be preserved, got: {out}"
+        );
     }
 }
