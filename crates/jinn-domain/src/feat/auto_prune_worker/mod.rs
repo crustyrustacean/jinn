@@ -21,6 +21,8 @@ pub mod regex;
 pub mod todo_prune;
 pub mod tool_age_window;
 pub mod trivial_assistant;
+pub mod user_anchor_radius;
+
 
 pub use broken_edit::BrokenEditAutoPruneWorker;
 pub use consecutive_reads::ConsecutiveReadsAutoPruneWorker;
@@ -34,3 +36,4 @@ pub use regex::RegexAutoPruneWorker;
 pub use todo_prune::TodoAutoPruneWorker;
 pub use tool_age_window::ToolAgeWindowAutoPruneWorker;
 pub use trivial_assistant::TrivialAssistantAutoPruneWorker;
+pub use user_anchor_radius::UserAnchorRadiusAutoPruneWorker;
