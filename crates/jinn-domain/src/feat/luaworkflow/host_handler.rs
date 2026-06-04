@@ -4,8 +4,8 @@
 //! and processes each variant against the domain layer:
 //!
 //! - `Llm` → calls the LLM via [`DomainNodeContext`]
-//! - `PushUser` → pushes a [`ChatEntry::user`] into session history
-//! - `PushSystem` → pushes a [`ChatEntry::system`] into session history
+//! - `PushUser` → dispatches a [`Command::PushChatEntry`] with a [`ChatEntry::user`]
+//! - `PushSystem` → dispatches a [`Command::PushChatEntry`] with a [`ChatEntry::system`]
 //! - `TurnOff` → disables an attached workflow
 
 use std::sync::Arc;
