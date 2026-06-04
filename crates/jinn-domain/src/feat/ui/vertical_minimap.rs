@@ -215,10 +215,15 @@ pub fn render_vertical_minimap(
         let session = state.active_session();
         let items = session.visual_items();
         let history_len = session.history().len();
-        cursor_history_range(&items, selected_idx, history_len)
+        // When the user has not yet placed the cursor, fall back to the last
+        // visual item so above/below indicators render immediately. This
+        // mirrors `find_block_index`'s `None`-arm fallback.
+        let effective_idx = selected_idx.or_else(|| items.len().checked_sub(1));
+        cursor_history_range(&items, effective_idx, history_len)
     };
     let tokens_above = compute_tokens_above(state, cursor_start);
     let tokens_below = compute_tokens_below(state, cursor_end);
+
     Some(MinimapArrow {
         row: arrow_row,
         token_count: selected_token_count,
@@ -386,7 +391,7 @@ pub fn render_minimap_arrow(
     if arrow.row > 0 {
         let row = arrow.row - 1;
         let text = match arrow.tokens_above {
-            Some(n) if n > 0 => format!("{} ▲", format_entry_tokens(n)),
+            Some(n) => format!("{} ▲", format_entry_tokens(n)),
             _ => "▲".to_owned(),
         };
         let width = text.as_str().width() as u16;
@@ -414,7 +419,7 @@ pub fn render_minimap_arrow(
         let row = arrow.row + 1;
         if row < chat_log_area.height {
             let text = match arrow.tokens_below {
-                Some(n) if n > 0 => format!("{} ▼", format_entry_tokens(n)),
+            Some(n) => format!("{} ▼", format_entry_tokens(n)),
                 _ => "▼".to_owned(),
             };
             let width = text.as_str().width() as u16;
@@ -1145,5 +1150,71 @@ mod tests {
         // Row below has ▼ alone (no digit).
         assert!(rows[4].contains('▼'));
         assert!(!rows[4].chars().any(|c| c.is_ascii_digit()));
+    }
+
+    /// Fix 1: `Some(0)` should render as `"0 ▲"` / `"0 ▼"`, not glyph-alone.
+    /// Glyph-alone is reserved for `None` (no cached counts at all).
+    #[rstest::rstest]
+    fn zero_count_renders_with_digit() {
+        let mut state = AppState::default();
+        for i in 0..3 {
+            state
+                .active_session_mut()
+                .push_entry(ChatEntry::user(format!("msg {i}")));
+        }
+        state.active_session_mut().set_selected_entry_index(1);
+        // No token cache populated — render_minimap_arrow with a literal arrow.
+        let arrow = MinimapArrow {
+            row: 3,
+            token_count: None,
+            tokens_above: Some(0),
+            tokens_below: Some(0),
+        };
+        let (mut terminal, area) = jinn_testutil::setup_term(40, 10);
+        let theme = default_theme();
+        terminal
+            .draw(|frame| {
+                render_minimap_arrow(frame, area, &arrow, theme.border_unfocused);
+            })
+            .unwrap();
+        let rows = jinn_testutil::buffer_rows(terminal.backend().buffer(), 40, 10);
+        // Row above has `0 ▲` (digit + glyph).
+        assert!(rows[2].contains('0'));
+        assert!(rows[2].contains('▲'));
+        // Row below has `0 ▼` (digit + glyph).
+        assert!(rows[4].contains('0'));
+        assert!(rows[4].contains('▼'));
+    }
+
+    /// Fix 2: when no cursor has been placed (`selected_entry_index() == None`),
+    /// the cursor is treated as the last visual item so the above/below
+    /// counts are meaningful immediately on first render.
+    #[rstest::rstest]
+    fn no_cursor_falls_back_to_last_visual_item() {
+        let mut state = AppState::default();
+        for i in 0..3 {
+            let entry = ChatEntry::user(format!("msg {i}"));
+            state.active_session_mut().push_entry(entry);
+        }
+        let cache_pairs: Vec<_> = state
+            .active_session()
+            .history()
+            .iter()
+            .enumerate()
+            .map(|(i, e)| (e.id.clone(), (i as u32 + 1) * 100))
+            .collect();
+        state
+            .frontend
+            .caches
+            .entry_token_cache
+            .write()
+            .bulk_insert(cache_pairs);
+        // Deliberately do NOT call set_selected_entry_index.
+        let (arrow, _rows) = render_to_buffer(&state, 1, 10);
+        let arrow = arrow.expect("arrow should render even without cursor");
+        // History: [100, 200, 300]. Cursor defaults to last → above = 100+200 = 300.
+        assert_eq!(arrow.tokens_above, Some(300));
+        // Below = no entries after cursor → `None`.
+        assert_eq!(arrow.tokens_below, None);
     }
 }
