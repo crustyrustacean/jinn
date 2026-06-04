@@ -738,6 +738,7 @@ pub fn create_core_with_actor_host(
     // Auto-prune worker: trivial-assistant context pruning.
     {
         use jinn_domain::feat::auto_prune_worker::TrivialAssistantAutoPruneWorker;
+        use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
         use jinn_domain::feat::history_worker::actor::{
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
@@ -755,7 +756,11 @@ pub fn create_core_with_actor_host(
                 &counter,
                 &shutdown_tracker,
                 HistoryWorkerActorDeps {
-                    worker: TrivialAssistantAutoPruneWorker { config },
+                    worker: TrivialAssistantAutoPruneWorker {
+                        config,
+                        token_cache: entry_token_cache.clone(),
+                        counter: TiktokenCounter::o200k_base(),
+                    },
                 },
             ));
         }
