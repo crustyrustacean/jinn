@@ -72,7 +72,7 @@ pub fn create_core_with_actor_host(
     bench_plan: Option<jinn_bench::orchestrator::BenchPlan>,
     bench_artifact_dir: Option<std::path::PathBuf>,
     paths: jinn_domain::AppPaths,
-) -> (AppCore, Services, ActorHostService) {
+) -> (AppCore, Services, ActorHostService, jinn_plugin::SyncPlugins) {
     // Create channel first - actors need the sender, but AppCore needs services
     // which needs the actor host which needs actors. Break the cycle by creating
     // the channel independently.
@@ -106,14 +106,47 @@ pub fn create_core_with_actor_host(
         guard.active_session_mut().set_cwd(cwd);
     }
 
-    // Build services (needed early for infrastructure actors).
+    // ── Plugin system ────────────────────────────────────────────────────
+    // Constructed early — handles go into Services and TuiApp.
 
-    // Set themes directory from AppPaths (used by theme picker intent).
+    let plugin_command_dispatcher: jinn_plugin::CommandDispatcher =
+        std::sync::Arc::new({
+            let sink = sink.clone();
+            move |cmd: jinn_plugin::PluginCommand| {
+                crate::plugin_wiring::handle_plugin_command(cmd, &*sink);
+            }
+        });
+    let plugin_request_handler: jinn_plugin::RequestHandler =
+        std::sync::Arc::new(|name, data| {
+            crate::plugin_wiring::handle_plugin_request(name, data)
+        });
+
+    let (sync_plugins, async_plugins, plugin_sync_handle) =
+        jinn_plugin::PluginSystem::new(
+            &paths.plugins_dir(),
+            &paths.system_plugins_dir(),
+            handle.clone(),
+            plugin_command_dispatcher,
+            plugin_request_handler,
+        );
+
+    // Store discovered plugin metadata in state for the sidebar.
     {
-        let mut guard = state.write();
-        guard.frontend.themes_dir = paths.themes_dir();
-        guard.frontend.system_themes_dir = paths.system_themes_dir();
+        let plugins = jinn_plugin::discover_from_paths(
+            &paths.plugins_dir(),
+            &paths.system_plugins_dir(),
+        );
+        tracing::info!(count = plugins.len(), "discovered plugins");
+        let plugins: Vec<jinn_domain::common::app_state::DiscoveredPlugin> = plugins
+            .into_iter()
+            .map(|p| jinn_domain::common::app_state::DiscoveredPlugin {
+                name: p.name,
+                description: p.description,
+            })
+            .collect();
+        state.write().discovered_plugins = plugins;
     }
+
     let services = Services {
         paths: paths.clone(),
         handle: handle.clone(),
@@ -124,6 +157,10 @@ pub fn create_core_with_actor_host(
         config_storage: config_storage.clone(),
         session_store: session_store.clone(),
         user_preferences_storage: user_preferences_storage.clone(),
+        plugins: std::sync::Arc::new(async_plugins)
+            as std::sync::Arc<dyn jinn_domain::feat::workflow::PluginFire>,
+        plugin_sync: std::sync::Arc::new(plugin_sync_handle)
+            as std::sync::Arc<dyn jinn_domain::feat::workflow::PluginSyncCall>,
     };
 
     // ── Infrastructure actors (no lifecycle events) ──────────────────────
@@ -699,45 +736,6 @@ pub fn create_core_with_actor_host(
     ));
 
     // ── Plugin system ───────────────────────────────────────────────
-    //
-    // Build before the workflow controller so we can pass
-    // the async handle as a PluginFire impl.
-    let plugin_command_sink = sink.clone();
-    let plugin_command_dispatcher: jinn_plugin::CommandDispatcher =
-        std::sync::Arc::new(move |cmd| {
-            crate::plugin_wiring::handle_plugin_command(cmd, &*plugin_command_sink);
-        });
-    let plugin_request_handler: jinn_plugin::RequestHandler =
-        std::sync::Arc::new(|name, data| {
-            crate::plugin_wiring::handle_plugin_request(name, data)
-        });
-    let user_plugins_dir = paths.plugins_dir();
-    let system_plugins_dir = paths.system_plugins_dir();
-    let (_sync_plugins, async_plugins) = jinn_plugin::PluginSystem::new(
-        &user_plugins_dir,
-        &system_plugins_dir,
-        handle.clone(),
-        plugin_command_dispatcher,
-        plugin_request_handler,
-    );
-
-    // Store discovered plugin metadata in state for the sidebar.
-    {
-        let plugins = jinn_plugin::discover_plugins(
-            &paths.plugins_dir(),
-            &paths.system_plugins_dir(),
-        );
-        tracing::info!(count = plugins.len(), "discovered plugins");
-        let plugins: Vec<jinn_domain::common::app_state::DiscoveredPlugin> = plugins
-            .into_iter()
-            .map(|p| jinn_domain::common::app_state::DiscoveredPlugin {
-                name: p.name,
-                description: p.description,
-            })
-            .collect();
-        state.write().discovered_plugins = plugins;
-    }
-
     actors.push(spawn::<WorkflowControllerActor>(
         "workflow-controller",
         &sink,
@@ -747,8 +745,6 @@ pub fn create_core_with_actor_host(
         WorkflowControllerActorDeps {
             state: state.clone(),
             services: services.clone(),
-            async_plugins: std::sync::Arc::new(async_plugins)
-                as std::sync::Arc<dyn jinn_domain::feat::workflow::PluginFire>,
         },
     ));
 
@@ -797,5 +793,5 @@ pub fn create_core_with_actor_host(
         jinn_domain::feat::context::protocol::command::RescanPersonas,
     ));
 
-    (core, services, actor_host_service)
+    (core, services, actor_host_service, sync_plugins)
 }

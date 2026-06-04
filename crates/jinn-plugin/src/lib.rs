@@ -1,9 +1,24 @@
 //! Plugin system for jinn.
 //!
-//! Two execution contexts, same scripts:
+//! Two execution contexts, same scripts, four access patterns:
+//!
+//! | Who            | Return values? | Blocking?            | API                                                    |
+//! |----------------|----------------|----------------------|--------------------------------------------------------|
+//! | Render thread  | Yes            | No (direct Lua call) | `app.plugins.sync_hooks("name")` → lazy iterator      |
+//! | Actor          | No             | No (async)           | `services.plugins.fire_async("name", &ctx)`             |
+//! | Actor          | Yes            | No (async)           | `services.plugins.fire_async_collect("name", &ctx)`→Vec |
+//! | Actor          | Yes            | Yes (blocking)       | `services.plugin_sync.call_hooks("name", &ctx)` → Vec    |
+//!
 //! - **Sync** — render thread, hooks return immediately via [`SyncPlugins`]
 //! - **Async** — background thread, hooks can call `ctx.request()` via [`AsyncPluginHandle`]
+//! ## Four Access Patterns
 //!
+//! | Who            | Needs return values? | Blocking?            | API                                                    |
+//! |----------------|----------------------|----------------------|--------------------------------------------------------|
+//! | Render thread  | Yes                  | No (direct call)     | `app.plugins.sync_hooks("name")` → lazy iterator         |
+//! | Actor          | No                   | No (async)           | `services.plugins.fire_async("name", &ctx)`              |
+//! | Actor          | Yes                  | No (async)           | `services.plugins.fire_async_collect("name", &ctx)` → Vec  |
+//! | Actor          | Yes                  | Yes (blocking)       | `services.plugin_sync.call_hooks("name", &ctx)` → Vec    |
 //! Scripts return a table of hooks using the Lua module pattern:
 //!
 //! ```lua
@@ -34,6 +49,7 @@ pub mod loader;
 pub mod plugin_data;
 pub mod sync_state;
 pub mod plugin_fire_impl;
+pub mod plugin_sync_impl;
 pub mod sync_handle;
 pub mod system;
 

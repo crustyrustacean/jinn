@@ -64,8 +64,7 @@ pub struct WorkflowControllerActorDeps {
     pub state: State,
     /// Runtime services.
     pub services: Services,
-    /// Plugin system handle for async hook firing.
-    pub async_plugins: std::sync::Arc<dyn crate::feat::workflow::PluginFire>,
+
 }
 
 impl Actor for WorkflowControllerActor {
@@ -90,8 +89,8 @@ impl Actor for WorkflowControllerActor {
         let actor = Self {
             ctx: domain_ctx,
             state: deps.state.clone(),
-            services: deps.services,
-            plugin_fire: deps.async_plugins,
+            services: deps.services.clone(),
+            plugin_fire: deps.services.plugins.clone(),
             pending_before_turn: HashMap::new(),
             before_turn_queue: HashMap::new(),
         };

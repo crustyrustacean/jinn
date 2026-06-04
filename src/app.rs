@@ -117,7 +117,7 @@ impl App {
                 return Ok(());
             }
             Commands::Tui => {
-                let (core, services, actor_host) = actor_wiring::create_core_with_actor_host(
+                let (core, services, actor_host, plugins) = actor_wiring::create_core_with_actor_host(
                     &self.handle(),
                     llm_service.clone(),
                     provider_registry.clone(),
@@ -160,6 +160,7 @@ impl App {
                 let runner = Runner::Tui(Box::new(jinn_tui::TuiApp {
                     core,
                     services,
+                    plugins,
                     actor_host,
                     ui_registry,
                     events: tui_events,
@@ -180,7 +181,7 @@ impl App {
                 runner.run().change_context(AppError)?;
             }
             Commands::Headless { command, .. } => {
-                let (core, _services, actor_host) = actor_wiring::create_core_with_actor_host(
+                let (core, _services, actor_host, plugins) = actor_wiring::create_core_with_actor_host(
                     &self.handle(),
                     llm_service.clone(),
                     provider_registry,
@@ -262,7 +263,7 @@ impl App {
                             .attach("invalid task glob pattern")?;
                         tracing::info!(pairs = plan.pairs.len(), "built bench plan");
 
-                        let (core, services, actor_host) =
+                        let (core, services, actor_host, plugins) =
                             actor_wiring::create_core_with_actor_host(
                                 &self.handle(),
                                 llm_service,
@@ -306,6 +307,7 @@ impl App {
                         let runner = Runner::Tui(Box::new(jinn_tui::TuiApp {
                             core,
                             services,
+                            plugins,
                             actor_host,
                             ui_registry,
                             events: jinn_tui::MsgHandler::new(),
@@ -340,7 +342,7 @@ impl App {
                             SqliteSessionStore::open_or_create(&db_path)
                                 .expect("failed to create session store"),
                         ));
-                        let (core, services, actor_host) =
+                        let (core, services, actor_host, plugins) =
                             actor_wiring::create_core_with_actor_host(
                                 &self.handle(),
                                 llm_service.clone(),
@@ -381,6 +383,7 @@ impl App {
                         let runner = Runner::Tui(Box::new(jinn_tui::TuiApp {
                             core,
                             services,
+                            plugins,
                             actor_host,
                             ui_registry,
                             events: jinn_tui::MsgHandler::new(),

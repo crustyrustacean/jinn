@@ -12,8 +12,10 @@ pub mod picker_entry;
 pub mod protocol;
 pub mod workflow_controller_actor;
 pub mod plugin_fire;
+pub mod plugin_sync;
 
 pub use attached_workflow::WorkflowId;
 pub use domain_node_context::DomainNodeContext;
 pub use workflow_controller_actor::WorkflowControllerActorDeps;
 pub use plugin_fire::PluginFire;
+pub use plugin_sync::PluginSyncCall;

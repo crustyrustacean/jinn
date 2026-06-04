@@ -17,6 +17,7 @@ use crate::feat::provider_infra::{
 use crate::feat::session::SessionStoreService;
 use crate::protocol::AppMsg;
 use tokio::runtime::Handle;
+use crate::feat::workflow::{PluginFire, PluginSyncCall};
 
 pub mod actor_channel;
 
@@ -37,7 +38,7 @@ pub use actor_channel::ActorChannelService;
 ///
 /// Tests can use [`Services::new()`] which provides all-fake defaults,
 /// or [`test_services::TestServices::builder()`] to customize specific services.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Services {
     /// Application filesystem paths (configured once at init).
     pub paths: crate::common::app_paths::AppPaths,
@@ -57,6 +58,10 @@ pub struct Services {
     pub session_store: SessionStoreService,
     /// User preferences storage for persisting `jinn.toml`.
     pub user_preferences_storage: UserPreferencesStorageService,
+    /// Plugin system async handle (fire-and-forget + collect).
+    pub plugins: std::sync::Arc<dyn crate::feat::workflow::PluginFire>,
+    /// Plugin system sync handle (blocking hook calls from actors).
+    pub plugin_sync: std::sync::Arc<dyn crate::feat::workflow::PluginSyncCall>,
 }
 
 impl Default for Services {
@@ -109,6 +114,43 @@ impl Services {
             user_preferences_storage: UserPreferencesStorageService::new(Arc::new(
                 InMemoryUserPreferencesStorage::new(),
             )),
+            plugins: std::sync::Arc::new(NoopPluginFire) as std::sync::Arc<dyn PluginFire>,
+            plugin_sync: std::sync::Arc::new(NoopPluginSyncCall) as std::sync::Arc<dyn PluginSyncCall>,
         }
+    }
+}
+
+// ── Noop plugin implementations for test defaults ─────────────────────
+
+/// Noop [`PluginFire`] for test defaults.
+#[derive(Debug, Clone)]
+pub struct NoopPluginFire;
+
+/// Noop [`PluginSyncCall`] for test defaults.
+#[derive(Debug, Clone)]
+pub struct NoopPluginSyncCall;
+
+/// Noop [`PluginFire`] for test defaults.
+#[async_trait::async_trait]
+impl PluginFire for NoopPluginFire {
+    async fn fire_async_json(&self, hook: &str, _ctx: &serde_json::Value) -> Result<(), String> {
+        tracing::debug!(hook, "noop plugin fire");
+        Ok(())
+    }
+    async fn fire_async_collect_json(
+        &self,
+        hook: &str,
+        _ctx: &serde_json::Value,
+    ) -> Result<Vec<serde_json::Value>, String> {
+        tracing::debug!(hook, "noop plugin collect");
+        Ok(vec![])
+    }
+}
+
+/// Noop [`PluginSyncCall`] for test defaults.
+impl PluginSyncCall for NoopPluginSyncCall {
+    fn call_hooks_json(&self, hook: &str, _ctx: &serde_json::Value) -> Result<Vec<serde_json::Value>, String> {
+        tracing::debug!(hook, "noop plugin sync");
+        Ok(vec![])
     }
 }

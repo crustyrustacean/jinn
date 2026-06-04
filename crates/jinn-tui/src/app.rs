@@ -36,7 +36,11 @@ pub struct TuiApp {
     /// Application core (state, message channel).
     pub core: AppCore,
     /// Runtime services.
+    #[debug(skip)]
     pub services: jinn_domain::Services,
+    /// Plugin system for sync hook calls (render thread only, !Send).
+    #[debug(skip)]
+    pub plugins: jinn_plugin::SyncPlugins,
     /// Actor host for coordinated shutdown.
     pub actor_host: ActorHostService,
     /// UI element registry.

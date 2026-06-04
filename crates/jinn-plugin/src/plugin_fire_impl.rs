@@ -14,4 +14,8 @@ impl PluginFire for AsyncPluginHandle {
     async fn fire_async_json(&self, hook: &str, ctx: &Value) -> Result<(), String> {
         self.fire_async(hook, ctx).await
     }
+
+    async fn fire_async_collect_json(&self, hook: &str, ctx: &Value) -> Result<Vec<Value>, String> {
+        self.fire_async_collect(hook, ctx).await
+    }
 }
