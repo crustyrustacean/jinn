@@ -210,8 +210,10 @@ pub fn render_vertical_minimap(
     let cumulative_tokens = {
         let session = state.active_session();
         let items = session.visual_items();
-        selected_history_boundary(&items, selected_idx)
-            .and_then(|boundary| compute_cumulative_tokens(state, boundary))
+        let history = session.history();
+        let boundary = selected_history_boundary(&items, selected_idx)
+            .or_else(|| history.len().checked_sub(1));
+        boundary.and_then(|b| compute_cumulative_tokens(state, b))
     };
     Some(MinimapArrow {
         row: arrow_row,
