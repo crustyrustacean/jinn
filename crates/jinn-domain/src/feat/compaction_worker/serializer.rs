@@ -1,9 +1,9 @@
 //! Serialize chat entries to labeled text for the compaction LLM prompt.
 //!
 //! Produces a human-readable representation of the conversation that the
-//! summarization model can process. Tool calls are emitted as name-only
-//! placeholders; tool results are omitted entirely to prevent the model
-//! from fixating on code/output instead of producing narrative summaries.
+//! summarization model can process. Tool calls and tool results are omitted
+//! entirely to prevent the model from fixating on invocation noise or code/output
+//! instead of producing narrative summaries.
 
 use crate::protocol::{ChatEntry, ChatEntryKind};
 /// Serialize a slice of chat entries into labeled text.
@@ -11,10 +11,10 @@ use crate::protocol::{ChatEntry, ChatEntryKind};
 /// Each entry produces one or more labeled lines:
 /// - `[User]: <text>`
 /// - `[Assistant]: <text>`
-/// - `[Tool call]: <name>` (name only, no arguments or results)
+/// - `[Actor: <source>]: <text>`
 ///
-/// Tool results, System, Error, Thinking, Transient, Skill, and Compaction entries
-/// are skipped - they are not relevant to the summarization prompt.
+/// Tool calls, tool results, System, Error, Thinking, Transient, Skill, and Compaction
+/// entries are skipped - they are not relevant to the summarization prompt.
 pub fn serialize_entries_for_compaction(entries: &[ChatEntry]) -> String {
     let mut lines = Vec::new();
 
@@ -26,9 +26,6 @@ pub fn serialize_entries_for_compaction(entries: &[ChatEntry]) -> String {
             ChatEntryKind::Assistant(text) => {
                 lines.push(format!("[Assistant]: {text}"));
             }
-            ChatEntryKind::ToolCall { name, .. } => {
-                lines.push(format!("[Tool call]: {name}"));
-            }
             ChatEntryKind::Actor { source, text } => {
                 lines.push(format!("[Actor: {source}]: {text}"));
             }
@@ -39,6 +36,7 @@ pub fn serialize_entries_for_compaction(entries: &[ChatEntry]) -> String {
             | ChatEntryKind::Transient(_)
             | ChatEntryKind::Skill { .. }
             | ChatEntryKind::Compaction { .. }
+            | ChatEntryKind::ToolCall { .. }
             | ChatEntryKind::ToolResult { .. } => {}
         }
     }
@@ -66,10 +64,12 @@ mod tests {
     }
 
     #[test]
-    fn serializes_tool_call_entry() {
+    fn skips_tool_call_entry() {
+        // Given a tool call.
         let entries = vec![ChatEntry::tool_call("id1", "bash", r#"{"command":"ls"}"#)];
         let result = serialize_entries_for_compaction(&entries);
-        assert_eq!(result, "[Tool call]: bash");
+        // Then it produces no output (tool calls are skipped).
+        assert!(result.is_empty());
     }
 
     #[test]
@@ -115,12 +115,10 @@ mod tests {
         ];
         let result = serialize_entries_for_compaction(&entries);
         let lines: Vec<&str> = result.split('\n').collect();
-        assert_eq!(lines.len(), 4);
+        assert_eq!(lines.len(), 3);
         assert!(lines[0].starts_with("[User]"));
         assert!(lines[1].starts_with("[Assistant]"));
-        assert!(lines[2].starts_with("[Tool call]"));
-        assert_eq!(lines[2], "[Tool call]: bash");
-        assert!(lines[3].starts_with("[Assistant]"));
+        assert!(lines[2].starts_with("[Assistant]"));
     }
 
     #[test]
@@ -162,22 +160,6 @@ mod tests {
 
         // Then it produces no output (tool results are skipped).
         assert!(result.is_empty());
-    }
-
-    #[test]
-    fn serializes_tool_call_name_only() {
-        // Given a tool call with sensitive arguments.
-        let entries = vec![ChatEntry::tool_call(
-            "id1",
-            "bash",
-            r#"{"command":"ls -la && cat secret.txt"}"#,
-        )];
-
-        // When serializing.
-        let result = serialize_entries_for_compaction(&entries);
-
-        // Then only the tool name is emitted, arguments are omitted.
-        assert_eq!(result, "[Tool call]: bash");
     }
 
     #[test]
