@@ -710,6 +710,32 @@ pub fn create_core_with_actor_host(
             ));
         }
     }
+
+    // Auto-prune worker: trivial-assistant context pruning.
+    {
+        use jinn_domain::feat::auto_prune_worker::TrivialAssistantAutoPruneWorker;
+        use jinn_domain::feat::history_worker::actor::{
+            HistoryWorkerActor, HistoryWorkerActorDeps,
+        };
+
+        let config = user_preferences_storage
+            .load()
+            .map(|p| p.auto_prune.trivial_assistant.clone())
+            .unwrap_or_default();
+
+        if config.enabled {
+            actors.push(spawn::<HistoryWorkerActor<TrivialAssistantAutoPruneWorker>>(
+                "history-worker-auto-prune-trivial-assistant",
+                &sink,
+                handle,
+                &counter,
+                &shutdown_tracker,
+                HistoryWorkerActorDeps {
+                    worker: TrivialAssistantAutoPruneWorker { config },
+                },
+            ));
+        }
+    }
     // Sidebar state actor - keeps sidebar cursor in sync after session removal.
     actors.push(spawn::<
         jinn_domain::feat::ui::sidebar::sidebar_state_actor::SidebarStateActor,
