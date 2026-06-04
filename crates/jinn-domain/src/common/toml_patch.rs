@@ -169,7 +169,10 @@ fn apply_value(
     match new {
         toml::Value::Table(t) => apply_table(t, target, registry, path),
         toml::Value::Array(a) => apply_array(a, target, registry, path),
-        scalar => apply_scalar(scalar, target),
+        scalar => {
+            apply_scalar(scalar, target);
+            Ok(())
+        }
     }
 }
 
@@ -350,7 +353,7 @@ fn entry_exists_with_key(array: &ArrayOfTables, key_field: &str, key_value: &str
     false
 }
 
-fn apply_scalar(new: &toml::Value, target: &mut Item) -> Result<(), PatchError> {
+fn apply_scalar(new: &toml::Value, target: &mut Item) {
     let new_value = value_to_value_edit(new);
     if target.is_value() {
         // Preserve decor of the existing scalar where possible.
@@ -378,7 +381,6 @@ fn apply_scalar(new: &toml::Value, target: &mut Item) -> Result<(), PatchError> 
         // Was a table/array/none — replace with scalar.
         *target = Item::Value(new_value);
     }
-    Ok(())
 }
 
 /// Converts a `toml::Value` to a `toml_edit::Item`, suitable for insertion
