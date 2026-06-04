@@ -18,7 +18,7 @@ use crate::feat::session::protocol::session_load_requested::SessionLoadRequested
 use crate::feat::tools_actor::tool_entry::ToolEntry;
 
 use crate::feat::ui::picker_states::PickerExt;
-use crate::protocol::{Command, Intent, IntentResult, PickerKind};
+use crate::protocol::{ChatEntry, Command, Intent, IntentResult, PickerKind};
 
 use super::validator;
 
@@ -596,34 +596,9 @@ pub fn handle_tool_toggle(state: &mut AppState) -> IntentResult {
 
 /// Populates the skill picker entries from discovered skills.
 ///
-/// Marks each entry as enabled/disabled based on the session's `disabled_skills` set.
+/// Delegates to [`crate::feat::skills::reload::reload_skill_picker_entries`].
 fn load_skill_picker_entries(state: &mut AppState) {
-    use crate::feat::skills::skill_entry::SkillEntry;
-
-    let disabled = state.active_session().disabled_skills();
-    let theme = state.frontend.theme.clone();
-
-    let mut entries: Vec<SkillEntry> = state
-        .context
-        .skills
-        .iter()
-        .map(|skill| {
-            let name = skill.name.clone();
-            let description = skill.description.clone();
-            SkillEntry {
-                search_text: format!("{name} {description}"),
-                name,
-                description,
-                body: skill.body.clone(),
-                enabled: !disabled.contains(&skill.name),
-                theme: theme.clone(),
-            }
-        })
-        .collect();
-
-    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-
-    state.frontend.skill_picker_mut().set_items(entries);
+    crate::feat::skills::reload::reload_skill_picker_entries(state);
 }
 
 /// Confirms the skill picker: collects disabled skill names from picker entries
@@ -659,10 +634,28 @@ pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
+/// Refreshes the skill list by rescanning the skills directory.
+///
+/// Validates that the skill picker is currently active, pushes a transient
+/// \"Refreshing skills...\" message, and returns a \`ScanSkills\` command.
+/// The \`SkillsScanActor\` handles the actual scan and reloads the picker entries.
+pub fn handle_refresh_skills(state: &mut AppState) -> IntentResult {
+    if state.frontend.scope_stack.picker_kind() != Some(&PickerKind::Skill) {
+        return IntentResult::empty();
+    }
+
+    state
+        .active_session_mut()
+        .push_entry(ChatEntry::transient("Refreshing skills..."));
+
+    IntentResult::with_commands(vec![Command::ScanSkills])
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
+    use crate::protocol::ChatEntryKind;
     use std::path::PathBuf;
 
     // --- A-Tier: Kill mutants for picker confirm and validation ---
@@ -1140,5 +1133,59 @@ mod tests {
             state.frontend.scope_stack.current(),
             FocusScope::Picker { .. }
         ));
+    }
+
+    #[rstest::rstest]
+    fn refresh_skills_posts_transient_message() {
+        // Given state with skills and the skill picker active.
+        let mut state = setup_state_with_skills();
+        load_skill_picker_entries(&mut state);
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Skill,
+        });
+
+        // When handling RefreshSkills.
+        let _result = handle_refresh_skills(&mut state);
+
+        // Then a transient message was posted.
+        let last = state
+            .active_session()
+            .history()
+            .last()
+            .expect("should have entry");
+        assert!(matches!(last.kind, ChatEntryKind::Transient(_)));
+    }
+
+    #[rstest::rstest]
+    fn refresh_skills_returns_scan_skills_command() {
+        // Given state with skills and the skill picker active.
+        let mut state = setup_state_with_skills();
+        load_skill_picker_entries(&mut state);
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Skill,
+        });
+
+        // When handling RefreshSkills.
+        let result = handle_refresh_skills(&mut state);
+
+        // Then a ScanSkills command is returned.
+        assert!(
+            result
+                .commands
+                .iter()
+                .any(|c| matches!(c, Command::ScanSkills))
+        );
+    }
+
+    #[rstest::rstest]
+    fn refresh_skills_noop_when_skill_picker_not_active() {
+        // Given state without the skill picker active.
+        let mut state = AppState::default();
+
+        // When handling RefreshSkills.
+        let result = handle_refresh_skills(&mut state);
+
+        // Then no commands and no messages.
+        assert!(result.commands.is_empty());
     }
 }

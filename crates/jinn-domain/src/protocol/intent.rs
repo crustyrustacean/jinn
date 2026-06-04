@@ -137,7 +137,8 @@ pub enum Intent {
     RefreshModels,
     /// Rescan the prompt templates directory.
     RescanPromptTemplates,
-
+    /// Rescan the agent skills directory and reload the skill picker.
+    RefreshSkills,
     // --- Sidebar ---
     /// Enter the sidebar scope.
     SidebarFocus,
@@ -304,6 +305,7 @@ impl std::fmt::Display for Intent {
             Intent::SessionNew => write!(f, "session new"),
             Intent::RefreshModels => write!(f, "refresh models"),
             Intent::RescanPromptTemplates => write!(f, "rescan prompt templates"),
+            Intent::RefreshSkills => write!(f, "refresh skills"),
             Intent::SidebarFocus => write!(f, "sidebar focus"),
             Intent::SidebarFocusSessions => write!(f, "sidebar focus sessions"),
             Intent::SidebarLeave => write!(f, "sidebar leave"),

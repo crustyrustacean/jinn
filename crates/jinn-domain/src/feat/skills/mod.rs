@@ -9,6 +9,7 @@ pub mod scan;
 mod skill;
 pub mod skill_entry;
 pub mod skills_scan_actor;
+pub mod reload;
 
 pub use scan::scan_skills;
 pub use skill::Skill;

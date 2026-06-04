@@ -284,7 +284,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             add_picker_base(b);
             b.bind("<Tab>", Intent::SkillToggleSelected, KeyCategory::General)
              .bind("<pgup>", Intent::PreviewScrollUp, KeyCategory::Navigation)
-             .bind("<pgdn>", Intent::PreviewScrollDown, KeyCategory::Navigation);
+             .bind("<pgdn>", Intent::PreviewScrollDown, KeyCategory::Navigation)
+             .bind("<c-r>", Intent::RefreshSkills, KeyCategory::General);
         })
         .scope(Scope::PickerWorkflow, |b| {
             add_picker_base(b);
