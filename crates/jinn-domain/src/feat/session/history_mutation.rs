@@ -7,7 +7,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ContextOverride, PinPosition};
+use crate::feat::session::chat_entry::{
+    ChatEntry, ChatEntryId, ChangeSource, ContextOverride, PinPosition,
+};
 
 /// A declarative mutation to apply to a session's history.
 ///
@@ -20,6 +22,7 @@ pub enum HistoryMutation {
     SetContextOverride {
         entry_id: ChatEntryId,
         value: ContextOverride,
+        source: ChangeSource,
     },
     /// Insert a new entry into history after the specified entry.
     /// `after_entry_id: None` means insert at the beginning (index 0).

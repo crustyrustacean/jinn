@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::DoubleEditAutoPruneConfig;
-use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
+use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
 
@@ -101,7 +101,7 @@ impl HistoryWorker for DoubleEditAutoPruneWorker {
         }
 
         let groups = collect_edit_write_pairs_by_path(&history);
-        build_prune_mutations(&history, groups, self.config.max_file_edits)
+        build_prune_mutations(&history, groups, self.config.max_file_edits, self.name())
     }
 }
 /// Scan history for edit/write ToolCalls, resolve each to its result,
@@ -170,6 +170,7 @@ fn build_prune_mutations(
     history: &[ChatEntry],
     groups: HashMap<String, Vec<EditWritePair>>,
     max_file_edits: usize,
+    worker_name: &str,
 ) -> Vec<HistoryMutation> {
     let mut mutations = Vec::new();
 
@@ -194,12 +195,18 @@ fn build_prune_mutations(
                 mutations.push(HistoryMutation::SetContextOverride {
                     entry_id: pair.call_entry_id.clone(),
                     value: ContextOverride::ForcedExclude,
+                    source: ChangeSource::Worker {
+                        name: worker_name.to_owned(),
+                    },
                 });
             }
             if !result_protected {
                 mutations.push(HistoryMutation::SetContextOverride {
                     entry_id: pair.result_entry_id.clone(),
                     value: ContextOverride::ForcedExclude,
+                    source: ChangeSource::Worker {
+                        name: worker_name.to_owned(),
+                    },
                 });
             }
         }
@@ -254,7 +261,7 @@ mod tests {
         let mut ids: Vec<_> = mutations
             .into_iter()
             .map(|m| match m {
-                HistoryMutation::SetContextOverride { entry_id, value } => {
+                HistoryMutation::SetContextOverride { entry_id, value, .. } => {
                     assert_eq!(value, ContextOverride::ForcedExclude);
                     entry_id
                 }
@@ -382,7 +389,7 @@ mod tests {
         let mut history = Vec::new();
         let e1 = edit_call_result("tc-1", "/foo.rs", "edit 1");
         let mut e1_call = e1[0].clone();
-        e1_call.context_override = ContextOverride::ForcedExclude;
+        e1_call.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
         history.push(e1_call);
         let oldest_result_id = e1[1].id.clone();
         history.push(e1[1].clone());
@@ -398,7 +405,7 @@ mod tests {
 
         assert_eq!(mutations.len(), 1, "only the non-excluded result mutates");
         match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value } => {
+            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
                 assert_eq!(*entry_id, oldest_result_id);
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }
@@ -430,7 +437,7 @@ mod tests {
 
         assert_eq!(mutations.len(), 1, "only the non-protected result mutates");
         match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value } => {
+            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
                 assert_eq!(*entry_id, oldest_result_id);
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }

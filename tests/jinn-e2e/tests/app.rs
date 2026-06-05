@@ -992,24 +992,6 @@ fn then_last_token_record_zero_received(world: &mut AppWorld) {
     );
 }
 
-/// Asserts the active session's context size is cached.
-#[cucumber::then(expr = "the context size should be cached")]
-fn then_context_size_cached(world: &mut AppWorld) {
-    let context_size = world.state().active_session().context_size();
-    assert!(context_size.is_some(), "expected context size to be cached");
-}
-
-/// Asserts the active session's context size is not cached.
-#[cucumber::then(expr = "the context size should not be cached")]
-fn then_context_size_not_cached(world: &mut AppWorld) {
-    let context_size = world.state().active_session().context_size();
-    assert!(
-        context_size.is_none(),
-        "expected context size to not be cached, got {:?}",
-        context_size
-    );
-}
-
 /// Asserts the fake LLM received the expected number of calls.
 #[cucumber::then(expr = "the fake LLM should have received {int} call(s)")]
 fn then_llm_call_count(world: &mut AppWorld, count: u64) {

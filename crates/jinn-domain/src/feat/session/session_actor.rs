@@ -287,7 +287,7 @@ impl SessionPersistenceActor {
                 self.handle_mark_session_interacted(payload, ctx).await;
             }
             Command::SubmitHistoryMutations(payload) => {
-                self.handle_submit_history_mutations(payload);
+                self.handle_submit_history_mutations(payload, ctx);
             }
             // Commands NOT subscribed to - these should not arrive.
             Command::SendToLlmProvider(..)
