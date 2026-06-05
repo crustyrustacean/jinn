@@ -47,7 +47,7 @@ use std::sync::Arc;
 
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::ToolAgeWindowAutoPruneConfig;
-use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
+use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::protocol::SessionId;
@@ -134,7 +134,11 @@ fn compute_prune_region_start(history: &[ChatEntry], min_age: usize) -> Option<u
 /// `find_completed_matching_result`: even if the result lives at an index
 /// `>= prune_region_start`, it is still found and excluded together with
 /// its call.
-fn build_age_window_mutations(history: &[ChatEntry], min_age: usize) -> Vec<HistoryMutation> {
+fn build_age_window_mutations(
+    history: &[ChatEntry],
+    min_age: usize,
+    worker_name: &str,
+) -> Vec<HistoryMutation> {
     let Some(prune_region_start) = compute_prune_region_start(history, min_age) else {
         // Every entry is protected — nothing to prune.
         return Vec::new();
@@ -179,6 +183,9 @@ fn build_age_window_mutations(history: &[ChatEntry], min_age: usize) -> Vec<Hist
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: call_id,
                 value: ContextOverride::ForcedExclude,
+                source: ChangeSource::Worker {
+                    name: worker_name.to_owned(),
+                },
             });
         }
         if !result_protected {
@@ -190,6 +197,9 @@ fn build_age_window_mutations(history: &[ChatEntry], min_age: usize) -> Vec<Hist
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: result_id,
                 value: ContextOverride::ForcedExclude,
+                source: ChangeSource::Worker {
+                    name: worker_name.to_owned(),
+                },
             });
         }
     }
@@ -209,7 +219,7 @@ impl HistoryWorker for ToolAgeWindowAutoPruneWorker {
         _session_id: &SessionId,
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
-        let mutations = build_age_window_mutations(&history, self.config.min_age);
+        let mutations = build_age_window_mutations(&history, self.config.min_age, self.name());
         tracing::debug!(
             mutations = mutations.len(),
             min_age = self.config.min_age,
@@ -277,6 +287,7 @@ mod tests {
             if let HistoryMutation::SetContextOverride {
                 entry_id,
                 value: ContextOverride::ForcedExclude,
+                ..
             } = m
             {
                 out.insert(entry_id.clone());
@@ -483,7 +494,7 @@ mod tests {
 
         let p = bash_pair("tc-1", "ls", "out");
         let mut call = p[0].clone();
-        call.context_override = ContextOverride::ForcedExclude;
+        call.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
         let call_id = call.id.clone();
         history.push(call);
         let result = p[1].clone();
