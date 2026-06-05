@@ -8,9 +8,9 @@
 //! and [`SessionUi`] (IntentHandler) sub-structs to make cross-boundary
 //! writes visually obvious during code review.
 
+use parking_lot::RwLock;
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
-use parking_lot::RwLock;
 use std::sync::atomic::{AtomicU16, Ordering};
 
 use jiff::Timestamp;
@@ -25,8 +25,8 @@ use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{
-    ChatEntry, ChatEntryId, ChatEntryKind, ChangeSource, ContextOverride, PinPosition, PromptStrategyId,
-    SessionId,
+    ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition,
+    PromptStrategyId, SessionId,
 };
 
 /// Error returned when a streaming operation fails.
@@ -371,23 +371,13 @@ impl Clone for SessionUi {
             rendered_scroll_offset: AtomicU16::new(
                 self.rendered_scroll_offset.load(Ordering::Relaxed),
             ),
-            entry_line_ranges: RwLock::new(
-                self.entry_line_ranges
-                    .read()
-
-                    .clone(),
-            ),
+            entry_line_ranges: RwLock::new(self.entry_line_ranges.read().clone()),
             viewport_height: AtomicU16::new(self.viewport_height.load(Ordering::Relaxed)),
             blank_count: AtomicU16::new(self.blank_count.load(Ordering::Relaxed)),
             expanded_entries: self.expanded_entries.clone(),
             saved_history_position: self.saved_history_position.clone(),
             shown_ignored_blocks: self.shown_ignored_blocks.clone(),
-            visual_items: RwLock::new(
-                self.visual_items
-                    .read()
-
-                    .clone(),
-            ),
+            visual_items: RwLock::new(self.visual_items.read().clone()),
             ignore_sweep: self.ignore_sweep,
             pending_one_shots: self.pending_one_shots.clone(),
         }
@@ -2124,10 +2114,7 @@ impl ChatSessionState {
         &self,
     ) -> parking_lot::RwLockReadGuard<'_, Vec<crate::feat::ui::chat_log::visual_item::VisualItem>>
     {
-        self.ui
-            .visual_items
-            .read()
-
+        self.ui.visual_items.read()
     }
 
     /// The visual item at the currently selected position, if any.
@@ -2135,12 +2122,7 @@ impl ChatSessionState {
         &self,
     ) -> Option<crate::feat::ui::chat_log::visual_item::VisualItem> {
         let idx = self.selected_entry_index()?;
-        self.ui
-            .visual_items
-            .read()
-
-            .get(idx)
-            .cloned()
+        self.ui.visual_items.read().get(idx).cloned()
     }
 
     /// Whether the cursor is currently on a collapsed ignored block.
@@ -2155,10 +2137,7 @@ impl ChatSessionState {
     /// collapsed block (not a real entry).
     pub fn selected_history_index(&self) -> Option<usize> {
         let vi_idx = self.selected_entry_index()?;
-        let items = self
-            .ui
-            .visual_items
-            .read();
+        let items = self.ui.visual_items.read();
 
         if items.is_empty() {
             // Before first render, visual items haven't been computed yet.
@@ -2257,8 +2236,6 @@ impl ChatSessionState {
 
     /// Update the cached context size.
     pub fn set_context_size(&mut self, size: u32) {
-        let bt = std::backtrace::Backtrace::force_capture();
-        eprintln!("TRACE set_context_size size={size}\n{bt}");
         self.core.ephemeral.cached_context_size = Some(size);
     }
 
@@ -2504,7 +2481,11 @@ impl ChatSessionState {
 
         for mutation in batch {
             match mutation {
-                HistoryMutation::SetContextOverride { entry_id, value, source } => {
+                HistoryMutation::SetContextOverride {
+                    entry_id,
+                    value,
+                    source,
+                } => {
                     if let Some(entry) = self.core.history.iter_mut().find(|e| e.id == entry_id) {
                         if entry.context_override() == ContextOverride::ForcedInclude
                             && value == ContextOverride::ForcedExclude
