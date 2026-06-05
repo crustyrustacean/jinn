@@ -3,6 +3,7 @@
 
 local M = {}
 
+---@param ctx OnTurnEndCtx
 function M.on_turn_end(ctx)
     ctx.emit("enqueue_user_message", {
         session_id = ctx.session_id,

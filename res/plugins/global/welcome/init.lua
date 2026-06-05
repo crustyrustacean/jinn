@@ -4,6 +4,7 @@
 
 local M = {}
 
+---@param ctx OnAppStartedCtx
 function M.on_app_started(ctx)
     ctx.emit("push_chat_entry", {
         session_id = ctx.session_id,
@@ -11,6 +12,7 @@ function M.on_app_started(ctx)
     })
 end
 
+---@param ctx OnSessionCreatedCtx
 function M.on_session_created(ctx)
     ctx.emit("push_chat_entry", {
         session_id = ctx.session_id,

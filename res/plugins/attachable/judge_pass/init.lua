@@ -4,6 +4,7 @@
 
 local M = {}
 
+---@param ctx OnTurnEndCtx
 function M.on_turn_end(ctx)
     ctx.emit("push_chat_entry", {
         session_id = ctx.session_id,
