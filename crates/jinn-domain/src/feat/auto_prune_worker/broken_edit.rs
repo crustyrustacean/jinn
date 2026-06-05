@@ -126,7 +126,7 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
                 .iter()
                 .skip(i + 1)
                 .find(|e| e.id == result_id)
-                .is_some_and(|e| e.is_protected_from_prune());
+                .is_some_and(ChatEntry::is_protected_from_prune);
             if result_protected {
                 continue;
             }

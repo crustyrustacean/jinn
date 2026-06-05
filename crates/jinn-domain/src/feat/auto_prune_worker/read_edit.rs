@@ -242,10 +242,6 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
 
             let result_protected = history[result_idx].is_protected_from_prune();
 
-            // Skip forward pruning if both call and result are already excluded.
-            // Skip forward pruning if both call and result are protected.
-            if call_protected && result_protected {
-            }
 
             // Count how many edit/write calls to the same file appear after
             // this read. Once the threshold is reached, the read is stale.
