@@ -3,6 +3,7 @@
 //! Wires each tool module into a list of (definition, execute) pairs
 //! for registration by the tool orchestrator at activation.
 
+use crate::feat::preferences_actor::user_preferences::BashConfig;
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition};
 
 use super::{BoxedToolFuture, bash, edit, get_time, read, skill, write};
@@ -13,14 +14,17 @@ use crate::feat::todo_list;
 pub type BuiltinToolEntry = (ToolDefinition, fn(ToolCall, ToolContext) -> BoxedToolFuture);
 
 /// Returns the built-in tool definitions and their execute functions.
-pub fn builtin_tools() -> Vec<BuiltinToolEntry> {
+///
+/// `bash_config` flows into `bash::definition` so the resolved default timeout
+/// is surfaced in the schema the model sees.
+pub fn builtin_tools(bash_config: &BashConfig) -> Vec<BuiltinToolEntry> {
     let mut entries = vec![
         (
             get_time::definition(),
             get_time::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
         ),
         (
-            bash::definition(),
+            bash::definition(bash_config),
             bash::execute as fn(ToolCall, ToolContext) -> BoxedToolFuture,
         ),
         (
@@ -44,3 +48,4 @@ pub fn builtin_tools() -> Vec<BuiltinToolEntry> {
 
     entries
 }
+

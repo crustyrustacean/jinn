@@ -236,8 +236,8 @@ mod tests {
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::preferences_actor::RequestRetryConfig;
     use crate::feat::preferences_actor::user_preferences::{
-        AutoPruneConfig, CompactionConfig, ContextSlidingWindowConfig, CwdSelectorConfig,
-        MinimapConfig, OpenrouterWebSearchConfig, WebFetchConfig,
+        AutoPruneConfig, BashConfig, CompactionConfig, ContextSlidingWindowConfig,
+        CwdSelectorConfig, MinimapConfig, OpenrouterWebSearchConfig, WebFetchConfig,
     };
 
     #[rstest::rstest]
@@ -275,6 +275,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            bash: BashConfig::default(),
         };
 
         // When saving and reloading.
@@ -328,6 +329,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            bash: BashConfig::default(),
         };
 
         // When saving and reloading.
@@ -364,6 +366,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            bash: BashConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -400,6 +403,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            bash: BashConfig::default(),
         };
         service.save(&prefs).expect("save");
 
@@ -423,6 +427,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            bash: BashConfig::default(),
         };
         service.save(&updated).expect("save updated");
 
@@ -455,6 +460,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            bash: BashConfig::default(),
         };
         service.save(&prefs).expect("save");
 

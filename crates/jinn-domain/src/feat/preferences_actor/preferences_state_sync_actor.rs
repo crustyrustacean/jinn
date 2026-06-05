@@ -101,8 +101,8 @@ mod tests {
     use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::feat::preferences_actor::user_preferences::{
-        AutoPruneConfig, CompactionConfig, ContextSlidingWindowConfig, CwdSelectorConfig,
-        MinimapConfig, OpenrouterWebSearchConfig, WebFetchConfig,
+        AutoPruneConfig, BashConfig, CompactionConfig, ContextSlidingWindowConfig,
+        CwdSelectorConfig, MinimapConfig, OpenrouterWebSearchConfig, WebFetchConfig,
     };
     use crate::protocol::Event;
 
@@ -150,6 +150,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            bash: BashConfig::default(),
         };
         actor
             .handle(
@@ -196,6 +197,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            bash: BashConfig::default(),
         };
         actor
             .handle(
@@ -226,6 +228,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            bash: BashConfig::default(),
         };
         actor
             .handle(
@@ -320,6 +323,7 @@ mod tests {
             cwd_selector: CwdSelectorConfig::default(),
             minimap: MinimapConfig::default(),
             auto_prune: AutoPruneConfig::default(),
+            bash: BashConfig::default(),
         };
         actor
             .handle(
