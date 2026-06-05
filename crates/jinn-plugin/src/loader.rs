@@ -11,6 +11,19 @@ use mlua::{Lua, RegistryKey};
 
 use crate::sync_state::PluginHooks;
 
+// ── Plugin Kinds ─────────────────────────────────────────────────────────
+
+/// Whether a plugin is loaded globally at startup or attached per-session.
+///
+/// See `.plans/plugins-replace-workflows/plan.md` for the full design.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PluginKind {
+    /// Always loaded into the shared Lua states at startup; fires for all sessions.
+    Global,
+    /// Loaded into a per-session Lua state when attached; fires only for that session.
+    Attachable,
+}
+
 // ── Plugin Discovery ─────────────────────────────────────────────────────
 
 /// Metadata for a discovered plugin.
@@ -22,22 +35,49 @@ pub struct PluginMeta {
     pub path: PathBuf,
     /// Human-readable description from header comment.
     pub description: Option<String>,
+    /// Whether this plugin is global (loaded at startup) or attachable (loaded per-session).
+    pub kind: PluginKind,
 }
 
 /// Discover all plugins from user and system plugin directories.
 ///
-/// User plugins override system plugins by name. Results sorted alphabetically.
+/// Scans `system_dir/{global,attachable}/` and `user_dir/{global,attachable}/`.
+/// User plugins override system plugins by name *within the same kind*. Global and
+/// Attachable namespaces are independent: a global `foo` and an attachable `foo` are
+/// both kept as distinct entries.
+///
+/// Falls back to a flat scan at the directory root (treating everything as Global)
+/// when neither `global/` nor `attachable/` exists. This preserves back-compat with
+/// the old single-directory layout.
+///
+/// Results sorted alphabetically by name.
 pub fn discover_plugins(user_dir: &Path, system_dir: &Path) -> Vec<PluginMeta> {
-    let mut seen: HashMap<String, PluginMeta> = HashMap::new();
+    let mut seen: HashMap<(String, PluginKind), PluginMeta> = HashMap::new();
 
-    // System plugins first (lower priority).
-    for meta in scan_dir(system_dir) {
-        seen.entry(meta.name.clone()).or_insert(meta);
+    // System plugins first (lower priority). Try new layout first, fall back to flat.
+    for meta in scan_kind_dir(&system_dir.join("global"), PluginKind::Global) {
+        seen.entry((meta.name.clone(), meta.kind)).or_insert(meta);
+    }
+    for meta in scan_kind_dir(&system_dir.join("attachable"), PluginKind::Attachable) {
+        seen.entry((meta.name.clone(), meta.kind)).or_insert(meta);
+    }
+    if !system_dir.join("global").is_dir() && !system_dir.join("attachable").is_dir() {
+        for meta in scan_kind_dir(system_dir, PluginKind::Global) {
+            seen.entry((meta.name.clone(), meta.kind)).or_insert(meta);
+        }
     }
 
-    // User plugins override system.
-    for meta in scan_dir(user_dir) {
-        seen.insert(meta.name.clone(), meta);
+    // User plugins override system within kind.
+    for meta in scan_kind_dir(&user_dir.join("global"), PluginKind::Global) {
+        seen.insert((meta.name.clone(), meta.kind), meta);
+    }
+    for meta in scan_kind_dir(&user_dir.join("attachable"), PluginKind::Attachable) {
+        seen.insert((meta.name.clone(), meta.kind), meta);
+    }
+    if !user_dir.join("global").is_dir() && !user_dir.join("attachable").is_dir() {
+        for meta in scan_kind_dir(user_dir, PluginKind::Global) {
+            seen.insert((meta.name.clone(), meta.kind), meta);
+        }
     }
 
     let mut plugins: Vec<PluginMeta> = seen.into_values().collect();
@@ -46,7 +86,9 @@ pub fn discover_plugins(user_dir: &Path, system_dir: &Path) -> Vec<PluginMeta> {
 }
 
 /// Scan a single directory for plugin subdirectories containing `init.lua`.
-fn scan_dir(dir: &Path) -> Vec<PluginMeta> {
+///
+/// All discovered plugins are tagged with the supplied `kind`.
+fn scan_kind_dir(dir: &Path, kind: PluginKind) -> Vec<PluginMeta> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -74,6 +116,7 @@ fn scan_dir(dir: &Path) -> Vec<PluginMeta> {
             name,
             path,
             description,
+            kind,
         });
     }
     plugins
@@ -195,9 +238,10 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         make_plugin(dir.path(), "alpha", "-- plugin alpha");
 
-        let result = scan_dir(dir.path());
+        let result = scan_kind_dir(dir.path(), PluginKind::Global);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, "alpha");
+        assert_eq!(result[0].kind, PluginKind::Global);
     }
 
     #[test]
@@ -205,7 +249,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::create_dir_all(dir.path().join("empty")).expect("create dir");
 
-        let result = scan_dir(dir.path());
+        let result = scan_kind_dir(dir.path(), PluginKind::Global);
         assert!(result.is_empty());
     }
 
@@ -214,7 +258,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         make_plugin(dir.path(), ".hidden", "-- hidden");
 
-        let result = scan_dir(dir.path());
+        let result = scan_kind_dir(dir.path(), PluginKind::Global);
         assert!(result.is_empty());
     }
 
@@ -247,6 +291,66 @@ mod tests {
         assert_eq!(result[0].name, "alpha");
         assert_eq!(result[1].name, "bravo");
         assert_eq!(result[2].name, "charlie");
+    }
+
+    #[test]
+    fn discover_plugins_scans_global_and_attachable_subdirs() {
+        let user_dir = tempfile::tempdir().expect("tempdir");
+        let system_dir = tempfile::tempdir().expect("tempdir");
+
+        // New layout: system_dir/{global,attachable}/<name>/init.lua
+        make_plugin(&system_dir.path().join("global"), "welcome", "-- global");
+        make_plugin(&system_dir.path().join("attachable"), "judge_fail", "-- attachable");
+
+        // Need parent dirs to exist before make_plugin writes into them.
+        std::fs::create_dir_all(system_dir.path().join("global")).expect("mkdir global");
+        std::fs::create_dir_all(system_dir.path().join("attachable")).expect("mkdir attachable");
+        make_plugin(&system_dir.path().join("global"), "welcome", "-- global");
+        make_plugin(&system_dir.path().join("attachable"), "judge_fail", "-- attachable");
+
+        let result = discover_plugins(user_dir.path(), system_dir.path());
+        assert_eq!(result.len(), 2);
+        let by_name: HashMap<&str, PluginKind> =
+            result.iter().map(|m| (m.name.as_str(), m.kind)).collect();
+        assert_eq!(by_name["welcome"], PluginKind::Global);
+        assert_eq!(by_name["judge_fail"], PluginKind::Attachable);
+    }
+
+    #[test]
+    fn discover_plugins_cross_kind_non_collision() {
+        let user_dir = tempfile::tempdir().expect("tempdir");
+        let system_dir = tempfile::tempdir().expect("tempdir");
+
+        std::fs::create_dir_all(system_dir.path().join("global")).expect("mkdir");
+        std::fs::create_dir_all(system_dir.path().join("attachable")).expect("mkdir");
+        make_plugin(&system_dir.path().join("global"), "foo", "-- global foo");
+        make_plugin(&system_dir.path().join("attachable"), "foo", "-- attachable foo");
+
+        let result = discover_plugins(user_dir.path(), system_dir.path());
+        assert_eq!(result.len(), 2, "both foo entries must survive");
+        let globals = result.iter().filter(|m| m.kind == PluginKind::Global).count();
+        let attachables = result.iter().filter(|m| m.kind == PluginKind::Attachable).count();
+        assert_eq!(globals, 1);
+        assert_eq!(attachables, 1);
+    }
+
+    #[test]
+    fn discover_plugins_user_overrides_system_within_kind() {
+        let user_dir = tempfile::tempdir().expect("tempdir");
+        let system_dir = tempfile::tempdir().expect("tempdir");
+
+        std::fs::create_dir_all(system_dir.path().join("attachable")).expect("mkdir sys");
+        std::fs::create_dir_all(user_dir.path().join("attachable")).expect("mkdir usr");
+        make_plugin(&system_dir.path().join("attachable"), "judge", "-- description: SystemJudge");
+        make_plugin(&user_dir.path().join("attachable"), "judge", "-- description: UserJudge");
+
+        let result = discover_plugins(user_dir.path(), system_dir.path());
+        let attachable: Vec<_> = result
+            .iter()
+            .filter(|m| m.kind == PluginKind::Attachable && m.name == "judge")
+            .collect();
+        assert_eq!(attachable.len(), 1);
+        assert_eq!(attachable[0].description, Some("UserJudge".to_owned()));
     }
 
     // --- load_all / isolation ---
