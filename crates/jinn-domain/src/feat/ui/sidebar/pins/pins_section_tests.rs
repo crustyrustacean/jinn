@@ -7,7 +7,7 @@ use crate::common::app_state::{AppState, FocusScope};
 use crate::common::render_ctx::RenderCtx;
 use crate::feat::ui::sidebar::pins::pins_section::*;
 use crate::feat::ui::sidebar::section_trait::{SidebarSection, SidebarSectionId};
-use crate::protocol::{ChatEntry, Command, PinPosition};
+use crate::protocol::{ChatEntry, Command, PinPosition, ChangeSource};
 
 fn state_with_pinned(count: usize) -> AppState {
     let mut state = AppState::default();
@@ -442,7 +442,7 @@ fn sync_chat_log_cursor_sets_cursor_by_entry_id_with_visual_items() {
     state.active_session_mut().push_entry(ChatEntry::user("a")); // hist 0
     for _ in 0..15 {
         let mut entry = ChatEntry::user("ignored");
-        entry.context_override = crate::protocol::ContextOverride::ForcedExclude;
+        entry.apply_context_override(crate::protocol::ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
         state.active_session_mut().push_entry(entry);
     } // hist 1..15 (collapsed into 1 visual item)
     state.active_session_mut().push_entry(ChatEntry::user("b")); // hist 16

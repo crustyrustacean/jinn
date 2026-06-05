@@ -548,14 +548,12 @@ This project uses **Fossil** for version control.
 
 These are the commands used by the project. Always prefer these over raw `cargo` invocations.
 
-| Purpose         | Command        | Notes                                                                                       |
-| --------------- | -------------- | ------------------------------------------------------------------------------------------- |
-| Compile check   | `just check`   | `cargo check --workspace` — fast compilation without codegen                                |
-| Full test suite | `just test`    | `cargo nextest run` + e2e tests — **all tests must pass before committing**                 |
-| Lint            | `just lint`    | `cargo check --workspace` + `cargo clippy` + `cargo fmt --check` + inline test length check |
-| Format check    | `just fmt`     | `cargo fmt --check`                                                                         |
-| Format fix      | `just fmt-fix` | `cargo fmt`                                                                                 |
-| Full CI         | `just ci`      | lint + test + docs                                                                          |
+| Purpose         | Command        | Notes                                                                            |
+| --------------- | -------------- | -------------------------------------------------------------------------------- |
+| Compile check   | `just check`   | `cargo check --workspace` — fast compilation without codegen                     |
+| Full test suite | `just test`    | `cargo text --workspace` + e2e tests — **all tests must pass before committing** |
+| Lint            | `just lint`    |                                                                                  |
+| Format fix      | `just fmt-fix` |                                                                                  |
 
 ### Plan Directory
 

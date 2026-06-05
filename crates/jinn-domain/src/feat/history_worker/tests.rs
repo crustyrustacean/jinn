@@ -14,7 +14,7 @@ use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::feat::session::protocol::history_snapshot_ready::HistorySnapshotReady;
-use crate::protocol::{Command, SessionId};
+use crate::protocol::{Command, SessionId, ChangeSource};
 
 // ── Test workers ───────────────────────────────────────────────────
 
@@ -46,10 +46,7 @@ impl HistoryWorker for TruncateOldUserEntries {
         let to_exclude = user_entries.len() - 3;
         user_entries[..to_exclude]
             .iter()
-            .map(|e| HistoryMutation::SetContextOverride {
-                entry_id: e.id.clone(),
-                value: ContextOverride::ForcedExclude,
-            })
+            .map(|e| HistoryMutation::SetContextOverride { entry_id: e.id.clone(), value: ContextOverride::ForcedExclude, source: ChangeSource::Internal { label: "test".into() } })
             .collect()
     }
 }
