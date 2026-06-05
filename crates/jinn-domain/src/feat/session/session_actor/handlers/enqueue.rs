@@ -25,10 +25,7 @@ enum EnqueueAction {
     Queued,
 }
 
-enum ResumeAction {
-    DispatchDirectly,
-    Ignored,
-}
+
 
 impl SessionPersistenceActor {
     /// EnqueueUserMessage: if idle → assemble prompt; if busy → queue.
@@ -180,94 +177,116 @@ impl SessionPersistenceActor {
 
     /// EnqueueResumeTurn: re-send current history without adding a new user entry.
     ///
-    /// Used by the `Continue` keybinding (`c`) to recover from rate-limited or errored
-    /// turns, or to resume a session rehydrated from disk after the app was killed.
+    /// - If the session is `Idle`, push a UI-only `System` "↻ session resumed"
+    ///   marker, transition Idle → Streaming, assemble the prompt, emit
+    ///   `SendToLlmProvider`, and persist. Adds no `User` entry. This mirrors
+    ///   `handle_enqueue_user_message`'s inline-dispatch pattern for the Idle
+    ///   branch.
+    /// - If the session is busy (`Sending`/`Streaming`), silently ignored. We do
+    ///   not queue resumes — the existing stream is the source of truth.
     ///
-    /// - If the session is currently busy (`Sending`/`Streaming`), the request is silently ignored
-    ///   (the existing stream is the source of truth).
-    /// - Otherwise, push a `System` marker entry (`"\u{21bb} session resumed"`) for UI audit, then
-    ///   assemble the prompt from existing history and emit `SendToLlmProvider`. No `User` or
-    ///   `Assistant` entries are added to history by this path.
+    /// The System marker is excluded from LLM context by default
+    /// (see `ChatEntryKind::is_included_by_default`), so only the UI sees it.
     pub(in crate::feat::session::session_actor) async fn handle_enqueue_resume_turn(
         &self,
         payload: &EnqueueResumeTurn,
         ctx: &ActorContext,
     ) {
-        // Phase 1: decide action under write lock.
-        let action = {
+        use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
+        use crate::feat::session::token_stats::TokenRecord;
+        use crate::protocol::ChatEntry;
+
+        // Only dispatch from Idle. Busy sessions ignore resume (no queuing).
+        let should_dispatch = {
+            let state = self.state.read();
+            let session = state.session(&payload.session_id);
+            matches!(session.phase(), PhaseKind::Idle)
+        };
+        if !should_dispatch {
+            return;
+        }
+
+        // Push UI-only resume marker and transition Idle → Sending.
+        let marker = ChatEntry::system("\u{21bb} session resumed");
+        let (old_phase, new_phase) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
-            match session.phase() {
-                PhaseKind::Idle => {
-                    // Push UI-only System marker. System entries are excluded from
-                    // `assemble_prompt` output by default (see ChatEntryKind::is_included_by_default).
-                    session.push_entry(ChatEntry::system("\u{21bb} session resumed"));
-                    session.begin_sending();
-                    ResumeAction::DispatchDirectly
-                }
-                PhaseKind::Sending | PhaseKind::Streaming => ResumeAction::Ignored,
+            session.push_entry(marker.clone());
+            let old_phase = session.phase();
+            session.begin_sending();
+            (old_phase, session.phase())
+        };
+
+        if old_phase != new_phase
+            && let Err(e) = ctx.send_event(Event::SessionPhaseChanged(SessionPhaseChanged {
+                session_id: payload.session_id.clone(),
+                old_phase,
+                new_phase,
+            }))
+        {
+            tracing::warn!(err = ?e, "session-actor failed to emit SessionPhaseChanged for resume");
+        }
+
+        super::super::helpers::emit_history_appended(ctx, &payload.session_id);
+
+        if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
+            session_id: payload.session_id.clone(),
+            entry: marker,
+        })) {
+            tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted for resume marker");
+        }
+
+        // Assemble prompt and dispatch. Marker is excluded by default.
+        let assembled = {
+            let guard = self.state.read();
+            assemble_prompt(&guard, &payload.session_id, &self.counter, None)
+        };
+
+        let provider_id = {
+            let state = self.state.read();
+            let model = state.session(&payload.session_id).profile().model.clone();
+            if model == crate::feat::provider_infra::NO_PROVIDER_ID {
+                None
+            } else {
+                Some(model)
             }
         };
 
-        match action {
-            ResumeAction::DispatchDirectly => {
-                super::super::helpers::emit_history_appended(ctx, &payload.session_id);
+        let estimated_tokens = assembled.estimated_tokens();
 
-                let assembled = {
-                    let guard = self.state.read();
-                    assemble_prompt(&guard, &payload.session_id, &self.counter, None)
-                };
+        // Sending → Streaming + record outgoing token count.
+        let (old_phase, new_phase) = {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&payload.session_id);
+            let old_phase = session.phase();
+            session.begin_streaming();
+            session.push_token_record(TokenRecord {
+                timestamp: jiff::Timestamp::now(),
+                tokens_sent: estimated_tokens,
+                tokens_received: 0,
+                cost: None,
+            });
+            (old_phase, session.phase())
+        };
 
-                let (old_phase, new_phase) = {
-                    let mut state = self.state.write();
-                    let session = state.session_mut_or_create(&payload.session_id);
-                    let old_phase = session.phase();
-                    session.begin_streaming();
-                    session.push_token_record(TokenRecord {
-                        timestamp: jiff::Timestamp::now(),
-                        tokens_sent: assembled.estimated_tokens(),
-                        tokens_received: 0,
-                        cost: None,
-                    });
-                    (old_phase, session.phase())
-                };
-                super::super::helpers::emit_phase_changed(
-                    ctx,
-                    &payload.session_id,
-                    old_phase,
-                    new_phase,
-                );
+        super::super::helpers::emit_phase_changed(
+            ctx,
+            &payload.session_id,
+            old_phase,
+            new_phase,
+        );
 
-                let provider_id = {
-                    let state = self.state.read();
-                    let model = state
-                        .session(&payload.session_id)
-                        .profile()
-                        .model
-                        .clone();
-                    if model == crate::feat::provider_infra::NO_PROVIDER_ID {
-                        None
-                    } else {
-                        Some(model)
-                    }
-                };
-
-                let estimated_tokens = assembled.estimated_tokens();
-
-                if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
-                    session_id: payload.session_id.clone(),
-                    messages: assembled.messages,
-                    provider_id,
-                    estimated_tokens,
-                    tool_definitions: assembled.tool_definitions,
-                })) {
-                    tracing::warn!(err = ?e, "session-actor failed to emit SendToLlmProvider");
-                }
-
-                self.save_active_session(&payload.session_id).await;
-            }
-            ResumeAction::Ignored => {}
+        if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+            session_id: payload.session_id.clone(),
+            messages: assembled.messages,
+            provider_id,
+            estimated_tokens,
+            tool_definitions: assembled.tool_definitions,
+        })) {
+            tracing::warn!(err = ?e, "session-actor failed to emit SendToLlmProvider for resume");
         }
+
+        self.save_active_session(&payload.session_id).await;
     }
 
     /// SetChatInputText: update the session's input buffer.
@@ -805,6 +824,66 @@ mod tests {
             session.history().is_empty(),
             "history should remain empty when resume is ignored"
         );
+    }
+
+    #[tokio::test]
+    async fn handle_enqueue_resume_turn_idle_dispatches_directly() {
+        // Given an idle session.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let _ = state.active_session_mut();
+            state.session.active_session_id().clone()
+        };
+
+        // When resume is requested.
+        actor
+            .handle_enqueue_resume_turn(
+                &EnqueueResumeTurn {
+                    session_id: session_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then SendToLlmProvider is emitted directly (inline dispatch on Idle).
+        let commands = sink.commands();
+        let send = commands
+            .iter()
+            .find(|c| matches!(c, Command::SendToLlmProvider(_)));
+        assert!(
+            send.is_some(),
+            "expected SendToLlmProvider to be emitted directly for resume from Idle"
+        );
+
+        // And the session is now in Streaming phase.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        assert_eq!(
+            session.phase(),
+            PhaseKind::Streaming,
+            "phase should be Streaming after inline resume dispatch"
+        );
+
+        // And no item was queued (we dispatched inline, not via the queue).
+        assert!(
+            session.queue().is_empty(),
+            "resume from Idle should not enqueue; it dispatches inline"
+        );
+
+        // And exactly one System marker was pushed to history.
+        let markers: Vec<_> = session
+            .history()
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e.kind,
+                    crate::protocol::ChatEntryKind::System { .. }
+                )
+            })
+            .collect();
+        assert_eq!(markers.len(), 1, "expected one System marker pushed");
     }
     // --- Helpers ---
 }

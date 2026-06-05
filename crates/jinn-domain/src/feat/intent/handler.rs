@@ -234,6 +234,19 @@ impl IntentHandler {
                     result
                 }
             }
+            Intent::CtrlClear => {
+                let (result, maybe_intent) =
+                    feat::global::intent::handle_ctrl_clear(state);
+                if let Some(intent) = maybe_intent {
+                    let redispatch = IntentHandler::handle(&intent, state);
+                    IntentResult::with_commands_and_events(
+                        [result.commands, redispatch.commands].concat(),
+                        [result.events, redispatch.events].concat(),
+                    )
+                } else {
+                    result
+                }
+            }
             Intent::PickerMoveUp => feat::picker::intent::handle_move_up(state),
             Intent::PickerMoveDown => feat::picker::intent::handle_move_down(state),
             Intent::PickerMoveCursorLeft => feat::picker::intent::handle_move_cursor_left(state),
