@@ -34,7 +34,7 @@ use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::session::queue_item::QueueItem;
 use crate::feat::session_lifecycle::protocol::command::PersistSession;
-use crate::protocol::{Command, Event};
+use crate::protocol::{ChatEntry, Command, Event};
 
 /// The queue actor.
 ///
@@ -118,6 +118,9 @@ impl QueueActor {
             QueueItem::ToolContinuation => {
                 self.dispatch_tool_continuation(session_id, ctx).await;
             }
+            QueueItem::ResumeTurn => {
+                self.dispatch_resume_turn(session_id, ctx).await;
+            }
         }
     }
 
@@ -188,11 +191,60 @@ impl QueueActor {
     }
 
     /// Dispatch a tool continuation: assemble prompt and emit SendToLlmProvider.
+    ///
+    /// See [`Self::dispatch_resume`] for the shared dispatch body.
     #[allow(clippy::unused_async)]
     async fn dispatch_tool_continuation(
         &self,
         session_id: &crate::protocol::SessionId,
         ctx: &ActorContext,
+    ) {
+        self.dispatch_resume(session_id, ctx, "tool continuation").await;
+    }
+
+    /// Dispatch a manual resume (user pressed `c`): push a `System` "↻ resumed"
+    /// marker entry visible to the UI only, then assemble prompt and emit
+    /// `SendToLlmProvider`.
+    ///
+    /// Adds no `User` entry to history. The system marker is excluded from
+    /// context by default (see `ChatEntryKind::is_included_by_default`).
+    async fn dispatch_resume_turn(
+        &self,
+        session_id: &crate::protocol::SessionId,
+        ctx: &ActorContext,
+    ) {
+        // Push the UI-only resume marker.
+        let marker = ChatEntry::system("\u{21bb} session resumed");
+        {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(session_id);
+            session.push_entry(marker.clone());
+        };
+
+        if let Err(e) = ctx.send_event(Event::ChatEntrySubmitted(ChatEntrySubmitted {
+            session_id: session_id.clone(),
+            entry: marker,
+        })) {
+            tracing::warn!(err = ?e, "queue-actor failed to emit ChatEntrySubmitted for resume marker");
+        }
+
+        if let Err(e) = ctx.send_command(Command::PersistSession(PersistSession {
+            session_id: session_id.clone(),
+        })) {
+            tracing::warn!(err = ?e, "queue-actor failed to emit PersistSession for resume marker");
+        }
+
+        self.dispatch_resume(session_id, ctx, "resume turn").await;
+    }
+
+    /// Shared dispatch body for tool-continuation and manual-resume paths:
+    /// re-assemble prompt from current history and emit `SendToLlmProvider`.
+    #[allow(clippy::unused_async)]
+    async fn dispatch_resume(
+        &self,
+        session_id: &crate::protocol::SessionId,
+        ctx: &ActorContext,
+        label: &str,
     ) {
         let assembled = {
             let guard = self.state.read();
@@ -220,7 +272,8 @@ impl QueueActor {
         })) {
             tracing::warn!(
                 err = ?e,
-                "queue-actor failed to emit SendToLlmProvider from tool continuation"
+                label,
+                "queue-actor failed to emit SendToLlmProvider"
             );
         }
     }
@@ -235,6 +288,7 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::protocol::ChatEntry;
+    use jinn_provider::LlmMessage;
 
     fn test_actor() -> QueueActor {
         QueueActor {
@@ -438,6 +492,118 @@ mod tests {
             .iter()
             .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(has_send, "expected SendToLlmProvider command");
+    }
+
+    #[tokio::test]
+    async fn dispatch_resume_turn_pushes_system_marker_then_sends() {
+        // Given a session in Idle phase with history.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("previous message"));
+            state.session.active_session_id().clone()
+        };
+
+        // When dispatching a manual resume.
+        actor.dispatch_resume_turn(&session_id, &ctx).await;
+
+        // Then a System marker entry was emitted as ChatEntrySubmitted.
+        let events = sink.events();
+        let has_marker = events.iter().any(|e| match e {
+            Event::ChatEntrySubmitted(s) => s.entry.text().contains('\u{21bb}'),
+            _ => false,
+        });
+        assert!(has_marker, "expected System resume marker event");
+
+        // And SendToLlmProvider was emitted with the history.
+        let commands = sink.commands();
+        let has_send = commands
+            .iter()
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
+        assert!(has_send, "expected SendToLlmProvider command");
+    }
+
+    #[tokio::test]
+    async fn dispatch_resume_turn_system_marker_excluded_from_llm_messages() {
+        // Given a session in Idle phase with history.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("previous message"));
+            state.session.active_session_id().clone()
+        };
+
+        // When dispatching a manual resume.
+        actor.dispatch_resume_turn(&session_id, &ctx).await;
+
+        // Then SendToLlmProvider payload must not contain the System resume marker text.
+        let commands = sink.commands();
+        let send = commands
+            .iter()
+            .find_map(|c| match c {
+                Command::SendToLlmProvider(s) => Some(s.clone()),
+                _ => None,
+            })
+            .expect("SendToLlmProvider was emitted");
+
+        let marker_leaked = send
+            .messages
+            .iter()
+            .any(|m| match m {
+                LlmMessage::System { content }
+                | LlmMessage::User { content }
+                | LlmMessage::Assistant { content, .. }
+                | LlmMessage::Tool { content, .. } => content.contains('\u{21bb}'),
+            });
+        assert!(
+            !marker_leaked,
+            "System resume marker must be excluded from LlmMessage vector"
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_resume_turn_unpinned_error_entries_excluded_from_llm_messages() {
+        // Given a session whose last entry is an unpinned Error (e.g. after rate-limit exhaustion).
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("previous message"));
+            session.push_entry(ChatEntry::error("rate limited"));
+            state.session.active_session_id().clone()
+        };
+
+        // When dispatching a manual resume.
+        actor.dispatch_resume_turn(&session_id, &ctx).await;
+
+        // Then SendToLlmProvider payload must not contain the Error entry text.
+        let commands = sink.commands();
+        let send = commands
+            .iter()
+            .find_map(|c| match c {
+                Command::SendToLlmProvider(s) => Some(s.clone()),
+                _ => None,
+            })
+            .expect("SendToLlmProvider was emitted");
+
+        let error_leaked = send
+            .messages
+            .iter()
+            .any(|m| match m {
+                LlmMessage::System { content }
+                | LlmMessage::User { content }
+                | LlmMessage::Assistant { content, .. }
+                | LlmMessage::Tool { content, .. } => content.contains("rate limited"),
+            });
+        assert!(
+            !error_leaked,
+            "Unpinned Error entries must be excluded from LlmMessage vector on resume"
+        );
     }
 
     #[tokio::test]

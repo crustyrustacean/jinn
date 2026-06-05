@@ -6,7 +6,7 @@
 
 use crate::common::actor::ActorContext;
 use crate::feat::chat_input::protocol::command::{
-    EnqueueUserMessage, PushChatEntry, SetChatInputText,
+    EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::context::assemble::assemble_prompt;
@@ -23,6 +23,11 @@ enum EnqueueAction {
     DispatchDirectly,
     /// Session is busy - message was queued.
     Queued,
+}
+
+enum ResumeAction {
+    DispatchDirectly,
+    Ignored,
 }
 
 impl SessionPersistenceActor {
@@ -173,6 +178,98 @@ impl SessionPersistenceActor {
         }
     }
 
+    /// EnqueueResumeTurn: re-send current history without adding a new user entry.
+    ///
+    /// Used by the `Continue` keybinding (`c`) to recover from rate-limited or errored
+    /// turns, or to resume a session rehydrated from disk after the app was killed.
+    ///
+    /// - If the session is currently busy (`Sending`/`Streaming`), the request is silently ignored
+    ///   (the existing stream is the source of truth).
+    /// - Otherwise, push a `System` marker entry (`"\u{21bb} session resumed"`) for UI audit, then
+    ///   assemble the prompt from existing history and emit `SendToLlmProvider`. No `User` or
+    ///   `Assistant` entries are added to history by this path.
+    pub(in crate::feat::session::session_actor) async fn handle_enqueue_resume_turn(
+        &self,
+        payload: &EnqueueResumeTurn,
+        ctx: &ActorContext,
+    ) {
+        // Phase 1: decide action under write lock.
+        let action = {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&payload.session_id);
+            match session.phase() {
+                PhaseKind::Idle => {
+                    // Push UI-only System marker. System entries are excluded from
+                    // `assemble_prompt` output by default (see ChatEntryKind::is_included_by_default).
+                    session.push_entry(ChatEntry::system("\u{21bb} session resumed"));
+                    session.begin_sending();
+                    ResumeAction::DispatchDirectly
+                }
+                PhaseKind::Sending | PhaseKind::Streaming => ResumeAction::Ignored,
+            }
+        };
+
+        match action {
+            ResumeAction::DispatchDirectly => {
+                super::super::helpers::emit_history_appended(ctx, &payload.session_id);
+
+                let assembled = {
+                    let guard = self.state.read();
+                    assemble_prompt(&guard, &payload.session_id, &self.counter, None)
+                };
+
+                let (old_phase, new_phase) = {
+                    let mut state = self.state.write();
+                    let session = state.session_mut_or_create(&payload.session_id);
+                    let old_phase = session.phase();
+                    session.begin_streaming();
+                    session.push_token_record(TokenRecord {
+                        timestamp: jiff::Timestamp::now(),
+                        tokens_sent: assembled.estimated_tokens(),
+                        tokens_received: 0,
+                        cost: None,
+                    });
+                    (old_phase, session.phase())
+                };
+                super::super::helpers::emit_phase_changed(
+                    ctx,
+                    &payload.session_id,
+                    old_phase,
+                    new_phase,
+                );
+
+                let provider_id = {
+                    let state = self.state.read();
+                    let model = state
+                        .session(&payload.session_id)
+                        .profile()
+                        .model
+                        .clone();
+                    if model == crate::feat::provider_infra::NO_PROVIDER_ID {
+                        None
+                    } else {
+                        Some(model)
+                    }
+                };
+
+                let estimated_tokens = assembled.estimated_tokens();
+
+                if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
+                    session_id: payload.session_id.clone(),
+                    messages: assembled.messages,
+                    provider_id,
+                    estimated_tokens,
+                    tool_definitions: assembled.tool_definitions,
+                })) {
+                    tracing::warn!(err = ?e, "session-actor failed to emit SendToLlmProvider");
+                }
+
+                self.save_active_session(&payload.session_id).await;
+            }
+            ResumeAction::Ignored => {}
+        }
+    }
+
     /// SetChatInputText: update the session's input buffer.
     pub(in crate::feat::session::session_actor) fn handle_set_chat_input_text(
         &self,
@@ -227,7 +324,7 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::super::super::helpers::{test_actor, test_context};
     use crate::feat::chat_input::protocol::command::{
-        EnqueueUserMessage, PushChatEntry, SetChatInputText,
+        EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText,
     };
     use crate::feat::provider::protocol::command::SendMessage;
     use crate::feat::session::phase_machine::PhaseKind;
@@ -670,6 +767,44 @@ mod tests {
             })
             .collect();
         assert_eq!(one_shots.len(), 2);
+    }
+
+    // --- handle_enqueue_resume_turn ---
+
+    #[tokio::test]
+    async fn handle_enqueue_resume_turn_noop_when_streaming() {
+        // Given a session already in Streaming phase.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.begin_streaming();
+            state.session.active_session_id().clone()
+        };
+
+        // When resume is requested.
+        actor
+            .handle_enqueue_resume_turn(
+                &EnqueueResumeTurn {
+                    session_id: session_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then no commands were emitted (silent no-op).
+        assert!(
+            sink.commands().is_empty(),
+            "expected no commands when resuming a streaming session"
+        );
+        // And no System marker was pushed to history.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        assert!(
+            session.history().is_empty(),
+            "history should remain empty when resume is ignored"
+        );
     }
     // --- Helpers ---
 }
