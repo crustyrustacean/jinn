@@ -151,7 +151,7 @@ fn build_age_window_mutations(history: &[ChatEntry], max_age: usize) -> Vec<Hist
         };
 
         let call_id = entry.id.clone();
-        let call_already_excluded = entry.context_override == ContextOverride::ForcedExclude;
+        let call_protected = entry.is_protected_from_prune();
 
         // Find the matching non-pending result. If none (orphaned or still
         // pending), skip the entire pair.
@@ -162,17 +162,14 @@ fn build_age_window_mutations(history: &[ChatEntry], max_age: usize) -> Vec<Hist
         // Locate the result entry to check its exclude state. Forward scan
         // from i+1 — guaranteed to find it because find_completed_matching_result
         // just did.
-        let result_already_excluded = history
+        let result_protected = history
             .iter()
             .skip(i + 1)
             .find(|e| e.id == result_id)
-            .is_some_and(|e| e.context_override == ContextOverride::ForcedExclude);
+            .is_some_and(ChatEntry::is_protected_from_prune);
 
-        // Emit mutations only for halves not already excluded. Pair-atomicity
-        // is preserved at the *decision* level (we always consider both
-        // halves), even if one half is already excluded and only one
-        // mutation is emitted.
-        if !call_already_excluded {
+        // Emit mutations only for halves not protected from prune.
+        if !call_protected {
             tracing::debug!(
                 entry_id = %call_id,
                 keep_window_start,
@@ -183,7 +180,7 @@ fn build_age_window_mutations(history: &[ChatEntry], max_age: usize) -> Vec<Hist
                 value: ContextOverride::ForcedExclude,
             });
         }
-        if !result_already_excluded {
+        if !result_protected {
             tracing::debug!(
                 entry_id = %result_id,
                 keep_window_start,
@@ -495,6 +492,35 @@ mod tests {
 
         let mutations = evaluate(&w, history);
         assert_eq!(mutations.len(), 1, "only the non-excluded result mutates");
+        let excluded = excluded_ids(&mutations);
+        assert!(excluded.contains(&result_id));
+        assert!(!excluded.contains(&call_id));
+    }
+
+    // ------------------------------------------------------------------
+    // 9b. forced_included_call_does_not_get_mutation
+    //
+    // Same as test 9 but with ForcedInclude. The call is protected,
+    // the result is not. Expect exactly 1 mutation (for the result only).
+    // ------------------------------------------------------------------
+    #[test]
+    fn forced_included_call_does_not_get_mutation() {
+        let w = worker(100);
+        let mut history = Vec::new();
+
+        let p = bash_pair("tc-1", "ls", "out");
+        let mut call = p[0].clone();
+        call.context_override = ContextOverride::ForcedInclude;
+        let call_id = call.id.clone();
+        history.push(call);
+        let result = p[1].clone();
+        let result_id = result.id.clone();
+        history.push(result);
+
+        history.extend(users(100));
+
+        let mutations = evaluate(&w, history);
+        assert_eq!(mutations.len(), 1, "only the non-protected result mutates");
         let excluded = excluded_ids(&mutations);
         assert!(excluded.contains(&result_id));
         assert!(!excluded.contains(&call_id));
