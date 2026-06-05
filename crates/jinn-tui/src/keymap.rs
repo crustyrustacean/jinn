@@ -78,6 +78,7 @@ fn add_picker_base(b: &mut ratatui_which_key::ScopeBuilder<KeyEvent, Scope, Inte
         .bind("<right>", Intent::PickerMoveCursorRight, KeyCategory::Input)
         .bind("<backspace>", Intent::PickerBackspace, KeyCategory::Input)
         .bind("<c-n>", Intent::SessionNew, KeyCategory::General)
+        .bind("<c-c>", Intent::CtrlClear, KeyCategory::General)
         .catch_all(|key: KeyEvent| {
             if let Key::Char(c) = key.key {
                 Some(Intent::PickerInsertChar { ch: c })
@@ -220,7 +221,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<c-enter>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
             .bind("<esc>", Intent::EnterNormalMode, KeyCategory::General)
             .bind("<c-k>", Intent::EnterNormalMode, KeyCategory::General)
-            .bind("<c-c>", Intent::Interrupt { session_id: None }, KeyCategory::General)
+            .bind("<c-c>", Intent::CtrlClear, KeyCategory::General)
             .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
             .bind("<c-g>", Intent::ToggleOneShot { kind: jinn_domain::feat::workflow::attached_workflow::OneShotKind::Consensus }, KeyCategory::Input)
             // Change CWD - search from session CWD
@@ -300,6 +301,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
         .bind("<delete>", Intent::DeleteGraphemeForward, KeyCategory::Input)
         .bind("<c-j>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
+        .bind("<c-c>", Intent::CtrlClear, KeyCategory::General)
         .catch_all(|key: KeyEvent| {
             if let Key::Char(c) = key.key {
                 Some(Intent::InsertChar { ch: c })
@@ -328,6 +330,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         .bind("<backspace>", Intent::RenameDeleteGrapheme, KeyCategory::Input)
         .bind("<delete>", Intent::RenameDeleteForward, KeyCategory::Input)
         .bind("<c-j>", Intent::RenameInsertChar { ch: '\n' }, KeyCategory::Input)
+        .bind("<c-c>", Intent::CtrlClear, KeyCategory::General)
         .catch_all(|key: KeyEvent| {
             if let Key::Char(c) = key.key {
                 Some(Intent::RenameInsertChar { ch: c })
