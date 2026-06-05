@@ -10,16 +10,19 @@ fn main() {
 
     let cli = Cli::parse();
 
+    let paths = jinn_domain::AppPaths::default();
+    let log_path = cli.log_file.clone().unwrap_or_else(|| paths.log_path());
+
     let mode = match &cli.command {
-        None | Some(jinn_cli::cli::Commands::Tui) => TracingMode::Tui {
-            log_dir: cli.log_dir.clone(),
+        None | Some(jinn_cli::cli::Commands::Tui) |
+        Some(jinn_cli::cli::Commands::Completions { .. }) |
+        Some(jinn_cli::cli::Commands::Bench { .. }) => TracingMode::Tui {
+            log_path: log_path.clone(),
         },
-        Some(jinn_cli::cli::Commands::Headless { log_file, .. }) => TracingMode::Headless {
-            log_file: log_file.clone(),
+        Some(jinn_cli::cli::Commands::Headless { .. }) |
+        Some(jinn_cli::cli::Commands::Fetch { .. }) => TracingMode::Headless {
+            log_path: log_path.clone(),
         },
-        Some(jinn_cli::cli::Commands::Completions { .. }) => TracingMode::Tui { log_dir: None },
-        Some(jinn_cli::cli::Commands::Bench { .. }) => TracingMode::Tui { log_dir: None },
-        Some(jinn_cli::cli::Commands::Fetch { .. }) => TracingMode::Headless { log_file: None },
     };
 
     if let Err(e) = init_tracing(cli.verbosity, mode) {

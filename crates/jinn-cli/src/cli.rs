@@ -13,9 +13,10 @@ pub struct Cli {
     #[command(flatten)]
     pub verbosity: Verbosity<WarnLevel>,
 
-    /// Directory for log file output (TUI mode). Defaults to current directory.
-    #[arg(long)]
-    pub log_dir: Option<PathBuf>,
+    /// Path to the log file. Defaults to the platform's state directory
+    /// (e.g. `~/.local/state/jinn/jinn.log` on Linux).
+    #[arg(long, value_hint = clap::ValueHint::FilePath)]
+    pub log_file: Option<PathBuf>,
 
     /// Session database file. Defaults to the platform data directory.
     /// Use this to inspect a bench database after a run, e.g.
@@ -36,10 +37,6 @@ pub enum Commands {
 
     /// Run without a terminal interface.
     Headless {
-        /// Also log to a file in headless mode.
-        #[arg(long)]
-        log_file: Option<PathBuf>,
-
         /// Headless subcommand.
         #[command(subcommand)]
         command: Option<HeadlessCommands>,
@@ -137,4 +134,59 @@ pub enum BenchCommands {
         #[arg(value_hint = clap::ValueHint::FilePath)]
         db_path: PathBuf,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    // Given no --log-file argument.
+    // Then Cli.log_file is None (default).
+    #[test]
+    fn log_file_flag_defaults_to_none() {
+        let cli = Cli::parse_from(["jinn"]);
+        assert!(cli.log_file.is_none());
+    }
+
+    // Given a global --log-file argument before a subcommand.
+    // Then Cli.log_file captures the override.
+    #[test]
+    fn log_file_flag_global_overrides() {
+        let cli = Cli::parse_from(["jinn", "--log-file", "/tmp/x.log", "tui"]);
+        assert_eq!(cli.log_file.as_deref(), Some(std::path::Path::new("/tmp/x.log")));
+    }
+
+    // Given the old --log-dir argument.
+    // Then clap rejects it (the flag has been removed).
+    #[test]
+    fn log_dir_flag_removed() {
+        let result = Cli::try_parse_from(["jinn", "--log-dir", "/tmp"]);
+        assert!(result.is_err());
+    }
+
+    // Given --log-file scoped to the headless subcommand (old shape).
+    // Then clap rejects it: the flag is global now, not a subcommand arg.
+    #[test]
+    fn headless_scoped_log_file_removed() {
+        let result = Cli::try_parse_from([
+            "jinn",
+            "headless",
+            "--log-file",
+            "/tmp/x.log",
+            "send-chat",
+            "hi",
+        ]);
+        assert!(result.is_err());
+    }
+
+    // Given a global --log-file alongside a headless subcommand.
+    // Then Cli.log_file captures the override.
+    #[test]
+    fn log_file_flag_works_with_headless() {
+        let cli = Cli::parse_from([
+            "jinn", "--log-file", "/tmp/x.log", "headless", "send-chat", "hi",
+        ]);
+        assert_eq!(cli.log_file.as_deref(), Some(std::path::Path::new("/tmp/x.log")));
+    }
 }
