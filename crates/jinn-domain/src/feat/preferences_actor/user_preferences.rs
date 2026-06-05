@@ -2247,4 +2247,34 @@ keep_last = 1
         assert_eq!(reloaded.auto_prune.regex.rules[0].pattern, "ls");
         assert_eq!(reloaded.auto_prune.regex.rules[1].pattern, "cargo check");
     }
+
+    #[rstest::rstest]
+    fn legacy_user_anchor_radius_key_still_loads_via_serde_alias() {
+        // Given a TOML file using the legacy [auto_prune.user_anchor_radius] table key
+        // (renamed to anchor_radius in the assistant-message-filter-fix task).
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[auto_prune.user_anchor_radius]
+enabled = true
+radius = 42"#,
+        )
+        .expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then the values populate the renamed anchor_radius field,
+        // proving the #[serde(alias = "user_anchor_radius")] on AutoPruneConfig works.
+        assert!(
+            prefs.auto_prune.anchor_radius.enabled,
+            "legacy user_anchor_radius table should map to anchor_radius",
+        );
+        assert_eq!(
+            prefs.auto_prune.anchor_radius.radius,
+            42,
+            "legacy radius value should round-trip",
+        );
+    }
 }
