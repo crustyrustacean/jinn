@@ -25,7 +25,7 @@ use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{
-    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId,
+    ChatEntry, ChatEntryId, ChatEntryKind, ChangeSource, ContextOverride, PinPosition, PromptStrategyId,
     SessionId,
 };
 
@@ -505,7 +505,12 @@ impl ChatSessionState {
     pub fn mark_entries_ignored(&mut self, indices: &[usize]) {
         for &i in indices {
             if i < self.core.history.len() {
-                self.core.history[i].context_override = ContextOverride::ForcedExclude;
+                self.core.history[i].apply_context_override(
+                    ContextOverride::ForcedExclude,
+                    ChangeSource::Internal {
+                        label: "mark_entries_ignored".into(),
+                    },
+                );
             }
         }
     }
@@ -527,7 +532,7 @@ impl ChatSessionState {
                 }
             };
             if let Some(entry) = self.core.history.get_mut(hist_idx) {
-                entry.context_override = match entry.context_override {
+                let new_value = match entry.context_override() {
                     ContextOverride::Default => {
                         if entry.kind.is_included_by_default() {
                             ContextOverride::ForcedExclude
@@ -539,6 +544,7 @@ impl ChatSessionState {
                         ContextOverride::Default
                     }
                 };
+                entry.apply_context_override(new_value, ChangeSource::User);
             }
         }
     }
@@ -559,7 +565,7 @@ impl ChatSessionState {
                 }
             };
             if let Some(entry) = self.core.history.get_mut(hist_idx) {
-                entry.context_override = override_state;
+                entry.apply_context_override(override_state, ChangeSource::User);
             }
         }
     }
@@ -2375,7 +2381,7 @@ impl ChatSessionState {
     ///
     /// Uses `ContextOverride::ForcedExclude` rather than removing entries,
     /// preserving them for display in the UI.
-    pub fn force_exclude_dangling_tool_calls(&mut self) {
+    pub fn force_exclude_dangling_tool_calls(&mut self) -> Vec<ChatEntryId> {
         // Collect tool_call_ids that have matching ToolResult entries.
         let result_ids: Vec<String> = self
             .core
@@ -2404,10 +2410,21 @@ impl ChatSessionState {
             }
         }
 
-        // Mark entries as ForcedExclude.
+        // Mark entries as ForcedExclude and collect the ids of those that actually changed.
+        let mut changed = Vec::new();
         for idx in indices_to_exclude {
-            self.core.history[idx].context_override = ContextOverride::ForcedExclude;
+            let prev = self.core.history[idx].context_override();
+            if prev != ContextOverride::ForcedExclude {
+                self.core.history[idx].apply_context_override(
+                    ContextOverride::ForcedExclude,
+                    ChangeSource::Internal {
+                        label: "dangling_tool_call_sweep".into(),
+                    },
+                );
+                changed.push(self.core.history[idx].id.clone());
+            }
         }
+        changed
     }
 
     /// Disable the tool loop for this session's current turn.
@@ -2467,22 +2484,23 @@ impl ChatSessionState {
     pub fn apply_mutations(
         &mut self,
         batch: Vec<crate::feat::session::history_mutation::HistoryMutation>,
-    ) {
+    ) -> Vec<ChatEntryId> {
         use crate::feat::session::history_mutation::HistoryMutation;
+        let mut changed = Vec::new();
 
         for mutation in batch {
             match mutation {
-                HistoryMutation::SetContextOverride { entry_id, value } => {
+                HistoryMutation::SetContextOverride { entry_id, value, source } => {
                     if let Some(entry) = self.core.history.iter_mut().find(|e| e.id == entry_id) {
-                        // Protect user's explicit force-include from auto-pruner
-                        // exclusion. Workers may set ForcedExclude, but a user's
-                        // ForcedInclude takes precedence.
-                        if entry.context_override == ContextOverride::ForcedInclude
+                        if entry.context_override() == ContextOverride::ForcedInclude
                             && value == ContextOverride::ForcedExclude
                         {
                             continue;
                         }
-                        entry.context_override = value;
+                        let was_changed = entry.apply_context_override(value, source);
+                        if was_changed {
+                            changed.push(entry_id);
+                        }
                     }
                 }
                 HistoryMutation::InsertEntry {
@@ -2506,18 +2524,22 @@ impl ChatSessionState {
                 }
             }
         }
+        changed
     }
 
     /// Drain all pending mutation batches and apply them.
     ///
-    /// Returns the number of batches applied.
-    pub fn drain_and_apply_pending_mutations(&mut self) -> usize {
+    /// Returns the number of batches applied and the entry IDs whose
+    /// `context_override` actually changed value during this drain.
+    pub fn drain_and_apply_pending_mutations(&mut self) -> (usize, Vec<ChatEntryId>) {
         let batches = self.drain_pending_mutations();
         let count = batches.len();
+        let mut changed = Vec::new();
         for batch in batches {
-            self.apply_mutations(batch);
+            let mut batch_changed = self.apply_mutations(batch);
+            changed.append(&mut batch_changed);
         }
-        count
+        (count, changed)
     }
 }
 
