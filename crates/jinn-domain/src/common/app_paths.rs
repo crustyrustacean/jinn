@@ -26,6 +26,11 @@ pub struct AppPaths {
     data_dir: PathBuf,
     /// `~/.cache/jinn` - model_cache.json
     cache_dir: PathBuf,
+    /// `~/.local/state/jinn` - jinn.log
+    ///
+    /// Falls back to `data_dir` on platforms where `dirs::state_dir()` returns
+    /// `None` (e.g. macOS, Windows).
+    state_dir: PathBuf,
     /// `~/` - home directory (skills live at `~/.agents/skills`)
     home_dir: PathBuf,
     /// `/usr/share/jinn` - system-wide defaults (themes, personas, prompts).
@@ -40,6 +45,9 @@ impl Default for AppPaths {
             config_dir: dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")),
             data_dir: dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")),
             cache_dir: dirs::cache_dir().unwrap_or_else(|| PathBuf::from(".")),
+            state_dir: dirs::state_dir()
+                .or_else(dirs::data_dir)
+                .unwrap_or_else(|| PathBuf::from(".")),
             home_dir: dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")),
             system_data_dir: PathBuf::from("/usr/share/jinn"),
         }
@@ -57,6 +65,7 @@ impl AppPaths {
             config_dir: root.join("config"),
             data_dir: root.join("data"),
             cache_dir: root.join("cache"),
+            state_dir: root.join("state"),
             home_dir: root.to_path_buf(),
             system_data_dir: root.join("share"),
         }
@@ -100,6 +109,14 @@ impl AppPaths {
     #[must_use]
     pub fn config_path(&self) -> PathBuf {
         self.config_dir.join(APP_NAME).join("providers.toml")
+    }
+
+    /// Log file path (`~/.local/state/jinn/jinn.log` on Linux).
+    #[must_use]
+    pub fn log_path(&self) -> PathBuf {
+        self.state_dir
+            .join(APP_NAME)
+            .join(format!("{APP_NAME}.log"))
     }
 
     /// Themes directory (`~/.config/jinn/themes`).
@@ -401,5 +418,30 @@ mod tests {
 
         // Then the system data dir is root/share.
         assert_eq!(paths.system_data_dir(), root.path().join("share"));
+    }
+
+    #[rstest::rstest]
+    fn log_path_under_state_dir_in_new_in() {
+        // Given an AppPaths rooted in a temp dir.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let paths = AppPaths::new_in(root.path());
+
+        // Then log_path is root/state/jinn/jinn.log.
+        assert_eq!(
+            paths.log_path(),
+            root.path().join("state").join("jinn").join("jinn.log")
+        );
+    }
+
+    #[rstest::rstest]
+    fn log_path_filename_is_app_name_dot_log() {
+        // Given an AppPaths.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let paths = AppPaths::new_in(root.path());
+
+        // Then the filename component is jinn.log.
+        let log_path = paths.log_path();
+        let filename = log_path.file_name().and_then(|s| s.to_str());
+        assert_eq!(filename, Some("jinn.log"));
     }
 }
