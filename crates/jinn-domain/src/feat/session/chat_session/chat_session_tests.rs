@@ -371,7 +371,8 @@ fn drain_returns_all_in_order() {
         .into_iter()
         .map(|item| match item {
             crate::feat::session::queue_item::QueueItem::UserMessage(e) => e,
-            crate::feat::session::queue_item::QueueItem::ToolContinuation => {
+            crate::feat::session::queue_item::QueueItem::ToolContinuation
+            | crate::feat::session::queue_item::QueueItem::ResumeTurn => {
                 panic!("expected UserMessage")
             }
         })

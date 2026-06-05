@@ -14,4 +14,9 @@ pub enum QueueItem {
     UserMessage(ChatEntry),
     /// Continue after a tool batch - re-assemble prompt with updated history.
     ToolContinuation,
+    /// Manually resume a turn (e.g. user pressed `c` after an error or after
+    /// restarting the app). Re-assembles current history and re-sends to the
+    /// provider. Adds no `User` entry; the queue actor pushes a `System`
+    /// marker for the UI.
+    ResumeTurn,
 }

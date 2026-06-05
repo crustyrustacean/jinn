@@ -50,7 +50,8 @@ impl UiElement for QueueDisplayElement {
                         Style::default().fg(state.frontend.theme.muted_text),
                     )))
                 }
-                crate::feat::session::queue_item::QueueItem::ToolContinuation => None,
+                crate::feat::session::queue_item::QueueItem::ToolContinuation
+                | crate::feat::session::queue_item::QueueItem::ResumeTurn => None,
             })
             .collect();
 
