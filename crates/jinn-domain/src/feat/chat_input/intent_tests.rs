@@ -1617,3 +1617,66 @@ fn slash_autocomplete_populates_matches_from_slash_commands() {
         "compute_slash_matches should return at least one slash command"
     );
 }
+
+// ---------- CtrlClear on the chat-input scope (AC6 coverage) ----------
+
+#[rstest::rstest]
+fn ctrl_clear_input_empties_chat_input_via_handler() {
+    // Given a state in Input scope with text in the buffer.
+    use crate::common::app_state::FocusScope;
+    use crate::feat::intent::handler::IntentHandler;
+    use crate::protocol::Intent;
+
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::Input);
+    let _ = crate::feat::chat_input::intent::handle_insert_char('h', &mut state);
+    let _ = crate::feat::chat_input::intent::handle_insert_char('i', &mut state);
+    assert!(!state.active_chat_input().is_empty());
+    assert_eq!(state.active_chat_input().cursor_pos(), 2);
+
+    // When handling CtrlClear via the IntentHandler.
+    let result = IntentHandler::handle(&Intent::CtrlClear, &mut state);
+
+    // Then the chat input is cleared and scope remains Input.
+    assert!(state.active_chat_input().is_empty(), "input buffer cleared");
+    assert_eq!(
+        state.active_chat_input().cursor_pos(),
+        0,
+        "cursor reset to 0"
+    );
+    assert!(result.commands.is_empty(), "no commands emitted");
+    assert_eq!(
+        state.frontend.scope_stack.current(),
+        &FocusScope::Input,
+        "scope remains Input (no quit, no escape)"
+    );
+}
+
+#[rstest::rstest]
+fn ctrl_clear_input_empty_is_noop_via_handler() {
+    // Given a state in Input scope with empty buffer.
+    use crate::common::app_state::FocusScope;
+    use crate::feat::intent::handler::IntentHandler;
+    use crate::protocol::Intent;
+
+    let mut state = AppState::default();
+    state.frontend.scope_stack.push(FocusScope::Input);
+    assert!(state.active_chat_input().is_empty());
+
+    // When handling CtrlClear via the IntentHandler.
+    let result = IntentHandler::handle(&Intent::CtrlClear, &mut state);
+
+    // Then nothing changes: no scope change, no commands, buffer still empty.
+    assert!(state.active_chat_input().is_empty(), "buffer still empty");
+    assert_eq!(
+        state.active_chat_input().cursor_pos(),
+        0,
+        "cursor still 0"
+    );
+    assert!(result.commands.is_empty(), "no commands emitted");
+    assert_eq!(
+        state.frontend.scope_stack.current(),
+        &FocusScope::Input,
+        "scope remains Input"
+    );
+}
