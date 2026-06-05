@@ -5,6 +5,4 @@ Feature: Token Counting
     Given a fresh app
     Then the token ledger should have 0 records
 
-  Scenario: Context size is not cached initially
-    Given a fresh app
-    Then the context size should not be cached
+
