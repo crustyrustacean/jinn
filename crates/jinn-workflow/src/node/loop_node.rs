@@ -868,6 +868,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[expect(clippy::too_many_lines, reason = "integration test exhaustively verifies iteration feedback injection")]
     async fn loop_feedback_injects_into_next_iteration() {
         // Track what the receiver node gets each iteration.
         let received_inputs: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));

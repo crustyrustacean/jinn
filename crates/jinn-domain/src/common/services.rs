@@ -6,6 +6,8 @@
 
 use std::sync::Arc;
 
+use derive_more::Debug;
+
 use crate::feat::preferences_actor::{
     InMemoryUserPreferencesStorage, UserPreferencesStorageService,
 };
@@ -38,9 +40,9 @@ pub use actor_channel::ActorChannelService;
 /// to get compiler-verified completeness.
 ///
 /// Tests can use [`Services::new()`] which provides all-fake defaults,
-/// or [`test_services::TestServices::builder()`] to customize specific services.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Services {
+
     /// Application filesystem paths (configured once at init).
     pub paths: crate::common::app_paths::AppPaths,
     /// Async runtime handle for spawning background tasks.
@@ -63,6 +65,14 @@ pub struct Services {
     pub plugins: crate::feat::workflow::PluginFireService,
     /// Plugin system sync handle (blocking hook calls from actors).
     pub plugin_sync: crate::feat::workflow::PluginSyncCallService,
+    /// Test-only owned temp directory. `None` in production.
+    ///
+    /// Held here so the dir outlives the [`AppPaths`] that points at it
+    /// and is cleaned up when the last `Services` clone is dropped.
+    /// Production code passes `None` because [`AppPaths::default`] resolves
+    /// real user dirs.
+    #[debug(skip)]
+    pub tempdir: Option<Arc<tempfile::TempDir>>,
 }
 
 impl Default for Services {
@@ -75,7 +85,8 @@ impl Services {
     /// Creates a new `Services` with all fake/noop implementations.
     ///
     /// Suitable for unit tests that need a `Services` but don't test
-    /// specific service behavior. Leaks a tokio runtime - acceptable for tests.
+    /// specific behavior. Shares a single process-wide tokio runtime
+    /// across all tests to avoid FD exhaustion under parallel execution.
     ///
     /// # Panics
     ///
@@ -86,12 +97,9 @@ impl Services {
         reason = "test-only defaults, panics are acceptable"
     )]
     pub fn new() -> Self {
-        let rt = Box::leak(Box::new(
-            tokio::runtime::Runtime::new().expect("test runtime"),
-        ));
-        let handle = rt.handle().clone();
+        let handle = test_services::shared_test_handle();
 
-        let temp_dir = Box::leak(Box::new(tempfile::TempDir::new().expect("test temp dir")));
+        let tempdir = Arc::new(tempfile::TempDir::new().expect("test temp dir"));
 
         // Keep a live drainer so the sender doesn't return ReceiveClosed.
         // Without this, send_command silently fails in tests.
@@ -101,7 +109,7 @@ impl Services {
             while rx.recv().await.is_ok() {}
         });
         Self {
-            paths: crate::common::app_paths::AppPaths::new_in(temp_dir.path()),
+            paths: crate::common::app_paths::AppPaths::new_in(tempdir.path()),
             handle,
             actor_channel: ActorChannelService::new(actor_tx),
             llm_service: LlmServiceFactoryService::new(Arc::new(
@@ -129,6 +137,7 @@ impl Services {
                 NoopPluginSyncCall,
             )
                 as std::sync::Arc<dyn PluginSyncCall>),
+            tempdir: Some(tempdir),
         }
     }
 }

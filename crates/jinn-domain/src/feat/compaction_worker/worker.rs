@@ -221,15 +221,14 @@ impl CompactionWorker {
         // snapshot contains the compaction summary entry. If found, the
         // mutations were applied — clear the flag and proceed. If not found,
         // the LLM call or mutation application is still pending — skip.
-        if self.compaction_in_progress.load(Ordering::SeqCst) {
-            if !self.check_compaction_applied(history) {
-                tracing::info!(
-                    session_id = %session_id,
-                    "auto-compaction in flight, skipping snapshot"
-                );
-                return vec![];
-            }
-            // Compaction was applied. Fall through to normal evaluation.
+        if self.compaction_in_progress.load(Ordering::SeqCst)
+            && !self.check_compaction_applied(history)
+        {
+            tracing::info!(
+                session_id = %session_id,
+                "auto-compaction in flight, skipping snapshot"
+            );
+            return vec![];
         }
 
         // Load preferences from service (outside state lock).
@@ -335,7 +334,7 @@ impl CompactionWorker {
     ///
     /// `pub(crate)` for testing - the real entry points are [`evaluate`] (trait)
     /// and [`evaluate_for_session`] (trigger-based).
-    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
     pub(crate) async fn evaluate_with_config(
         &self,
         history: &[ChatEntry],

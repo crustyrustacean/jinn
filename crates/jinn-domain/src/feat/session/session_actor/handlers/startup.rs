@@ -367,57 +367,58 @@ mod tests {
             session.is_some(),
             "session with attached workflow should be loaded after startup"
         );
-
-        #[tokio::test]
-        async fn startup_resets_running_workflows_to_ready() {
-            let mut store_session = ChatSessionState::new();
-            let aw = crate::feat::workflow::attached_workflow::AttachedWorkflow::new(
-                crate::feat::workflow::attached_workflow::WorkflowConfig {
-                    script: "test".to_owned(),
-                    data: serde_json::json!({}),
-                },
-                crate::feat::workflow::attached_workflow::WorkflowTrigger::Manual,
-            );
-            let wf_id = aw.id.clone();
-            // Force into Running state to simulate crash.
-            store_session.core.attached_workflows.push(
-                crate::feat::workflow::attached_workflow::AttachedWorkflow {
-                    state: crate::feat::workflow::attached_workflow::AttachedWorkflowState::Running,
-                    ..aw
-                },
-            );
-            let session_id = store_session.session_id().clone();
-            let (actor, _store) = test_actor_with_store(vec![store_session]);
-
-            let (_sink, ctx) = test_context();
-
-            // When handling EnvironmentLoaded (startup).
-            actor
-                .on_environment_loaded(
-                    &crate::feat::provider_infra::ProvidersConfig {
-                        providers: vec![],
-                        aliases: vec![],
-                        default_provider: None,
-                    },
-                    &ctx,
-                )
-                .await;
-
-            // Then the workflow was reset from Running to Ready.
-            let state = actor.state.read();
-            let session = state
-                .session
-                .get(&session_id)
-                .expect("session should be loaded");
-            let aw = &session.core.attached_workflows[0];
-            assert!(
-                matches!(
-                    aw.state,
-                    crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready
-                ),
-                "Running workflow should be reset to Ready on startup, got {:?}",
-                aw.state
-            );
-        }
     }
+
+    #[tokio::test]
+    async fn startup_resets_running_workflows_to_ready() {
+        let mut store_session = ChatSessionState::new();
+        let aw = crate::feat::workflow::attached_workflow::AttachedWorkflow::new(
+            crate::feat::workflow::attached_workflow::WorkflowConfig {
+                script: "test".to_owned(),
+                data: serde_json::json!({}),
+            },
+            crate::feat::workflow::attached_workflow::WorkflowTrigger::Manual,
+        );
+        let _wf_id = aw.id.clone();
+        // Force into Running state to simulate crash.
+        store_session.core.attached_workflows.push(
+            crate::feat::workflow::attached_workflow::AttachedWorkflow {
+                state: crate::feat::workflow::attached_workflow::AttachedWorkflowState::Running,
+                ..aw
+            },
+        );
+        let session_id = store_session.session_id().clone();
+        let (actor, _store) = test_actor_with_store(vec![store_session]);
+
+        let (_sink, ctx) = test_context();
+
+        // When handling EnvironmentLoaded (startup).
+        actor
+            .on_environment_loaded(
+                &crate::feat::provider_infra::ProvidersConfig {
+                    providers: vec![],
+                    aliases: vec![],
+                    default_provider: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the workflow was reset from Running to Ready.
+        let state = actor.state.read();
+        let session = state
+            .session
+            .get(&session_id)
+            .expect("session should be loaded");
+        let aw = &session.core.attached_workflows[0];
+        assert!(
+            matches!(
+                aw.state,
+                crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready
+            ),
+            "Running workflow should be reset to Ready on startup, got {:?}",
+            aw.state
+        );
+    }
+
 }

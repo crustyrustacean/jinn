@@ -372,6 +372,7 @@ fn tree_prefix_uses_muted_text_color() {
 
 // ---------------------------------------------------------------------------
 
+#[test]
 fn non_judge_child_at_depth_1_uses_grapheme_count_for_tree() {
     // Given a non-judge child at depth 1 with a long title.
     // Tree prefix "├─ " = 3 graphemes (but 7 bytes).
