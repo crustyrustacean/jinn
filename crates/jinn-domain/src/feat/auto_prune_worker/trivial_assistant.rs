@@ -71,7 +71,7 @@ use crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache;
 use crate::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCounter};
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::TrivialAssistantAutoPruneConfig;
-use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
+use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
 
@@ -134,6 +134,7 @@ fn build_trivial_assistant_mutations(
     session_id: &SessionId,
     token_cache: &HistoryWorkerChatEntryTokenCache,
     counter: &TiktokenCounter,
+    worker_name: &str,
 ) -> Vec<HistoryMutation> {
     let max_tokens = max_tokens.max(1);
 
@@ -181,11 +182,14 @@ fn build_trivial_assistant_mutations(
                 tokens,
                 max_tokens,
                 keep_window_start,
-                "trivial_assistant: excluding old trivial assistant entry"
+                "trivial_assistant: excluding old trivial assistant entry",
             );
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: entry.id.clone(),
                 value: ContextOverride::ForcedExclude,
+                source: ChangeSource::Worker {
+                    name: worker_name.to_owned(),
+                },
             });
         }
     }
@@ -212,6 +216,7 @@ impl HistoryWorker for TrivialAssistantAutoPruneWorker {
             session_id,
             &self.token_cache,
             &self.counter,
+            self.name(),
         );
         tracing::debug!(
             mutations = mutations.len(),
@@ -289,6 +294,7 @@ mod tests {
             if let HistoryMutation::SetContextOverride {
                 entry_id,
                 value: ContextOverride::ForcedExclude,
+                ..
             } = m
             {
                 out.insert(entry_id.clone());
@@ -460,7 +466,7 @@ mod tests {
         let w = worker(100, 80);
         let mut history = Vec::new();
         let mut asst = trivial_assistant("done");
-        asst.context_override = ContextOverride::ForcedExclude;
+        asst.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
         let asst_id = asst.id.clone();
         history.push(asst);
         history.extend(users(100));
@@ -635,7 +641,7 @@ mod tests {
         // Reset context_override so the idempotency skip doesn't hide the result.
         let mut history2 = (*history).to_vec();
         for e in &mut history2 {
-            e.context_override = ContextOverride::Default;
+            e.apply_context_override(ContextOverride::Default, ChangeSource::Internal { label: "test".into() });
         }
 
         let second = rt.block_on(async { w.evaluate(&session_id, history2.into()).await });

@@ -205,6 +205,7 @@ mod tests {
                 },
                 pin_position: None,
                 context_override: ContextOverride::Default,
+            context_history: Vec::new(),
             },
             ChatEntry::user("world"),
         ];

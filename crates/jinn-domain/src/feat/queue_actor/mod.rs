@@ -34,7 +34,7 @@ use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::session::queue_item::QueueItem;
 use crate::feat::session_lifecycle::protocol::command::PersistSession;
-use crate::protocol::{ChatEntry, Command, Event};
+use crate::protocol::{Command, Event};
 
 /// The queue actor.
 ///
