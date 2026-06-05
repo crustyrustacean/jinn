@@ -8,6 +8,8 @@ use crate::feat::provider::protocol::event::ModelsRefreshed;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
+
+
 use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::{ChatEntry, PickerKind};
 
@@ -168,7 +170,9 @@ fn build_models_refresh_table(event: &ModelsRefreshed) -> String {
 fn build_skills_refresh_message(skills: &[crate::feat::skills::Skill]) -> String {
     let mut msg = format!("Skills refreshed: {} found\n\n", skills.len());
     for skill in skills {
-        msg.push_str(&format!("- {}\n", skill.name));
+        msg.push_str("- ");
+        msg.push_str(&skill.name);
+        msg.push('\n');
     }
     msg
 }

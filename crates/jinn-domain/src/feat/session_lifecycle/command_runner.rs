@@ -135,12 +135,25 @@ pub async fn run_teardown_command(
 /// Shared child handle that can be killed from outside the spawned task.
 pub type SharedChild = std::sync::Arc<tokio::sync::Mutex<Option<tokio::process::Child>>>;
 
+/// Result type returned by [`spawn_setup_command`].
+pub type SpawnSetupResult = Result<
+    (SharedChild, tokio::task::JoinHandle<Result<PathBuf, Report<LifecycleCommandError>>>),
+    Report<LifecycleCommandError>,
+>;
+
+/// Result type returned by [`spawn_teardown_command`].
+pub type SpawnTeardownResult = Result<
+    (SharedChild, tokio::task::JoinHandle<Result<(), Report<LifecycleCommandError>>>),
+    Report<LifecycleCommandError>,
+>;
+
+
 /// Kill the process inside a [`SharedChild`], if it is still present.
 pub fn kill_shared_child(child_arc: &SharedChild) {
     // blocking_lock is OK here because this is called from a synchronous handler.
     let mut guard = child_arc.blocking_lock();
     if let Some(mut child) = guard.take() {
-        let _ = child.kill();
+        let _ = child.start_kill();
     }
 }
 
@@ -159,13 +172,7 @@ pub fn kill_shared_child(child_arc: &SharedChild) {
 pub fn spawn_setup_command(
     command: &str,
     shell: &str,
-) -> Result<
-    (
-        SharedChild,
-        tokio::task::JoinHandle<Result<PathBuf, Report<LifecycleCommandError>>>,
-    ),
-    Report<LifecycleCommandError>,
-> {
+) -> SpawnSetupResult {
     use error_stack::ResultExt as _;
 
     let mut child = tokio::process::Command::new(shell)
@@ -263,16 +270,14 @@ pub fn spawn_setup_command(
 /// Spawns a teardown command and returns a shared child handle and a joinable task.
 ///
 /// Same pattern as [`spawn_setup_command`] but only checks the exit code.
+///
+/// # Errors
+///
+/// Returns an error if the shell command fails to spawn or canonicalize the working directory.
 pub fn spawn_teardown_command(
     command: &str,
     shell: &str,
-) -> Result<
-    (
-        SharedChild,
-        tokio::task::JoinHandle<Result<(), Report<LifecycleCommandError>>>,
-    ),
-    Report<LifecycleCommandError>,
-> {
+) -> SpawnTeardownResult {
     use error_stack::ResultExt as _;
 
     let mut child = tokio::process::Command::new(shell)
