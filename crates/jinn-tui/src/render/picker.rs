@@ -28,6 +28,9 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) 
         Some(PickerKind::Skill) => {
             jinn_domain::feat::picker::render::render_skill_picker(frame, area, ctx);
         }
+        Some(PickerKind::TaskList) => {
+            jinn_domain::feat::picker::render::render_task_list_picker(frame, area, ctx);
+        }
         None => {}
     }
 }

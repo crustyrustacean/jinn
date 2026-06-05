@@ -62,6 +62,7 @@ fn test_app() -> TuiApp {
 #[case::picker_provider(jinn_domain::FocusScope::Picker { kind: jinn_domain::PickerKind::Provider }, Scope::PickerProvider)]
 #[case::sidebar_resize(jinn_domain::FocusScope::SidebarResize, Scope::SidebarResize)]
 #[case::picker_compaction_model(jinn_domain::FocusScope::Picker { kind: jinn_domain::PickerKind::CompactionModel }, Scope::PickerCompactionModel)]
+#[case::picker_task_list(jinn_domain::FocusScope::Picker { kind: jinn_domain::PickerKind::TaskList }, Scope::PickerTaskList)]
 fn scope_for_focus_maps_correctly(#[case] focus: jinn_domain::FocusScope, #[case] expected: Scope) {
     // Given a focus scope.
     // When mapping to a keymap scope.
@@ -257,3 +258,72 @@ fn mouse_events_not_handled_when_mouse_selection_disabled() {
     // Then the selection remains Idle (event was not handled).
     assert_eq!(app.selection, SelectionState::Idle);
 }
+
+// -----------------------------------------------------------------------------
+// Keymap tests for the task-list zoom picker (sidebar `s` binding)
+// -----------------------------------------------------------------------------
+//
+// These tests use a bare `WhichKeyInstance` rather than a full `TuiApp` because
+// they only verify that the keymap resolves the right `Intent`. They don't need
+// the actor host, sidebar, or selection state.
+
+fn keymap_at(scope: Scope) -> WhichKeyInstance {
+    WhichKeyInstance::new(keymap::init(), scope)
+}
+
+fn key<'a>(notation: &'a str) -> jinn_domain::KeyEvent {
+    jinn_domain::KeyEvent::parse_notation(notation)
+        .expect("notation should parse")
+}
+
+#[rstest::rstest]
+fn s_in_sidebar_task_list_opens_task_list_picker() {
+    // Given the keymap rooted at SidebarTaskList.
+    let mut wk = keymap_at(Scope::SidebarTaskList);
+
+    // When pressing `s`.
+    let intent = wk.handle_key(key("s"));
+
+    // Then it resolves to OpenPicker { kind: TaskList } ("search task list").
+    assert_eq!(intent.map(|i| i.to_string()).as_deref(), Some("search task list"));
+}
+
+
+#[rstest::rstest]
+#[case::normal(Scope::Normal)]
+#[case::input(Scope::Input)]
+#[case::sidebar_sessions(Scope::SidebarSessions)]
+#[case::picker_session(Scope::PickerSession)]
+fn s_outside_sidebar_task_list_does_not_open_task_list_picker(#[case] scope: Scope) {
+    // Given the keymap rooted at a non-SidebarTaskList scope.
+    let mut wk = keymap_at(scope);
+
+    // When pressing `s`.
+    let intent = wk.handle_key(key("s"));
+
+    // Then it does NOT resolve to the TaskList open intent. It may resolve to
+    // some other intent (e.g. Input's catch-all `InsertChar('s')`) or None,
+    // but never to "search task list".
+    assert_ne!(
+        intent.map(|i| i.to_string()).as_deref(),
+        Some("search task list")
+    );
+}
+
+#[rstest::rstest]
+fn esc_in_picker_task_list_returns_to_normal_mode() {
+    // Given the keymap rooted at PickerTaskList.
+    let mut wk = keymap_at(Scope::PickerTaskList);
+
+    // When pressing `<esc>`.
+    let intent = wk.handle_key(key("escape"));
+
+    // Then it resolves to EnterNormalMode (the existing handler closes the picker
+    // and restores the prior SidebarTaskList scope).
+    assert_eq!(
+        intent.map(|i| i.to_string()).as_deref(),
+        Some("enter normal mode")
+    );
+}
+
+
