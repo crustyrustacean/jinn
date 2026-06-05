@@ -190,8 +190,7 @@ impl Actor for ToolOrchestratorActor {
         let bash_config = deps
             .services
             .user_preferences_storage
-            .load()
-            .expect("preferences")
+            .read()
             .bash
             .clone();
 
