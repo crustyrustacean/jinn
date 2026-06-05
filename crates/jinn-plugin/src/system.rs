@@ -90,14 +90,27 @@ impl PluginSystem {
         let plugins = discover_plugins(user_dir, system_dir);
         tracing::info!(count = plugins.len(), "discovered plugins");
 
+        // Partition: globals load at startup into both sync + async states.
+        // Attachable plugins are loaded on-demand into per-session async states
+        // via `AsyncPluginHandle::create_session_registry`.
+        let global_plugins: Vec<PluginMeta> = plugins
+            .iter()
+            .filter(|m| m.kind == crate::loader::PluginKind::Global)
+            .cloned()
+            .collect();
+
         // Load into sync Lua state.
         let sync_lua = mlua::Lua::new();
-        let sync_hooks = load_all(&sync_lua, &plugins);
+        let sync_hooks = load_all(&sync_lua, &global_plugins);
 
         // Async channel: async fire → background thread.
         let (job_tx, job_rx) = kanal::unbounded_async::<PluginJob>();
 
+        // Pass *all* plugins to the async thread: globals are preloaded into
+        // the shared Lua state, attachable metas are kept for on-demand
+        // per-session loading via `PluginJob::LoadSession`.
         let async_plugins = plugins.clone();
+        let async_global_plugins = global_plugins.clone();
         let async_plugin_data = plugin_data.clone();
         let async_emit_tx = emit_tx.clone_async();
         let async_request_handler = request_handler.clone();
@@ -106,11 +119,12 @@ impl PluginSystem {
             .name("plugin-async".to_owned())
             .spawn(move || {
                 let async_lua = mlua::Lua::new();
-                let async_hooks = load_all(&async_lua, &async_plugins);
+                let async_hooks = load_all(&async_lua, &async_global_plugins);
                 run_async_thread(
                     job_rx,
                     async_lua,
                     async_hooks,
+                    async_plugins,
                     async_plugin_data,
                     async_emit_tx,
                     async_request_handler,

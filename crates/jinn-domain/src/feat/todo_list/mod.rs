@@ -512,16 +512,15 @@ impl TaskList {
             .tasks
             .iter_mut()
             .find(|t| &t.id == source_task_id);
-        match source_task {
-            Some(t) => t.status = TaskStatus::Postponed,
-            None => {
-                tracing::error!(
-                    source_task_id = %source_task_id,
-                    src_phase_index = src_pi,
-                    "postpone_task: source task missing on second lookup; returning TaskNotFound"
-                );
-                return Err(TaskListError::TaskNotFound(source_task_id.clone()));
-            }
+        if let Some(t) = source_task {
+            t.status = TaskStatus::Postponed
+        } else {
+            tracing::error!(
+                source_task_id = %source_task_id,
+                src_phase_index = src_pi,
+                "postpone_task: source task missing on second lookup; returning TaskNotFound"
+            );
+            return Err(TaskListError::TaskNotFound(source_task_id.clone()));
         }
 
         // Generate new task ID.
@@ -626,16 +625,15 @@ impl TaskList {
             .tasks
             .iter_mut()
             .find(|t| &t.id == source_task_id);
-        match source_task {
-            Some(t) => t.status = TaskStatus::Postponed,
-            None => {
-                tracing::error!(
-                    source_task_id = %source_task_id,
-                    src_phase_index = src_pi,
-                    "postpone_to_phase: source task missing on second lookup; returning TaskNotFound"
-                );
-                return Err(TaskListError::TaskNotFound(source_task_id.clone()));
-            }
+        if let Some(t) = source_task {
+            t.status = TaskStatus::Postponed
+        } else {
+            tracing::error!(
+                source_task_id = %source_task_id,
+                src_phase_index = src_pi,
+                "postpone_to_phase: source task missing on second lookup; returning TaskNotFound"
+            );
+            return Err(TaskListError::TaskNotFound(source_task_id.clone()));
         }
 
         // Generate new task ID.

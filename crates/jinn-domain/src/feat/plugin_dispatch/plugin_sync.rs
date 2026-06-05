@@ -8,6 +8,8 @@ use error_stack::Report;
 use serde_json::Value;
 use wherror::Error;
 
+use crate::feat::plugin_system::SessionRegistryId;
+
 /// Error raised by [`PluginSyncCall`] implementations.
 #[derive(Debug, Error)]
 #[error(debug)]
@@ -24,13 +26,25 @@ pub struct PluginSyncCallError;
 /// [`PluginFire::fire_async_collect_json`](super::PluginFire::fire_async_collect_json)
 /// instead.
 pub trait PluginSyncCall: Send + Sync {
-    /// Call all hooks for the given name, collecting non-nil return values.
+    /// Call all global hooks for the given name, collecting non-nil return values.
     ///
     /// # Errors
     ///
     /// Returns an error if the plugin thread is dead or a hook errors.
     fn call_hooks_json(
         &self,
+        hook: &str,
+        ctx: &Value,
+    ) -> Result<Vec<Value>, Report<PluginSyncCallError>>;
+
+    /// Call hooks for a session (globals + session's attached), collecting returns.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the plugin thread is dead or a hook errors.
+    fn call_hooks_for_session_json(
+        &self,
+        session: SessionRegistryId,
         hook: &str,
         ctx: &Value,
     ) -> Result<Vec<Value>, Report<PluginSyncCallError>>;
@@ -58,7 +72,7 @@ impl PluginSyncCallService {
         Self { backend }
     }
 
-    /// Call all hooks for the given name, collecting non-nil return values.
+    /// Call all global hooks for the given name, collecting non-nil return values.
     ///
     /// # Errors
     ///
@@ -69,6 +83,20 @@ impl PluginSyncCallService {
         ctx: &Value,
     ) -> Result<Vec<Value>, Report<PluginSyncCallError>> {
         self.backend.call_hooks_json(hook, ctx)
+    }
+
+    /// Call hooks for a session (globals + session's attached), collecting returns.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the plugin thread is dead or a hook errors.
+    pub fn call_hooks_for_session(
+        &self,
+        session: SessionRegistryId,
+        hook: &str,
+        ctx: &Value,
+    ) -> Result<Vec<Value>, Report<PluginSyncCallError>> {
+        self.backend.call_hooks_for_session_json(session, hook, ctx)
     }
 
     /// Returns the backend name for debugging.

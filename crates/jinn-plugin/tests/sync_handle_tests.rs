@@ -145,3 +145,135 @@ fn sync_handle_excludes_nil() {
 
     assert!(results.is_empty());
 }
+
+// ── for_session tests (require both handles) ─────────────────────��──────
+
+fn build_both(
+    dir: &Path,
+) -> (
+    jinn_plugin::AsyncPluginHandle,
+    PluginSyncHandle,
+    Arc<Mutex<Vec<PluginCommand>>>,
+) {
+    let captured: Arc<Mutex<Vec<PluginCommand>>> = Arc::new(Mutex::new(Vec::new()));
+    let captured_clone = captured.clone();
+    let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
+    let (_, async_handle, sync_handle) = PluginSystem::new(
+        dir,
+        Path::new("/nonexistent"),
+        rt.handle().clone(),
+        Arc::new(move |cmd| {
+            captured_clone.lock().expect("lock").push(cmd);
+        }),
+        Arc::new(|_, _| serde_json::Value::Null),
+    );
+    (async_handle, sync_handle, captured)
+}
+
+/// Sync `call_hooks_for_session` requires an async create_session_registry call
+/// to obtain the registry ID. We run that in a block_on inside the test.
+#[test]
+fn sync_call_hooks_for_session_includes_global_and_session_plugins() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin_kind_inner(
+        dir.path(),
+        "global",
+        "g",
+        r#"
+        return {
+            on_validate = function(ctx) return "from-global" end,
+        }
+    "#,
+    );
+    write_plugin_kind_inner(
+        dir.path(),
+        "attachable",
+        "a",
+        r#"
+        return {
+            on_validate = function(ctx) return "from-session" end,
+        }
+    "#,
+    );
+
+    let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("rt")));
+    let (async_handle, sync_handle, _captured) = build_both(dir.path());
+
+    // Create a session registry that includes the attachable plugin.
+    let session_id = rt.block_on(async {
+        async_handle
+            .create_session_registry(vec!["a".to_owned()])
+            .await
+            .expect("create registry")
+    });
+
+    let results: Vec<String> = sync_handle
+        .call_hooks_for_session(
+            Some(session_id),
+            "on_validate",
+            &ValidateCtx {
+                text: String::new(),
+                session_id: "s1".to_owned(),
+            },
+        )
+        .expect("call_hooks_for_session");
+
+    assert!(
+        results.contains(&"from-global".to_owned()),
+        "global: {results:?}"
+    );
+    assert!(
+        results.contains(&"from-session".to_owned()),
+        "session: {results:?}"
+    );
+}
+
+#[test]
+fn sync_call_hooks_for_session_excludes_unattached() {
+    // Attachable plugin exists on disk but not registered. Sync call must not
+    // fire it.
+    let dir = tempfile::tempdir().expect("tempdir");
+    write_plugin_kind_inner(
+        dir.path(),
+        "attachable",
+        "a",
+        r#"
+        return {
+            on_validate = function(ctx) return "leaked" end,
+        }
+    "#,
+    );
+
+    let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("rt")));
+    let (async_handle, sync_handle, _captured) = build_both(dir.path());
+
+    // Empty registry — no attached plugins.
+    let session_id = rt.block_on(async {
+        async_handle
+            .create_session_registry(vec![])
+            .await
+            .expect("create registry")
+    });
+
+    let results: Vec<String> = sync_handle
+        .call_hooks_for_session(
+            Some(session_id),
+            "on_validate",
+            &ValidateCtx {
+                text: String::new(),
+                session_id: "s1".to_owned(),
+            },
+        )
+        .expect("call_hooks_for_session");
+
+    assert!(
+        results.is_empty(),
+        "attachable plugin leaked into empty session"
+    );
+}
+
+fn write_plugin_kind_inner(dir: &Path, kind: &str, name: &str, lua_source: &str) {
+    let plugin_dir = dir.join(kind).join(name);
+    std::fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+    std::fs::write(plugin_dir.join("init.lua"), lua_source).expect("write init.lua");
+}

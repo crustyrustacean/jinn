@@ -1,9 +1,14 @@
-//! Test services builder for unit tests.
-
 use std::sync::{Arc, LazyLock};
 
-use crate::common::services::NoopPluginFire;
-use crate::common::services::NoopPluginSyncCall;
+use async_trait::async_trait;
+use error_stack::Report;
+use tokio::runtime::{Handle, Runtime};
+
+use crate::common::services::{NoopPluginFire, NoopPluginSyncCall, NoopSessionPluginRegistry};
+use crate::feat::plugin_dispatch::{
+    PluginFire, PluginFireService, PluginSyncCall, PluginSyncCallService,
+};
+use crate::feat::plugin_system::{SessionPluginRegistry, SessionPluginRegistryService};
 use crate::feat::preferences_actor::{
     InMemoryUserPreferencesStorage, UserPreferencesStorageService,
 };
@@ -13,14 +18,10 @@ use crate::feat::provider_infra::{
 };
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::{SessionStore, SessionStoreError, SessionStoreService, SessionSummary};
-use crate::feat::workflow::{PluginFire, PluginFireService, PluginSyncCall, PluginSyncCallService};
 use crate::protocol::{AppMsg, SessionId};
-use async_trait::async_trait;
-use error_stack::Report;
-use tokio::runtime::{Handle, Runtime};
 
-use super::actor_channel::ActorChannelService;
 use super::Services;
+use super::actor_channel::ActorChannelService;
 /// Single shared tokio runtime for the entire test binary.
 ///
 /// Initializes exactly once via `LazyLock`. Without this, every
@@ -248,9 +249,11 @@ impl TestServices {
             plugin_sync: PluginSyncCallService::new(
                 Arc::new(NoopPluginSyncCall) as Arc<dyn PluginSyncCall>
             ),
+            session_plugin_registry: SessionPluginRegistryService::new(Arc::new(
+                NoopSessionPluginRegistry,
+            )
+                as Arc<dyn SessionPluginRegistry>),
             tempdir,
         }
     }
 }
-
-

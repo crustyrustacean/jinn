@@ -13,6 +13,7 @@ use serde::de::DeserializeOwned;
 use tokio::sync::oneshot;
 
 use crate::async_handle::{PluginError, PluginJob};
+use crate::session_registry::SessionRegistryId;
 
 /// Handle for calling plugin hooks synchronously from actor threads.
 ///
@@ -27,6 +28,8 @@ pub struct PluginSyncHandle {
 impl PluginSyncHandle {
     /// Call all hooks, collecting return values. Blocks the calling thread.
     ///
+    /// Equivalent to `call_hooks_for_session(None, hook, ctx)`.
+    ///
     /// # Errors
     ///
     /// Returns an error if the plugin thread is dead or a hook errors.
@@ -35,10 +38,25 @@ impl PluginSyncHandle {
         hook: &str,
         ctx: &T,
     ) -> Result<Vec<R>, Report<PluginError>> {
+        self.call_hooks_for_session(None, hook, ctx)
+    }
+
+    /// Call hooks for a specific session's attached plugins + globals.
+    /// Blocks the calling thread.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the plugin thread is dead or a hook errors.
+    pub fn call_hooks_for_session<T: Serialize, R: DeserializeOwned>(
+        &self,
+        target_session: Option<SessionRegistryId>,
+        hook: &str,
+        ctx: &T,
+    ) -> Result<Vec<R>, Report<PluginError>> {
         let ctx_json = serde_json::to_value(ctx)
             .change_context(PluginError)
             .attach("failed to serialize hook ctx")?;
-        let results = self.call_hooks_json(hook, &ctx_json)?;
+        let results = self.call_hooks_json_for_session(target_session, hook, &ctx_json)?;
         results
             .into_iter()
             .map(|v| {
@@ -59,12 +77,27 @@ impl PluginSyncHandle {
         hook: &str,
         ctx_json: &serde_json::Value,
     ) -> Result<Vec<serde_json::Value>, Report<PluginError>> {
+        self.call_hooks_json_for_session(None, hook, ctx_json)
+    }
+
+    /// Call hooks with raw JSON context, optionally scoped to a session.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the plugin thread is dead or a hook errors.
+    pub fn call_hooks_json_for_session(
+        &self,
+        target_session: Option<SessionRegistryId>,
+        hook: &str,
+        ctx_json: &serde_json::Value,
+    ) -> Result<Vec<serde_json::Value>, Report<PluginError>> {
         let (respond_tx, respond_rx) = oneshot::channel();
         self.tx
             .send(PluginJob::SyncCollect {
                 hook: hook.to_owned(),
                 ctx_json: ctx_json.clone(),
                 respond_to: respond_tx,
+                target_session,
             })
             .map_err(|_e| Report::new(PluginError))
             .attach("failed to send SyncCollect job to plugin thread")
@@ -74,5 +107,19 @@ impl PluginSyncHandle {
             .map_err(|_e| Report::new(PluginError))
             .attach("plugin thread dropped oneshot responder")
             .attach(hook.to_owned())?
+    }
+
+    /// Call hooks with raw JSON context for a specific session (trait impl).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the plugin thread is dead or a hook errors.
+    pub fn call_hooks_for_session_json(
+        &self,
+        session: SessionRegistryId,
+        hook: &str,
+        ctx_json: &serde_json::Value,
+    ) -> Result<Vec<serde_json::Value>, Report<PluginError>> {
+        self.call_hooks_json_for_session(Some(session), hook, ctx_json)
     }
 }

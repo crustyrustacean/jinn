@@ -704,8 +704,7 @@ mod tests {
 
         let history: Arc<[ChatEntry]> = history.into();
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let mutations =
-            rt.block_on(async { anchor.evaluate(&session_id, history).await });
+        let mutations = rt.block_on(async { anchor.evaluate(&session_id, history).await });
 
         assert!(
             excluded_ids(&mutations).contains(&target_id),

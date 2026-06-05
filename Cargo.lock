@@ -1917,6 +1917,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+ "uuid",
  "wherror",
 ]
 

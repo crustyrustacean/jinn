@@ -5,7 +5,8 @@
 //! `jinn-domain`, which `jinn-plugin` depends on.
 
 use error_stack::Report;
-use jinn_domain::feat::workflow::{PluginFire, PluginFireError};
+use jinn_domain::feat::plugin_dispatch::{PluginFire, PluginFireError};
+use jinn_domain::feat::plugin_system::SessionRegistryId;
 use serde_json::Value;
 
 use crate::AsyncPluginHandle;
@@ -22,12 +23,34 @@ impl PluginFire for AsyncPluginHandle {
             .map_err(|report| report.change_context(PluginFireError))
     }
 
+    async fn fire_async_for_session_json(
+        &self,
+        session: SessionRegistryId,
+        hook: &str,
+        ctx: &Value,
+    ) -> Result<(), Report<PluginFireError>> {
+        self.fire_async_for_session(Some(session), hook, ctx)
+            .await
+            .map_err(|report| report.change_context(PluginFireError))
+    }
+
     async fn fire_async_collect_json(
         &self,
         hook: &str,
         ctx: &Value,
     ) -> Result<Vec<Value>, Report<PluginFireError>> {
         self.fire_async_collect(hook, ctx)
+            .await
+            .map_err(|report| report.change_context(PluginFireError))
+    }
+
+    async fn fire_async_collect_for_session_json(
+        &self,
+        session: SessionRegistryId,
+        hook: &str,
+        ctx: &Value,
+    ) -> Result<Vec<Value>, Report<PluginFireError>> {
+        self.fire_async_collect_for_session(Some(session), hook, ctx)
             .await
             .map_err(|report| report.change_context(PluginFireError))
     }

@@ -5,7 +5,8 @@
 //! `jinn-domain`, which `jinn-plugin` depends on.
 
 use error_stack::Report;
-use jinn_domain::feat::workflow::{PluginSyncCall, PluginSyncCallError};
+use jinn_domain::feat::plugin_dispatch::{PluginSyncCall, PluginSyncCallError};
+use jinn_domain::feat::plugin_system::SessionRegistryId;
 use serde_json::Value;
 
 use crate::PluginSyncHandle;
@@ -17,6 +18,16 @@ impl PluginSyncCall for PluginSyncHandle {
         ctx: &Value,
     ) -> Result<Vec<Value>, Report<PluginSyncCallError>> {
         self.call_hooks_json(hook, ctx)
+            .map_err(|report| report.change_context(PluginSyncCallError))
+    }
+
+    fn call_hooks_for_session_json(
+        &self,
+        session: SessionRegistryId,
+        hook: &str,
+        ctx: &Value,
+    ) -> Result<Vec<Value>, Report<PluginSyncCallError>> {
+        self.call_hooks_for_session_json(session, hook, ctx)
             .map_err(|report| report.change_context(PluginSyncCallError))
     }
 

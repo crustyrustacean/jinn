@@ -63,14 +63,19 @@ impl TuiWorld {
             user_preferences_storage: jinn_domain::UserPreferencesStorageService::new(Arc::new(
                 jinn_domain::InMemoryUserPreferencesStorage::new(),
             )),
-            plugins: jinn_domain::feat::workflow::PluginFireService::new(Arc::new(
+            plugins: jinn_domain::feat::plugin_dispatch::PluginFireService::new(Arc::new(
                 jinn_domain::NoopPluginFire,
             )
-                as Arc<dyn jinn_domain::feat::workflow::PluginFire>),
-            plugin_sync: jinn_domain::feat::workflow::PluginSyncCallService::new(Arc::new(
+                as Arc<dyn jinn_domain::feat::plugin_dispatch::PluginFire>),
+            plugin_sync: jinn_domain::feat::plugin_dispatch::PluginSyncCallService::new(Arc::new(
                 jinn_domain::NoopPluginSyncCall,
             )
-                as Arc<dyn jinn_domain::feat::workflow::PluginSyncCall>),
+                as Arc<dyn jinn_domain::feat::plugin_dispatch::PluginSyncCall>),
+            session_plugin_registry:
+                jinn_domain::feat::plugin_system::SessionPluginRegistryService::new(Arc::new(
+                    jinn_domain::NoopSessionPluginRegistry,
+                )
+                    as Arc<dyn jinn_domain::feat::plugin_system::SessionPluginRegistry>),
             tempdir: None,
         };
 

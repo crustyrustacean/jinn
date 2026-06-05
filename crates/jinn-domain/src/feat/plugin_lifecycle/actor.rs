@@ -2,7 +2,7 @@
 //!
 //! Subscribes to [`AllActorsSpawned`] and [`SessionCreated`] events.
 //! Fires `on_app_started` and `on_session_created` plugin hooks respectively
-//! via [`PluginFire`](crate::feat::workflow::PluginFire).
+//! via [`PluginFire`](crate::feat::plugin_dispatch::PluginFire).
 
 use crate::common::actor::protocol::event::AllActorsSpawned;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};

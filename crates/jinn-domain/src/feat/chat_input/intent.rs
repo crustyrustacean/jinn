@@ -361,7 +361,7 @@ fn execute_slash_command(
             // Open the workflow picker to select a Lua plugin.
             crate::feat::picker::intent::handle_open_picker(
                 state,
-                crate::protocol::PickerKind::Workflow,
+                crate::protocol::PickerKind::Plugin,
             );
             IntentResult::empty()
         }

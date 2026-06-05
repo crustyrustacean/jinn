@@ -8,9 +8,7 @@
 
 use toml_edit::DocumentMut;
 
-const FIXTURE: &str = include_str!(
-    "../src/feat/provider_infra/default_providers.toml"
-);
+const FIXTURE: &str = include_str!("../src/feat/provider_infra/default_providers.toml");
 
 #[test]
 fn round_trip_preserves_comments_when_patching_one_field() {
@@ -18,7 +16,9 @@ fn round_trip_preserves_comments_when_patching_one_field() {
     let mut doc: DocumentMut = FIXTURE.parse().expect("parse fixture");
 
     // When we mutate a single field: change openai's api_key_env.
-    let providers = doc["providers"].as_array_of_tables_mut().expect("providers");
+    let providers = doc["providers"]
+        .as_array_of_tables_mut()
+        .expect("providers");
     let openai = providers
         .iter_mut()
         .find(|t| t.get("name").and_then(|v| v.as_str()) == Some("openai"))
@@ -57,7 +57,9 @@ fn array_of_tables_can_be_matched_by_key_field() {
     let mut doc: DocumentMut = FIXTURE.parse().expect("parse");
 
     // When we delete a provider by name.
-    let providers = doc["providers"].as_array_of_tables_mut().expect("providers");
+    let providers = doc["providers"]
+        .as_array_of_tables_mut()
+        .expect("providers");
     let original_len = providers.len();
     providers.retain(|t| t.get("name").and_then(|v| v.as_str()) != Some("deepseek"));
 
@@ -109,7 +111,6 @@ fn auto_prune_regex_rules_round_trips_as_array_of_tables() {
 
     // And re-serializing the bare struct round-trips through parse.
     let reserialized = toml::to_string(&cfg).expect("serialize");
-    let reparsed: RegexAutoPruneConfig =
-        toml::from_str(&reserialized).expect("reparse");
+    let reparsed: RegexAutoPruneConfig = toml::from_str(&reserialized).expect("reparse");
     assert_eq!(reparsed.rules.len(), 2);
 }

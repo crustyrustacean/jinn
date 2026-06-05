@@ -38,8 +38,6 @@ use crate::feat::session_lifecycle::protocol::command::{
     PersistSession, RunSessionSetup, RunSessionTeardown,
 };
 
-
-
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted,
@@ -307,11 +305,9 @@ impl SessionPersistenceActor {
             | Command::TriggerCompaction(..)
             | Command::Dynamic(..)
             | Command::ExecuteWebFetch(..)
-            | Command::AttachWorkflow(..)
-            | Command::DetachWorkflow(..)
-            | Command::ToggleWorkflow(..)
-            | Command::TriggerWorkflow(..)
-            | Command::FireBeforeTurn(..) => {}
+            | Command::AttachPlugin(..)
+            | Command::DetachPlugin(..)
+            | Command::TogglePlugin(..) => {}
         }
     }
 }

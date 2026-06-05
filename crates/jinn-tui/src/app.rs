@@ -348,7 +348,7 @@ pub fn scope_for_focus(focus: &jinn_domain::FocusScope) -> Scope {
             PickerKind::Persona => Scope::PickerPersona,
             PickerKind::Theme => Scope::PickerTheme,
             PickerKind::SessionLifecycle => Scope::PickerLifecycle,
-            PickerKind::Workflow => Scope::PickerWorkflow,
+            PickerKind::Plugin => Scope::PickerPlugin,
 
             PickerKind::CompactionModel => Scope::PickerCompactionModel,
             PickerKind::Tool => Scope::PickerTool,

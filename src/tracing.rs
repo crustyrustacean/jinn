@@ -116,12 +116,7 @@ fn open_log_file(path: &std::path::Path) -> Result<File, Report<TracingInitError
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .change_context(TracingInitError)
-            .attach_with(|| {
-                format!(
-                    "failed to create log directory '{}'",
-                    parent.display()
-                )
-            })?;
+            .attach_with(|| format!("failed to create log directory '{}'", parent.display()))?;
     }
 
     File::options()
@@ -129,10 +124,5 @@ fn open_log_file(path: &std::path::Path) -> Result<File, Report<TracingInitError
         .append(true)
         .open(path)
         .change_context(TracingInitError)
-        .attach_with(|| {
-            format!(
-                "failed to open file '{}' for tracing",
-                path.display()
-            )
-        })
+        .attach_with(|| format!("failed to open file '{}' for tracing", path.display()))
 }

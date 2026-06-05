@@ -129,11 +129,9 @@ impl ProviderActor {
             | Command::TriggerCompaction(..)
             | Command::Dynamic(..)
             | Command::ExecuteWebFetch(..)
-            | Command::AttachWorkflow(..)
-            | Command::DetachWorkflow(..)
-            | Command::ToggleWorkflow(..)
-            | Command::TriggerWorkflow(..)
-            | Command::FireBeforeTurn(..) => {}
+            | Command::AttachPlugin(..)
+            | Command::DetachPlugin(..)
+            | Command::TogglePlugin(..) => {}
         }
     }
 
