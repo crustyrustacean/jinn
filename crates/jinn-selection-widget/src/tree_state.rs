@@ -529,6 +529,14 @@ impl<I: TreeItem> PickerOps for TreePickerState<I> {
     fn move_cursor_right(&mut self) {
         TreePickerState::move_cursor_right(self);
     }
+
+    fn clear_filter(&mut self) {
+        TreePickerState::reset(self);
+    }
+
+    fn is_filter_empty(&self) -> bool {
+        TreePickerState::filter(self).is_empty()
+    }
 }
 
 // --- Free functions ---

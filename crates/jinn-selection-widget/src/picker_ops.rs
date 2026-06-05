@@ -30,6 +30,18 @@ pub trait PickerOps {
 
     /// Moves the filter cursor right by one grapheme.
     fn move_cursor_right(&mut self);
+
+    /// Clears the filter text and resets selection, cursor, and scroll offset.
+    ///
+    /// Used by the universal `CtrlClear` intent: pressing `<c-c>` in a picker
+    /// with a non-empty filter clears it; subsequent presses close the picker.
+    fn clear_filter(&mut self);
+
+    /// Returns `true` when the filter text is empty.
+    ///
+    /// Companion to [`clear_filter`](Self::clear_filter) for the universal
+    /// `CtrlClear` intent's branch decision.
+    fn is_filter_empty(&self) -> bool;
 }
 
 impl<T: crate::PickerItem> PickerOps for crate::SelectionState<T> {
@@ -59,5 +71,13 @@ impl<T: crate::PickerItem> PickerOps for crate::SelectionState<T> {
 
     fn move_cursor_right(&mut self) {
         crate::SelectionState::move_cursor_right(self);
+    }
+
+    fn clear_filter(&mut self) {
+        crate::SelectionState::clear_filter(self);
+    }
+
+    fn is_filter_empty(&self) -> bool {
+        crate::SelectionState::filter(self).is_empty()
     }
 }

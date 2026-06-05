@@ -971,8 +971,7 @@ impl ChatSessionState {
                         _ => None,
                     }
                 }
-                crate::feat::session::queue_item::QueueItem::ToolContinuation
-                | crate::feat::session::queue_item::QueueItem::ResumeTurn => None,
+                crate::feat::session::queue_item::QueueItem::ToolContinuation => None,
             })
             .collect();
         let drained_text = display_texts.join("\n");
