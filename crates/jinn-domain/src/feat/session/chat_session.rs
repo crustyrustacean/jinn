@@ -519,8 +519,9 @@ impl ChatSessionState {
     ///
     /// If the entry uses the default, override to the opposite of the kind default.
     /// If the entry is already overridden, revert to the default.
-    /// Does nothing if no entry is selected.
-    pub fn toggle_entry_ignored(&mut self) {
+    /// Returns `Some(entry_id)` if the override was changed, `None` if no-op
+    /// (entry was already in the toggled state) or no entry is selected.
+    pub fn toggle_entry_ignored(&mut self) -> Option<crate::protocol::ChatEntryId> {
         if let Some(idx) = self.selected_entry_index() {
             let items = self.visual_items().clone();
             let hist_idx = if items.is_empty() {
@@ -528,7 +529,7 @@ impl ChatSessionState {
             } else {
                 match items.get(idx) {
                     Some(VisualItem::Entry(h)) => *h,
-                    _ => return, // collapsed block or invalid
+                    _ => return None, // collapsed block or invalid
                 }
             };
             if let Some(entry) = self.core.history.get_mut(hist_idx) {
@@ -544,16 +545,24 @@ impl ChatSessionState {
                         ContextOverride::Default
                     }
                 };
-                entry.apply_context_override(new_value, ChangeSource::User);
+                if entry.apply_context_override(new_value, ChangeSource::User) {
+                    return Some(entry.id.clone());
+                }
             }
         }
+        None
     }
 
     /// Set the context override on the currently selected entry to a specific
     /// value (not a toggle). Used by the x-sweep to apply a captured state.
     ///
-    /// Does nothing if no entry is selected.
-    pub fn set_entry_context_override(&mut self, override_state: ContextOverride) {
+    ///
+    /// Returns `Some(entry_id)` if the override was changed, `None` if no-op
+    /// (entry was already at the target state) or no entry is selected.
+    pub fn set_entry_context_override(
+        &mut self,
+        override_state: ContextOverride,
+    ) -> Option<crate::protocol::ChatEntryId> {
         if let Some(idx) = self.selected_entry_index() {
             let items = self.visual_items().clone();
             let hist_idx = if items.is_empty() {
@@ -561,13 +570,16 @@ impl ChatSessionState {
             } else {
                 match items.get(idx) {
                     Some(VisualItem::Entry(h)) => *h,
-                    _ => return,
+                    _ => return None,
                 }
             };
             if let Some(entry) = self.core.history.get_mut(hist_idx) {
-                entry.apply_context_override(override_state, ChangeSource::User);
+                if entry.apply_context_override(override_state, ChangeSource::User) {
+                    return Some(entry.id.clone());
+                }
             }
         }
+        None
     }
 
     /// After a sweep changes an entry from excluded to in-context, propagate

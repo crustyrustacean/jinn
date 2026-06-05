@@ -140,15 +140,15 @@ fn build_prune_mutations(
         // Pairs are oldest-first. Prune the oldest ones beyond keep_last.
         let prune_count = pairs.len() - keep_last;
         for pair in pairs.iter().take(prune_count) {
-            // Only emit mutations for entries not already excluded.
-            let call_already_excluded = history.iter().any(|e| {
-                e.id == pair.call_entry_id && e.context_override() == ContextOverride::ForcedExclude
-            });
-            let result_already_excluded = history.iter().any(|e| {
-                e.id == pair.result_entry_id && e.context_override() == ContextOverride::ForcedExclude
-            });
+            // Only emit mutations for entries not protected from prune.
+            let call_protected = history
+                .iter()
+                .any(|e| e.id == pair.call_entry_id && e.is_protected_from_prune());
+            let result_protected = history
+                .iter()
+                .any(|e| e.id == pair.result_entry_id && e.is_protected_from_prune());
 
-            if !call_already_excluded {
+            if !call_protected {
                 mutations.push(HistoryMutation::SetContextOverride {
                     entry_id: pair.call_entry_id.clone(),
                     value: ContextOverride::ForcedExclude,
@@ -157,7 +157,7 @@ fn build_prune_mutations(
                     },
                 });
             }
-            if !result_already_excluded {
+            if !result_protected {
                 mutations.push(HistoryMutation::SetContextOverride {
                     entry_id: pair.result_entry_id.clone(),
                     value: ContextOverride::ForcedExclude,
@@ -379,6 +379,27 @@ mod tests {
         match &mutations[0] {
             HistoryMutation::SetContextOverride { entry_id, value, .. } => {
                 assert_eq!(*entry_id, expected_call_id);
+                assert_eq!(*value, ContextOverride::ForcedExclude);
+            }
+            other => panic!("expected SetContextOverride, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn forced_included_call_only_prunes_result() {
+        let mut history = history_with_n_reads("/foo.rs", 4);
+        // Mark only the call as force-included.
+        history[0].context_override = ContextOverride::ForcedInclude;
+        let expected_result_id = history[1].id.clone();
+
+        let worker = worker_with_keep_last(3);
+        let mutations = evaluate(&worker, history);
+
+        // Only the result should get a mutation.
+        assert_eq!(mutations.len(), 1);
+        match &mutations[0] {
+            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+                assert_eq!(*entry_id, expected_result_id);
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }
             other => panic!("expected SetContextOverride, got {other:?}"),
