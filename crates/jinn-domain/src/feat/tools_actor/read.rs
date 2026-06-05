@@ -162,6 +162,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 /// `start_line` is the 1-indexed line number of the first line in `content`
 /// (respects the offset parameter from the read call).
 fn annotate_lines(content: &str, start_line: usize) -> String {
+    use std::fmt::Write as _;
     if content.is_empty() {
         return String::new();
     }
@@ -178,7 +179,7 @@ fn annotate_lines(content: &str, start_line: usize) -> String {
     for (i, line) in lines.iter().enumerate() {
         let line_num = start_line + i;
         let h = hash::compute_line_hash(line_num, line);
-        use std::fmt::Write as _;
+
         let _ = writeln!(out, "{line_num:>width$}#{h}|{line}");
     }
 
@@ -473,8 +474,8 @@ mod tests {
         // Then only lines 2-3 are returned.
         assert!(result.success);
         // Lines 2-3 with LINE#HASH prefixes
-        assert!(result.content.contains("b"));
-        assert!(result.content.contains("c"));
+        assert!(result.content.contains('b'));
+        assert!(result.content.contains('c'));
         // First line should be line 2 (from offset=2)
         let first_line = result.content.lines().next().expect("first line");
         assert!(

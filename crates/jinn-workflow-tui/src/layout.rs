@@ -12,6 +12,7 @@ use jinn_workflow::spatial_layout::{compute_columns, compute_x_offset};
 use crate::node::VisualNode;
 
 /// Horizontal spacing between columns (cells).
+#[cfg(test)]
 const H_SPACING: u16 = 5;
 /// Vertical spacing between nodes in the same column (cells).
 const V_SPACING: u16 = 1;
@@ -105,7 +106,7 @@ fn build_visual_nodes<'a>(
             let input_defs = structure.node_input_ports(name).unwrap_or_default();
             let output_defs = structure.node_output_ports(name).unwrap_or_default();
             let status = snapshot.status_of(name).unwrap_or(NodeStatus::Pending);
-            let node = VisualNode::compute(name.to_string(), input_defs, output_defs, status);
+            let node = VisualNode::compute(name.to_owned(), input_defs, output_defs, status);
             (name, node)
         })
         .collect()
