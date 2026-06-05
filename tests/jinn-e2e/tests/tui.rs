@@ -60,9 +60,13 @@ impl TuiWorld {
             session_store: jinn_domain::SessionStoreService::new(Arc::new(
                 jinn_domain::SqliteSessionStore::new_in(&sessions_dir).expect("store"),
             )),
-            user_preferences_storage: jinn_domain::UserPreferencesStorageService::new(Arc::new(
-                jinn_domain::InMemoryUserPreferencesStorage::new(),
-            )),
+            user_preferences_storage: {
+                let svc = jinn_domain::UserPreferencesStorageService::new(Arc::new(
+                    jinn_domain::InMemoryUserPreferencesStorage::new(),
+                ));
+                svc.reload().expect("test prefs storage initial reload");
+                svc
+            },
             plugins: jinn_domain::feat::plugin_dispatch::PluginFireService::new(Arc::new(
                 jinn_domain::NoopPluginFire,
             )

@@ -25,8 +25,6 @@ enum EnqueueAction {
     Queued,
 }
 
-
-
 impl SessionPersistenceActor {
     /// EnqueueUserMessage: if idle → assemble prompt; if busy → queue.
     #[expect(clippy::too_many_lines, reason = "1 line over limit")]
@@ -237,12 +235,7 @@ impl SessionPersistenceActor {
             (old_phase, session.phase())
         };
 
-        super::super::helpers::emit_phase_changed(
-            ctx,
-            &payload.session_id,
-            old_phase,
-            new_phase,
-        );
+        super::super::helpers::emit_phase_changed(ctx, &payload.session_id, old_phase, new_phase);
 
         if let Err(e) = ctx.send_command(Command::SendToLlmProvider(SendToLlmProvider {
             session_id: payload.session_id.clone(),
@@ -590,7 +583,6 @@ mod tests {
         assert_eq!(session.phase(), PhaseKind::Streaming);
     }
 
-
     // --- handle_enqueue_resume_turn ---
 
     #[tokio::test]
@@ -679,12 +671,7 @@ mod tests {
         let markers: Vec<_> = session
             .history()
             .iter()
-            .filter(|e| {
-                matches!(
-                    e.kind,
-                    crate::protocol::ChatEntryKind::System { .. }
-                )
-            })
+            .filter(|e| matches!(e.kind, crate::protocol::ChatEntryKind::System { .. }))
             .collect();
         assert_eq!(markers.len(), 1, "expected one System marker pushed");
     }

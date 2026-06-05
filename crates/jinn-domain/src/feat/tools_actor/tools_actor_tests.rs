@@ -259,6 +259,7 @@ async fn execute_builtin_get_time_tool() {
     let ctx = ToolContext {
         cwd: PathBuf::from("/tmp"),
         timeout: None,
+        bash_default_timeout: None,
         state: None,
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
@@ -296,6 +297,7 @@ async fn execute_builtin_read_tool() {
     let tool_ctx = ToolContext {
         cwd: PathBuf::from("/tmp"),
         timeout: None,
+        bash_default_timeout: None,
         state: None,
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
@@ -331,6 +333,7 @@ async fn execute_builtin_read_tool_returns_error_on_missing_file() {
     let tool_ctx = ToolContext {
         cwd: PathBuf::from("/tmp"),
         timeout: None,
+        bash_default_timeout: None,
         state: None,
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
@@ -667,6 +670,7 @@ async fn write_tool_returns_success() {
     let tool_ctx = ToolContext {
         cwd: PathBuf::from("/tmp"),
         timeout: None,
+        bash_default_timeout: None,
         state: None,
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
@@ -704,6 +708,7 @@ async fn write_tool_creates_file_with_content() {
     let tool_ctx = ToolContext {
         cwd: PathBuf::from("/tmp"),
         timeout: None,
+        bash_default_timeout: None,
         state: None,
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
@@ -740,6 +745,7 @@ async fn write_tool_creates_parent_dirs_and_file() {
     let tool_ctx = ToolContext {
         cwd: PathBuf::from("/tmp"),
         timeout: None,
+        bash_default_timeout: None,
         state: None,
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
@@ -780,6 +786,7 @@ async fn write_tool_overwrites_existing_file() {
     let tool_ctx = ToolContext {
         cwd: PathBuf::from("/tmp"),
         timeout: None,
+        bash_default_timeout: None,
         state: None,
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),
@@ -810,6 +817,7 @@ async fn write_tool_returns_error_on_bad_json() {
     let tool_ctx = ToolContext {
         cwd: PathBuf::from("/tmp"),
         timeout: None,
+        bash_default_timeout: None,
         state: None,
         session_id: None,
         app_paths: crate::common::app_paths::AppPaths::default(),

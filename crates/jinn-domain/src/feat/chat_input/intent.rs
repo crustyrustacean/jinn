@@ -538,7 +538,20 @@ pub fn handle_enter_normal_mode(state: &mut AppState) -> IntentResult {
         state.active_session_mut().set_disabled_tools(snapshot);
     }
 
+    // TaskList picker is read-only and always opened from SidebarTaskList.
+    // Pop only the picker to preserve the sidebar scope (rather than clearing all
+    // overlays, which would drop SidebarTaskList and strand the user in Normal).
+    if state.frontend.scope_stack.picker_kind() == Some(&crate::protocol::PickerKind::TaskList)
+        && state.frontend.scope_stack.is_picker()
+    {
+        state.frontend.scope_stack.pop();
+        return IntentResult::empty();
+    }
+
     // Clear all overlay scopes - always returns to Normal.
+    // Using clear_overlays() instead of pop() ensures that ESC from Input mode
+    // always lands in Normal, even when a sidebar scope is stacked below Input
+    // (e.g., [Normal, SidebarPersona, Input] → [Normal]).
     // Using clear_overlays() instead of pop() ensures that ESC from Input mode
     // always lands in Normal, even when a sidebar scope is stacked below Input
     // (e.g., [Normal, SidebarPersona, Input] → [Normal]).

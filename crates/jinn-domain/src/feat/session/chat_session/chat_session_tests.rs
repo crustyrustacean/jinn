@@ -2673,7 +2673,12 @@ fn toggle_ignored_block_visibility_expands_block() {
     }
     for _ in 0..5 {
         let mut entry = ChatEntry::user("ignored");
-        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        entry.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         session.push_entry(entry);
     }
     for _ in 0..2 {
@@ -2702,7 +2707,12 @@ fn toggle_ignored_block_visibility_collapses_expanded_block() {
     }
     for _ in 0..5 {
         let mut entry = ChatEntry::user("ignored");
-        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        entry.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         session.push_entry(entry);
     }
     for _ in 0..2 {
@@ -2768,18 +2778,33 @@ fn toggle_ignored_block_visibility_stops_at_pinned_entry() {
     }
     for _ in 0..3 {
         let mut entry = ChatEntry::user("ignored");
-        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        entry.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         session.push_entry(entry);
     }
     {
         let mut entry = ChatEntry::user("ignored-pinned");
-        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        entry.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         entry.pin_position = Some(PinPosition::Top);
         session.push_entry(entry);
     }
     for _ in 0..3 {
         let mut entry = ChatEntry::user("ignored");
-        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        entry.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         session.push_entry(entry);
     }
     for _ in 0..2 {
@@ -2820,18 +2845,33 @@ fn toggle_ignored_block_visibility_stops_at_pinned_entry_in_first_sub_block() {
     }
     for _ in 0..3 {
         let mut entry = ChatEntry::user("ignored");
-        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        entry.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         session.push_entry(entry);
     }
     {
         let mut entry = ChatEntry::user("ignored-pinned");
-        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        entry.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         entry.pin_position = Some(PinPosition::Top);
         session.push_entry(entry);
     }
     for _ in 0..3 {
         let mut entry = ChatEntry::user("ignored");
-        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        entry.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         session.push_entry(entry);
     }
     for _ in 0..2 {
@@ -2876,7 +2916,12 @@ fn select_next_walks_visual_items_with_collapsed_block() {
     session.push_entry(ChatEntry::user("a")); // index 0
     for _ in 0..15 {
         let mut entry = ChatEntry::user("ignored");
-        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        entry.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         session.push_entry(entry);
     } // indices 1..15, collapsed into one block
     session.push_entry(ChatEntry::user("b")); // index 16
@@ -2912,7 +2957,12 @@ fn select_prev_walks_visual_items_with_collapsed_block() {
     session.push_entry(ChatEntry::user("a")); // index 0
     for _ in 0..15 {
         let mut entry = ChatEntry::user("ignored");
-        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        entry.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         session.push_entry(entry);
     } // indices 1..15, collapsed
     session.push_entry(ChatEntry::user("b")); // index 16
@@ -2947,7 +2997,12 @@ fn selected_entry_returns_none_for_collapsed_block() {
     session.push_entry(ChatEntry::user("a"));
     for _ in 0..15 {
         let mut entry = ChatEntry::user("ignored");
-        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        entry.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         session.push_entry(entry);
     }
     session.push_entry(ChatEntry::user("b"));
@@ -3101,8 +3156,14 @@ fn force_exclude_excludes_dangling_tool_call_and_empty_assistant() {
     // Then both the ToolCall and empty Assistant are ForcedExclude.
     let history = session.history();
     assert_eq!(history[0].context_override(), ContextOverride::Default);
-    assert_eq!(history[1].context_override(), ContextOverride::ForcedExclude);
-    assert_eq!(history[2].context_override(), ContextOverride::ForcedExclude);
+    assert_eq!(
+        history[1].context_override(),
+        ContextOverride::ForcedExclude
+    );
+    assert_eq!(
+        history[2].context_override(),
+        ContextOverride::ForcedExclude
+    );
 }
 
 #[test]
@@ -3149,7 +3210,10 @@ fn force_exclude_preserves_non_empty_assistant() {
     let history = session.history();
     assert_eq!(history[0].context_override(), ContextOverride::Default);
     assert_eq!(history[1].context_override(), ContextOverride::Default);
-    assert_eq!(history[2].context_override(), ContextOverride::ForcedExclude);
+    assert_eq!(
+        history[2].context_override(),
+        ContextOverride::ForcedExclude
+    );
 }
 
 #[test]
@@ -3167,9 +3231,18 @@ fn force_exclude_handles_multiple_dangling_calls() {
     // Then all ToolCalls and the empty Assistant are ForcedExclude.
     let history = session.history();
     assert_eq!(history[0].context_override(), ContextOverride::Default);
-    assert_eq!(history[1].context_override(), ContextOverride::ForcedExclude);
-    assert_eq!(history[2].context_override(), ContextOverride::ForcedExclude);
-    assert_eq!(history[3].context_override(), ContextOverride::ForcedExclude);
+    assert_eq!(
+        history[1].context_override(),
+        ContextOverride::ForcedExclude
+    );
+    assert_eq!(
+        history[2].context_override(),
+        ContextOverride::ForcedExclude
+    );
+    assert_eq!(
+        history[3].context_override(),
+        ContextOverride::ForcedExclude
+    );
 }
 
 #[test]
@@ -3197,8 +3270,14 @@ fn force_exclude_mixed_complete_and_incomplete() {
     assert_eq!(history[1].context_override(), ContextOverride::Default); // Assistant ""
     assert_eq!(history[2].context_override(), ContextOverride::Default); // ToolCall tc-1
     assert_eq!(history[3].context_override(), ContextOverride::Default); // ToolResult tc-1
-    assert_eq!(history[4].context_override(), ContextOverride::ForcedExclude); // Assistant ""
-    assert_eq!(history[5].context_override(), ContextOverride::ForcedExclude); // ToolCall tc-2
+    assert_eq!(
+        history[4].context_override(),
+        ContextOverride::ForcedExclude
+    ); // Assistant ""
+    assert_eq!(
+        history[5].context_override(),
+        ContextOverride::ForcedExclude
+    ); // ToolCall tc-2
 }
 
 #[test]

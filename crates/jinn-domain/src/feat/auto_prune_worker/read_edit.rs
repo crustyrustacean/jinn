@@ -44,6 +44,8 @@ use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryKind, C
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
 
+use super::is_within_min_age;
+
 /// Number of edit/write operations on the same file required before pruning the prior read.
 const WRITE_THRESHOLD: usize = 2;
 
@@ -106,13 +108,20 @@ fn find_matching_result(
 ///
 /// Runs regardless of whether the read itself is excluded — stale edits are
 /// noise even if the read is already pruned.
+///
+/// Entries whose age (`history.len() - entry_idx - 1`) is less than
+/// `min_age` are protected: no mutations are emitted for either half of
+/// the pair. This prevents the model from "forgetting" that it wrote a
+/// file shortly before reading it back.
 fn prune_backward(
     history: &[ChatEntry],
     read_index: usize,
     read_path: &str,
+    min_age: usize,
     mutations: &mut Vec<HistoryMutation>,
     worker_name: &str,
 ) {
+    let history_len = history.len();
     // Walk backward from the read to find prior edit/write calls on the same file.
     for j in (0..read_index).rev() {
         let back_entry = &history[j];
@@ -130,6 +139,11 @@ fn prune_backward(
             }
             _ => continue,
         };
+
+        // Skip young entries — `min_age` protection.
+        if is_within_min_age(history_len, j, min_age) {
+            continue;
+        }
 
         let back_call_entry_id = back_entry.id.clone();
         let back_call_protected = back_entry.is_protected_from_prune();
@@ -236,7 +250,14 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
             // Walk backward from the read and prune all edit/write call+result
             // pairs on the same file. Runs regardless of the read's exclusion
             // state — stale edits are noise even if the read itself is excluded.
-            prune_backward(&history, i, &read_path, &mut mutations, self.name());
+            prune_backward(
+                &history,
+                i,
+                &read_path,
+                self.config.min_age,
+                &mut mutations,
+                self.name(),
+            );
 
             // ── Forward pruning ──────────────────────────────────────────
             // Find the read's corresponding ToolResult. If none found,
@@ -248,7 +269,6 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
             };
 
             let result_protected = history[result_idx].is_protected_from_prune();
-
 
             // Count how many edit/write calls to the same file appear after
             // this read. Once the threshold is reached, the read is stale.
@@ -321,14 +341,26 @@ mod tests {
     }
 
     fn worker() -> ReadEditAutoPruneWorker {
+        worker_with_min_age(0)
+    }
+
+    /// Build a worker with a specific `min_age` floor.
+    fn worker_with_min_age(min_age: usize) -> ReadEditAutoPruneWorker {
         ReadEditAutoPruneWorker {
-            config: ReadEditAutoPruneConfig { enabled: true },
+            config: ReadEditAutoPruneConfig {
+                enabled: true,
+                min_age,
+            },
         }
     }
 
-    /// Evaluate the worker synchronously for tests.
+    /// Evaluate the default worker (`min_age = 0`) synchronously for tests.
     fn evaluate(history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
-        let w = worker();
+        evaluate_with(&worker(), history)
+    }
+
+    /// Evaluate an arbitrary worker synchronously for tests.
+    fn evaluate_with(w: &ReadEditAutoPruneWorker, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         rt.block_on(async { w.evaluate(&SessionId::new(), Arc::from(history)).await })
     }
@@ -340,7 +372,9 @@ mod tests {
         mutations
             .iter()
             .filter_map(|m| match m {
-                HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+                HistoryMutation::SetContextOverride {
+                    entry_id, value, ..
+                } => {
                     assert_eq!(*value, ContextOverride::ForcedExclude);
                     Some(entry_id.clone())
                 }
@@ -467,7 +501,12 @@ mod tests {
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "contents");
         let mut call = read[0].clone();
-        call.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        call.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         history.push(call);
         history.push(read[1].clone()); // result NOT excluded
         let edit1 = edit_call_result("tc-2", "/foo.rs", "edit 1");
@@ -481,7 +520,9 @@ mod tests {
         assert_eq!(mutations.len(), 1, "only result should be pruned");
 
         match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+            HistoryMutation::SetContextOverride {
+                entry_id, value, ..
+            } => {
                 assert_eq!(*entry_id, read[1].id, "should target read ToolResult");
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }
@@ -495,7 +536,12 @@ mod tests {
         let read = read_call_result("tc-1", "/foo.rs", "contents");
         history.push(read[0].clone()); // call NOT excluded
         let mut result = read[1].clone();
-        result.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        result.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         history.push(result);
         let edit1 = edit_call_result("tc-2", "/foo.rs", "edit 1");
         history.push(edit1[0].clone());
@@ -508,7 +554,9 @@ mod tests {
         assert_eq!(mutations.len(), 1, "only call should be pruned");
 
         match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+            HistoryMutation::SetContextOverride {
+                entry_id, value, ..
+            } => {
                 assert_eq!(*entry_id, read[0].id, "should target read ToolCall");
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }
@@ -535,7 +583,9 @@ mod tests {
         assert_eq!(mutations.len(), 1, "only result should be pruned");
 
         match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+            HistoryMutation::SetContextOverride {
+                entry_id, value, ..
+            } => {
                 assert_eq!(*entry_id, read[1].id, "should target read ToolResult");
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }
@@ -548,9 +598,19 @@ mod tests {
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "contents");
         let mut call = read[0].clone();
-        call.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        call.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         let mut result = read[1].clone();
-        result.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        result.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         history.push(call);
         history.push(result);
         let edit1 = edit_call_result("tc-2", "/foo.rs", "edit 1");
@@ -886,9 +946,19 @@ mod tests {
         let mut history = Vec::new();
         let edit1 = edit_call_result("tc-1", "/foo.rs", "edit applied");
         let mut edit_call = edit1[0].clone();
-        edit_call.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        edit_call.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         let mut edit_result = edit1[1].clone();
-        edit_result.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        edit_result.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         history.push(edit_call);
         history.push(edit_result);
         let read = read_call_result("tc-2", "/foo.rs", "contents");
@@ -910,9 +980,19 @@ mod tests {
         history.push(edit1[1].clone());
         let read = read_call_result("tc-2", "/foo.rs", "contents");
         let mut read_call = read[0].clone();
-        read_call.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        read_call.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         let mut read_result = read[1].clone();
-        read_result.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        read_result.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         history.push(read_call);
         history.push(read_result);
 
@@ -1044,5 +1124,101 @@ mod tests {
             assert!(ids.contains(&edit[0].id), "edit call should be pruned");
             assert!(ids.contains(&edit[1].id), "edit result should be pruned");
         }
+    }
+
+    // --- `min_age` protection tests ---
+
+    /// Write at the end of a short history is protected by `min_age`: no
+    /// `ForcedExclude` mutation is emitted for the write's call or result,
+    /// even though a same-file read appears later in history.
+    #[test]
+    fn min_age_protects_recent_write_from_backward_prune() {
+        let mut history = Vec::new();
+        let write = write_call_result("tc-write", "/foo.rs", "written");
+        history.push(write[0].clone());
+        history.push(write[1].clone());
+        // Two non-tool entries to pad age without adding candidates.
+        history.push(ChatEntry::user("ok"));
+        history.push(ChatEntry::assistant("ack"));
+        let read = read_call_result("tc-read", "/foo.rs", "contents");
+        history.push(read[0].clone());
+        history.push(read[1].clone());
+        // history.len() = 6; write call is at idx 0, age = 5.
+        // With min_age = 10, age 5 < 10 → write is protected.
+
+        let w = worker_with_min_age(10);
+        let mutations = evaluate_with(&w, history);
+
+        let ids = mutation_ids(&mutations);
+        assert!(
+            !ids.contains(&write[0].id),
+            "write call should be protected by min_age"
+        );
+        assert!(
+            !ids.contains(&write[1].id),
+            "write result should be protected by min_age"
+        );
+    }
+
+    /// `min_age = 0` reproduces pre-fix behavior: the same write from the
+    /// `min_age_protects_recent_write_from_backward_prune` test is now
+    /// pruned together with its result.
+    #[test]
+    fn min_age_zero_backward_prunes_as_before() {
+        let mut history = Vec::new();
+        let write = write_call_result("tc-write", "/foo.rs", "written");
+        history.push(write[0].clone());
+        history.push(write[1].clone());
+        history.push(ChatEntry::user("ok"));
+        history.push(ChatEntry::assistant("ack"));
+        let read = read_call_result("tc-read", "/foo.rs", "contents");
+        history.push(read[0].clone());
+        history.push(read[1].clone());
+
+        let w = worker_with_min_age(0);
+        let mutations = evaluate_with(&w, history);
+
+        let ids = mutation_ids(&mutations);
+        assert!(
+            ids.contains(&write[0].id),
+            "write call should be pruned with min_age = 0"
+        );
+        assert!(
+            ids.contains(&write[1].id),
+            "write result should be pruned with min_age = 0"
+        );
+    }
+
+    /// A write well past the `min_age` floor is pruned as before — the
+    /// protection only applies to entries near the end of history.
+    #[test]
+    fn old_write_still_pruned_in_long_history() {
+        let mut history = Vec::new();
+        let write = write_call_result("tc-write", "/foo.rs", "written");
+        history.push(write[0].clone());
+        history.push(write[1].clone());
+        // Pad with 100 entries to push the write well past min_age = 10.
+        for i in 0..50 {
+            history.push(ChatEntry::user(format!("u-{i}")));
+            history.push(ChatEntry::assistant(format!("a-{i}")));
+        }
+        let read = read_call_result("tc-read", "/foo.rs", "contents");
+        history.push(read[0].clone());
+        history.push(read[1].clone());
+        // history.len() = 104; write call at idx 0, age = 103.
+        // With min_age = 10, age 103 ≥ 10 → write is pruned.
+
+        let w = worker_with_min_age(10);
+        let mutations = evaluate_with(&w, history);
+
+        let ids = mutation_ids(&mutations);
+        assert!(
+            ids.contains(&write[0].id),
+            "old write call should be pruned regardless of min_age"
+        );
+        assert!(
+            ids.contains(&write[1].id),
+            "old write result should be pruned regardless of min_age"
+        );
     }
 }

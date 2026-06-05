@@ -29,6 +29,8 @@ pub enum PickerKind {
     Tool,
     /// Skill picker - toggle which skills are enabled for the session.
     Skill,
+    /// Task list browser - read-only zoom view of the active session's task list.
+    TaskList,
 }
 
 impl std::fmt::Display for PickerKind {
@@ -46,6 +48,7 @@ impl std::fmt::Display for PickerKind {
 
             Self::Tool => write!(f, "tools"),
             Self::Skill => write!(f, "skills"),
+            Self::TaskList => write!(f, "task list"),
         }
     }
 }

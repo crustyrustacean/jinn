@@ -9,7 +9,9 @@
 
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::RegexAutoPruneConfig;
-use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
+use crate::feat::session::chat_entry::{
+    ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride,
+};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
 
@@ -405,7 +407,10 @@ mod tests {
         // Verify the first two calls and their results are targeted.
         let mut excluded_ids = std::collections::HashSet::new();
         for m in &mutations {
-            if let HistoryMutation::SetContextOverride { entry_id, value, .. } = m {
+            if let HistoryMutation::SetContextOverride {
+                entry_id, value, ..
+            } = m
+            {
                 assert_eq!(*value, ContextOverride::ForcedExclude);
                 excluded_ids.insert(entry_id);
             }
@@ -473,7 +478,12 @@ mod tests {
 
         let p1 = bash_call_result("tc-1", "cargo check", "errors: 0");
         let mut call1 = p1[0].clone();
-        call1.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() }); // already excluded
+        call1.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        ); // already excluded
         history.push(call1);
         history.push(p1[1].clone());
 
@@ -491,7 +501,9 @@ mod tests {
         // The first call is already excluded, so only the first result gets a mutation.
         assert_eq!(mutations.len(), 1);
         match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+            HistoryMutation::SetContextOverride {
+                entry_id, value, ..
+            } => {
                 assert_eq!(*entry_id, result1_id);
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }
@@ -521,7 +533,9 @@ mod tests {
         // Force-included call is protected; only the result mutates.
         assert_eq!(mutations.len(), 1);
         match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+            HistoryMutation::SetContextOverride {
+                entry_id, value, ..
+            } => {
                 assert_eq!(*entry_id, result1_id);
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }

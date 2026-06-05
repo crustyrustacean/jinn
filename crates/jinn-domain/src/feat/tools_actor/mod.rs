@@ -183,10 +183,11 @@ impl Actor for ToolOrchestratorActor {
         let web_search_config = deps
             .services
             .user_preferences_storage
-            .load()
-            .expect("preferences")
+            .read()
             .openrouter_web_search
             .clone();
+
+        let bash_config = deps.services.user_preferences_storage.read().bash.clone();
 
         let mut actor = Self {
             tools: HashMap::new(),
@@ -195,7 +196,7 @@ impl Actor for ToolOrchestratorActor {
             state: deps.state,
             shell: deps.shell,
         };
-        let all_builtins = registry::builtin_tools();
+        let all_builtins = registry::builtin_tools(&bash_config);
         let builtins: Vec<_> = if let Some(ref filter) = deps.builtin_filter {
             all_builtins
                 .into_iter()
@@ -385,11 +386,7 @@ impl ToolOrchestratorActor {
         session_id: &SessionId,
         sink: std::sync::Arc<dyn MessageSink>,
     ) -> ToolContext {
-        let prefs = self
-            .services
-            .user_preferences_storage
-            .load()
-            .expect("preferences");
+        let prefs = self.services.user_preferences_storage.read();
         let cwd = {
             let guard = self.state.read();
             guard.session.get(session_id).map_or_else(
@@ -403,6 +400,10 @@ impl ToolOrchestratorActor {
         ToolContext {
             cwd,
             timeout: None,
+            bash_default_timeout: prefs
+                .bash
+                .default_timeout_secs
+                .map(std::time::Duration::from_secs),
             state: Some(self.state.clone()),
             session_id: Some(session_id.clone()),
             app_paths: self.services.paths.clone(),

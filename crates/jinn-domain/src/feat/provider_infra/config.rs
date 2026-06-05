@@ -209,11 +209,9 @@ where
         patcher.register_array_key(["providers"], "name");
         patcher.register_array_key(["aliases"], "name");
 
-        let new_value = toml::Value::try_from(config)
-            .map_err(|_| {
-                Report::new(ConfigError::Parse)
-                    .attach("failed to serialize ProvidersConfig")
-            })?;
+        let new_value = toml::Value::try_from(config).map_err(|_| {
+            Report::new(ConfigError::Parse).attach("failed to serialize ProvidersConfig")
+        })?;
         let new_table: toml::value::Table = match new_value {
             toml::Value::Table(t) => t,
             _ => {
@@ -221,11 +219,13 @@ where
                     .attach("ProvidersConfig serialized to non-table TOML value"));
             }
         };
-        patcher.apply(&new_table, doc.as_table_mut()).map_err(|err| {
-            Report::new(ConfigError::Parse)
-                .attach("failed to patch providers config document")
-                .attach(err.to_string())
-        })?;
+        patcher
+            .apply(&new_table, doc.as_table_mut())
+            .map_err(|err| {
+                Report::new(ConfigError::Parse)
+                    .attach("failed to patch providers config document")
+                    .attach(err.to_string())
+            })?;
 
         std::fs::write(path, doc.to_string())
             .change_context(ConfigError::Io)

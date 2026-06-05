@@ -218,7 +218,7 @@ mod tests {
     };
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::feat::session::token_stats::TokenRecord;
-    use crate::protocol::{ChatEntry, Event, ChangeSource};
+    use crate::protocol::{ChangeSource, ChatEntry, Event};
 
     #[tokio::test]
     async fn on_stream_completed_error_reason_finishes_streaming() {
@@ -1007,7 +1007,13 @@ mod tests {
             session.begin_streaming();
             // Queue a mutation to exclude the assistant entry.
             session.queue_mutations(vec![
-                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: crate::protocol::ContextOverride::ForcedExclude, source: ChangeSource::Internal { label: "test".into() } },
+                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id.clone(),
+                    value: crate::protocol::ContextOverride::ForcedExclude,
+                    source: ChangeSource::Internal {
+                        label: "test".into(),
+                    },
+                },
             ]);
             (entry_id, state.session.active_session_id().clone())
         };
@@ -1063,7 +1069,13 @@ mod tests {
             session.push_entry(entry);
             session.begin_streaming();
             session.queue_mutations(vec![
-                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: crate::protocol::ContextOverride::ForcedExclude, source: ChangeSource::Internal { label: "test".into() } },
+                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id.clone(),
+                    value: crate::protocol::ContextOverride::ForcedExclude,
+                    source: ChangeSource::Internal {
+                        label: "test".into(),
+                    },
+                },
             ]);
             (entry_id, state.session.active_session_id().clone())
         };
@@ -1109,7 +1121,13 @@ mod tests {
             session.push_entry(entry);
             session.begin_streaming();
             session.queue_mutations(vec![
-                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: crate::protocol::ContextOverride::ForcedExclude, source: ChangeSource::Internal { label: "test".into() } },
+                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id.clone(),
+                    value: crate::protocol::ContextOverride::ForcedExclude,
+                    source: ChangeSource::Internal {
+                        label: "test".into(),
+                    },
+                },
             ]);
             (entry_id, state.session.active_session_id().clone())
         };
@@ -1155,7 +1173,13 @@ mod tests {
             session.push_entry(entry);
             session.begin_streaming();
             session.queue_mutations(vec![
-                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: crate::protocol::ContextOverride::ForcedExclude, source: ChangeSource::Internal { label: "test".into() } },
+                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id.clone(),
+                    value: crate::protocol::ContextOverride::ForcedExclude,
+                    source: ChangeSource::Internal {
+                        label: "test".into(),
+                    },
+                },
             ]);
             (entry_id, state.session.active_session_id().clone())
         };
