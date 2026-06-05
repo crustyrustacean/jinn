@@ -23,11 +23,12 @@
 
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::TodoAutoPruneConfig;
-use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
+use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
 use std::collections::HashMap;
 use std::sync::Arc;
+
 
 /// Returns true if a tool name belongs to the todo tool group.
 fn is_todo_tool(name: &str) -> bool {
@@ -102,6 +103,7 @@ fn build_prune_mutations(
     history: &[ChatEntry],
     calls: &[CallInfo],
     result_map: &HashMap<String, (usize, crate::feat::session::chat_entry::ChatEntryId)>,
+    worker_name: &str,
 ) -> Vec<HistoryMutation> {
     // Need at least 2 calls to have something to prune.
     if calls.len() <= 1 {
@@ -118,6 +120,9 @@ fn build_prune_mutations(
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: call_info.entry_id.clone(),
                 value: ContextOverride::ForcedExclude,
+                source: ChangeSource::Worker {
+                    name: worker_name.to_owned(),
+                },
             });
         }
 
@@ -128,6 +133,9 @@ fn build_prune_mutations(
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: result_entry_id.clone(),
                 value: ContextOverride::ForcedExclude,
+                source: ChangeSource::Worker {
+                    name: worker_name.to_owned(),
+                },
             });
         }
     }
@@ -148,7 +156,7 @@ impl HistoryWorker for TodoAutoPruneWorker {
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
         let (calls, result_map) = collect_all_todo_pairs(&history);
-        build_prune_mutations(&history, &calls, &result_map)
+        build_prune_mutations(&history, &calls, &result_map, self.name())
     }
 }
 
@@ -275,7 +283,7 @@ mod tests {
         let mutation_ids: Vec<_> = mutations
             .iter()
             .filter_map(|m| match m {
-                HistoryMutation::SetContextOverride { entry_id, value } => {
+                HistoryMutation::SetContextOverride { entry_id, value, .. } => {
                     assert_eq!(*value, ContextOverride::ForcedExclude);
                     Some(entry_id.clone())
                 }
@@ -286,6 +294,7 @@ mod tests {
         assert!(
             mutation_ids.contains(&cr1[0].id),
             "tc-1 ToolCall should be pruned"
+
         );
         assert!(
             mutation_ids.contains(&cr1[1].id),
@@ -309,7 +318,7 @@ mod tests {
         let mutation_ids: Vec<_> = mutations
             .iter()
             .filter_map(|m| match m {
-                HistoryMutation::SetContextOverride { entry_id, value } => {
+                HistoryMutation::SetContextOverride { entry_id, value, .. } => {
                     assert_eq!(*value, ContextOverride::ForcedExclude);
                     Some(entry_id.clone())
                 }
@@ -378,9 +387,9 @@ mod tests {
         let cr1 = get_task_list_call_result("tc-1", "list v1");
         // Mark both as already excluded.
         let mut call = cr1[0].clone();
-        call.context_override = ContextOverride::ForcedExclude;
+        call.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
         let mut result = cr1[1].clone();
-        result.context_override = ContextOverride::ForcedExclude;
+        result.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
         history.push(call);
         history.push(result);
 
@@ -452,7 +461,7 @@ mod tests {
         // 1 mutation: the orphan ToolCall (no result to prune).
         assert_eq!(mutations.len(), 1);
         match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value } => {
+            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
                 assert_eq!(*entry_id, orphan_id);
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }
