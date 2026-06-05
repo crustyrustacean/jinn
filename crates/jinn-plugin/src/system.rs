@@ -48,7 +48,14 @@ impl PluginSystem {
     /// # Returns
     ///
     /// A tuple of `(SyncPlugins, AsyncPluginHandle, PluginSyncHandle)`.
-    #[expect(clippy::too_many_arguments, reason = "construction takes many inputs by design")]
+    ///
+    /// # Panics
+    ///
+    /// Panics if the OS refuses to spawn the plugin-async thread.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "construction takes many inputs by design"
+    )]
     pub fn new(
         user_dir: &Path,
         system_dir: &Path,
@@ -58,17 +65,24 @@ impl PluginSystem {
     ) -> (SyncPlugins, AsyncPluginHandle, PluginSyncHandle) {
         let plugin_data = PluginData::new();
 
-        // Emit channel: sync/async hooks → tokio drainer → command dispatcher.
+        // Emit channel: constructed sync (sync Lua hooks call sync `.send()`),
+        // drainer uses async recv via `to_async()`.
         let (emit_tx, emit_rx) = kanal::unbounded::<PluginCommand>();
 
-        // Spawn emit drainer on tokio.
+        // Spawn emit drainer on tokio. Async recv — does not block executor.
         {
             let dispatcher = command_dispatcher.clone();
             runtime_handle.spawn(async move {
-                while let Ok(cmd) = emit_rx.recv() {
-                    dispatcher(cmd);
+                let emit_rx = emit_rx.to_async();
+                loop {
+                    match emit_rx.recv().await {
+                        Ok(cmd) => dispatcher(cmd),
+                        Err(_) => {
+                            tracing::debug!("plugin emit drainer shutting down");
+                            break;
+                        }
+                    }
                 }
-                tracing::debug!("plugin emit drainer shutting down");
             });
         }
 
@@ -81,13 +95,11 @@ impl PluginSystem {
         let sync_hooks = load_all(&sync_lua, &plugins);
 
         // Async channel: async fire → background thread.
-        let (job_tx, job_rx) = kanal::unbounded::<PluginJob>();
-
-        // Sync channel: actors → background thread (blocking).
+        let (job_tx, job_rx) = kanal::unbounded_async::<PluginJob>();
 
         let async_plugins = plugins.clone();
         let async_plugin_data = plugin_data.clone();
-        let async_emit_tx = emit_tx.clone();
+        let async_emit_tx = emit_tx.clone_async();
         let async_request_handler = request_handler.clone();
 
         std::thread::Builder::new()
@@ -118,7 +130,11 @@ impl PluginSystem {
             plugin_data: sync.plugin_data.clone(),
         };
 
-        let sync_handle = PluginSyncHandle { tx: job_tx };
+        // clone_sync() preserves the async sender while creating a new sync
+        // sender sharing the same channel internal.
+        let sync_handle = PluginSyncHandle {
+            tx: job_tx.clone_sync(),
+        };
 
         (sync, async_handle, sync_handle)
     }

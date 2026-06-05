@@ -20,7 +20,9 @@ fn write_plugin(dir: &Path, name: &str, lua_source: &str) {
     std::fs::write(plugin_dir.join("init.lua"), lua_source).expect("write init.lua");
 }
 
-fn build_system(dir: &Path) -> (
+fn build_system(
+    dir: &Path,
+) -> (
     jinn_plugin::SyncPlugins,
     jinn_plugin::AsyncPluginHandle,
     Arc<Mutex<Vec<PluginCommand>>>,
@@ -76,7 +78,12 @@ async fn collect_returns_values_from_multiple_plugins() {
     let (_, async_handle, _) = build_system(dir.path());
 
     let results: Vec<String> = async_handle
-        .fire_async_collect("on_validate", &EmptyCtx { session_id: "s1".to_owned() })
+        .fire_async_collect(
+            "on_validate",
+            &EmptyCtx {
+                session_id: "s1".to_owned(),
+            },
+        )
         .await
         .expect("fire_async_collect");
 
@@ -110,7 +117,12 @@ async fn collect_excludes_nil_returns() {
     let (_, async_handle, _) = build_system(dir.path());
 
     let results: Vec<String> = async_handle
-        .fire_async_collect("on_check", &EmptyCtx { session_id: "s1".to_owned() })
+        .fire_async_collect(
+            "on_check",
+            &EmptyCtx {
+                session_id: "s1".to_owned(),
+            },
+        )
         .await
         .expect("fire_async_collect");
 
@@ -135,7 +147,12 @@ async fn collect_with_no_hooks_returns_empty_vec() {
     let (_, async_handle, _) = build_system(dir.path());
 
     let results: Vec<String> = async_handle
-        .fire_async_collect("on_nonexistent", &EmptyCtx { session_id: "s1".to_owned() })
+        .fire_async_collect(
+            "on_nonexistent",
+            &EmptyCtx {
+                session_id: "s1".to_owned(),
+            },
+        )
         .await
         .expect("fire_async_collect");
 

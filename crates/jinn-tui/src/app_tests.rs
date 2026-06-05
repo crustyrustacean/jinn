@@ -52,6 +52,7 @@ fn test_app() -> TuiApp {
             jinn_domain::feat::ui::sidebar::register_sections(&mut s);
             s
         },
+        plugins: jinn_plugin::SyncPlugins::default(),
     }
 }
 
@@ -241,6 +242,7 @@ fn mouse_events_not_handled_when_mouse_selection_disabled() {
             jinn_domain::feat::ui::sidebar::register_sections(&mut s);
             s
         },
+        plugins: jinn_plugin::SyncPlugins::default(),
     };
     let rect = Rect::new(5, 5, 20, 10);
     app.selectable_rects.rebuild(vec![rect]);

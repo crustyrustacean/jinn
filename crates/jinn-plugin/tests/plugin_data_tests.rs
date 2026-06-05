@@ -223,10 +223,13 @@ async fn multiple_plugins_have_isolated_plugin_data() {
     let results: Vec<String> = system
         .sync
         .sync_hooks("on_check")
-        .map(|h| h.call::<_, String>(&FilterCtx {
-            text: String::new(),
-            session_id: "s1".to_owned(),
-        }).expect("call"))
+        .map(|h| {
+            h.call::<_, String>(&FilterCtx {
+                text: String::new(),
+                session_id: "s1".to_owned(),
+            })
+            .expect("call")
+        })
         .collect();
 
     assert_eq!(results.len(), 2);

@@ -117,21 +117,22 @@ impl App {
                 return Ok(());
             }
             Commands::Tui => {
-                let (core, services, actor_host, plugins) = actor_wiring::create_core_with_actor_host(
-                    &self.handle(),
-                    llm_service.clone(),
-                    provider_registry.clone(),
-                    resolved_api_keys.clone(),
-                    config_storage.clone(),
-                    session_store.clone(),
-                    UserPreferencesStorageService::new(Arc::new(
-                        FilesystemUserPreferencesStorage::default_path(),
-                    )),
-                    None,
-                    None,
-                    None,
-                    jinn_domain::AppPaths::default(),
-                );
+                let (core, services, actor_host, plugins) =
+                    actor_wiring::create_core_with_actor_host(
+                        &self.handle(),
+                        llm_service.clone(),
+                        provider_registry.clone(),
+                        resolved_api_keys.clone(),
+                        config_storage.clone(),
+                        session_store.clone(),
+                        UserPreferencesStorageService::new(Arc::new(
+                            FilesystemUserPreferencesStorage::default_path(),
+                        )),
+                        None,
+                        None,
+                        None,
+                        jinn_domain::AppPaths::default(),
+                    );
                 let paths = &services.paths;
                 load_prompt_templates(
                     &core.state,
@@ -181,21 +182,22 @@ impl App {
                 runner.run().change_context(AppError)?;
             }
             Commands::Headless { command, .. } => {
-                let (core, _services, actor_host, plugins) = actor_wiring::create_core_with_actor_host(
-                    &self.handle(),
-                    llm_service.clone(),
-                    provider_registry,
-                    resolved_api_keys,
-                    config_storage,
-                    session_store,
-                    UserPreferencesStorageService::new(Arc::new(
-                        FilesystemUserPreferencesStorage::default_path(),
-                    )),
-                    None,
-                    None,
-                    None,
-                    jinn_domain::AppPaths::default(),
-                );
+                let (core, _services, actor_host, plugins) =
+                    actor_wiring::create_core_with_actor_host(
+                        &self.handle(),
+                        llm_service.clone(),
+                        provider_registry,
+                        resolved_api_keys,
+                        config_storage,
+                        session_store,
+                        UserPreferencesStorageService::new(Arc::new(
+                            FilesystemUserPreferencesStorage::default_path(),
+                        )),
+                        None,
+                        None,
+                        None,
+                        jinn_domain::AppPaths::default(),
+                    );
                 load_prompt_templates(
                     &core.state,
                     &_services.paths.prompts_dir(),

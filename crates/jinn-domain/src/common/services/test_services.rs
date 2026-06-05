@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use crate::common::services::ConfigStorageService;
 use crate::common::services::NoopPluginFire;
 use crate::common::services::NoopPluginSyncCall;
 use crate::feat::preferences_actor::{
@@ -11,9 +12,9 @@ use crate::feat::provider_infra::{
     FakeLlmServiceFactory, InMemoryConfigStorage, LlmServiceFactoryService, ProviderRegistry,
     ProviderRegistryService, ProvidersConfig,
 };
-use crate::common::services::ConfigStorageService;
 use crate::feat::session::SessionStoreService;
-use crate::feat::workflow::{PluginFire, PluginSyncCall};
+use crate::feat::workflow::{PluginFire, PluginFireService, PluginSyncCall, PluginSyncCallService};
+
 use crate::protocol::AppMsg;
 
 use super::{ActorChannelService, ApiKeys, ApiKeysService, Services};
@@ -130,7 +131,12 @@ impl TestServices {
 
         let temp_dir = Box::leak(Box::new(tempfile::TempDir::new().expect("test temp dir")));
 
-        let (actor_tx, _actor_rx) = kanal::unbounded::<AppMsg>();
+        // Keep a live drainer so the sender doesn't return ReceiveClosed.
+        let (actor_tx, actor_rx) = kanal::unbounded::<AppMsg>();
+        handle.spawn(async move {
+            let rx = actor_rx.to_async();
+            while rx.recv().await.is_ok() {}
+        });
         Services {
             paths: self
                 .paths
@@ -138,9 +144,7 @@ impl TestServices {
             handle,
             actor_channel: ActorChannelService::new(self.actor_channel_sender.unwrap_or(actor_tx)),
             llm_service: self.llm_service.unwrap_or_else(|| {
-                LlmServiceFactoryService::new(Arc::new(
-                    FakeLlmServiceFactory::new(vec![]),
-                ))
+                LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![])))
             }),
             provider_registry: ProviderRegistryService::new(
                 ProviderRegistry::from_config(self.providers).expect("test registry"),
@@ -153,8 +157,10 @@ impl TestServices {
             user_preferences_storage: UserPreferencesStorageService::new(Arc::new(
                 InMemoryUserPreferencesStorage::new(),
             )),
-            plugins: Arc::new(NoopPluginFire) as Arc<dyn PluginFire>,
-            plugin_sync: Arc::new(NoopPluginSyncCall) as Arc<dyn PluginSyncCall>,
+            plugins: PluginFireService::new(Arc::new(NoopPluginFire) as Arc<dyn PluginFire>),
+            plugin_sync: PluginSyncCallService::new(
+                Arc::new(NoopPluginSyncCall) as Arc<dyn PluginSyncCall>
+            ),
         }
     }
 }
@@ -177,14 +183,20 @@ impl crate::feat::session::SessionStore for FakeSessionStore {
 
     async fn load_summaries(
         &self,
-    ) -> Result<Vec<crate::feat::session::SessionSummary>, error_stack::Report<crate::feat::session::SessionStoreError>> {
+    ) -> Result<
+        Vec<crate::feat::session::SessionSummary>,
+        error_stack::Report<crate::feat::session::SessionStoreError>,
+    > {
         Ok(Vec::new())
     }
 
     async fn load_session(
         &self,
         _session_id: &crate::protocol::SessionId,
-    ) -> Result<Option<crate::feat::session::ChatSessionState>, error_stack::Report<crate::feat::session::SessionStoreError>> {
+    ) -> Result<
+        Option<crate::feat::session::ChatSessionState>,
+        error_stack::Report<crate::feat::session::SessionStoreError>,
+    > {
         Ok(None)
     }
 
@@ -199,7 +211,10 @@ impl crate::feat::session::SessionStore for FakeSessionStore {
         &self,
         _source_session_id: &crate::protocol::SessionId,
         _at_ordinal: usize,
-    ) -> Result<crate::protocol::SessionId, error_stack::Report<crate::feat::session::SessionStoreError>> {
+    ) -> Result<
+        crate::protocol::SessionId,
+        error_stack::Report<crate::feat::session::SessionStoreError>,
+    > {
         Ok(crate::protocol::SessionId::new())
     }
 
@@ -213,7 +228,10 @@ impl crate::feat::session::SessionStore for FakeSessionStore {
 
     async fn load_unarchived_summaries(
         &self,
-    ) -> Result<Vec<crate::feat::session::SessionSummary>, error_stack::Report<crate::feat::session::SessionStoreError>> {
+    ) -> Result<
+        Vec<crate::feat::session::SessionSummary>,
+        error_stack::Report<crate::feat::session::SessionStoreError>,
+    > {
         Ok(Vec::new())
     }
 }

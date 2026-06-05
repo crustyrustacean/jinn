@@ -47,18 +47,18 @@ pub mod bindings;
 pub mod command;
 pub mod loader;
 pub mod plugin_data;
-pub mod sync_state;
 pub mod plugin_fire_impl;
 pub mod plugin_sync_impl;
 pub mod sync_handle;
+pub mod sync_state;
 pub mod system;
 
 pub use async_handle::AsyncPluginHandle;
-pub use sync_handle::PluginSyncHandle;
 pub use async_thread::RequestHandler;
 pub use command::PluginCommand;
 pub use loader::{PluginMeta, discover_plugins};
 pub use plugin_data::PluginData;
+pub use sync_handle::PluginSyncHandle;
 pub use sync_state::{PluginHooks, SyncPlugins};
 pub use system::{CommandDispatcher, PluginSystem};
 
@@ -75,6 +75,9 @@ pub fn noop_request_handler() -> RequestHandler {
 #[must_use]
 pub fn noop_command_dispatcher() -> CommandDispatcher {
     std::sync::Arc::new(|cmd: PluginCommand| {
-        tracing::warn!(name = cmd.name, "no command dispatcher configured, dropping");
+        tracing::warn!(
+            name = cmd.name,
+            "no command dispatcher configured, dropping"
+        );
     })
 }

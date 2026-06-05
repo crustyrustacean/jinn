@@ -15,9 +15,10 @@ use crate::feat::provider_infra::{
     ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
 use crate::feat::session::SessionStoreService;
+use crate::feat::workflow::{PluginFire, PluginFireError, PluginSyncCall, PluginSyncCallError};
 use crate::protocol::AppMsg;
+use error_stack::Report;
 use tokio::runtime::Handle;
-use crate::feat::workflow::{PluginFire, PluginSyncCall};
 
 pub mod actor_channel;
 
@@ -59,9 +60,9 @@ pub struct Services {
     /// User preferences storage for persisting `jinn.toml`.
     pub user_preferences_storage: UserPreferencesStorageService,
     /// Plugin system async handle (fire-and-forget + collect).
-    pub plugins: std::sync::Arc<dyn crate::feat::workflow::PluginFire>,
+    pub plugins: crate::feat::workflow::PluginFireService,
     /// Plugin system sync handle (blocking hook calls from actors).
-    pub plugin_sync: std::sync::Arc<dyn crate::feat::workflow::PluginSyncCall>,
+    pub plugin_sync: crate::feat::workflow::PluginSyncCallService,
 }
 
 impl Default for Services {
@@ -92,7 +93,13 @@ impl Services {
 
         let temp_dir = Box::leak(Box::new(tempfile::TempDir::new().expect("test temp dir")));
 
-        let (actor_tx, _actor_rx) = kanal::unbounded::<AppMsg>();
+        // Keep a live drainer so the sender doesn't return ReceiveClosed.
+        // Without this, send_command silently fails in tests.
+        let (actor_tx, actor_rx) = kanal::unbounded::<AppMsg>();
+        handle.spawn(async move {
+            let rx = actor_rx.to_async();
+            while rx.recv().await.is_ok() {}
+        });
         Self {
             paths: crate::common::app_paths::AppPaths::new_in(temp_dir.path()),
             handle,
@@ -114,8 +121,14 @@ impl Services {
             user_preferences_storage: UserPreferencesStorageService::new(Arc::new(
                 InMemoryUserPreferencesStorage::new(),
             )),
-            plugins: std::sync::Arc::new(NoopPluginFire) as std::sync::Arc<dyn PluginFire>,
-            plugin_sync: std::sync::Arc::new(NoopPluginSyncCall) as std::sync::Arc<dyn PluginSyncCall>,
+            plugins: crate::feat::workflow::PluginFireService::new(std::sync::Arc::new(
+                NoopPluginFire,
+            )
+                as std::sync::Arc<dyn PluginFire>),
+            plugin_sync: crate::feat::workflow::PluginSyncCallService::new(std::sync::Arc::new(
+                NoopPluginSyncCall,
+            )
+                as std::sync::Arc<dyn PluginSyncCall>),
         }
     }
 }
@@ -133,7 +146,11 @@ pub struct NoopPluginSyncCall;
 /// Noop [`PluginFire`] for test defaults.
 #[async_trait::async_trait]
 impl PluginFire for NoopPluginFire {
-    async fn fire_async_json(&self, hook: &str, _ctx: &serde_json::Value) -> Result<(), String> {
+    async fn fire_async_json(
+        &self,
+        hook: &str,
+        _ctx: &serde_json::Value,
+    ) -> Result<(), Report<PluginFireError>> {
         tracing::debug!(hook, "noop plugin fire");
         Ok(())
     }
@@ -141,16 +158,26 @@ impl PluginFire for NoopPluginFire {
         &self,
         hook: &str,
         _ctx: &serde_json::Value,
-    ) -> Result<Vec<serde_json::Value>, String> {
+    ) -> Result<Vec<serde_json::Value>, Report<PluginFireError>> {
         tracing::debug!(hook, "noop plugin collect");
         Ok(vec![])
+    }
+    fn name(&self) -> &'static str {
+        "NoopPluginFire"
     }
 }
 
 /// Noop [`PluginSyncCall`] for test defaults.
 impl PluginSyncCall for NoopPluginSyncCall {
-    fn call_hooks_json(&self, hook: &str, _ctx: &serde_json::Value) -> Result<Vec<serde_json::Value>, String> {
+    fn call_hooks_json(
+        &self,
+        hook: &str,
+        _ctx: &serde_json::Value,
+    ) -> Result<Vec<serde_json::Value>, Report<PluginSyncCallError>> {
         tracing::debug!(hook, "noop plugin sync");
         Ok(vec![])
+    }
+    fn name(&self) -> &'static str {
+        "NoopPluginSyncCall"
     }
 }

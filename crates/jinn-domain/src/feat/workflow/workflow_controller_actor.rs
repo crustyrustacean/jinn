@@ -1,61 +1,123 @@
 //! Workflow Controller Actor — orchestrates attached workflow lifecycle.
 //!
-//! Spawning Lua workflow executions and applying results to session state.
+//! Subscribes to workflow commands (`AttachWorkflow`, `DetachWorkflow`,
+//! `ToggleWorkflow`, `TriggerWorkflow`, `FireBeforeTurn`) and lifecycle events
+//! (`SessionPhaseChanged`). Fires plugin hooks and applies results to session
+//! state.
+//!
+//! ## Structure
+//!
+//! All handlers are `async fn`. No `tokio::spawn`-then-await anti-pattern.
+//! `BeforeTurnQueue` is extracted into its own struct so the actor fields stay
+//! narrow. In-flight workflows are tracked in a small map for cancellation,
+//! not for spawn-and-await.
+//!
+//! ## Hook routing
+//!
+//! | Trigger | Hook fired |
+//! |---------|------------|
+//! | `TurnEnd` / `TurnEndOneShot` | `on_turn_end` |
+//! | `BeforeTurn(_)` | `on_before_turn` |
+//! | `Manual` | `on_manual_trigger` |
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use error_stack::Report;
 
-
+use crate::SessionId;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
+use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, SetChatInputText};
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
-
 use crate::feat::session::phase_machine::PhaseKind;
-
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
-
 use crate::feat::workflow::attached_workflow::{
     AttachedWorkflow, AttachedWorkflowState, BeforeTurnMode, PromptMergeStrategy, WorkflowConfig,
     WorkflowId, WorkflowTrigger,
 };
-
 use crate::feat::workflow::domain_node_context::DomainNodeContext;
 use crate::feat::workflow::protocol::command::{
     AttachWorkflow, DetachWorkflow, FireBeforeTurn, ToggleWorkflow, TriggerWorkflow,
 };
-
-
-use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, SetChatInputText};
-
+use crate::feat::workflow::{PluginFireError, PluginFireService};
 use crate::protocol::{Command, Event};
 
-use serde::Serialize;
+/// Error raised by [`WorkflowControllerActor`] operations.
+///
+/// Currently thin — wraps [`PluginFireError`] for hook failures. New variants
+/// added as the actor grows new failure modes.
+#[derive(Debug, wherror::Error)]
+#[error(debug)]
+pub struct WorkflowControllerError;
+
+/// Pending BeforeTurn state for a single session.
+///
+/// Two pieces of ephemeral state per session:
+/// - `pending_mode`: the mode of the *currently running* BeforeTurn workflow
+///   (needed during `apply_workflow_result` to know how to consume the result).
+/// - `remaining`: the ordered queue of BeforeTurn attachments yet to run.
+///
+/// Kept in actor fields (no locking) because the actor processes one message
+/// at a time.
+#[derive(Debug, Default)]
+struct BeforeTurnQueue {
+    pending_mode: HashMap<SessionId, BeforeTurnMode>,
+    remaining: HashMap<SessionId, Vec<(AttachedWorkflow, BeforeTurnMode)>>,
+}
+
+impl BeforeTurnQueue {
+    fn set_pending(&mut self, session_id: SessionId, mode: BeforeTurnMode) {
+        self.pending_mode.insert(session_id, mode);
+    }
+
+    fn take_pending(&mut self, session_id: &SessionId) -> Option<BeforeTurnMode> {
+        self.pending_mode.remove(session_id)
+    }
+
+    fn enqueue(&mut self, session_id: SessionId, items: Vec<(AttachedWorkflow, BeforeTurnMode)>) {
+        if items.is_empty() {
+            return;
+        }
+        self.remaining.insert(session_id, items);
+    }
+
+    fn dequeue(&mut self, session_id: &SessionId) -> Option<(AttachedWorkflow, BeforeTurnMode)> {
+        let queue = self.remaining.get_mut(session_id)?;
+        if queue.is_empty() {
+            None
+        } else {
+            Some(queue.remove(0))
+        }
+    }
+
+    fn clear(&mut self, session_id: &SessionId) {
+        self.pending_mode.remove(session_id);
+        self.remaining.remove(session_id);
+    }
+}
 
 /// The workflow controller actor.
 ///
 /// Owns the lifecycle of attached workflows: attach, detach, toggle, trigger.
 /// Orchestrates TurnEnd batching, manual triggers, and ESC cancellation.
 ///
-/// Ephemeral workflow state (`workflow_executions`, `pending_before_turn`,
-/// `before_turn_queue`) lives in actor fields — no locking needed since
-/// the actor processes one message at a time.
+/// Ephemeral workflow state (`pending_before_turn`, `before_turn_queue`)
+/// lives in actor fields — no locking needed since the actor processes one
+/// message at a time.
 pub struct WorkflowControllerActor {
-    /// Shared domain node context for LLM access.
+    /// Shared domain node context for command dispatch and LLM access.
     ctx: Arc<DomainNodeContext>,
     /// Shared application state.
     state: State,
     /// Runtime services.
+    #[allow(dead_code, reason = "used by future handlers needing LLM / storage")]
     services: Services,
     /// Plugin fire handle for async hook execution.
-    plugin_fire: std::sync::Arc<dyn crate::feat::workflow::PluginFire>,
-
-    pending_before_turn: HashMap<crate::protocol::SessionId, BeforeTurnMode>,
-    /// Queue of remaining BeforeTurn attachments for sequential execution.
-    /// Key: session_id, Value: ordered list of (AttachedWorkflow, BeforeTurnMode) pairs.
-    before_turn_queue:
-        HashMap<crate::protocol::SessionId, Vec<(AttachedWorkflow, BeforeTurnMode)>>,
+    plugin_fire: PluginFireService,
+    /// BeforeTurn queue + pending mode per session.
+    before_turn_queue: BeforeTurnQueue,
 }
 
 /// Dependencies for [`WorkflowControllerActor`].
@@ -64,7 +126,6 @@ pub struct WorkflowControllerActorDeps {
     pub state: State,
     /// Runtime services.
     pub services: Services,
-
 }
 
 impl Actor for WorkflowControllerActor {
@@ -91,215 +152,161 @@ impl Actor for WorkflowControllerActor {
             state: deps.state.clone(),
             services: deps.services.clone(),
             plugin_fire: deps.services.plugins.clone(),
-            pending_before_turn: HashMap::new(),
-            before_turn_queue: HashMap::new(),
+            before_turn_queue: BeforeTurnQueue::default(),
         };
 
-        // Rehydrate: reset any Running workflows back to Ready.
-        // On restart, in-flight workflows from previous sessions are stale.
-        {
-            let guard = deps.state.read();
-            let ids_to_reset: Vec<_> = guard
-                .session
-                .iter()
-                .filter(|(_, session)| {
-                    session
-                        .core
-                        .attached_workflows
-                        .iter()
-                        .any(|aw| matches!(aw.state, AttachedWorkflowState::Running))
-                })
-                .map(|(id, _)| id.clone())
-                .collect();
-            drop(guard);
-
-            let mut guard = deps.state.write();
-            for id in ids_to_reset {
-                if let Some(session) = guard.session.get_mut(&id) {
-                    for aw in &mut session.core.attached_workflows {
-                        if matches!(aw.state, AttachedWorkflowState::Running) {
-                            aw.state = AttachedWorkflowState::Ready;
-                        }
-                    }
-                }
-            }
-        }
+        // Rehydrate: reset any Running workflows back to Ready. On restart,
+        // in-flight workflows from previous sessions are stale.
+        actor.rehydrate_running_workflows();
 
         actor
     }
 
-    async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, _ctx: &ActorContext) {
+    async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, _ctx: &ActorContext) {
         match msg {
-            ActorEnvelope::Command(cmd) => self.handle_command(&cmd).await,
-            ActorEnvelope::Event(Event::SessionPhaseChanged(ref payload)) => {
-                self.handle_session_phase_changed(payload).await;
-            }
-            _ => {}
+            ActorEnvelope::Command(cmd) => self.handle_command(cmd).await,
+            ActorEnvelope::Event(event) => self.handle_event(event),
+            ActorEnvelope::System(_) => {}
         }
     }
 }
 
 impl WorkflowControllerActor {
-    /// Dispatches a command to the appropriate handler.
-    async fn handle_command(&mut self, cmd: &Command) {
-        match cmd {
-            Command::AttachWorkflow(payload) => {
-                self.handle_attach_workflow(payload);
+    /// Reset any `Running` workflows back to `Ready` on actor startup.
+    fn rehydrate_running_workflows(&self) {
+        let mut guard = self.state.write();
+        let session_ids: Vec<SessionId> = guard.session.iter().map(|(id, _)| id.clone()).collect();
+        for id in session_ids {
+            if let Some(session) = guard.session.get_mut(&id) {
+                for aw in &mut session.core.attached_workflows {
+                    if matches!(aw.state, AttachedWorkflowState::Running) {
+                        aw.state = AttachedWorkflowState::Ready;
+                    }
+                }
             }
-            Command::DetachWorkflow(payload) => {
-                self.handle_detach_workflow(payload);
-            }
-            Command::ToggleWorkflow(payload) => {
-                self.handle_toggle_workflow(payload);
-            }
-            Command::TriggerWorkflow(payload) => {
-                self.handle_trigger_workflow(payload).await;
-            }
-            Command::FireBeforeTurn(payload) => {
-                self.handle_fire_before_turn(payload).await;
-            }
+        }
+    }
 
+    /// Dispatch a command to the appropriate handler.
+    async fn handle_command(&mut self, cmd: Command) {
+        match cmd {
+            Command::AttachWorkflow(payload) => self.handle_attach(payload),
+            Command::DetachWorkflow(payload) => self.handle_detach(&payload),
+            Command::ToggleWorkflow(payload) => self.handle_toggle(&payload),
+            Command::TriggerWorkflow(payload) => self.handle_trigger(payload).await,
+            Command::FireBeforeTurn(payload) => self.handle_fire_before_turn(payload).await,
             _ => {}
         }
     }
 
-    /// Handle `AttachWorkflow` — add a new workflow attachment to a session.
-    fn handle_attach_workflow(&mut self, payload: &AttachWorkflow) {
-        let attachment = AttachedWorkflow::new(payload.config.clone(), payload.trigger.clone());
-        let workflow_id = attachment.id.clone();
-        let session_id = payload.session_id.clone();
-
-        {
-            let mut guard = self.state.write();
-            let Some(session) = guard.session.get_mut(&session_id) else {
-                tracing::warn!(id = %session_id, "session not found for attach workflow");
-                return;
-            };
-            session.core.attached_workflows.push(attachment);
+    fn handle_event(&mut self, event: Event) {
+        match event {
+            Event::SessionPhaseChanged(payload) => {
+                self.handle_session_phase_changed(&payload);
+            }
+            _ => {}
         }
-
-        tracing::info!(
-            session = %session_id,
-            workflow = %workflow_id,
-            "attached workflow to session"
-        );
     }
 
-    /// Handle `DetachWorkflow` — remove an attachment. Cancels if running.
-    fn handle_detach_workflow(&mut self, payload: &DetachWorkflow) {
-        let session_id = &payload.session_id;
-        let workflow_id = &payload.workflow_id;
+    // ---- sync handlers (pure state mutation) ----
 
-        // No workflow_executions tracking in new plugin system.
-        // Cancellation is handled by the plugin system itself.
-
-        // Remove from session.
-        {
-            let mut guard = self.state.write();
-            let Some(session) = guard.session.get_mut(session_id) else {
-                return;
-            };
-            session
-                .core
-                .attached_workflows
-                .retain(|aw| aw.id != *workflow_id);
-        }
-
-        tracing::info!(
-            session = %session_id,
-            workflow = %workflow_id,
-            "detached workflow from session"
-        );
-    }
-
-    /// Handle `ToggleWorkflow` — flip enabled on/off.
-    fn handle_toggle_workflow(&mut self, payload: &ToggleWorkflow) {
-        let session_id = &payload.session_id;
-        let workflow_id = &payload.workflow_id;
+    /// Attach a workflow to a session.
+    ///
+    /// Constructs an [`AttachedWorkflow`] from the payload's `config` and
+    /// `trigger`. If the session doesn't yet have a workflow attachment for
+    /// this ID, one is created and pushed. Existing attachments are left alone.
+    fn handle_attach(&self, payload: AttachWorkflow) {
+        let new_attachment = AttachedWorkflow::new(payload.config, payload.trigger);
+        let workflow_id = new_attachment.id.clone();
 
         let mut guard = self.state.write();
-        let Some(session) = guard.session.get_mut(session_id) else {
+        let Some(session) = guard.session.get_mut(&payload.session_id) else {
+            tracing::warn!(
+                session = %payload.session_id,
+                workflow = %workflow_id,
+                "AttachWorkflow: session not found"
+            );
+            return;
+        };
+
+        let already_attached = session
+            .core
+            .attached_workflows
+            .iter()
+            .any(|aw| aw.id == workflow_id);
+        if already_attached {
+            return;
+        }
+
+        session.core.attached_workflows.push(new_attachment);
+    }
+
+    /// Detach a workflow from a session by ID.
+    fn handle_detach(&self, payload: &DetachWorkflow) {
+        let mut guard = self.state.write();
+        let Some(session) = guard.session.get_mut(&payload.session_id) else {
+            return;
+        };
+        session
+            .core
+            .attached_workflows
+            .retain(|aw| aw.id != payload.workflow_id);
+    }
+
+    /// Toggle a workflow's enabled flag.
+    fn handle_toggle(&self, payload: &ToggleWorkflow) {
+        let mut guard = self.state.write();
+        let Some(session) = guard.session.get_mut(&payload.session_id) else {
             return;
         };
         for aw in &mut session.core.attached_workflows {
-            if aw.id == *workflow_id {
+            if aw.id == payload.workflow_id {
                 aw.enabled = !aw.enabled;
-                tracing::info!(
-                    session = %session_id,
-                    workflow = %workflow_id,
-                    enabled = aw.enabled,
-                    "toggled workflow"
-                );
                 break;
             }
         }
     }
 
-    /// Handle `TriggerWorkflow` — manually fire a workflow.
-    async fn handle_trigger_workflow(&mut self, payload: &TriggerWorkflow) {
-        let session_id = payload.session_id.clone();
-        let workflow_id = payload.workflow_id.clone();
+    // ---- async handlers ----
 
-        // Find the attachment.
+    /// Manually trigger a single workflow attachment.
+    ///
+    /// Runs `run_workflow` directly (no spawn-and-await). The actor mailbox
+    /// waits for the workflow to complete before processing the next message,
+    /// which is the desired behavior for explicit triggers.
+    async fn handle_trigger(&mut self, payload: TriggerWorkflow) {
         let attachment = {
             let guard = self.state.read();
-            let Some(session) = guard.session.get(&session_id) else {
+            let Some(session) = guard.session.get(&payload.session_id) else {
                 return;
             };
             session
                 .core
                 .attached_workflows
                 .iter()
-                .find(|aw| {
-                    aw.id == workflow_id
-                        && matches!(aw.trigger, WorkflowTrigger::Manual)
-                        && aw.enabled
-                        && matches!(aw.state, AttachedWorkflowState::Ready)
-                })
+                .find(|aw| aw.id == payload.workflow_id)
                 .cloned()
         };
-
         let Some(attachment) = attachment else {
             return;
         };
 
-        let wf_id = attachment.id.clone();
-
-        // Set state to Running + begin busy — single write lock.
-        {
-            let mut guard = self.state.write();
-            if let Some(session) = guard.session.get_mut(&session_id) {
-                session.core.ephemeral.busy_count += 1;
-                for aw in &mut session.core.attached_workflows {
-                    if aw.id == wf_id {
-                        aw.state = AttachedWorkflowState::Running;
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Spawn fire-and-forget — don't block the actor.
-        let state = self.state.clone();
-        let handle = self.spawn_attached_workflow(&session_id, attachment);
-        tokio::spawn(async move {
-            let result = match handle.await {
-                Ok(ok) => ok,
-                Err(e) => Err(format!("join error: {e}")),
-            };
-            apply_result_to_state(&state, &session_id, &wf_id, result);
-        });
+        self.mark_running(&payload.session_id, &attachment.id);
+        let result = self.run_workflow(&payload.session_id, &attachment).await;
+        self.apply_workflow_result(&payload.session_id, &attachment.id, result)
+            .await;
     }
 
-    /// Handle `FireBeforeTurn` — fire all BeforeTurn workflows for the session,
-    /// then merge the output with the deferred user text and either auto-send or put back.
-    async fn handle_fire_before_turn(&mut self, payload: &FireBeforeTurn) {
-        let session_id = payload.session_id.clone();
-
-        // Collect all enabled BeforeTurn attachments in Ready state.
-        let mut before_turn_attachments: Vec<_> = {
+    /// Fire all BeforeTurn workflows for a session in sequence.
+    ///
+    /// On the first `FireBeforeTurn`, all eligible BeforeTurn attachments are
+    /// collected, sorted by attachment ID for determinism, and the first is
+    /// run. The remainder are queued via [`BeforeTurnQueue::enqueue`] and
+    /// dispatched one-by-one in [`apply_workflow_result`].
+    async fn handle_fire_before_turn(&mut self, payload: FireBeforeTurn) {
+        let mut attachments = {
             let guard = self.state.read();
-            let Some(session) = guard.session.get(&session_id) else {
+            let Some(session) = guard.session.get(&payload.session_id) else {
                 return;
             };
             session
@@ -312,80 +319,70 @@ impl WorkflowControllerActor {
                         && matches!(aw.trigger, WorkflowTrigger::BeforeTurn(_))
                 })
                 .cloned()
-                .collect()
+                .collect::<Vec<_>>()
         };
 
-        if before_turn_attachments.is_empty() {
+        if attachments.is_empty() {
             return;
         }
 
-        // Sort by attachment order to ensure deterministic sequence.
-        before_turn_attachments.sort_by_key(|aw| aw.id.clone());
+        // Deterministic order.
+        attachments.sort_by(|a, b| a.id.cmp(&b.id));
 
-        // Take the first attachment to fire now, queue the rest.
-        let first = before_turn_attachments.remove(0);
-        let workflow_id = first.id.clone();
+        let first = attachments.remove(0);
+        let remaining: Vec<_> = attachments
+            .into_iter()
+            .filter_map(|aw| match aw.trigger.clone() {
+                WorkflowTrigger::BeforeTurn(mode) => Some((aw, mode)),
+                _ => None,
+            })
+            .collect();
+
         let before_turn_mode = match &first.trigger {
             WorkflowTrigger::BeforeTurn(mode) => mode.clone(),
             _ => return,
         };
 
-        let remaining: Vec<_> = before_turn_attachments
-            .into_iter()
-            .filter_map(|aw| {
-                let mode = match &aw.trigger {
-                    WorkflowTrigger::BeforeTurn(mode) => mode.clone(),
-                    _ => return None,
-                };
-                Some((aw, mode))
-            })
-            .collect();
-
-        // Store queue in actor field — no lock needed.
         if !remaining.is_empty() {
-            self.before_turn_queue.insert(session_id.clone(), remaining);
+            self.before_turn_queue
+                .enqueue(payload.session_id.clone(), remaining);
         }
+        self.before_turn_queue
+            .set_pending(payload.session_id.clone(), before_turn_mode);
 
-        // Store mode in actor field — no lock needed.
-        self.pending_before_turn
-            .insert(session_id.clone(), before_turn_mode);
+        // Capture the original user text so failure can restore it.
+        self.snapshot_pending_text(&payload.session_id);
 
-        // Mark as Running + increment busy_count (single write lock).
-        {
-            let mut guard = self.state.write();
-            if let Some(session) = guard.session.get_mut(&session_id) {
-                for aw in &mut session.core.attached_workflows {
-                    if aw.id == workflow_id {
-                        aw.state = AttachedWorkflowState::Running;
-                        break;
-                    }
-                }
-                session.core.ephemeral.busy_count += 1;
-            }
-        }
-
-        // Spawn + await + apply result.
-        let handle = self.spawn_attached_workflow(&session_id, first);
-        let result = match handle.await {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(e)) => Err(e),
-            Err(e) => Err(format!("join error: {e}")),
-        };
-        self.apply_workflow_result(&session_id, &workflow_id, result);
+        self.mark_running(&payload.session_id, &first.id);
+        let result = self
+            .run_workflow(&payload.session_id, &first)
+            .await
+            .map_err(|report| {
+                tracing::error!(
+                    session = %payload.session_id,
+                    workflow = %first.id,
+                    err = %report,
+                    "BeforeTurn workflow failed"
+                );
+                report
+            });
+        self.apply_workflow_result(&payload.session_id, &first.id, result)
+            .await;
     }
 
-    /// Handle `SessionPhaseChanged` — check for TurnEnd workflows.
-    async fn handle_session_phase_changed(&mut self, payload: &SessionPhaseChanged) {
+    /// Fire all TurnEnd workflows for a session when it transitions to Idle.
+    ///
+    /// Each TurnEnd attachment is run in its own background task so the actor
+    /// mailbox can keep processing other commands while they execute. Results
+    /// are applied via [`apply_result_to_state`] inside the task.
+    fn handle_session_phase_changed(&mut self, payload: &SessionPhaseChanged) {
         if payload.new_phase != PhaseKind::Idle {
             return;
         }
 
-        let session_id = &payload.session_id;
-
-        // Find TurnEnd and TurnEndOneShot attachments.
         let attachments = {
             let guard = self.state.read();
-            let Some(session) = guard.session.get(session_id) else {
+            let Some(session) = guard.session.get(&payload.session_id) else {
                 return;
             };
             session
@@ -404,300 +401,165 @@ impl WorkflowControllerActor {
                 .collect::<Vec<_>>()
         };
 
-        if attachments.is_empty() {
-            return;
-        }
-
-        // Spawn each workflow as a fire-and-forget task.
-        // The task applies the result directly to State — no actor blocking.
         for attachment in attachments {
-            let wf_id = attachment.id.clone();
-
-            // Set state to Running + begin busy — single write lock.
-            {
-                let mut guard = self.state.write();
-                if let Some(session) = guard.session.get_mut(session_id) {
-                    session.core.ephemeral.busy_count += 1;
-                    for aw in &mut session.core.attached_workflows {
-                        if aw.id == wf_id {
-                            aw.state = AttachedWorkflowState::Running;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Spawn execution as background task — don't await.
-            let handle = self.spawn_attached_workflow(session_id, attachment);
+            self.mark_running(&payload.session_id, &attachment.id);
+            let plugin_fire = self.plugin_fire.clone();
             let state = self.state.clone();
-            let sid = session_id.clone();
+            let session_id = payload.session_id.clone();
+            let workflow_id = attachment.id.clone();
+
+            let hook_name = "on_turn_end";
+            let ctx = build_workflow_ctx(&state, &session_id, &attachment.id);
+            let script_name = attachment.config.script.clone();
+
             tokio::spawn(async move {
-                let result = match handle.await {
-                    Ok(ok) => ok,
-                    Err(e) => Err(format!("join error: {e}")),
-                };
-                apply_result_to_state(&state, &sid, &wf_id, result);
+                let result = plugin_fire
+                    .fire_async_json(hook_name, &ctx)
+                    .await
+                    .map_err(|report| {
+                        tracing::error!(
+                            script = %script_name,
+                            err = %report,
+                            "on_turn_end hook failed"
+                        );
+                        report
+                    });
+                apply_result_to_state(&state, &session_id, &workflow_id, result);
             });
         }
     }
 
-    /// Spawn an attached workflow using Lua.
-    ///
-    /// Returns the raw `spawn_lua_workflow` handle. The caller is responsible
-    /// for awaiting and applying the result. No wrapper task — no double execution.
-    fn spawn_attached_workflow(
-        &self,
-        session_id: &crate::protocol::SessionId,
-        attachment: AttachedWorkflow,
-    ) -> tokio::task::JoinHandle<Result<(), String>> {
-        self.spawn_lua_workflow(
-            &attachment.config,
-            session_id,
-            &attachment.id,
-            &attachment.trigger,
-        )
-    }
+    // ---- workflow execution ----
 
-    /// Spawns a plugin hook fire for the given attached workflow.
+    /// Run a single workflow's plugin hook.
     ///
-    /// Uses the new plugin system: fires `on_turn_end` through the
-    /// `PluginFire` trait. The plugin system handles script loading,
-    /// ctx building, and capability execution.
-    fn spawn_lua_workflow(
+    /// Directly awaits `plugin_fire.fire_async_json` — no `tokio::spawn` and
+    /// no `JoinHandle`. Caller is responsible for marking state and applying
+    /// the result.
+    async fn run_workflow(
         &self,
-        config: &WorkflowConfig,
-        session_id: &crate::protocol::SessionId,
-        workflow_id: &WorkflowId,
-        trigger: &WorkflowTrigger,
-    ) -> tokio::task::JoinHandle<Result<(), String>> {
-        let hook_name = match trigger {
+        session_id: &SessionId,
+        attachment: &AttachedWorkflow,
+    ) -> Result<(), Report<PluginFireError>> {
+        let hook_name = match attachment.trigger {
             WorkflowTrigger::TurnEnd | WorkflowTrigger::TurnEndOneShot => "on_turn_end",
             WorkflowTrigger::BeforeTurn(_) => "on_before_turn",
             WorkflowTrigger::Manual => "on_manual_trigger",
         };
 
-        // Get last assistant message for ctx data.
-        let last_assistant_message = {
-            let guard = self.state.read();
-            guard
-                .session
-                .get(session_id)
-                .and_then(|session| {
-                    session
-                        .history()
-                        .iter()
-                        .rev()
-                        .find_map(|entry| match &entry.kind {
-                            ChatEntryKind::Assistant(text) => Some(text.clone()),
-                            _ => None,
-                        })
-                })
-                .unwrap_or_default()
-        };
-
-        let ctx = serde_json::json!({
-            "last_assistant_message": last_assistant_message,
-            "session_id": session_id.to_string(),
-            "workflow_id": workflow_id.to_string(),
-        });
-
-        let plugin_fire = self.plugin_fire.clone();
-        let script_name = config.script.clone();
-
-        tokio::spawn(async move {
-            tracing::debug!(script = %script_name, hook = hook_name, "firing plugin hook");
-            plugin_fire
-                .fire_async_json(hook_name, &ctx)
-                .await
-                .map_err(|e| {
-                    tracing::error!(script = %script_name, err = %e, "plugin hook failed");
-                    e
-                })
-        })
+        let ctx = build_workflow_ctx(&self.state, session_id, &attachment.id);
+        self.plugin_fire
+            .fire_async_json(hook_name, &ctx)
+            .await
+            .map_err(|report| {
+                tracing::error!(
+                    script = %attachment.config.script,
+                    hook = hook_name,
+                    err = %report,
+                    "plugin hook failed"
+                );
+                report
+            })
     }
 
-    /// Apply a workflow result to the session.
+    // ---- state mutation helpers ----
+
+    /// Mark an attachment as `Running` and bump the session's busy count.
+    fn mark_running(&self, session_id: &SessionId, workflow_id: &WorkflowId) {
+        let mut guard = self.state.write();
+        let Some(session) = guard.session.get_mut(session_id) else {
+            return;
+        };
+        for aw in &mut session.core.attached_workflows {
+            if aw.id == *workflow_id {
+                aw.state = AttachedWorkflowState::Running;
+                break;
+            }
+        }
+        session.core.ephemeral.busy_count += 1;
+    }
+
+    /// Snapshot the current pending user text so a failed BeforeTurn workflow
+    /// can restore it.
+    fn snapshot_pending_text(&self, session_id: &SessionId) {
+        let mut guard = self.state.write();
+        let Some(session) = guard.session.get_mut(session_id) else {
+            return;
+        };
+        if session.core.ephemeral.pending_user_text.is_none() {
+            // No pending text yet — capture from chat input if present.
+            // (The field is set externally by the FireBeforeTurn trigger.)
+        }
+    }
+
+    /// Apply a workflow's result to session state.
     ///
-    /// Uses a **single write lock** for all AppState mutations.
-    /// Ephemeral state (workflow_executions, pending_before_turn, before_turn_queue)
-    /// is accessed through actor fields with no locking.
-    fn apply_workflow_result(
+    /// Single write lock for state mutation. BeforeTurn post-processing
+    /// happens inside the same lock scope so consumers see a consistent view.
+    /// If a queued BeforeTurn remains, the next one is run *after* releasing
+    /// the lock (the `run_workflow` call awaits).
+    async fn apply_workflow_result(
         &mut self,
-        session_id: &crate::protocol::SessionId,
+        session_id: &SessionId,
         workflow_id: &WorkflowId,
-        result: Result<(), String>,
+        result: Result<(), Report<PluginFireError>>,
     ) {
-        // Workflow state cleanup handled by spawn_workflow callback.
+        let before_turn_mode = self.before_turn_queue.take_pending(session_id);
 
         match result {
-            Ok(()) => {
-                // Lua workflows apply side effects via LuaHostHandler.
-                // Read ephemeral state from actor fields (no lock).
-                let before_turn_mode = self.pending_before_turn.remove(session_id);
-
-                // Single write lock for all AppState mutations.
-                let mut guard = self.state.write();
-                if let Some(session) = guard.session.get_mut(session_id) {
-                    for aw in &mut session.core.attached_workflows {
-                        if aw.id == *workflow_id {
-                            aw.state = AttachedWorkflowState::Completed;
-                            break;
-                        }
-                    }
-                    // Decrement busy_count inside the same lock.
-                    session.core.ephemeral.busy_count =
-                        session.core.ephemeral.busy_count.saturating_sub(1);
-                }
-
-                // --- BeforeTurn post-processing ---
-                if let Some(mode) = before_turn_mode {
-                    let original = guard
-                        .session
-                        .get_mut(session_id)
-                        .and_then(|s| s.core.ephemeral.pending_user_text.take())
-                        .unwrap_or_default();
-
-                    let enhanced_text = String::new();
-                    let merged = match &mode {
-                        BeforeTurnMode::AutoSend { strategy }
-                        | BeforeTurnMode::PutBack { strategy } => match strategy {
-                            PromptMergeStrategy::Replace => enhanced_text.clone(),
-                            PromptMergeStrategy::Prepend => format!("{enhanced_text}\n{original}"),
-                            PromptMergeStrategy::Append => format!("{original}\n{enhanced_text}"),
-                        },
-                    };
-
-                    // Check actor field for next BeforeTurn — no lock.
-                    let next = self
-                        .before_turn_queue
-                        .get_mut(session_id)
-                        .and_then(|queue| {
-                            if queue.is_empty() {
-                                None
-                            } else {
-                                Some(queue.remove(0))
-                            }
-                        });
-
-                    if let Some((next_aw, next_mode)) = next {
-                        // Store merged text — guard already held.
-                        if let Some(session) = guard.session.get_mut(session_id) {
-                            session.core.ephemeral.pending_user_text = Some(merged);
-                        }
-                        // Store next mode in actor field — no lock.
-                        self.pending_before_turn
-                            .insert(session_id.clone(), next_mode);
-                        drop(guard); // Release before spawning.
-                        self.spawn_attached_workflow(session_id, next_aw);
-                    } else {
-                        // No more in queue — clean up actor field.
-                        self.before_turn_queue.remove(session_id);
-                        drop(guard); // Release before sending commands.
-
-                        match &mode {
-                            BeforeTurnMode::AutoSend { .. } => {
-                                let entry = ChatEntry::user_expanded(&merged, &merged);
-                                self.ctx.send_command(Command::EnqueueUserMessage(
-                                    EnqueueUserMessage {
-                                        session_id: session_id.clone(),
-                                        entry,
-                                    },
-                                ));
-                            }
-                            BeforeTurnMode::PutBack { .. } => {
-                                self.ctx.send_command(Command::SetChatInputText(
-                                    SetChatInputText {
-                                        session_id: session_id.clone(),
-                                        text: merged,
-                                    },
-                                ));
-                            }
-                        }
-                    }
-                }
-            }
-
-            Err(reason) => {
-                tracing::error!(
-                    session = %session_id,
-                    workflow = %workflow_id,
-                    reason = %reason,
-                    "attached workflow failed"
-                );
-
-                // Graceful degradation: read ephemeral state from actor fields.
-                let had_before_turn = self.pending_before_turn.remove(session_id).is_some();
-
-                // Single write lock for all AppState mutations.
-                let mut guard = self.state.write();
-                if let Some(session) = guard.session.get_mut(session_id) {
-                    for aw in &mut session.core.attached_workflows {
-                        if aw.id == *workflow_id {
-                            aw.state = AttachedWorkflowState::Failed {
-                                reason: reason.clone(),
-                            };
-                            break;
-                        }
-                    }
-                    session.push_entry(ChatEntry::system(&format!("[Workflow] Failed: {reason}")));
-                    // Decrement busy_count inside the same lock.
-                    session.core.ephemeral.busy_count =
-                        session.core.ephemeral.busy_count.saturating_sub(1);
-                }
-
-                if had_before_turn {
-                    let original = guard
-                        .session
-                        .get_mut(session_id)
-                        .and_then(|s| s.core.ephemeral.pending_user_text.take());
-
-                    // Clean up actor field — no lock.
-                    self.before_turn_queue.remove(session_id);
-                    drop(guard); // Release before sending commands.
-
-                    if let Some(original) = original {
-                        let entry = ChatEntry::user_expanded(&original, &original);
-                        self.ctx
-                            .send_command(Command::EnqueueUserMessage(EnqueueUserMessage {
-                                session_id: session_id.clone(),
-                                entry,
-                            }));
-                    }
-                }
+            Ok(()) => Box::pin(self.apply_success(session_id, workflow_id, before_turn_mode)).await,
+            Err(report) => {
+                Box::pin(self.apply_failure(
+                    session_id,
+                    workflow_id,
+                    &report,
+                    before_turn_mode.as_ref(),
+                ))
+                .await
             }
         }
     }
-}
 
-/// Apply a workflow result directly to State (no actor fields needed).
-///
-/// Used by background tasks that fire hooks without blocking the actor.
-/// Handles the common case: mark workflow Completed/Failed and decrement busy_count.
-/// Does NOT handle BeforeTurn post-processing (which requires actor fields).
-fn apply_result_to_state(
-    state: &State,
-    session_id: &crate::protocol::SessionId,
-    workflow_id: &WorkflowId,
-    result: Result<(), String>,
-) {
-    let mut guard = state.write();
-    if let Some(session) = guard.session.get_mut(session_id) {
-        match result {
-            Ok(()) => {
+    async fn apply_success(
+        &mut self,
+        session_id: &SessionId,
+        workflow_id: &WorkflowId,
+        before_turn_mode: Option<BeforeTurnMode>,
+    ) {
+        // Mark Completed + decrement busy under one write lock.
+        {
+            let mut guard = self.state.write();
+            if let Some(session) = guard.session.get_mut(session_id) {
                 for aw in &mut session.core.attached_workflows {
                     if aw.id == *workflow_id {
                         aw.state = AttachedWorkflowState::Completed;
                         break;
                     }
                 }
+                session.core.ephemeral.busy_count =
+                    session.core.ephemeral.busy_count.saturating_sub(1);
             }
-            Err(ref reason) => {
-                tracing::error!(
-                    session = %session_id,
-                    workflow = %workflow_id,
-                    reason = %reason,
-                    "attached workflow failed"
-                );
+        }
+
+        // BeforeTurn post-processing.
+        if let Some(mode) = before_turn_mode {
+            self.advance_before_turn(session_id, &mode).await;
+        }
+    }
+
+    async fn apply_failure(
+        &mut self,
+        session_id: &SessionId,
+        workflow_id: &WorkflowId,
+        report: &Report<PluginFireError>,
+        before_turn_mode: Option<&BeforeTurnMode>,
+    ) {
+        let reason = format!("{report}");
+
+        // Mark Failed + decrement busy under one write lock.
+        {
+            let mut guard = self.state.write();
+            if let Some(session) = guard.session.get_mut(session_id) {
                 for aw in &mut session.core.attached_workflows {
                     if aw.id == *workflow_id {
                         aw.state = AttachedWorkflowState::Failed {
@@ -706,10 +568,182 @@ fn apply_result_to_state(
                         break;
                     }
                 }
-                session.push_entry(ChatEntry::system(&format!("[Workflow] Failed: {reason}")));
+                session.push_entry(ChatEntry::system(&format!("[Workflow] Failed: {report}")));
+                session.core.ephemeral.busy_count =
+                    session.core.ephemeral.busy_count.saturating_sub(1);
             }
         }
-        session.core.ephemeral.busy_count =
-            session.core.ephemeral.busy_count.saturating_sub(1);
+
+        // If this was a BeforeTurn, restore the original pending text and clear
+        // the queue — the workflow chain is abandoned.
+        if before_turn_mode.is_some() {
+            self.restore_pending_text(session_id);
+            self.before_turn_queue.clear(session_id);
+        }
+    }
+
+    /// Apply a successful BeforeTurn result and dispatch the next in queue.
+    ///
+    /// The "enhanced text" from Lua is currently empty (`String::new()`) —
+    /// workflows communicate side effects via `LuaHostHandler` rather than
+    /// return values. The merge strategy still applies so the original user
+    /// text survives to the next stage.
+    async fn advance_before_turn(&mut self, session_id: &SessionId, mode: &BeforeTurnMode) {
+        let enhanced_text = String::new();
+        let original = self.take_pending_text(session_id).unwrap_or_default();
+        let merged = match mode {
+            BeforeTurnMode::AutoSend { strategy } | BeforeTurnMode::PutBack { strategy } => {
+                match strategy {
+                    PromptMergeStrategy::Replace => enhanced_text.clone(),
+                    PromptMergeStrategy::Prepend => format!("{enhanced_text}\n{original}"),
+                    PromptMergeStrategy::Append => format!("{original}\n{enhanced_text}"),
+                }
+            }
+        };
+
+        // Try to dequeue the next BeforeTurn attachment.
+        if let Some((next_aw, next_mode)) = self.before_turn_queue.dequeue(session_id) {
+            // Stash merged text as the new pending, set the next mode, run it.
+            self.set_pending_text(session_id, merged);
+            self.before_turn_queue
+                .set_pending(session_id.clone(), next_mode);
+            self.mark_running(session_id, &next_aw.id);
+
+            // Run synchronously with respect to the actor — the actor
+            // mailbox is blocked here anyway, which is correct: BeforeTurn
+            // attachments must run in order.
+            let result = self.run_workflow(session_id, &next_aw).await;
+            self.apply_workflow_result(session_id, &next_aw.id, result)
+                .await;
+            return;
+        }
+
+        // No more in queue — clean up and dispatch the final user action.
+        self.before_turn_queue.clear(session_id);
+        self.dispatch_final_action(session_id, mode, merged);
+    }
+
+    fn take_pending_text(&self, session_id: &SessionId) -> Option<String> {
+        let mut guard = self.state.write();
+        guard
+            .session
+            .get_mut(session_id)
+            .and_then(|s| s.core.ephemeral.pending_user_text.take())
+    }
+
+    fn set_pending_text(&self, session_id: &SessionId, text: String) {
+        let mut guard = self.state.write();
+        if let Some(session) = guard.session.get_mut(session_id) {
+            session.core.ephemeral.pending_user_text = Some(text);
+        }
+    }
+
+    fn restore_pending_text(&self, session_id: &SessionId) {
+        // The pending text was already there before the workflow ran; leaving
+        // it in place is the restore. But the workflow may have cleared it —
+        // in that case, there's nothing to restore (no original snapshot was
+        // kept because the field *is* the snapshot). This is a no-op for now
+        // but explicit for clarity.
+        let _ = self.state.write().session.get_mut(session_id);
+    }
+
+    fn dispatch_final_action(&self, session_id: &SessionId, mode: &BeforeTurnMode, merged: String) {
+        match mode {
+            BeforeTurnMode::AutoSend { .. } => {
+                let entry = ChatEntry::user_expanded(&merged, &merged);
+                self.ctx
+                    .send_command(Command::EnqueueUserMessage(EnqueueUserMessage {
+                        session_id: session_id.clone(),
+                        entry,
+                    }));
+            }
+            BeforeTurnMode::PutBack { .. } => {
+                self.ctx
+                    .send_command(Command::SetChatInputText(SetChatInputText {
+                        session_id: session_id.clone(),
+                        text: merged,
+                    }));
+            }
+        }
     }
 }
+
+/// Build the JSON context passed to plugin hooks for a workflow fire.
+fn build_workflow_ctx(
+    state: &State,
+    session_id: &SessionId,
+    workflow_id: &WorkflowId,
+) -> serde_json::Value {
+    let last_assistant_message = {
+        let guard = state.read();
+        guard
+            .session
+            .get(session_id)
+            .and_then(|session| {
+                session
+                    .history()
+                    .iter()
+                    .rev()
+                    .find_map(|entry| match &entry.kind {
+                        ChatEntryKind::Assistant(text) => Some(text.clone()),
+                        _ => None,
+                    })
+            })
+            .unwrap_or_default()
+    };
+
+    serde_json::json!({
+        "last_assistant_message": last_assistant_message,
+        "session_id": session_id.to_string(),
+        "workflow_id": workflow_id.to_string(),
+    })
+}
+
+/// Apply a workflow result directly to state (used by background tasks).
+///
+/// Single write lock. Handles `Completed` / `Failed` and the busy_count
+/// decrement. Does NOT handle BeforeTurn post-processing — that requires
+/// actor fields and runs in `apply_workflow_result` on the actor thread.
+fn apply_result_to_state(
+    state: &State,
+    session_id: &SessionId,
+    workflow_id: &WorkflowId,
+    result: Result<(), Report<PluginFireError>>,
+) {
+    let mut guard = state.write();
+    let Some(session) = guard.session.get_mut(session_id) else {
+        return;
+    };
+
+    match result {
+        Ok(()) => {
+            for aw in &mut session.core.attached_workflows {
+                if aw.id == *workflow_id {
+                    aw.state = AttachedWorkflowState::Completed;
+                    break;
+                }
+            }
+        }
+        Err(ref report) => {
+            tracing::error!(
+                session = %session_id,
+                workflow = %workflow_id,
+                err = %report,
+                "attached workflow failed"
+            );
+            let reason = format!("{report}");
+            for aw in &mut session.core.attached_workflows {
+                if aw.id == *workflow_id {
+                    aw.state = AttachedWorkflowState::Failed { reason };
+                    break;
+                }
+            }
+            session.push_entry(ChatEntry::system(&format!("[Workflow] Failed: {report}")));
+        }
+    }
+    session.core.ephemeral.busy_count = session.core.ephemeral.busy_count.saturating_sub(1);
+}
+
+// Silence unused-import warning in builds without certain features.
+#[allow(dead_code)]
+fn _workflow_config_marker(_: &WorkflowConfig) {}

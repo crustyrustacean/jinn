@@ -33,10 +33,10 @@ use jinn_domain::actor_channel::ActorChannelService;
 use jinn_domain::common::actor::protocol::event::{ActorStarted, ActorStarting, AllActorsSpawned};
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 
+use jinn_domain::feat::plugin_lifecycle::{PluginLifecycleActor, PluginLifecycleActorDeps};
 use jinn_domain::feat::workflow::workflow_controller_actor::{
     WorkflowControllerActor, WorkflowControllerActorDeps,
 };
-use jinn_domain::feat::plugin_lifecycle::{PluginLifecycleActor, PluginLifecycleActorDeps};
 use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
@@ -50,8 +50,6 @@ use jinn_domain::{
     MessageSink, ShutdownTracker, State, spawn, spawn_forwarding_task, system_spawn,
     wait_for_system_ready,
 };
-
-
 
 /// Creates an `AppCore` with all actors registered and the async forwarding task started.
 ///
@@ -73,11 +71,17 @@ pub fn create_core_with_actor_host(
     bench_plan: Option<jinn_bench::orchestrator::BenchPlan>,
     bench_artifact_dir: Option<std::path::PathBuf>,
     paths: jinn_domain::AppPaths,
-) -> (AppCore, Services, ActorHostService, jinn_plugin::SyncPlugins) {
+) -> (
+    AppCore,
+    Services,
+    ActorHostService,
+    jinn_plugin::SyncPlugins,
+) {
     // Create channel first - actors need the sender, but AppCore needs services
     // which needs the actor host which needs actors. Break the cycle by creating
     // the channel independently.
     let (sender, receiver) = kanal::unbounded::<AppMsg>();
+    let async_receiver = receiver.to_async();
 
     // Create the message sink that bridges actor output to AppCore's channel.
     let sink: Arc<dyn MessageSink> = Arc::new(ActorMessageSink::new(sender.clone()));
@@ -110,33 +114,27 @@ pub fn create_core_with_actor_host(
     // ── Plugin system ────────────────────────────────────────────────────
     // Constructed early — handles go into Services and TuiApp.
 
-    let plugin_command_dispatcher: jinn_plugin::CommandDispatcher =
-        std::sync::Arc::new({
-            let sink = sink.clone();
-            move |cmd: jinn_plugin::PluginCommand| {
-                crate::plugin_wiring::handle_plugin_command(cmd, &*sink);
-            }
-        });
+    let plugin_command_dispatcher: jinn_plugin::CommandDispatcher = std::sync::Arc::new({
+        let sink = sink.clone();
+        move |cmd: jinn_plugin::PluginCommand| {
+            crate::plugin_wiring::handle_plugin_command(cmd, &*sink);
+        }
+    });
     let plugin_request_handler: jinn_plugin::RequestHandler =
-        std::sync::Arc::new(|name, data| {
-            crate::plugin_wiring::handle_plugin_request(name, data)
-        });
+        std::sync::Arc::new(|name, data| crate::plugin_wiring::handle_plugin_request(name, data));
 
-    let (sync_plugins, async_plugins, plugin_sync_handle) =
-        jinn_plugin::PluginSystem::new(
-            &paths.plugins_dir(),
-            &paths.system_plugins_dir(),
-            handle.clone(),
-            plugin_command_dispatcher,
-            plugin_request_handler,
-        );
+    let (sync_plugins, async_plugins, plugin_sync_handle) = jinn_plugin::PluginSystem::new(
+        &paths.plugins_dir(),
+        &paths.system_plugins_dir(),
+        handle.clone(),
+        plugin_command_dispatcher,
+        plugin_request_handler,
+    );
 
     // Store discovered plugin metadata in state for the sidebar.
     {
-        let plugins = jinn_plugin::discover_plugins(
-            &paths.plugins_dir(),
-            &paths.system_plugins_dir(),
-        );
+        let plugins =
+            jinn_plugin::discover_plugins(&paths.plugins_dir(), &paths.system_plugins_dir());
         tracing::info!(count = plugins.len(), "discovered plugins");
         let plugins: Vec<jinn_domain::common::app_state::DiscoveredPlugin> = plugins
             .into_iter()
@@ -158,10 +156,14 @@ pub fn create_core_with_actor_host(
         config_storage: config_storage.clone(),
         session_store: session_store.clone(),
         user_preferences_storage: user_preferences_storage.clone(),
-        plugins: std::sync::Arc::new(async_plugins)
-            as std::sync::Arc<dyn jinn_domain::feat::workflow::PluginFire>,
-        plugin_sync: std::sync::Arc::new(plugin_sync_handle)
-            as std::sync::Arc<dyn jinn_domain::feat::workflow::PluginSyncCall>,
+        plugins: jinn_domain::feat::workflow::PluginFireService::new(std::sync::Arc::new(
+            async_plugins,
+        )
+            as std::sync::Arc<dyn jinn_domain::feat::workflow::PluginFire>),
+        plugin_sync: jinn_domain::feat::workflow::PluginSyncCallService::new(std::sync::Arc::new(
+            plugin_sync_handle,
+        )
+            as std::sync::Arc<dyn jinn_domain::feat::workflow::PluginSyncCall>),
     };
 
     // ── Infrastructure actors (no lifecycle events) ──────────────────────
@@ -783,7 +785,7 @@ pub fn create_core_with_actor_host(
     let actor_host_service = ActorHostService::new(Arc::new(
         InMemoryActorHost::from_actors_with_handle(actors, handle.clone(), shutdown_tracker),
     ));
-    spawn_forwarding_task(receiver, actor_host_service.clone(), handle);
+    spawn_forwarding_task(async_receiver, actor_host_service.clone(), handle);
 
     // Signal that all actors have been spawned.
     // SystemReadyActor waits for this before checking its count.

@@ -81,6 +81,7 @@ impl IntentHandler {
         reason = "exhaustive match on all Intent variants"
     )]
     fn handle_inner(intent: &Intent, state: &mut AppState) -> IntentResult {
+        tracing::info!(?intent, "DIAG IntentHandler::handle_inner ENTER");
         // Clear ignore sweep state when the user performs any action other than
         // pressing x. This ensures the sweep only continues during consecutive
         // x presses within 100ms.

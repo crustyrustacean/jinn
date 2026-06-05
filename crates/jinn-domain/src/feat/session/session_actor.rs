@@ -158,7 +158,10 @@ impl Actor for SessionPersistenceActor {
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Event(event) => self.handle_event(&event, ctx).await,
-            ActorEnvelope::Command(cmd) => self.handle_command(&cmd, ctx).await,
+            ActorEnvelope::Command(cmd) => {
+                tracing::debug!(cmd = %cmd, "session-persistence: received command");
+                self.handle_command(&cmd, ctx).await;
+            }
             _ => {}
         }
     }

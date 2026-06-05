@@ -4,7 +4,14 @@
 //! this trait provides the minimal interface for sync hook calling.
 //! `jinn-plugin` provides the concrete implementation for `PluginSyncHandle`.
 
+use error_stack::Report;
 use serde_json::Value;
+use wherror::Error;
+
+/// Error raised by [`PluginSyncCall`] implementations.
+#[derive(Debug, Error)]
+#[error(debug)]
+pub struct PluginSyncCallError;
 
 /// Call plugin hooks synchronously, collecting return values.
 ///
@@ -22,5 +29,51 @@ pub trait PluginSyncCall: Send + Sync {
     /// # Errors
     ///
     /// Returns an error if the plugin thread is dead or a hook errors.
-    fn call_hooks_json(&self, hook: &str, ctx: &Value) -> Result<Vec<Value>, String>;
+    fn call_hooks_json(
+        &self,
+        hook: &str,
+        ctx: &Value,
+    ) -> Result<Vec<Value>, Report<PluginSyncCallError>>;
+
+    /// Returns the name of this backend for debugging.
+    fn name(&self) -> &'static str;
+}
+
+use derive_more::Debug;
+use std::sync::Arc;
+
+/// Service wrapper for [`PluginSyncCall`].
+///
+/// Cheap to clone (Arc). Construct once at startup, share via [`crate::Services`].
+#[derive(Debug, Clone)]
+pub struct PluginSyncCallService {
+    #[debug("PluginSyncCall<{}>", self.backend.name())]
+    backend: Arc<dyn PluginSyncCall>,
+}
+
+impl PluginSyncCallService {
+    /// Construct a new service wrapper around a [`PluginSyncCall`] backend.
+    #[must_use]
+    pub fn new(backend: Arc<dyn PluginSyncCall>) -> Self {
+        Self { backend }
+    }
+
+    /// Call all hooks for the given name, collecting non-nil return values.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the plugin thread is dead or a hook errors.
+    pub fn call_hooks(
+        &self,
+        hook: &str,
+        ctx: &Value,
+    ) -> Result<Vec<Value>, Report<PluginSyncCallError>> {
+        self.backend.call_hooks_json(hook, ctx)
+    }
+
+    /// Returns the backend name for debugging.
+    #[must_use]
+    pub fn name(&self) -> &'static str {
+        self.backend.name()
+    }
 }

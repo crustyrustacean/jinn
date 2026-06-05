@@ -24,6 +24,7 @@ impl SessionPersistenceActor {
         _config: &crate::feat::provider_infra::ProvidersConfig,
         ctx: &ActorContext,
     ) {
+        tracing::info!("DIAG on_environment_loaded ENTER");
         let prefs = match self.services.user_preferences_storage.load() {
             Ok(p) => p,
             Err(e) => {
@@ -31,6 +32,7 @@ impl SessionPersistenceActor {
                 return;
             }
         };
+        tracing::info!("DIAG on_environment_loaded prefs loaded");
 
         {
             let mut state = self.state.write();
@@ -51,17 +53,26 @@ impl SessionPersistenceActor {
             }
         }
 
+        tracing::info!("DIAG on_environment_loaded model/strategy applied");
+
         // Load project context files (AGENTS.md/CLAUDE.md) from CWD tree into cache.
         // This replaces per-assembly disk reads with a one-time startup load.
         let cwd = {
             let state = self.state.read();
             state.active_session().cwd().to_path_buf()
         };
+        tracing::info!("DIAG on_environment_loaded loading context files");
         let context_files = load_project_context_files(&cwd).await;
+        tracing::info!(
+            count = context_files.len(),
+            "DIAG on_environment_loaded context files loaded"
+        );
         if !context_files.is_empty() {
             let mut state = self.state.write();
             state.context.context_files = context_files;
         }
+
+        tracing::info!("DIAG on_environment_loaded loading unarchived sessions");
 
         // Load unarchived sessions from SQLite into memory.
         // These are sessions with `archived=false` - corresponding to `SessionState::Loaded`.
@@ -75,6 +86,10 @@ impl SessionPersistenceActor {
                     return;
                 }
             };
+            tracing::info!(
+                count = summaries.len(),
+                "DIAG on_environment_loaded summaries loaded"
+            );
 
             if !summaries.is_empty() {
                 // Sort by updated_at descending to find the most recent.
@@ -88,7 +103,12 @@ impl SessionPersistenceActor {
                         loaded.push(session);
                     }
                 }
+                tracing::info!(
+                    count = loaded.len(),
+                    "DIAG on_environment_loaded sessions loaded"
+                );
 
+                tracing::info!("DIAG on_environment_loaded inserting sessions");
                 if !loaded.is_empty() {
                     for mut session in loaded {
                         // Mark startup-loaded sessions as interacted - they came from disk.
@@ -109,10 +129,12 @@ impl SessionPersistenceActor {
                     // tree summary shows complete historical totals.
                     self.hydrate_all_tree_frozen_nodes(&self.services.session_store)
                         .await;
+                    tracing::info!("DIAG on_environment_loaded frozen nodes hydrated");
                 }
             }
         }
 
+        tracing::info!("DIAG on_environment_loaded sending UpdatePreferences");
         // Send UpdatePreferences command so the pipeline handles persistence + state sync.
         if let Err(e) = ctx.send_command(Command::UpdatePreferences(crate::feat::preferences_actor::protocol::command::UpdatePreferences {
                 updates: vec![
@@ -121,6 +143,7 @@ impl SessionPersistenceActor {
             })) {
             tracing::warn!(err = ?e, "session-actor failed to send UpdatePreferences on startup");
         }
+        tracing::info!("DIAG on_environment_loaded DONE");
     }
 }
 

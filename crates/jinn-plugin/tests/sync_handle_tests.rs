@@ -11,7 +11,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use jinn_plugin::{PluginCommand, PluginSystem, PluginSyncHandle};
+use jinn_plugin::{PluginCommand, PluginSyncHandle, PluginSystem};
 use serde::Serialize;
 
 fn write_plugin(dir: &Path, name: &str, lua_source: &str) {
