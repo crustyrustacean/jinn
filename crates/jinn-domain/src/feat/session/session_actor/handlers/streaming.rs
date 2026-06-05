@@ -7,8 +7,7 @@
 use crate::common::actor::ActorContext;
 use crate::feat::context::strategy::token_estimator::TokenCounter;
 use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason, StreamToken};
-
-use crate::protocol::ChatEntry;
+use crate::protocol::{ChatEntry, Event};
 
 use super::super::SessionPersistenceActor;
 use crate::feat::session::phase_machine::PhaseKind;
@@ -107,6 +106,7 @@ impl SessionPersistenceActor {
             None => provider_tokens,
         };
 
+        let mut all_changed: Vec<crate::protocol::ChatEntryId> = Vec::new();
         let (old_phase, new_phase);
         {
             let mut state = self.state.write();
@@ -132,13 +132,14 @@ impl SessionPersistenceActor {
 
             // Hard cancel: force-exclude dangling tool calls left by the interrupted stream.
             if event.reason == StreamCompletedReason::Canceled {
-                session.force_exclude_dangling_tool_calls();
+                all_changed.extend(session.force_exclude_dangling_tool_calls());
             }
 
             // Apply pending history mutations for non-ToolUse completions.
             // ToolUse defers to on_tool_batch_completed.
             if event.reason != StreamCompletedReason::ToolUse {
-                let count = session.drain_and_apply_pending_mutations();
+                let (count, changed) = session.drain_and_apply_pending_mutations();
+                all_changed.extend(changed);
                 if count > 0 {
                     tracing::debug!(
                         session_id = %event.session_id,
@@ -185,6 +186,19 @@ impl SessionPersistenceActor {
             new_phase = session.phase();
         }
 
+        // Emit ContextOverrideChanged events for any entry whose override actually changed
+        // (from dangling-tool-call sweep or pending worker mutations). Outside the write lock.
+        for entry_id in all_changed {
+            if let Err(e) = ctx.send_event(Event::ContextOverrideChanged(
+                crate::feat::context::protocol::event::ContextOverrideChanged {
+                    session_id: event.session_id.clone(),
+                    entry_id,
+                },
+            )) {
+                tracing::warn!(err = ?e, "failed to emit ContextOverrideChanged");
+            }
+        }
+
         super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
         super::super::helpers::emit_history_appended(ctx, &event.session_id);
 
@@ -204,7 +218,7 @@ mod tests {
     };
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::feat::session::token_stats::TokenRecord;
-    use crate::protocol::{ChatEntry, Event};
+    use crate::protocol::{ChatEntry, Event, ChangeSource};
 
     #[tokio::test]
     async fn on_stream_completed_error_reason_finishes_streaming() {
@@ -485,21 +499,21 @@ mod tests {
         let history = session.history();
         // User entry is not excluded.
         assert_eq!(
-            history[0].context_override,
+            history[0].context_override(),
             crate::protocol::ContextOverride::Default
         );
         // Empty Assistant and ToolCall are excluded.
         assert_eq!(
-            history[1].context_override,
+            history[1].context_override(),
             crate::protocol::ContextOverride::ForcedExclude
         );
         assert_eq!(
-            history[2].context_override,
+            history[2].context_override(),
             crate::protocol::ContextOverride::ForcedExclude
         );
         // Error entry ("Cancelled") is not excluded.
         assert_eq!(
-            history[3].context_override,
+            history[3].context_override(),
             crate::protocol::ContextOverride::Default
         );
     }
@@ -930,7 +944,7 @@ mod tests {
         let history = session.history();
         for entry in history {
             assert_eq!(
-                entry.context_override,
+                entry.context_override(),
                 crate::protocol::ContextOverride::Default,
                 "expected Default for entry {:?}",
                 entry.kind
@@ -993,10 +1007,7 @@ mod tests {
             session.begin_streaming();
             // Queue a mutation to exclude the assistant entry.
             session.queue_mutations(vec![
-                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
-                    entry_id: entry_id.clone(),
-                    value: crate::protocol::ContextOverride::ForcedExclude,
-                },
+                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: crate::protocol::ContextOverride::ForcedExclude, source: ChangeSource::Internal { label: "test".into() } },
             ]);
             (entry_id, state.session.active_session_id().clone())
         };
@@ -1022,7 +1033,7 @@ mod tests {
             .find(|e| e.id == entry_id)
             .expect("assistant entry exists");
         assert_eq!(
-            assistant.context_override,
+            assistant.context_override(),
             crate::protocol::ContextOverride::ForcedExclude,
             "expected mutation to be applied at stream completion"
         );
@@ -1052,10 +1063,7 @@ mod tests {
             session.push_entry(entry);
             session.begin_streaming();
             session.queue_mutations(vec![
-                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
-                    entry_id: entry_id.clone(),
-                    value: crate::protocol::ContextOverride::ForcedExclude,
-                },
+                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: crate::protocol::ContextOverride::ForcedExclude, source: ChangeSource::Internal { label: "test".into() } },
             ]);
             (entry_id, state.session.active_session_id().clone())
         };
@@ -1081,7 +1089,7 @@ mod tests {
             .find(|e| e.id == entry_id)
             .expect("assistant entry exists");
         assert_eq!(
-            assistant.context_override,
+            assistant.context_override(),
             crate::protocol::ContextOverride::ForcedExclude,
             "expected mutation to be applied at stream error"
         );
@@ -1101,10 +1109,7 @@ mod tests {
             session.push_entry(entry);
             session.begin_streaming();
             session.queue_mutations(vec![
-                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
-                    entry_id: entry_id.clone(),
-                    value: crate::protocol::ContextOverride::ForcedExclude,
-                },
+                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: crate::protocol::ContextOverride::ForcedExclude, source: ChangeSource::Internal { label: "test".into() } },
             ]);
             (entry_id, state.session.active_session_id().clone())
         };
@@ -1130,7 +1135,7 @@ mod tests {
             .find(|e| e.id == entry_id)
             .expect("assistant entry exists");
         assert_eq!(
-            assistant.context_override,
+            assistant.context_override(),
             crate::protocol::ContextOverride::ForcedExclude,
             "expected mutation to be applied at stream canceled"
         );
@@ -1150,10 +1155,7 @@ mod tests {
             session.push_entry(entry);
             session.begin_streaming();
             session.queue_mutations(vec![
-                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
-                    entry_id: entry_id.clone(),
-                    value: crate::protocol::ContextOverride::ForcedExclude,
-                },
+                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: crate::protocol::ContextOverride::ForcedExclude, source: ChangeSource::Internal { label: "test".into() } },
             ]);
             (entry_id, state.session.active_session_id().clone())
         };
@@ -1183,7 +1185,7 @@ mod tests {
             .find(|e| e.id == entry_id)
             .expect("assistant entry exists");
         assert_eq!(
-            assistant.context_override,
+            assistant.context_override(),
             crate::protocol::ContextOverride::Default,
             "expected mutation to NOT be applied for ToolUse reason"
         );

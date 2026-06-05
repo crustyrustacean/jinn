@@ -4,12 +4,14 @@
 //! and loading session picker entries from the session store into app state.
 
 use super::super::SessionPersistenceActor;
+use crate::common::actor::ActorContext;
 use crate::feat::provider::protocol::event::ModelsRefreshed;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 
 use crate::feat::ui::picker_states::PickerExt;
+use crate::protocol::Event;
 use crate::protocol::{ChatEntry, PickerKind};
 
 impl SessionPersistenceActor {
@@ -97,29 +99,42 @@ impl SessionPersistenceActor {
     pub(in crate::feat::session::session_actor) fn handle_submit_history_mutations(
         &self,
         payload: &SubmitHistoryMutations,
+        ctx: &ActorContext,
     ) {
         if payload.mutations.is_empty() {
             return;
         }
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&payload.session_id);
-        session.queue_mutations(payload.mutations.clone());
-        tracing::debug!(
-            session_id = %payload.session_id,
-            queue_len = session.core.ephemeral.pending_mutations.len(),
-            "queued history mutations from worker"
-        );
+        // Capture what changed (if anything) so events can be emitted after releasing the write lock.
+        let (session_id, changed) = {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&payload.session_id);
+            session.queue_mutations(payload.mutations.clone());
+            tracing::debug!(
+                session_id = %payload.session_id,
+                queue_len = session.core.ephemeral.pending_mutations.len(),
+                "queued history mutations from worker"
+            );
 
-        // If the session is idle (no active stream), drain immediately.
-        // Otherwise mutations wait for the next stream completion.
-        if matches!(session.phase(), PhaseKind::Idle) {
-            let count = session.drain_and_apply_pending_mutations();
-            if count > 0 {
-                tracing::info!(
-                    session_id = %payload.session_id,
-                    count,
-                    "applied pending history mutations immediately (session idle)"
-                );
+            // If the session is idle (no active stream), drain immediately.
+            // Otherwise mutations wait for the next stream completion.
+            if matches!(session.phase(), PhaseKind::Idle) {
+                let (_count, changed) = session.drain_and_apply_pending_mutations();
+                (payload.session_id.clone(), changed)
+            } else {
+                (payload.session_id.clone(), Vec::new())
+            }
+        };
+
+        // Emit ContextOverrideChanged events for any entry whose override actually changed.
+        // Doing this outside the write lock keeps the bus dispatch decoupled from session state.
+        for entry_id in changed {
+            if let Err(e) = ctx.send_event(Event::ContextOverrideChanged(
+                crate::feat::context::protocol::event::ContextOverrideChanged {
+                    session_id: session_id.clone(),
+                    entry_id,
+                },
+            )) {
+                tracing::warn!(err = ?e, "failed to emit ContextOverrideChanged");
             }
         }
     }
@@ -186,6 +201,15 @@ mod tests {
     use crate::protocol::{ChatEntryKind, SessionId};
     use jinn_provider::ModelInfo;
     use std::collections::HashMap;
+
+    fn test_ctx() -> crate::common::actor::context::ActorContext {
+        use std::sync::Arc;
+        use crate::common::actor::context::ActorContext;
+        use crate::common::actor::message_sink::{MessageSink, RecordingSink};
+        let sink: Arc<dyn MessageSink> = Arc::new(RecordingSink::new());
+        ActorContext::new("test", sink)
+    }
+
 
     // --- on_models_refreshed ---
 
@@ -324,6 +348,7 @@ mod tests {
         );
     }
 
+
     // --- handle_submit_history_mutations ---
 
     #[test]
@@ -348,19 +373,17 @@ mod tests {
             &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
                 session_id: session_id.clone(),
                 mutations: vec![
-                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
-                        entry_id: entry_id.clone(),
-                        value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
-                    },
+                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude, source: crate::feat::session::chat_entry::ChangeSource::Internal { label: "test".to_string() } },
                 ],
             },
+            &mut test_ctx(),
         );
 
         // Then mutations are applied immediately (session is idle).
         let state = actor.state.read();
         let session = state.session.get(&session_id).unwrap();
         assert_eq!(
-            session.history()[0].context_override,
+            session.history()[0].context_override(),
             crate::feat::session::chat_entry::ContextOverride::ForcedExclude
         );
         // Queue is empty after drain.
@@ -382,6 +405,7 @@ mod tests {
                 session_id: session_id.clone(),
                 mutations: vec![],
             },
+            &mut test_ctx(),
         );
 
         // Then no batch was queued.
@@ -401,12 +425,10 @@ mod tests {
             &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
                 session_id: new_session_id.clone(),
                 mutations: vec![
-                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
-                        entry_id: crate::feat::session::chat_entry::ChatEntryId::new(),
-                        value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
-                    },
+                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: crate::feat::session::chat_entry::ChatEntryId::new(), value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude, source: crate::feat::session::chat_entry::ChangeSource::Internal { label: "test".to_string() } },
                 ],
             },
+            &mut test_ctx(),
         );
 
         // Then the session was created and mutations applied immediately.
@@ -445,23 +467,19 @@ mod tests {
             &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
                 session_id: session_id.clone(),
                 mutations: vec![
-                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
-                        entry_id: entry_id_1,
-                        value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
-                    },
+                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: entry_id_1, value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude, source: crate::feat::session::chat_entry::ChangeSource::Internal { label: "test".to_string() } },
                 ],
             },
+            &mut test_ctx(),
         );
         actor.handle_submit_history_mutations(
             &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
                 session_id: session_id.clone(),
                 mutations: vec![
-                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
-                        entry_id: entry_id_2,
-                        value: crate::feat::session::chat_entry::ContextOverride::ForcedInclude,
-                    },
+                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: entry_id_2, value: crate::feat::session::chat_entry::ContextOverride::ForcedInclude, source: crate::feat::session::chat_entry::ChangeSource::Internal { label: "test".to_string() } },
                 ],
             },
+            &mut test_ctx(),
         );
 
         // Then both mutations are applied and queue is empty.
@@ -469,12 +487,126 @@ mod tests {
         let session = state.session.get(&session_id).unwrap();
         assert_eq!(session.core.ephemeral.pending_mutations.len(), 0);
         assert_eq!(
-            session.history()[0].context_override,
+            session.history()[0].context_override(),
             crate::feat::session::chat_entry::ContextOverride::ForcedExclude
         );
         assert_eq!(
-            session.history()[1].context_override,
+            session.history()[1].context_override(),
             crate::feat::session::chat_entry::ContextOverride::ForcedInclude
+        );
+    }
+
+    // --- Worker mutation emits ContextOverrideChanged ---
+
+    #[test]
+    fn handle_submit_history_mutations_emits_context_override_changed_on_change() {
+        // Given a session with one entry at Default.
+        let actor = test_actor();
+        let (sink, mut ctx) = crate::feat::session::session_actor::helpers::test_context();
+        // Override actor's state to use our sink-equipped context for event capture.
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(crate::protocol::ChatEntry::user("hello"));
+            state.session.active_session_id().clone()
+        };
+        let entry_id = {
+            let state = actor.state.read();
+            state.session.get(&session_id).unwrap().history()[0].id.clone()
+        };
+
+        // When submitting a SetContextOverride mutation with a real change.
+        actor.handle_submit_history_mutations(
+            &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                session_id: session_id.clone(),
+                mutations: vec![
+                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                        entry_id: entry_id.clone(),
+                        value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
+                        source: crate::feat::session::chat_entry::ChangeSource::Worker {
+                            name: "test_worker".to_owned(),
+                        },
+                    },
+                ],
+            },
+            &ctx,
+        );
+
+        // Then ContextOverrideChanged event was emitted.
+        let events = sink.events();
+        let has_event = events.iter().any(|ev| {
+            matches!(
+                ev,
+                crate::protocol::Event::ContextOverrideChanged(payload)
+                    if payload.entry_id == entry_id
+            )
+        });
+        assert!(
+            has_event,
+            "expected ContextOverrideChanged to be emitted for worker-applied change"
+        );
+    }
+
+    #[test]
+    fn handle_submit_history_mutations_does_not_emit_on_noop_mutation() {
+        // Given a session with one entry already at ForcedExclude.
+        let actor = test_actor();
+        let (sink, ctx) = crate::feat::session::session_actor::helpers::test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(crate::protocol::ChatEntry::user("hello"));
+            let id = session.core.session_id.clone();
+            // Pre-set the entry to ForcedExclude.
+            session.core.history[0].apply_context_override(
+                crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
+                crate::feat::session::chat_entry::ChangeSource::Internal {
+                    label: "setup".to_owned(),
+                },
+            );
+            id
+        };
+        let entry_id = {
+            let state = actor.state.read();
+            state.session.get(&session_id).unwrap().history()[0].id.clone()
+        };
+
+        // When submitting a SetContextOverride that matches the current value (no-op).
+        actor.handle_submit_history_mutations(
+            &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                session_id: session_id.clone(),
+                mutations: vec![
+                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                        entry_id: entry_id.clone(),
+                        value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
+                        source: crate::feat::session::chat_entry::ChangeSource::Worker {
+                            name: "test_worker".to_owned(),
+                        },
+                    },
+                ],
+            },
+            &ctx,
+        );
+
+        // Then no ContextOverrideChanged event is emitted.
+        let events = sink.events();
+        let has_event = events.iter().any(|ev| {
+            matches!(
+                ev,
+                crate::protocol::Event::ContextOverrideChanged(_)
+            )
+        });
+        assert!(
+            !has_event,
+            "expected no ContextOverrideChanged for no-op mutation"
+        );
+        // And context_history has only the setup event, not a duplicate.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).unwrap();
+        assert_eq!(
+            session.history()[0].context_history.len(),
+            1,
+            "context_history should contain only the setup event"
         );
     }
 }

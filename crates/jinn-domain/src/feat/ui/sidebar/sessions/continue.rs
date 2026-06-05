@@ -1,14 +1,33 @@
-//! Queue a "Continue" user message to the session under the sidebar cursor.
+//! Resume the session under the sidebar cursor without injecting a new user message.
+//!
+//! See `.plans/retry-continue/plan.md` for the dialectical background: this
+//! intent exists for two scenarios — resuming after a rate-limited / errored
+//! turn, and resuming a session that was rehydrated from disk after an app
+//! kill. In both cases the model needs only the existing history; no new
+//! `User` entry is required.
 
 use crate::common::app_state::AppState;
-use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
+use crate::feat::chat_input::protocol::command::EnqueueResumeTurn;
 use crate::feat::ui::sidebar::sessions::state::{SessionEntryKind, sorted_open_sessions};
-use crate::protocol::{ChatEntry, Command, IntentResult};
+use crate::protocol::{Command, IntentResult};
 
-/// Queues a "Continue" user message to the session under the sidebar cursor.
+/// Resume the session under the sidebar cursor.
 ///
-/// No session activation or scope change occurs. The message is enqueued
-/// directly via the actor system.
+/// Emits `Command::EnqueueResumeTurn` for the selected session. No new
+/// `User` or `Assistant` entry is created — the session actor will push
+/// a UI-only `System "↻ session resumed"` marker (excluded from the
+/// assembled prompt by default) and re-fire `SendToLlmProvider` against
+/// the existing history.
+///
+/// No-op when:
+/// - the sidebar scope is not `Sessions`,
+/// - no session is selected,
+/// - the selection is a Workflow (not a Session).
+///
+/// The target session's phase (Idle/Sending/Streaming) is checked
+/// downstream in `session_actor::handle_enqueue_resume_turn`; the
+/// intent itself always emits the command and lets the actor decide
+/// whether to dispatch or ignore.
 pub fn handle_session_continue(state: &mut AppState) -> IntentResult {
     use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
 
@@ -28,16 +47,15 @@ pub fn handle_session_continue(state: &mut AppState) -> IntentResult {
         return IntentResult::empty();
     };
 
-    // Workflow entries are not sessions — continuing a workflow is a no-op.
+    // Workflow entries are not sessions — resuming a workflow is a no-op.
     if !matches!(entry.kind, SessionEntryKind::Session) {
         return IntentResult::empty();
     }
 
     let session_id = entry.id.clone();
 
-    IntentResult::with_commands(vec![Command::EnqueueUserMessage(EnqueueUserMessage {
+    IntentResult::with_commands(vec![Command::EnqueueResumeTurn(EnqueueResumeTurn {
         session_id,
-        entry: ChatEntry::user("Continue"),
     })])
 }
 
@@ -53,7 +71,7 @@ mod tests {
     use crate::protocol::Command;
 
     #[rstest::rstest]
-    fn returns_enqueue_command_for_selected_session() {
+    fn returns_enqueue_resume_command_for_selected_session() {
         // Given a state with two sessions, sidebar focused on sessions section.
         let mut state = AppState::default();
         // Create a second session.
@@ -74,16 +92,14 @@ mod tests {
         // When handling session continue.
         let result = handle_session_continue(&mut state);
 
-        // Then an EnqueueUserMessage command is returned.
+        // Then an EnqueueResumeTurn command is returned (not EnqueueUserMessage).
         assert_eq!(result.commands.len(), 1);
         let cmd = &result.commands[0];
-        let Command::EnqueueUserMessage(msg) = cmd else {
-            panic!("expected EnqueueUserMessage, got {cmd:?}");
+        let Command::EnqueueResumeTurn(msg) = cmd else {
+            panic!("expected EnqueueResumeTurn, got {cmd:?}");
         };
         // And it targets the selected session.
         assert_eq!(msg.session_id, selected_id);
-        // And the entry text is "Continue".
-        assert_eq!(msg.entry.text(), "Continue");
         // And the active session is unchanged.
         assert_eq!(state.session.active_session_id(), &active_id_before);
     }

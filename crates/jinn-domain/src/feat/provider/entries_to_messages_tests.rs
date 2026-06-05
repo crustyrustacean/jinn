@@ -1,6 +1,7 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
 use crate::feat::provider::entries_to_messages::entries_to_messages;
+use crate::feat::session::chat_entry::ChangeSource;
 use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::protocol::{ChatEntry, LlmMessage, PinPosition};
 
@@ -439,6 +440,7 @@ fn compaction_entry_produces_user_message_with_summary() {
         },
         pin_position: None,
         context_override: crate::protocol::ContextOverride::Default,
+    context_history: Vec::new(),
     }];
 
     // When converting to messages.
@@ -550,6 +552,7 @@ fn message_order_after_compaction() {
             },
             pin_position: None,
             context_override: crate::protocol::ContextOverride::Default,
+        context_history: Vec::new(),
         },
         ChatEntry::user("new question"),
         ChatEntry::assistant("new answer"),
@@ -748,8 +751,9 @@ fn forced_exclude_dangling_tool_call_produces_valid_messages() {
     ];
 
     // Force-exclude the dangling entries (simulating force_exclude_dangling_tool_calls).
-    entries[1].context_override = crate::protocol::ContextOverride::ForcedExclude;
-    entries[2].context_override = crate::protocol::ContextOverride::ForcedExclude;
+    entries[1].apply_context_override(crate::protocol::ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".to_string() });
+    entries[2].apply_context_override(crate::protocol::ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".to_string() });
+    entries[2].apply_context_override(crate::protocol::ContextOverride::ForcedExclude, crate::feat::session::chat_entry::ChangeSource::Internal { label: "test".to_string() });
 
     // When converting to messages.
     let messages = entries_to_messages(&entries);
@@ -786,8 +790,8 @@ fn forced_exclude_preserves_complete_tool_loop_in_messages() {
     ];
 
     // Force-exclude only the dangling entries (tc-2 and its empty Assistant).
-    entries[4].context_override = crate::protocol::ContextOverride::ForcedExclude;
-    entries[5].context_override = crate::protocol::ContextOverride::ForcedExclude;
+    entries[4].apply_context_override(crate::protocol::ContextOverride::ForcedExclude, crate::feat::session::chat_entry::ChangeSource::Internal { label: "test".to_string() });
+    entries[5].apply_context_override(crate::protocol::ContextOverride::ForcedExclude, crate::feat::session::chat_entry::ChangeSource::Internal { label: "test".to_string() });
 
     // When converting to messages.
     let messages = entries_to_messages(&entries);
@@ -831,9 +835,9 @@ fn no_dangling_tool_calls_in_messages_after_hard_cancel() {
     ];
 
     // Force-exclude the dangling entries (tc-3, tc-4, and their empty Assistant).
-    entries[7].context_override = crate::protocol::ContextOverride::ForcedExclude;
-    entries[8].context_override = crate::protocol::ContextOverride::ForcedExclude;
-    entries[9].context_override = crate::protocol::ContextOverride::ForcedExclude;
+    entries[7].apply_context_override(crate::protocol::ContextOverride::ForcedExclude, crate::feat::session::chat_entry::ChangeSource::Internal { label: "test".to_string() });
+    entries[8].apply_context_override(crate::protocol::ContextOverride::ForcedExclude, crate::feat::session::chat_entry::ChangeSource::Internal { label: "test".to_string() });
+    entries[9].apply_context_override(crate::protocol::ContextOverride::ForcedExclude, crate::feat::session::chat_entry::ChangeSource::Internal { label: "test".to_string() });
 
     // When converting to messages.
     let messages = entries_to_messages(&entries);

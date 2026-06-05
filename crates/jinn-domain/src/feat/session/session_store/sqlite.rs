@@ -814,7 +814,7 @@ fn save_blocking(
                     ordinal: ordinal as i32,
                     pin_position: pin_str,
                     ignored: entry.ignored(),
-                    context_override: serde_json::to_string(&entry.context_override)
+                    context_override: serde_json::to_string(&entry.context_override())
                         .unwrap_or_else(|_| "\"default\"".to_owned()),
                 })
                 .execute(txn)?;
@@ -923,30 +923,34 @@ fn load_session_blocking(
                 _ => None,
             });
 
-            ChatEntry {
-                id: ChatEntryId::from(entry.id.clone().unwrap_or_default()),
-                timestamp: entry
-                    .timestamp
+            let row_id = entry.id.clone().unwrap_or_default();
+            let row_timestamp = entry.timestamp.clone();
+            let mut chat_entry = ChatEntry::new_with_kind(
+                ChatEntryId::from(row_id),
+                row_timestamp
                     .parse()
                     .unwrap_or_else(|_| jiff::Timestamp::now()),
                 kind,
                 pin_position,
-                context_override: serde_json::from_str(&junction.context_override)
-                    .unwrap_or_else(|e| {
-                        tracing::warn!(
-                            entry_id = %entry.id.as_deref().unwrap_or("?"),
-                            raw = %junction.context_override,
-                            error = %e,
-                            "failed to deserialize context_override, falling back to Default"
-                        );
-                        // Fallback: use legacy ignored column if context_override is corrupt
-                        if junction.ignored {
-                            ContextOverride::ForcedExclude
-                        } else {
-                            ContextOverride::Default
-                        }
-                    }),
-            }
+            );
+            // Restored from DB - no audit event recorded.
+            let override_value: ContextOverride = serde_json::from_str(&junction.context_override)
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        entry_id = %chat_entry.id.as_uuid(),
+                        raw = %junction.context_override,
+                        error = %e,
+                        "failed to deserialize context_override, falling back to Default"
+                    );
+                    // Fallback: use legacy ignored column if context_override is corrupt
+                    if junction.ignored {
+                        ContextOverride::ForcedExclude
+                    } else {
+                        ContextOverride::Default
+                    }
+                });
+            chat_entry.restore_context_override(override_value);
+            chat_entry
         })
         .collect();
 

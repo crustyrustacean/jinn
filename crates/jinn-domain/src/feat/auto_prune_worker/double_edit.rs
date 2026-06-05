@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::DoubleEditAutoPruneConfig;
-use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
+use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
 
@@ -54,7 +54,13 @@ fn extract_path_from_arguments(arguments: &str) -> Option<String> {
 
 /// Walk forward from a ToolCall to find its matching ToolResult.
 ///
-/// Returns `None` if the result is missing, pending, or already excluded.
+/// Returns `None` if no ToolResult with the given `tool_call_id` exists after
+/// the call index (e.g. pending, orphaned, or pruned-from-history).
+///
+/// Override state is intentionally **not** consulted here — the helper is
+/// purely a structural lookup. Mutation-emission guards that need to skip
+/// protected entries happen in [`build_prune_mutations`], mirroring the other
+/// auto-prune workers.
 fn find_matching_result(
     history: &[ChatEntry],
     call_idx: usize,
@@ -65,13 +71,6 @@ fn find_matching_result(
         if let ChatEntryKind::ToolResult { id, .. } = &entry.kind
             && id == tool_call_id
         {
-            // If the result was already excluded by a prior prune, the whole
-            // pair is already handled — stop looking (don't fall through to a
-            // later ToolResult with the same ID, which shouldn't exist but we
-            // guard against it by returning here).
-            if entry.context_override == ContextOverride::ForcedExclude {
-                return None;
-            }
             return Some(entry.id.clone());
         }
     }
@@ -102,14 +101,17 @@ impl HistoryWorker for DoubleEditAutoPruneWorker {
         }
 
         let groups = collect_edit_write_pairs_by_path(&history);
-        build_prune_mutations(groups, self.config.max_file_edits)
+        build_prune_mutations(&history, groups, self.config.max_file_edits, self.name())
     }
 }
-
 /// Scan history for edit/write ToolCalls, resolve each to its result,
 /// and group into pairs by file path.
 ///
-/// Skips ToolCalls that are already excluded or have no matching ToolResult.
+/// Skips ToolCalls with no matching ToolResult. **Does not** filter on
+/// `context_override` — protected entries (`ForcedInclude` or
+/// `ForcedExclude`) are still counted toward the per-file total so the prune
+/// window is stable. The suppression of mutations for those entries happens
+/// in [`build_prune_mutations`].
 fn collect_edit_write_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Vec<EditWritePair>> {
     // First pass: collect every edit/write ToolCall with its history index
     // and file path. We record indices so the second pass can scan forward
@@ -133,11 +135,6 @@ fn collect_edit_write_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Ve
     for (call_idx, path) in &candidates {
         let call_entry = &history[*call_idx];
 
-        // Already excluded by a prior prune — don't count toward the total.
-        if call_entry.context_override == ContextOverride::ForcedExclude {
-            continue;
-        }
-
         let ChatEntryKind::ToolCall {
             id: tool_call_id, ..
         } = &call_entry.kind
@@ -146,8 +143,8 @@ fn collect_edit_write_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Ve
         };
 
         // Walk forward to find the ToolResult that matches this call.
-        // If none found (pending, orphaned, or already excluded), skip it —
-        // incomplete pairs don't count toward the file's total.
+        // If none found (pending or orphaned), skip it — incomplete pairs
+        // don't count toward the file's total.
         let Some(result_id) = find_matching_result(history, *call_idx, tool_call_id) else {
             continue;
         };
@@ -163,9 +160,17 @@ fn collect_edit_write_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Ve
 
 /// For each path group exceeding the limit, emit `SetContextOverride` mutations
 /// for the oldest pairs.
+///
+/// Pairs whose halves are already protected (`ForcedInclude` or
+/// `ForcedExclude`) are still **counted** toward the per-file total (so the
+/// prune window is stable), but their individual halves are skipped at
+/// emission time — no no-op duplicate is emitted, and user-pinned-in
+/// entries are not silently flipped to `ForcedExclude`.
 fn build_prune_mutations(
+    history: &[ChatEntry],
     groups: HashMap<String, Vec<EditWritePair>>,
     max_file_edits: usize,
+    worker_name: &str,
 ) -> Vec<HistoryMutation> {
     let mut mutations = Vec::new();
 
@@ -179,14 +184,31 @@ fn build_prune_mutations(
         // so the pruned edit/write disappears entirely from context.
         let to_prune = pairs.len() - max_file_edits;
         for pair in pairs.iter().take(to_prune) {
-            mutations.push(HistoryMutation::SetContextOverride {
-                entry_id: pair.call_entry_id.clone(),
-                value: ContextOverride::ForcedExclude,
-            });
-            mutations.push(HistoryMutation::SetContextOverride {
-                entry_id: pair.result_entry_id.clone(),
-                value: ContextOverride::ForcedExclude,
-            });
+            let call_protected = history
+                .iter()
+                .any(|e| e.id == pair.call_entry_id && e.is_protected_from_prune());
+            let result_protected = history
+                .iter()
+                .any(|e| e.id == pair.result_entry_id && e.is_protected_from_prune());
+
+            if !call_protected {
+                mutations.push(HistoryMutation::SetContextOverride {
+                    entry_id: pair.call_entry_id.clone(),
+                    value: ContextOverride::ForcedExclude,
+                    source: ChangeSource::Worker {
+                        name: worker_name.to_owned(),
+                    },
+                });
+            }
+            if !result_protected {
+                mutations.push(HistoryMutation::SetContextOverride {
+                    entry_id: pair.result_entry_id.clone(),
+                    value: ContextOverride::ForcedExclude,
+                    source: ChangeSource::Worker {
+                        name: worker_name.to_owned(),
+                    },
+                });
+            }
         }
     }
 
@@ -239,7 +261,7 @@ mod tests {
         let mut ids: Vec<_> = mutations
             .into_iter()
             .map(|m| match m {
-                HistoryMutation::SetContextOverride { entry_id, value } => {
+                HistoryMutation::SetContextOverride { entry_id, value, .. } => {
                     assert_eq!(value, ContextOverride::ForcedExclude);
                     entry_id
                 }
@@ -361,11 +383,15 @@ mod tests {
 
     #[test]
     fn already_excluded_skipped() {
+        // 3 pairs total, max=2 -> prune oldest 1.
+        // The oldest call is already ForcedExclude -> only its non-excluded
+        // result gets a mutation.
         let mut history = Vec::new();
         let e1 = edit_call_result("tc-1", "/foo.rs", "edit 1");
         let mut e1_call = e1[0].clone();
-        e1_call.context_override = ContextOverride::ForcedExclude;
+        e1_call.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
         history.push(e1_call);
+        let oldest_result_id = e1[1].id.clone();
         history.push(e1[1].clone());
         let e2 = edit_call_result("tc-2", "/foo.rs", "edit 2");
         history.push(e2[0].clone());
@@ -374,10 +400,49 @@ mod tests {
         history.push(e3[0].clone());
         history.push(e3[1].clone());
 
-        // 1 already excluded + 2 in-context = exactly max, nothing to prune.
         let worker = worker_with_max(2);
         let mutations = block_on_evaluate(&worker, history);
-        assert!(mutations.is_empty());
+
+        assert_eq!(mutations.len(), 1, "only the non-excluded result mutates");
+        match &mutations[0] {
+            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+                assert_eq!(*entry_id, oldest_result_id);
+                assert_eq!(*value, ContextOverride::ForcedExclude);
+            }
+            other => panic!("expected SetContextOverride, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn forced_included_skipped() {
+        // Same shape as `already_excluded_skipped` but with ForcedInclude on
+        // the oldest call. Proves ForcedInclude is treated symmetrically at
+        // the mutation-emission step.
+        let mut history = Vec::new();
+        let e1 = edit_call_result("tc-1", "/foo.rs", "edit 1");
+        let mut e1_call = e1[0].clone();
+        e1_call.context_override = ContextOverride::ForcedInclude;
+        history.push(e1_call);
+        let oldest_result_id = e1[1].id.clone();
+        history.push(e1[1].clone());
+        let e2 = edit_call_result("tc-2", "/foo.rs", "edit 2");
+        history.push(e2[0].clone());
+        history.push(e2[1].clone());
+        let e3 = edit_call_result("tc-3", "/foo.rs", "edit 3");
+        history.push(e3[0].clone());
+        history.push(e3[1].clone());
+
+        let worker = worker_with_max(2);
+        let mutations = block_on_evaluate(&worker, history);
+
+        assert_eq!(mutations.len(), 1, "only the non-protected result mutates");
+        match &mutations[0] {
+            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+                assert_eq!(*entry_id, oldest_result_id);
+                assert_eq!(*value, ContextOverride::ForcedExclude);
+            }
+            other => panic!("expected SetContextOverride, got {other:?}"),
+        }
     }
 
     #[test]

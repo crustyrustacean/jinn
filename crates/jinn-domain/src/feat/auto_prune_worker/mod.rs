@@ -12,6 +12,7 @@
 //! [`HistoryWorker`]: crate::feat::history_worker::worker_trait::HistoryWorker
 //! [`HistoryWorkerActor`]: crate::feat::history_worker::actor::HistoryWorkerActor
 
+pub mod anchor_radius;
 pub mod broken_edit;
 pub mod consecutive_reads;
 pub mod double_edit;
@@ -21,8 +22,8 @@ pub mod regex;
 pub mod todo_prune;
 pub mod tool_age_window;
 pub mod trivial_assistant;
-pub mod user_anchor_radius;
 
+pub use anchor_radius::AnchorRadiusAutoPruneWorker;
 pub use broken_edit::BrokenEditAutoPruneWorker;
 pub use consecutive_reads::ConsecutiveReadsAutoPruneWorker;
 pub use double_edit::DoubleEditAutoPruneWorker;
@@ -35,4 +36,3 @@ pub use regex::RegexAutoPruneWorker;
 pub use todo_prune::TodoAutoPruneWorker;
 pub use tool_age_window::ToolAgeWindowAutoPruneWorker;
 pub use trivial_assistant::TrivialAssistantAutoPruneWorker;
-pub use user_anchor_radius::UserAnchorRadiusAutoPruneWorker;

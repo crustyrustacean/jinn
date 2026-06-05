@@ -212,6 +212,12 @@ pub enum TaskListError {
     /// The phases list provided was empty.
     #[error("phases list must not be empty")]
     EmptyPhasesList,
+    /// An invariant the type system cannot prove held at runtime was violated.
+    /// Carries a static description of which invariant.
+    #[error("internal invariant violated: {what}")]
+    InternalInvariant {
+        what: &'static str,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -544,13 +550,17 @@ impl TaskList {
             TaskPosition::After(after_id) => {
                 let idx = phase
                     .find_task_index(after_id)
-                    .expect("ref was found above");
+                    .ok_or(TaskListError::InternalInvariant {
+                        what: "postpone_task: ref task not found after lookup above",
+                    })?;
                 phase.tasks.insert(idx + 1, new_task);
             }
             TaskPosition::Before(before_id) => {
                 let idx = phase
                     .find_task_index(before_id)
-                    .expect("ref was found above");
+                    .ok_or(TaskListError::InternalInvariant {
+                        what: "postpone_task: ref task not found after lookup above",
+                    })?;
                 phase.tasks.insert(idx, new_task);
             }
             TaskPosition::End => unreachable!(),
@@ -580,20 +590,12 @@ impl TaskList {
         source_task_id: &TaskId,
         target_phase_id: &PhaseId,
     ) -> Result<TaskId, TaskListError> {
-        // Find source task info.
-        let mut source_info: Option<(usize, String, TaskStatus)> = None;
-        for phase in &self.phases {
-            for task in &phase.tasks {
+        // Find source task info (track both phase and task indices).
+        let mut source_info: Option<(usize, usize, String, TaskStatus)> = None;
+        for (phase_idx, phase) in self.phases.iter().enumerate() {
+            for (task_idx, task) in phase.tasks.iter().enumerate() {
                 if &task.id == source_task_id {
-                    source_info = Some((
-                        phase
-                            .tasks
-                            .iter()
-                            .position(|t| &t.id == source_task_id)
-                            .unwrap(),
-                        task.description.clone(),
-                        task.status,
-                    ));
+                    source_info = Some((phase_idx, task_idx, task.description.clone(), task.status));
                     break;
                 }
             }
@@ -602,7 +604,7 @@ impl TaskList {
             }
         }
 
-        let (src_pi, src_desc, src_status) =
+        let (src_phase_idx, _src_task_idx, src_desc, src_status) =
             source_info.ok_or_else(|| TaskListError::TaskNotFound(source_task_id.clone()))?;
 
         // Validate source is not already postponed.
@@ -621,19 +623,20 @@ impl TaskList {
             .ok_or_else(|| TaskListError::PhaseNotFound(target_phase_id.clone()))?;
 
         // Mark source task as postponed.
-        let source_task = self.phases[src_pi]
+        let source_task = self.phases[src_phase_idx]
             .tasks
             .iter_mut()
             .find(|t| &t.id == source_task_id);
-        if let Some(t) = source_task {
-            t.status = TaskStatus::Postponed
-        } else {
-            tracing::error!(
-                source_task_id = %source_task_id,
-                src_phase_index = src_pi,
-                "postpone_to_phase: source task missing on second lookup; returning TaskNotFound"
-            );
-            return Err(TaskListError::TaskNotFound(source_task_id.clone()));
+        match source_task {
+            Some(t) => t.status = TaskStatus::Postponed,
+            None => {
+                tracing::error!(
+                    source_task_id = %source_task_id,
+                    src_phase_index = src_phase_idx,
+                    "postpone_to_phase: source task missing on second lookup; returning TaskNotFound"
+                );
+                return Err(TaskListError::TaskNotFound(source_task_id.clone()));
+            }
         }
 
         // Generate new task ID.
@@ -743,7 +746,8 @@ impl TaskList {
                             TaskStatus::Cancelled => {
                                 ("\u{2717}", format!("CANCELLED: {}", task.description))
                             }
-                            TaskStatus::Postponed => unreachable!(),
+                            // Postponed tasks are filtered out above; this arm is unreachable.
+                            TaskStatus::Postponed => (" ", task.description.clone()),
                         };
                         lines.push(format!("- [{}] {} [{}]", check, desc, task.id));
                     }
@@ -793,7 +797,8 @@ impl TaskList {
                         TaskStatus::Cancelled => {
                             ("\u{2717}", format!("CANCELLED: {}", task.description))
                         }
-                        TaskStatus::Postponed => unreachable!(),
+                        // Postponed tasks are filtered out above; this arm is structurally unreachable.
+                        TaskStatus::Postponed => continue,
                     };
                     lines.push(format!("- [{}] {} [{}]", check, desc, task.id));
                 }
