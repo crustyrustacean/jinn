@@ -399,45 +399,45 @@ impl Default for TrivialAssistantAutoPruneConfig {
     }
 }
 
-/// Default enabled state for user-anchor-radius auto-prune.
-const DEFAULT_USER_ANCHOR_RADIUS_ENABLED: bool = true;
+/// Default enabled state for anchor-radius auto-prune.
+const DEFAULT_ANCHOR_RADIUS_ENABLED: bool = true;
 
 /// Default radius (in raw history entries) within which an Assistant entry is
 /// protected from pruning regardless of token count.
-const DEFAULT_USER_ANCHOR_RADIUS: usize = 100;
+const DEFAULT_ANCHOR_RADIUS: usize = 100;
 
-/// User-anchor-radius auto-prune strategy configuration.
+/// Anchor-radius auto-prune strategy configuration.
 ///
-/// Serialized as `[auto_prune.user_anchor_radius]` in `jinn.toml`.
+/// Serialized as `[auto_prune.anchor_radius]` in `jinn.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UserAnchorRadiusAutoPruneConfig {
-    /// Whether the user-anchor-radius auto-prune worker is active.
+pub struct AnchorRadiusAutoPruneConfig {
+    /// Whether the anchor-radius auto-prune worker is active.
     /// Default: `true`.
-    #[serde(default = "default_user_anchor_radius_enabled")]
+    #[serde(default = "default_anchor_radius_enabled")]
     pub enabled: bool,
-    /// Maximum index distance (in raw chat entries) to the nearest `User`
-    /// entry — in either direction — within which an `Assistant` entry is
-    /// protected. Distance strictly greater than this radius marks the entry
-    /// as a prune candidate (subject to the `>80` token threshold).
+    /// Radius (in raw chat entries) within which an `Assistant` entry is
+    /// protected from pruning, regardless of distance to any User entry.
+    /// Distance strictly greater than this radius marks the entry as a
+    /// prune candidate (subject to the `>80` token threshold).
     /// Minimum 1 (clamped at evaluation time).
     /// Default: `100`.
-    #[serde(default = "default_user_anchor_radius")]
+    #[serde(default = "default_anchor_radius")]
     pub radius: usize,
 }
 
-fn default_user_anchor_radius_enabled() -> bool {
-    DEFAULT_USER_ANCHOR_RADIUS_ENABLED
+fn default_anchor_radius_enabled() -> bool {
+    DEFAULT_ANCHOR_RADIUS_ENABLED
 }
 
-fn default_user_anchor_radius() -> usize {
-    DEFAULT_USER_ANCHOR_RADIUS
+fn default_anchor_radius() -> usize {
+    DEFAULT_ANCHOR_RADIUS
 }
 
-impl Default for UserAnchorRadiusAutoPruneConfig {
+impl Default for AnchorRadiusAutoPruneConfig {
     fn default() -> Self {
         Self {
-            enabled: DEFAULT_USER_ANCHOR_RADIUS_ENABLED,
-            radius: DEFAULT_USER_ANCHOR_RADIUS,
+            enabled: DEFAULT_ANCHOR_RADIUS_ENABLED,
+            radius: DEFAULT_ANCHOR_RADIUS,
         }
     }
 }
@@ -539,9 +539,9 @@ pub struct AutoPruneConfig {
     /// Trivial-assistant auto-prune strategy configuration.
     #[serde(default)]
     pub trivial_assistant: TrivialAssistantAutoPruneConfig,
-    /// User-anchor-radius auto-prune strategy configuration.
-    #[serde(default)]
-    pub user_anchor_radius: UserAnchorRadiusAutoPruneConfig,
+    /// Anchor-radius auto-prune strategy configuration.
+    #[serde(default, alias = "user_anchor_radius")]
+    pub anchor_radius: AnchorRadiusAutoPruneConfig,
 }
 
 /// Default token threshold for auto-compaction.
@@ -927,7 +927,8 @@ where
             .attach("failed to serialize UserPreferences")?;
 
         let toml::Value::Table(new_table) = &new_value else {
-            unreachable!("UserPreferences always serializes to a table")
+            return Err(Report::new(UserPreferencesError::Parse)
+                .attach("UserPreferences serialized to non-table TOML value"));
         };
         let mut patcher = DocumentPatcher::new();
         patcher.register_array_key(["session_lifecycle"], "name");
@@ -2017,7 +2018,7 @@ max_age_entries = 50
                     max_age_entries: 50,
                     max_tokens: 40,
                 },
-                user_anchor_radius: UserAnchorRadiusAutoPruneConfig {
+                anchor_radius: AnchorRadiusAutoPruneConfig {
                     enabled: false,
                     radius: 42,
                 },
@@ -2037,8 +2038,8 @@ max_age_entries = 50
         assert!(!reloaded.auto_prune.trivial_assistant.enabled);
         assert_eq!(reloaded.auto_prune.trivial_assistant.max_age_entries, 50);
         assert_eq!(reloaded.auto_prune.trivial_assistant.max_tokens, 40);
-        assert!(!reloaded.auto_prune.user_anchor_radius.enabled);
-        assert_eq!(reloaded.auto_prune.user_anchor_radius.radius, 42);
+        assert!(!reloaded.auto_prune.anchor_radius.enabled);
+        assert_eq!(reloaded.auto_prune.anchor_radius.radius, 42);
     }
 
     #[rstest::rstest]
@@ -2055,8 +2056,8 @@ max_age_entries = 50
         assert!(prefs.auto_prune.trivial_assistant.enabled);
         assert_eq!(prefs.auto_prune.trivial_assistant.max_age_entries, 100);
         assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
-        assert!(prefs.auto_prune.user_anchor_radius.enabled);
-        assert_eq!(prefs.auto_prune.user_anchor_radius.radius, 100);
+        assert!(prefs.auto_prune.anchor_radius.enabled);
+        assert_eq!(prefs.auto_prune.anchor_radius.radius, 100);
     }
 
     #[rstest::rstest]
@@ -2256,5 +2257,35 @@ keep_last = 1
         assert_eq!(reloaded.auto_prune.regex.rules.len(), 2);
         assert_eq!(reloaded.auto_prune.regex.rules[0].pattern, "ls");
         assert_eq!(reloaded.auto_prune.regex.rules[1].pattern, "cargo check");
+    }
+
+    #[rstest::rstest]
+    fn legacy_user_anchor_radius_key_still_loads_via_serde_alias() {
+        // Given a TOML file using the legacy [auto_prune.user_anchor_radius] table key
+        // (renamed to anchor_radius in the assistant-message-filter-fix task).
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[auto_prune.user_anchor_radius]
+enabled = true
+radius = 42"#,
+        )
+        .expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then the values populate the renamed anchor_radius field,
+        // proving the #[serde(alias = "user_anchor_radius")] on AutoPruneConfig works.
+        assert!(
+            prefs.auto_prune.anchor_radius.enabled,
+            "legacy user_anchor_radius table should map to anchor_radius",
+        );
+        assert_eq!(
+            prefs.auto_prune.anchor_radius.radius,
+            42,
+            "legacy radius value should round-trip",
+        );
     }
 }

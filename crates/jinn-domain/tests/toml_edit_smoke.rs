@@ -44,8 +44,7 @@ fn round_trip_preserves_comments_when_patching_one_field() {
         .expect("find openai block");
     let openai_block_end = output[openai_block_start..]
         .find("\n\n")
-        .map(|i| openai_block_start + i)
-        .unwrap_or(output.len());
+        .map_or(output.len(), |i| openai_block_start + i);
     let openai_block = &output[openai_block_start..openai_block_end];
     assert!(openai_block.contains("MY_CUSTOM_KEY"));
     assert!(!openai_block.contains("OPENAI_API_KEY"));
