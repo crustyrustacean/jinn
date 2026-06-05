@@ -39,6 +39,8 @@ pub enum Scope {
     PickerTool,
     /// Picker - Skill toggle selection.
     PickerSkill,
+    /// Picker - Read-only task list browser.
+    PickerTaskList,
     /// Input mode - typing into the input buffer.
     Input,
     /// Arg input mode - typing positional args for a lifecycle command.
@@ -70,6 +72,7 @@ impl std::fmt::Display for Scope {
             Self::PickerCompactionModel => write!(f, "Picker(compaction-model)"),
             Self::PickerTool => write!(f, "Picker(tool)"),
             Self::PickerSkill => write!(f, "Picker(skill)"),
+            Self::PickerTaskList => write!(f, "Picker(task-list)"),
             Self::Input => write!(f, "Input"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
@@ -99,6 +102,7 @@ impl std::str::FromStr for Scope {
             "Picker(compaction-model)" => Ok(Self::PickerCompactionModel),
             "Picker(tool)" => Ok(Self::PickerTool),
             "Picker(skill)" => Ok(Self::PickerSkill),
+            "Picker(task-list)" => Ok(Self::PickerTaskList),
             "Input" => Ok(Self::Input),
             "ArgInput" => Ok(Self::ArgInput),
             "TokenBudgetInput" => Ok(Self::TokenBudgetInput),

@@ -5,6 +5,7 @@
 //! and persists across restarts via the existing session serialization pipeline.
 
 pub mod tools;
+pub mod picker_entry;
 
 #[cfg(test)]
 mod types_tests;
