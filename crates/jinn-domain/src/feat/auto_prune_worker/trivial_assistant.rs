@@ -40,7 +40,7 @@
 //! Per-entry counts are looked up via
 //! [`HistoryWorkerChatEntryTokenCache::get_or_insert_with`]. The first
 //! worker to evaluate a session pays the tiktoken cost; subsequent
-//! evaluations and concurrent workers (e.g., `UserAnchorRadiusAutoPruneWorker`)
+//! evaluations and concurrent workers (e.g., `AnchorRadiusAutoPruneWorker`)
 //! hit the cache.
 //!
 //! [`HistoryWorkerChatEntryTokenCache::get_or_insert_with`]: crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache::get_or_insert_with
@@ -664,8 +664,8 @@ mod tests {
     // ------------------------------------------------------------------
     #[test]
     fn anchor_worker_reads_external_cache_writes() {
-        use crate::feat::auto_prune_worker::user_anchor_radius::UserAnchorRadiusAutoPruneWorker;
-        use crate::feat::preferences_actor::user_preferences::UserAnchorRadiusAutoPruneConfig;
+        use crate::feat::auto_prune_worker::anchor_radius::AnchorRadiusAutoPruneWorker;
+        use crate::feat::preferences_actor::user_preferences::AnchorRadiusAutoPruneConfig;
 
         let shared_cache = HistoryWorkerChatEntryTokenCache::new();
         let session_id = SessionId::new();
@@ -682,8 +682,8 @@ mod tests {
             counter: TiktokenCounter::o200k_base(),
         };
 
-        let anchor = UserAnchorRadiusAutoPruneWorker {
-            config: UserAnchorRadiusAutoPruneConfig {
+        let anchor = AnchorRadiusAutoPruneWorker {
+            config: AnchorRadiusAutoPruneConfig {
                 enabled: true,
                 radius: 5,
             },
@@ -692,12 +692,14 @@ mod tests {
         };
 
         // History: User at index 0, 100 trivial-step padding entries,
-        // target "ok" at index 101.
+        // target "ok" at index 101, then 6 more padding entries so the
+        // last anchor is at index 107 (d_fwd = 6 > radius 5).
         let mut history = vec![ChatEntry::user("anchor")];
         history.extend(std::iter::repeat_n(trivial_assistant("step"), 100));
         let target = trivial_assistant("ok");
         let target_id = target.id.clone();
         history.push(target);
+        history.extend(std::iter::repeat_n(trivial_assistant("step"), 6));
 
         // Sabotage: cache "ok" as 999 tokens.
         shared_cache.insert(session_id.clone(), target_id.clone(), 999);
