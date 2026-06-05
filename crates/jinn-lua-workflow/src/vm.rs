@@ -57,6 +57,7 @@ impl CtxConfig {
     }
 
     /// Enables all capabilities with the given session and workflow IDs.
+    #[must_use]
     pub fn with_all_capabilities(mut self, session_id: String, workflow_id: String) -> Self {
         self.llm = true;
         self.push_user = true;
@@ -69,48 +70,56 @@ impl CtxConfig {
     }
 
     /// Enables llm capability.
+    #[must_use]
     pub fn with_llm(mut self) -> Self {
         self.llm = true;
         self
     }
 
     /// Enables push_user capability.
+    #[must_use]
     pub fn with_push_user(mut self) -> Self {
         self.push_user = true;
         self
     }
 
     /// Enables push_system capability.
+    #[must_use]
     pub fn with_push_system(mut self) -> Self {
         self.push_system = true;
         self
     }
 
     /// Enables turn_off capability.
+    #[must_use]
     pub fn with_turn_off(mut self) -> Self {
         self.turn_off = true;
         self
     }
 
     /// Enables gather capability.
+    #[must_use]
     pub fn with_gather(mut self) -> Self {
         self.gather = true;
         self
     }
 
     /// Sets the session ID.
+    #[must_use]
     pub fn session_id(mut self, id: String) -> Self {
         self.session_id = id;
         self
     }
 
     /// Sets the workflow ID.
+    #[must_use]
     pub fn workflow_id(mut self, id: String) -> Self {
         self.workflow_id = id;
         self
     }
 
     /// Sets the system prompt for llm.
+    #[must_use]
     pub fn system_prompt(mut self, prompt: String) -> Self {
         self.system_prompt = Some(prompt);
         self
@@ -124,7 +133,7 @@ impl CtxConfig {
 /// capability methods based on the config.
 fn build_ctx_from_config(
     lua: &Lua,
-    host_tx: kanal::Sender<HostRequest>,
+    host_tx: &kanal::Sender<HostRequest>,
     config: &CtxConfig,
 ) -> Result<Table, Report<LuaError>> {
     let mut builder = crate::ctx::CtxBuilder::empty(lua)?;
@@ -212,7 +221,7 @@ pub fn spawn_one_shot(
                     let lua = Lua::new();
 
                     // Build the ctx table from config.
-                    let ctx = build_ctx_from_config(&lua, host_tx, &ctx_config).map_err(|e| {
+                    let ctx = build_ctx_from_config(&lua, &host_tx, &ctx_config).map_err(|e| {
                         tracing::error!(script = %script_name, err = %e, "failed to build ctx");
                         e
                     })?;
@@ -275,12 +284,11 @@ pub fn spawn_one_shot(
 /// Converts a Lua value to `serde_json::Value` (simple conversion).
 fn value_to_json(value: &Value) -> JsonValue {
     match value {
-        Value::Nil => JsonValue::Null,
         Value::Boolean(b) => JsonValue::Bool(*b),
         Value::Integer(i) => serde_json::json!(*i),
         Value::Number(n) => serde_json::json!(*n),
         Value::String(s) => JsonValue::String(s.to_string_lossy()),
-        // Tables, functions, etc. — return Null for now.
+        // Tables, functions, nil, etc. — return Null.
         _ => JsonValue::Null,
     }
 }
@@ -305,13 +313,13 @@ mod tests {
     async fn simple_script_executes_and_returns() {
         let (host_tx, _host_rx) = kanal::unbounded::<HostRequest>();
 
-        let script = r#"
+        let script = "
             return {
                 run = function(ctx)
                     return 42
                 end
             }
-        "#
+        "
         .to_owned();
 
         let handle = spawn_one_shot(script, "test".to_owned(), host_tx, empty_config());
@@ -324,12 +332,12 @@ mod tests {
     async fn script_returning_nil_succeeds() {
         let (host_tx, _host_rx) = kanal::unbounded::<HostRequest>();
 
-        let script = r#"
+        let script = "
             return {
                 run = function(ctx)
                 end
             }
-        "#
+        "
         .to_owned();
 
         let handle = spawn_one_shot(script, "test".to_owned(), host_tx, empty_config());
@@ -361,13 +369,13 @@ mod tests {
     async fn script_accessing_ctx_data() {
         let (host_tx, _host_rx) = kanal::unbounded::<HostRequest>();
 
-        let script = r#"
+        let script = "
             return {
                 run = function(ctx)
                     return ctx.greeting
                 end
             }
-        "#
+        "
         .to_owned();
 
         let config = CtxConfig::data_only(&serde_json::json!({ "greeting": "hello from host" }));
@@ -397,9 +405,9 @@ mod tests {
     async fn script_without_run_function_fails() {
         let (host_tx, _host_rx) = kanal::unbounded::<HostRequest>();
 
-        let script = r#"
+        let script = "
             return { something_else = function() end }
-        "#
+        "
         .to_owned();
 
         let handle = spawn_one_shot(script, "test".to_owned(), host_tx, empty_config());
@@ -412,11 +420,11 @@ mod tests {
     async fn script_with_syntax_error_fails() {
         let (host_tx, _host_rx) = kanal::unbounded::<HostRequest>();
 
-        let script = r#"
+        let script = "
             return { run = function(ctx)
                 this is not valid lua!!!
             end }
-        "#
+        "
         .to_owned();
 
         let handle = spawn_one_shot(script, "test".to_owned(), host_tx, empty_config());
@@ -553,13 +561,13 @@ mod tests {
     async fn turn_off_capability_sends_host_request() {
         let (host_tx, host_rx) = kanal::unbounded::<HostRequest>();
 
-        let script = r#"
+        let script = "
             return {
                 run = function(ctx)
                     ctx.turn_off()
                 end
             }
-        "#
+        "
         .to_owned();
 
         let config = empty_config()

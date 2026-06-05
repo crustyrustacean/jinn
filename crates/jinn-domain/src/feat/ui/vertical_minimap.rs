@@ -270,6 +270,7 @@ fn compute_tokens_below(state: &AppState, start: usize) -> Option<u32> {
     compute_token_sum_in_range(state, start, history_len)
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn compute_token_sum_in_range(
     state: &AppState,
     start: usize,

@@ -20,6 +20,30 @@ use engine::{LinesInput, RawEdit, apply_hashline_edits, resolve_edit_anchors, va
 use line_ending::{detect_line_ending, normalize_to_lf, restore_line_endings, strip_bom};
 use response::{build_anchor_block, format_noop_response, format_success_response};
 
+/// Construct a failure [`ToolResult`] from a `call` and error `content`.
+fn err_result(call: &ToolCall, content: String) -> ToolResult {
+    ToolResult {
+        tool_call_id: call.id.clone(),
+        name: call.name.clone(),
+        content,
+        success: false,
+        full_content: None,
+        truncation: None,
+    }
+}
+
+/// Construct a success [`ToolResult`] from a `call` and `content`.
+fn ok_result(call: &ToolCall, content: String) -> ToolResult {
+    ToolResult {
+        tool_call_id: call.id.clone(),
+        name: call.name.clone(),
+        content,
+        success: true,
+        full_content: None,
+        truncation: None,
+    }
+}
+
 /// Returns the tool definition for the `edit` built-in tool.
 pub fn definition() -> ToolDefinition {
     ToolDefinition {
@@ -114,59 +138,34 @@ fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
 }
 
 /// Executes the `edit` built-in tool.
+/// Executes the `edit` built-in tool.
 pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let (path, raw_edits) = match parse_args(&call.arguments) {
             Ok(v) => v,
-            Err(e) => {
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: format!("failed to parse arguments: {e}"),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                };
-            }
+            Err(e) => return err_result(&call, format!("failed to parse arguments: {e}")),
         };
 
         if path.is_empty() {
-            return ToolResult {
-                tool_call_id: call.id,
-                name: call.name,
-                content: "`path` is required. Provide the file path, e.g. \"src/main.rs\"."
-                    .to_owned(),
-                success: false,
-                full_content: None,
-                truncation: None,
-            };
+            return err_result(
+                &call,
+                "`path` is required. Provide the file path, e.g. \"src/main.rs\".".to_owned(),
+            );
         }
 
         if raw_edits.is_empty() {
-            return ToolResult {
-                tool_call_id: call.id,
-                name: call.name,
-                content: "No edits provided.".to_owned(),
-                success: false,
-                full_content: None,
-                truncation: None,
-            };
+            return err_result(&call, "No edits provided.".to_owned());
         }
 
         let resolved = resolve_path(&path, &ctx.cwd);
 
-        // Read file
         let raw_content = match tokio::fs::read_to_string(&resolved).await {
             Ok(c) => c,
             Err(e) => {
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: format!("failed to read file '{}': {e}", resolved.display()),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                };
+                return err_result(
+                    &call,
+                    format!("failed to read file '{}': {e}", resolved.display()),
+                );
             }
         };
 
@@ -180,19 +179,9 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         // Normalize to LF for processing
         let normalized = normalize_to_lf(content_without_bom);
 
-        // Resolve raw edits into typed operations
         let edits = match resolve_edit_anchors(&raw_edits) {
             Ok(e) => e,
-            Err(e) => {
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: e,
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                };
-            }
+            Err(e) => return err_result(&call, e),
         };
 
         // Validate anchors against current file content
@@ -200,43 +189,18 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let mismatches = validate_anchors(&edits, &file_lines);
         if !mismatches.is_empty() {
             let error_msg = engine::format_mismatch_error(&mismatches, &file_lines);
-            return ToolResult {
-                tool_call_id: call.id,
-                name: call.name,
-                content: error_msg,
-                success: false,
-                full_content: None,
-                truncation: None,
-            };
+            return err_result(&call, error_msg);
         }
 
-        // Apply edits
         let edit_result = match apply_hashline_edits(&normalized, &edits) {
             Ok(r) => r,
-            Err(e) => {
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: e,
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                };
-            }
+            Err(e) => return err_result(&call, e),
         };
 
-        // Check if content actually changed
         if normalized == edit_result.content {
             let response_text =
                 format_noop_response(&path, &edit_result.noop_edits, &edit_result.warnings);
-            return ToolResult {
-                tool_call_id: call.id,
-                name: call.name,
-                content: response_text,
-                success: true,
-                full_content: None,
-                truncation: None,
-            };
+            return ok_result(&call, response_text);
         }
 
         // Restore line endings and BOM
@@ -246,46 +210,8 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             None => restored,
         };
 
-        // Write back atomically (temp file + rename, preserve permissions)
-        let tmp_path = resolved.with_extension("hashline-tmp");
-        if let Err(e) = tokio::fs::write(&tmp_path, &final_content).await {
-            return ToolResult {
-                tool_call_id: call.id,
-                name: call.name,
-                content: format!("failed to write temp file '{}': {e}", tmp_path.display()),
-                success: false,
-                full_content: None,
-                truncation: None,
-            };
-        }
-
-        // Restore permissions on temp file before rename
-        if let Some(mode) = orig_mode
-            && let Err(e) = std::fs::set_permissions(&tmp_path, mode) {
-                let _ = std::fs::remove_file(&tmp_path);
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: format!("failed to set permissions on temp file: {e}"),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                };
-            }
-
-        if let Err(e) = std::fs::rename(&tmp_path, &resolved) {
-            let _ = std::fs::remove_file(&tmp_path);
-            return ToolResult {
-                tool_call_id: call.id,
-                name: call.name,
-                content: format!(
-                    "failed to rename temp file to '{}': {e}",
-                    resolved.display()
-                ),
-                success: false,
-                full_content: None,
-                truncation: None,
-            };
+        if let Err(msg) = write_atomic(&resolved, &final_content, orig_mode.as_ref()).await {
+            return err_result(&call, msg);
         }
 
         // Build anchor block for chaining
@@ -296,15 +222,33 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         );
         let response_text = format_success_response(&path, &anchor_block, &edit_result.warnings);
 
-        ToolResult {
-            tool_call_id: call.id,
-            name: call.name,
-            content: response_text,
-            success: true,
-            full_content: None,
-            truncation: None,
-        }
+        ok_result(&call, response_text)
     })
+}
+
+/// Writes `content` to `resolved` atomically via temp-file + rename, preserving permissions.
+async fn write_atomic(
+    resolved: &Path,
+    content: &str,
+    orig_mode: Option<&std::fs::Permissions>,
+) -> Result<(), String> {
+    let tmp_path = resolved.with_extension("hashline-tmp");
+    if let Err(e) = tokio::fs::write(&tmp_path, content).await {
+        return Err(format!("failed to write temp file '{}': {e}", tmp_path.display()));
+    }
+
+    if let Some(mode) = orig_mode
+        && let Err(e) = std::fs::set_permissions(&tmp_path, mode.clone())
+    {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(format!("failed to set permissions on temp file: {e}"));
+    }
+
+    if let Err(e) = std::fs::rename(&tmp_path, resolved) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(format!("failed to rename temp file to '{}': {e}", resolved.display()));
+    }
+    Ok(())
 }
 
 /// Parses the arguments from the tool call JSON.

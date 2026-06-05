@@ -11,6 +11,8 @@
 use super::hash::{
     Anchor, HashMismatch, assert_no_display_prefixes, compute_line_hash, format_tag, parse_anchor,
 };
+use std::fmt::Write;
+
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
@@ -316,10 +318,7 @@ pub fn format_mismatch_error(mismatches: &[HashMismatch], file_lines: &[&str]) -
 
     let n = mismatches.len();
     let mut out = String::new();
-    out.push_str(&format!(
-        "[E_STALE_ANCHOR] {n} stale anchor{}. Retry with the >>> LINE#HASH lines below; keep both endpoints for range replaces.\n\n",
-        if n > 1 { "s" } else { "" }
-    ));
+    let _ = write!(out, "[E_STALE_ANCHOR] {n} stale anchor{}. Retry with the >>> LINE#HASH lines below; keep both endpoints for range replaces.\n\n", if n > 1 { "s" } else { "" });
 
     let mut prev = 0usize;
     for num in sorted {
@@ -334,9 +333,9 @@ pub fn format_mismatch_error(mismatches: &[HashMismatch], file_lines: &[&str]) -
         let content = file_lines[num - 1];
         let h = compute_line_hash(num, content);
         if mismatch_lines.contains(&num) {
-            out.push_str(&format!(">>> {num:>width$}#{h}|{content}\n"));
+            let _ = writeln!(out, ">>> {num:>width$}#{h}|{content}");
         } else {
-            out.push_str(&format!("    {num:>width$}#{h}|{content}\n"));
+            let _ = writeln!(out, "    {num:>width$}#{h}|{content}");
         }
     }
 
@@ -604,9 +603,9 @@ fn resolve_edit_to_span(
                             "[E_NOT_FOUND] replace_text: \"{old_text}\" not found in file."
                         ));
                     }
-                    Err(format!(
+                    return Err(format!(
                         "[E_NOT_UNIQUE] replace_text: \"{old_text}\" appears more than once."
-                    ))
+                    ));
                 }
                 Some((start, end)) => Ok(Some(ResolvedSpan {
                     kind: "replace",

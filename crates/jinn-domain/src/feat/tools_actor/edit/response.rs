@@ -33,7 +33,9 @@ pub enum AnchorBlock {
     /// A formatted anchor block with fresh hashes.
     Block {
         text: String,
+        #[allow(dead_code)]
         start: usize,
+        #[allow(dead_code)]
         end: usize,
     },
     /// Anchors omitted because the span was too large.
@@ -139,7 +141,7 @@ pub fn format_success_response(
 
 /// Formats the response text for a NOOP (no changes made).
 pub fn format_noop_response(
-    _path: &str,
+    path: &str,
     noop_edits: &[super::engine::NoopEdit],
     warnings: &[String],
 ) -> String {
@@ -158,7 +160,7 @@ pub fn format_noop_response(
             .join("\n")
     };
 
-    let mut parts = vec![format!("No changes made to {_path}\n{noop_text}")];
+    let mut parts = vec![format!("No changes made to {path}\n{noop_text}")];
 
     if !warnings.is_empty() {
         let warning_text = format!("Warnings:\n{}", warnings.join("\n"));
@@ -237,6 +239,7 @@ mod tests {
     #[rstest::rstest]
     fn build_anchor_block_omits_for_large_span() {
         // Given a 20-line result with changes spanning 15 lines.
+        #[allow(clippy::format_collect)]
         let content: String = (1..=20).map(|i| format!("line {i}\n")).collect();
 
         // When building the anchor block.
