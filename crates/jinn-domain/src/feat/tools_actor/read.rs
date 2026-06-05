@@ -326,6 +326,7 @@ mod tests {
         crate::feat::tools_actor::tool_types::ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
+            bash_default_timeout: None,
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
@@ -418,6 +419,7 @@ mod tests {
         let ctx = crate::feat::tools_actor::tool_types::ToolContext {
             cwd: dir.path().to_owned(),
             timeout: None,
+            bash_default_timeout: None,
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
@@ -498,6 +500,7 @@ mod tests {
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             timeout: None,
+            bash_default_timeout: None,
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
@@ -539,6 +542,7 @@ mod tests {
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             timeout: None,
+            bash_default_timeout: None,
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),

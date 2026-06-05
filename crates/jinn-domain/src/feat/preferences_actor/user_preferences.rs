@@ -664,9 +664,12 @@ impl Default for WebFetchConfig {
 /// Default bash tool timeout in seconds (3 minutes).
 const DEFAULT_BASH_DEFAULT_TIMEOUT_SECS: u64 = 180;
 
+// serde default fns must return the field type (Option<u64>) even when always Some.
+#[allow(clippy::unnecessary_wraps)]
 fn default_bash_default_timeout_secs() -> Option<u64> {
     Some(DEFAULT_BASH_DEFAULT_TIMEOUT_SECS)
 }
+
 
 /// Bash tool configuration.
 ///
