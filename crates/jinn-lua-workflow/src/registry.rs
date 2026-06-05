@@ -79,6 +79,7 @@ impl VmHandle {
 /// Fully `Send + Sync`.
 #[derive(Debug)]
 pub struct LuaRegistry {
+    /// Map of plugin name to VM handle.
     handles: HashMap<String, VmHandle>,
 }
 

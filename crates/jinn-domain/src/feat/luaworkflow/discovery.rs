@@ -85,7 +85,7 @@ fn parse_description(path: &Path) -> Option<String> {
     // Match `-- description:` or `--- description:`
     if let Some(rest) = trimmed
         .strip_prefix("--")
-        .and_then(|s| Some(s.strip_prefix('-').unwrap_or(s)))
+        .map(|s| s.strip_prefix('-').unwrap_or(s))
     {
         let rest = rest.trim();
         if let Some(desc) = rest.strip_prefix("description:") {

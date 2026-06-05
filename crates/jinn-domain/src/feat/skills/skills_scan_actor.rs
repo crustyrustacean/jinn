@@ -143,7 +143,7 @@ mod tests {
     ) -> (SkillsScanActor, Arc<RecordingSink>, ActorContext) {
         let sink = Arc::new(RecordingSink::new());
         let mut ctx = ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
-        let mut services = crate::common::services::test_services::TestServices::builder()
+        let services = crate::common::services::test_services::TestServices::builder()
             .paths(AppPaths::new_in(dir.path()))
             .build();
         let deps = SkillsScanActorDeps { services, state };

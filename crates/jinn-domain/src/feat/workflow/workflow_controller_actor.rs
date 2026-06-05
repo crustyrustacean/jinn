@@ -2,10 +2,10 @@
 //!
 //! Spawning Lua workflow executions and applying results to session state.
 
-use std::collections::HashMap;
+
 use std::sync::Arc;
 
-use tokio_util::sync::CancellationToken;
+
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
@@ -26,7 +26,7 @@ use crate::feat::workflow::protocol::command::{
     AttachWorkflow, DetachWorkflow, FireBeforeTurn, ToggleWorkflow, TriggerWorkflow,
 };
 
-use crate::common::app_state::LuaExecutionState;
+
 use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, SetChatInputText};
 
 use crate::protocol::{Command, Event};
@@ -393,7 +393,7 @@ impl WorkflowControllerActor {
 
         // Apply results in order.
         for (wf_id, result) in results {
-            self.apply_workflow_result(&session_id, &wf_id, result);
+            self.apply_workflow_result(session_id, &wf_id, result);
         }
 
         // Complete busy.
@@ -407,6 +407,7 @@ impl WorkflowControllerActor {
     }
 
     /// Spawn an attached workflow using Lua.
+    #[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
     fn spawn_attached_workflow(
         &self,
         session_id: &crate::protocol::SessionId,
@@ -461,7 +462,7 @@ impl WorkflowControllerActor {
         config: &WorkflowConfig,
         session_id: &crate::protocol::SessionId,
         workflow_id: &WorkflowId,
-        trigger: &WorkflowTrigger,
+        _trigger: &WorkflowTrigger,
     ) -> tokio::task::JoinHandle<Result<(), String>> {
         let script_name = config.script.clone();
 
@@ -528,11 +529,12 @@ impl WorkflowControllerActor {
 
         // Spawn handler task that processes host requests.
         let state = self.state.clone();
-        let handler_sid = session_id.clone();
-        let handler_wid = workflow_id.clone();
+
+        let _handler_sid = session_id.clone();
+        let _handler_wid = workflow_id.clone();
         let handler_ctx = self.ctx.clone();
 
-        return tokio::spawn(async move {
+        tokio::spawn(async move {
             let handler = LuaHostHandler::new(state.clone(), handler_ctx);
 
             // Process host requests until the VM completes.
@@ -556,7 +558,7 @@ impl WorkflowControllerActor {
                 // Check if VM is done (non-blocking poll).
                 // Use a small sleep to avoid busy-waiting.
                 tokio::select! {
-                    _ = tokio::time::sleep(std::time::Duration::from_millis(10)) => {}
+                    () = tokio::time::sleep(std::time::Duration::from_millis(10)) => {}
                     result = &mut vm_handle => {
                         vm_done = true;
                         match result {
@@ -576,9 +578,10 @@ impl WorkflowControllerActor {
 
             // Side effects are already applied by the host handler.
             Ok(())
-        });
+        })
     }
 
+    #[allow(clippy::too_many_lines)]
     /// Apply a workflow result to the session.
     fn apply_workflow_result(
         &self,
@@ -703,7 +706,7 @@ impl WorkflowControllerActor {
                             break;
                         }
                     }
-                    session.push_entry(ChatEntry::system(&format!("[Workflow] Failed: {reason}")));
+                    session.push_entry(ChatEntry::system(format!("[Workflow] Failed: {reason}")));
                 }
 
                 drop(guard);

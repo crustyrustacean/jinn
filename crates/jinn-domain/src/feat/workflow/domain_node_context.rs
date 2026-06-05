@@ -17,7 +17,7 @@ use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
 use crate::feat::context::assemble::AssemblyOverrides;
 use crate::feat::session::chat_entry::ChatEntry;
-use crate::feat::session::chat_session::{ChatSessionState, SessionCoreEphemeral};
+use crate::feat::session::chat_session::SessionCoreEphemeral;
 use crate::protocol::{Command, SessionId};
 
 /// Error for domain context operations.

@@ -326,7 +326,7 @@ fn with_mark_interacted(session_id: SessionId, mut result: IntentResult) -> Inte
 /// Executes a slash command.
 fn execute_slash_command(
     command: SlashCommand,
-    display: &str,
+    _display: &str,
     state: &mut AppState,
 ) -> IntentResult {
     match command {
