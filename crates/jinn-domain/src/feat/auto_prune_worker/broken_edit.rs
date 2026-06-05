@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::BrokenEditAutoPruneConfig;
-use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
+use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::protocol::SessionId;
@@ -102,9 +102,9 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
             };
 
             // Skip if the call is already excluded by a prior prune.
-            if entry.context_override == ContextOverride::ForcedExclude {
-                continue;
-            }
+            if entry.context_override() == ContextOverride::ForcedExclude {
+            continue;
+        }
 
             let edit_call_entry_id = entry.id.clone();
 
@@ -126,7 +126,7 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
                 .iter()
                 .skip(i + 1)
                 .find(|e| e.id == result_id)
-                .is_some_and(|e| e.context_override == ContextOverride::ForcedExclude);
+                .is_some_and(|e| e.context_override() == ContextOverride::ForcedExclude);
             if result_already_excluded {
                 continue;
             }
@@ -140,10 +140,16 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
                 mutations.push(HistoryMutation::SetContextOverride {
                     entry_id: edit_call_entry_id,
                     value: ContextOverride::ForcedExclude,
+                    source: ChangeSource::Worker {
+                        name: self.name().to_owned(),
+                    },
                 });
                 mutations.push(HistoryMutation::SetContextOverride {
                     entry_id: result_id,
                     value: ContextOverride::ForcedExclude,
+                    source: ChangeSource::Worker {
+                        name: self.name().to_owned(),
+                    },
                 });
             }
         }
@@ -256,7 +262,7 @@ mod tests {
         let mut pruned_ids: Vec<_> = mutations
             .iter()
             .map(|m| match m {
-                HistoryMutation::SetContextOverride { entry_id, value } => {
+                HistoryMutation::SetContextOverride { entry_id, value, .. } => {
                     assert_eq!(*value, ContextOverride::ForcedExclude);
                     entry_id.clone()
                 }
@@ -283,7 +289,7 @@ mod tests {
     fn already_excluded_call_produces_no_duplicate_mutation() {
         let mut history = history_with_failed_edit_and_tail("/foo.rs", 10);
         // Mark the edit ToolCall as already excluded.
-        history[0].context_override = ContextOverride::ForcedExclude;
+        history[0].apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
 
         let worker = worker_with_tail(10);
         let mutations = block_on_evaluate(&worker, history);
@@ -294,7 +300,7 @@ mod tests {
     fn already_excluded_result_produces_no_duplicate_mutation() {
         let mut history = history_with_failed_edit_and_tail("/foo.rs", 10);
         // Mark the edit ToolResult as already excluded.
-        history[1].context_override = ContextOverride::ForcedExclude;
+        history[1].apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
 
         let worker = worker_with_tail(10);
         let mutations = block_on_evaluate(&worker, history);

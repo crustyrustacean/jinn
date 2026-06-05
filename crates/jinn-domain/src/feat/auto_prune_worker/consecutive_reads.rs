@@ -27,9 +27,10 @@ use std::sync::Arc;
 
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::ConsecutiveReadsAutoPruneConfig;
-use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
+use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
+
 
 /// Consecutive-reads auto-prune worker.
 ///
@@ -127,6 +128,7 @@ fn build_prune_mutations(
     history: &[ChatEntry],
     groups: &HashMap<String, Vec<ReadPair>>,
     keep_last: usize,
+    worker_name: &str,
 ) -> Vec<HistoryMutation> {
     let mut mutations = Vec::new();
 
@@ -140,22 +142,28 @@ fn build_prune_mutations(
         for pair in pairs.iter().take(prune_count) {
             // Only emit mutations for entries not already excluded.
             let call_already_excluded = history.iter().any(|e| {
-                e.id == pair.call_entry_id && e.context_override == ContextOverride::ForcedExclude
+                e.id == pair.call_entry_id && e.context_override() == ContextOverride::ForcedExclude
             });
             let result_already_excluded = history.iter().any(|e| {
-                e.id == pair.result_entry_id && e.context_override == ContextOverride::ForcedExclude
+                e.id == pair.result_entry_id && e.context_override() == ContextOverride::ForcedExclude
             });
 
             if !call_already_excluded {
                 mutations.push(HistoryMutation::SetContextOverride {
                     entry_id: pair.call_entry_id.clone(),
                     value: ContextOverride::ForcedExclude,
+                    source: ChangeSource::Worker {
+                        name: worker_name.to_owned(),
+                    },
                 });
             }
             if !result_already_excluded {
                 mutations.push(HistoryMutation::SetContextOverride {
                     entry_id: pair.result_entry_id.clone(),
                     value: ContextOverride::ForcedExclude,
+                    source: ChangeSource::Worker {
+                        name: worker_name.to_owned(),
+                    },
                 });
             }
         }
@@ -179,7 +187,7 @@ impl HistoryWorker for ConsecutiveReadsAutoPruneWorker {
         let keep_last = self.config.keep_last.max(1);
 
         let groups = collect_read_pairs_by_path(&history);
-        build_prune_mutations(&history, &groups, keep_last)
+        build_prune_mutations(&history, &groups, keep_last, self.name())
     }
 }
 
@@ -273,7 +281,7 @@ mod tests {
         let mut pruned_ids: Vec<_> = mutations
             .iter()
             .map(|m| match m {
-                HistoryMutation::SetContextOverride { entry_id, value } => {
+                HistoryMutation::SetContextOverride { entry_id, value, .. } => {
                     assert_eq!(*value, ContextOverride::ForcedExclude);
                     entry_id.clone()
                 }
@@ -327,8 +335,8 @@ mod tests {
     fn already_excluded_call_and_result_produces_no_duplicate() {
         let mut history = history_with_n_reads("/foo.rs", 4);
         // Mark the oldest pair as already excluded.
-        history[0].context_override = ContextOverride::ForcedExclude;
-        history[1].context_override = ContextOverride::ForcedExclude;
+        history[0].apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        history[1].apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
 
         let worker = worker_with_keep_last(3);
         let mutations = evaluate(&worker, history);
@@ -339,7 +347,7 @@ mod tests {
     fn already_excluded_call_only_prunes_result() {
         let mut history = history_with_n_reads("/foo.rs", 4);
         // Mark only the call as excluded.
-        history[0].context_override = ContextOverride::ForcedExclude;
+        history[0].apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
         let expected_result_id = history[1].id.clone();
 
         let worker = worker_with_keep_last(3);
@@ -348,7 +356,7 @@ mod tests {
         // Only the result should get a mutation.
         assert_eq!(mutations.len(), 1);
         match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value } => {
+            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
                 assert_eq!(*entry_id, expected_result_id);
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }
@@ -360,7 +368,7 @@ mod tests {
     fn already_excluded_result_only_prunes_call() {
         let mut history = history_with_n_reads("/foo.rs", 4);
         // Mark only the result as excluded.
-        history[1].context_override = ContextOverride::ForcedExclude;
+        history[1].apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
         let expected_call_id = history[0].id.clone();
 
         let worker = worker_with_keep_last(3);
@@ -369,7 +377,7 @@ mod tests {
         // Only the call should get a mutation.
         assert_eq!(mutations.len(), 1);
         match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value } => {
+            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
                 assert_eq!(*entry_id, expected_call_id);
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }
@@ -421,6 +429,7 @@ mod tests {
         assert!(
             mutations.is_empty(),
             "different string paths should be tracked independently"
+
         );
     }
 

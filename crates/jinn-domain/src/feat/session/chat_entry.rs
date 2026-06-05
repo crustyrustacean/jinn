@@ -89,6 +89,46 @@ pub enum ContextOverride {
     ForcedExclude,
 }
 
+
+/// Who initiated a change to a [`ChatEntry`]'s `context_override`.
+///
+/// Recorded on every [`ContextChangeEvent`] so the audit trail can answer
+/// "why is this entry currently excluded?".
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ChangeSource {
+    /// The user (via the `x` key toggle or sweep).
+    User,
+    /// A background history worker (compaction or one of the auto-prune workers).
+    ///
+    /// `name` matches the worker's [`HistoryWorker::name`] so adding a new worker
+    /// requires zero changes here.
+    ///
+    /// [`HistoryWorker::name`]: crate::feat::history_worker::worker_trait::HistoryWorker::name
+    Worker {
+        name: String,
+    },
+    /// An internal session-actor sweep that isn't a worker (e.g. dangling-tool-call cleanup).
+    Internal {
+        label: String,
+    },
+}
+
+/// A single recorded change to a [`ChatEntry`]'s `context_override`.
+///
+/// Held in [`ChatEntry::context_history`]. Append-only; never mutated once recorded.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ContextChangeEvent {
+    /// The override value before this change.
+    pub from: ContextOverride,
+    /// The override value after this change.
+    pub to: ContextOverride,
+    /// Who initiated the change.
+    pub source: ChangeSource,
+    /// When the change was applied.
+    pub timestamp: jiff::Timestamp,
+}
+
 /// A single entry in the chat history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatEntry {
@@ -118,7 +158,15 @@ pub struct ChatEntry {
     /// OWNER: compaction-actor (sets `ForcedExclude` during compaction),
     ///        user (via `x` key toggle in `toggle_entry_ignored`).
     #[serde(default)]
-    pub context_override: ContextOverride,
+    pub(crate) context_override: ContextOverride,
+
+    /// Append-only audit log of every change to this entry's `context_override`.
+    ///
+    /// Empty for newly-created entries; populated by [`Self::apply_context_override`].
+    /// Old persisted entries lacking this field load as an empty Vec via
+    /// `#[serde(default)]` - no schema migration is required.
+    #[serde(default)]
+    pub context_history: Vec<ContextChangeEvent>,
 }
 
 /// The kind of chat entry.
@@ -240,6 +288,7 @@ impl ChatEntry {
             },
             pin_position: None,
             context_override: ContextOverride::Default,
+            context_history: Vec::new(),
         }
     }
 
@@ -262,6 +311,7 @@ impl ChatEntry {
             },
             pin_position: None,
             context_override: ContextOverride::Default,
+            context_history: Vec::new(),
         }
     }
 
@@ -277,6 +327,7 @@ impl ChatEntry {
             kind: ChatEntryKind::System(text.into()),
             pin_position: None,
             context_override: ContextOverride::Default,
+            context_history: Vec::new(),
         }
     }
 
@@ -292,6 +343,7 @@ impl ChatEntry {
             kind: ChatEntryKind::Error(text.into()),
             pin_position: None,
             context_override: ContextOverride::Default,
+            context_history: Vec::new(),
         }
     }
 
@@ -307,6 +359,7 @@ impl ChatEntry {
             kind: ChatEntryKind::Assistant(text.into()),
             pin_position: None,
             context_override: ContextOverride::Default,
+            context_history: Vec::new(),
         }
     }
 
@@ -326,6 +379,7 @@ impl ChatEntry {
             },
             pin_position: None,
             context_override: ContextOverride::Default,
+            context_history: Vec::new(),
         }
     }
 
@@ -341,6 +395,7 @@ impl ChatEntry {
             kind: ChatEntryKind::Thinking(text.into()),
             pin_position: None,
             context_override: ContextOverride::Default,
+            context_history: Vec::new(),
         }
     }
 
@@ -362,6 +417,7 @@ impl ChatEntry {
             },
             pin_position: None,
             context_override: ContextOverride::Default,
+            context_history: Vec::new(),
         }
     }
 
@@ -386,6 +442,7 @@ impl ChatEntry {
             },
             pin_position: None,
             context_override: ContextOverride::Default,
+            context_history: Vec::new(),
         }
     }
 
@@ -416,6 +473,7 @@ impl ChatEntry {
             },
             pin_position: None,
             context_override: ContextOverride::Default,
+            context_history: Vec::new(),
         }
     }
 
@@ -437,6 +495,7 @@ impl ChatEntry {
             },
             pin_position: None,
             context_override: ContextOverride::Default,
+            context_history: Vec::new(),
         }
     }
 
@@ -458,6 +517,7 @@ impl ChatEntry {
             kind: ChatEntryKind::Transient(text.into()),
             pin_position: None,
             context_override: ContextOverride::Default,
+            context_history: Vec::new(),
         }
     }
 
@@ -494,6 +554,83 @@ impl ChatEntry {
         self
     }
 
+    /// Construct a `ChatEntry` with the given fields and `ContextOverride::Default`.
+    ///
+    /// For initial creation only. To change the override later (with audit), use
+    /// [`Self::apply_context_override`]. To restore from persistence (no audit), use
+    /// [`Self::restore_context_override`].
+    #[must_use]
+    pub(crate) fn new_with_kind(
+        id: ChatEntryId,
+        timestamp: jiff::Timestamp,
+        kind: ChatEntryKind,
+        pin_position: Option<PinPosition>,
+    ) -> Self {
+        Self {
+            id,
+            timestamp,
+            kind,
+            pin_position,
+            context_override: ContextOverride::Default,
+            context_history: Vec::new(),
+        }
+    }
+    /// Set the context override, recording a [`ContextChangeEvent`] if and only if
+    /// the new value differs from the current one.
+    ///
+    /// This is the single audited path for changing `context_override`. All callers -
+    /// user toggles, history workers, internal sweeps - must go through this method.
+    ///
+    /// # Returns
+    ///
+    /// `true` if a change was applied (event was appended). `false` if the new value
+    /// matched the current value (no-op: no event, no field change).
+    pub fn apply_context_override(
+        &mut self,
+        new_value: ContextOverride,
+        source: ChangeSource,
+    ) -> bool {
+        if self.context_override == new_value {
+            return false;
+        }
+        let event = ContextChangeEvent {
+            from: self.context_override,
+            to: new_value,
+            source,
+            timestamp: jiff::Timestamp::now(),
+        };
+        self.context_override = new_value;
+        self.context_history.push(event);
+        true
+    }
+
+    /// Sets the initial context override on this entry without recording an audit
+    /// event. This is intended for use only at construction time or when restoring
+    /// state from persistent storage. For any other change, use
+    /// [`Self::apply_context_override`] so the change is recorded in
+    /// [`Self::context_history`].
+    ///
+    /// # Why not just write the field?
+    ///
+    /// The field is intentionally private to force mutations through the audited
+    /// setter (`apply_context_override`). This escape hatch exists solely for
+    /// initial construction (compaction summary entries) and DB loading.
+    pub(crate) fn restore_context_override(&mut self, value: ContextOverride) {
+        // No audit event: this method exists for initial construction and DB
+        // loading, where the `context_override` value reflects an already-applied
+        // state (not a new transition).
+        self.context_override = value;
+    }
+    /// Read-only access to the current context override.
+    ///
+    /// Use this when you need to inspect the override without changing it. When
+    /// changing it, use [`Self::apply_context_override`] so the change is audited.
+    #[must_use]
+    pub fn context_override(&self) -> ContextOverride {
+        self.context_override
+    }
+
+
     /// Whether this entry is pinned to the context.
     pub fn is_pinned(&self) -> bool {
         self.pin_position.is_some()
@@ -510,7 +647,7 @@ impl ChatEntry {
         if self.is_pinned() {
             return true;
         }
-        match self.context_override {
+        match self.context_override() {
             ContextOverride::ForcedInclude => true,
             ContextOverride::ForcedExclude => false,
             ContextOverride::Default => {
@@ -533,7 +670,7 @@ impl ChatEntry {
     /// Prefer `is_in_context()` or `context_override` directly.
     #[must_use]
     pub fn ignored(&self) -> bool {
-        self.context_override == ContextOverride::ForcedExclude
+        self.context_override() == ContextOverride::ForcedExclude
     }
 
     /// Whether this entry kind can be pinned to the context.
@@ -684,6 +821,7 @@ impl ChatEntry {
         }
         hasher.finish()
     }
+
 }
 
 impl Serialize for ChatEntryKind {
@@ -1080,4 +1218,95 @@ impl ChatEntryKind {
                 | ChatEntryKind::Compaction { .. }
         )
     }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    use super::*;
+
+    fn fresh_user_entry() -> ChatEntry {
+        ChatEntry::user("hello".to_owned())
+    }
+
+    #[test]
+    fn apply_context_override_noop_returns_false() {
+        let mut entry = fresh_user_entry();
+        let initial_history_len = entry.context_history.len();
+        let changed = entry.apply_context_override(
+            ContextOverride::Default,
+            ChangeSource::User,
+        );
+        assert!(!changed);
+        assert_eq!(entry.context_history.len(), initial_history_len);
+    }
+
+    #[test]
+    fn apply_context_override_records_event_with_correct_from_to_source() {
+        let mut entry = fresh_user_entry();
+        let changed = entry.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::User,
+        );
+        assert!(changed);
+        assert_eq!(entry.context_history.len(), 1);
+        let event = &entry.context_history[0];
+        assert_eq!(event.from, ContextOverride::Default);
+        assert_eq!(event.to, ContextOverride::ForcedExclude);
+        assert_eq!(event.source, ChangeSource::User);
+    }
+
+    #[test]
+    fn apply_context_override_preserves_order_with_monotonic_timestamps() {
+        let mut entry = fresh_user_entry();
+        entry.apply_context_override(ContextOverride::ForcedInclude, ChangeSource::User);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        entry.apply_context_override(ContextOverride::Default, ChangeSource::User);
+
+        assert_eq!(entry.context_history.len(), 3);
+        assert!(entry.context_history[0].timestamp <= entry.context_history[1].timestamp);
+        assert!(entry.context_history[1].timestamp <= entry.context_history[2].timestamp);
+        assert_eq!(entry.context_history[0].to, ContextOverride::ForcedInclude);
+        assert_eq!(entry.context_history[1].to, ContextOverride::ForcedExclude);
+        assert_eq!(entry.context_history[2].to, ContextOverride::Default);
+    }
+
+    #[test]
+    fn serde_round_trip_preserves_context_history() {
+        let mut entry = fresh_user_entry();
+        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
+        entry.apply_context_override(
+            ContextOverride::ForcedInclude,
+            ChangeSource::Worker { name: "test_worker".to_owned() },
+        );
+
+        let json = serde_json::to_string(&entry).expect("serialize");
+        let loaded: ChatEntry = serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(loaded.context_history.len(), 2);
+        assert_eq!(loaded.context_history[0].from, ContextOverride::Default);
+        assert_eq!(loaded.context_history[0].to, ContextOverride::ForcedExclude);
+        assert_eq!(loaded.context_history[0].source, ChangeSource::User);
+        assert_eq!(
+            loaded.context_history[1].source,
+            ChangeSource::Worker { name: "test_worker".to_owned() }
+        );
+    }
+
+    #[test]
+    fn legacy_json_without_context_history_loads_to_empty() {
+        // Start from a real entry, then strip context_history to simulate legacy data.
+        let mut entry = fresh_user_entry();
+        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
+        let mut json = serde_json::to_value(&entry).expect("serialize");
+        let obj = json.as_object_mut().expect("object");
+        obj.remove("context_history");
+        let loaded: ChatEntry = serde_json::from_value(json).expect("deserialize legacy");
+        assert!(loaded.context_history.is_empty());
+        // The override itself is preserved.
+        assert_eq!(loaded.context_override(), ContextOverride::ForcedExclude);
+    }
+
 }

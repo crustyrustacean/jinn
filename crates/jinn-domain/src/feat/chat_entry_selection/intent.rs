@@ -334,7 +334,7 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
     let Some(selected) = state.active_session().selected_entry() else {
         return IntentResult::empty();
     };
-    let captured = selected.context_override;
+    let captured = selected.context_override();
     let entry_id = selected.id.clone();
 
     // Propagate shown blocks if this toggle brought an entry into context
@@ -368,6 +368,7 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    use crate::feat::session::chat_entry::ChangeSource;
     use crate::common::app_state::AppState;
     use crate::feat::context::protocol::command::PinChatEntry;
     use crate::feat::session::tool_result_status::ToolResultStatus;
@@ -887,7 +888,7 @@ mod tests {
         state.active_session_mut().push_entry(ChatEntry::user("a"));
         for _ in 0..15 {
             let mut entry = ChatEntry::user("ignored");
-            entry.context_override = crate::protocol::ContextOverride::ForcedExclude;
+            entry.apply_context_override(crate::protocol::ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
             state.active_session_mut().push_entry(entry);
         }
         state.active_session_mut().push_entry(ChatEntry::user("b"));
@@ -944,7 +945,7 @@ mod tests {
         state.active_session_mut().push_entry(ChatEntry::user("a"));
         for _ in 0..15 {
             let mut entry = ChatEntry::user("ignored");
-            entry.context_override = crate::protocol::ContextOverride::ForcedExclude;
+            entry.apply_context_override(crate::protocol::ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
             state.active_session_mut().push_entry(entry);
         }
         state.active_session_mut().push_entry(ChatEntry::user("b"));
@@ -1156,7 +1157,7 @@ mod tests {
             "system entry toggle should produce commands"
         );
         let selected = state.active_session().selected_entry().expect("entry");
-        assert_eq!(selected.context_override, ContextOverride::ForcedInclude);
+        assert_eq!(selected.context_override(), ContextOverride::ForcedInclude);
     }
 
     #[rstest::rstest]
@@ -1177,7 +1178,7 @@ mod tests {
             "thinking entry toggle should produce commands"
         );
         let selected = state.active_session().selected_entry().expect("entry");
-        assert_eq!(selected.context_override, ContextOverride::ForcedInclude);
+        assert_eq!(selected.context_override(), ContextOverride::ForcedInclude);
     }
 
     #[rstest::rstest]
@@ -1198,7 +1199,7 @@ mod tests {
             "transient entry toggle should produce commands"
         );
         let selected = state.active_session().selected_entry().expect("entry");
-        assert_eq!(selected.context_override, ContextOverride::ForcedInclude);
+        assert_eq!(selected.context_override(), ContextOverride::ForcedInclude);
     }
 
     #[rstest::rstest]
@@ -1217,6 +1218,7 @@ mod tests {
             },
             pin_position: None,
             context_override: crate::protocol::ContextOverride::Default,
+        context_history: Vec::new(),
         });
         state.active_session_mut().select_next_entry();
 
@@ -1229,7 +1231,7 @@ mod tests {
             "compaction entry toggle should produce commands"
         );
         let selected = state.active_session().selected_entry().expect("entry");
-        assert_eq!(selected.context_override, ContextOverride::ForcedExclude);
+        assert_eq!(selected.context_override(), ContextOverride::ForcedExclude);
     }
 
     // --- Sweep tests ---
@@ -1251,7 +1253,7 @@ mod tests {
 
         // Then entry 0 is toggled to ForcedExclude.
         assert_eq!(
-            state.active_session().history()[0].context_override,
+            state.active_session().history()[0].context_override(),
             ContextOverride::ForcedExclude
         );
         // And the cursor has advanced to entry 1.
@@ -1288,7 +1290,7 @@ mod tests {
 
         // Then entry 1 is now ForcedExclude (applied, not toggled).
         assert_eq!(
-            state.active_session().history()[1].context_override,
+            state.active_session().history()[1].context_override(),
             ContextOverride::ForcedExclude
         );
         // And cursor has advanced to entry 2.
@@ -1319,7 +1321,7 @@ mod tests {
 
         // Then entry 2 is ForcedExclude.
         assert_eq!(
-            state.active_session().history()[2].context_override,
+            state.active_session().history()[2].context_override(),
             ContextOverride::ForcedExclude
         );
         // And cursor stays at entry 2 (at bottom, can't advance further).
@@ -1347,7 +1349,7 @@ mod tests {
 
         // Then the entry is toggled.
         assert_eq!(
-            state.active_session().history()[0].context_override,
+            state.active_session().history()[0].context_override(),
             ContextOverride::ForcedExclude
         );
         // And cursor stays at 0 (at bottom).
@@ -1383,7 +1385,7 @@ mod tests {
 
         // Then entry 1 is toggled (fresh toggle: Default → ForcedExclude).
         assert_eq!(
-            state.active_session().history()[1].context_override,
+            state.active_session().history()[1].context_override(),
             ContextOverride::ForcedExclude
         );
         // And sweep state is refreshed with a new timestamp.
@@ -1410,7 +1412,7 @@ mod tests {
         let _result = handle_ignore_selected(&mut state);
         assert_eq!(state.active_session().selected_entry_index(), Some(1));
         assert_eq!(
-            state.active_session().history()[0].context_override,
+            state.active_session().history()[0].context_override(),
             ContextOverride::ForcedExclude
         );
 
@@ -1419,12 +1421,12 @@ mod tests {
 
         // Then pinned entry 1 is unchanged (still Default).
         assert_eq!(
-            state.active_session().history()[1].context_override,
+            state.active_session().history()[1].context_override(),
             ContextOverride::Default
         );
         // And entry 2 (after pinned) gets ForcedExclude.
         assert_eq!(
-            state.active_session().history()[2].context_override,
+            state.active_session().history()[2].context_override(),
             ContextOverride::ForcedExclude
         );
         // And cursor has advanced past the pinned entry to entry 2 (or beyond).
@@ -1450,7 +1452,7 @@ mod tests {
 
         // Then pinned entry is unchanged.
         assert_eq!(
-            state.active_session().history()[1].context_override,
+            state.active_session().history()[1].context_override(),
             ContextOverride::Default
         );
         // And no commands returned (no-op: pinned at bottom).
@@ -1473,7 +1475,7 @@ mod tests {
 
         // Then entry 0 is now Default (un-ignored).
         assert_eq!(
-            state.active_session().history()[0].context_override,
+            state.active_session().history()[0].context_override(),
             ContextOverride::Default
         );
         // And cursor has advanced.
@@ -1535,7 +1537,7 @@ mod tests {
         // First press - toggles entry 0 to ForcedExclude, advances.
         let _result = handle_ignore_selected(&mut state);
         assert_eq!(
-            state.active_session().history()[0].context_override,
+            state.active_session().history()[0].context_override(),
             ContextOverride::ForcedExclude
         );
 
@@ -1626,7 +1628,7 @@ mod tests {
         // First press - toggles entry 1 from ForcedExclude → Default.
         let _result = handle_ignore_selected(&mut state);
         assert_eq!(
-            state.active_session().history()[1].context_override,
+            state.active_session().history()[1].context_override(),
             ContextOverride::Default
         );
         // Sweep state is Default (un-ignore sweep).
@@ -1707,7 +1709,7 @@ mod tests {
         // First press - toggles "before" to ForcedExclude, advances to collapsed block.
         let _result = handle_ignore_selected(&mut state);
         assert_eq!(
-            state.active_session().history()[0].context_override,
+            state.active_session().history()[0].context_override(),
             ContextOverride::ForcedExclude
         );
 
@@ -1738,7 +1740,7 @@ mod tests {
             .history()
             .iter()
             .skip(11)
-            .any(|e| e.context_override == ContextOverride::ForcedExclude);
+            .any(|e| e.context_override() == ContextOverride::ForcedExclude);
         assert!(
             any_after_excluded,
             "at least one 'after' entry should be ForcedExclude"
@@ -1806,7 +1808,7 @@ mod tests {
         // First press - toggles entry "a" to ForcedExclude.
         let _result = handle_ignore_selected(&mut state);
         assert_eq!(
-            state.active_session().history()[0].context_override,
+            state.active_session().history()[0].context_override(),
             ContextOverride::ForcedExclude
         );
 
@@ -1818,7 +1820,7 @@ mod tests {
         // The block entries should NOT be mutated (skipped).
         for i in 2..=11 {
             assert_eq!(
-                state.active_session().history()[i].context_override,
+                state.active_session().history()[i].context_override(),
                 ContextOverride::ForcedExclude,
                 "ignored entry {i} should still be ForcedExclude (untouched by sweep)"
             );
@@ -1826,7 +1828,7 @@ mod tests {
 
         // Entry "c" (index 12) should be processed.
         assert_eq!(
-            state.active_session().history()[12].context_override,
+            state.active_session().history()[12].context_override(),
             ContextOverride::ForcedExclude,
             "entry 'c' should be ForcedExclude after sweep past first block"
         );
