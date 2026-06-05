@@ -9,7 +9,7 @@
 
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::RegexAutoPruneConfig;
-use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
+use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
 
@@ -157,6 +157,7 @@ fn collect_matching_pairs(
 fn build_prune_mutations(
     history: &[ChatEntry],
     rules: &[CompiledRegexRule],
+    worker_name: &str,
 ) -> Vec<HistoryMutation> {
     let mut mutations = Vec::new();
 
@@ -167,7 +168,7 @@ fn build_prune_mutations(
             rule = %rule.regex,
             matched_count = matched_pairs.len(),
             keep_last = rule.keep_last,
-            "pruning decision"
+            "pruning decision",
         );
 
         if matched_pairs.len() <= rule.keep_last {
@@ -178,15 +179,15 @@ fn build_prune_mutations(
         let prune_count = matched_pairs.len() - rule.keep_last;
         let rule_ident = rule.regex.as_str();
         for (idx, (call_id, result_id)) in matched_pairs.iter().take(prune_count).enumerate() {
-            // Only emit mutations for entries not already excluded.
-            let call_already_excluded = history
+            // Only emit mutations for entries not protected from prune.
+            let call_protected = history
                 .iter()
-                .any(|e| e.id == *call_id && e.context_override == ContextOverride::ForcedExclude);
-            let result_already_excluded = history.iter().any(|e| {
-                e.id == *result_id && e.context_override == ContextOverride::ForcedExclude
-            });
+                .any(|e| e.id == *call_id && e.is_protected_from_prune());
+            let result_protected = history
+                .iter()
+                .any(|e| e.id == *result_id && e.is_protected_from_prune());
 
-            if !call_already_excluded {
+            if !call_protected {
                 tracing::info!(
                     rule = %rule_ident,
                     pair_index = idx,
@@ -196,9 +197,12 @@ fn build_prune_mutations(
                 mutations.push(HistoryMutation::SetContextOverride {
                     entry_id: call_id.clone(),
                     value: ContextOverride::ForcedExclude,
+                    source: ChangeSource::Worker {
+                        name: worker_name.to_owned(),
+                    },
                 });
             }
-            if !result_already_excluded {
+            if !result_protected {
                 tracing::info!(
                     rule = %rule_ident,
                     pair_index = idx,
@@ -208,6 +212,9 @@ fn build_prune_mutations(
                 mutations.push(HistoryMutation::SetContextOverride {
                     entry_id: result_id.clone(),
                     value: ContextOverride::ForcedExclude,
+                    source: ChangeSource::Worker {
+                        name: worker_name.to_owned(),
+                    },
                 });
             }
         }
@@ -228,7 +235,7 @@ impl HistoryWorker for RegexAutoPruneWorker {
         _session_id: &SessionId,
         history: std::sync::Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
-        let mutations = build_prune_mutations(&history, &self.rules);
+        let mutations = build_prune_mutations(&history, &self.rules, self.name());
 
         tracing::info!(total_mutations = mutations.len(), "regex worker done");
         mutations
@@ -241,7 +248,7 @@ mod tests {
 
     use super::*;
     use crate::feat::preferences_actor::user_preferences::{RegexAutoPruneConfig, RegexPruneRule};
-    use crate::feat::session::chat_entry::{ChatEntry, ContextOverride};
+    use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ContextOverride};
     use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::protocol::SessionId;
 
@@ -398,7 +405,7 @@ mod tests {
         // Verify the first two calls and their results are targeted.
         let mut excluded_ids = std::collections::HashSet::new();
         for m in &mutations {
-            if let HistoryMutation::SetContextOverride { entry_id, value } = m {
+            if let HistoryMutation::SetContextOverride { entry_id, value, .. } = m {
                 assert_eq!(*value, ContextOverride::ForcedExclude);
                 excluded_ids.insert(entry_id);
             }
@@ -466,7 +473,7 @@ mod tests {
 
         let p1 = bash_call_result("tc-1", "cargo check", "errors: 0");
         let mut call1 = p1[0].clone();
-        call1.context_override = ContextOverride::ForcedExclude; // already excluded
+        call1.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() }); // already excluded
         history.push(call1);
         history.push(p1[1].clone());
 
@@ -484,7 +491,37 @@ mod tests {
         // The first call is already excluded, so only the first result gets a mutation.
         assert_eq!(mutations.len(), 1);
         match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value } => {
+            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+                assert_eq!(*entry_id, result1_id);
+                assert_eq!(*value, ContextOverride::ForcedExclude);
+            }
+            other => panic!("expected SetContextOverride, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn forced_included_entries_are_not_pruned() {
+        let mut history = Vec::new();
+
+        let p1 = bash_call_result("tc-1", "cargo check", "errors: 0");
+        let mut call1 = p1[0].clone();
+        call1.context_override = ContextOverride::ForcedInclude; // force-included
+        history.push(call1);
+        history.push(p1[1].clone());
+
+        let p2 = bash_call_result("tc-2", "cargo check", "errors: 0");
+        history.push(p2[0].clone());
+        history.push(p2[1].clone());
+
+        // Clone ID before move.
+        let result1_id = history[1].id.clone();
+        let worker = worker_for_cargo_check(1);
+        let mutations = evaluate(&worker, history);
+
+        // Force-included call is protected; only the result mutates.
+        assert_eq!(mutations.len(), 1);
+        match &mutations[0] {
+            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
                 assert_eq!(*entry_id, result1_id);
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }

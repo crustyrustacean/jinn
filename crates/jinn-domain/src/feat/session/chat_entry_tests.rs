@@ -189,6 +189,35 @@ fn is_pinned_returns_false_when_unpinned() {
 }
 
 #[rstest::rstest]
+fn is_protected_from_prune_default_returns_false() {
+    // Given a default entry.
+    let entry = ChatEntry::user("test");
+
+    // Then is_protected_from_prune returns false.
+    assert!(!entry.is_protected_from_prune());
+}
+
+#[rstest::rstest]
+fn is_protected_from_prune_forced_include_returns_true() {
+    // Given a ForcedInclude entry.
+    let mut entry = ChatEntry::user("test");
+    entry.context_override = ContextOverride::ForcedInclude;
+
+    // Then is_protected_from_prune returns true.
+    assert!(entry.is_protected_from_prune());
+}
+
+#[rstest::rstest]
+fn is_protected_from_prune_forced_exclude_returns_true() {
+    // Given a ForcedExclude entry.
+    let mut entry = ChatEntry::user("test");
+    entry.context_override = ContextOverride::ForcedExclude;
+
+    // Then is_protected_from_prune returns true.
+    assert!(entry.is_protected_from_prune());
+}
+
+#[rstest::rstest]
 fn pin_position_returns_some_when_pinned() {
     // Given a pinned entry.
     let entry = ChatEntry::user("test").with_pin(PinPosition::Bottom);

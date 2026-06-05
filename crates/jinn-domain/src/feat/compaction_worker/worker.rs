@@ -25,7 +25,9 @@ use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, TokenE
 
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::CompactionConfig;
-use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
+use crate::feat::session::chat_entry::{
+    ChatEntry, ChatEntryId, ChatEntryKind, ChangeSource, ContextOverride,
+};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
 
@@ -162,7 +164,8 @@ impl CompactionWorker {
             .services
             .user_preferences_storage
             .load()
-            .expect("preferences");
+            .change_context(CompactionError)
+            .attach("failed to load user preferences")?;
 
         // Read session state.
         let (config, model_name, history, compaction_prompt, retry_config) = {
@@ -416,25 +419,26 @@ impl CompactionWorker {
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: entry.id.clone(),
                 value: ContextOverride::ForcedExclude,
+                source: ChangeSource::Worker {
+                    name: self.name().to_owned(),
+                },
             });
         }
 
         // 8b: Insert compaction summary entry after the last gathered entry.
         let tokens_after = CharRatioEstimator.estimate(&summary);
-        let compaction_entry = ChatEntry {
-            id: compaction_entry_id,
-
-            timestamp: jiff::Timestamp::now(),
-            kind: ChatEntryKind::Compaction {
+        let compaction_entry = ChatEntry::new_with_kind(
+            compaction_entry_id,
+            jiff::Timestamp::now(),
+            ChatEntryKind::Compaction {
                 summary,
                 tokens_before,
                 tokens_after,
                 entries_compacted,
                 model_used: model_name.to_owned(),
             },
-            pin_position: None,
-            context_override: ContextOverride::Default,
-        };
+            None,
+        );
 
         let last_gathered_id = gathered_indices.last().map(|&idx| history[idx].id.clone());
         mutations.push(HistoryMutation::InsertEntry {
