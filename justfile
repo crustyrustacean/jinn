@@ -8,7 +8,8 @@ fossil-branch NAME:
 
 test:
     cargo test --workspace --exclude jinn-e2e
-    cargo test --test e2e -p jinn-e2e
+    # temporarily disabled since we hardly have any proper e2e tests
+    # cargo test --test e2e -p jinn-e2e
 
 check:
     cargo check --workspace

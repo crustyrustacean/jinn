@@ -1,4 +1,4 @@
-//! Ctx builder — constructs the Lua ctx table with data and capability methods.
+
 //!
 //! [`CtxBuilder`] takes a serializable data struct and registers async
 //! capability methods via [`with_method`]. The resulting ctx table is passed
@@ -6,10 +6,11 @@
 
 use error_stack::Report;
 use mlua::{Function, Lua, Table, Value};
+
+use crate::registry::LuaError;
 use serde::Serialize;
 
-use crate::protocol::HostRequest;
-use crate::registry::LuaError;
+
 
 /// Builder for constructing the Lua ctx table.
 ///
@@ -17,7 +18,9 @@ use crate::registry::LuaError;
 /// [`with_method`]. The builder has zero knowledge of what capabilities
 /// exist — it's purely mechanical.
 pub struct CtxBuilder<'a> {
+    /// Underlying Lua VM reference.
     lua: &'a Lua,
+    /// The ctx table under construction.
     table: Table,
 }
 
@@ -26,6 +29,10 @@ impl<'a> CtxBuilder<'a> {
     ///
     /// The data struct's fields become Lua table keys. Use
     /// `#[serde(rename_all = "snake_case")]` for consistent naming.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `LuaError` if table creation, serialization, or field assignment fails.
     pub fn new<S: Serialize>(lua: &'a Lua, data: &S) -> Result<Self, Report<LuaError>> {
         let table = lua
             .create_table()
@@ -48,6 +55,10 @@ impl<'a> CtxBuilder<'a> {
     }
 
     /// Creates a new builder with an empty ctx table (no data).
+    ///
+    /// # Errors
+    ///
+    /// Returns a `LuaError` if table creation fails.
     pub fn empty(lua: &'a Lua) -> Result<Self, Report<LuaError>> {
         let table = lua
             .create_table()
@@ -59,7 +70,11 @@ impl<'a> CtxBuilder<'a> {
     ///
     /// The caller is responsible for creating the function (sync or async).
     /// This gives full control over the function signature and lifetime.
-    pub fn with_function(mut self, name: &str, func: Function) -> Result<Self, Report<LuaError>> {
+    ///
+    /// # Errors
+    ///
+    /// Returns a `LuaError` if setting the field fails.
+    pub fn with_function(self, name: &str, func: Function) -> Result<Self, Report<LuaError>> {
         self.table
             .set(name, func)
             .map_err(|e| LuaError::script(format!("set method '{name}': {e}")))?;
@@ -67,8 +82,12 @@ impl<'a> CtxBuilder<'a> {
     }
 
     /// Sets a raw value on the ctx table.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `LuaError` if setting the field fails.
     pub fn with_value<V: Into<Value>>(
-        mut self,
+        self,
         name: &str,
         value: V,
     ) -> Result<Self, Report<LuaError>> {
@@ -90,6 +109,10 @@ impl<'a> CtxBuilder<'a> {
 }
 
 /// Converts a `serde_json::Value` to a `mlua::Value`.
+///
+/// # Errors
+///
+/// Returns a `LuaError` if any Lua operation fails during conversion.
 pub fn json_to_lua_value(lua: &Lua, value: &serde_json::Value) -> Result<Value, Report<LuaError>> {
     match value {
         serde_json::Value::Null => Ok(Value::Nil),

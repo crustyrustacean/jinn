@@ -243,7 +243,7 @@ mod tests {
         let (mut terminal, area) = setup_term(width, height);
         terminal
             .draw(|frame| {
-                let ctx = RenderCtx::new(&state);
+                let ctx = RenderCtx::new(state);
                 section.render(frame, area, &ctx);
             })
             .unwrap();
