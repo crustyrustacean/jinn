@@ -98,6 +98,7 @@ impl ProviderActor {
             | Command::PinChatEntry(..)
             | Command::UnpinChatEntry(..)
             | Command::EnqueueUserMessage(..)
+            | Command::EnqueueResumeTurn(..)
             | Command::SetChatInputText(..)
             | Command::PushChatEntry(..)
             | Command::CancelStream(..)
