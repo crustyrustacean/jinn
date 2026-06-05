@@ -234,7 +234,10 @@ async fn write_atomic(
 ) -> Result<(), String> {
     let tmp_path = resolved.with_extension("hashline-tmp");
     if let Err(e) = tokio::fs::write(&tmp_path, content).await {
-        return Err(format!("failed to write temp file '{}': {e}", tmp_path.display()));
+        return Err(format!(
+            "failed to write temp file '{}': {e}",
+            tmp_path.display()
+        ));
     }
 
     if let Some(mode) = orig_mode
@@ -246,7 +249,10 @@ async fn write_atomic(
 
     if let Err(e) = std::fs::rename(&tmp_path, resolved) {
         let _ = std::fs::remove_file(&tmp_path);
-        return Err(format!("failed to rename temp file to '{}': {e}", resolved.display()));
+        return Err(format!(
+            "failed to rename temp file to '{}': {e}",
+            resolved.display()
+        ));
     }
     Ok(())
 }

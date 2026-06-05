@@ -1956,9 +1956,7 @@ fn clear_visual_parents_on_load_actually_removes_entries() {
 // --- Workflow entries in sorted_open_sessions ---
 
 fn state_with_workflows() -> AppState {
-    use crate::feat::workflow::attached_workflow::{
-        AttachedWorkflow, WorkflowConfig, WorkflowTrigger,
-    };
+    use crate::feat::attached_plugin::AttachedPlugin;
 
     let mut state = AppState::default();
 
@@ -1982,35 +1980,23 @@ fn state_with_workflows() -> AppState {
     }
     state.session.set_active(root_id.clone());
 
-    // Attach two workflows to root session.
+    // Attach two plugins to root session.
     let root_session = state.session.get_mut(&root_id).expect("root session");
     root_session
         .core
-        .attached_workflows
-        .push(AttachedWorkflow::new(
-            WorkflowConfig {
-                script: "consensus".to_owned(),
-                data: serde_json::json!({}),
-            },
-            WorkflowTrigger::TurnEnd,
-        ));
+        .attached_plugins
+        .push(AttachedPlugin::new("consensus"));
     root_session
         .core
-        .attached_workflows
-        .push(AttachedWorkflow::new(
-            WorkflowConfig {
-                script: "judge_fail".to_owned(),
-                data: serde_json::json!({}),
-            },
-            WorkflowTrigger::Manual,
-        ));
+        .attached_plugins
+        .push(AttachedPlugin::new("judge_fail"));
 
     state
 }
 
 #[rstest::rstest]
-fn sorted_open_sessions_includes_attached_workflows() {
-    // Given a session with two attached workflows.
+fn sorted_open_sessions_includes_attached_plugins() {
+    // Given a session with two attached plugins.
     let state = state_with_workflows();
 
     // When collecting sorted sessions.
@@ -2038,7 +2024,7 @@ fn sorted_open_sessions_includes_attached_workflows() {
     // And workflow entries have the Workflow kind.
     let workflow_entries: Vec<_> = sessions
         .iter()
-        .filter(|s| matches!(s.kind, SessionEntryKind::Workflow { .. }))
+        .filter(|s| matches!(s.kind, SessionEntryKind::Plugin { .. }))
         .collect();
     assert_eq!(workflow_entries.len(), 2, "should have 2 workflow entries");
 
@@ -2073,7 +2059,7 @@ fn sorted_open_sessions_no_workflows_when_none_attached() {
     // Then there are no workflow entries.
     let workflow_count = sessions
         .iter()
-        .filter(|s| matches!(s.kind, SessionEntryKind::Workflow { .. }))
+        .filter(|s| matches!(s.kind, SessionEntryKind::Plugin { .. }))
         .count();
     assert_eq!(workflow_count, 0, "should have no workflow entries");
 }
@@ -2106,26 +2092,17 @@ fn sorted_open_sessions_workflows_after_real_children() {
     assert!(wf1_pos < wf2_pos, "workflows should appear in order");
 }
 
-// --- Workflow entry navigation and activation ---
-
 fn state_with_session_and_workflows(workflow_count: usize) -> AppState {
-    use crate::feat::workflow::attached_workflow::{
-        AttachedWorkflow, WorkflowConfig, WorkflowTrigger,
-    };
+    use crate::feat::attached_plugin::AttachedPlugin;
 
     let mut state = AppState::default();
     let session = state.session.active_session_id().clone();
     {
         let s = state.session.get_mut(&session).expect("active session");
         for i in 0..workflow_count {
-            let aw = AttachedWorkflow::new(
-                WorkflowConfig {
-                    script: format!("plugin-{i}"),
-                    data: serde_json::json!({}),
-                },
-                WorkflowTrigger::TurnEnd,
-            );
-            s.core.attached_workflows.push(aw);
+            s.core
+                .attached_plugins
+                .push(AttachedPlugin::new(format!("plugin-{i}")));
         }
     }
     state
@@ -2148,23 +2125,15 @@ fn navigate_down_lands_on_workflow_entry() {
 
 #[test]
 fn navigate_up_lands_on_workflow_entry() {
-    // Given two sessions, first with a workflow, cursor at second session.
-    use crate::feat::workflow::attached_workflow::{
-        AttachedWorkflow, WorkflowConfig, WorkflowTrigger,
-    };
+    use crate::feat::attached_plugin::AttachedPlugin;
     let mut state = state_with_sessions(2);
     {
         let sessions: Vec<_> = state.session.iter().collect();
         let first_id = sessions[0].0.clone();
         let s = state.session.get_mut(&first_id).expect("first session");
-        let aw = AttachedWorkflow::new(
-            WorkflowConfig {
-                script: "my-plugin".to_owned(),
-                data: serde_json::json!({}),
-            },
-            WorkflowTrigger::TurnEnd,
-        );
-        s.core.attached_workflows.push(aw);
+        s.core
+            .attached_plugins
+            .push(AttachedPlugin::new("my-plugin"));
     }
     // entries: [session0, wf, session1]
     // cursor on session1

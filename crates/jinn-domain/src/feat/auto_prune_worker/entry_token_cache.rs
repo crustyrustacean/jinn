@@ -95,16 +95,11 @@ impl HistoryWorkerChatEntryTokenCache {
         let entry_id = entry_id.clone();
         // outer entry() holds the outer shard guard briefly;
         // or_insert_with builds the inner DashMap only on first call.
-        let session_map = self
-            .inner
-            .entry(session_id)
-            .or_default();
+        let session_map = self.inner.entry(session_id).or_default();
 
         // inner entry() holds the inner shard guard briefly;
         // or_insert_with runs the closure only on first call for this key.
-        *session_map
-            .entry(entry_id)
-            .or_insert_with(compute)
+        *session_map.entry(entry_id).or_insert_with(compute)
     }
 
     /// Evict all cached counts for a session.
@@ -185,8 +180,8 @@ impl HistoryWorkerChatEntryTokenCacheEvictionActor {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
     use crate::feat::session::protocol::session_closed::SessionClosed;
@@ -415,8 +410,15 @@ mod tests {
             results.push(h.await.expect("task did not panic"));
         }
 
-        assert_eq!(calls.load(Ordering::SeqCst), 1, "closure must run exactly once");
-        assert!(results.iter().all(|&v| v == 777), "all tasks must observe 777");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "closure must run exactly once"
+        );
+        assert!(
+            results.iter().all(|&v| v == 777),
+            "all tasks must observe 777"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -424,9 +426,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     fn make_actor() -> HistoryWorkerChatEntryTokenCacheEvictionActor {
-        HistoryWorkerChatEntryTokenCacheEvictionActor::new(
-            HistoryWorkerChatEntryTokenCache::new(),
-        )
+        HistoryWorkerChatEntryTokenCacheEvictionActor::new(HistoryWorkerChatEntryTokenCache::new())
     }
 
     #[test]
@@ -439,7 +439,9 @@ mod tests {
         actor.cache.insert(s_a.clone(), e.clone(), 10);
         actor.cache.insert(s_b.clone(), e.clone(), 20);
 
-        actor.handle_session_closed(&SessionClosed { session_id: s_a.clone() });
+        actor.handle_session_closed(&SessionClosed {
+            session_id: s_a.clone(),
+        });
 
         assert_eq!(actor.cache.get(&s_a, &e), None);
         assert_eq!(actor.cache.get(&s_b, &e), Some(20));
@@ -455,7 +457,9 @@ mod tests {
         actor.cache.insert(s_known.clone(), e.clone(), 30);
 
         // Must not panic, must not disturb s_known.
-        actor.handle_session_closed(&SessionClosed { session_id: s_unknown });
+        actor.handle_session_closed(&SessionClosed {
+            session_id: s_unknown,
+        });
 
         assert_eq!(actor.cache.get(&s_known, &e), Some(30));
     }

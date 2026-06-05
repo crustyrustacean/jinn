@@ -67,6 +67,19 @@ impl TuiWorld {
                 svc.reload().expect("test prefs storage initial reload");
                 svc
             },
+            plugins: jinn_domain::feat::plugin_dispatch::PluginFireService::new(Arc::new(
+                jinn_domain::NoopPluginFire,
+            )
+                as Arc<dyn jinn_domain::feat::plugin_dispatch::PluginFire>),
+            plugin_sync: jinn_domain::feat::plugin_dispatch::PluginSyncCallService::new(Arc::new(
+                jinn_domain::NoopPluginSyncCall,
+            )
+                as Arc<dyn jinn_domain::feat::plugin_dispatch::PluginSyncCall>),
+            session_plugin_registry:
+                jinn_domain::feat::plugin_system::SessionPluginRegistryService::new(Arc::new(
+                    jinn_domain::NoopSessionPluginRegistry,
+                )
+                    as Arc<dyn jinn_domain::feat::plugin_system::SessionPluginRegistry>),
             tempdir: None,
         };
 

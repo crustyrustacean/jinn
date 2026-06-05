@@ -1,31 +1,27 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
-
-//! Test utilities for constructing [Services] with fake implementations.
-//!
-//! [`TestServices`] provides a builder that creates a [`Services`] instance
-//! with all fake/noop implementations, suitable for unit tests that need
-//! a [`Services`] but don't test provider behavior.
-
 use std::sync::{Arc, LazyLock};
 
+use async_trait::async_trait;
+use error_stack::Report;
+use tokio::runtime::{Handle, Runtime};
+
+use crate::common::services::{NoopPluginFire, NoopPluginSyncCall, NoopSessionPluginRegistry};
+use crate::feat::plugin_dispatch::{
+    PluginFire, PluginFireService, PluginSyncCall, PluginSyncCallService,
+};
+use crate::feat::plugin_system::{SessionPluginRegistry, SessionPluginRegistryService};
 use crate::feat::preferences_actor::{
     InMemoryUserPreferencesStorage, UserPreferencesStorageService,
 };
 use crate::feat::provider_infra::{
-    ApiKeys, ApiKeysService, ConfigStorageService, InMemoryConfigStorage, LlmServiceFactoryService,
-    ProviderRegistry, ProviderRegistryService, ProvidersConfig,
+    ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, InMemoryConfigStorage,
+    LlmServiceFactoryService, ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
 use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::{SessionStore, SessionStoreError, SessionStoreService, SessionSummary};
 use crate::protocol::{AppMsg, SessionId};
-use async_trait::async_trait;
-use error_stack::Report;
-use kanal::Sender;
-use tokio::runtime::{Handle, Runtime};
 
 use super::Services;
 use super::actor_channel::ActorChannelService;
-
 /// Single shared tokio runtime for the entire test binary.
 ///
 /// Initializes exactly once via `LazyLock`. Without this, every
@@ -122,10 +118,10 @@ pub struct TestServices {
     /// Custom tokio runtime handle (if provided).
     handle: Option<Handle>,
     /// Custom actor channel sender (if provided).
-    actor_channel_sender: Option<Sender<AppMsg>>,
+    actor_channel_sender: Option<kanal::Sender<AppMsg>>,
     /// Custom LLM service factory (if provided).
     llm_service: Option<LlmServiceFactoryService>,
-    /// Custom session store service (if provided).
+    /// Custom session store (if provided).
     session_store: Option<SessionStoreService>,
     /// Custom app paths (if provided).
     paths: Option<crate::common::app_paths::AppPaths>,
@@ -155,14 +151,20 @@ impl TestServices {
         Self::default()
     }
 
-    /// Set the provider configuration.
+    /// Set the providers config.
     #[must_use]
-    pub fn with_providers(mut self, config: ProvidersConfig) -> Self {
-        self.providers = config;
+    pub fn providers(mut self, providers: ProvidersConfig) -> Self {
+        self.providers = providers;
         self
     }
 
-    /// Set a custom tokio runtime handle.
+    /// Alias for [`providers`](Self::providers) for backward compat.
+    #[must_use]
+    pub fn with_providers(self, providers: ProvidersConfig) -> Self {
+        self.providers(providers)
+    }
+
+    /// Set a custom runtime handle.
     #[must_use]
     pub fn handle(mut self, handle: Handle) -> Self {
         self.handle = Some(handle);
@@ -171,7 +173,7 @@ impl TestServices {
 
     /// Set a custom actor channel sender.
     #[must_use]
-    pub fn actor_channel(mut self, sender: Sender<AppMsg>) -> Self {
+    pub fn actor_channel_sender(mut self, sender: kanal::Sender<AppMsg>) -> Self {
         self.actor_channel_sender = Some(sender);
         self
     }
@@ -183,7 +185,7 @@ impl TestServices {
         self
     }
 
-    /// Set a custom session store service.
+    /// Set a custom session store.
     #[must_use]
     pub fn session_store(mut self, store: SessionStoreService) -> Self {
         self.session_store = Some(store);
@@ -219,15 +221,18 @@ impl TestServices {
             )
         };
 
-        let (actor_tx, _actor_rx) = kanal::unbounded::<AppMsg>();
+        // Keep a live drainer so the sender doesn't return ReceiveClosed.
+        let (actor_tx, actor_rx) = kanal::unbounded::<AppMsg>();
+        handle.spawn(async move {
+            let rx = actor_rx.to_async();
+            while rx.recv().await.is_ok() {}
+        });
         Services {
             paths,
             handle,
             actor_channel: ActorChannelService::new(self.actor_channel_sender.unwrap_or(actor_tx)),
             llm_service: self.llm_service.unwrap_or_else(|| {
-                LlmServiceFactoryService::new(Arc::new(
-                    crate::feat::provider_infra::FakeLlmServiceFactory::new(vec![]),
-                ))
+                LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![])))
             }),
             provider_registry: ProviderRegistryService::new(
                 ProviderRegistry::from_config(self.providers).expect("test registry"),
@@ -246,6 +251,14 @@ impl TestServices {
                 svc.reload().expect("test prefs storage initial reload");
                 svc
             },
+            plugins: PluginFireService::new(Arc::new(NoopPluginFire) as Arc<dyn PluginFire>),
+            plugin_sync: PluginSyncCallService::new(
+                Arc::new(NoopPluginSyncCall) as Arc<dyn PluginSyncCall>
+            ),
+            session_plugin_registry: SessionPluginRegistryService::new(Arc::new(
+                NoopSessionPluginRegistry,
+            )
+                as Arc<dyn SessionPluginRegistry>),
             tempdir,
         }
     }

@@ -332,7 +332,6 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
     // Store sweep state for potential continuation.
     state.active_session_mut().set_ignore_sweep(captured);
 
-
     let session_id = state.active_session().session_id().clone();
 
     IntentResult::with_commands_and_events(
@@ -357,9 +356,9 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
-    use crate::feat::session::chat_entry::ChangeSource;
     use crate::common::app_state::AppState;
     use crate::feat::context::protocol::command::PinChatEntry;
+    use crate::feat::session::chat_entry::ChangeSource;
     use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::protocol::{ChatEntry, Command, ContextOverride, PinPosition};
 
@@ -877,7 +876,12 @@ mod tests {
         state.active_session_mut().push_entry(ChatEntry::user("a"));
         for _ in 0..15 {
             let mut entry = ChatEntry::user("ignored");
-            entry.apply_context_override(crate::protocol::ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+            entry.apply_context_override(
+                crate::protocol::ContextOverride::ForcedExclude,
+                ChangeSource::Internal {
+                    label: "test".into(),
+                },
+            );
             state.active_session_mut().push_entry(entry);
         }
         state.active_session_mut().push_entry(ChatEntry::user("b"));
@@ -934,7 +938,12 @@ mod tests {
         state.active_session_mut().push_entry(ChatEntry::user("a"));
         for _ in 0..15 {
             let mut entry = ChatEntry::user("ignored");
-            entry.apply_context_override(crate::protocol::ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+            entry.apply_context_override(
+                crate::protocol::ContextOverride::ForcedExclude,
+                ChangeSource::Internal {
+                    label: "test".into(),
+                },
+            );
             state.active_session_mut().push_entry(entry);
         }
         state.active_session_mut().push_entry(ChatEntry::user("b"));
@@ -1207,7 +1216,7 @@ mod tests {
             },
             pin_position: None,
             context_override: crate::protocol::ContextOverride::Default,
-        context_history: Vec::new(),
+            context_history: Vec::new(),
         });
         state.active_session_mut().select_next_entry();
 
