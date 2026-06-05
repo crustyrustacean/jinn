@@ -6,8 +6,8 @@
 //! and pinned entry indicators.
 
 pub(crate) mod actor;
-pub mod audit_popup;
 pub(crate) mod assistant;
+pub mod audit_popup;
 pub(crate) mod compaction;
 pub(crate) mod error_entry;
 pub(crate) mod history;

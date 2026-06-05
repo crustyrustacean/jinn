@@ -64,7 +64,6 @@ pub(super) fn render_chat_tab(
         rects,
     );
 
-
     // Audit popup overlay - renders above the chat log when toggled on.
     audit_popup::render_audit_popup(frame, chat_log_area, ctx, rects);
 
