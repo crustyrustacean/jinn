@@ -96,6 +96,16 @@ pub struct Theme {
     pub scroll_indicator_bg: Color,
     /// Sidebar resize mode border color.
     pub sidebar_resize_accent: Color,
+
+    // Info popup
+    /// Background color for info/debug popup overlays (audit, debug, etc.).
+    pub infopopup_bg: Color,
+    /// Title/header text color for info popups.
+    pub infopopup_title: Color,
+    /// Border color for info popups.
+    pub infopopup_border: Color,
+    /// Body text color for info popups.
+    pub infopopup_fg: Color,
 }
 
 /// TOML-serializable theme file with optional fields.
@@ -177,6 +187,16 @@ pub struct ThemeFile {
     pub scroll_indicator_bg: Option<ThemeColor>,
     #[serde(default)]
     pub sidebar_resize_accent: Option<ThemeColor>,
+
+    // Info popup
+    #[serde(default)]
+    pub infopopup_bg: Option<ThemeColor>,
+    #[serde(default)]
+    pub infopopup_title: Option<ThemeColor>,
+    #[serde(default)]
+    pub infopopup_border: Option<ThemeColor>,
+    #[serde(default)]
+    pub infopopup_fg: Option<ThemeColor>,
 }
 
 impl ThemeFile {
@@ -299,6 +319,18 @@ impl ThemeFile {
                 fallback.sidebar_resize_accent,
                 crate::color::ThemeColor::inner,
             ),
+            infopopup_bg: self
+                .infopopup_bg
+                .map_or(fallback.infopopup_bg, crate::color::ThemeColor::inner),
+            infopopup_title: self
+                .infopopup_title
+                .map_or(fallback.infopopup_title, crate::color::ThemeColor::inner),
+            infopopup_border: self
+                .infopopup_border
+                .map_or(fallback.infopopup_border, crate::color::ThemeColor::inner),
+            infopopup_fg: self
+                .infopopup_fg
+                .map_or(fallback.infopopup_fg, crate::color::ThemeColor::inner),
         }
     }
 
@@ -406,6 +438,18 @@ impl ThemeFile {
             sidebar_resize_accent: self
                 .sidebar_resize_accent
                 .map_or(Color::Reset, crate::color::ThemeColor::inner),
+            infopopup_bg: self
+                .infopopup_bg
+                .map_or(Color::Reset, crate::color::ThemeColor::inner),
+            infopopup_title: self
+                .infopopup_title
+                .map_or(Color::Reset, crate::color::ThemeColor::inner),
+            infopopup_border: self
+                .infopopup_border
+                .map_or(Color::Reset, crate::color::ThemeColor::inner),
+            infopopup_fg: self
+                .infopopup_fg
+                .map_or(Color::Reset, crate::color::ThemeColor::inner),
         }
     }
 }
@@ -451,6 +495,10 @@ mod tests {
             age_stale: None,
             scroll_indicator_bg: None,
             sidebar_resize_accent: None,
+            infopopup_bg: None,
+            infopopup_title: None,
+            infopopup_border: None,
+            infopopup_fg: None,
         };
 
         // When resolving.
@@ -463,6 +511,10 @@ mod tests {
         assert_eq!(theme.popup_title, default.popup_title);
         assert_eq!(theme.gutter_bg, default.gutter_bg);
         assert_eq!(theme.sidebar_resize_accent, default.sidebar_resize_accent);
+        assert_eq!(theme.infopopup_bg, default.infopopup_bg);
+        assert_eq!(theme.infopopup_title, default.infopopup_title);
+        assert_eq!(theme.infopopup_border, default.infopopup_border);
+        assert_eq!(theme.infopopup_fg, default.infopopup_fg);
     }
 
     #[rstest::rstest]
@@ -501,6 +553,10 @@ mod tests {
             age_stale: None,
             scroll_indicator_bg: None,
             sidebar_resize_accent: None,
+            infopopup_bg: None,
+            infopopup_title: None,
+            infopopup_border: None,
+            infopopup_fg: None,
         };
 
         // When resolving.
@@ -563,6 +619,10 @@ mod tests {
             age_stale: Some(ThemeColor(Color::Red)),
             scroll_indicator_bg: Some(ThemeColor(Color::Black)),
             sidebar_resize_accent: Some(ThemeColor(Color::Green)),
+            infopopup_bg: Some(ThemeColor(Color::Rgb(40, 44, 52))),
+            infopopup_title: Some(ThemeColor(Color::Yellow)),
+            infopopup_border: Some(ThemeColor(Color::Cyan)),
+            infopopup_fg: Some(ThemeColor(Color::Rgb(220, 220, 220))),
             popup_title: Some(ThemeColor(Color::Yellow)),
         };
 
