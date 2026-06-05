@@ -131,8 +131,14 @@ impl AppWorld {
                 ProviderRegistry::from_config(empty_config).expect("empty config is valid"),
             );
             let llm_service = LlmServiceFactoryService::new(fake_factory);
-            let user_preferences_storage =
-                UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
+            let user_preferences_storage = {
+                let svc = UserPreferencesStorageService::new(Arc::new(
+                    InMemoryUserPreferencesStorage::new(),
+                ));
+                svc.reload().expect("test prefs storage initial reload");
+                svc
+            };
+
             let session_store = jinn_domain::SessionStoreService::new(Arc::new(
                 jinn_domain::SqliteSessionStore::new_in(&paths.sessions_dir()).expect("store"),
             ));
@@ -563,8 +569,12 @@ fn when_restart_app(world: &mut AppWorld) {
             ProviderRegistry::from_config(empty_config).expect("empty config is valid"),
         );
         let llm_service = LlmServiceFactoryService::new(fake_factory);
-        let user_preferences_storage =
-            UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
+        let user_preferences_storage = {
+            let svc =
+                UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
+            svc.reload().expect("test prefs storage initial reload");
+            svc
+        };
         let session_store = jinn_domain::SessionStoreService::new(Arc::new(
             jinn_domain::SqliteSessionStore::new_in(&paths.sessions_dir()).expect("store"),
         ));

@@ -171,7 +171,7 @@ impl BenchActor {
         self.current_pair_index += 1;
 
         // Load preferences from service (outside state lock).
-        let prefs = self.user_preferences_storage.load().expect("preferences");
+        let prefs = self.user_preferences_storage.read();
 
         let session_id = {
             let mut state = self.state.write();

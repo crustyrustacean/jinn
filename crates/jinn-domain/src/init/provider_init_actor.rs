@@ -110,14 +110,7 @@ impl ProviderInitActor {
         }
         self.state.write().provider.model_cache = cache;
 
-        // Load user preferences.
-        let prefs = match self.services.user_preferences_storage.load() {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::warn!("provider-init failed to load user preferences: {e:?}");
-                return;
-            }
-        };
+        let prefs = self.services.user_preferences_storage.read();
 
         // If last_model is set, send ProviderSwitch to apply it.
         // Skip if the active session already has an explicit model (e.g., bench sessions
