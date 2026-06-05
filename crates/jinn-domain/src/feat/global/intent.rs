@@ -179,6 +179,29 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn toggle_audit_popup_persists_across_mode_changes() {
+        // Given a state with the audit popup toggled on.
+        let mut state = AppState::default();
+        handle_toggle_audit_popup(&mut state);
+        assert!(state.frontend.audit_popup_visible);
+
+        // When the user enters Input mode (pushes Input focus scope).
+        state
+            .frontend
+            .scope_stack
+            .push(crate::common::focus::FocusScope::Input);
+
+        // Then the popup flag remains on — it lives on FrontendState, not Mode.
+        assert!(state.frontend.audit_popup_visible);
+
+        // And when the user pops back to Normal.
+        state.frontend.scope_stack.pop();
+
+        // Then the flag still persists.
+        assert!(state.frontend.audit_popup_visible);
+    }
+
+    #[rstest::rstest]
     fn interrupt_clears_buffer_when_non_empty() {
         // Given a state with text in the buffer.
         let mut state = AppState::default();
