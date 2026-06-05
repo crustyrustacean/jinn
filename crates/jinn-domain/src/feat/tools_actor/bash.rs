@@ -14,6 +14,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use crate::common::actor::message_sink::MessageSink;
+use crate::feat::preferences_actor::user_preferences::BashConfig;
 use crate::feat::tools_actor::protocol::event::{ToolExecutionOutput, ToolExecutionStarted};
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
 use crate::protocol::{Event, SessionId};
@@ -78,13 +79,20 @@ impl std::ops::DerefMut for KillOnDrop {
 }
 
 /// Returns the tool definition for the `bash` built-in tool.
-pub fn definition() -> ToolDefinition {
+///
+/// The resolved `default_timeout_secs` from `config` is injected into the
+/// schema descriptions so the model can see what default it is operating under.
+pub fn definition(config: &BashConfig) -> ToolDefinition {
+    let default_secs = config.default_timeout_secs.unwrap_or(0);
+    let default_secs_str = default_secs.to_string();
     ToolDefinition {
         name: "bash".to_owned(),
-        description: "Execute a bash command in the current working directory. \
+        description: format!(
+            "Execute a bash command in the current working directory. \
             Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB \
-            (whichever is hit first). Optionally provide a timeout in seconds."
-            .to_owned(),
+            (whichever is hit first). Default timeout is {default_secs_str}s; \
+            override per call via the `timeout` parameter."
+        ),
         prompt_snippet: Some("Execute bash commands (ls, grep, find, etc.)".to_owned()),
         prompt_guidelines: vec!["Use bash for file operations like ls, rg, find".to_owned()],
         parameters: serde_json::json!({
@@ -96,7 +104,7 @@ pub fn definition() -> ToolDefinition {
                 },
                 "timeout": {
                     "type": "number",
-                    "description": "Timeout in seconds (optional, no default timeout)"
+                    "description": format!("Timeout in seconds. Overrides the default of {default_secs_str}s.")
                 }
             },
             "required": ["command"]
@@ -502,7 +510,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         // Apply timeout to the entire read+wait sequence.
         let exit_result: Result<std::process::ExitStatus, std::io::Error> = match per_call_timeout
             .map(std::time::Duration::from_secs)
-            .or(ctx.timeout)
+            .or(ctx.bash_default_timeout)
         {
             Some(dur) => match tokio::time::timeout(dur, read_fut).await {
                 Ok(Ok(status)) => Ok(status),
@@ -548,6 +556,7 @@ mod tests {
         ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
+            bash_default_timeout: None,
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
@@ -630,6 +639,7 @@ mod tests {
         let ctx = ToolContext {
             cwd: dir.path().to_owned(),
             timeout: None,
+            bash_default_timeout: None,
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
@@ -715,6 +725,66 @@ mod tests {
         // Then the result indicates timeout.
         assert!(!result.success);
         assert!(result.content.contains("timed out"));
+    }
+
+    #[tokio::test]
+    async fn execute_uses_bash_default_timeout_when_no_per_call() {
+        // Given a ToolContext with a 1-second bash_default_timeout and no per-call timeout.
+        let mut ctx = test_ctx();
+        ctx.bash_default_timeout = Some(std::time::Duration::from_secs(1));
+        let call = ToolCall {
+            id: "call_default_to".to_owned(),
+            name: "bash".to_owned(),
+            arguments: serde_json::json!({"command": "sleep 10"}).to_string(),
+        };
+
+        // When executing.
+        let result = execute(call, ctx).await;
+
+        // Then the bash default timeout fires.
+        assert!(!result.success);
+        assert!(result.content.contains("timed out"));
+    }
+
+    #[tokio::test]
+    async fn execute_per_call_timeout_overrides_bash_default() {
+        // Given a short per-call timeout and a longer bash_default_timeout.
+        let mut ctx = test_ctx();
+        ctx.bash_default_timeout = Some(std::time::Duration::from_secs(10));
+        let call = ToolCall {
+            id: "call_override".to_owned(),
+            name: "bash".to_owned(),
+            arguments: serde_json::json!({
+                "command": "sleep 5",
+                "timeout": 1
+            })
+            .to_string(),
+        };
+
+        // When executing.
+        let result = execute(call, ctx).await;
+
+        // Then the per-call (1s) wins over the default (10s).
+        assert!(!result.success);
+        assert!(result.content.contains("timed out"));
+    }
+
+    #[tokio::test]
+    async fn execute_no_timeout_when_default_is_none_and_no_per_call() {
+        // Given no per-call timeout and bash_default_timeout = None.
+        let ctx = test_ctx(); // bash_default_timeout: None
+        let call = ToolCall {
+            id: "call_no_to".to_owned(),
+            name: "bash".to_owned(),
+            arguments: serde_json::json!({"command": "echo hi"}).to_string(),
+        };
+
+        // When executing a fast command.
+        let result = execute(call, ctx).await;
+
+        // Then it succeeds (no timeout enforced).
+        assert!(result.success);
+        assert!(result.content.contains("hi"));
     }
 
     /// Verifies that `KillOnDrop` terminates the child process and its
@@ -1048,5 +1118,82 @@ mod tests {
         // When checking if it should flush.
         // Then it returns false (len == threshold, not > threshold).
         assert!(!batcher.should_flush());
+    }
+
+    #[rstest::rstest]
+    fn definition_includes_default_timeout_secs_in_schema() {
+        // Given the default BashConfig.
+        let config = BashConfig::default();
+
+        // When building the tool definition.
+        let def = definition(&config);
+
+        // Then the tool description mentions the default.
+        assert!(
+            def.description.contains("180"),
+            "description must mention 180, got: {}",
+            def.description
+        );
+
+        // And the timeout field description mentions the default.
+        let params = &def.parameters;
+        let timeout_desc = params
+            .get("properties")
+            .and_then(|p| p.get("timeout"))
+            .and_then(|t| t.get("description"))
+            .and_then(|d| d.as_str())
+            .expect("timeout description present");
+        assert!(
+            timeout_desc.contains("180"),
+            "timeout description must mention 180, got: {timeout_desc}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn definition_includes_custom_timeout_in_schema() {
+        // Given a BashConfig with a custom default.
+        let config = BashConfig {
+            default_timeout_secs: Some(60),
+        };
+
+        // When building the tool definition.
+        let def = definition(&config);
+
+        // Then the timeout field description mentions the custom default.
+        let timeout_desc = def
+            .parameters
+            .get("properties")
+            .and_then(|p| p.get("timeout"))
+            .and_then(|t| t.get("description"))
+            .and_then(|d| d.as_str())
+            .expect("timeout description present");
+        assert!(
+            timeout_desc.contains("60"),
+            "timeout description must mention 60, got: {timeout_desc}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn definition_handles_none_timeout_gracefully() {
+        // Given a BashConfig with no default timeout.
+        let config = BashConfig {
+            default_timeout_secs: None,
+        };
+
+        // When building the tool definition.
+        let def = definition(&config);
+
+        // Then it succeeds and the timeout field still has a description.
+        let timeout_desc = def
+            .parameters
+            .get("properties")
+            .and_then(|p| p.get("timeout"))
+            .and_then(|t| t.get("description"))
+            .and_then(|d| d.as_str())
+            .expect("timeout description present");
+        assert!(
+            !timeout_desc.is_empty(),
+            "timeout description must not be empty"
+        );
     }
 }
