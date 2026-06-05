@@ -11,8 +11,6 @@ use crate::common::app_state::FocusScope;
 use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch};
-#[cfg(test)]
-use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::tools_actor::tool_entry::ToolEntry;
@@ -75,6 +73,10 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
                 Some(state.active_session().disabled_skills().clone());
             load_skill_picker_entries(state);
         }
+        PickerKind::TaskList => {
+            state.frontend.task_list_picker_mut().reset();
+            load_task_list_picker_entries(state);
+        }
     }
 
     match kind {
@@ -93,7 +95,7 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
                 LoadPersonaPickerEntries,
             )])
         }
-        PickerKind::Theme | PickerKind::Tool | PickerKind::Skill => IntentResult::empty(),
+        PickerKind::Theme | PickerKind::Tool | PickerKind::Skill | PickerKind::TaskList => IntentResult::empty(),
         PickerKind::SessionLifecycle => {
             // Populate from user preferences + implicit blank lifecycle.
             load_lifecycle_picker_entries(state);
@@ -110,6 +112,7 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
                 crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
             )])
         }
+
     }
 }
 
@@ -279,7 +282,7 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::SessionLifecycle) => (confirm_session_lifecycle(state), None),
         Some(PickerKind::Workflow) => (confirm_workflow(state), None),
 
-        Some(PickerKind::CompactionModel) | None => (IntentResult::empty(), None),
+        Some(PickerKind::CompactionModel | PickerKind::TaskList) | None => (IntentResult::empty(), None),
         Some(PickerKind::Tool) => (confirm_tool(state), None),
         Some(PickerKind::Skill) => (confirm_skill(state), None),
     }
@@ -601,6 +604,52 @@ fn load_skill_picker_entries(state: &mut AppState) {
     crate::feat::skills::reload::reload_skill_picker_entries(state);
 }
 
+/// Populates the task list picker entries from the active session's task list.
+///
+/// Phases are emitted as tree roots; tasks are emitted as children of their owning
+/// phase (parent_id = the phase's id string). Postponed tasks are filtered out,
+/// matching the sidebar's `render_text` behavior.
+///
+/// Empty task lists produce an empty picker - no panic.
+fn load_task_list_picker_entries(state: &mut AppState) {
+    use crate::feat::theme::default_theme;
+    use crate::feat::todo_list::picker_entry::TaskListTreeEntry;
+    use crate::feat::todo_list::TaskStatus;
+
+    let theme = default_theme();
+    let entries: Vec<TaskListTreeEntry> = state
+        .active_session()
+        .task_list()
+        .phases()
+        .iter()
+        .flat_map(|phase| {
+            let phase_id_str = format!("phase:{}", phase.id());
+            let phase_entry = TaskListTreeEntry::new_phase(
+                phase_id_str.clone(),
+                phase.description().to_owned(),
+                theme.clone(),
+            );
+            let task_entries: Vec<TaskListTreeEntry> = phase
+                .tasks()
+                .iter()
+                .filter(|task| task.status() != TaskStatus::Postponed)
+                .map(|task| {
+                    TaskListTreeEntry::new_task(
+                        format!("task:{}", task.id()),
+                        Some(phase_id_str.clone()),
+                        task.description().to_owned(),
+                        task.status(),
+                        theme.clone(),
+                    )
+                })
+                .collect();
+            std::iter::once(phase_entry).chain(task_entries)
+        })
+        .collect();
+
+    state.frontend.task_list_picker_mut().set_items(entries);
+}
+
 /// Confirms the skill picker: collects disabled skill names from picker entries
 /// and writes them to the active session's profile.
 fn confirm_skill(state: &mut AppState) -> IntentResult {
@@ -655,7 +704,11 @@ pub fn handle_refresh_skills(state: &mut AppState) -> IntentResult {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
+    use crate::feat::session::ChatSessionState;
+    use crate::feat::todo_list::picker_entry::RowStatus;
+    use crate::feat::todo_list::TaskStatus;
     use crate::protocol::ChatEntryKind;
+    use jinn_selection_widget::TreeItem;
     use std::path::PathBuf;
 
     // --- A-Tier: Kill mutants for picker confirm and validation ---
@@ -1188,4 +1241,228 @@ mod tests {
         // Then no commands and no messages.
         assert!(result.commands.is_empty());
     }
+
+
+    fn setup_state_with_task_list() -> (AppState, crate::feat::todo_list::TaskId) {
+        use crate::feat::todo_list::TaskPosition;
+
+        let mut state = AppState::default();
+        let mut origin = ChatSessionState::new();
+
+        // Phase 1 with 2 tasks (one Pending, one Completed).
+        let phase1 = origin.task_list_mut().add_phase("Research");
+        let _ = origin
+            .task_list_mut()
+            .add_task(&phase1, "Read codebase", TaskPosition::End);
+        let task2 = origin
+            .task_list_mut()
+            .add_task(&phase1, "Write notes", TaskPosition::End)
+            .expect("add_task");
+        origin.task_list_mut().complete_task(&task2).expect("complete");
+
+        // Phase 2 with 3 tasks (Pending, Cancelled, plus a Postponed source).
+        // postpone_task marks the source as Postponed AND inserts a new Pending
+        // copy with the same description, so we surface the source ID to tests.
+        let phase2 = origin.task_list_mut().add_phase("Build");
+        let _ = origin
+            .task_list_mut()
+            .add_task(&phase2, "Implement feature", TaskPosition::End);
+        let task_cancel = origin
+            .task_list_mut()
+            .add_task(&phase2, "Investigate alt", TaskPosition::End)
+            .expect("add_task");
+        origin
+            .task_list_mut()
+            .cancel_task(&task_cancel)
+            .expect("cancel");
+        let to_postpone = origin
+            .task_list_mut()
+            .add_task(&phase2, "Refactor later", TaskPosition::End)
+            .expect("add_task");
+        let postponed_id = to_postpone.clone();
+        origin
+            .task_list_mut()
+            .postpone_task(&to_postpone, TaskPosition::After(task_cancel.clone()))
+            .expect("postpone");
+
+        let origin_id = origin.session_id().clone();
+        state.session.insert(origin);
+        assert!(
+            state.session.set_active(origin_id),
+            "origin session must be present for set_active"
+        );
+        (state, postponed_id)
+    }
+
+    #[rstest::rstest]
+    fn load_task_list_picker_entries_skips_postponed() {
+        // Given a session with one postponed task among other tasks.
+        // postpone_task creates a new Pending copy with the same description, so we
+        // must verify the *source* (Postponed) entry is excluded by ID, not by label.
+        let (mut state, postponed_id) = setup_state_with_task_list();
+
+        // When loading task list picker entries.
+        load_task_list_picker_entries(&mut state);
+
+        // Then no entry has the postponed task's ID.
+        let excluded_id = format!("task:{postponed_id}");
+        let items = state.frontend.task_list_picker().items();
+        assert!(
+            items.iter().all(|e| e.id() != excluded_id),
+            "postponed source task should not appear in picker (id={excluded_id})"
+        );
+        // Sanity: the new Pending copy with the same description IS present.
+        assert!(
+            items.iter().any(|e| e.display_label() == "Refactor later"),
+            "Pending copy of postponed task should be visible"
+        );
+    }
+
+    #[rstest::rstest]
+    fn load_task_list_picker_entries_produces_correct_tree_shape() {
+        // Given a session with two phases and mixed-status tasks.
+        let (mut state, _postponed_id) = setup_state_with_task_list();
+
+        // When loading.
+        load_task_list_picker_entries(&mut state);
+
+        // Then there are exactly 2 phase roots.
+        let items = state.frontend.task_list_picker().items();
+        let roots: Vec<_> = items.iter().filter(|e| e.parent_id().is_none()).collect();
+        assert_eq!(roots.len(), 2, "should have 2 phase roots");
+        assert_eq!(roots[0].display_label(), "Research");
+        assert_eq!(roots[1].display_label(), "Build");
+
+        // And each task's parent_id matches its phase's id.
+        let phase_ids: Vec<&str> = roots.iter().map(|e| e.id()).collect();
+        for item in items.iter().filter(|e| e.parent_id().is_some()) {
+            assert!(
+                phase_ids.contains(&item.parent_id().expect("task parent")),
+                "task {:?} should reference a known phase id",
+                item.display_label()
+            );
+        }
+
+        // And the counts match: Phase 1 -> 2 tasks; Phase 2 -> 3 tasks (Pending,
+        // Cancelled, and the Pending copy created by postpone_task).
+        let research_children: Vec<_> = items
+            .iter()
+            .filter(|e| e.parent_id() == Some(phase_ids[0]))
+            .collect();
+        let build_children: Vec<_> = items
+            .iter()
+            .filter(|e| e.parent_id() == Some(phase_ids[1]))
+            .collect();
+        assert_eq!(research_children.len(), 2);
+        assert_eq!(build_children.len(), 3);
+    }
+
+
+    #[rstest::rstest]
+    fn load_task_list_picker_entries_carries_status_through() {
+        // Given a session with completed and cancelled tasks.
+        let (mut state, _postponed_id) = setup_state_with_task_list();
+
+        // When loading.
+        load_task_list_picker_entries(&mut state);
+
+        // Then task rows carry their status in row_status.
+
+        let items = state.frontend.task_list_picker().items();
+        let statuses: Vec<_> = items
+            .iter()
+            .filter_map(|e| match e.row_status() {
+                RowStatus::Task(s) => Some((e.display_label(), s)),
+                RowStatus::Phase => None,
+            })
+            .collect();
+
+        let by_label: std::collections::HashMap<&str, TaskStatus> =
+            statuses.iter().map(|(l, s)| (*l, *s)).collect();
+        assert_eq!(
+            by_label.get("Write notes").copied(),
+            Some(TaskStatus::Completed),
+            "'Write notes' should be Completed"
+        );
+        assert_eq!(
+            by_label.get("Investigate alt").copied(),
+            Some(TaskStatus::Cancelled),
+            "'Investigate alt' should be Cancelled"
+        );
+        assert_eq!(
+            by_label.get("Read codebase").copied(),
+            Some(TaskStatus::Pending),
+            "'Read codebase' should be Pending"
+        );
+        // The Pending copy of the postponed task should also carry its status.
+        assert_eq!(
+            by_label.get("Refactor later").copied(),
+            Some(TaskStatus::Pending),
+            "'Refactor later' (Pending copy) should be Pending"
+        );
+    }
+
+    #[rstest::rstest]
+    fn load_task_list_picker_entries_empty_task_list_no_panic() {
+        // Given a default session with an empty task list.
+        let mut state = AppState::default();
+
+        // When loading.
+        load_task_list_picker_entries(&mut state);
+
+        // Then the picker is empty and nothing panicked.
+        assert!(state.frontend.task_list_picker().items().is_empty());
+    }
+
+    #[rstest::rstest]
+    fn handle_picker_confirm_task_list_is_noop_and_keeps_scope() {
+        // Given state with the TaskList picker scope on the stack.
+        let (mut state, _postponed_id) = setup_state_with_task_list();
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::TaskList,
+        });
+        let len_before = state.frontend.scope_stack.len();
+
+        // When confirming.
+        let (result, follow_up) = handle_picker_confirm(&mut state);
+
+        // Then no commands, no follow-up, and the scope stack is unchanged.
+        assert!(result.commands.is_empty(), "no commands");
+        assert!(follow_up.is_none(), "no follow-up");
+        assert_eq!(
+            state.frontend.scope_stack.len(),
+            len_before,
+            "scope stack must remain unchanged on no-op confirm"
+        );
+        assert!(matches!(
+            state.frontend.scope_stack.current(),
+            FocusScope::Picker {
+                kind: PickerKind::TaskList
+            }
+        ));
+    }
+
+    #[rstest::rstest]
+    fn esc_from_task_list_picker_restores_sidebar_task_list_scope() {
+        // Given a scope stack like: [Normal, SidebarTaskList, Picker(TaskList)].
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::SidebarTaskList);
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::TaskList,
+        });
+
+        // When Esc is pressed.
+        let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+
+        // Then we should return to SidebarTaskList, not Normal.
+        assert!(
+            matches!(
+                state.frontend.scope_stack.current(),
+                FocusScope::SidebarTaskList
+            ),
+            "Esc from TaskList picker should restore SidebarTaskList scope, got: {:?}",
+            state.frontend.scope_stack.current()
+        );
+    }
 }
+

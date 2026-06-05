@@ -213,6 +213,12 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         // Sidebar - Task list section
         .scope(Scope::SidebarTaskList, |b| {
             add_sidebar_base(b);
+            // Open full-screen task list browser
+            b.bind(
+                "s",
+                Intent::OpenPicker { kind: jinn_domain::feat::picker::PickerKind::TaskList },
+                KeyCategory::General,
+            );
         })
         // Input scope: typing into the input buffer
         .scope(Scope::Input, |b| {
@@ -289,6 +295,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
              .bind("<c-r>", Intent::RefreshSkills, KeyCategory::General);
         })
         .scope(Scope::PickerWorkflow, |b| {
+            add_picker_base(b);
+        })
+        .scope(Scope::PickerTaskList, |b| {
             add_picker_base(b);
         });
 
