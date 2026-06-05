@@ -2257,6 +2257,8 @@ impl ChatSessionState {
 
     /// Update the cached context size.
     pub fn set_context_size(&mut self, size: u32) {
+        let bt = std::backtrace::Backtrace::force_capture();
+        eprintln!("TRACE set_context_size size={size}\n{bt}");
         self.core.ephemeral.cached_context_size = Some(size);
     }
 
