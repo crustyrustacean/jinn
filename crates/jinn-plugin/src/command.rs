@@ -11,6 +11,8 @@
 /// payload as a JSON value (arbitrary structured data from Lua).
 #[derive(Debug, Clone)]
 pub struct PluginCommand {
+    /// Name of the plugin that emitted this command.
+    pub plugin_name: String,
     /// The command name, e.g. `"push_chat_entry"`.
     pub name: String,
     /// The command payload as a JSON value.

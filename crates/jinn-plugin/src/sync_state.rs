@@ -195,11 +195,19 @@ pub(crate) fn build_sync_ctx(
         }
     }
 
+    // ctx.plugin_name — let Lua refer to itself by name.
+    ctx.set("plugin_name", plugin_name)?;
+
     // ctx.emit(cmd, data) — fire-and-forget via channel.
     let emit_tx = emit_tx.clone();
+    let plugin_name = plugin_name.to_owned();
     let emit_fn = lua.create_function(move |lua, (name, data): (String, Value)| {
         let json = bindings::value_to_json(lua, &data).unwrap_or_default();
-        let _ = emit_tx.send(PluginCommand { name, data: json });
+        let _ = emit_tx.send(PluginCommand {
+            plugin_name: plugin_name.clone(),
+            name,
+            data: json,
+        });
         Ok(())
     })?;
     ctx.set("emit", emit_fn)?;
@@ -208,7 +216,6 @@ pub(crate) fn build_sync_ctx(
     // NO ctx.set_plugin_data() — sync hooks don't write persistent data.
     // (If needed, these can be added to the async ctx only.)
 
-    let _ = plugin_name;
     let _ = plugin_data;
     Ok(ctx)
 }
