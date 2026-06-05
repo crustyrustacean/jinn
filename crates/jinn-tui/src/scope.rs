@@ -30,8 +30,8 @@ pub enum Scope {
     PickerTheme,
     /// Picker - Session lifecycle recipe selection.
     PickerLifecycle,
-    /// Picker - Workflow selection.
-    PickerWorkflow,
+    /// Picker - Plugin selection.
+    PickerPlugin,
 
     /// Picker - Compaction model selection.
     PickerCompactionModel,
@@ -65,7 +65,7 @@ impl std::fmt::Display for Scope {
             Self::PickerPersona => write!(f, "Picker(persona)"),
             Self::PickerTheme => write!(f, "Picker(theme)"),
             Self::PickerLifecycle => write!(f, "Picker(lifecycle)"),
-            Self::PickerWorkflow => write!(f, "Picker(workflow)"),
+            Self::PickerPlugin => write!(f, "Picker(plugin)"),
 
             Self::PickerCompactionModel => write!(f, "Picker(compaction-model)"),
             Self::PickerTool => write!(f, "Picker(tool)"),
@@ -94,7 +94,8 @@ impl std::str::FromStr for Scope {
             "Picker(persona)" => Ok(Self::PickerPersona),
             "Picker(theme)" => Ok(Self::PickerTheme),
             "Picker(lifecycle)" => Ok(Self::PickerLifecycle),
-            "Picker(workflow)" => Ok(Self::PickerWorkflow),
+            "Picker(plugin)" => Ok(Self::PickerPlugin),
+            "Picker(workflow)" => Ok(Self::PickerPlugin), // back-compat
 
             "Picker(compaction-model)" => Ok(Self::PickerCompactionModel),
             "Picker(tool)" => Ok(Self::PickerTool),

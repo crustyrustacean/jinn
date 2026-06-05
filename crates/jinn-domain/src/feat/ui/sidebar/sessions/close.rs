@@ -45,7 +45,7 @@ pub fn validate_session_close(state: &AppState) -> Result<(), SessionCloseError>
     let entry = sessions.get(index).ok_or(SessionCloseError::NoSelection)?;
 
     // Workflow entries cannot be closed/archived.
-    if matches!(entry.kind, SessionEntryKind::Workflow { .. }) {
+    if matches!(entry.kind, SessionEntryKind::Plugin { .. }) {
         return Err(SessionCloseError::NotASession);
     }
     let session = state

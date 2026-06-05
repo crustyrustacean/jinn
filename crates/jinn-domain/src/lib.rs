@@ -47,6 +47,7 @@ pub use feat::provider_infra::NO_PROVIDER_ID;
 // Re-export services types
 pub use common::services::NoopPluginFire;
 pub use common::services::NoopPluginSyncCall;
+pub use common::services::NoopSessionPluginRegistry;
 pub use common::services::Services;
 pub use common::services::test_services::TestServices;
 

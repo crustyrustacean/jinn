@@ -182,7 +182,7 @@ impl App {
                 runner.run().change_context(AppError)?;
             }
             Commands::Headless { command, .. } => {
-                let (core, _services, actor_host, plugins) =
+                let (core, _services, actor_host, _plugins) =
                     actor_wiring::create_core_with_actor_host(
                         &self.handle(),
                         llm_service.clone(),

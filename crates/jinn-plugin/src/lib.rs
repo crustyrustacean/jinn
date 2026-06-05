@@ -46,6 +46,8 @@ pub mod async_thread;
 pub mod bindings;
 pub mod command;
 pub mod loader;
+pub mod session_registry;
+
 pub mod plugin_data;
 pub mod plugin_fire_impl;
 pub mod plugin_sync_impl;
@@ -58,6 +60,7 @@ pub use async_thread::RequestHandler;
 pub use command::PluginCommand;
 pub use loader::{PluginKind, PluginMeta, discover_plugins};
 pub use plugin_data::PluginData;
+pub use session_registry::SessionRegistryId;
 pub use sync_handle::PluginSyncHandle;
 pub use sync_state::{PluginHooks, SyncPlugins};
 pub use system::{CommandDispatcher, PluginSystem};

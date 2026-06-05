@@ -1,4 +1,4 @@
-//! Workflow picker entry - one row in the workflow selection picker.
+//! Workflow picker entry - one row in the plugin selection picker.
 
 use jinn_selection_widget::PickerItem;
 use ratatui::text::{Line, Span};
@@ -6,9 +6,9 @@ use ratatui::text::{Line, Span};
 use crate::feat::picker::style::{active_marker, dim_style, selected_style};
 use crate::feat::theme::Theme;
 
-/// A workflow shown in the workflow picker.
+/// An attachable plugin shown in the plugin picker.
 #[derive(Debug, Clone)]
-pub struct WorkflowPickerEntry {
+pub struct PluginPickerEntry {
     /// The Lua plugin name (used to locate the `init.lua` script at spawn time).
     pub name: String,
     /// Optional description parsed from the plugin's `-- description:` header comment.
@@ -17,13 +17,13 @@ pub struct WorkflowPickerEntry {
     pub theme: Theme,
 }
 
-impl PickerItem for WorkflowPickerEntry {
+impl PickerItem for PluginPickerEntry {
     fn display_label(&self) -> &str {
         &self.name
     }
 
     fn render_row(&self, is_selected: bool) -> Line<'static> {
-        render_workflow_row(
+        render_plugin_row(
             &self.name,
             self.description.as_deref(),
             is_selected,
@@ -37,7 +37,7 @@ impl PickerItem for WorkflowPickerEntry {
         is_selected: bool,
         match_indices: &[std::ops::Range<usize>],
     ) -> Line<'static> {
-        render_workflow_row(
+        render_plugin_row(
             &self.name,
             self.description.as_deref(),
             is_selected,
@@ -47,8 +47,8 @@ impl PickerItem for WorkflowPickerEntry {
     }
 }
 
-/// Renders a workflow picker row with proper styling.
-fn render_workflow_row(
+/// Renders a plugin picker row with proper styling.
+fn render_plugin_row(
     name: &str,
     description: Option<&str>,
     is_selected: bool,
@@ -84,8 +84,8 @@ mod tests {
     use super::*;
     use crate::feat::theme::default_theme;
 
-    fn test_entry(name: &str, description: Option<&str>) -> WorkflowPickerEntry {
-        WorkflowPickerEntry {
+    fn test_entry(name: &str, description: Option<&str>) -> PluginPickerEntry {
+        PluginPickerEntry {
             name: name.to_owned(),
             description: description.map(String::from),
             theme: default_theme(),
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn display_label_returns_name() {
-        // Given a workflow picker entry.
+        // Given a plugin picker entry.
         let entry = test_entry("add-numbers", None);
 
         // When reading the display label.

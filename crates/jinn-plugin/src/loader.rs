@@ -300,13 +300,21 @@ mod tests {
 
         // New layout: system_dir/{global,attachable}/<name>/init.lua
         make_plugin(&system_dir.path().join("global"), "welcome", "-- global");
-        make_plugin(&system_dir.path().join("attachable"), "judge_fail", "-- attachable");
+        make_plugin(
+            &system_dir.path().join("attachable"),
+            "judge_fail",
+            "-- attachable",
+        );
 
         // Need parent dirs to exist before make_plugin writes into them.
         std::fs::create_dir_all(system_dir.path().join("global")).expect("mkdir global");
         std::fs::create_dir_all(system_dir.path().join("attachable")).expect("mkdir attachable");
         make_plugin(&system_dir.path().join("global"), "welcome", "-- global");
-        make_plugin(&system_dir.path().join("attachable"), "judge_fail", "-- attachable");
+        make_plugin(
+            &system_dir.path().join("attachable"),
+            "judge_fail",
+            "-- attachable",
+        );
 
         let result = discover_plugins(user_dir.path(), system_dir.path());
         assert_eq!(result.len(), 2);
@@ -324,12 +332,22 @@ mod tests {
         std::fs::create_dir_all(system_dir.path().join("global")).expect("mkdir");
         std::fs::create_dir_all(system_dir.path().join("attachable")).expect("mkdir");
         make_plugin(&system_dir.path().join("global"), "foo", "-- global foo");
-        make_plugin(&system_dir.path().join("attachable"), "foo", "-- attachable foo");
+        make_plugin(
+            &system_dir.path().join("attachable"),
+            "foo",
+            "-- attachable foo",
+        );
 
         let result = discover_plugins(user_dir.path(), system_dir.path());
         assert_eq!(result.len(), 2, "both foo entries must survive");
-        let globals = result.iter().filter(|m| m.kind == PluginKind::Global).count();
-        let attachables = result.iter().filter(|m| m.kind == PluginKind::Attachable).count();
+        let globals = result
+            .iter()
+            .filter(|m| m.kind == PluginKind::Global)
+            .count();
+        let attachables = result
+            .iter()
+            .filter(|m| m.kind == PluginKind::Attachable)
+            .count();
         assert_eq!(globals, 1);
         assert_eq!(attachables, 1);
     }
@@ -341,8 +359,16 @@ mod tests {
 
         std::fs::create_dir_all(system_dir.path().join("attachable")).expect("mkdir sys");
         std::fs::create_dir_all(user_dir.path().join("attachable")).expect("mkdir usr");
-        make_plugin(&system_dir.path().join("attachable"), "judge", "-- description: SystemJudge");
-        make_plugin(&user_dir.path().join("attachable"), "judge", "-- description: UserJudge");
+        make_plugin(
+            &system_dir.path().join("attachable"),
+            "judge",
+            "-- description: SystemJudge",
+        );
+        make_plugin(
+            &user_dir.path().join("attachable"),
+            "judge",
+            "-- description: UserJudge",
+        );
 
         let result = discover_plugins(user_dir.path(), system_dir.path());
         let attachable: Vec<_> = result

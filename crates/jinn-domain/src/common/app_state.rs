@@ -43,12 +43,11 @@ pub struct AppState {
     pub provider: ProviderState,
     /// Frontend / UI state - owned by IntentHandler.
     pub frontend: FrontendState,
-    /// Workflow execution state - owned by workflow-actor.
-    /// Active workflow tracking for UI.
-    pub active_workflow: Option<(
-        crate::protocol::SessionId,
-        crate::feat::workflow::attached_workflow::WorkflowId,
-    )>,
+    // /// Active workflow tracking for UI (dead state from old WorkflowController).
+    // pub active_workflow: Option<(
+    //     crate::protocol::SessionId,
+    //     String,
+    // ),>,
     /// Discovered Lua plugins from both user and system plugin directories.
     /// OWNER: startup (actor_wiring) writes once; picker intent handler reads.
     pub discovered_plugins: Vec<DiscoveredPlugin>,
@@ -78,7 +77,7 @@ impl AppState {
             PickerKind::Theme => Some(self.frontend.theme_picker_mut()),
 
             PickerKind::SessionLifecycle => Some(self.frontend.session_lifecycle_picker_mut()),
-            PickerKind::Workflow => Some(self.frontend.workflow_picker_mut()),
+            PickerKind::Plugin => Some(self.frontend.plugin_picker_mut()),
 
             PickerKind::CompactionModel => Some(self.frontend.compaction_model_picker_mut()),
             PickerKind::Tool => Some(self.frontend.tool_picker_mut()),
@@ -99,15 +98,13 @@ impl AppState {
             PickerKind::Theme => Some(self.frontend.theme_picker()),
 
             PickerKind::SessionLifecycle => Some(self.frontend.session_lifecycle_picker()),
-            PickerKind::Workflow => Some(self.frontend.workflow_picker()),
+            PickerKind::Plugin => Some(self.frontend.plugin_picker()),
 
             PickerKind::CompactionModel => Some(self.frontend.compaction_model_picker()),
             PickerKind::Tool => Some(self.frontend.tool_picker()),
             PickerKind::Skill => Some(self.frontend.skill_picker()),
         }
     }
-
-
 
     /// Read-only access to the active chat session.
     ///

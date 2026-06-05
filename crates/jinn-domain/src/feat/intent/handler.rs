@@ -236,8 +236,7 @@ impl IntentHandler {
                 }
             }
             Intent::CtrlClear => {
-                let (result, maybe_intent) =
-                    feat::global::intent::handle_ctrl_clear(state);
+                let (result, maybe_intent) = feat::global::intent::handle_ctrl_clear(state);
                 if let Some(intent) = maybe_intent {
                     let redispatch = IntentHandler::handle(&intent, state);
                     IntentResult::with_commands_and_events(
@@ -412,7 +411,7 @@ impl IntentHandler {
                                     state,
                                 )
                             }
-                            feat::ui::sidebar::sessions::state::SessionEntryKind::Workflow {
+                            feat::ui::sidebar::sessions::state::SessionEntryKind::Plugin {
                                 ..
                             } => {
                                 // Workflow entries are not renamable from the sidebar.
@@ -448,18 +447,6 @@ impl IntentHandler {
                 feat::rename_session_input::intent::handle_delete_forward(state)
             }
 
-            Intent::ToggleOneShot { kind } => {
-                let session_id = state.session.active_session_id().clone();
-                let session = state.session.get_mut(&session_id).unwrap();
-                if session.ui.pending_one_shots.contains_key(kind) {
-                    session.ui.pending_one_shots.remove(kind);
-                } else {
-                    let config = kind.default_config();
-                    session.ui.pending_one_shots.insert(*kind, config);
-                }
-                IntentResult::empty()
-            }
-
             // --- CWD Selection ---
             Intent::ChangeCwd { root } => {
                 crate::feat::navigation::intent::handle_change_cwd(state, *root)
@@ -480,7 +467,7 @@ fn selected_entry_is_workflow(state: &AppState) -> bool {
     let entries = feat::ui::sidebar::sessions::sorted_open_sessions(state);
     matches!(
         entries.get(index).map(|e| e.kind),
-        Some(SessionEntryKind::Workflow { .. })
+        Some(SessionEntryKind::Plugin { .. })
     )
 }
 
@@ -500,7 +487,7 @@ fn try_handle_cancel_stream_prompt(intent: &Intent, state: &mut AppState) -> Opt
     state.frontend.cancel_stream_prompt = false;
 
     if !matches!(intent, Intent::NormalEscape) {
-        // Any other key - dismiss prompt, fall through to normal processing.
+        // Any other key — dismiss prompt, fall through to normal processing.
         return None;
     }
 
@@ -1062,80 +1049,21 @@ mod tests {
         );
     }
 
-    #[rstest::rstest]
-    fn one_shot_toggle_inserts_and_removes() {
-        use crate::feat::workflow::attached_workflow::OneShotKind;
-
-        // Given an AppState with an active session.
-        let mut state = AppState::default();
-        let session_id = {
-            let session = crate::feat::session::chat_session::ChatSessionState::new();
-            let id = session.session_id().clone();
-            state.session.insert(session);
-            state.session.set_active(id.clone());
-            id
-        };
-
-        // When toggling consensus one-shot.
-        let _result = IntentHandler::handle(
-            &Intent::ToggleOneShot {
-                kind: OneShotKind::Consensus,
-            },
-            &mut state,
-        );
-
-        // Then pending_one_shots has an entry.
-        {
-            let session = state.session.get(&session_id).expect("session");
-            assert!(
-                session
-                    .ui
-                    .pending_one_shots
-                    .contains_key(&OneShotKind::Consensus)
-            );
-        }
-
-        // When toggling again.
-        let _result = IntentHandler::handle(
-            &Intent::ToggleOneShot {
-                kind: OneShotKind::Consensus,
-            },
-            &mut state,
-        );
-
-        // Then the entry is removed.
-        {
-            let session = state.session.get(&session_id).expect("session");
-            assert!(
-                !session
-                    .ui
-                    .pending_one_shots
-                    .contains_key(&OneShotKind::Consensus)
-            );
-        }
-    }
-
     // --- Session-management intents on workflow entries ---
 
-    /// Helper: create state with a session that has a workflow, cursor on the workflow entry.
+    /// Helper: create state with a session that has an attached plugin, cursor on the plugin entry.
     fn state_with_workflow_selected() -> AppState {
-        use crate::feat::workflow::attached_workflow::{
-            AttachedWorkflow, WorkflowConfig, WorkflowTrigger,
-        };
+        use crate::feat::attached_plugin::AttachedPlugin;
 
         let mut state = AppState::default();
         let session_id = state.session.active_session_id().clone();
         {
             let s = state.session.get_mut(&session_id).expect("active session");
-            s.core.attached_workflows.push(AttachedWorkflow::new(
-                WorkflowConfig {
-                    script: "test-plugin".to_owned(),
-                    data: serde_json::json!({}),
-                },
-                WorkflowTrigger::TurnEnd,
-            ));
+            s.core
+                .attached_plugins
+                .push(AttachedPlugin::new("test-plugin"));
         }
-        // entries: [session, workflow]
+        // entries: [session, plugin]
         state.frontend.sessions_section.selected_index = Some(1);
         state.frontend.scope_stack.push(FocusScope::SidebarSessions);
         state

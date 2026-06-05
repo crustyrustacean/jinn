@@ -20,8 +20,9 @@ pub enum PickerKind {
     Theme,
     /// Session lifecycle picker - select a lifecycle recipe for new session creation.
     SessionLifecycle,
-    /// Workflow picker - select a workflow to launch.
-    Workflow,
+    /// Plugin picker - select a plugin to attach to the session.
+    Plugin,
+
     /// Compaction model picker - select a model for context compaction summarization.
     CompactionModel,
     /// Tool picker - toggle which tools are enabled for the session.
@@ -34,12 +35,13 @@ impl std::fmt::Display for PickerKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Provider => write!(f, "models"),
+            Self::Plugin => write!(f, "plugins"),
             Self::Session => write!(f, "sessions"),
             Self::Persona => write!(f, "personas"),
             Self::Theme => write!(f, "themes"),
 
             Self::SessionLifecycle => write!(f, "session-lifecycle"),
-            Self::Workflow => write!(f, "workflows"),
+
             Self::CompactionModel => write!(f, "compaction model"),
 
             Self::Tool => write!(f, "tools"),

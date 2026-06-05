@@ -33,10 +33,7 @@ use jinn_domain::actor_channel::ActorChannelService;
 use jinn_domain::common::actor::protocol::event::{ActorStarted, ActorStarting, AllActorsSpawned};
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 
-use jinn_domain::feat::plugin_lifecycle::{PluginLifecycleActor, PluginLifecycleActorDeps};
-use jinn_domain::feat::workflow::workflow_controller_actor::{
-    WorkflowControllerActor, WorkflowControllerActorDeps,
-};
+use jinn_domain::feat::plugin_dispatch::{PluginDispatchActor, PluginDispatchActorDeps};
 use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
@@ -121,7 +118,7 @@ pub fn create_core_with_actor_host(
         }
     });
     let plugin_request_handler: jinn_plugin::RequestHandler =
-        std::sync::Arc::new(|name, data| crate::plugin_wiring::handle_plugin_request(name, data));
+        std::sync::Arc::new(crate::plugin_wiring::handle_plugin_request);
 
     let (sync_plugins, async_plugins, plugin_sync_handle) = jinn_plugin::PluginSystem::new(
         &paths.plugins_dir(),
@@ -156,14 +153,19 @@ pub fn create_core_with_actor_host(
         config_storage: config_storage.clone(),
         session_store: session_store.clone(),
         user_preferences_storage: user_preferences_storage.clone(),
-        plugins: jinn_domain::feat::workflow::PluginFireService::new(std::sync::Arc::new(
-            async_plugins,
+        plugins: jinn_domain::feat::plugin_dispatch::PluginFireService::new(std::sync::Arc::new(
+            async_plugins.clone(),
         )
-            as std::sync::Arc<dyn jinn_domain::feat::workflow::PluginFire>),
-        plugin_sync: jinn_domain::feat::workflow::PluginSyncCallService::new(std::sync::Arc::new(
-            plugin_sync_handle,
-        )
-            as std::sync::Arc<dyn jinn_domain::feat::workflow::PluginSyncCall>),
+            as std::sync::Arc<dyn jinn_domain::feat::plugin_dispatch::PluginFire>),
+        plugin_sync: jinn_domain::feat::plugin_dispatch::PluginSyncCallService::new(
+            std::sync::Arc::new(plugin_sync_handle)
+                as std::sync::Arc<dyn jinn_domain::feat::plugin_dispatch::PluginSyncCall>,
+        ),
+        session_plugin_registry:
+            jinn_domain::feat::plugin_system::SessionPluginRegistryService::new(
+                std::sync::Arc::new(async_plugins.clone())
+                    as std::sync::Arc<dyn jinn_domain::feat::plugin_system::SessionPluginRegistry>,
+            ),
         tempdir: None,
     };
 
@@ -726,7 +728,6 @@ pub fn create_core_with_actor_host(
         }
     }
 
-
     // Shared entry-token cache for history workers.
     //
     // Constructed once, cloned into any worker (or peer actor) that needs
@@ -789,20 +790,22 @@ pub fn create_core_with_actor_host(
             .unwrap_or_default();
 
         if config.enabled {
-            actors.push(spawn::<HistoryWorkerActor<TrivialAssistantAutoPruneWorker>>(
-                "history-worker-auto-prune-trivial-assistant",
-                &sink,
-                handle,
-                &counter,
-                &shutdown_tracker,
-                HistoryWorkerActorDeps {
-                    worker: TrivialAssistantAutoPruneWorker {
-                        config,
-                        token_cache: entry_token_cache.clone(),
-                        counter: TiktokenCounter::o200k_base(),
+            actors.push(
+                spawn::<HistoryWorkerActor<TrivialAssistantAutoPruneWorker>>(
+                    "history-worker-auto-prune-trivial-assistant",
+                    &sink,
+                    handle,
+                    &counter,
+                    &shutdown_tracker,
+                    HistoryWorkerActorDeps {
+                        worker: TrivialAssistantAutoPruneWorker {
+                            config,
+                            token_cache: entry_token_cache.clone(),
+                            counter: TiktokenCounter::o200k_base(),
+                        },
                     },
-                },
-            ));
+                ),
+            );
         }
     }
 
@@ -810,8 +813,8 @@ pub fn create_core_with_actor_host(
     // Prunes large (>80 token) Assistant entries whose index distance to the
     // nearest User entry exceeds a configurable radius (in either direction).
     {
-        use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
         use jinn_domain::feat::auto_prune_worker::UserAnchorRadiusAutoPruneWorker;
+        use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
         use jinn_domain::feat::history_worker::actor::{
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
@@ -822,20 +825,22 @@ pub fn create_core_with_actor_host(
             .unwrap_or_default();
 
         if config.enabled {
-            actors.push(spawn::<HistoryWorkerActor<UserAnchorRadiusAutoPruneWorker>>(
-                "history-worker-auto-prune-user-anchor-radius",
-                &sink,
-                handle,
-                &counter,
-                &shutdown_tracker,
-                HistoryWorkerActorDeps {
-                    worker: UserAnchorRadiusAutoPruneWorker {
-                        config,
-                        token_cache: entry_token_cache.clone(),
-                        counter: TiktokenCounter::o200k_base(),
+            actors.push(
+                spawn::<HistoryWorkerActor<UserAnchorRadiusAutoPruneWorker>>(
+                    "history-worker-auto-prune-user-anchor-radius",
+                    &sink,
+                    handle,
+                    &counter,
+                    &shutdown_tracker,
+                    HistoryWorkerActorDeps {
+                        worker: UserAnchorRadiusAutoPruneWorker {
+                            config,
+                            token_cache: entry_token_cache.clone(),
+                            counter: TiktokenCounter::o200k_base(),
+                        },
                     },
-                },
-            ));
+                ),
+            );
         }
     }
     // Sidebar state actor - keeps sidebar cursor in sync after session removal.
@@ -852,28 +857,16 @@ pub fn create_core_with_actor_host(
         },
     ));
 
-    // ── Plugin system ───────────────────────────────────────────────
-    actors.push(spawn::<WorkflowControllerActor>(
-        "workflow-controller",
+    // ── Plugin dispatch actor (replaces plugin_lifecycle + workflow_controller) ─
+    actors.push(spawn::<PluginDispatchActor>(
+        "plugin-dispatch",
         &sink,
         handle,
         &counter,
         &shutdown_tracker,
-        WorkflowControllerActorDeps {
+        PluginDispatchActorDeps {
+            services: services.clone(),
             state: state.clone(),
-            services: services.clone(),
-        },
-    ));
-
-    // ── Plugin lifecycle actor ─────────────────────────────────────────
-    actors.push(spawn::<PluginLifecycleActor>(
-        "plugin-lifecycle",
-        &sink,
-        handle,
-        &counter,
-        &shutdown_tracker,
-        PluginLifecycleActorDeps {
-            services: services.clone(),
             startup_session_id: state.read().session.active_session_id().to_string(),
         },
     ));

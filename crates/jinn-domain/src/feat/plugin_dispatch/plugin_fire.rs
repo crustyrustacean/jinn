@@ -8,6 +8,8 @@ use error_stack::Report;
 use serde_json::Value;
 use wherror::Error;
 
+use crate::feat::plugin_system::SessionRegistryId;
+
 /// Error raised by [`PluginFire`] implementations.
 #[derive(Debug, Error)]
 #[error(debug)]
@@ -18,9 +20,9 @@ pub struct PluginFireError;
 /// Implemented by `jinn_plugin::AsyncPluginHandle`.
 #[async_trait::async_trait]
 pub trait PluginFire: Send + Sync {
-    /// Fire an async hook with raw JSON context.
+    /// Fire an async hook with raw JSON context (global plugins only).
     ///
-    /// All hooks for the given name run on the background thread.
+    /// All global hooks for the given name run on the background thread.
     /// Return values are discarded.
     ///
     /// # Errors
@@ -29,16 +31,40 @@ pub trait PluginFire: Send + Sync {
     async fn fire_async_json(&self, hook: &str, ctx: &Value)
     -> Result<(), Report<PluginFireError>>;
 
-    /// Fire an async hook, collecting return values from all plugins.
+    /// Fire an async hook with raw JSON context (global + session plugins).
     ///
-    /// Like [`fire_async_json`](Self::fire_async_json), but each plugin's
-    /// non-nil return value is collected into the returned `Vec`.
+    /// Like [`fire_async_json`](Self::fire_async_json), but additionally fires
+    /// hooks from the named session's attached plugins after the global set.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the plugin system is unavailable or a hook errors.
+    async fn fire_async_for_session_json(
+        &self,
+        session: SessionRegistryId,
+        hook: &str,
+        ctx: &Value,
+    ) -> Result<(), Report<PluginFireError>>;
+
+    /// Fire an async hook, collecting return values from all global plugins.
     ///
     /// # Errors
     ///
     /// Returns an error if the plugin system is unavailable or a hook errors.
     async fn fire_async_collect_json(
         &self,
+        hook: &str,
+        ctx: &Value,
+    ) -> Result<Vec<Value>, Report<PluginFireError>>;
+
+    /// Fire an async hook, collecting values from globals + a session's plugins.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the plugin system is unavailable or a hook errors.
+    async fn fire_async_collect_for_session_json(
+        &self,
+        session: SessionRegistryId,
         hook: &str,
         ctx: &Value,
     ) -> Result<Vec<Value>, Report<PluginFireError>>;
@@ -66,7 +92,7 @@ impl PluginFireService {
         Self { backend }
     }
 
-    /// Fire an async hook (return values discarded).
+    /// Fire an async hook (global plugins only, return values discarded).
     ///
     /// # Errors
     ///
@@ -79,7 +105,23 @@ impl PluginFireService {
         self.backend.fire_async_json(hook, ctx).await
     }
 
-    /// Fire an async hook, collecting return values from all plugins.
+    /// Fire an async hook (global + session plugins, return values discarded).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the plugin system is unavailable or a hook errors.
+    pub async fn fire_async_for_session_json(
+        &self,
+        session: SessionRegistryId,
+        hook: &str,
+        ctx: &Value,
+    ) -> Result<(), Report<PluginFireError>> {
+        self.backend
+            .fire_async_for_session_json(session, hook, ctx)
+            .await
+    }
+
+    /// Fire an async hook, collecting return values from all global plugins.
     ///
     /// # Errors
     ///
@@ -90,6 +132,22 @@ impl PluginFireService {
         ctx: &Value,
     ) -> Result<Vec<Value>, Report<PluginFireError>> {
         self.backend.fire_async_collect_json(hook, ctx).await
+    }
+
+    /// Fire an async hook, collecting values from globals + a session's plugins.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the plugin system is unavailable or a hook errors.
+    pub async fn fire_async_collect_for_session_json(
+        &self,
+        session: SessionRegistryId,
+        hook: &str,
+        ctx: &Value,
+    ) -> Result<Vec<Value>, Report<PluginFireError>> {
+        self.backend
+            .fire_async_collect_for_session_json(session, hook, ctx)
+            .await
     }
 
     /// Returns the backend name for debugging.

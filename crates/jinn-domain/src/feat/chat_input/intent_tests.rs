@@ -1668,11 +1668,7 @@ fn ctrl_clear_input_empty_is_noop_via_handler() {
 
     // Then nothing changes: no scope change, no commands, buffer still empty.
     assert!(state.active_chat_input().is_empty(), "buffer still empty");
-    assert_eq!(
-        state.active_chat_input().cursor_pos(),
-        0,
-        "cursor still 0"
-    );
+    assert_eq!(state.active_chat_input().cursor_pos(), 0, "cursor still 0");
     assert!(result.commands.is_empty(), "no commands emitted");
     assert_eq!(
         state.frontend.scope_stack.current(),

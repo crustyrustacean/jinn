@@ -9,7 +9,6 @@ use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 
-
 use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::{ChatEntry, PickerKind};
 

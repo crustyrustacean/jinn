@@ -276,7 +276,7 @@ where
         while let Ok(envelope) = async_rx.recv().await {
             let msg_kind = match &envelope {
                 ActorEnvelope::System(_) => "system",
-                ActorEnvelope::Command(cmd) => "command",
+                ActorEnvelope::Command(_) => "command",
                 ActorEnvelope::Event(_) => "event",
                 ActorEnvelope::Direct(_) => "direct",
             };

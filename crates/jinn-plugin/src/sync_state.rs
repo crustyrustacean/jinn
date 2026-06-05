@@ -35,7 +35,6 @@ pub struct PluginHooks {
 #[error(debug)]
 pub struct PluginSyncStateError;
 
-
 /// Owns the sync Lua state. `!Send` — must live on the render thread.
 pub struct SyncPlugins {
     /// The Lua VM owning all sync plugin state.

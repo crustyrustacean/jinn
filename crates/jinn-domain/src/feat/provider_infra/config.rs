@@ -198,9 +198,8 @@ where
         let existing = std::fs::read_to_string(path)
             .change_context(ConfigError::Io)
             .attach("failed to read existing providers config")?;
-        let mut doc: toml_edit::DocumentMut = existing
-            .parse()
-            .map_err(|err: toml_edit::TomlError| {
+        let mut doc: toml_edit::DocumentMut =
+            existing.parse().map_err(|err: toml_edit::TomlError| {
                 Report::new(ConfigError::Parse)
                     .attach("failed to parse existing providers config")
                     .attach(err.to_string())
@@ -210,22 +209,22 @@ where
         patcher.register_array_key(["providers"], "name");
         patcher.register_array_key(["aliases"], "name");
 
-        let new_table: toml::value::Table =
-            toml::Value::try_from(config)
-                .map(|v: toml::Value| match v {
-                    toml::Value::Table(t) => t,
-                    _ => unreachable!("ProvidersConfig is always a table"),
-                })
-                .map_err(|_| {
-                    Report::new(ConfigError::Parse)
-                        .attach("failed to serialize ProvidersConfig")
-                })?;
+        let new_table: toml::value::Table = toml::Value::try_from(config)
+            .map(|v: toml::Value| match v {
+                toml::Value::Table(t) => t,
+                _ => unreachable!("ProvidersConfig is always a table"),
+            })
+            .map_err(|_| {
+                Report::new(ConfigError::Parse).attach("failed to serialize ProvidersConfig")
+            })?;
 
-        patcher.apply(&new_table, doc.as_table_mut()).map_err(|err| {
-            Report::new(ConfigError::Parse)
-                .attach("failed to patch providers config document")
-                .attach(err.to_string())
-        })?;
+        patcher
+            .apply(&new_table, doc.as_table_mut())
+            .map_err(|err| {
+                Report::new(ConfigError::Parse)
+                    .attach("failed to patch providers config document")
+                    .attach(err.to_string())
+            })?;
 
         std::fs::write(path, doc.to_string())
             .change_context(ConfigError::Io)
@@ -483,7 +482,8 @@ tool_stream = true
     #[rstest::rstest]
     fn save_config_appends_new_provider_at_end() {
         // Given a single-provider config.
-        let original = "# existing\n[[providers]]\nname = \"alpha\"\nbackend = \"x\"\nmodels = [\"a\"]\n";
+        let original =
+            "# existing\n[[providers]]\nname = \"alpha\"\nbackend = \"x\"\nmodels = [\"a\"]\n";
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join("providers.toml");
         std::fs::write(&path, original).expect("write");
@@ -540,10 +540,22 @@ tool_stream = true
 
         // Then both comments are preserved, only the target changed.
         let written = std::fs::read_to_string(&path).expect("read");
-        assert!(written.contains("# shortcut for my favorite model"), "first alias comment lost");
-        assert!(written.contains("# another alias"), "second alias comment lost");
-        assert!(written.contains("target = \"ollama/codellama\""), "target not updated");
-        assert!(!written.contains("\"ollama/llama3\""), "old target still present");
+        assert!(
+            written.contains("# shortcut for my favorite model"),
+            "first alias comment lost"
+        );
+        assert!(
+            written.contains("# another alias"),
+            "second alias comment lost"
+        );
+        assert!(
+            written.contains("target = \"ollama/codellama\""),
+            "target not updated"
+        );
+        assert!(
+            !written.contains("\"ollama/llama3\""),
+            "old target still present"
+        );
     }
 
     // --- S-Tier: Kill mutants for save_config, create_default_config, default_true ---
@@ -769,8 +781,14 @@ tool_stream = true
             !written.contains("name = \"ollama\""),
             "ollama provider removed, got:\n{written}"
         );
-        assert!(!written.contains("# local fallback"), "ollama comment removed with it");
-        assert!(written.contains("# my primary chat backend"), "openrouter comment untouched");
+        assert!(
+            !written.contains("# local fallback"),
+            "ollama comment removed with it"
+        );
+        assert!(
+            written.contains("# my primary chat backend"),
+            "openrouter comment untouched"
+        );
         assert!(written.contains("# --- Aliases ---"));
         assert!(written.contains("# --- Default ---"));
     }
@@ -793,7 +811,10 @@ tool_stream = true
         // but the 'smart' alias's '# quick picker shortcuts' comment survives.
         assert!(!written.contains("\"fast\""), "fast alias removed");
         assert!(!written.contains("# local = fast"), "fast comment removed");
-        assert!(written.contains("# quick picker shortcuts"), "smart comment preserved");
+        assert!(
+            written.contains("# quick picker shortcuts"),
+            "smart comment preserved"
+        );
         assert!(written.contains("\"smart\""), "smart alias preserved");
     }
 }

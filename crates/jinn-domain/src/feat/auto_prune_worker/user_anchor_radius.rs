@@ -135,9 +135,7 @@ fn distances_to_nearest_users(
     // Preceding user = user_indices[insertion - 1] if insertion > 0.
     let d_back = insertion.checked_sub(1).map(|i| idx - user_indices[i]);
     // Following user = user_indices[insertion] if insertion < len.
-    let d_fwd = user_indices
-        .get(insertion)
-        .map(|&user_idx| user_idx - idx);
+    let d_fwd = user_indices.get(insertion).map(|&user_idx| user_idx - idx);
 
     (d_back, d_fwd)
 }
@@ -204,9 +202,8 @@ fn build_prune_mutations(
 
         // Look up or compute token count. The closure only fires on first
         // miss for this (session, entry) pair.
-        let tokens = token_cache.get_or_insert_with(session_id, &entry.id, || {
-            counter.count(text) as u32
-        });
+        let tokens =
+            token_cache.get_or_insert_with(session_id, &entry.id, || counter.count(text) as u32);
 
         // Skip small entries — owned by TrivialAssistantAutoPruneWorker.
         if tokens < MIN_CANDIDATE_TOKENS {
@@ -429,8 +426,14 @@ mod tests {
 
         let mutations = evaluate(&w, history);
         let excluded = excluded_ids(&mutations);
-        assert!(excluded.contains(&pruned_id), "distant large assistant must be pruned");
-        assert!(!excluded.contains(&kept_id), "nearby large assistant must be kept");
+        assert!(
+            excluded.contains(&pruned_id),
+            "distant large assistant must be pruned"
+        );
+        assert!(
+            !excluded.contains(&kept_id),
+            "nearby large assistant must be kept"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -653,7 +656,12 @@ mod tests {
         history.push(ChatEntry::system("sys"));
         history.push(ChatEntry::error("err"));
         history.push(ChatEntry::tool_call("c1", "bash", r#"{"command":"ls"}"#));
-        history.push(ChatEntry::tool_result("c1", "bash", "out", ToolResultStatus::Success));
+        history.push(ChatEntry::tool_result(
+            "c1",
+            "bash",
+            "out",
+            ToolResultStatus::Success,
+        ));
         history.push(large_assistant()); // <- candidate, far from user
         history.push(large_assistant()); // <- candidate
         // Push them beyond radius with trivial padding.
@@ -689,8 +697,7 @@ mod tests {
         let session_id = SessionId::new();
         let asst = large_assistant();
         let asst_id = asst.id.clone();
-        let history: Arc<[ChatEntry]> =
-            vec![ChatEntry::user("anchor"), asst].into();
+        let history: Arc<[ChatEntry]> = vec![ChatEntry::user("anchor"), asst].into();
 
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         rt.block_on(async { w.evaluate(&session_id, history.clone()).await });
@@ -728,8 +735,7 @@ mod tests {
         let session_id = SessionId::new();
         let asst = large_assistant();
         let asst_id = asst.id.clone();
-        let history: Arc<[ChatEntry]> =
-            vec![ChatEntry::user("anchor"), asst].into();
+        let history: Arc<[ChatEntry]> = vec![ChatEntry::user("anchor"), asst].into();
 
         let rt = tokio::runtime::Runtime::new().expect("runtime");
 
@@ -747,8 +753,11 @@ mod tests {
         );
 
         // Sabotage the cache so the cached value is now below threshold.
-        w.token_cache
-            .insert(session_id.clone(), asst_id.clone(), MIN_CANDIDATE_TOKENS - 1);
+        w.token_cache.insert(
+            session_id.clone(),
+            asst_id.clone(),
+            MIN_CANDIDATE_TOKENS - 1,
+        );
 
         // Reset context_override on a fresh history copy so the worker
         // doesn't take the idempotency path.
@@ -757,8 +766,7 @@ mod tests {
             e.context_override = ContextOverride::Default;
         }
 
-        let mutations =
-            rt.block_on(async { w.evaluate(&session_id, history2.into()).await });
+        let mutations = rt.block_on(async { w.evaluate(&session_id, history2.into()).await });
         let excluded = excluded_ids(&mutations);
         assert!(
             !excluded.contains(&asst_id),
@@ -784,8 +792,14 @@ mod tests {
 
         let mutations = evaluate(&w, history);
         let excluded = excluded_ids(&mutations);
-        assert!(!excluded.contains(&near_id), "d=1 at clamped R=1 must be kept");
-        assert!(excluded.contains(&far_id), "d=2 at clamped R=1 must be pruned");
+        assert!(
+            !excluded.contains(&near_id),
+            "d=1 at clamped R=1 must be kept"
+        );
+        assert!(
+            excluded.contains(&far_id),
+            "d=2 at clamped R=1 must be pruned"
+        );
     }
 
     // ------------------------------------------------------------------

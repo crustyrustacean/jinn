@@ -11,7 +11,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use jinn_plugin::{PluginCommand, PluginSystem};
+use jinn_plugin::PluginCommand;
 use serde::Serialize;
 
 fn write_plugin(dir: &Path, name: &str, lua_source: &str) {
@@ -107,11 +107,11 @@ async fn collect_excludes_nil_returns() {
     write_plugin(
         dir.path(),
         "returns_nil",
-        r#"
+        "
             return {
                 on_check = function(ctx) return nil end,
             }
-        "#,
+        ",
     );
 
     let (_, async_handle, _) = build_system(dir.path());
@@ -137,11 +137,11 @@ async fn collect_with_no_hooks_returns_empty_vec() {
     write_plugin(
         dir.path(),
         "no_hook",
-        r#"
+        "
             return {
                 on_other = function(ctx) end,
             }
-        "#,
+        ",
     );
 
     let (_, async_handle, _) = build_system(dir.path());

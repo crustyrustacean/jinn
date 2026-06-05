@@ -45,39 +45,6 @@ impl SessionPersistenceActor {
                 };
             match session.phase() {
                 PhaseKind::Idle => {
-                    // --- Phase 5: Drain pending one-shots into TurnEndOneShot attachments ---
-                    let drained: Vec<_> = session.ui.pending_one_shots.drain().collect();
-                    for (_kind, config) in drained {
-                        let aw = crate::feat::workflow::attached_workflow::AttachedWorkflow::new(
-                            config,
-                            crate::feat::workflow::attached_workflow::WorkflowTrigger::TurnEndOneShot,
-                        );
-                        session.core.attached_workflows.push(aw);
-                    }
-
-                    // --- Phase 4: BeforeTurn interception ---
-                    let has_before_turn = session.core.attached_workflows.iter().any(|aw| {
-                        aw.enabled
-                            && matches!(aw.state, crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready)
-                            && matches!(aw.trigger, crate::feat::workflow::attached_workflow::WorkflowTrigger::BeforeTurn(_))
-                    });
-
-                    if has_before_turn {
-                        // Defer: store raw text, don't push to history, don't dispatch.
-                        let text = match &payload.entry.kind {
-                            ChatEntryKind::User { display, .. } => display.clone(),
-                            _ => String::new(),
-                        };
-                        session.core.ephemeral.pending_user_text = Some(text);
-                        // Emit FireBeforeTurn so the controller fires BeforeTurn workflows.
-                        let _ = ctx.send_command(Command::FireBeforeTurn(
-                            crate::feat::workflow::protocol::command::FireBeforeTurn {
-                                session_id: payload.session_id.clone(),
-                            },
-                        ));
-                        return;
-                    }
-
                     // Normal path: set title, push entry, begin_sending.
                     if session.title().is_none() {
                         let title = match &payload.entry.kind {
@@ -476,13 +443,13 @@ mod tests {
         );
     }
 
-    // --- Workflow BeforeTurn / One-Shot tests ---
+    // --- Plugin dispatch tests ---
 
     #[tokio::test]
     async fn before_turn_no_attachments_dispatches_normally() {
-        // Given an idle session with no BeforeTurn attachments.
+        // Given an idle session with no attached plugins.
         let actor = test_actor();
-        let (sink, ctx) = test_context();
+        let (_sink, ctx) = test_context();
         let session_id = {
             let mut state = actor.state.write();
             let _session = state.active_session_mut();
@@ -500,178 +467,12 @@ mod tests {
             )
             .await;
 
-        // Then the message dispatches normally (no FireBeforeTurn).
-        let has_fire = sink
-            .commands()
-            .iter()
-            .any(|c| matches!(c, Command::FireBeforeTurn(_)));
-        assert!(!has_fire, "expected no FireBeforeTurn command");
-
-        // And the session is streaming.
+        // Then the message dispatches normally.
+        // Attached plugins orchestrate themselves; every enqueue becomes a direct dispatch.
         let state = actor.state.read();
         let session = state.session.get(&session_id).expect("session");
         assert_eq!(session.phase(), PhaseKind::Streaming);
     }
 
-    #[tokio::test]
-    async fn before_turn_holds_text_in_pending() {
-        use crate::feat::workflow::attached_workflow::{
-            AttachedWorkflow, BeforeTurnMode, PromptMergeStrategy, WorkflowConfig, WorkflowTrigger,
-        };
-
-        // Given an idle session with a BeforeTurn attachment.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            let aw = AttachedWorkflow::new(
-                WorkflowConfig {
-                    script: "test".to_owned(),
-                    data: serde_json::json!({}),
-                },
-                WorkflowTrigger::BeforeTurn(BeforeTurnMode::AutoSend {
-                    strategy: PromptMergeStrategy::Replace,
-                }),
-            );
-            session.core.attached_workflows.push(aw);
-            state.session.active_session_id().clone()
-        };
-
-        // When enqueuing a user message.
-        actor
-            .handle_enqueue_user_message(
-                &EnqueueUserMessage {
-                    session_id: session_id.clone(),
-                    entry: ChatEntry::user("my prompt"),
-                },
-                &ctx,
-            )
-            .await;
-
-        // Then the text is held in pending_user_text.
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session");
-        assert_eq!(
-            session.core.ephemeral.pending_user_text.as_deref(),
-            Some("my prompt")
-        );
-
-        // And FireBeforeTurn was emitted.
-        let has_fire = sink
-            .commands()
-            .iter()
-            .any(|c| matches!(c, Command::FireBeforeTurn(_)));
-        assert!(has_fire, "expected FireBeforeTurn command");
-
-        // And the session is NOT streaming (still idle).
-        assert_eq!(session.phase(), PhaseKind::Idle);
-    }
-
-    #[tokio::test]
-    async fn drain_pending_creates_one_shot_attachments() {
-        use crate::feat::workflow::attached_workflow::{OneShotKind, WorkflowConfig};
-
-        // Given an idle session with pending one-shots.
-        let actor = test_actor();
-        let (_, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.ui.pending_one_shots.insert(
-                OneShotKind::Consensus,
-                WorkflowConfig {
-                    script: "test".to_owned(),
-                    data: serde_json::json!({}),
-                },
-            );
-            state.session.active_session_id().clone()
-        };
-
-        // When enqueuing a user message.
-        actor
-            .handle_enqueue_user_message(
-                &EnqueueUserMessage {
-                    session_id: session_id.clone(),
-                    entry: ChatEntry::user("test"),
-                },
-                &ctx,
-            )
-            .await;
-
-        // Then a TurnEndOneShot attachment was created.
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session");
-        let one_shots: Vec<_> = session
-            .core
-            .attached_workflows
-            .iter()
-            .filter(|aw| {
-                matches!(
-                    aw.trigger,
-                    crate::feat::workflow::attached_workflow::WorkflowTrigger::TurnEndOneShot
-                )
-            })
-            .collect();
-        assert_eq!(one_shots.len(), 1);
-
-        // And the pending_one_shots map is cleared.
-        assert!(session.ui.pending_one_shots.is_empty());
-    }
-
-    #[tokio::test]
-    async fn multiple_one_shots_create_multiple_attachments() {
-        use crate::feat::workflow::attached_workflow::{OneShotKind, WorkflowConfig};
-
-        // Given an idle session with two pending one-shots.
-        let actor = test_actor();
-        let (_sink, ctx) = test_context();
-        let session_id = {
-            let mut state = actor.state.write();
-            let session = state.active_session_mut();
-            session.ui.pending_one_shots.insert(
-                OneShotKind::Consensus,
-                WorkflowConfig {
-                    script: "test".to_owned(),
-                    data: serde_json::json!({}),
-                },
-            );
-            session.ui.pending_one_shots.insert(
-                OneShotKind::Judge,
-                WorkflowConfig {
-                    script: "judge_fail".to_owned(),
-                    data: serde_json::json!({}),
-                },
-            );
-            state.session.active_session_id().clone()
-        };
-
-        // When enqueuing a user message.
-        actor
-            .handle_enqueue_user_message(
-                &EnqueueUserMessage {
-                    session_id: session_id.clone(),
-                    entry: ChatEntry::user("test"),
-                },
-                &ctx,
-            )
-            .await;
-
-        // Then two TurnEndOneShot attachments were created.
-        let state = actor.state.read();
-        let session = state.session.get(&session_id).expect("session");
-        let one_shots: Vec<_> = session
-            .core
-            .attached_workflows
-            .iter()
-            .filter(|aw| {
-                matches!(
-                    aw.trigger,
-                    crate::feat::workflow::attached_workflow::WorkflowTrigger::TurnEndOneShot
-                )
-            })
-            .collect();
-        assert_eq!(one_shots.len(), 2);
-    }
     // --- Helpers ---
 }
