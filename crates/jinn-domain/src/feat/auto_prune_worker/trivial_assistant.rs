@@ -164,8 +164,9 @@ fn build_trivial_assistant_mutations(
             continue;
         }
 
-        // Skip already-excluded entries to avoid duplicate mutations.
-        if entry.context_override == ContextOverride::ForcedExclude {
+        // Skip protected entries (ForcedInclude or ForcedExclude) to avoid
+        // duplicate mutations and respect user intent.
+        if entry.is_protected_from_prune() {
             continue;
         }
 
@@ -472,6 +473,28 @@ mod tests {
         // The assistant id should not appear in any mutation.
         let excluded = excluded_ids(&mutations);
         assert!(!excluded.contains(&asst_id));
+    }
+
+    // ------------------------------------------------------------------
+    // 9b. forced_included_assistant_does_not_get_mutation
+    // ------------------------------------------------------------------
+    #[test]
+    fn forced_included_assistant_does_not_get_mutation() {
+        let w = worker(100, 80);
+        let mut history = Vec::new();
+        let mut asst = trivial_assistant("done");
+        asst.context_override = ContextOverride::ForcedInclude;
+        let asst_id = asst.id.clone();
+        history.push(asst);
+        history.extend(users(100));
+
+        let mutations = evaluate(&w, history);
+        // No mutation for the ForcedInclude entry.
+        let excluded = excluded_ids(&mutations);
+        assert!(
+            !excluded.contains(&asst_id),
+            "ForcedInclude entry must not receive ForcedExclude mutation"
+        );
     }
 
     // ------------------------------------------------------------------
