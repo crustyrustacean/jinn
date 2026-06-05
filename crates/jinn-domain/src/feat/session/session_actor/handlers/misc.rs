@@ -494,4 +494,118 @@ mod tests {
             crate::feat::session::chat_entry::ContextOverride::ForcedInclude
         );
     }
+
+    // --- Worker mutation emits ContextOverrideChanged ---
+
+    #[test]
+    fn handle_submit_history_mutations_emits_context_override_changed_on_change() {
+        // Given a session with one entry at Default.
+        let actor = test_actor();
+        let (sink, mut ctx) = crate::feat::session::session_actor::helpers::test_context();
+        // Override actor's state to use our sink-equipped context for event capture.
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(crate::protocol::ChatEntry::user("hello"));
+            state.session.active_session_id().clone()
+        };
+        let entry_id = {
+            let state = actor.state.read();
+            state.session.get(&session_id).unwrap().history()[0].id.clone()
+        };
+
+        // When submitting a SetContextOverride mutation with a real change.
+        actor.handle_submit_history_mutations(
+            &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                session_id: session_id.clone(),
+                mutations: vec![
+                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                        entry_id: entry_id.clone(),
+                        value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
+                        source: crate::feat::session::chat_entry::ChangeSource::Worker {
+                            name: "test_worker".to_owned(),
+                        },
+                    },
+                ],
+            },
+            &ctx,
+        );
+
+        // Then ContextOverrideChanged event was emitted.
+        let events = sink.events();
+        let has_event = events.iter().any(|ev| {
+            matches!(
+                ev,
+                crate::protocol::Event::ContextOverrideChanged(payload)
+                    if payload.entry_id == entry_id
+            )
+        });
+        assert!(
+            has_event,
+            "expected ContextOverrideChanged to be emitted for worker-applied change"
+        );
+    }
+
+    #[test]
+    fn handle_submit_history_mutations_does_not_emit_on_noop_mutation() {
+        // Given a session with one entry already at ForcedExclude.
+        let actor = test_actor();
+        let (sink, ctx) = crate::feat::session::session_actor::helpers::test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(crate::protocol::ChatEntry::user("hello"));
+            let id = session.core.session_id.clone();
+            // Pre-set the entry to ForcedExclude.
+            session.core.history[0].apply_context_override(
+                crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
+                crate::feat::session::chat_entry::ChangeSource::Internal {
+                    label: "setup".to_owned(),
+                },
+            );
+            id
+        };
+        let entry_id = {
+            let state = actor.state.read();
+            state.session.get(&session_id).unwrap().history()[0].id.clone()
+        };
+
+        // When submitting a SetContextOverride that matches the current value (no-op).
+        actor.handle_submit_history_mutations(
+            &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
+                session_id: session_id.clone(),
+                mutations: vec![
+                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                        entry_id: entry_id.clone(),
+                        value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
+                        source: crate::feat::session::chat_entry::ChangeSource::Worker {
+                            name: "test_worker".to_owned(),
+                        },
+                    },
+                ],
+            },
+            &ctx,
+        );
+
+        // Then no ContextOverrideChanged event is emitted.
+        let events = sink.events();
+        let has_event = events.iter().any(|ev| {
+            matches!(
+                ev,
+                crate::protocol::Event::ContextOverrideChanged(_)
+            )
+        });
+        assert!(
+            !has_event,
+            "expected no ContextOverrideChanged for no-op mutation"
+        );
+        // And context_history has only the setup event, not a duplicate.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).unwrap();
+        assert_eq!(
+            session.history()[0].context_history.len(),
+            1,
+            "context_history should contain only the setup event"
+        );
+    }
 }
