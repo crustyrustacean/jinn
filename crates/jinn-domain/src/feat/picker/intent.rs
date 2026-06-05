@@ -1441,5 +1441,28 @@ mod tests {
             }
         ));
     }
+
+    #[rstest::rstest]
+    fn esc_from_task_list_picker_restores_sidebar_task_list_scope() {
+        // Given a scope stack like: [Normal, SidebarTaskList, Picker(TaskList)].
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::SidebarTaskList);
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::TaskList,
+        });
+
+        // When Esc is pressed.
+        let _ = crate::feat::chat_input::intent::handle_enter_normal_mode(&mut state);
+
+        // Then we should return to SidebarTaskList, not Normal.
+        assert!(
+            matches!(
+                state.frontend.scope_stack.current(),
+                FocusScope::SidebarTaskList
+            ),
+            "Esc from TaskList picker should restore SidebarTaskList scope, got: {:?}",
+            state.frontend.scope_stack.current()
+        );
+    }
 }
 
