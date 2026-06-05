@@ -3,7 +3,7 @@
 use crate::common::app_state::AppState;
 use crate::feat::provider::protocol::command::CancelStream;
 use crate::protocol::SessionId;
-use crate::protocol::{Command, IntentResult};
+use crate::protocol::{Command, Intent, IntentResult};
 
 use super::validator;
 
@@ -43,10 +43,68 @@ pub fn handle_interrupt(state: &mut AppState, target: Option<&SessionId>) -> Int
     IntentResult::empty()
 }
 
+/// Handles the `CtrlClear` intent (universal `<c-c>` clear-or-leave).
+///
+/// Behavior is scope-aware:
+/// - `Input`               -> clear chat input (empty input is a no-op).
+/// - `Picker { .. }`       -> empty filter, or if already empty, redispatch `EnterNormalMode` to close the picker.
+/// - `ArgInput`            -> clear input, or if already empty, pop the scope + reset state.
+/// - `RenameSessionInput`  -> clear input, or if already empty, redispatch `RenameSessionLeave`.
+///
+/// Returns `(IntentResult, Option<Intent>)` matching the `PickerConfirm` redispatch pattern.
+pub fn handle_ctrl_clear(state: &mut AppState) -> (IntentResult, Option<Intent>) {
+    use crate::common::focus::FocusScope;
+    use crate::common::app_state::ArgInputState;
+
+
+    match state.frontend.scope_stack.current() {
+        FocusScope::Input => {
+            state.active_chat_input_mut().reset();
+            (IntentResult::empty(), None)
+        }
+        FocusScope::Picker { .. } => {
+            if let Some(picker) = state.active_picker_ops() {
+                if picker.is_filter_empty() {
+                    (IntentResult::empty(), Some(Intent::EnterNormalMode))
+                } else {
+                    picker.clear_filter();
+                    (IntentResult::empty(), None)
+                }
+            } else {
+                (IntentResult::empty(), None)
+            }
+        }
+        FocusScope::ArgInput => {
+            if state.frontend.arg_input.input.is_empty() {
+                state.frontend.scope_stack.pop();
+                state.frontend.arg_input = ArgInputState::default();
+            } else {
+                let arg = &mut state.frontend.arg_input;
+                arg.input.clear();
+                arg.cursor_pos = 0;
+            }
+            (IntentResult::empty(), None)
+        }
+        FocusScope::RenameSessionInput => {
+            if state.frontend.rename_session_input.input.is_empty() {
+                (IntentResult::empty(), Some(Intent::RenameSessionLeave))
+            } else {
+                let input = &mut state.frontend.rename_session_input;
+                input.input.clear();
+                input.cursor_pos = 0;
+                (IntentResult::empty(), None)
+            }
+        }
+        // Sidebar / Normal / SidebarResize / sidebar sections: <c-c> remains bound to Quit.
+        _ => (IntentResult::empty(), None),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
+    use crate::common::focus::FocusScope;
     use crate::feat::session::phase_machine::PhaseKind;
 
     fn handle_quit(state: &mut AppState) -> IntentResult {
@@ -165,5 +223,252 @@ mod tests {
         assert!(
             matches!(&result.commands[0], Command::CancelStream (payload) if payload.session_id == second_id)
         );
+    }
+
+    // ============================================================
+    // CtrlClear tests
+    // ============================================================
+
+    fn handle_ctrl_clear(state: &mut AppState) -> (IntentResult, Option<Intent>) {
+        super::handle_ctrl_clear(state)
+    }
+
+    #[rstest::rstest]
+    fn ctrl_clear_input_nonempty_clears_buffer() {
+        // Given a state in Input scope with text in the buffer.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Input);
+        state.active_chat_input_mut().insert_grapheme_at_cursor('h');
+        state.active_chat_input_mut().insert_grapheme_at_cursor('i');
+
+        // When handling CtrlClear.
+        let (result, maybe_intent) = handle_ctrl_clear(&mut state);
+
+        // Then the buffer is cleared and no redispatch is requested.
+        assert!(state.active_chat_input().is_empty());
+        assert!(result.commands.is_empty());
+        assert!(maybe_intent.is_none());
+    }
+
+    #[rstest::rstest]
+    fn ctrl_clear_input_empty_is_noop() {
+        // Given a state in Input scope with empty buffer.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Input);
+
+        // When handling CtrlClear.
+        let (result, maybe_intent) = handle_ctrl_clear(&mut state);
+
+        // Then no commands, no redispatch, scope unchanged.
+        assert!(state.active_chat_input().is_empty());
+        assert!(result.commands.is_empty());
+        assert!(maybe_intent.is_none());
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
+    }
+
+    #[rstest::rstest]
+    fn ctrl_clear_picker_filter_nonempty_clears_filter() {
+        // Given a state in Picker scope with a non-empty filter.
+        use crate::protocol::PickerKind;
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::Picker { kind: PickerKind::Provider });
+        {
+            let picker = state.active_picker_ops().expect("picker active");
+            picker.insert_char('a');
+            picker.insert_char('b');
+            assert!(!picker.is_filter_empty());
+        }
+
+        // When handling CtrlClear.
+        let (result, maybe_intent) = handle_ctrl_clear(&mut state);
+
+        // Then the filter is cleared and no redispatch is requested.
+        let picker = state.active_picker_ops().expect("picker still active");
+        assert!(picker.is_filter_empty());
+        assert!(result.commands.is_empty());
+        assert!(maybe_intent.is_none());
+        assert!(state.frontend.scope_stack.is_picker());
+    }
+
+    #[rstest::rstest]
+    fn ctrl_clear_picker_filter_empty_closes_picker() {
+        // Given a state in Picker scope with an empty filter.
+        use crate::feat::intent::handler::IntentHandler;
+        use crate::protocol::PickerKind;
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::Picker { kind: PickerKind::Provider });
+
+        // When handling CtrlClear via the IntentHandler (exercises redispatch).
+        let result = IntentHandler::handle(&Intent::CtrlClear, &mut state);
+
+        // Then scope is back to Normal (picker closed).
+        assert!(!state.frontend.scope_stack.is_picker());
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn ctrl_clear_arg_input_nonempty_clears_input() {
+        // Given a state in ArgInput scope with text in the input.
+        use crate::common::app_state::ArgInputState;
+        let mut state = AppState::default();
+        state.frontend.arg_input = ArgInputState {
+            input: "some arg".to_owned(),
+            cursor_pos: 8,
+            lifecycle_name: "abc".to_owned(),
+            template_display: String::new(),
+        };
+        state.frontend.scope_stack.push(FocusScope::ArgInput);
+
+        // When handling CtrlClear.
+        let (result, maybe_intent) = handle_ctrl_clear(&mut state);
+
+        // Then the input is cleared and scope is unchanged.
+        assert!(state.frontend.arg_input.input.is_empty());
+        assert_eq!(state.frontend.arg_input.cursor_pos, 0);
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::ArgInput);
+        assert!(result.commands.is_empty());
+        assert!(maybe_intent.is_none());
+    }
+
+    #[rstest::rstest]
+    fn ctrl_clear_arg_input_empty_closes_scope() {
+        // Given a state in ArgInput scope with empty input.
+        use crate::common::app_state::ArgInputState;
+        let lifecycle = "abc".to_owned();
+        let mut state = AppState::default();
+        state.frontend.arg_input = ArgInputState {
+            input: String::new(),
+            cursor_pos: 0,
+            lifecycle_name: lifecycle.clone(),
+            template_display: String::new(),
+        };
+        state.frontend.scope_stack.push(FocusScope::ArgInput);
+
+        // When handling CtrlClear.
+        let (result, maybe_intent) = handle_ctrl_clear(&mut state);
+
+        // Then scope is popped and arg_input is reset to default.
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
+        // Default ArgInputState has empty lifecycle_name.
+        assert_eq!(state.frontend.arg_input.lifecycle_name, "");
+        assert!(result.commands.is_empty());
+        assert!(maybe_intent.is_none());
+    }
+
+    #[rstest::rstest]
+    fn ctrl_clear_rename_nonempty_clears_input() {
+        // Given a state in RenameSessionInput scope with text in the input.
+        use crate::common::app_state::RenameSessionInputState;
+        let mut state = AppState::default();
+        state.frontend.rename_session_input = RenameSessionInputState {
+            input: "New Name".to_owned(),
+            cursor_pos: 8,
+        };
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::RenameSessionInput);
+
+        // When handling CtrlClear.
+        let (result, maybe_intent) = handle_ctrl_clear(&mut state);
+
+        // Then the input is cleared and scope is unchanged.
+        assert!(state.frontend.rename_session_input.input.is_empty());
+        assert_eq!(state.frontend.rename_session_input.cursor_pos, 0);
+        assert_eq!(
+            state.frontend.scope_stack.current(),
+            &FocusScope::RenameSessionInput
+        );
+        assert!(result.commands.is_empty());
+        assert!(maybe_intent.is_none());
+    }
+
+    #[rstest::rstest]
+    fn ctrl_clear_rename_empty_closes_popup() {
+        // Given a state in RenameSessionInput scope with empty input.
+        use crate::common::app_state::RenameSessionInputState;
+        let mut state = AppState::default();
+        state.frontend.rename_session_input = RenameSessionInputState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::RenameSessionInput);
+
+        // When handling CtrlClear via IntentHandler (exercises RenameSessionLeave redispatch).
+        use crate::feat::intent::handler::IntentHandler;
+        let result = IntentHandler::handle(&Intent::CtrlClear, &mut state);
+
+        // Then scope is popped back to Normal and rename_session_input is reset.
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
+        assert!(state.frontend.rename_session_input.input.is_empty());
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn ctrl_clear_picker_two_presses_clears_then_closes() {
+        // First <c-c> on a populated picker clears the filter;
+        // the second <c-c> closes the picker (equivalent to <esc>).
+        use crate::feat::intent::handler::IntentHandler;
+        use crate::protocol::PickerKind;
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::Picker { kind: PickerKind::Provider });
+        {
+            let picker = state.active_picker_ops().expect("picker active");
+            picker.insert_char('a');
+            picker.insert_char('b');
+            assert!(!picker.is_filter_empty());
+        }
+
+        // First press: filter is non-empty, so it should be cleared.
+        let result1 = IntentHandler::handle(&Intent::CtrlClear, &mut state);
+        assert!(state.frontend.scope_stack.is_picker());
+        assert!(state.active_picker_ops().expect("picker still active").is_filter_empty());
+        assert!(result1.commands.is_empty());
+
+        // Second press: filter is now empty, so picker should close.
+        let result2 = IntentHandler::handle(&Intent::CtrlClear, &mut state);
+        assert!(!state.frontend.scope_stack.is_picker());
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
+        assert!(result2.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn ctrl_clear_rename_pre_populated_clears_without_persisting() {
+        // The rename popup is the only one pre-populated with the current session
+        // title. A single <c-c> must clear the visible text without persisting
+        // the rename (i.e. scope stays on RenameSessionInput).
+        use crate::common::app_state::RenameSessionInputState;
+        let mut state = AppState::default();
+        state.frontend.rename_session_input = RenameSessionInputState {
+            input: "My Session".to_owned(),
+            cursor_pos: 10,
+        };
+        state
+            .frontend
+            .scope_stack
+            .push(FocusScope::RenameSessionInput);
+
+        // When handling CtrlClear once.
+        let (result, maybe_intent) = handle_ctrl_clear(&mut state);
+
+        // Then text is cleared but scope is unchanged (NOT persisted/closed).
+        assert!(state.frontend.rename_session_input.input.is_empty());
+        assert_eq!(state.frontend.rename_session_input.cursor_pos, 0);
+        assert_eq!(
+            state.frontend.scope_stack.current(),
+            &FocusScope::RenameSessionInput
+        );
+        assert!(result.commands.is_empty());
+        assert!(maybe_intent.is_none());
     }
 }
