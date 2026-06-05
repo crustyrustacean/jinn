@@ -63,9 +63,9 @@ pub enum HostRequest {
 impl fmt::Display for HostRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Llm { prompt, .. } => write!(f, "Llm({prompt:?})"),
-            Self::PushUser { text, .. } => write!(f, "PushUser({text:?})"),
-            Self::PushSystem { text, .. } => write!(f, "PushSystem({text:?})"),
+            Self::Llm { prompt, .. } => write!(f, "Llm({prompt})"),
+            Self::PushUser { text, .. } => write!(f, "PushUser({text})"),
+            Self::PushSystem { text, .. } => write!(f, "PushSystem({text})"),
             Self::TurnOff { workflow_id, .. } => write!(f, "TurnOff({workflow_id})"),
             Self::Shutdown => write!(f, "Shutdown"),
         }

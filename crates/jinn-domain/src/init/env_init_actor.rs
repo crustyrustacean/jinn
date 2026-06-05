@@ -122,9 +122,7 @@ mod tests {
     use crate::common::actor::{
         Actor as _, ActorContext, ActorEnvelope, ActorRef, MessageSink, RecordingSink,
     };
-    use crate::feat::provider_infra::{
-        ApiKeys, ApiKeysService, ConfigStorageService, FilesystemConfigStorage,
-    };
+        use crate::feat::provider_infra::{ApiKeysService, FilesystemConfigStorage};
 
     use super::{EnvInitActor, EnvInitActorDeps};
 
@@ -143,7 +141,7 @@ mod tests {
 
         let dir = tempfile::tempdir().expect("temp dir");
         let path = dir.path().join("providers.toml");
-        let storage = FilesystemConfigStorage::new(path);
+        let _storage = FilesystemConfigStorage::new(path);
 
         let services = crate::common::services::test_services::TestServices::builder().build();
         let api_keys = services.api_keys.clone();

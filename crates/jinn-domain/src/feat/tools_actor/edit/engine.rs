@@ -11,6 +11,8 @@
 use super::hash::{
     Anchor, HashMismatch, assert_no_display_prefixes, compute_line_hash, format_tag, parse_anchor,
 };
+use std::fmt::Write;
+
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
@@ -316,10 +318,7 @@ pub fn format_mismatch_error(mismatches: &[HashMismatch], file_lines: &[&str]) -
 
     let n = mismatches.len();
     let mut out = String::new();
-    out.push_str(&format!(
-        "[E_STALE_ANCHOR] {n} stale anchor{}. Retry with the >>> LINE#HASH lines below; keep both endpoints for range replaces.\n\n",
-        if n > 1 { "s" } else { "" }
-    ));
+    let _ = write!(out, "[E_STALE_ANCHOR] {n} stale anchor{}. Retry with the >>> LINE#HASH lines below; keep both endpoints for range replaces.\n\n", if n > 1 { "s" } else { "" });
 
     let mut prev = 0usize;
     for num in sorted {
@@ -334,9 +333,9 @@ pub fn format_mismatch_error(mismatches: &[HashMismatch], file_lines: &[&str]) -
         let content = file_lines[num - 1];
         let h = compute_line_hash(num, content);
         if mismatch_lines.contains(&num) {
-            out.push_str(&format!(">>> {num:>width$}#{h}|{content}\n", width = width));
+            let _ = writeln!(out, ">>> {num:>width$}#{h}|{content}");
         } else {
-            out.push_str(&format!("    {num:>width$}#{h}|{content}\n", width = width));
+            let _ = writeln!(out, "    {num:>width$}#{h}|{content}");
         }
     }
 
@@ -675,7 +674,7 @@ fn check_boundary_duplication(
     };
     let last_repl = lines.last().expect("lines non-empty").trim();
     if !last_repl.is_empty()
-        && last_repl.chars().any(|c| c.is_alphanumeric())
+        && last_repl.chars().any(char::is_alphanumeric)
         && last_repl == next.trim()
     {
         let next_tag = format_tag(end_line + 1, next);

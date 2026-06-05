@@ -116,7 +116,7 @@ impl SessionPersistenceActor {
         let Some(session) = state.session.get(session_id) else {
             return;
         };
-        let attached_workflows = session.core.attached_workflows.clone();
+        let _attached_workflows = session.core.attached_workflows.clone();
         let _ = session; // release the shared borrow
 
         // No-op: Lua workflows don't need runtime registration.

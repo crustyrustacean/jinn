@@ -183,7 +183,6 @@ pub fn save_config(config: &ProvidersConfig) -> Result<(), Report<ConfigError>> 
     save_config_to(config, &path)
 }
 
-/// Saves config to a specific path.
 pub(crate) fn save_config_to<P>(
     config: &ProvidersConfig,
     path: P,
@@ -191,11 +190,55 @@ pub(crate) fn save_config_to<P>(
 where
     P: AsRef<Path>,
 {
+    let path = path.as_ref();
+
+    // If the file already exists, patch it in place to preserve user-written
+    // comments, blank lines, and field ordering.
+    if path.exists() {
+        let existing = std::fs::read_to_string(path)
+            .change_context(ConfigError::Io)
+            .attach("failed to read existing providers config")?;
+        let mut doc: toml_edit::DocumentMut = existing
+            .parse()
+            .map_err(|err: toml_edit::TomlError| {
+                Report::new(ConfigError::Parse)
+                    .attach("failed to parse existing providers config")
+                    .attach(err.to_string())
+            })?;
+
+        let mut patcher = crate::common::toml_patch::DocumentPatcher::new();
+        patcher.register_array_key(["providers"], "name");
+        patcher.register_array_key(["aliases"], "name");
+
+        let new_table: toml::value::Table =
+            toml::Value::try_from(config)
+                .map(|v: toml::Value| match v {
+                    toml::Value::Table(t) => t,
+                    _ => unreachable!("ProvidersConfig is always a table"),
+                })
+                .map_err(|_| {
+                    Report::new(ConfigError::Parse)
+                        .attach("failed to serialize ProvidersConfig")
+                })?;
+
+        patcher.apply(&new_table, doc.as_table_mut()).map_err(|err| {
+            Report::new(ConfigError::Parse)
+                .attach("failed to patch providers config document")
+                .attach(err.to_string())
+        })?;
+
+        std::fs::write(path, doc.to_string())
+            .change_context(ConfigError::Io)
+            .attach("failed to write providers config")?;
+        return Ok(());
+    }
+
+    // First-save path: emit a clean, comment-free serialization.
     let content = toml::to_string_pretty(config)
         .change_context(ConfigError::Parse)
         .attach("failed to serialize providers config")?;
 
-    std::fs::write(path.as_ref(), content)
+    std::fs::write(path, content)
         .change_context(ConfigError::Io)
         .attach("failed to write providers config")
 }
@@ -382,6 +425,127 @@ tool_stream = true
         assert_eq!(extra["enable_thinking"], true);
     }
 
+    #[rstest::rstest]
+    fn save_config_preserves_user_comments() {
+        // Given a comment-rich providers.toml written by the user.
+        let original = "# my favorite provider\n[[providers]]\nname = \"ollama\"\nbackend = \"ollama\"\nmodels = [\"llama3\"]\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, original).expect("write");
+
+        // When loading, mutating default_provider, and saving.
+        let mut config = load_config_from(&path).expect("load");
+        config.default_provider = Some("ollama".to_owned());
+        save_config_to(&config, &path).expect("save");
+
+        // Then the original comment is preserved verbatim.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            written.contains("# my favorite provider"),
+            "comment was wiped: {written}"
+        );
+        assert!(written.contains("default_provider = \"ollama\""));
+    }
+
+    #[rstest::rstest]
+    fn save_config_deletes_provider_block_on_struct_removal() {
+        // Given a config with two providers, only one of which we want to keep.
+        let original = "# keep me\n[[providers]]\nname = \"alpha\"\nbackend = \"x\"\nmodels = [\"a\"]\n\n# delete me\n[[providers]]\nname = \"beta\"\nbackend = \"x\"\nmodels = [\"b\"]\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, original).expect("write");
+
+        // When saving a config containing only alpha.
+        let config = ProvidersConfig {
+            providers: vec![ProviderEntry {
+                name: "alpha".to_owned(),
+                backend: "x".to_owned(),
+                models: vec!["a".to_owned()],
+                base_url: None,
+                api_key_env: None,
+                requires_key: false,
+                extra_body: None,
+                context_length: None,
+            }],
+            aliases: vec![],
+            default_provider: None,
+        };
+        save_config_to(&config, &path).expect("save");
+
+        // Then beta's block (and its comment) is removed, alpha's preserved.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(written.contains("# keep me"));
+        assert!(written.contains("name = \"alpha\""));
+        assert!(!written.contains("beta"), "beta still present: {written}");
+        assert!(!written.contains("# delete me"));
+    }
+
+    #[rstest::rstest]
+    fn save_config_appends_new_provider_at_end() {
+        // Given a single-provider config.
+        let original = "# existing\n[[providers]]\nname = \"alpha\"\nbackend = \"x\"\nmodels = [\"a\"]\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, original).expect("write");
+
+        // When saving a config with alpha + beta.
+        let config = ProvidersConfig {
+            providers: vec![
+                ProviderEntry {
+                    name: "alpha".to_owned(),
+                    backend: "x".to_owned(),
+                    models: vec!["a".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: None,
+                },
+                ProviderEntry {
+                    name: "beta".to_owned(),
+                    backend: "x".to_owned(),
+                    models: vec!["b".to_owned()],
+                    base_url: None,
+                    api_key_env: None,
+                    requires_key: false,
+                    extra_body: None,
+                    context_length: None,
+                },
+            ],
+            aliases: vec![],
+            default_provider: None,
+        };
+        save_config_to(&config, &path).expect("save");
+
+        // Then beta appears after alpha (appended).
+        let written = std::fs::read_to_string(&path).expect("read");
+        let alpha_pos = written.find("name = \"alpha\"").expect("alpha");
+        let beta_pos = written.find("name = \"beta\"").expect("beta");
+        assert!(alpha_pos < beta_pos, "beta not appended after alpha");
+        assert!(written.contains("# existing"));
+    }
+
+    #[rstest::rstest]
+    fn save_config_preserves_alias_block_comments_on_mutation() {
+        // Given a providers.toml with a comment-rich alias block.
+        let original = "\n# required field (must precede arrays of tables)\nproviders = []\n\n# shortcut for my favorite model\n[[aliases]]\nname = \"fast\"\ntarget = \"ollama/llama3\"\n\n# another alias\n[[aliases]]\nname = \"smart\"\ntarget = \"openrouter/openai/gpt-4o\"\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, original).expect("write");
+
+        // When loading and changing only the first alias's target.
+        let mut config = load_config_from(&path).expect("load");
+        config.aliases[0].target = "ollama/codellama".to_owned();
+        save_config_to(&config, &path).expect("save");
+
+        // Then both comments are preserved, only the target changed.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(written.contains("# shortcut for my favorite model"), "first alias comment lost");
+        assert!(written.contains("# another alias"), "second alias comment lost");
+        assert!(written.contains("target = \"ollama/codellama\""), "target not updated");
+        assert!(!written.contains("\"ollama/llama3\""), "old target still present");
+    }
+
     // --- S-Tier: Kill mutants for save_config, create_default_config, default_true ---
 
     #[rstest::rstest]
@@ -448,5 +612,188 @@ tool_stream = true
             config.providers[0].requires_key,
             "requires_key should default to true"
         );
+    }
+
+    // --- Stress tests: comment preservation across realistic fixtures ---
+
+    /// Build a realistic providers.toml with comments in every position we care about:
+    ///   - top-of-file banner
+    ///   - section dividers
+    ///   - per-provider block comments (above the header)
+    ///   - inline trailing comments
+    ///   - commented-out examples (which must remain as comments)
+    ///   - mid-block field comments
+    fn realistic_providers_toml() -> &'static str {
+        r#"
+# jinn provider configuration
+#
+# This is a heavily-commented real-world style file.
+# Edit freely — comments survive TUI mutations.
+
+# --- Providers ---
+
+    # my primary chat backend
+    [[providers]]
+    name = "openrouter"
+    backend = "openrouter"
+    api_key_env = "OPENROUTER_API_KEY"   # never checked in
+    models = [
+        "anthropic/claude-sonnet-4-20250514",
+        "google/gemini-2.5-flash",
+    ]
+
+    # local fallback
+    [[providers]]
+    name = "ollama"
+    backend = "ollama"
+    requires_key = false
+    base_url = "http://localhost:11434"
+    models = ["llama3"]
+
+# --- Aliases ---
+
+    # quick picker shortcuts
+    [[aliases]]
+    name = "smart"
+    target = "openrouter/anthropic/claude-sonnet-4-20250514"
+
+    # local = fast
+    [[aliases]]
+    name = "fast"
+    target = "ollama/llama3"
+
+# --- Default ---
+
+    default_provider = "smart"   # what opens on launch
+
+# --- Examples (commented out, must survive as comments) ---
+# [[providers]]
+# name = "sample"
+# backend = "sample"
+"#
+    }
+
+    #[rstest::rstest]
+    fn save_config_round_trip_preserves_all_comment_styles() {
+        // Given a comment-rich providers.toml fixture.
+        let original = realistic_providers_toml();
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, original).expect("write");
+
+        // When loading and immediately re-saving without mutation.
+        let config = load_config_from(&path).expect("load");
+        save_config_to(&config, &path).expect("save");
+        let written = std::fs::read_to_string(&path).expect("read");
+
+        // Then every comment category survives byte-for-byte.
+        let expectations = [
+            "# jinn provider configuration",
+            "# This is a heavily-commented real-world style file.",
+            "# Edit freely",
+            "# --- Providers ---",
+            "# my primary chat backend",
+            "# never checked in",
+            "# never checked in",
+            "# local fallback",
+            "# --- Aliases ---",
+            "# quick picker shortcuts",
+            "# local = fast",
+            "# --- Default ---",
+            "# what opens on launch",
+            "# --- Examples (commented out, must survive as comments) ---",
+            "# [[providers]]",
+            "# name = \"sample\"",
+        ];
+        for needle in expectations {
+            assert!(
+                written.contains(needle),
+                "expected comment preserved: {needle:?}\nactual output:\n{written}",
+            );
+        }
+    }
+
+    #[rstest::rstest]
+    fn save_config_mutating_one_field_preserves_all_unrelated_comments() {
+        // Given the comment-rich providers.toml fixture.
+        let original = realistic_providers_toml();
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, original).expect("write");
+
+        // When mutating a single field (add a model to openrouter).
+        let mut config = load_config_from(&path).expect("load");
+        config
+            .providers
+            .iter_mut()
+            .find(|p| p.name == "openrouter")
+            .expect("openrouter exists")
+            .models
+            .push("openai/gpt-4o".to_owned());
+        save_config_to(&config, &path).expect("save");
+        let written = std::fs::read_to_string(&path).expect("read");
+
+        // Then the new model appears, AND every other comment survives.
+        assert!(written.contains("\"openai/gpt-4o\""), "new model written");
+        assert!(written.contains("# my primary chat backend"));
+        assert!(written.contains("# local fallback"));
+        assert!(written.contains("# --- Aliases ---"));
+        assert!(written.contains("# local = fast"));
+        assert!(written.contains("# --- Default ---"));
+        assert!(written.contains("# --- Examples"));
+        // And the openrouter block still has its trailing comments.
+        // Inline-array comments like `"x" # foo` do NOT survive (arrays are wholesale replaced).
+        // We assert only block-level comments above, which do survive.
+        assert!(written.contains("# never checked in"));
+    }
+
+    #[rstest::rstest]
+    fn save_config_deleting_one_provider_preserves_its_comment_and_others() {
+        // Given the comment-rich providers.toml fixture.
+        let original = realistic_providers_toml();
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, original).expect("write");
+
+        // When deleting the ollama provider from the struct.
+        let mut config = load_config_from(&path).expect("load");
+        config.providers.retain(|p| p.name != "ollama");
+        save_config_to(&config, &path).expect("save");
+        let written = std::fs::read_to_string(&path).expect("read");
+
+        // Then the ollama block AND its '# local fallback' comment are gone,
+        // but unrelated comments survive untouched.
+        // Look for the full ollama provider block, not just the substring.
+        // (Aliases may still reference "ollama/..." if not also deleted.)
+        assert!(
+            !written.contains("name = \"ollama\""),
+            "ollama provider removed, got:\n{written}"
+        );
+        assert!(!written.contains("# local fallback"), "ollama comment removed with it");
+        assert!(written.contains("# my primary chat backend"), "openrouter comment untouched");
+        assert!(written.contains("# --- Aliases ---"));
+        assert!(written.contains("# --- Default ---"));
+    }
+
+    #[rstest::rstest]
+    fn save_config_deleting_one_alias_preserves_only_its_comment() {
+        // Given the comment-rich providers.toml fixture.
+        let original = realistic_providers_toml();
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("providers.toml");
+        std::fs::write(&path, original).expect("write");
+
+        // When deleting only the 'fast' alias.
+        let mut config = load_config_from(&path).expect("load");
+        config.aliases.retain(|a| a.name != "fast");
+        save_config_to(&config, &path).expect("save");
+        let written = std::fs::read_to_string(&path).expect("read");
+
+        // Then the 'fast' alias block AND its '# local = fast' comment are gone,
+        // but the 'smart' alias's '# quick picker shortcuts' comment survives.
+        assert!(!written.contains("\"fast\""), "fast alias removed");
+        assert!(!written.contains("# local = fast"), "fast comment removed");
+        assert!(written.contains("# quick picker shortcuts"), "smart comment preserved");
+        assert!(written.contains("\"smart\""), "smart alias preserved");
     }
 }

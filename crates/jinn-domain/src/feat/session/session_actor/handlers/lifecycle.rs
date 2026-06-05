@@ -130,6 +130,7 @@ impl SessionPersistenceActor {
     ///
     /// On success, sets the session's CWD to the command's output.
     /// On failure, sets the default CWD and pushes an error entry.
+    #[allow(clippy::unused_async)]
     pub(in crate::feat::session::session_actor) async fn handle_run_session_setup(
         &mut self,
         payload: &RunSessionSetup,
@@ -232,6 +233,7 @@ impl SessionPersistenceActor {
     /// Called by the spawned tokio task after the setup shell command finishes.
     /// Clears the lifecycle child, completes busy, sets CWD,
     /// advances lifecycle state, and emits events.
+    #[allow(clippy::unused_async)]
     pub(in crate::feat::session::session_actor) async fn handle_finish_session_setup(
         &mut self,
         payload: &crate::feat::session_lifecycle::protocol::command::FinishSessionSetup,
@@ -484,6 +486,7 @@ impl SessionPersistenceActor {
                     session.begin_busy();
                     use crate::feat::session_lifecycle::command_template::CommandTemplate;
                     let template = CommandTemplate::parse(shell_cmd);
+                    
                     let rendered = if lifecycle_args.is_empty() {
                         shell_cmd.clone()
                     } else {
@@ -493,6 +496,7 @@ impl SessionPersistenceActor {
                 };
 
                 // Push "running" entry.
+
                 self.push_and_save(&payload.session_id, teardown_running_msg(), ctx)
                     .await;
 
@@ -1879,7 +1883,7 @@ mod tests {
     #[tokio::test]
     async fn archive_session_without_lifecycle_removes_from_memory() {
         // Given a session with history and no lifecycle.
-        let mut actor = test_actor();
+        let actor = test_actor();
         let (sink, ctx) = test_context();
         let second = ChatSessionState::new();
         let _second_id = second.session_id().clone();
@@ -1943,7 +1947,7 @@ mod tests {
     #[tokio::test]
     async fn archive_empty_session_removes_and_archives() {
         // Given an empty session.
-        let mut actor = test_actor();
+        let actor = test_actor();
         let (sink, ctx) = test_context();
         let second = ChatSessionState::new();
         let _second_id = second.session_id().clone();
@@ -1989,7 +1993,7 @@ mod tests {
     #[tokio::test]
     async fn archive_active_session_switches_to_next() {
         // Given two sessions, archiving the active one.
-        let mut actor = test_actor();
+        let actor = test_actor();
         let (_sink, ctx) = test_context();
         let second = ChatSessionState::new();
         let _second_id = second.session_id().clone();
@@ -2021,7 +2025,7 @@ mod tests {
     #[tokio::test]
     async fn archive_last_session_creates_new_one() {
         // Given one non-empty session.
-        let mut actor = test_actor();
+        let actor = test_actor();
         let (_sink, ctx) = test_context();
         let only_id = {
             let mut state = actor.state.write();
@@ -2237,7 +2241,7 @@ mod tests {
         // Given an actor with an empty (non-interacted) session and a recording store.
         use super::super::super::helpers::{test_actor_with_store, test_context};
 
-        let (mut actor, store) = test_actor_with_store(vec![]);
+        let (actor, store) = test_actor_with_store(vec![]);
         let session_id = actor.state.read().session.active_session_id().clone();
         let (_sink, ctx) = test_context();
 

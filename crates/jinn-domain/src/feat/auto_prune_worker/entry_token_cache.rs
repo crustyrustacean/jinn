@@ -68,7 +68,7 @@ impl HistoryWorkerChatEntryTokenCache {
     pub fn insert(&self, session_id: SessionId, entry_id: ChatEntryId, count: u32) {
         self.inner
             .entry(session_id)
-            .or_insert_with(DashMap::new)
+            .or_default()
             .insert(entry_id, count);
     }
 
@@ -98,14 +98,13 @@ impl HistoryWorkerChatEntryTokenCache {
         let session_map = self
             .inner
             .entry(session_id)
-            .or_insert_with(DashMap::new);
+            .or_default();
 
         // inner entry() holds the inner shard guard briefly;
         // or_insert_with runs the closure only on first call for this key.
-        session_map
+        *session_map
             .entry(entry_id)
             .or_insert_with(compute)
-            .clone()
     }
 
     /// Evict all cached counts for a session.
@@ -166,6 +165,7 @@ impl HistoryWorkerChatEntryTokenCacheEvictionActor {
     /// Construct directly for unit testing. Production code uses
     /// [`Actor::activate`](crate::common::actor::Actor::activate) via the
     /// `spawn` infrastructure in `actor_wiring.rs`.
+    #[cfg(test)]
     fn new(cache: HistoryWorkerChatEntryTokenCache) -> Self {
         Self { cache }
     }
@@ -387,12 +387,12 @@ mod tests {
         // closure increments an AtomicUsize and sleeps briefly to widen the
         // race window. Assertion: closure ran exactly once across all
         // tasks, and every task observed the same value.
+        const N: usize = 32;
         let cache = Arc::new(HistoryWorkerChatEntryTokenCache::new());
         let s = Arc::new(test_session_id(0));
         let e = Arc::new(test_entry_id(0));
         let calls = Arc::new(AtomicUsize::new(0));
 
-        const N: usize = 32;
         let mut handles = Vec::with_capacity(N);
         for _ in 0..N {
             let cache = Arc::clone(&cache);
