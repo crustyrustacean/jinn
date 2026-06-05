@@ -2,7 +2,9 @@
 //!
 //! Spawning Lua workflow executions and applying results to session state.
 
+
 use std::sync::Arc;
+
 
 
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
@@ -23,6 +25,7 @@ use crate::feat::workflow::domain_node_context::DomainNodeContext;
 use crate::feat::workflow::protocol::command::{
     AttachWorkflow, DetachWorkflow, FireBeforeTurn, ToggleWorkflow, TriggerWorkflow,
 };
+
 
 use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, SetChatInputText};
 
@@ -404,6 +407,7 @@ impl WorkflowControllerActor {
     }
 
     /// Spawn an attached workflow using Lua.
+    #[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
     fn spawn_attached_workflow(
         &self,
         session_id: &crate::protocol::SessionId,
@@ -525,6 +529,7 @@ impl WorkflowControllerActor {
 
         // Spawn handler task that processes host requests.
         let state = self.state.clone();
+
         let _handler_sid = session_id.clone();
         let _handler_wid = workflow_id.clone();
         let handler_ctx = self.ctx.clone();
@@ -576,6 +581,7 @@ impl WorkflowControllerActor {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     /// Apply a workflow result to the session.
     fn apply_workflow_result(
         &self,

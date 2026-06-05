@@ -116,10 +116,7 @@ pub fn format_hashline_region(lines: &[&str], start_line: usize) -> String {
     for (i, line) in lines.iter().enumerate() {
         let line_num = start_line + i;
         let hash = compute_line_hash(line_num, line);
-        let _ = writeln!(
-            out,
-            "{line_num:>line_number_width$}#{hash}|{line}"
-        );
+        let _ = writeln!(out, "{line_num:>line_number_width$}#{hash}|{line}");
     }
     out
 }

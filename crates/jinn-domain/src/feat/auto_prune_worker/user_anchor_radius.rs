@@ -844,10 +844,10 @@ mod tests {
         // Apply mutations to a copy of history.
         let mut applied = history.clone();
         for m in &first {
-            if let HistoryMutation::SetContextOverride { entry_id, value } = m {
-                if let Some(e) = applied.iter_mut().find(|e| e.id == *entry_id) {
-                    e.context_override = *value;
-                }
+            if let HistoryMutation::SetContextOverride { entry_id, value } = m
+                && let Some(e) = applied.iter_mut().find(|e| e.id == *entry_id)
+            {
+                e.context_override = *value;
             }
         }
 

@@ -333,6 +333,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[expect(clippy::too_many_lines, reason = "end-to-end router test exercises every branch of the routing logic")]
     async fn e2e_with_engine_router_skips_branch() {
         use crate::engine::{self, NodeStatus};
         use crate::graph::WorkflowGraphBuilder;
