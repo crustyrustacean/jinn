@@ -40,7 +40,7 @@
 //! Per-entry counts are looked up via
 //! [`HistoryWorkerChatEntryTokenCache::get_or_insert_with`]. The first
 //! worker to evaluate a session pays the tiktoken cost; subsequent
-//! evaluations and concurrent workers (e.g., `UserAnchorRadiusAutoPruneWorker`)
+//! evaluations and concurrent workers (e.g., `AnchorRadiusAutoPruneWorker`)
 //! hit the cache.
 //!
 //! [`HistoryWorkerChatEntryTokenCache::get_or_insert_with`]: crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache::get_or_insert_with
@@ -71,7 +71,7 @@ use crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache;
 use crate::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCounter};
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::TrivialAssistantAutoPruneConfig;
-use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind, ContextOverride};
+use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
 
@@ -134,6 +134,7 @@ fn build_trivial_assistant_mutations(
     session_id: &SessionId,
     token_cache: &HistoryWorkerChatEntryTokenCache,
     counter: &TiktokenCounter,
+    worker_name: &str,
 ) -> Vec<HistoryMutation> {
     let max_tokens = max_tokens.max(1);
 
@@ -164,8 +165,9 @@ fn build_trivial_assistant_mutations(
             continue;
         }
 
-        // Skip already-excluded entries to avoid duplicate mutations.
-        if entry.context_override == ContextOverride::ForcedExclude {
+        // Skip protected entries (ForcedInclude or ForcedExclude) to avoid
+        // duplicate mutations and respect user intent.
+        if entry.is_protected_from_prune() {
             continue;
         }
 
@@ -180,11 +182,14 @@ fn build_trivial_assistant_mutations(
                 tokens,
                 max_tokens,
                 keep_window_start,
-                "trivial_assistant: excluding old trivial assistant entry"
+                "trivial_assistant: excluding old trivial assistant entry",
             );
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: entry.id.clone(),
                 value: ContextOverride::ForcedExclude,
+                source: ChangeSource::Worker {
+                    name: worker_name.to_owned(),
+                },
             });
         }
     }
@@ -211,6 +216,7 @@ impl HistoryWorker for TrivialAssistantAutoPruneWorker {
             session_id,
             &self.token_cache,
             &self.counter,
+            self.name(),
         );
         tracing::debug!(
             mutations = mutations.len(),
@@ -288,6 +294,7 @@ mod tests {
             if let HistoryMutation::SetContextOverride {
                 entry_id,
                 value: ContextOverride::ForcedExclude,
+                ..
             } = m
             {
                 out.insert(entry_id.clone());
@@ -459,7 +466,7 @@ mod tests {
         let w = worker(100, 80);
         let mut history = Vec::new();
         let mut asst = trivial_assistant("done");
-        asst.context_override = ContextOverride::ForcedExclude;
+        asst.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
         let asst_id = asst.id.clone();
         history.push(asst);
         history.extend(users(100));
@@ -472,6 +479,28 @@ mod tests {
         // The assistant id should not appear in any mutation.
         let excluded = excluded_ids(&mutations);
         assert!(!excluded.contains(&asst_id));
+    }
+
+    // ------------------------------------------------------------------
+    // 9b. forced_included_assistant_does_not_get_mutation
+    // ------------------------------------------------------------------
+    #[test]
+    fn forced_included_assistant_does_not_get_mutation() {
+        let w = worker(100, 80);
+        let mut history = Vec::new();
+        let mut asst = trivial_assistant("done");
+        asst.context_override = ContextOverride::ForcedInclude;
+        let asst_id = asst.id.clone();
+        history.push(asst);
+        history.extend(users(100));
+
+        let mutations = evaluate(&w, history);
+        // No mutation for the ForcedInclude entry.
+        let excluded = excluded_ids(&mutations);
+        assert!(
+            !excluded.contains(&asst_id),
+            "ForcedInclude entry must not receive ForcedExclude mutation"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -612,7 +641,7 @@ mod tests {
         // Reset context_override so the idempotency skip doesn't hide the result.
         let mut history2 = (*history).to_vec();
         for e in &mut history2 {
-            e.context_override = ContextOverride::Default;
+            e.apply_context_override(ContextOverride::Default, ChangeSource::Internal { label: "test".into() });
         }
 
         let second = rt.block_on(async { w.evaluate(&session_id, history2.into()).await });
@@ -664,8 +693,8 @@ mod tests {
     // ------------------------------------------------------------------
     #[test]
     fn anchor_worker_reads_external_cache_writes() {
-        use crate::feat::auto_prune_worker::user_anchor_radius::UserAnchorRadiusAutoPruneWorker;
-        use crate::feat::preferences_actor::user_preferences::UserAnchorRadiusAutoPruneConfig;
+        use crate::feat::auto_prune_worker::anchor_radius::AnchorRadiusAutoPruneWorker;
+        use crate::feat::preferences_actor::user_preferences::AnchorRadiusAutoPruneConfig;
 
         let shared_cache = HistoryWorkerChatEntryTokenCache::new();
         let session_id = SessionId::new();
@@ -682,8 +711,8 @@ mod tests {
             counter: TiktokenCounter::o200k_base(),
         };
 
-        let anchor = UserAnchorRadiusAutoPruneWorker {
-            config: UserAnchorRadiusAutoPruneConfig {
+        let anchor = AnchorRadiusAutoPruneWorker {
+            config: AnchorRadiusAutoPruneConfig {
                 enabled: true,
                 radius: 5,
             },
@@ -692,12 +721,14 @@ mod tests {
         };
 
         // History: User at index 0, 100 trivial-step padding entries,
-        // target "ok" at index 101.
+        // target "ok" at index 101, then 6 more padding entries so the
+        // last anchor is at index 107 (d_fwd = 6 > radius 5).
         let mut history = vec![ChatEntry::user("anchor")];
         history.extend(std::iter::repeat_n(trivial_assistant("step"), 100));
         let target = trivial_assistant("ok");
         let target_id = target.id.clone();
         history.push(target);
+        history.extend(std::iter::repeat_n(trivial_assistant("step"), 6));
 
         // Sabotage: cache "ok" as 999 tokens.
         shared_cache.insert(session_id.clone(), target_id.clone(), 999);

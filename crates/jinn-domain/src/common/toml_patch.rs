@@ -58,7 +58,10 @@ use wherror::Error;
 /// at the storage-layer boundary.
 #[derive(Debug, Error)]
 #[error(debug)]
-pub struct PatchError;
+pub enum PatchError {
+    Generic,
+    InternalInvariant { what: &'static str },
+}
 
 /// Path-based registry of key fields for arrays-of-tables.
 ///
@@ -149,7 +152,7 @@ fn apply_table_inner(
         let mut child_path = path.to_vec();
         child_path.push(key.clone());
         if target.contains_key(key) {
-            let child_item: &mut Item = target.get_mut(key).expect("just checked contains_key");
+            let child_item: &mut Item = target.get_mut(key).ok_or(PatchError::InternalInvariant { what: "just checked contains_key" })?;
             apply_value(child_value, child_item, registry, &child_path)?;
         } else {
             target.insert(key.as_str(), value_to_item(child_value));
@@ -184,22 +187,22 @@ fn apply_table(
     path: &[String],
 ) -> Result<(), PatchError> {
     let table: &mut Table = if target.is_table() {
-        target.as_table_mut().expect("just checked is_table")
+        target.as_table_mut().ok_or(PatchError::InternalInvariant { what: "just checked is_table" })?
     } else if target.is_none() {
         *target = Item::Table(Table::new());
-        target.as_table_mut().expect("just inserted a Table variant")
+        target.as_table_mut().ok_or(PatchError::InternalInvariant { what: "just inserted a Table variant" })?
     } else {
         // Was a scalar or array — replace with a table (lossy, but the
         // document and struct disagreed on shape).
         *target = Item::Table(Table::new());
-        target.as_table_mut().expect("just inserted a Table variant")
+        target.as_table_mut().ok_or(PatchError::InternalInvariant { what: "just inserted a Table variant" })?
     };
 
     for (key, child_value) in new {
         let mut child_path = path.to_vec();
         child_path.push(key.clone());
         if table.contains_key(key) {
-            let child_item: &mut Item = table.get_mut(key).expect("just checked contains_key");
+            let child_item: &mut Item = table.get_mut(key).ok_or(PatchError::InternalInvariant { what: "just checked contains_key" })?;
             apply_value(child_value, child_item, registry, &child_path)?;
         } else {
             table.insert(key, value_to_item(child_value));
@@ -235,18 +238,18 @@ fn apply_array_of_tables_by_key(
     key_field: &'static str,
 ) -> Result<(), PatchError> {
     let array: &mut ArrayOfTables = if target.is_array_of_tables() {
-        target.as_array_of_tables_mut().expect("just checked")
+        target.as_array_of_tables_mut().ok_or(PatchError::InternalInvariant { what: "just checked" })?
     } else if target.is_none() || target.is_value() {
         *target = Item::ArrayOfTables(ArrayOfTables::new());
         target
             .as_array_of_tables_mut()
-            .expect("just inserted ArrayOfTables")
+            .ok_or(PatchError::InternalInvariant { what: "just inserted ArrayOfTables" })?
     } else {
         // Was a regular table — replace.
         *target = Item::ArrayOfTables(ArrayOfTables::new());
         target
             .as_array_of_tables_mut()
-            .expect("just inserted ArrayOfTables")
+            .ok_or(PatchError::InternalInvariant { what: "just inserted ArrayOfTables" })?
     };
 
     // Collect new entries keyed by their key-field value, preserving order.
@@ -296,11 +299,11 @@ fn apply_array_of_tables_by_key(
     for (idx, actual_key) in matched_keys {
         let Some(&replacement) = new_by_key.get(&actual_key) else { continue };
         let toml::Value::Table(repl_t) = replacement else { continue };
-        let entry_mut: &mut Table = array.get_mut(idx).expect("idx in range");
+        let entry_mut: &mut Table = array.get_mut(idx).ok_or(PatchError::InternalInvariant { what: "idx in range" })?;
         for (k, child_value) in repl_t {
             if entry_mut.contains_key(k) {
                 let child_item: &mut Item =
-                    entry_mut.get_mut(k).expect("just checked contains_key");
+                    entry_mut.get_mut(k).ok_or(PatchError::InternalInvariant { what: "just checked contains_key" })?;
                 // For nested arrays-of-tables inside an array entry, look up
                 // a fresh registry built from the path of THIS entry — not
                 // implemented yet (no nested registered arrays in scope).

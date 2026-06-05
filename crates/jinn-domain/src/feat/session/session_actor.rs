@@ -26,7 +26,7 @@ use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::{
-    EnqueueUserMessage, PushChatEntry, SetChatInputText,
+    EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText,
 };
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::feat::provider::protocol::command::SendMessage;
@@ -100,6 +100,7 @@ impl Actor for SessionPersistenceActor {
 
         // Session lifecycle subscriptions.
         ctx.subscribe_command::<EnqueueUserMessage>();
+        ctx.subscribe_command::<EnqueueResumeTurn>();
         ctx.subscribe_command::<SetChatInputText>();
         ctx.subscribe_command::<PushChatEntry>();
         ctx.subscribe_command::<SendMessage>();
@@ -238,6 +239,9 @@ impl SessionPersistenceActor {
             Command::EnqueueUserMessage(payload) => {
                 self.handle_enqueue_user_message(payload, ctx).await;
             }
+            Command::EnqueueResumeTurn(payload) => {
+                self.handle_enqueue_resume_turn(payload, ctx).await;
+            }
             Command::SetChatInputText(payload) => self.handle_set_chat_input_text(payload),
             Command::PushChatEntry(payload) => {
                 self.handle_push_chat_entry(payload, ctx).await;
@@ -283,7 +287,7 @@ impl SessionPersistenceActor {
                 self.handle_mark_session_interacted(payload, ctx).await;
             }
             Command::SubmitHistoryMutations(payload) => {
-                self.handle_submit_history_mutations(payload);
+                self.handle_submit_history_mutations(payload, ctx);
             }
             // Commands NOT subscribed to - these should not arrive.
             Command::SendToLlmProvider(..)

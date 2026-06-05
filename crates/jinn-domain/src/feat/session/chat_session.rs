@@ -10,7 +10,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
-use std::sync::RwLock;
+use parking_lot::RwLock;
 use std::sync::atomic::{AtomicU16, Ordering};
 
 use jiff::Timestamp;
@@ -25,7 +25,7 @@ use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{
-    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId,
+    ChatEntry, ChatEntryId, ChatEntryKind, ChangeSource, ContextOverride, PinPosition, PromptStrategyId,
     SessionId,
 };
 
@@ -374,7 +374,7 @@ impl Clone for SessionUi {
             entry_line_ranges: RwLock::new(
                 self.entry_line_ranges
                     .read()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+
                     .clone(),
             ),
             viewport_height: AtomicU16::new(self.viewport_height.load(Ordering::Relaxed)),
@@ -385,7 +385,7 @@ impl Clone for SessionUi {
             visual_items: RwLock::new(
                 self.visual_items
                     .read()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+
                     .clone(),
             ),
             ignore_sweep: self.ignore_sweep,
@@ -505,7 +505,12 @@ impl ChatSessionState {
     pub fn mark_entries_ignored(&mut self, indices: &[usize]) {
         for &i in indices {
             if i < self.core.history.len() {
-                self.core.history[i].context_override = ContextOverride::ForcedExclude;
+                self.core.history[i].apply_context_override(
+                    ContextOverride::ForcedExclude,
+                    ChangeSource::Internal {
+                        label: "mark_entries_ignored".into(),
+                    },
+                );
             }
         }
     }
@@ -514,8 +519,9 @@ impl ChatSessionState {
     ///
     /// If the entry uses the default, override to the opposite of the kind default.
     /// If the entry is already overridden, revert to the default.
-    /// Does nothing if no entry is selected.
-    pub fn toggle_entry_ignored(&mut self) {
+    /// Returns `Some(entry_id)` if the override was changed, `None` if no-op
+    /// (entry was already in the toggled state) or no entry is selected.
+    pub fn toggle_entry_ignored(&mut self) -> Option<crate::protocol::ChatEntryId> {
         if let Some(idx) = self.selected_entry_index() {
             let items = self.visual_items().clone();
             let hist_idx = if items.is_empty() {
@@ -523,11 +529,11 @@ impl ChatSessionState {
             } else {
                 match items.get(idx) {
                     Some(VisualItem::Entry(h)) => *h,
-                    _ => return, // collapsed block or invalid
+                    _ => return None, // collapsed block or invalid
                 }
             };
             if let Some(entry) = self.core.history.get_mut(hist_idx) {
-                entry.context_override = match entry.context_override {
+                let new_value = match entry.context_override() {
                     ContextOverride::Default => {
                         if entry.kind.is_included_by_default() {
                             ContextOverride::ForcedExclude
@@ -539,15 +545,24 @@ impl ChatSessionState {
                         ContextOverride::Default
                     }
                 };
+                if entry.apply_context_override(new_value, ChangeSource::User) {
+                    return Some(entry.id.clone());
+                }
             }
         }
+        None
     }
 
     /// Set the context override on the currently selected entry to a specific
     /// value (not a toggle). Used by the x-sweep to apply a captured state.
     ///
-    /// Does nothing if no entry is selected.
-    pub fn set_entry_context_override(&mut self, override_state: ContextOverride) {
+    ///
+    /// Returns `Some(entry_id)` if the override was changed, `None` if no-op
+    /// (entry was already at the target state) or no entry is selected.
+    pub fn set_entry_context_override(
+        &mut self,
+        override_state: ContextOverride,
+    ) -> Option<crate::protocol::ChatEntryId> {
         if let Some(idx) = self.selected_entry_index() {
             let items = self.visual_items().clone();
             let hist_idx = if items.is_empty() {
@@ -555,13 +570,16 @@ impl ChatSessionState {
             } else {
                 match items.get(idx) {
                     Some(VisualItem::Entry(h)) => *h,
-                    _ => return,
+                    _ => return None,
                 }
             };
             if let Some(entry) = self.core.history.get_mut(hist_idx) {
-                entry.context_override = override_state;
+                if entry.apply_context_override(override_state, ChangeSource::User) {
+                    return Some(entry.id.clone());
+                }
             }
         }
+        None
     }
 
     /// After a sweep changes an entry from excluded to in-context, propagate
@@ -1490,10 +1508,7 @@ impl ChatSessionState {
             return;
         };
 
-        let ranges = match self.ui.entry_line_ranges.read() {
-            Ok(guard) => guard.clone(),
-            Err(_) => return,
-        };
+        let ranges = self.ui.entry_line_ranges.read().clone();
 
         let Some(&(start, end)) = ranges.get(selected_idx) else {
             return;
@@ -1567,7 +1582,8 @@ impl ChatSessionState {
     /// `entry_line_ranges[i] = (start_wrapped_line, end_wrapped_line)` in the
     /// wrapped coordinate space. Called each frame by the chat log renderer.
     pub fn set_entry_line_ranges(&self, ranges: Vec<(u16, u16)>) {
-        if let Ok(mut guard) = self.ui.entry_line_ranges.write() {
+        {
+            let mut guard = self.ui.entry_line_ranges.write();
             *guard = ranges;
         }
     }
@@ -1594,10 +1610,7 @@ impl ChatSessionState {
     /// visible. Returns an empty range if no entries are visible or viewport
     /// data is unavailable.
     pub fn visible_entry_range(&self) -> Range<usize> {
-        let ranges = match self.ui.entry_line_ranges.read() {
-            Ok(guard) => guard.clone(),
-            Err(_) => return 0..0,
-        };
+        let ranges = self.ui.entry_line_ranges.read().clone();
         if ranges.is_empty() {
             return 0..0;
         }
@@ -2100,7 +2113,8 @@ impl ChatSessionState {
 
     /// Store the visual items list computed during render.
     pub fn set_visual_items(&self, items: Vec<crate::feat::ui::chat_log::visual_item::VisualItem>) {
-        if let Ok(mut guard) = self.ui.visual_items.write() {
+        {
+            let mut guard = self.ui.visual_items.write();
             *guard = items;
         }
     }
@@ -2108,12 +2122,12 @@ impl ChatSessionState {
     /// Read-only access to the visual items list.
     pub fn visual_items(
         &self,
-    ) -> std::sync::RwLockReadGuard<'_, Vec<crate::feat::ui::chat_log::visual_item::VisualItem>>
+    ) -> parking_lot::RwLockReadGuard<'_, Vec<crate::feat::ui::chat_log::visual_item::VisualItem>>
     {
         self.ui
             .visual_items
             .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+
     }
 
     /// The visual item at the currently selected position, if any.
@@ -2124,7 +2138,7 @@ impl ChatSessionState {
         self.ui
             .visual_items
             .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+
             .get(idx)
             .cloned()
     }
@@ -2144,8 +2158,8 @@ impl ChatSessionState {
         let items = self
             .ui
             .visual_items
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+            .read();
+
         if items.is_empty() {
             // Before first render, visual items haven't been computed yet.
             // Fall back: selected_entry_index IS a history index in this case.
@@ -2243,6 +2257,8 @@ impl ChatSessionState {
 
     /// Update the cached context size.
     pub fn set_context_size(&mut self, size: u32) {
+        let bt = std::backtrace::Backtrace::force_capture();
+        eprintln!("TRACE set_context_size size={size}\n{bt}");
         self.core.ephemeral.cached_context_size = Some(size);
     }
 
@@ -2379,7 +2395,7 @@ impl ChatSessionState {
     ///
     /// Uses `ContextOverride::ForcedExclude` rather than removing entries,
     /// preserving them for display in the UI.
-    pub fn force_exclude_dangling_tool_calls(&mut self) {
+    pub fn force_exclude_dangling_tool_calls(&mut self) -> Vec<ChatEntryId> {
         // Collect tool_call_ids that have matching ToolResult entries.
         let result_ids: Vec<String> = self
             .core
@@ -2408,10 +2424,21 @@ impl ChatSessionState {
             }
         }
 
-        // Mark entries as ForcedExclude.
+        // Mark entries as ForcedExclude and collect the ids of those that actually changed.
+        let mut changed = Vec::new();
         for idx in indices_to_exclude {
-            self.core.history[idx].context_override = ContextOverride::ForcedExclude;
+            let prev = self.core.history[idx].context_override();
+            if prev != ContextOverride::ForcedExclude {
+                self.core.history[idx].apply_context_override(
+                    ContextOverride::ForcedExclude,
+                    ChangeSource::Internal {
+                        label: "dangling_tool_call_sweep".into(),
+                    },
+                );
+                changed.push(self.core.history[idx].id.clone());
+            }
         }
+        changed
     }
 
     /// Disable the tool loop for this session's current turn.
@@ -2471,22 +2498,23 @@ impl ChatSessionState {
     pub fn apply_mutations(
         &mut self,
         batch: Vec<crate::feat::session::history_mutation::HistoryMutation>,
-    ) {
+    ) -> Vec<ChatEntryId> {
         use crate::feat::session::history_mutation::HistoryMutation;
+        let mut changed = Vec::new();
 
         for mutation in batch {
             match mutation {
-                HistoryMutation::SetContextOverride { entry_id, value } => {
+                HistoryMutation::SetContextOverride { entry_id, value, source } => {
                     if let Some(entry) = self.core.history.iter_mut().find(|e| e.id == entry_id) {
-                        // Protect user's explicit force-include from auto-pruner
-                        // exclusion. Workers may set ForcedExclude, but a user's
-                        // ForcedInclude takes precedence.
-                        if entry.context_override == ContextOverride::ForcedInclude
+                        if entry.context_override() == ContextOverride::ForcedInclude
                             && value == ContextOverride::ForcedExclude
                         {
                             continue;
                         }
-                        entry.context_override = value;
+                        let was_changed = entry.apply_context_override(value, source);
+                        if was_changed {
+                            changed.push(entry_id);
+                        }
                     }
                 }
                 HistoryMutation::InsertEntry {
@@ -2510,18 +2538,22 @@ impl ChatSessionState {
                 }
             }
         }
+        changed
     }
 
     /// Drain all pending mutation batches and apply them.
     ///
-    /// Returns the number of batches applied.
-    pub fn drain_and_apply_pending_mutations(&mut self) -> usize {
+    /// Returns the number of batches applied and the entry IDs whose
+    /// `context_override` actually changed value during this drain.
+    pub fn drain_and_apply_pending_mutations(&mut self) -> (usize, Vec<ChatEntryId>) {
         let batches = self.drain_pending_mutations();
         let count = batches.len();
+        let mut changed = Vec::new();
         for batch in batches {
-            self.apply_mutations(batch);
+            let mut batch_changed = self.apply_mutations(batch);
+            changed.append(&mut batch_changed);
         }
-        count
+        (count, changed)
     }
 }
 

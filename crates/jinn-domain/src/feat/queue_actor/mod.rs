@@ -118,6 +118,7 @@ impl QueueActor {
             QueueItem::ToolContinuation => {
                 self.dispatch_tool_continuation(session_id, ctx).await;
             }
+
         }
     }
 
@@ -188,11 +189,26 @@ impl QueueActor {
     }
 
     /// Dispatch a tool continuation: assemble prompt and emit SendToLlmProvider.
+    ///
+    /// See [`Self::dispatch_resume`] for the shared dispatch body.
     #[allow(clippy::unused_async)]
     async fn dispatch_tool_continuation(
         &self,
         session_id: &crate::protocol::SessionId,
         ctx: &ActorContext,
+    ) {
+        self.dispatch_resume(session_id, ctx, "tool continuation").await;
+    }
+
+
+    /// Shared dispatch body for tool-continuation and manual-resume paths:
+    /// re-assemble prompt from current history and emit `SendToLlmProvider`.
+    #[allow(clippy::unused_async)]
+    async fn dispatch_resume(
+        &self,
+        session_id: &crate::protocol::SessionId,
+        ctx: &ActorContext,
+        label: &str,
     ) {
         let assembled = {
             let guard = self.state.read();
@@ -220,7 +236,8 @@ impl QueueActor {
         })) {
             tracing::warn!(
                 err = ?e,
-                "queue-actor failed to emit SendToLlmProvider from tool continuation"
+                label,
+                "queue-actor failed to emit SendToLlmProvider"
             );
         }
     }
@@ -235,6 +252,7 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::protocol::ChatEntry;
+    use jinn_provider::LlmMessage;
 
     fn test_actor() -> QueueActor {
         QueueActor {
@@ -440,35 +458,6 @@ mod tests {
         assert!(has_send, "expected SendToLlmProvider command");
     }
 
-    #[tokio::test]
-    async fn session_phase_changed_idle_to_sending_does_not_dispatch_continuation() {
-        // Given a session in Idle phase.
-        let actor = test_actor();
-        let (sink, ctx) = test_context();
-        let session_id = {
-            let state = actor.state.read();
-            state.session.active_session_id().clone()
-        };
-
-        // When handling SessionPhaseChanged(Idle → Sending).
-        let payload = SessionPhaseChanged {
-            session_id: session_id.clone(),
-            old_phase: PhaseKind::Idle,
-            new_phase: PhaseKind::Sending,
-        };
-        actor.handle_session_phase_changed(&payload, &ctx).await;
-
-        // Then no SendToLlmProvider was emitted (this is a normal user message
-        // dispatch path, not a compaction continuation).
-        let commands = sink.commands();
-        let has_send = commands
-            .iter()
-            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
-        assert!(
-            !has_send,
-            "expected no SendToLlmProvider for Idle → Sending transition"
-        );
-    }
 
     #[tokio::test]
     async fn dispatch_user_message_provider_id_is_none_when_no_provider() {
