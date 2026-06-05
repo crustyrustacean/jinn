@@ -11,7 +11,6 @@ use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::protocol::Event;
 use tracing::error;
 
-
 /// Recalculates context size for the active session after context-affecting changes.
 ///
 /// Subscribes to events that change what's included in the assembled prompt
@@ -127,7 +126,6 @@ mod tests {
 
     #[tokio::test]
     async fn recalculate_updates_context_size_for_active_session() {
-
         // Given an actor with a session that has history.
         let actor = test_actor();
         let session_id = {

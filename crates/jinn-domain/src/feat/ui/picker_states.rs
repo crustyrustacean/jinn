@@ -8,14 +8,14 @@
 use std::collections::HashSet;
 
 use crate::feat::persona::PersonaEntry;
+use crate::feat::plugin_dispatch::picker_entry::PluginPickerEntry;
 use crate::feat::session::picker_entry::SessionTreeEntry;
 use crate::feat::session_lifecycle::picker_entry::SessionLifecycleEntry;
 use crate::feat::skills::skill_entry::SkillEntry;
 use crate::feat::theme::Theme;
 use crate::feat::theme::ThemeEntry;
-use crate::feat::tools_actor::tool_entry::ToolEntry;
-use crate::feat::workflow::picker_entry::WorkflowPickerEntry;
 use crate::feat::todo_list::picker_entry::TaskListTreeEntry;
+use crate::feat::tools_actor::tool_entry::ToolEntry;
 use crate::protocol::PickerEntry;
 
 /// All picker state - grouped so the picker subsystem can evolve independently.
@@ -66,7 +66,7 @@ pub struct PickerStates {
 
     /// Workflow picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (workflow picker navigation, entries populated from `AppState.discovered_plugins`).
-    pub workflow_picker: jinn_selection_widget::SelectionState<WorkflowPickerEntry>,
+    pub plugin_picker: jinn_selection_widget::SelectionState<PluginPickerEntry>,
 
     /// Compaction model picker state (items, filter text, selection index).
     /// OWNER: IntentHandler (compaction model picker navigation).
@@ -149,11 +149,11 @@ pub trait PickerExt {
     // --- Workflow picker ---
 
     /// Read-only access to the workflow picker state.
-    fn workflow_picker(&self) -> &jinn_selection_widget::SelectionState<WorkflowPickerEntry>;
+    fn plugin_picker(&self) -> &jinn_selection_widget::SelectionState<PluginPickerEntry>;
     /// Mutable access to the workflow picker state.
-    fn workflow_picker_mut(
+    fn plugin_picker_mut(
         &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<WorkflowPickerEntry>;
+    ) -> &mut jinn_selection_widget::SelectionState<PluginPickerEntry>;
 
     // --- Compaction model picker ---
 
@@ -261,14 +261,14 @@ impl PickerExt for super::frontend_state::FrontendState {
         &mut self.pickers.session_lifecycle_picker
     }
 
-    fn workflow_picker(&self) -> &jinn_selection_widget::SelectionState<WorkflowPickerEntry> {
-        &self.pickers.workflow_picker
+    fn plugin_picker(&self) -> &jinn_selection_widget::SelectionState<PluginPickerEntry> {
+        &self.pickers.plugin_picker
     }
 
-    fn workflow_picker_mut(
+    fn plugin_picker_mut(
         &mut self,
-    ) -> &mut jinn_selection_widget::SelectionState<WorkflowPickerEntry> {
-        &mut self.pickers.workflow_picker
+    ) -> &mut jinn_selection_widget::SelectionState<PluginPickerEntry> {
+        &mut self.pickers.plugin_picker
     }
 
     fn compaction_model_picker(&self) -> &jinn_selection_widget::SelectionState<PickerEntry> {

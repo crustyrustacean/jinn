@@ -45,17 +45,26 @@ impl SessionPersistenceActor {
             }
         }
 
+        tracing::info!("DIAG on_environment_loaded model/strategy applied");
+
         // Load project context files (AGENTS.md/CLAUDE.md) from CWD tree into cache.
         // This replaces per-assembly disk reads with a one-time startup load.
         let cwd = {
             let state = self.state.read();
             state.active_session().cwd().to_path_buf()
         };
+        tracing::info!("DIAG on_environment_loaded loading context files");
         let context_files = load_project_context_files(&cwd).await;
+        tracing::info!(
+            count = context_files.len(),
+            "DIAG on_environment_loaded context files loaded"
+        );
         if !context_files.is_empty() {
             let mut state = self.state.write();
             state.context.context_files = context_files;
         }
+
+        tracing::info!("DIAG on_environment_loaded loading unarchived sessions");
 
         // Load unarchived sessions from SQLite into memory.
         // These are sessions with `archived=false` - corresponding to `SessionState::Loaded`.
@@ -69,6 +78,10 @@ impl SessionPersistenceActor {
                     return;
                 }
             };
+            tracing::info!(
+                count = summaries.len(),
+                "DIAG on_environment_loaded summaries loaded"
+            );
 
             if !summaries.is_empty() {
                 // Sort by updated_at descending to find the most recent.
@@ -82,14 +95,19 @@ impl SessionPersistenceActor {
                         loaded.push(session);
                     }
                 }
+                tracing::info!(
+                    count = loaded.len(),
+                    "DIAG on_environment_loaded sessions loaded"
+                );
 
+                tracing::info!("DIAG on_environment_loaded inserting sessions");
                 if !loaded.is_empty() {
                     for mut session in loaded {
                         // Mark startup-loaded sessions as interacted - they came from disk.
                         session.mark_interacted();
                         let session_id = session.session_id().clone();
                         self.load_and_insert(session, ctx);
-                        self.rehydrate_attached_workflows(&session_id);
+                        self.rehydrate_attached_plugins(&session_id);
                     }
 
                     // NOTE: We intentionally do NOT switch the active session.
@@ -103,10 +121,12 @@ impl SessionPersistenceActor {
                     // tree summary shows complete historical totals.
                     self.hydrate_all_tree_frozen_nodes(&self.services.session_store)
                         .await;
+                    tracing::info!("DIAG on_environment_loaded frozen nodes hydrated");
                 }
             }
         }
 
+        tracing::info!("DIAG on_environment_loaded sending UpdatePreferences");
         // Send UpdatePreferences command so the pipeline handles persistence + state sync.
         if let Err(e) = ctx.send_command(Command::UpdatePreferences(crate::feat::preferences_actor::protocol::command::UpdatePreferences {
                 updates: vec![
@@ -115,6 +135,7 @@ impl SessionPersistenceActor {
             })) {
             tracing::warn!(err = ?e, "session-actor failed to send UpdatePreferences on startup");
         }
+        tracing::info!("DIAG on_environment_loaded DONE");
     }
 }
 
@@ -302,17 +323,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn startup_rehydrates_attached_workflows_for_loaded_sessions() {
-        // Given a session in the store with an attached workflow.
+    async fn startup_rehydrates_attached_plugins_for_loaded_sessions() {
+        // Given a session in the store with an attached plugin.
         let mut store_session = ChatSessionState::new();
-        let aw = crate::feat::workflow::attached_workflow::AttachedWorkflow::new(
-            crate::feat::workflow::attached_workflow::WorkflowConfig {
-                script: "test".to_owned(),
-                data: serde_json::json!({}),
-            },
-            crate::feat::workflow::attached_workflow::WorkflowTrigger::Manual,
-        );
-        store_session.core.attached_workflows.push(aw);
+        let ap = crate::feat::attached_plugin::AttachedPlugin::new("test");
+        store_session.core.attached_plugins.push(ap);
         let (actor, _store) = test_actor_with_store(vec![store_session]);
         let (_sink, ctx) = test_context();
 
@@ -328,36 +343,30 @@ mod tests {
             )
             .await;
 
-        // Then the attached workflow was loaded with the session.
+        // Then the attached plugin was loaded with the session.
         let state = actor.state.read();
         let session = state
             .session
             .iter()
-            .find(|(_, s)| !s.core.attached_workflows.is_empty());
+            .find(|(_, s)| !s.core.attached_plugins.is_empty());
         assert!(
             session.is_some(),
-            "session with attached workflow should be loaded after startup"
+            "session with attached plugin should be loaded after startup"
         );
     }
 
     #[tokio::test]
-    async fn startup_resets_running_workflows_to_ready() {
+    async fn startup_resets_running_plugins_to_idle() {
         let mut store_session = ChatSessionState::new();
-        let aw = crate::feat::workflow::attached_workflow::AttachedWorkflow::new(
-            crate::feat::workflow::attached_workflow::WorkflowConfig {
-                script: "test".to_owned(),
-                data: serde_json::json!({}),
-            },
-            crate::feat::workflow::attached_workflow::WorkflowTrigger::Manual,
-        );
-        let _wf_id = aw.id.clone();
+        let ap = crate::feat::attached_plugin::AttachedPlugin::new("test");
         // Force into Running state to simulate crash.
-        store_session.core.attached_workflows.push(
-            crate::feat::workflow::attached_workflow::AttachedWorkflow {
-                state: crate::feat::workflow::attached_workflow::AttachedWorkflowState::Running,
-                ..aw
-            },
-        );
+        store_session
+            .core
+            .attached_plugins
+            .push(crate::feat::attached_plugin::AttachedPlugin {
+                run_state: crate::feat::attached_plugin::PluginRunState::Running,
+                ..ap
+            });
         let session_id = store_session.session_id().clone();
         let (actor, _store) = test_actor_with_store(vec![store_session]);
 
@@ -375,21 +384,20 @@ mod tests {
             )
             .await;
 
-        // Then the workflow was reset from Running to Ready.
+        // Then the plugin was reset from Running to Idle.
         let state = actor.state.read();
         let session = state
             .session
             .get(&session_id)
             .expect("session should be loaded");
-        let aw = &session.core.attached_workflows[0];
+        let ap = &session.core.attached_plugins[0];
         assert!(
             matches!(
-                aw.state,
-                crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready
+                ap.run_state,
+                crate::feat::attached_plugin::PluginRunState::Idle
             ),
-            "Running workflow should be reset to Ready on startup, got {:?}",
-            aw.state
+            "Running plugin should be reset to Idle on startup, got {:?}",
+            ap.run_state
         );
     }
-
 }

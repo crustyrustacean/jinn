@@ -405,7 +405,7 @@ fn non_judge_child_at_depth_1_uses_grapheme_count_for_tree() {
 
 fn workflow_entry(enabled: bool) -> SessionEntry {
     SessionEntry {
-        kind: SessionEntryKind::Workflow { enabled },
+        kind: SessionEntryKind::Plugin { enabled },
         id: SessionId::new(),
         title: "my-plugin".to_owned(),
         is_active: false,

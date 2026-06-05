@@ -57,9 +57,9 @@ pub fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
 ///
 /// Telescope-style layout: bordered popup with filter input at top,
 /// horizontal separator, scrollable workflow entries.
-pub fn render_workflow_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+pub fn render_plugin_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
     let state = ctx.state;
-    let widget = SelectionWidget::new(state.frontend.workflow_picker())
+    let widget = SelectionWidget::new(state.frontend.plugin_picker())
         .title(Line::from(" Workflows "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(Line::from(" Enter to run, ESC to cancel "));
@@ -128,8 +128,7 @@ pub fn render_task_list_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCt
     let state = ctx.state;
     let gray = Style::default().fg(state.frontend.theme.muted_text);
     let footer = Line::from(vec![ratatui::text::Span::styled(
-        "ESC to close \u{00b7} Enter no-op \u{00b7} type to filter"
-            .to_owned(),
+        "ESC to close \u{00b7} Enter no-op \u{00b7} type to filter".to_owned(),
         gray,
     )]);
     let widget = TreePickerWidget::new(state.frontend.task_list_picker())

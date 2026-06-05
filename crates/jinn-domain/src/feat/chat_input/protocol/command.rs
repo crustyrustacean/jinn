@@ -44,7 +44,6 @@ pub struct EnqueueResumeTurn {
     pub session_id: SessionId,
 }
 
-
 /// Set the chat input buffer text directly.
 ///
 /// Used when draining queued messages back into the input box (e.g. on cancel).
