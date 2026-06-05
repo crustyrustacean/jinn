@@ -6,6 +6,7 @@
 //! and pinned entry indicators.
 
 pub(crate) mod actor;
+pub mod audit_popup;
 pub(crate) mod assistant;
 pub(crate) mod compaction;
 pub(crate) mod error_entry;
@@ -24,6 +25,7 @@ pub(crate) mod transient;
 pub(crate) mod user;
 pub(crate) mod visual_item;
 
+pub use audit_popup::format_audit_lines;
 pub use history::ChatLogElement;
 pub use history::entry_to_lines;
 pub use shared::GUTTER_WIDTH;

@@ -51,7 +51,9 @@ fn queue_mutations_appends_nonempty_batch() {
     let batch = vec![HistoryMutation::SetContextOverride {
         entry_id,
         value: ContextOverride::ForcedExclude,
-        source: ChangeSource::Internal { label: "test".to_string() },
+        source: ChangeSource::Internal {
+            label: "test".to_string(),
+        },
     }];
 
     // When queuing a non-empty batch.
@@ -85,7 +87,9 @@ fn drain_pending_mutations_empties_the_queue() {
     session.queue_mutations(vec![HistoryMutation::SetContextOverride {
         entry_id,
         value: ContextOverride::ForcedExclude,
-        source: ChangeSource::Internal { label: "test".to_string() },
+        source: ChangeSource::Internal {
+            label: "test".to_string(),
+        },
     }]);
 
     // When draining.
@@ -111,7 +115,9 @@ fn apply_mutations_sets_context_override_by_id() {
     session.apply_mutations(vec![HistoryMutation::SetContextOverride {
         entry_id,
         value: ContextOverride::ForcedExclude,
-        source: ChangeSource::Internal { label: "test".to_string() },
+        source: ChangeSource::Internal {
+            label: "test".to_string(),
+        },
     }]);
 
     // Then the entry's context override is set.
@@ -128,7 +134,13 @@ fn apply_mutations_skips_set_context_override_for_nonexistent_id() {
     session.push_entry(ChatEntry::user("hello"));
 
     // When applying a SetContextOverride mutation targeting a nonexistent ID.
-    session.apply_mutations(vec![HistoryMutation::SetContextOverride { entry_id: ChatEntryId::new(), value: ContextOverride::ForcedExclude, source: ChangeSource::Internal { label: "test".to_string() } }]);
+    session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: ChatEntryId::new(),
+        value: ContextOverride::ForcedExclude,
+        source: ChangeSource::Internal {
+            label: "test".to_string(),
+        },
+    }]);
 
     // Then the existing entry is unchanged.
     assert_eq!(
@@ -408,7 +420,13 @@ fn apply_mutations_on_empty_history_is_noop() {
 
     // When applying mutations targeting nonexistent entries.
     session.apply_mutations(vec![
-        HistoryMutation::SetContextOverride { entry_id: ChatEntryId::new(), value: ContextOverride::ForcedExclude, source: ChangeSource::Internal { label: "test".to_string() } },
+        HistoryMutation::SetContextOverride {
+            entry_id: ChatEntryId::new(),
+            value: ContextOverride::ForcedExclude,
+            source: ChangeSource::Internal {
+                label: "test".to_string(),
+            },
+        },
         HistoryMutation::InsertEntry {
             after_entry_id: Some(ChatEntryId::new()),
             entry: ChatEntry::system("ghost"),
@@ -438,10 +456,22 @@ fn drain_and_apply_applies_all_batches_in_order() {
     let second_id = session.history()[1].id.clone();
 
     // Batch 1: exclude the first entry.
-    session.queue_mutations(vec![HistoryMutation::SetContextOverride { entry_id: first_id, value: ContextOverride::ForcedExclude, source: ChangeSource::Internal { label: "test".to_string() } }]);
+    session.queue_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: first_id,
+        value: ContextOverride::ForcedExclude,
+        source: ChangeSource::Internal {
+            label: "test".to_string(),
+        },
+    }]);
 
     // Batch 2: exclude the second entry.
-    session.queue_mutations(vec![HistoryMutation::SetContextOverride { entry_id: second_id, value: ContextOverride::ForcedExclude, source: ChangeSource::Internal { label: "test".to_string() } }]);
+    session.queue_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: second_id,
+        value: ContextOverride::ForcedExclude,
+        source: ChangeSource::Internal {
+            label: "test".to_string(),
+        },
+    }]);
 
     // When draining and applying.
     let (count, _changed) = session.drain_and_apply_pending_mutations();
@@ -561,7 +591,13 @@ fn set_context_override_forced_include() {
     let entry_id = session.history()[0].id.clone();
 
     // When applying SetContextOverride with ForcedInclude.
-    session.apply_mutations(vec![HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: ContextOverride::ForcedInclude, source: ChangeSource::Internal { label: "test".to_string() } }]);
+    session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::ForcedInclude,
+        source: ChangeSource::Internal {
+            label: "test".to_string(),
+        },
+    }]);
 
     // Then the entry has ForcedInclude.
     assert_eq!(
@@ -576,14 +612,26 @@ fn set_context_override_default_resets_to_default() {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
     let entry_id = session.history()[0].id.clone();
-    session.apply_mutations(vec![HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: ContextOverride::ForcedExclude, source: ChangeSource::Internal { label: "test".to_string() } }]);
+    session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::ForcedExclude,
+        source: ChangeSource::Internal {
+            label: "test".to_string(),
+        },
+    }]);
     assert_eq!(
         session.history()[0].context_override(),
         ContextOverride::ForcedExclude
     );
 
     // When resetting to Default.
-    session.apply_mutations(vec![HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: ContextOverride::Default, source: ChangeSource::Internal { label: "test".to_string() } }]);
+    session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::Default,
+        source: ChangeSource::Internal {
+            label: "test".to_string(),
+        },
+    }]);
 
     // Then the entry is back to Default.
     assert_eq!(
@@ -600,14 +648,26 @@ fn forced_include_is_not_overwritten_by_forced_exclude() {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
     let entry_id = session.history()[0].id.clone();
-    session.apply_mutations(vec![HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: ContextOverride::ForcedInclude, source: ChangeSource::Internal { label: "test".to_string() } }]);
+    session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::ForcedInclude,
+        source: ChangeSource::Internal {
+            label: "test".to_string(),
+        },
+    }]);
     assert_eq!(
         session.history()[0].context_override(),
         ContextOverride::ForcedInclude
     );
 
     // When an auto-pruner tries to exclude it.
-    session.apply_mutations(vec![HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: ContextOverride::ForcedExclude, source: ChangeSource::Internal { label: "test".to_string() } }]);
+    session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::ForcedExclude,
+        source: ChangeSource::Internal {
+            label: "test".to_string(),
+        },
+    }]);
 
     // Then the entry is still ForcedInclude (guard blocked the mutation).
     assert_eq!(
@@ -623,14 +683,26 @@ fn forced_include_can_be_changed_to_default() {
     let mut session = ChatSessionState::new();
     session.push_entry(ChatEntry::user("hello"));
     let entry_id = session.history()[0].id.clone();
-    session.apply_mutations(vec![HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: ContextOverride::ForcedInclude, source: ChangeSource::Internal { label: "test".to_string() } }]);
+    session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::ForcedInclude,
+        source: ChangeSource::Internal {
+            label: "test".to_string(),
+        },
+    }]);
     assert_eq!(
         session.history()[0].context_override(),
         ContextOverride::ForcedInclude
     );
 
     // When the user resets it to Default.
-    session.apply_mutations(vec![HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: ContextOverride::Default, source: ChangeSource::Internal { label: "test".to_string() } }]);
+    session.apply_mutations(vec![HistoryMutation::SetContextOverride {
+        entry_id: entry_id.clone(),
+        value: ContextOverride::Default,
+        source: ChangeSource::Internal {
+            label: "test".to_string(),
+        },
+    }]);
 
     // Then the entry is back to Default (guard does NOT block this).
     assert_eq!(

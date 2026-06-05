@@ -271,11 +271,7 @@ fn compute_tokens_below(state: &AppState, start: usize) -> Option<u32> {
 }
 
 #[allow(clippy::unnecessary_wraps)]
-fn compute_token_sum_in_range(
-    state: &AppState,
-    start: usize,
-    end: usize,
-) -> Option<u32> {
+fn compute_token_sum_in_range(state: &AppState, start: usize, end: usize) -> Option<u32> {
     let session = state.active_session();
     let history = session.history();
     let token_cache = state.frontend.caches.entry_token_cache.read();
@@ -420,7 +416,7 @@ pub fn render_minimap_arrow(
         let row = arrow.row + 1;
         if row < chat_log_area.height {
             let text = match arrow.tokens_below {
-            Some(n) => format!("{} ▼", format_entry_tokens(n)),
+                Some(n) => format!("{} ▼", format_entry_tokens(n)),
                 _ => "▼".to_owned(),
             };
             let width = text.as_str().width() as u16;

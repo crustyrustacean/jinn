@@ -8,6 +8,10 @@ use std::sync::Arc;
 
 use derive_more::Debug;
 
+use crate::feat::plugin_dispatch::{
+    PluginFire, PluginFireError, PluginSyncCall, PluginSyncCallError,
+};
+use crate::feat::plugin_system::SessionRegistryId;
 use crate::feat::preferences_actor::{
     InMemoryUserPreferencesStorage, UserPreferencesStorageService,
 };
@@ -18,6 +22,7 @@ use crate::feat::provider_infra::{
 };
 use crate::feat::session::SessionStoreService;
 use crate::protocol::AppMsg;
+use error_stack::Report;
 use tokio::runtime::Handle;
 
 pub mod actor_channel;
@@ -38,8 +43,7 @@ pub use actor_channel::ActorChannelService;
 /// to get compiler-verified completeness.
 ///
 /// Tests can use [`Services::new()`] which provides all-fake defaults,
-/// or [`test_services::TestServices::builder()`] to customize specific services.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct Services {
     /// Application filesystem paths (configured once at init).
     pub paths: crate::common::app_paths::AppPaths,
@@ -59,6 +63,13 @@ pub struct Services {
     pub session_store: SessionStoreService,
     /// User preferences storage for persisting `jinn.toml`.
     pub user_preferences_storage: UserPreferencesStorageService,
+    /// Plugin system async handle (fire-and-forget + collect).
+    pub plugins: crate::feat::plugin_dispatch::PluginFireService,
+    /// Plugin system sync handle (blocking hook calls from actors).
+    pub plugin_sync: crate::feat::plugin_dispatch::PluginSyncCallService,
+    /// Per-session plugin registry (manages isolated Lua states for attached plugins).
+    pub session_plugin_registry: crate::feat::plugin_system::SessionPluginRegistryService,
+
     /// Test-only owned temp directory. `None` in production.
     ///
     /// Held here so the dir outlives the [`AppPaths`] that points at it
@@ -95,7 +106,13 @@ impl Services {
 
         let tempdir = Arc::new(tempfile::TempDir::new().expect("test temp dir"));
 
-        let (actor_tx, _actor_rx) = kanal::unbounded::<AppMsg>();
+        // Keep a live drainer so the sender doesn't return ReceiveClosed.
+        // Without this, send_command silently fails in tests.
+        let (actor_tx, actor_rx) = kanal::unbounded::<AppMsg>();
+        handle.spawn(async move {
+            let rx = actor_rx.to_async();
+            while rx.recv().await.is_ok() {}
+        });
         Self {
             paths: crate::common::app_paths::AppPaths::new_in(tempdir.path()),
             handle,
@@ -121,7 +138,126 @@ impl Services {
                 svc.reload().expect("test prefs storage initial reload");
                 svc
             },
+            plugins: crate::feat::plugin_dispatch::PluginFireService::new(std::sync::Arc::new(
+                NoopPluginFire,
+            )
+                as std::sync::Arc<dyn PluginFire>),
+            plugin_sync: crate::feat::plugin_dispatch::PluginSyncCallService::new(
+                std::sync::Arc::new(NoopPluginSyncCall) as std::sync::Arc<dyn PluginSyncCall>,
+            ),
+            session_plugin_registry: crate::feat::plugin_system::SessionPluginRegistryService::new(
+                std::sync::Arc::new(NoopSessionPluginRegistry)
+                    as std::sync::Arc<dyn crate::feat::plugin_system::SessionPluginRegistry>,
+            ),
             tempdir: Some(tempdir),
         }
+    }
+}
+
+// ── Noop plugin implementations for test defaults ─────────────────────
+
+/// Noop [`PluginFire`] for test defaults.
+#[derive(Debug, Clone)]
+pub struct NoopPluginFire;
+
+/// Noop [`PluginSyncCall`] for test defaults.
+#[derive(Debug, Clone)]
+pub struct NoopPluginSyncCall;
+
+/// Noop [`PluginFire`] for test defaults.
+#[async_trait::async_trait]
+impl PluginFire for NoopPluginFire {
+    async fn fire_async_json(
+        &self,
+        hook: &str,
+        _ctx: &serde_json::Value,
+    ) -> Result<(), Report<PluginFireError>> {
+        tracing::debug!(hook, "noop plugin fire");
+        Ok(())
+    }
+    async fn fire_async_collect_json(
+        &self,
+        hook: &str,
+        _ctx: &serde_json::Value,
+    ) -> Result<Vec<serde_json::Value>, Report<PluginFireError>> {
+        tracing::debug!(hook, "noop plugin collect");
+        Ok(vec![])
+    }
+
+    async fn fire_async_for_session_json(
+        &self,
+        _session: SessionRegistryId,
+        hook: &str,
+        _ctx: &serde_json::Value,
+    ) -> Result<(), Report<PluginFireError>> {
+        tracing::debug!(hook, "noop plugin fire for session");
+        Ok(())
+    }
+
+    async fn fire_async_collect_for_session_json(
+        &self,
+        _session: SessionRegistryId,
+        hook: &str,
+        _ctx: &serde_json::Value,
+    ) -> Result<Vec<serde_json::Value>, Report<PluginFireError>> {
+        tracing::debug!(hook, "noop plugin collect for session");
+        Ok(vec![])
+    }
+
+    fn name(&self) -> &'static str {
+        "NoopPluginFire"
+    }
+}
+
+/// Noop [`PluginSyncCall`] for test defaults.
+impl PluginSyncCall for NoopPluginSyncCall {
+    fn call_hooks_json(
+        &self,
+        hook: &str,
+        _ctx: &serde_json::Value,
+    ) -> Result<Vec<serde_json::Value>, Report<PluginSyncCallError>> {
+        tracing::debug!(hook, "noop plugin sync");
+        Ok(vec![])
+    }
+
+    fn call_hooks_for_session_json(
+        &self,
+        _session: SessionRegistryId,
+        hook: &str,
+        _ctx: &serde_json::Value,
+    ) -> Result<Vec<serde_json::Value>, Report<PluginSyncCallError>> {
+        tracing::debug!(hook, "noop plugin sync for session");
+        Ok(vec![])
+    }
+    fn name(&self) -> &'static str {
+        "NoopPluginSyncCall"
+    }
+}
+
+/// No-op implementation of [`SessionPluginRegistry`] for tests.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NoopSessionPluginRegistry;
+
+#[async_trait::async_trait]
+impl crate::feat::plugin_system::SessionPluginRegistry for NoopSessionPluginRegistry {
+    async fn create_session_registry(
+        &self,
+        _plugin_names: Vec<String>,
+    ) -> Result<
+        crate::feat::plugin_system::SessionRegistryId,
+        Report<crate::feat::plugin_system::SessionPluginRegistryError>,
+    > {
+        Ok(crate::feat::plugin_system::SessionRegistryId::new())
+    }
+
+    async fn destroy_session_registry(
+        &self,
+        _registry_id: crate::feat::plugin_system::SessionRegistryId,
+    ) -> Result<(), Report<crate::feat::plugin_system::SessionPluginRegistryError>> {
+        Ok(())
+    }
+
+    fn name(&self) -> &'static str {
+        "NoopSessionPluginRegistry"
     }
 }

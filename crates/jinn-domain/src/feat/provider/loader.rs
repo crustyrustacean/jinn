@@ -43,9 +43,7 @@ pub fn load_provider_picker_items(services: &Services, state: &mut AppState) {
 /// Panics if accessing the preferences subsystem fails.
 pub fn load_compaction_model_picker_items(services: &Services, state: &mut AppState) {
     // Load preferences from service.
-    let prefs = services
-        .user_preferences_storage
-        .read();
+    let prefs = services.user_preferences_storage.read();
 
     // Build the sentinel entry.
     let active_compaction_model = prefs.compaction.model.clone();

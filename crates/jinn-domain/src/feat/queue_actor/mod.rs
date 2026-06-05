@@ -118,7 +118,6 @@ impl QueueActor {
             QueueItem::ToolContinuation => {
                 self.dispatch_tool_continuation(session_id, ctx).await;
             }
-
         }
     }
 
@@ -197,9 +196,9 @@ impl QueueActor {
         session_id: &crate::protocol::SessionId,
         ctx: &ActorContext,
     ) {
-        self.dispatch_resume(session_id, ctx, "tool continuation").await;
+        self.dispatch_resume(session_id, ctx, "tool continuation")
+            .await;
     }
-
 
     /// Shared dispatch body for tool-continuation and manual-resume paths:
     /// re-assemble prompt from current history and emit `SendToLlmProvider`.
@@ -457,7 +456,6 @@ mod tests {
             .any(|c| matches!(c, Command::SendToLlmProvider(_)));
         assert!(has_send, "expected SendToLlmProvider command");
     }
-
 
     #[tokio::test]
     async fn dispatch_user_message_provider_id_is_none_when_no_provider() {

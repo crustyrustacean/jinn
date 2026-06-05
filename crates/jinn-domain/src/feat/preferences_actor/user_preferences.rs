@@ -12,7 +12,6 @@ use error_stack::{Report, ResultExt as _};
 use serde::{Deserialize, Serialize};
 use wherror::Error;
 
-
 /// Errors that can occur during user preferences I/O.
 #[derive(Debug, Error)]
 pub enum UserPreferencesError {
@@ -335,8 +334,6 @@ const DEFAULT_TOOL_AGE_WINDOW_ENABLED: bool = true;
 /// `max_age_entries` default of 100 to preserve the historical keep-window.
 const DEFAULT_TOOL_AGE_WINDOW_MIN_AGE: usize = 100;
 
-
-
 /// Tool-age-window auto-prune configuration.
 ///
 /// Serialized as `[auto_prune.tool_age_window]` in `jinn.toml`.
@@ -379,7 +376,6 @@ impl Default for ToolAgeWindowAutoPruneConfig {
         }
     }
 }
-
 
 /// Default enabled state for trivial-assistant auto-prune.
 const DEFAULT_TRIVIAL_ASSISTANT_ENABLED: bool = true;
@@ -489,7 +485,6 @@ impl Default for AnchorRadiusAutoPruneConfig {
         }
     }
 }
-
 
 /// Default regex prune rule tool name.
 const DEFAULT_REGEX_TOOL_NAME: &str = "bash";
@@ -717,7 +712,6 @@ fn default_bash_default_timeout_secs() -> Option<u64> {
     Some(DEFAULT_BASH_DEFAULT_TIMEOUT_SECS)
 }
 
-
 /// Bash tool configuration.
 ///
 /// Serialized as `[bash]` in `jinn.toml`.
@@ -738,7 +732,6 @@ impl Default for BashConfig {
         }
     }
 }
-
 
 /// OpenRouter web search server tool configuration.
 ///
@@ -920,7 +913,6 @@ pub struct UserPreferences {
     pub bash: BashConfig,
 }
 
-
 /// Returns the path to the user preferences file.
 ///
 /// Uses `dirs::config_dir()` → `~/.config/jinn/jinn.toml`.
@@ -1000,9 +992,8 @@ where
             .change_context(UserPreferencesError::Io)
             .attach("failed to read existing jinn.toml")?;
 
-        let mut doc: toml_edit::DocumentMut = existing
-            .parse()
-            .map_err(|err: toml_edit::TomlError| {
+        let mut doc: toml_edit::DocumentMut =
+            existing.parse().map_err(|err: toml_edit::TomlError| {
                 Report::new(UserPreferencesError::Parse)
                     .attach("failed to parse existing jinn.toml")
                     .attach(err.to_string())
@@ -1540,8 +1531,8 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
             "# my jinn preferences - hand-edited",
             "# main prefs",
             "# compaction",
-            "# always compact",   // inline trailing
-            "# tokens",           // inline trailing
+            "# always compact", // inline trailing
+            "# tokens",         // inline trailing
             "# session lifecycles",
             "# auto-prune",
             "# matches todo-related files",
@@ -1576,12 +1567,27 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         let written = std::fs::read_to_string(&path).expect("read");
         assert!(written.contains("# main preferences"), "top comment kept");
         assert!(written.contains("# width in chars"), "sidebar comment kept");
-        assert!(written.contains("sidebar_width = 80"), "untouched field kept");
-        assert!(written.contains("# keep context compact"), "compaction comment kept");
+        assert!(
+            written.contains("sidebar_width = 80"),
+            "untouched field kept"
+        );
+        assert!(
+            written.contains("# keep context compact"),
+            "compaction comment kept"
+        );
         assert!(written.contains("# always compact"), "nested comment kept");
-        assert!(written.contains("# 50k tokens"), "second nested comment kept");
-        assert!(written.contains("# my lifecycles"), "lifecycles comment kept");
-        assert!(!written.contains("# deprecated lifecycle"), "beta comment removed with beta");
+        assert!(
+            written.contains("# 50k tokens"),
+            "second nested comment kept"
+        );
+        assert!(
+            written.contains("# my lifecycles"),
+            "lifecycles comment kept"
+        );
+        assert!(
+            !written.contains("# deprecated lifecycle"),
+            "beta comment removed with beta"
+        );
         assert!(!written.contains("\"beta\""), "beta removed");
         assert!(written.contains("openrouter/gpt-4o"), "last_model updated");
         assert!(!written.contains("ollama/llama3"), "old last_model gone");
@@ -1600,8 +1606,7 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
 
         // When loading and mutating the field after the comment.
         let mut prefs = load_preferences_from(&path).expect("load");
-        prefs.session_lifecycles[0].description =
-            Some("UPDATED DESCRIPTION".to_owned());
+        prefs.session_lifecycles[0].description = Some("UPDATED DESCRIPTION".to_owned());
         save_preferences_to(&prefs, &path).expect("save");
 
         // Then the inner comment survives AND the field is updated.
@@ -1680,7 +1685,6 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         assert!(content.contains("42"));
     }
 
-
     #[rstest::rstest]
     fn save_preferences_preserves_user_comments() {
         // Given a comment-rich jinn.toml.
@@ -1703,7 +1707,6 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         assert!(written.contains("tool_entry_max_lines = 7"));
         assert!(written.contains("last_model = \"ollama/llama3\""));
     }
-
 
     // --- S-Tier: Kill mutant for RequestRetryConfig::to_retry_config ---
 
@@ -2141,7 +2144,10 @@ enabled = true
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
             auto_prune: AutoPruneConfig {
-                read_edit: ReadEditAutoPruneConfig { enabled: false, min_age: 25 },
+                read_edit: ReadEditAutoPruneConfig {
+                    enabled: false,
+                    min_age: 25,
+                },
                 regex: RegexAutoPruneConfig::default(),
                 broken_edit: BrokenEditAutoPruneConfig {
                     enabled: false,
@@ -2425,8 +2431,7 @@ radius = 42"#,
             "legacy user_anchor_radius table should map to anchor_radius",
         );
         assert_eq!(
-            prefs.auto_prune.anchor_radius.radius,
-            42,
+            prefs.auto_prune.anchor_radius.radius, 42,
             "legacy radius value should round-trip",
         );
     }
