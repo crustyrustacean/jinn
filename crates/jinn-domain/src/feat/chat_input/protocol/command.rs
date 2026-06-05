@@ -32,6 +32,18 @@ pub struct EnqueueUserMessage {
     /// The fully constructed user chat entry (with display/expanded text).
     pub entry: ChatEntry,
 }
+/// Enqueue a manual resume for a session: re-assemble current history and
+/// re-send to the provider. Adds no user message.
+///
+/// Submitted instead of pushing a fresh user entry when the user wants to
+/// resume after an error or after restarting the app mid-stream.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("chat_input")]
+pub struct EnqueueResumeTurn {
+    /// The session to resume.
+    pub session_id: SessionId,
+}
+
 
 /// Set the chat input buffer text directly.
 ///
