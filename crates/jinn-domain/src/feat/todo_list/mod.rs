@@ -508,12 +508,21 @@ impl TaskList {
             ref_phase_idx.ok_or_else(|| TaskListError::TaskNotFound(ref_task_id.clone()))?;
 
         // Mark source task as postponed.
-        self.phases[src_pi]
+        let source_task = self.phases[src_pi]
             .tasks
             .iter_mut()
-            .find(|t| &t.id == source_task_id)
-            .expect("source was found above")
-            .status = TaskStatus::Postponed;
+            .find(|t| &t.id == source_task_id);
+        match source_task {
+            Some(t) => t.status = TaskStatus::Postponed,
+            None => {
+                tracing::error!(
+                    source_task_id = %source_task_id,
+                    src_phase_index = src_pi,
+                    "postpone_task: source task missing on second lookup; returning TaskNotFound"
+                );
+                return Err(TaskListError::TaskNotFound(source_task_id.clone()));
+            }
+        }
 
         // Generate new task ID.
         let existing: Vec<_> = self
@@ -613,12 +622,21 @@ impl TaskList {
             .ok_or_else(|| TaskListError::PhaseNotFound(target_phase_id.clone()))?;
 
         // Mark source task as postponed.
-        self.phases[src_pi]
+        let source_task = self.phases[src_pi]
             .tasks
             .iter_mut()
-            .find(|t| &t.id == source_task_id)
-            .expect("source was found above")
-            .status = TaskStatus::Postponed;
+            .find(|t| &t.id == source_task_id);
+        match source_task {
+            Some(t) => t.status = TaskStatus::Postponed,
+            None => {
+                tracing::error!(
+                    source_task_id = %source_task_id,
+                    src_phase_index = src_pi,
+                    "postpone_to_phase: source task missing on second lookup; returning TaskNotFound"
+                );
+                return Err(TaskListError::TaskNotFound(source_task_id.clone()));
+            }
+        }
 
         // Generate new task ID.
         let existing: Vec<_> = self
