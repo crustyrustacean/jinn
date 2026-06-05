@@ -24,13 +24,7 @@ impl SessionPersistenceActor {
         _config: &crate::feat::provider_infra::ProvidersConfig,
         ctx: &ActorContext,
     ) {
-        let prefs = match self.services.user_preferences_storage.load() {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::warn!(err = ?e, "session-actor failed to load preferences on startup");
-                return;
-            }
-        };
+        let prefs = self.services.user_preferences_storage.read();
 
         {
             let mut state = self.state.write();

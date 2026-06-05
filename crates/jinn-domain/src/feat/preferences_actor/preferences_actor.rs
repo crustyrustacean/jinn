@@ -15,7 +15,7 @@ use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::feat::preferences_actor::protocol::command::UpdatePreferences;
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
-use crate::feat::preferences_actor::user_preferences::UserPreferences;
+
 use crate::protocol::{Command, Event};
 
 /// The preferences actor.
@@ -59,7 +59,7 @@ impl Actor for PreferencesActor {
 impl PreferencesActor {
     /// Processes a batch of preference diffs: load, apply, save, emit.
     fn handle_update_preferences(&self, payload: &UpdatePreferences, ctx: &ActorContext) {
-        let mut prefs = self.load_or_default();
+        let mut prefs = self.services.user_preferences_storage.read();
         for update in &payload.updates {
             update.apply(&mut prefs);
         }
@@ -71,17 +71,6 @@ impl PreferencesActor {
             preferences: prefs,
         })) {
             tracing::warn!(err = ?e, "preferences-actor failed to emit PreferencesUpdated");
-        }
-    }
-
-    /// Loads current preferences or returns defaults.
-    fn load_or_default(&self) -> UserPreferences {
-        match self.services.user_preferences_storage.load() {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::warn!(err = ?e, "preferences-actor failed to load preferences");
-                UserPreferences::default()
-            }
         }
     }
 }

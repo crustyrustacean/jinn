@@ -163,9 +163,7 @@ impl CompactionWorker {
         let prefs = self
             .services
             .user_preferences_storage
-            .load()
-            .change_context(CompactionError)
-            .attach("failed to load user preferences")?;
+            .read();
 
         // Read session state.
         let (config, model_name, history, compaction_prompt, retry_config) = {
@@ -238,8 +236,7 @@ impl CompactionWorker {
         let prefs = self
             .services
             .user_preferences_storage
-            .load()
-            .expect("preferences");
+            .read();
 
         let (config, model_name, compaction_prompt, retry_config, full_history) = {
             let state = self.state.read();
