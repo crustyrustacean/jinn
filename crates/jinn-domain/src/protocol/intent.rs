@@ -88,6 +88,9 @@ pub enum Intent {
         /// The session to target, or `None` for the active session.
         session_id: Option<SessionId>,
     },
+    /// Universal ctrl-c clear/leave: clears the active text input; if the input
+    /// is empty, leaves the active popup scope (equivalent to `<esc>` for popups).
+    CtrlClear,
     /// Enter Insert (Input) mode - the chat input box is active.
     EnterInsertMode,
     /// Enter Normal mode - cancel streams, clear picker, return to neutral.
@@ -285,6 +288,7 @@ impl std::fmt::Display for Intent {
             Intent::EditInput => write!(f, "edit in $EDITOR"),
             Intent::Quit => write!(f, "quit"),
             Intent::Interrupt { .. } => write!(f, "interrupt"),
+            Intent::CtrlClear => write!(f, "ctrl-c clear"),
             Intent::EnterInsertMode => write!(f, "enter insert mode"),
             Intent::EnterNormalMode => write!(f, "enter normal mode"),
             Intent::ToggleWhichkey => write!(f, "toggle which-key"),
