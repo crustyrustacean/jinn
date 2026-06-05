@@ -101,8 +101,8 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
                 _ => continue,
             };
 
-            // Skip if the call is already excluded by a prior prune.
-            if entry.context_override == ContextOverride::ForcedExclude {
+            // Skip if the call is already protected from prune.
+            if entry.is_protected_from_prune() {
                 continue;
             }
 
@@ -121,13 +121,13 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
                 continue;
             }
 
-            // Skip if the result is already excluded — the pair is already handled.
-            let result_already_excluded = history
+            // Skip if the result is protected from prune — the pair is already handled.
+            let result_protected = history
                 .iter()
                 .skip(i + 1)
                 .find(|e| e.id == result_id)
-                .is_some_and(|e| e.context_override == ContextOverride::ForcedExclude);
-            if result_already_excluded {
+                .is_some_and(ChatEntry::is_protected_from_prune);
+            if result_protected {
                 continue;
             }
 
@@ -299,6 +299,37 @@ mod tests {
         let worker = worker_with_tail(10);
         let mutations = block_on_evaluate(&worker, history);
         assert!(mutations.is_empty());
+    }
+
+    #[test]
+    fn forced_included_call_produces_no_mutation() {
+        let mut history = history_with_failed_edit_and_tail("/foo.rs", 10);
+        // Mark the edit ToolCall as force-included.
+        history[0].context_override = ContextOverride::ForcedInclude;
+        let call_id = history[0].id.clone();
+        let result_id = history[1].id.clone();
+
+        let worker = worker_with_tail(10);
+        let mutations = block_on_evaluate(&worker, history);
+        // broken_edit is pair-atomic: if either half is protected, neither mutates.
+        // So protecting the call protects the entire pair.
+        assert!(mutations.is_empty(), "pair-atomic: protecting call protects result");
+        let _ = (call_id, result_id);
+    }
+
+    #[test]
+    fn forced_included_result_produces_no_mutation() {
+        let mut history = history_with_failed_edit_and_tail("/foo.rs", 10);
+        // Mark the edit ToolResult as force-included.
+        history[1].context_override = ContextOverride::ForcedInclude;
+        let call_id = history[0].id.clone();
+        let result_id = history[1].id.clone();
+
+        let worker = worker_with_tail(10);
+        let mutations = block_on_evaluate(&worker, history);
+        // pair-atomic: protecting the result also protects the call.
+        assert!(mutations.is_empty(), "pair-atomic: protecting result protects call");
+        let _ = (call_id, result_id);
     }
 
     #[test]
