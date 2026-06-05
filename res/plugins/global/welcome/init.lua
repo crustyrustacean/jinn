@@ -7,14 +7,14 @@ local M = {}
 function M.on_app_started(ctx)
     ctx.emit("push_chat_entry", {
         session_id = ctx.session_id,
-        message = "Welcome to jinn! Press ? for keybindings.",
+        kind = { system = "Welcome to jinn! Press ? for keybindings." },
     })
 end
 
 function M.on_session_created(ctx)
-    ctx.emit("push_chat_entry_transient", {
+    ctx.emit("push_chat_entry", {
         session_id = ctx.session_id,
-        message = "New session started. Type your message below.",
+        kind = { transient = "New session started. Type your message below." },
     })
 end
 

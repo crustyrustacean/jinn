@@ -39,6 +39,7 @@ async-trait = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
 serde_json = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 reqwest = { workspace = true }
 dirs = { workspace = true }
 jiff = { workspace = true }

@@ -10,77 +10,176 @@
 
 use std::sync::Arc;
 
+use error_stack::{Report, ResultExt};
 use jinn_domain::Command;
 use jinn_domain::common::actor::message_sink::MessageSink;
 use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry};
+use jinn_domain::feat::plugin_dispatch::protocol::command::TogglePlugin;
 use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_domain::protocol::SessionId;
 use jinn_plugin::PluginCommand;
+use wherror::Error;
+
+/// Plugin wiring error — failure to translate a `PluginCommand` into a typed
+/// domain `Command`.
+#[derive(Debug, Error)]
+#[error(debug)]
+pub struct PluginWiringError;
+
+/// Context attached to every plugin command translation for error attribution.
+#[derive(Debug, Clone)]
+pub struct CmdCtx {
+    /// Name of the plugin that emitted the command.
+    pub plugin_name: String,
+    /// Verb name (e.g. `"push_chat_entry"`).
+    pub verb: String,
+}
+
+impl std::fmt::Display for CmdCtx {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "plugin {:?} verb {:?}", self.plugin_name, self.verb)
+    }
+}
+
+// ─── Lua-side payload types ─────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum LuaChatEntryKind {
+    System(String),
+    Transient(String),
+    Error(String),
+}
+
+#[derive(serde::Deserialize)]
+struct LuaPushChatEntry {
+    session_id: SessionId,
+    kind: LuaChatEntryKind,
+}
+
+#[derive(serde::Deserialize)]
+struct LuaEnqueueUserMessage {
+    session_id: SessionId,
+    text: String,
+}
+
+#[derive(serde::Deserialize)]
+struct LuaDisablePlugin {
+    session_id: SessionId,
+    plugin_name: String,
+}
+
+// ─── Verb → Command conversions ──────────────────���───────────────────
+
+fn push_chat_entry_from_lua(
+    _ctx: CmdCtx,
+    lua: LuaPushChatEntry,
+) -> Result<Command, Report<PluginWiringError>> {
+    let entry = match lua.kind {
+        LuaChatEntryKind::System(text) => ChatEntry::system(text),
+        LuaChatEntryKind::Transient(text) => ChatEntry::transient(text),
+        LuaChatEntryKind::Error(text) => ChatEntry::error(text),
+    };
+    Ok(Command::PushChatEntry(PushChatEntry {
+        session_id: lua.session_id,
+        entry,
+    }))
+}
+
+fn enqueue_user_message_from_lua(
+    _ctx: CmdCtx,
+    lua: LuaEnqueueUserMessage,
+) -> Result<Command, Report<PluginWiringError>> {
+    Ok(Command::EnqueueUserMessage(EnqueueUserMessage {
+        session_id: lua.session_id,
+        entry: ChatEntry::user(lua.text),
+    }))
+}
+
+fn disable_plugin_from_lua(
+    _ctx: CmdCtx,
+    lua: LuaDisablePlugin,
+) -> Result<Command, Report<PluginWiringError>> {
+    Ok(Command::TogglePlugin(TogglePlugin {
+        session_id: lua.session_id,
+        plugin_name: lua.plugin_name,
+    }))
+}
+
+fn translate<LuaT>(
+    cmd: &PluginCommand,
+    convert: fn(CmdCtx, LuaT) -> Result<Command, Report<PluginWiringError>>,
+) -> Result<Command, Report<PluginWiringError>>
+where
+    LuaT: serde::de::DeserializeOwned,
+{
+    let ctx = CmdCtx {
+        plugin_name: cmd.plugin_name.clone(),
+        verb: cmd.name.clone(),
+    };
+    let lua: LuaT = serde_json::from_value(cmd.data.clone())
+        .change_context(PluginWiringError)
+        .attach(ctx.clone())
+        .attach("deserialize payload")?;
+    convert(ctx, lua)
+}
+
+// ─── Dispatcher ──────────────────────────────────────────────���───────
 
 /// Dispatch a plugin command to the appropriate domain action.
 ///
 /// Matches on `cmd.name` and sends the corresponding domain `Command`
 /// through the provided sink. Unknown commands are logged and dropped.
 pub fn handle_plugin_command(cmd: PluginCommand, sink: &dyn MessageSink) {
-    tracing::info!(
-        name = cmd.name,
-        "DIAG plugin-wiring: dispatching plugin command"
+    tracing::debug!(
+        plugin = cmd.plugin_name,
+        verb = cmd.name,
+        "plugin command dispatched"
     );
-    if let Some(domain_cmd) = translate_command(&cmd) {
-        tracing::info!(cmd = %domain_cmd, "DIAG plugin-wiring: sending to sink");
-        let _ = sink.send_command(domain_cmd);
-    } else {
-        tracing::info!(
-            name = cmd.name,
-            "DIAG plugin-wiring: command translated to None"
-        );
-    }
-}
-
-fn translate_command(cmd: &PluginCommand) -> Option<Command> {
-    match cmd.name.as_str() {
-        "push_chat_entry" => translate_push_chat_entry(cmd, ChatEntry::system),
-        "push_chat_entry_transient" => translate_push_chat_entry(cmd, ChatEntry::transient),
-        "enqueue_user_message" => translate_enqueue_user_message(cmd),
-        _ => {
-            tracing::warn!(name = cmd.name, "unknown plugin command");
-            None
+    match translate_command(&cmd) {
+        Ok(domain_cmd) => {
+            if let Err(e) = sink.send_command(domain_cmd) {
+                tracing::error!(
+                    plugin = cmd.plugin_name,
+                    verb = cmd.name,
+                    error = %e,
+                    "plugin command send failed"
+                );
+            }
+        }
+        Err(e) => {
+            tracing::error!(
+                plugin = cmd.plugin_name,
+                verb = cmd.name,
+                error = %e,
+                "plugin command translation failed"
+            );
         }
     }
 }
 
-/// Translates a `push_chat_entry` payload into `Command::PushChatEntry`.
-fn translate_push_chat_entry(
-    cmd: &PluginCommand,
-    make_entry: fn(String) -> ChatEntry,
-) -> Option<Command> {
-    let session_id_str = cmd.data.get("session_id")?.as_str()?;
-    let message = cmd
-        .data
-        .get("message")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Welcome to jinn!")
-        .to_owned();
-
-    let entry = make_entry(message);
-    Some(Command::PushChatEntry(PushChatEntry {
-        session_id: SessionId::from(session_id_str.to_owned()),
-        entry,
-    }))
-}
-
-/// Translates an `enqueue_user_message` payload into `Command::EnqueueUserMessage`.
-///
-/// This is the command that actually dispatches to the LLM — the fix for
-/// `judge_fail` which previously used `push_user` (insert-only, no dispatch).
-fn translate_enqueue_user_message(cmd: &PluginCommand) -> Option<Command> {
-    let session_id_str = cmd.data.get("session_id")?.as_str()?;
-    let text = cmd.data.get("text").and_then(|v| v.as_str())?.to_owned();
-
-    Some(Command::EnqueueUserMessage(EnqueueUserMessage {
-        session_id: SessionId::from(session_id_str.to_owned()),
-        entry: ChatEntry::user(text),
-    }))
+fn translate_command(cmd: &PluginCommand) -> Result<Command, Report<PluginWiringError>> {
+    match cmd.name.as_str() {
+        "push_chat_entry" => translate::<LuaPushChatEntry>(cmd, push_chat_entry_from_lua),
+        "enqueue_user_message" => {
+            translate::<LuaEnqueueUserMessage>(cmd, enqueue_user_message_from_lua)
+        }
+        "disable_plugin" => translate::<LuaDisablePlugin>(cmd, disable_plugin_from_lua),
+        other => {
+            let ctx = CmdCtx {
+                plugin_name: cmd.plugin_name.clone(),
+                verb: other.to_owned(),
+            };
+            tracing::warn!(
+                plugin = cmd.plugin_name,
+                verb = other,
+                "unknown plugin verb"
+            );
+            Err(Report::new(PluginWiringError)
+                .attach(ctx)
+                .attach("unknown verb"))
+        }
+    }
 }
 
 /// Handle a request from an async hook's `ctx.request(name, data)` call.
@@ -162,14 +261,14 @@ mod tests {
         sink.commands.lock().expect("lock").clone()
     }
 
-    #[test]
     fn push_chat_entry_dispatches_system_entry() {
         let sink = test_sink();
         let cmd = PluginCommand {
+            plugin_name: "test-plugin".to_owned(),
             name: "push_chat_entry".to_owned(),
             data: serde_json::json!({
                 "session_id": "test-session",
-                "message": "Hello from plugin!",
+                "kind": { "system": "Hello from plugin!" },
             }),
         };
 
@@ -189,6 +288,7 @@ mod tests {
     fn enqueue_user_message_dispatches() {
         let sink = test_sink();
         let cmd = PluginCommand {
+            plugin_name: "test-plugin".to_owned(),
             name: "enqueue_user_message".to_owned(),
             data: serde_json::json!({
                 "session_id": "test-session",
@@ -212,6 +312,7 @@ mod tests {
     fn unknown_command_is_dropped() {
         let sink = test_sink();
         let cmd = PluginCommand {
+            plugin_name: "test-plugin".to_owned(),
             name: "nonexistent".to_owned(),
             data: serde_json::json!({}),
         };
@@ -221,14 +322,92 @@ mod tests {
     }
 
     #[test]
-    fn missing_session_id_is_dropped() {
+    fn push_chat_entry_transient_kind_translates() {
         let sink = test_sink();
         let cmd = PluginCommand {
+            plugin_name: "test-plugin".to_owned(),
             name: "push_chat_entry".to_owned(),
-            data: serde_json::json!({ "message": "hello" }),
+            data: serde_json::json!({
+                "session_id": "test-session",
+                "kind": { "transient": "welcome" },
+            }),
         };
-
         handle_plugin_command(cmd, &*sink);
-        assert!(captured(&sink).is_empty());
+        let cmds = captured(&sink);
+        assert_eq!(cmds.len(), 1);
+        if let Command::PushChatEntry(pce) = &cmds[0] {
+            assert_eq!(pce.entry.kind_str(), "transient");
+        } else {
+            panic!("expected PushChatEntry");
+        }
+    }
+
+    #[test]
+    fn push_chat_entry_unknown_kind_returns_error() {
+        let cmd = PluginCommand {
+            plugin_name: "test-plugin".to_owned(),
+            name: "push_chat_entry".to_owned(),
+            data: serde_json::json!({
+                "session_id": "test-session",
+                "kind": { "user": "hi" },
+            }),
+        };
+        let result = translate_command(&cmd);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn disable_plugin_translates_to_toggle() {
+        let sink = test_sink();
+        let cmd = PluginCommand {
+            plugin_name: "test-plugin".to_owned(),
+            name: "disable_plugin".to_owned(),
+            data: serde_json::json!({
+                "session_id": "test-session",
+                "plugin_name": "judge_pass",
+            }),
+        };
+        handle_plugin_command(cmd, &*sink);
+        let cmds = captured(&sink);
+        assert_eq!(cmds.len(), 1);
+        if let Command::TogglePlugin(t) = &cmds[0] {
+            assert_eq!(t.plugin_name, "judge_pass");
+        } else {
+            panic!("expected TogglePlugin");
+        }
+    }
+
+    #[test]
+    fn unknown_verb_error_carries_plugin_name_and_verb() {
+        let cmd = PluginCommand {
+            plugin_name: "judge_fail".to_owned(),
+            name: "enqueue_chat_message".to_owned(),
+            data: serde_json::json!({}),
+        };
+        let err = translate_command(&cmd).expect_err("should fail");
+        let report_str = format!("{err:?}");
+        assert!(
+            report_str.contains("judge_fail"),
+            "missing plugin_name: {report_str}"
+        );
+        assert!(
+            report_str.contains("enqueue_chat_message"),
+            "missing verb: {report_str}"
+        );
+    }
+
+    #[test]
+    fn malformed_payload_returns_serde_error() {
+        let cmd = PluginCommand {
+            plugin_name: "test-plugin".to_owned(),
+            name: "push_chat_entry".to_owned(),
+            data: serde_json::json!({ "message": "hello" }), // missing session_id, kind
+        };
+        let err = translate_command(&cmd).expect_err("should fail");
+        let report_str = format!("{err:?}");
+        assert!(
+            report_str.contains("test-plugin"),
+            "missing plugin_name: {report_str}"
+        );
     }
 }

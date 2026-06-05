@@ -407,14 +407,23 @@ fn build_async_ctx(
         }
     }
 
+    // ctx.plugin_name — let Lua refer to itself by name (used for
+    // self-targeting actions like disable_plugin).
+    ctx.set("plugin_name", plugin_name)?;
+
     // ctx.emit(cmd, data) — fire-and-forget via channel.
     // Uses sync `Sender` (via `clone_sync()`) so it can be called from a sync
     // Lua closure. Unbounded channel => `send` is non-blocking.
     {
         let emit_tx = emit_tx.clone_sync();
+        let plugin_name = plugin_name.to_owned();
         let emit_fn = lua.create_function(move |lua, (name, data): (String, mlua::Value)| {
             let json = bindings::value_to_json(lua, &data).unwrap_or_default();
-            let _ = emit_tx.send(PluginCommand { name, data: json });
+            let _ = emit_tx.send(PluginCommand {
+                plugin_name: plugin_name.clone(),
+                name,
+                data: json,
+            });
             Ok(())
         })?;
         ctx.set("emit", emit_fn)?;

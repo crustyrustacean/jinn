@@ -1827,6 +1827,7 @@ dependencies = [
  "ratatui-which-key",
  "reqwest",
  "rstest",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",
