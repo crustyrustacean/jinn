@@ -71,6 +71,7 @@ impl TuiWorld {
                 jinn_domain::NoopPluginSyncCall,
             )
                 as Arc<dyn jinn_domain::feat::workflow::PluginSyncCall>),
+            tempdir: None,
         };
 
         let app = TuiApp::test_builder().services(services).build();

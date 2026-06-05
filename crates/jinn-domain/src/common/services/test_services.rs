@@ -1,26 +1,110 @@
 //! Test services builder for unit tests.
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
-use crate::common::services::ConfigStorageService;
 use crate::common::services::NoopPluginFire;
 use crate::common::services::NoopPluginSyncCall;
 use crate::feat::preferences_actor::{
     InMemoryUserPreferencesStorage, UserPreferencesStorageService,
 };
 use crate::feat::provider_infra::{
-    FakeLlmServiceFactory, InMemoryConfigStorage, LlmServiceFactoryService, ProviderRegistry,
-    ProviderRegistryService, ProvidersConfig,
+    ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, InMemoryConfigStorage,
+    LlmServiceFactoryService, ProviderRegistry, ProviderRegistryService, ProvidersConfig,
 };
-use crate::feat::session::SessionStoreService;
+use crate::feat::session::chat_session::ChatSessionState;
+use crate::feat::session::{SessionStore, SessionStoreError, SessionStoreService, SessionSummary};
 use crate::feat::workflow::{PluginFire, PluginFireService, PluginSyncCall, PluginSyncCallService};
+use crate::protocol::{AppMsg, SessionId};
+use async_trait::async_trait;
+use error_stack::Report;
+use tokio::runtime::{Handle, Runtime};
 
-use crate::protocol::AppMsg;
+use super::actor_channel::ActorChannelService;
+use super::Services;
+/// Single shared tokio runtime for the entire test binary.
+///
+/// Initializes exactly once via `LazyLock`. Without this, every
+/// `Services::new()` / `TestServices::build()` call leaked a fresh
+/// `Runtime` via `Box::leak`, which (across 3000+ parallel tests)
+/// exhausted the FD limit (`EMFILE`).
+///
+/// The `Runtime` itself is intentionally leaked via `Box::leak` at
+/// static-init time; it lives for the lifetime of the test binary.
+/// The `Handle` is cheaply cloneable and shared by all tests.
+static TEST_RUNTIME: LazyLock<Handle> = LazyLock::new(|| {
+    let rt = Box::leak(Box::new(Runtime::new().expect("shared test runtime")));
+    rt.handle().clone()
+});
 
-use super::{ActorChannelService, ApiKeys, ApiKeysService, Services};
-use tokio::runtime::Handle;
+/// Returns a clone of the shared test runtime handle.
+///
+/// # Panics
+///
+/// Panics if the underlying tokio runtime fails to create (extremely
+/// unlikely in tests).
+pub(crate) fn shared_test_handle() -> Handle {
+    TEST_RUNTIME.clone()
+}
 
-/// Builder for constructing [`Services`] with custom overrides for tests.
+/// A no-op session store for tests.
+///
+/// All operations succeed with empty results. Suitable for tests that
+/// need a [`Services`] but don't test session persistence.
+#[derive(Debug)]
+pub struct FakeSessionStore;
+
+#[async_trait]
+impl SessionStore for FakeSessionStore {
+    fn name(&self) -> &'static str {
+        "fake"
+    }
+
+    async fn save(&self, _session: &ChatSessionState) -> Result<(), Report<SessionStoreError>> {
+        Ok(())
+    }
+
+    async fn load_summaries(&self) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
+        Ok(Vec::new())
+    }
+
+    async fn load_session(
+        &self,
+        _session_id: &SessionId,
+    ) -> Result<Option<ChatSessionState>, Report<SessionStoreError>> {
+        Ok(None)
+    }
+
+    async fn delete(&self, _session_id: &SessionId) -> Result<(), Report<SessionStoreError>> {
+        Ok(())
+    }
+
+    async fn fork(
+        &self,
+        _source_session_id: &SessionId,
+        _at_ordinal: usize,
+    ) -> Result<SessionId, Report<SessionStoreError>> {
+        Ok(SessionId::new())
+    }
+
+    async fn set_archived(
+        &self,
+        _session_id: &SessionId,
+        _archived: bool,
+    ) -> Result<(), Report<SessionStoreError>> {
+        Ok(())
+    }
+
+    async fn load_unarchived_summaries(
+        &self,
+    ) -> Result<Vec<SessionSummary>, Report<SessionStoreError>> {
+        Ok(Vec::new())
+    }
+}
+
+/// A builder for constructing [Services] with fake implementations for tests.
+///
+/// All services default to empty/noop implementations. Use the builder methods
+/// to customize specific services when needed.
 ///
 /// Uses a leaked tokio runtime - acceptable for unit tests.
 ///
@@ -114,7 +198,9 @@ impl TestServices {
         self
     }
 
-    /// Build the `Services` with configured overrides.
+    /// Build the [`Services`] instance.
+    ///
+    /// Uses the shared process-wide test runtime if no custom handle is provided.
     ///
     /// # Panics
     ///
@@ -122,14 +208,17 @@ impl TestServices {
     #[must_use]
     #[expect(clippy::expect_used, reason = "test-only code, panics are acceptable")]
     pub fn build(self) -> Services {
-        let handle = self.handle.unwrap_or_else(|| {
-            let rt = Box::leak(Box::new(
-                tokio::runtime::Runtime::new().expect("test runtime"),
-            ));
-            rt.handle().clone()
-        });
+        let handle = self.handle.unwrap_or_else(shared_test_handle);
 
-        let temp_dir = Box::leak(Box::new(tempfile::TempDir::new().expect("test temp dir")));
+        let (paths, tempdir) = if let Some(p) = self.paths {
+            (p, None)
+        } else {
+            let td = Arc::new(tempfile::TempDir::new().expect("test temp dir"));
+            (
+                crate::common::app_paths::AppPaths::new_in(td.path()),
+                Some(td),
+            )
+        };
 
         // Keep a live drainer so the sender doesn't return ReceiveClosed.
         let (actor_tx, actor_rx) = kanal::unbounded::<AppMsg>();
@@ -138,9 +227,7 @@ impl TestServices {
             while rx.recv().await.is_ok() {}
         });
         Services {
-            paths: self
-                .paths
-                .unwrap_or_else(|| crate::common::app_paths::AppPaths::new_in(temp_dir.path())),
+            paths,
             handle,
             actor_channel: ActorChannelService::new(self.actor_channel_sender.unwrap_or(actor_tx)),
             llm_service: self.llm_service.unwrap_or_else(|| {
@@ -161,77 +248,9 @@ impl TestServices {
             plugin_sync: PluginSyncCallService::new(
                 Arc::new(NoopPluginSyncCall) as Arc<dyn PluginSyncCall>
             ),
+            tempdir,
         }
     }
 }
 
-/// Fake session store for tests.
-pub struct FakeSessionStore;
 
-#[async_trait::async_trait]
-impl crate::feat::session::SessionStore for FakeSessionStore {
-    fn name(&self) -> &'static str {
-        "fake"
-    }
-
-    async fn save(
-        &self,
-        _session: &crate::feat::session::ChatSessionState,
-    ) -> Result<(), error_stack::Report<crate::feat::session::SessionStoreError>> {
-        Ok(())
-    }
-
-    async fn load_summaries(
-        &self,
-    ) -> Result<
-        Vec<crate::feat::session::SessionSummary>,
-        error_stack::Report<crate::feat::session::SessionStoreError>,
-    > {
-        Ok(Vec::new())
-    }
-
-    async fn load_session(
-        &self,
-        _session_id: &crate::protocol::SessionId,
-    ) -> Result<
-        Option<crate::feat::session::ChatSessionState>,
-        error_stack::Report<crate::feat::session::SessionStoreError>,
-    > {
-        Ok(None)
-    }
-
-    async fn delete(
-        &self,
-        _session_id: &crate::protocol::SessionId,
-    ) -> Result<(), error_stack::Report<crate::feat::session::SessionStoreError>> {
-        Ok(())
-    }
-
-    async fn fork(
-        &self,
-        _source_session_id: &crate::protocol::SessionId,
-        _at_ordinal: usize,
-    ) -> Result<
-        crate::protocol::SessionId,
-        error_stack::Report<crate::feat::session::SessionStoreError>,
-    > {
-        Ok(crate::protocol::SessionId::new())
-    }
-
-    async fn set_archived(
-        &self,
-        _session_id: &crate::protocol::SessionId,
-        _archived: bool,
-    ) -> Result<(), error_stack::Report<crate::feat::session::SessionStoreError>> {
-        Ok(())
-    }
-
-    async fn load_unarchived_summaries(
-        &self,
-    ) -> Result<
-        Vec<crate::feat::session::SessionSummary>,
-        error_stack::Report<crate::feat::session::SessionStoreError>,
-    > {
-        Ok(Vec::new())
-    }
-}

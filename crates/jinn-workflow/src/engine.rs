@@ -97,33 +97,71 @@ enum CompletionMsg {
 ///
 /// Builds maps for node lookup, seeds pending inputs from cached snapshot data,
 /// and resets `Failed`/`Skipped` nodes to `Pending` for resume/re-run.
+/// Per-node tracking state built by [`initialize_tracking`] and mutated
+/// by the engine main loop.
+#[derive(Debug, Default)]
+struct TrackingState {
+    /// Per-node status (`Pending`, `Running`, `Completed`, …).
+    statuses: HashMap<String, NodeStatus>,
+    /// Buffer of values that have arrived at each node's input ports but
+    /// not yet been consumed.
+    pending_inputs: HashMap<String, PortValues>,
+    /// Number of input ports still unsatisfied per node.
+    pending_count: HashMap<String, usize>,
+    /// Output values produced by completed nodes, indexed by node name.
+    outputs: HashMap<String, PortValues>,
+    /// Number of nodes pre-completed at init (mirrored for diagnostics).
+    pre_completed_count: usize,
+}
+
+/// Initialize the engine's per-node tracking state from the snapshot.
 ///
 /// Source nodes (no incoming edges) that already have cached outputs
 /// (e.g., from user input) are marked `Completed` immediately and their
 /// outputs are propagated to downstream nodes. Returns the tracking maps
 /// plus the count of nodes that were pre-completed.
-#[expect(
-    clippy::type_complexity,
-    reason = "returns four tracking maps and a count"
-)]
 fn initialize_tracking(
     snapshot: &crate::execution::ExecutionSnapshot,
     execution: &Arc<WorkflowExecution>,
     node_map: &HashMap<String, Box<dyn WorkflowNode>>,
     inner: &petgraph::graph::DiGraph<crate::graph::NodeData, crate::graph::EdgeData>,
     name_to_index: &HashMap<String, petgraph::graph::NodeIndex>,
-) -> (
-    HashMap<String, NodeStatus>,
-    HashMap<String, PortValues>,
-    HashMap<String, usize>,
-    HashMap<String, PortValues>,
-    usize, // pre_completed_count
-) {
-    let mut statuses: HashMap<String, NodeStatus> = HashMap::new();
-    let mut pending_inputs: HashMap<String, PortValues> = HashMap::new();
-    let mut pending_count: HashMap<String, usize> = HashMap::new();
-    let mut outputs: HashMap<String, PortValues> = HashMap::new();
+) -> TrackingState {
+    let mut state = TrackingState::default();
+    seed_tracking_per_node(
+        snapshot,
+        execution,
+        node_map,
+        name_to_index,
+        inner,
+        &mut state,
+    );
+    let to_pre_complete = collect_pre_completion_candidates(&state);
+    let index_to_name: HashMap<petgraph::graph::NodeIndex, &String> =
+        name_to_index.iter().map(|(n, &i)| (i, n)).collect();
+    apply_pre_completions(
+        &to_pre_complete,
+        execution,
+        name_to_index,
+        &index_to_name,
+        inner,
+        &mut state,
+    );
+    state
+}
 
+/// Seed per-node tracking entries from the snapshot.
+///
+/// Resets `Failed`/`Skipped` nodes to `Pending`, and counts incoming edges
+/// to determine how many input values each pending node is waiting for.
+fn seed_tracking_per_node(
+    snapshot: &crate::execution::ExecutionSnapshot,
+    execution: &Arc<WorkflowExecution>,
+    node_map: &HashMap<String, Box<dyn WorkflowNode>>,
+    name_to_index: &HashMap<String, petgraph::graph::NodeIndex>,
+    inner: &petgraph::graph::DiGraph<crate::graph::NodeData, crate::graph::EdgeData>,
+    state: &mut TrackingState,
+) {
     for name in node_map.keys() {
         let current_status = snapshot.status_of(name).unwrap_or(NodeStatus::Pending);
 
@@ -135,7 +173,7 @@ fn initialize_tracking(
             }
             other => other,
         };
-        statuses.insert(name.clone(), status);
+        state.statuses.insert(name.clone(), status);
 
         // Seed pending inputs from cached snapshot data.
         // Count actual incoming edges - each edge delivers one value.
@@ -162,53 +200,69 @@ fn initialize_tracking(
             .map(|arc| (**arc).clone());
 
         if let Some(cached) = cached_outputs {
-            outputs.insert(name.clone(), cached);
+            state.outputs.insert(name.clone(), cached);
         }
 
         if status == NodeStatus::Pending {
             if let Some(cached) = cached_inputs {
                 let satisfied = cached.len();
-                pending_inputs.insert(name.clone(), cached);
-                pending_count.insert(name.clone(), input_port_count.saturating_sub(satisfied));
+                state.pending_inputs.insert(name.clone(), cached);
+                state
+                    .pending_count
+                    .insert(name.clone(), input_port_count.saturating_sub(satisfied));
             } else {
-                pending_inputs.insert(name.clone(), PortValues::new());
-                pending_count.insert(name.clone(), input_port_count);
+                state.pending_inputs.insert(name.clone(), PortValues::new());
+                state.pending_count.insert(name.clone(), input_port_count);
             }
         } else {
             // Not pending - still need entries for downstream propagation.
-            pending_inputs.insert(name.clone(), PortValues::new());
-            pending_count.insert(name.clone(), 0);
+            state.pending_inputs.insert(name.clone(), PortValues::new());
+            state.pending_count.insert(name.clone(), 0);
         }
     }
+}
 
-    // Pre-complete source nodes that already have outputs set (e.g., from user input).
-    // This prevents the engine from running their execute() closures, which
-    // would overwrite the user's data with hard-coded defaults.
-    // Instead, mark them Completed immediately and propagate outputs downstream.
-    let mut pre_completed_count: usize = 0;
-    let mut to_pre_complete: Vec<String> = Vec::new();
-    for name in node_map.keys() {
-        let is_source = pending_count.get(name) == Some(&0);
-        let is_pending = statuses.get(name) == Some(&NodeStatus::Pending);
-        let has_outputs = outputs.contains_key(name);
-        if is_source && is_pending && has_outputs {
-            to_pre_complete.push(name.clone());
-        }
-    }
+/// Collect names of source nodes (no pending inputs) that are still `Pending`
+/// and already have outputs cached — eligible for pre-completion.
+fn collect_pre_completion_candidates(state: &TrackingState) -> Vec<String> {
+    node_map_keys_eligible_for_pre_completion(state).collect()
+}
 
-    // Build reverse index: NodeIndex → name.
-    let index_to_name: HashMap<petgraph::graph::NodeIndex, &String> =
-        name_to_index.iter().map(|(n, &i)| (i, n)).collect();
+/// Yield names of nodes that should be pre-completed at initialization
+/// (source nodes with no pending inputs and existing outputs).
+fn node_map_keys_eligible_for_pre_completion(
+    state: &TrackingState,
+) -> impl Iterator<Item = String> + '_ {
+    state.statuses.keys().filter_map(move |name| {
+        let is_source = state.pending_count.get(name) == Some(&0);
+        let is_pending = state.statuses.get(name) == Some(&NodeStatus::Pending);
+        let has_outputs = state.outputs.contains_key(name);
+        (is_source && is_pending && has_outputs).then(|| name.clone())
+    })
+}
 
-    for name in &to_pre_complete {
-        statuses.insert(name.clone(), NodeStatus::Completed);
+/// Mark each candidate as `Completed`, propagate its cached outputs to
+/// downstream nodes, and bump `pre_completed_count`.
+///
+/// Mirrors the propagation that `handle_completion` performs for normally-
+/// executed nodes.
+fn apply_pre_completions(
+    to_pre_complete: &[String],
+    execution: &Arc<WorkflowExecution>,
+    name_to_index: &HashMap<String, petgraph::graph::NodeIndex>,
+    index_to_name: &HashMap<petgraph::graph::NodeIndex, &String>,
+    inner: &petgraph::graph::DiGraph<crate::graph::NodeData, crate::graph::EdgeData>,
+    state: &mut TrackingState,
+) {
+    for name in to_pre_complete {
+        state.statuses.insert(name.clone(), NodeStatus::Completed);
         execution.set_status(name, NodeStatus::Completed);
-        pre_completed_count += 1;
+        state.pre_completed_count += 1;
 
         // Propagate this node's outputs to downstream nodes,
         // exactly like handle_completion does for normally-executed nodes.
         if let (Some(&idx), Some(node_outputs)) =
-            (name_to_index.get(name), outputs.get(name).cloned())
+            (name_to_index.get(name), state.outputs.get(name).cloned())
         {
             for edge in inner.edges_directed(idx, petgraph::Direction::Outgoing) {
                 let source_port = &edge.weight().source_port;
@@ -219,24 +273,16 @@ fn initialize_tracking(
                 };
                 if let (Some(value), Some(inputs)) = (
                     node_outputs.get(source_port).cloned(),
-                    pending_inputs.get_mut(*tgt_name),
+                    state.pending_inputs.get_mut(*tgt_name),
                 ) {
                     inputs.insert(target_port.clone(), value);
                 }
-                if let Some(count) = pending_count.get_mut(*tgt_name) {
+                if let Some(count) = state.pending_count.get_mut(*tgt_name) {
                     *count = count.saturating_sub(1);
                 }
             }
         }
     }
-
-    (
-        statuses,
-        pending_inputs,
-        pending_count,
-        outputs,
-        pre_completed_count,
-    )
 }
 
 /// Spawns all Pending nodes that have fully satisfied inputs.
@@ -428,8 +474,13 @@ pub async fn run_pending(
     let snapshot = execution.snapshot();
 
     // Initialize tracking.
-    let (mut statuses, mut pending_inputs, mut pending_count, mut outputs, _pre_completed_count) =
-        initialize_tracking(&snapshot, &execution, &node_map, inner, name_to_index);
+    let TrackingState {
+        mut statuses,
+        mut pending_inputs,
+        mut pending_count,
+        mut outputs,
+        ..
+    } = initialize_tracking(&snapshot, &execution, &node_map, inner, name_to_index);
 
     // Channel for completion messages.
     let (tx, mut rx) = tokio::sync::mpsc::channel::<CompletionMsg>(64);

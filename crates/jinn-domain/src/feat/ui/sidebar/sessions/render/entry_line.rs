@@ -100,8 +100,6 @@ pub(crate) fn tree_prefix(entry: &SessionEntry) -> String {
     prefix
 }
 
-/// Assembles a complete session entry line from its components.
-///
 
 /// Assembles a complete session entry line from its components.
 ///

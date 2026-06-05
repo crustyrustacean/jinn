@@ -353,7 +353,7 @@ impl std::fmt::Display for Intent {
             Intent::RenameDeleteGrapheme => write!(f, "rename delete"),
             Intent::RenameDeleteForward => write!(f, "rename forward delete"),
 
-            Intent::ToggleOneShot { kind } => write!(f, "toggle one-shot {:?}", kind),
+            Intent::ToggleOneShot { kind } => write!(f, "toggle one-shot {kind:?}"),
 
             Intent::ChangeCwd { root } => write!(f, "change cwd ({root})"),
         }

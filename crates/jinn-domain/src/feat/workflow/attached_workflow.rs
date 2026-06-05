@@ -154,10 +154,12 @@ pub enum PromptMergeStrategy {
 /// Execution state of an attached workflow.
 ///
 /// Persisted as part of `SessionCore`. On crash/restart, `Running` is reset to `Ready`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
+
 pub enum AttachedWorkflowState {
     /// Ready to fire on next trigger.
+    #[default]
     Ready,
     /// Currently executing.
     Running,
@@ -170,11 +172,7 @@ pub enum AttachedWorkflowState {
     },
 }
 
-impl Default for AttachedWorkflowState {
-    fn default() -> Self {
-        Self::Ready
-    }
-}
+
 
 /// Keybind toggle keys for one-shot workflows.
 ///
@@ -191,11 +189,7 @@ impl OneShotKind {
     #[must_use]
     pub fn default_config(&self) -> WorkflowConfig {
         match self {
-            Self::Consensus => WorkflowConfig {
-                script: "judge_fail".to_owned(),
-                data: serde_json::json!({}),
-            },
-            Self::Judge => WorkflowConfig {
+            Self::Consensus | Self::Judge => WorkflowConfig {
                 script: "judge_fail".to_owned(),
                 data: serde_json::json!({}),
             },

@@ -12,7 +12,7 @@ headless-chrome = ["jinn-web-fetch/headless-chrome"]
 members = ["crates/*", "tests/*", "vendor/*"]
 
 [workspace.package]
-version = "0.53.0"
+version = "0.56.0"
 edition = "2024"
 
 [profile.release]
@@ -58,6 +58,7 @@ mockito = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 [workspace.dependencies]
+
 # Internal
 jinn-domain = { path = "crates/jinn-domain" }
 jinn-plugin = { path = "crates/jinn-plugin" }
@@ -102,6 +103,7 @@ mlua = { version = "0.10", features = ["lua54", "vendored", "serialize", "async"
 parking_lot = "0.12"
 arc-swap = "1"
 
+
 # Time
 jiff = { version = "0.2", features = ["serde"] }
 humantime = "2"
@@ -119,6 +121,7 @@ clap_complete = "4"
 # Other
 dirs = "6"
 toml = "0.8"
+toml_edit = "0.22"
 dotenvy = "0.15"
 unicode-segmentation = "1"
 unicode-width = "0.2"

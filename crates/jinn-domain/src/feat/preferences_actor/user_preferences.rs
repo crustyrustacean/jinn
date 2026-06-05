@@ -7,9 +7,11 @@
 use std::path::{Path, PathBuf};
 
 use crate::common::app_info::{APP_NAME, PREFS_FILE_NAME};
+use crate::common::toml_patch::DocumentPatcher;
 use error_stack::{Report, ResultExt as _};
 use serde::{Deserialize, Serialize};
 use wherror::Error;
+
 
 /// Errors that can occur during user preferences I/O.
 #[derive(Debug, Error)]
@@ -284,6 +286,164 @@ impl Default for ConsecutiveReadsAutoPruneConfig {
         }
     }
 }
+
+/// Default enabled state for tool-age-window auto-prune.
+const DEFAULT_TOOL_AGE_WINDOW_ENABLED: bool = true;
+
+/// Default number of entries to keep before pruning older tool pairs.
+const DEFAULT_TOOL_AGE_WINDOW_MAX_AGE_ENTRIES: usize = 100;
+
+/// Tool-age-window auto-prune configuration.
+///
+/// Serialized as `[auto_prune.tool_age_window]` in `jinn.toml`.
+/// Controls the auto-prune worker that excludes any `ToolCall`/`ToolResult`
+/// pair older than `max_age_entries` entries from the end of history. Both
+/// halves of a pair are always excluded together.
+///
+/// The window counts every entry in raw history regardless of in-context
+/// status, so that multiple auto-prune workers compose cleanly: each
+/// worker's prune region is fixed by raw history length alone, not by what
+/// has already been `ForcedExclude`d by other workers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolAgeWindowAutoPruneConfig {
+    /// Whether the tool-age-window auto-prune worker is active.
+    /// Default: `true`.
+    #[serde(default = "default_tool_age_window_enabled")]
+    pub enabled: bool,
+    /// Number of most recent entries to keep before pruning older tool
+    /// pairs. Counts every entry, regardless of in-context status.
+    /// Minimum 1 (clamped at worker construction).
+    #[serde(default = "default_tool_age_window_max_age_entries")]
+    pub max_age_entries: usize,
+}
+
+fn default_tool_age_window_enabled() -> bool {
+    DEFAULT_TOOL_AGE_WINDOW_ENABLED
+}
+
+fn default_tool_age_window_max_age_entries() -> usize {
+    DEFAULT_TOOL_AGE_WINDOW_MAX_AGE_ENTRIES
+}
+
+impl Default for ToolAgeWindowAutoPruneConfig {
+    fn default() -> Self {
+        Self {
+            enabled: DEFAULT_TOOL_AGE_WINDOW_ENABLED,
+            max_age_entries: DEFAULT_TOOL_AGE_WINDOW_MAX_AGE_ENTRIES,
+        }
+    }
+}
+
+/// Default enabled state for trivial-assistant auto-prune.
+const DEFAULT_TRIVIAL_ASSISTANT_ENABLED: bool = true;
+
+/// Default number of entries to keep before pruning older trivial
+/// assistant entries.
+const DEFAULT_TRIVIAL_ASSISTANT_MAX_AGE_ENTRIES: usize = 100;
+
+/// Default token threshold below which an assistant entry is considered
+/// "trivial" (small enough to prune when it lands outside the window).
+const DEFAULT_TRIVIAL_ASSISTANT_MAX_TOKENS: usize = 80;
+
+/// Trivial-assistant auto-prune configuration.
+///
+/// Serialized as `[auto_prune.trivial_assistant]` in `jinn.toml`.
+/// Controls the auto-prune worker that excludes any `Assistant` entry that
+/// (a) is older than `max_age_entries` entries from the end of history and
+/// (b) is at most `max_tokens` tokens long.
+///
+/// The window counts every entry in raw history regardless of in-context
+/// status, so that multiple auto-prune workers compose cleanly: each
+/// worker's prune region is fixed by raw history length alone, not by what
+/// has already been `ForcedExclude`d by other workers. Tokens are counted
+/// via the same tiktoken `o200k_base` encoder used by the token-count
+/// actor and minimap.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrivialAssistantAutoPruneConfig {
+    /// Whether the trivial-assistant auto-prune worker is active.
+    /// Default: `true`.
+    #[serde(default = "default_trivial_assistant_enabled")]
+    pub enabled: bool,
+    /// Number of most recent entries to keep before pruning older trivial
+    /// assistant entries. Counts every entry, regardless of in-context
+    /// status. Minimum 1 (clamped at evaluation time).
+    /// Default: `100`.
+    #[serde(default = "default_trivial_assistant_max_age_entries")]
+    pub max_age_entries: usize,
+    /// Maximum number of tokens (tiktoken `o200k_base`) below which an
+    /// `Assistant` entry is considered trivial. Minimum 1 (clamped at
+    /// evaluation time).
+    /// Default: `80`.
+    #[serde(default = "default_trivial_assistant_max_tokens")]
+    pub max_tokens: usize,
+}
+
+fn default_trivial_assistant_enabled() -> bool {
+    DEFAULT_TRIVIAL_ASSISTANT_ENABLED
+}
+
+fn default_trivial_assistant_max_age_entries() -> usize {
+    DEFAULT_TRIVIAL_ASSISTANT_MAX_AGE_ENTRIES
+}
+
+fn default_trivial_assistant_max_tokens() -> usize {
+    DEFAULT_TRIVIAL_ASSISTANT_MAX_TOKENS
+}
+
+impl Default for TrivialAssistantAutoPruneConfig {
+    fn default() -> Self {
+        Self {
+            enabled: DEFAULT_TRIVIAL_ASSISTANT_ENABLED,
+            max_age_entries: DEFAULT_TRIVIAL_ASSISTANT_MAX_AGE_ENTRIES,
+            max_tokens: DEFAULT_TRIVIAL_ASSISTANT_MAX_TOKENS,
+        }
+    }
+}
+
+/// Default enabled state for user-anchor-radius auto-prune.
+const DEFAULT_USER_ANCHOR_RADIUS_ENABLED: bool = true;
+
+/// Default radius (in raw history entries) within which an Assistant entry is
+/// protected from pruning regardless of token count.
+const DEFAULT_USER_ANCHOR_RADIUS: usize = 100;
+
+/// User-anchor-radius auto-prune strategy configuration.
+///
+/// Serialized as `[auto_prune.user_anchor_radius]` in `jinn.toml`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserAnchorRadiusAutoPruneConfig {
+    /// Whether the user-anchor-radius auto-prune worker is active.
+    /// Default: `true`.
+    #[serde(default = "default_user_anchor_radius_enabled")]
+    pub enabled: bool,
+    /// Maximum index distance (in raw chat entries) to the nearest `User`
+    /// entry — in either direction — within which an `Assistant` entry is
+    /// protected. Distance strictly greater than this radius marks the entry
+    /// as a prune candidate (subject to the `>80` token threshold).
+    /// Minimum 1 (clamped at evaluation time).
+    /// Default: `100`.
+    #[serde(default = "default_user_anchor_radius")]
+    pub radius: usize,
+}
+
+fn default_user_anchor_radius_enabled() -> bool {
+    DEFAULT_USER_ANCHOR_RADIUS_ENABLED
+}
+
+fn default_user_anchor_radius() -> usize {
+    DEFAULT_USER_ANCHOR_RADIUS
+}
+
+impl Default for UserAnchorRadiusAutoPruneConfig {
+    fn default() -> Self {
+        Self {
+            enabled: DEFAULT_USER_ANCHOR_RADIUS_ENABLED,
+            radius: DEFAULT_USER_ANCHOR_RADIUS,
+        }
+    }
+}
+
+
 /// Default regex prune rule tool name.
 const DEFAULT_REGEX_TOOL_NAME: &str = "bash";
 
@@ -375,6 +535,15 @@ pub struct AutoPruneConfig {
     /// Consecutive-reads auto-prune strategy configuration.
     #[serde(default)]
     pub consecutive_reads: ConsecutiveReadsAutoPruneConfig,
+    /// Tool-age-window auto-prune strategy configuration.
+    #[serde(default)]
+    pub tool_age_window: ToolAgeWindowAutoPruneConfig,
+    /// Trivial-assistant auto-prune strategy configuration.
+    #[serde(default)]
+    pub trivial_assistant: TrivialAssistantAutoPruneConfig,
+    /// User-anchor-radius auto-prune strategy configuration.
+    #[serde(default)]
+    pub user_anchor_radius: UserAnchorRadiusAutoPruneConfig,
 }
 
 /// Default token threshold for auto-compaction.
@@ -734,17 +903,51 @@ pub(crate) fn save_preferences_to<P>(
 where
     P: AsRef<Path>,
 {
-    if let Some(parent) = path.as_ref().parent() {
+    let path = path.as_ref();
+    if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .change_context(UserPreferencesError::Io)
             .attach("failed to create preferences directory")?;
     }
 
-    let content = toml::to_string_pretty(prefs)
-        .change_context(UserPreferencesError::Parse)
-        .attach("failed to serialize user preferences")?;
+    // If the file exists, patch it in place to preserve user comments / ordering.
+    // Otherwise, emit a clean zero-comment serialization (no template to keep in sync).
+    let content = if path.exists() {
+        let existing = std::fs::read_to_string(path)
+            .change_context(UserPreferencesError::Io)
+            .attach("failed to read existing jinn.toml")?;
 
-    std::fs::write(path.as_ref(), content)
+        let mut doc: toml_edit::DocumentMut = existing
+            .parse()
+            .map_err(|err: toml_edit::TomlError| {
+                Report::new(UserPreferencesError::Parse)
+                    .attach("failed to parse existing jinn.toml")
+                    .attach(err.to_string())
+            })?;
+
+        let new_value = toml::Value::try_from(prefs)
+            .change_context(UserPreferencesError::Parse)
+            .attach("failed to serialize UserPreferences")?;
+
+        let toml::Value::Table(new_table) = &new_value
+            else { unreachable!("UserPreferences always serializes to a table") };
+        let mut patcher = DocumentPatcher::new();
+        patcher.register_array_key(["session_lifecycle"], "name");
+        patcher.register_array_key(["auto_prune", "regex", "rules"], "pattern");
+
+        patcher
+            .apply(new_table, doc.as_table_mut())
+            .change_context(UserPreferencesError::Parse)
+            .attach("failed to patch jinn.toml document")?;
+
+        doc.to_string()
+    } else {
+        toml::to_string_pretty(prefs)
+            .change_context(UserPreferencesError::Parse)
+            .attach("failed to serialize user preferences")?
+    };
+
+    std::fs::write(path, content)
         .change_context(UserPreferencesError::Io)
         .attach("failed to write user preferences")
 }
@@ -1071,6 +1274,257 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         assert_eq!(reloaded.min_collapse_count, Some(5));
     }
 
+    // --- Comment preservation tests for save_preferences ---
+
+    #[rstest::rstest]
+    fn save_preferences_preserves_user_comments_on_scalar_change() {
+        // Given a comment-rich jinn.toml.
+        let original = "# my prefs\nlast_model = \"ollama/llama3\"\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, original).expect("write");
+
+        // When loading, mutating last_model, and saving.
+        let mut prefs = load_preferences_from(&path).expect("load");
+        prefs.last_model = Some("openai/gpt-4o".to_owned());
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the comment is preserved and the field is updated.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(written.contains("# my prefs"), "comment wiped: {written}");
+        assert!(written.contains("openai/gpt-4o"));
+        assert!(!written.contains("ollama/llama3"));
+    }
+
+    #[rstest::rstest]
+    fn save_preferences_preserves_session_lifecycle_block_and_comments() {
+        // Given a jinn.toml with a session_lifecycle block.
+        let original = "# my custom lifecycle\n[[session_lifecycle]]\nname = \"fossil-branch\"\ndescription = \"open a branch\"\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, original).expect("write");
+
+        // When loading and re-saving without changes.
+        let prefs = load_preferences_from(&path).expect("load");
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the comment and entry are preserved.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(written.contains("# my custom lifecycle"));
+        assert!(written.contains("name = \"fossil-branch\""));
+    }
+
+    #[rstest::rstest]
+    fn save_preferences_deletes_session_lifecycle_block_on_struct_removal() {
+        // Given a jinn.toml with two lifecycle blocks.
+        let original = "# keep\n[[session_lifecycle]]\nname = \"alpha\"\n\n# delete\n[[session_lifecycle]]\nname = \"beta\"\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, original).expect("write");
+
+        // When loading and saving with only alpha kept.
+        let mut prefs = load_preferences_from(&path).expect("load");
+        prefs.session_lifecycles.retain(|l| l.name == "alpha");
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then beta's block (and its comment) is removed.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(written.contains("# keep"));
+        assert!(written.contains("name = \"alpha\""));
+        assert!(!written.contains("beta"));
+        assert!(!written.contains("# delete"));
+    }
+
+    #[rstest::rstest]
+    fn save_preferences_appends_new_session_lifecycle_at_end() {
+        // Given a jinn.toml with one lifecycle block.
+        let original = "# existing\n[[session_lifecycle]]\nname = \"alpha\"\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, original).expect("write");
+
+        // When loading and adding a new lifecycle.
+        let mut prefs = load_preferences_from(&path).expect("load");
+        prefs.session_lifecycles.push(SessionLifecycle {
+            name: "beta".to_owned(),
+            ..Default::default()
+        });
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then beta appears after alpha.
+        let written = std::fs::read_to_string(&path).expect("read");
+        let alpha_pos = written.find("name = \"alpha\"").expect("alpha");
+        let beta_pos = written.find("name = \"beta\"").expect("beta");
+        assert!(alpha_pos < beta_pos);
+        assert!(written.contains("# existing"));
+    }
+    #[rstest::rstest]
+    fn first_save_of_jinn_toml_emits_no_comments() {
+        // Given: no jinn.toml exists yet.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        assert!(!path.exists());
+
+        // When: saving for the first time.
+        let prefs = UserPreferences::default();
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then: the written file contains no comment characters at all.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            !written.contains('#'),
+            "first save of jinn.toml must be comment-free, got: {written}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn save_preferences_preserves_user_comments_in_auto_prune_section() {
+        // Given a jinn.toml with comments in the auto_prune.regex section.
+        let original = "# auto-prune rules\n[auto_prune.regex]\nenabled = true\n\n# matches foo\n[[auto_prune.regex.rules]]\npattern = \"foo\"\nkeep_last = 3\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, original).expect("write");
+
+        // When loading, mutating keep_last, and saving.
+        let mut prefs = load_preferences_from(&path).expect("load");
+        if let Some(rule) = prefs.auto_prune.regex.rules.iter_mut().next() {
+            rule.keep_last = 99;
+        }
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the comments are preserved and the value is updated.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(written.contains("# auto-prune rules"));
+        assert!(written.contains("# matches foo"));
+        assert!(written.contains("keep_last = 99"));
+    }
+    #[rstest::rstest]
+    fn save_preferences_comprehensive_comment_round_trip_preserves_all_styles() {
+        // Given a jinn.toml fixture using every comment style we promise to
+        // preserve: top-of-file banner, section header, mid-table inline,
+        // array-of-tables block headers.
+        let original = r#"# my jinn preferences - hand-edited
+                                                            
+        # main prefs
+        last_model = "openrouter/anthropic/claude-sonnet-4-20250514"
+                                                            
+        # compaction
+        [compaction]
+        enabled = true        # always compact
+        threshold = 100       # tokens
+                                                            
+        # session lifecycles
+        [[session_lifecycle]]
+        name = "fossil-branch"
+        description = "Open a fossil branch in a new workdir"
+                                                            
+        [[session_lifecycle]]
+        name = "cleanup"
+        description = "Tidy up after session"
+                                                            
+        # auto-prune
+        [auto_prune.regex]
+        enabled = true
+                                                            
+        # matches todo-related files
+        [[auto_prune.regex.rules]]
+        pattern = "TODO\\.md"
+        keep_last = 2
+                                                            
+        # matches build artifacts
+        [[auto_prune.regex.rules]]
+        pattern = "target/"
+        keep_last = 1
+        "#;
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, original).expect("write");
+
+        // When loading and immediately re-saving without changes.
+        let prefs = load_preferences_from(&path).expect("load");
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then every comment style is preserved byte-for-byte.
+        let written = std::fs::read_to_string(&path).expect("read");
+        for expected in [
+            "# my jinn preferences - hand-edited",
+            "# main prefs",
+            "# compaction",
+            "# always compact",   // inline trailing
+            "# tokens",           // inline trailing
+            "# session lifecycles",
+            "# auto-prune",
+            "# matches todo-related files",
+            "# matches build artifacts",
+        ] {
+            assert!(
+                written.contains(expected),
+                "comment lost: {expected:?}\nGot:\n{written}"
+            );
+        }
+    }
+
+    #[rstest::rstest]
+    fn save_preferences_mixed_mutations_preserve_unrelated_comments() {
+        // Given a jinn.toml with comments sprinkled across several sections.
+        let original = "\
+# main preferences\nlast_model = \"ollama/llama3\"\n\n# width in chars\nsidebar_width = 80\n\n# keep context compact\n[compaction]\n# always compact\nenabled = true\n# 50k tokens\ntokens = 50000\n\n# my lifecycles\n[[session_lifecycle]]\nname = \"alpha\"\n\n# deprecated lifecycle\n[[session_lifecycle]]\nname = \"beta\"\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, original).expect("write");
+
+        // When applying a mixed mutation set:
+        //   - change last_model (scalar update)
+        //   - delete beta session_lifecycle (array entry removal)
+        //   - leave sidebar_width and compaction untouched
+        let mut prefs = load_preferences_from(&path).expect("load");
+        prefs.last_model = Some("openrouter/gpt-4o".to_owned());
+        prefs.session_lifecycles.retain(|l| l.name == "alpha");
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then all unrelated comments survive and the targeted changes applied.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(written.contains("# main preferences"), "top comment kept");
+        assert!(written.contains("# width in chars"), "sidebar comment kept");
+        assert!(written.contains("sidebar_width = 80"), "untouched field kept");
+        assert!(written.contains("# keep context compact"), "compaction comment kept");
+        assert!(written.contains("# always compact"), "nested comment kept");
+        assert!(written.contains("# 50k tokens"), "second nested comment kept");
+        assert!(written.contains("# my lifecycles"), "lifecycles comment kept");
+        assert!(!written.contains("# deprecated lifecycle"), "beta comment removed with beta");
+        assert!(!written.contains("\"beta\""), "beta removed");
+        assert!(written.contains("openrouter/gpt-4o"), "last_model updated");
+        assert!(!written.contains("ollama/llama3"), "old last_model gone");
+        // The alpha lifecycle is preserved.
+        assert!(written.contains("\"alpha\""), "alpha kept");
+    }
+
+    #[rstest::rstest]
+    fn save_preferences_preserves_inner_block_comment_when_field_is_mutated() {
+        // Given a jinn.toml with a comment between two session_lifecycle fields.
+        // (The comment attaches to the next field's key decor, not its value.)
+        let original = "[[session_lifecycle]]\nname = \"cwd test\"\n# am i preserved?\ndescription = \"Open a fossil branch in a new worktree\"\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, original).expect("write");
+
+        // When loading and mutating the field after the comment.
+        let mut prefs = load_preferences_from(&path).expect("load");
+        prefs.session_lifecycles[0].description =
+            Some("UPDATED DESCRIPTION".to_owned());
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the inner comment survives AND the field is updated.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            written.contains("# am i preserved?"),
+            "inner comment lost on mutation:\n{written}"
+        );
+        assert!(
+            written.contains("UPDATED DESCRIPTION"),
+            "description updated:\n{written}"
+        );
+    }
     // --- S-Tier: Kill mutants for load_preferences / save_preferences ---
 
     #[rstest::rstest]
@@ -1134,6 +1588,31 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         assert!(content.contains("ollama/llama3"));
         assert!(content.contains("42"));
     }
+
+
+    #[rstest::rstest]
+    fn save_preferences_preserves_user_comments() {
+        // Given a comment-rich jinn.toml.
+        let original = "# my favorite\nlast_model = \"ollama/llama3\"\nsidebar_width = 42\n";
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, original).expect("write");
+
+        // When loading, mutating tool_entry_max_lines, and saving.
+        let mut prefs = load_preferences_from(&path).expect("load");
+        prefs.tool_entry_max_lines = Some(7);
+        save_preferences_to(&prefs, &path).expect("save");
+
+        // Then the comment is preserved verbatim.
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            written.contains("# my favorite"),
+            "comment was wiped: {written}"
+        );
+        assert!(written.contains("tool_entry_max_lines = 7"));
+        assert!(written.contains("last_model = \"ollama/llama3\""));
+    }
+
 
     // --- S-Tier: Kill mutant for RequestRetryConfig::to_retry_config ---
 
@@ -1433,6 +1912,11 @@ max_tokens = 5000
         assert!(config.todo.enabled);
         assert!(config.consecutive_reads.enabled);
         assert_eq!(config.consecutive_reads.keep_last, 3);
+        assert!(config.tool_age_window.enabled);
+        assert_eq!(config.tool_age_window.max_age_entries, 100);
+        assert!(config.trivial_assistant.enabled);
+        assert_eq!(config.trivial_assistant.max_age_entries, 100);
+        assert_eq!(config.trivial_assistant.max_tokens, 80);
     }
 
     #[rstest::rstest]
@@ -1441,6 +1925,10 @@ max_tokens = 5000
         assert!(prefs.auto_prune.read_edit.enabled);
         assert!(prefs.auto_prune.todo.enabled);
         assert!(prefs.auto_prune.consecutive_reads.enabled);
+        assert!(prefs.auto_prune.tool_age_window.enabled);
+        assert!(prefs.auto_prune.trivial_assistant.enabled);
+        assert_eq!(prefs.auto_prune.trivial_assistant.max_age_entries, 100);
+        assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
     }
 
     #[rstest::rstest]
@@ -1478,6 +1966,24 @@ keep_last = 5
     }
 
     #[rstest::rstest]
+    fn load_parses_auto_prune_tool_age_window_config() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[auto_prune.tool_age_window]
+enabled = false
+max_age_entries = 50
+"#,
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+        assert!(!prefs.auto_prune.tool_age_window.enabled);
+        assert_eq!(prefs.auto_prune.tool_age_window.max_age_entries, 50);
+    }
+
+    #[rstest::rstest]
     fn save_then_load_round_trips_auto_prune_config() {
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
@@ -1492,6 +1998,19 @@ keep_last = 5
                 todo: TodoAutoPruneConfig { enabled: false },
                 double_edit: DoubleEditAutoPruneConfig::default(),
                 consecutive_reads: ConsecutiveReadsAutoPruneConfig::default(),
+                tool_age_window: ToolAgeWindowAutoPruneConfig {
+                    enabled: false,
+                    max_age_entries: 7,
+                },
+                trivial_assistant: TrivialAssistantAutoPruneConfig {
+                    enabled: false,
+                    max_age_entries: 50,
+                    max_tokens: 40,
+                },
+                user_anchor_radius: UserAnchorRadiusAutoPruneConfig {
+                    enabled: false,
+                    radius: 42,
+                },
             },
             ..UserPreferences::default()
         };
@@ -1503,6 +2022,13 @@ keep_last = 5
         assert!(!reloaded.auto_prune.broken_edit.enabled);
         assert_eq!(reloaded.auto_prune.broken_edit.min_tail_entries, 3);
         assert!(!reloaded.auto_prune.todo.enabled);
+        assert!(!reloaded.auto_prune.tool_age_window.enabled);
+        assert_eq!(reloaded.auto_prune.tool_age_window.max_age_entries, 7);
+        assert!(!reloaded.auto_prune.trivial_assistant.enabled);
+        assert_eq!(reloaded.auto_prune.trivial_assistant.max_age_entries, 50);
+        assert_eq!(reloaded.auto_prune.trivial_assistant.max_tokens, 40);
+        assert!(!reloaded.auto_prune.user_anchor_radius.enabled);
+        assert_eq!(reloaded.auto_prune.user_anchor_radius.radius, 42);
     }
 
     #[rstest::rstest]
@@ -1514,6 +2040,13 @@ keep_last = 5
         let prefs = load_preferences_from(&path).expect("load");
         assert!(prefs.auto_prune.read_edit.enabled);
         assert!(prefs.auto_prune.todo.enabled);
+        assert!(prefs.auto_prune.tool_age_window.enabled);
+        assert_eq!(prefs.auto_prune.tool_age_window.max_age_entries, 100);
+        assert!(prefs.auto_prune.trivial_assistant.enabled);
+        assert_eq!(prefs.auto_prune.trivial_assistant.max_age_entries, 100);
+        assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
+        assert!(prefs.auto_prune.user_anchor_radius.enabled);
+        assert_eq!(prefs.auto_prune.user_anchor_radius.radius, 100);
     }
 
     #[rstest::rstest]

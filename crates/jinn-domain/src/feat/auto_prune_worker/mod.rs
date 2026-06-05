@@ -15,13 +15,25 @@
 pub mod broken_edit;
 pub mod consecutive_reads;
 pub mod double_edit;
+pub mod entry_token_cache;
 pub mod read_edit;
 pub mod regex;
 pub mod todo_prune;
+pub mod tool_age_window;
+pub mod trivial_assistant;
+pub mod user_anchor_radius;
+
 
 pub use broken_edit::BrokenEditAutoPruneWorker;
 pub use consecutive_reads::ConsecutiveReadsAutoPruneWorker;
 pub use double_edit::DoubleEditAutoPruneWorker;
+pub use entry_token_cache::{
+    HistoryWorkerChatEntryTokenCache, HistoryWorkerChatEntryTokenCacheEvictionActor,
+    HistoryWorkerChatEntryTokenCacheEvictionActorDeps,
+};
 pub use read_edit::ReadEditAutoPruneWorker;
 pub use regex::RegexAutoPruneWorker;
 pub use todo_prune::TodoAutoPruneWorker;
+pub use tool_age_window::ToolAgeWindowAutoPruneWorker;
+pub use trivial_assistant::TrivialAssistantAutoPruneWorker;
+pub use user_anchor_radius::UserAnchorRadiusAutoPruneWorker;
