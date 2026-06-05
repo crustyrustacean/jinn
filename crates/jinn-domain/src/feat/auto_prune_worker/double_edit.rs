@@ -23,6 +23,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::feat::auto_prune_worker::is_within_min_age;
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::DoubleEditAutoPruneConfig;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
@@ -82,6 +83,14 @@ fn find_matching_result(
 struct EditWritePair {
     call_entry_id: ChatEntryId,
     result_entry_id: ChatEntryId,
+    /// Index of the ToolCall in the history slice — used to apply
+    /// the per-worker `min_age` floor before emitting a prune.
+    call_idx: usize,
+    /// True if the call half is already `ForcedInclude` or `ForcedExclude`.
+    /// Captured at collection time so emission needs no `history` reference.
+    call_protected: bool,
+    /// True if the result half is already `ForcedInclude` or `ForcedExclude`.
+    result_protected: bool,
 }
 
 #[async_trait::async_trait]
@@ -101,7 +110,12 @@ impl HistoryWorker for DoubleEditAutoPruneWorker {
         }
 
         let groups = collect_edit_write_pairs_by_path(&history);
-        build_prune_mutations(&history, groups, self.config.max_file_edits)
+        build_prune_mutations(
+            history.len(),
+            groups,
+            self.config.max_file_edits,
+            self.config.min_age,
+        )
     }
 }
 /// Scan history for edit/write ToolCalls, resolve each to its result,
@@ -149,9 +163,18 @@ fn collect_edit_write_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Ve
             continue;
         };
 
+        let call_protected = call_entry.is_protected_from_prune();
+        let result_protected = history
+            .iter()
+            .find(|e| e.id == result_id)
+            .is_some_and(|e| e.is_protected_from_prune());
+
         groups.entry(path.clone()).or_default().push(EditWritePair {
             call_entry_id: call_entry.id.clone(),
             result_entry_id: result_id,
+            call_idx: *call_idx,
+            call_protected,
+            result_protected,
         });
     }
 
@@ -167,9 +190,10 @@ fn collect_edit_write_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Ve
 /// emission time — no no-op duplicate is emitted, and user-pinned-in
 /// entries are not silently flipped to `ForcedExclude`.
 fn build_prune_mutations(
-    history: &[ChatEntry],
+    history_len: usize,
     groups: HashMap<String, Vec<EditWritePair>>,
     max_file_edits: usize,
+    min_age: usize,
 ) -> Vec<HistoryMutation> {
     let mut mutations = Vec::new();
 
@@ -183,12 +207,14 @@ fn build_prune_mutations(
         // so the pruned edit/write disappears entirely from context.
         let to_prune = pairs.len() - max_file_edits;
         for pair in pairs.iter().take(to_prune) {
-            let call_protected = history
-                .iter()
-                .any(|e| e.id == pair.call_entry_id && e.is_protected_from_prune());
-            let result_protected = history
-                .iter()
-                .any(|e| e.id == pair.result_entry_id && e.is_protected_from_prune());
+            // Per-worker `min_age` floor: do not prune writes younger than
+            // `min_age` entries from the end of history. Both halves of the
+            // pair are skipped together (pair atomicity).
+            if is_within_min_age(history_len, pair.call_idx, min_age) {
+                continue;
+            }
+            let call_protected = pair.call_protected;
+            let result_protected = pair.result_protected;
 
             if !call_protected {
                 mutations.push(HistoryMutation::SetContextOverride {
@@ -238,6 +264,17 @@ mod tests {
             config: DoubleEditAutoPruneConfig {
                 enabled: true,
                 max_file_edits: max,
+                min_age: 0,
+            },
+        }
+    }
+
+    fn worker_with_max_and_min_age(max: usize, min_age: usize) -> DoubleEditAutoPruneWorker {
+        DoubleEditAutoPruneWorker {
+            config: DoubleEditAutoPruneConfig {
+                enabled: true,
+                max_file_edits: max,
+                min_age,
             },
         }
     }
@@ -536,4 +573,104 @@ mod tests {
         let mutations = block_on_evaluate(&worker, history);
         assert_eq!(mutations.len(), 6);
     }
+
+    // ------------------------------------------------------------------
+    // `min_age` protection tests
+    //
+    // The `min_age` floor suppresses mutation emission for pairs whose
+    // call_idx is within `min_age` of history.len(). Pair-atomicity is
+    // preserved: a protected pair emits no mutations for either half.
+    // Suppressed pairs still count toward the per-file total, so a file
+    // may temporarily exceed `max_file_edits` while young entries age out
+    // — this matches the "be less aggressive" design intent.
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn min_age_protects_young_file_with_many_writes() {
+        // 3 writes to the same file with max_file_edits=2.
+        // Without min_age the oldest pair would be pruned. With min_age=20
+        // and a short history (the writes themselves occupy indices 0..6,
+        // so the oldest call is at age = 6 − 0 − 1 = 5 < 20) all three
+        // pairs are protected.
+        let mut history = Vec::new();
+        for i in 0..3 {
+            let w = write_call_result(&format!("tc-{i}"), "/file.rs", &format!("v{i}"));
+            history.push(w[0].clone());
+            history.push(w[1].clone());
+        }
+        // history.len() = 6; every call is age < 20.
+        let worker = worker_with_max_and_min_age(2, 20);
+        let mutations = block_on_evaluate(&worker, history);
+        assert_eq!(
+            mutations.len(),
+            0,
+            "young file with all writes within min_age should not be pruned"
+        );
+    }
+
+    #[test]
+    fn min_age_zero_prunes_as_before() {
+        // min_age=0 must preserve pre-fix behavior: oldest pair pruned when
+        // the file exceeds max_file_edits.
+        let mut history = Vec::new();
+        for i in 0..3 {
+            let w = write_call_result(&format!("tc-{i}"), "/file.rs", &format!("v{i}"));
+            history.push(w[0].clone());
+            history.push(w[1].clone());
+        }
+        let worker = worker_with_max_and_min_age(2, 0);
+        let mutations = block_on_evaluate(&worker, history);
+        // 3 writes / max 2 → prune oldest call+result pair (2 mutations).
+        assert_eq!(mutations.len(), 2);
+    }
+
+    #[test]
+    fn mixed_young_and_old_writes() {
+        // Oldest write at the start of a long history (age ≫ min_age, prunable);
+        // 3 more writes near the end (age < min_age, protected).
+        // max_file_edits=2 + min_age=20 means: we have 4 writes total,
+        // would normally prune the 2 oldest, but only the very oldest is
+        // outside the protection floor.
+        let mut history = Vec::new();
+
+        // Write #0 at indices 0,1 — age will be ≫ 20.
+        let w0 = write_call_result("tc-0", "/file.rs", "v0");
+        history.push(w0[0].clone());
+        history.push(w0[1].clone());
+
+        // Pad with 50 user entries → history.len() = 52; write #0 call age = 51.
+        for i in 0..50 {
+            history.push(ChatEntry::user(format!("padding {i}")));
+        }
+
+        // Writes #1, #2, #3 at the end — all young.
+        for i in 1..=3 {
+            let w = write_call_result(&format!("tc-{i}"), "/file.rs", &format!("v{i}"));
+            history.push(w[0].clone());
+            history.push(w[1].clone());
+        }
+
+        // history.len() = 60. Write #0 call at idx 0 has age 59 (≥ 20, prunable).
+        // Writes #1..#3 have ages 7, 5, 3 (all < 20, protected).
+        // With max_file_edits=2, the worker would prune 2 oldest if it could,
+        // but only write #0 is eligible → exactly 2 mutations (call+result).
+        let worker = worker_with_max_and_min_age(2, 20);
+        let mutations = block_on_evaluate(&worker, history);
+        assert_eq!(
+            mutations.len(),
+            2,
+            "only the unprotected oldest write should be pruned; young writes stay"
+        );
+
+        let pruned_ids: std::collections::HashSet<_> = mutations
+            .iter()
+            .map(|m| match m {
+                HistoryMutation::SetContextOverride { entry_id, .. } => entry_id.clone(),
+                _ => panic!("expected SetContextOverride mutations"),
+            })
+            .collect();
+        assert!(pruned_ids.contains(&w0[0].id), "oldest call must be pruned");
+        assert!(pruned_ids.contains(&w0[1].id), "oldest result must be pruned");
+    }
+
 }

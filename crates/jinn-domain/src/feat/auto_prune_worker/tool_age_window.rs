@@ -1,26 +1,26 @@
 //! Tool-age-window auto-prune worker.
 //!
-//! Keeps only the most recent `max_age_entries` (default: 100) entries' worth
-//! of tool activity. Any `ToolCall`/`ToolResult` pair older than that window
-//! is marked [`ForcedExclude`] so the LLM never sees stale tool output.
+//! Protects the most recent `min_age` (default: 100) entries' worth of tool
+//! activity from pruning. Any `ToolCall`/`ToolResult` pair older than that
+//! floor is marked [`ForcedExclude`] so the LLM never sees stale tool output.
 //!
 //! # Semantics
 //!
 //! - The threshold counts every entry in raw history — already-excluded,
 //!   thinking, transient, system, error, and pending-result entries all
-//!   count. This makes the window position independent of what other
+//!   count. This makes the protection floor independent of what other
 //!   auto-prune workers have already `ForcedExclude`d, so multiple workers
 //!   compose cleanly: each worker's prune region is fixed by raw history
 //!   length alone, not by what has already been `ForcedExclude`d by other
 //!   workers.
-//! - The window is measured from the end of history backward. Once
-//!   `max_age_entries` entries have been counted, everything older is in
-//!   the prune window.
+//! - The floor is measured from the end of history backward. Entries whose
+//!   age (`history.len() - entry_idx - 1`) is less than `min_age` are
+//!   protected; older entries are prunable.
 //! - A `ToolCall`/`ToolResult` pair is pruned **atomically**: when the
-//!   `ToolCall` is in the prune window, both halves are excluded. Splitting
+//!   `ToolCall` is in the prune region, both halves are excluded. Splitting
 //!   a pair corrupts the LLM context (providers reject orphaned results).
 //!   By history ordering the call always precedes the result, so a call in
-//!   the prune window implies the result is at or beyond the call; both are
+//!   the prune region implies the result is at or beyond the call; both are
 //!   pruned together.
 //! - Pending/orphaned pairs (no matching `ToolResult`, or a `ToolResult`
 //!   whose status is `Pending`) are never pruned — see Gotcha #2 in the
@@ -28,17 +28,17 @@
 //! - Already-excluded entries do not receive duplicate
 //!   `SetContextOverride` mutations.
 //!
-//! # Example (max_age_entries = 4)
+//! # Example (min_age = 4)
 //!
 //! ```text
-//! X  [User]                  ← index 0 (pruned: too old)
-//! X  [Tool Call]: bash       ← index 1 (pruned: call in prune window)
+//! X  [User]                  ← index 0 (pruned: age 7 ≥ min_age)
+//! X  [Tool Call]: bash       ← index 1 (pruned: call in prune region)
 //! X  [Tool Result] (OK)      ← index 2 (pruned atomically with its call)
-//! X  [Assistant]             ← index 3 (pruned: too old)
-//!    [User]                  ← index 4 (kept: within window)
+//! X  [Assistant]             ← index 3 (pruned: age 4 ≥ min_age)
+//!    [User]                  ← index 4 (kept: age 3 < min_age)
 //!    [Tool Call]: bash       ← index 5 (kept)
 //!    [Tool Result] (OK)      ← index 6 (kept)
-//!    [Assistant]             ← index 7 (kept)
+//!    [Assistant]             ← index 7 (kept, age 0)
 //! ```
 //!
 //! [`ForcedExclude`]: crate::feat::session::chat_entry::ContextOverride::ForcedExclude
@@ -55,8 +55,8 @@ use crate::protocol::SessionId;
 /// Tool-age-window auto-prune worker.
 ///
 /// See module docs for full semantics. Construct with
-/// [`ToolAgeWindowAutoPruneConfig`]; `max_age_entries` is clamped to a
-/// minimum of 1 at evaluation time.
+/// [`ToolAgeWindowAutoPruneConfig`]; `min_age` is clamped to a minimum of 1
+/// at evaluation time.
 #[derive(Clone)]
 pub struct ToolAgeWindowAutoPruneWorker {
     /// Configuration for the tool-age-window auto-prune strategy.
@@ -95,24 +95,25 @@ fn find_completed_matching_result(
     None
 }
 
-/// Compute the index of the first entry inside the keep window.
+/// Compute the index of the first entry outside the protection floor.
 ///
-/// The keep window is the last `max_age` entries in raw history, regardless
-/// of whether each entry is currently in LLM context. Counting every entry
-/// (rather than only `is_in_context()` entries) makes the window position
+/// The protection floor is the last `min_age` entries in raw history,
+/// regardless of whether each entry is currently in LLM context. Counting
+/// every entry (rather than only `is_in_context()` entries) makes the floor
 /// independent of decisions made by other auto-prune workers, so the
 /// workers compose cleanly: each worker's prune region is fixed by raw
 /// history length alone, not by what has already been `ForcedExclude`d.
 ///
-/// `max_age` is clamped to a minimum of 1.
+/// `min_age` is clamped to a minimum of 1.
 ///
-/// Returns `None` if `history.len() < max_age` (nothing to prune).
-fn compute_keep_window_start(history: &[ChatEntry], max_age: usize) -> Option<usize> {
-    let max_age = max_age.max(1);
-    if history.len() < max_age {
+/// Returns `None` if `history.len() <= min_age` (every entry is protected,
+/// nothing to prune).
+fn compute_prune_region_start(history: &[ChatEntry], min_age: usize) -> Option<usize> {
+    let min_age = min_age.max(1);
+    if history.len() <= min_age {
         return None;
     }
-    Some(history.len() - max_age)
+    Some(history.len() - min_age)
 }
 
 /// Build the list of `SetContextOverride::ForcedExclude` mutations for a
@@ -122,26 +123,26 @@ fn compute_keep_window_start(history: &[ChatEntry], max_age: usize) -> Option<us
 /// spinning up a tokio runtime.
 ///
 /// Algorithm:
-/// 1. Find the keep window start index (the `max_age`-th entry from the
-///    end of raw history, regardless of in-context status).
-/// 2. For every `ToolCall` at an index strictly less than the keep window
-///    start, attempt to find its completed matching result.
+/// 1. Find the prune region start index (entries at index `< start` are
+///    prunable; entries at index `>= start` are protected by `min_age`).
+/// 2. For every `ToolCall` in the prune region, attempt to find its
+///    completed matching result.
 /// 3. If found, emit `ForcedExclude` mutations for both halves — unless an
-///    individual half is already excluded.
+///    individual half is already excluded or `ForcedInclude`-protected.
 ///
 /// Pair-atomicity across the cutoff is preserved by the forward scan in
 /// `find_completed_matching_result`: even if the result lives at an index
-/// `>= keep_window_start`, it is still found and excluded together with
+/// `>= prune_region_start`, it is still found and excluded together with
 /// its call.
-fn build_age_window_mutations(history: &[ChatEntry], max_age: usize) -> Vec<HistoryMutation> {
-    let Some(keep_window_start) = compute_keep_window_start(history, max_age) else {
-        // Fewer than max_age entries — nothing to prune.
+fn build_age_window_mutations(history: &[ChatEntry], min_age: usize) -> Vec<HistoryMutation> {
+    let Some(prune_region_start) = compute_prune_region_start(history, min_age) else {
+        // Every entry is protected — nothing to prune.
         return Vec::new();
     };
 
     let mut mutations = Vec::new();
 
-    for i in 0..keep_window_start {
+    for i in 0..prune_region_start {
         let entry = &history[i];
 
         // Only ToolCalls in the prune region are candidates.
@@ -172,7 +173,7 @@ fn build_age_window_mutations(history: &[ChatEntry], max_age: usize) -> Vec<Hist
         if !call_protected {
             tracing::debug!(
                 entry_id = %call_id,
-                keep_window_start,
+                prune_region_start,
                 "tool_age_window: excluding old tool call"
             );
             mutations.push(HistoryMutation::SetContextOverride {
@@ -183,7 +184,7 @@ fn build_age_window_mutations(history: &[ChatEntry], max_age: usize) -> Vec<Hist
         if !result_protected {
             tracing::debug!(
                 entry_id = %result_id,
-                keep_window_start,
+                prune_region_start,
                 "tool_age_window: excluding old tool result"
             );
             mutations.push(HistoryMutation::SetContextOverride {
@@ -208,10 +209,10 @@ impl HistoryWorker for ToolAgeWindowAutoPruneWorker {
         _session_id: &SessionId,
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
-        let mutations = build_age_window_mutations(&history, self.config.max_age_entries);
+        let mutations = build_age_window_mutations(&history, self.config.min_age);
         tracing::debug!(
             mutations = mutations.len(),
-            max_age_entries = self.config.max_age_entries,
+            min_age = self.config.min_age,
             history_len = history.len(),
             "tool_age_window evaluate done"
         );
@@ -229,12 +230,12 @@ mod tests {
     use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::protocol::SessionId;
 
-    /// Build a worker with the given `max_age_entries` (enabled = true).
-    fn worker(max_age: usize) -> ToolAgeWindowAutoPruneWorker {
+    /// Build a worker with the given `min_age` (enabled = true).
+    fn worker(min_age: usize) -> ToolAgeWindowAutoPruneWorker {
         ToolAgeWindowAutoPruneWorker {
             config: ToolAgeWindowAutoPruneConfig {
                 enabled: true,
-                max_age_entries: max_age,
+                min_age,
             },
         }
     }
@@ -305,6 +306,8 @@ mod tests {
 
     // ------------------------------------------------------------------
     // 3. history_exactly_at_threshold_produces_no_mutations
+    //
+    // history.len() == min_age → every entry is protected.
     // ------------------------------------------------------------------
     #[test]
     fn history_exactly_at_threshold_produces_no_mutations() {
@@ -317,8 +320,8 @@ mod tests {
     // 4. history_one_over_threshold_prunes_oldest_pair
     //
     // Old tool pair (positions 0, 1) + 100 user entries = 102 entries.
-    // Window = last 100 (positions 2..=101). Pair at 0,1 is in prune
-    // region → both pruned (pair-atomic).
+    // min_age = 100 → prune_region_start = 102 - 100 = 2. Pair at 0,1 is
+    // in prune region → both pruned (pair-atomic).
     // ------------------------------------------------------------------
     #[test]
     fn history_one_over_threshold_prunes_oldest_pair() {
@@ -332,8 +335,8 @@ mod tests {
         let call_id = history[0].id.clone();
         let result_id = history[1].id.clone();
 
-        // 100 user entries → total entries = 102. Window = last 100
-        // (positions 2..=101). Pair at positions 0,1 is in the prune region.
+        // 100 user entries → total entries = 102. Prune region start = 2.
+        // Pair at positions 0,1 is in the prune region.
         history.extend(users(100));
 
         let mutations = evaluate(&w, history);
@@ -347,13 +350,13 @@ mod tests {
     // 5. pair_atomicity_when_result_straddles_cutoff
     //
     // Fixture: 100 user entries + ToolCall + 99 user entries + ToolResult
-    // = 201 entries total. With max_age = 100, window starts at index
-    // 201 - 100 = 101. The call at index 100 is in the prune region
-    // (100 < 101); the result at index 200 is inside the keep window.
-    // Both must be excluded (pair-atomic): the call is pruned because it's
-    // in the prune region; the result is pruned because
+    // = 201 entries total. With min_age = 100, prune_region_start = 101.
+    // The call at index 100 is in the prune region (100 < 101); the
+    // result at index 200 is inside the protection floor. Both must be
+    // excluded (pair-atomic): the call is pruned because it's in the
+    // prune region; the result is pruned because
     // `find_completed_matching_result` forwards from the call and finds
-    // the matching result regardless of the keep-window boundary.
+    // the matching result regardless of the protection boundary.
     // ------------------------------------------------------------------
     #[test]
     fn pair_atomicity_when_result_straddles_cutoff() {
@@ -363,8 +366,7 @@ mod tests {
         // 100 filler user entries (positions 0..=99).
         history.extend(users(100));
 
-        // The tool call at index 100 (in prune region once window is
-        // computed: 100 < window_start = 101).
+        // The tool call at index 100 (in prune region: 100 < start = 101).
         let call = ChatEntry::tool_call("tc-straddle", "bash", r#"{"command": "ls"}"#);
         let call_id = call.id.clone();
         history.push(call);
@@ -372,9 +374,9 @@ mod tests {
         // 99 more user entries (positions 101..=199).
         history.extend(users(99));
 
-        // The matching result at index 200 (inside keep window). Still
-        // excluded because pair-atomicity pulls it in via the forward
-        // scan from the call.
+        // The matching result at index 200 (inside protection floor).
+        // Still excluded because pair-atomicity pulls it in via the
+        // forward scan from the call.
         let result =
             ChatEntry::tool_result("tc-straddle", "bash", "out", ToolResultStatus::Success);
         let result_id = result.id.clone();
@@ -393,23 +395,23 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // 6. pair_at_keep_window_boundary_is_not_pruned
+    // 6. pair_at_protection_boundary_is_not_pruned
     //
     // Fixture: 100 user entries + call + result = 102 entries.
-    // Window = last 100 → starts at index 102 - 100 = 2.
-    // Call at index 100, result at index 101: both >= 2 → inside window
-    // → not pruned. Loop runs `for i in 0..2`: examines only the first
-    // two users, neither is a ToolCall, so no mutations are emitted.
+    // min_age = 100 → prune_region_start = 2. Loop runs `for i in 0..2`:
+    // examines only the first two users, neither is a ToolCall, so no
+    // mutations are emitted. The pair (positions 100, 101) is inside
+    // the protection floor and never even examined.
     // ------------------------------------------------------------------
     #[test]
-    fn pair_at_keep_window_boundary_is_not_pruned() {
+    fn pair_at_protection_boundary_is_not_pruned() {
         let w = worker(100);
         let mut history = Vec::new();
 
         // 100 user entries (positions 0..=99).
         history.extend(users(100));
 
-        // Tool pair at positions 100, 101 — both inside keep window.
+        // Tool pair at positions 100, 101 — inside protection floor.
         let call = ChatEntry::tool_call("tc-boundary", "bash", r#"{"command": "ls"}"#);
         let call_id = call.id.clone();
         history.push(call);
@@ -422,11 +424,11 @@ mod tests {
         let excluded = excluded_ids(&mutations);
         assert!(
             !excluded.contains(&call_id),
-            "call inside keep window must not be pruned"
+            "call inside protection floor must not be pruned"
         );
         assert!(
             !excluded.contains(&result_id),
-            "result inside keep window must not be pruned"
+            "result inside protection floor must not be pruned"
         );
         assert!(mutations.is_empty());
     }
@@ -444,7 +446,7 @@ mod tests {
         history.push(p[0].clone());
         history.push(p[1].clone());
 
-        // Push the window past the pair.
+        // Push the prune region past the pair.
         history.extend(users(100));
 
         let mutations = evaluate(&w, history);
@@ -527,26 +529,26 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // 10. max_age_entries_clamped_to_1
+    // 10. min_age_clamped_to_1
     //
-    // Config max_age = 0 (clamped to 1). Single complete pair = 2
-    // entries. Window start = 2 - 1 = 1. Loop runs `for i in 0..1`,
+    // Config min_age = 0 (clamped to 1). Single complete pair = 2
+    // entries. Prune region start = 2 - 1 = 1. Loop runs `for i in 0..1`,
     // examines the call. Forward scan finds the result at index 1.
     // Both halves excluded (pair-atomic).
     // ------------------------------------------------------------------
     #[test]
-    fn max_age_entries_clamped_to_1() {
+    fn min_age_clamped_to_1() {
         let w = worker(0);
         let history: Vec<ChatEntry> = bash_pair("tc-clamp", "ls", "out").into();
-        // 2 entries. max_age=0 → clamped to 1. Window starts at index 1
-        // (the result). Loop runs `for i in 0..1`, examines the call.
-        // find_completed_matching_result finds the result at index 1.
+        // 2 entries. min_age=0 → clamped to 1. Prune region starts at
+        // index 1 (the result). Loop runs `for i in 0..1`, examines the
+        // call. find_completed_matching_result finds the result at index 1.
         // Both excluded.
         let mutations = evaluate(&w, history);
         assert_eq!(
             mutations.len(),
             2,
-            "with max_age clamped to 1, the only pair is pruned"
+            "with min_age clamped to 1, the only pair is pruned"
         );
     }
 
@@ -603,10 +605,9 @@ mod tests {
         history.push(p[0].clone());
         history.push(p[1].clone());
 
-        // 100 user entries → total entries = 104, window covers last
-        // 100 (positions 4..=103). Positions 0-3 (user, assistant, call,
-        // result) are in the prune region. Only the pair (positions 2, 3)
-        // should mutate.
+        // 100 user entries → total entries = 104, prune region covers
+        // positions 0..=3 (user, assistant, call, result). Only the pair
+        // (positions 2, 3) should mutate.
         history.extend(users(100));
 
         let mutations = evaluate(&w, history);
@@ -615,6 +616,35 @@ mod tests {
         assert!(
             !excluded.contains(&asst_id),
             "non-tool assistant entry must not be pruned"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // 13. min_age_zero_prunes_everything
+    //
+    // With min_age=0 every completed tool pair is eligible for pruning
+    // (no protection). This is the back-compat baseline.
+    #[test]
+    fn min_age_zero_prunes_everything() {
+        let w = worker(0);
+        let mut history = Vec::new();
+
+        // 3 tool pairs (6 entries).
+        for i in 0..3 {
+            let p = bash_pair(&format!("tc-{i}"), "ls", "out");
+            history.push(p[0].clone());
+            history.push(p[1].clone());
+        }
+
+        // 10 trailing user entries so history.len() > 0.
+        history.extend(users(10));
+
+        let mutations = evaluate(&w, history);
+        // 3 pairs * 2 mutations each = 6.
+        assert_eq!(
+            mutations.len(),
+            6,
+            "min_age=0 must permit pruning of all completed pairs"
         );
     }
 }
