@@ -183,8 +183,7 @@ impl Actor for ToolOrchestratorActor {
         let web_search_config = deps
             .services
             .user_preferences_storage
-            .load()
-            .expect("preferences")
+            .read()
             .openrouter_web_search
             .clone();
 
@@ -396,8 +395,7 @@ impl ToolOrchestratorActor {
         let prefs = self
             .services
             .user_preferences_storage
-            .load()
-            .expect("preferences");
+            .read();
         let cwd = {
             let guard = self.state.read();
             guard.session.get(session_id).map_or_else(

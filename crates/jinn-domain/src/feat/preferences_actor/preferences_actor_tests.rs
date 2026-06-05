@@ -38,8 +38,7 @@ async fn set_last_model_saves_to_storage() {
     let prefs = actor
         .services
         .user_preferences_storage
-        .load()
-        .expect("load");
+        .read();
     assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
 }
 
@@ -73,8 +72,7 @@ async fn set_last_model_overwrites_previous() {
     let prefs = actor
         .services
         .user_preferences_storage
-        .load()
-        .expect("load");
+        .read();
     assert_eq!(prefs.last_model.as_deref(), Some("openrouter/gpt-4"));
 }
 
@@ -108,8 +106,7 @@ async fn set_last_model_preserves_last_strategy() {
     let prefs = actor
         .services
         .user_preferences_storage
-        .load()
-        .expect("load");
+        .read();
     assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
     assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
 }
@@ -136,8 +133,7 @@ async fn set_last_strategy_saves_to_storage() {
     let prefs = actor
         .services
         .user_preferences_storage
-        .load()
-        .expect("load");
+        .read();
     assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
 }
 
@@ -171,8 +167,7 @@ async fn set_last_strategy_preserves_last_model() {
     let prefs = actor
         .services
         .user_preferences_storage
-        .load()
-        .expect("load");
+        .read();
     assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
     assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
 }
@@ -200,8 +195,7 @@ async fn batch_diffs_apply_all_at_once() {
     let prefs = actor
         .services
         .user_preferences_storage
-        .load()
-        .expect("load");
+        .read();
     assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
     assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
 }
@@ -266,8 +260,7 @@ async fn empty_diffs_does_not_change_storage() {
     let prefs = actor
         .services
         .user_preferences_storage
-        .load()
-        .expect("load");
+        .read();
     assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
 }
 
@@ -286,8 +279,7 @@ async fn ignores_unrelated_commands() {
     let prefs = actor
         .services
         .user_preferences_storage
-        .load()
-        .expect("load");
+        .read();
     assert!(prefs.last_model.is_none());
     assert!(prefs.last_strategy.is_none());
 }

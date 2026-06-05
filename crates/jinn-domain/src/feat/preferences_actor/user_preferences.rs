@@ -111,6 +111,13 @@ impl Default for MinimapConfig {
 /// Default enabled state for read-edit auto-prune.
 const DEFAULT_READ_EDIT_ENABLED: bool = true;
 
+/// Default `min_age` for read-edit auto-prune.
+///
+/// Number of entries from the end of history within which prior
+/// edit/write call+result pairs are protected from backward pruning
+/// when a same-file read occurs.
+const DEFAULT_READ_EDIT_MIN_AGE: usize = 50;
+
 /// Default enabled state for todo auto-prune.
 const DEFAULT_TODO_ENABLED: bool = true;
 
@@ -123,16 +130,28 @@ const DEFAULT_TODO_ENABLED: bool = true;
 pub struct ReadEditAutoPruneConfig {
     #[serde(default = "default_read_edit_enabled")]
     pub enabled: bool,
+    /// Minimum number of entries from the end of history that must
+    /// appear after a write/edit call before backward pruning may
+    /// exclude the call+result pair. Counts every entry, regardless
+    /// of in-context status. Set to 0 to disable protection.
+    /// Default: 50.
+    #[serde(default = "default_read_edit_min_age")]
+    pub min_age: usize,
 }
 
 fn default_read_edit_enabled() -> bool {
     DEFAULT_READ_EDIT_ENABLED
 }
 
+fn default_read_edit_min_age() -> usize {
+    DEFAULT_READ_EDIT_MIN_AGE
+}
+
 impl Default for ReadEditAutoPruneConfig {
     fn default() -> Self {
         Self {
             enabled: DEFAULT_READ_EDIT_ENABLED,
+            min_age: DEFAULT_READ_EDIT_MIN_AGE,
         }
     }
 }
@@ -209,6 +228,13 @@ const DEFAULT_DOUBLE_EDIT_MAX_FILE_EDITS: usize = 2;
 /// Default enabled state for double-edit auto-prune.
 const DEFAULT_DOUBLE_EDIT_ENABLED: bool = true;
 
+/// Default `min_age` for double-edit auto-prune.
+///
+/// Number of entries from the end of history within which edit/write
+/// call+result pairs on a file are protected from pruning even when the
+/// per-file cap (`max_file_edits`) would otherwise exclude them.
+const DEFAULT_DOUBLE_EDIT_MIN_AGE: usize = 20;
+
 /// Double-edit auto-prune configuration.
 ///
 /// Serialized as `[auto_prune.double_edit]` in `jinn.toml`.
@@ -226,6 +252,13 @@ pub struct DoubleEditAutoPruneConfig {
     /// Default: 2.
     #[serde(default = "default_double_edit_max_file_edits")]
     pub max_file_edits: usize,
+    /// Minimum number of entries from the end of history that must
+    /// appear after an edit/write call before it may be pruned.
+    /// Counts every entry, regardless of in-context status.
+    /// Set to 0 to disable protection (preserves pre-`min_age` behavior).
+    /// Default: 20.
+    #[serde(default = "default_double_edit_min_age")]
+    pub min_age: usize,
 }
 
 fn default_double_edit_enabled() -> bool {
@@ -236,11 +269,16 @@ fn default_double_edit_max_file_edits() -> usize {
     DEFAULT_DOUBLE_EDIT_MAX_FILE_EDITS
 }
 
+fn default_double_edit_min_age() -> usize {
+    DEFAULT_DOUBLE_EDIT_MIN_AGE
+}
+
 impl Default for DoubleEditAutoPruneConfig {
     fn default() -> Self {
         Self {
             enabled: DEFAULT_DOUBLE_EDIT_ENABLED,
             max_file_edits: DEFAULT_DOUBLE_EDIT_MAX_FILE_EDITS,
+            min_age: DEFAULT_DOUBLE_EDIT_MIN_AGE,
         }
     }
 }
@@ -290,14 +328,20 @@ impl Default for ConsecutiveReadsAutoPruneConfig {
 /// Default enabled state for tool-age-window auto-prune.
 const DEFAULT_TOOL_AGE_WINDOW_ENABLED: bool = true;
 
-/// Default number of entries to keep before pruning older tool pairs.
-const DEFAULT_TOOL_AGE_WINDOW_MAX_AGE_ENTRIES: usize = 100;
+/// Default `min_age` for tool-age-window auto-prune.
+///
+/// Number of entries from the end of history within which `ToolCall`/
+/// `ToolResult` pairs are protected from pruning. Matches the legacy
+/// `max_age_entries` default of 100 to preserve the historical keep-window.
+const DEFAULT_TOOL_AGE_WINDOW_MIN_AGE: usize = 100;
+
+
 
 /// Tool-age-window auto-prune configuration.
 ///
 /// Serialized as `[auto_prune.tool_age_window]` in `jinn.toml`.
 /// Controls the auto-prune worker that excludes any `ToolCall`/`ToolResult`
-/// pair older than `max_age_entries` entries from the end of history. Both
+/// pair older than `min_age` entries from the end of history. Both
 /// halves of a pair are always excluded together.
 ///
 /// The window counts every entry in raw history regardless of in-context
@@ -310,29 +354,32 @@ pub struct ToolAgeWindowAutoPruneConfig {
     /// Default: `true`.
     #[serde(default = "default_tool_age_window_enabled")]
     pub enabled: bool,
-    /// Number of most recent entries to keep before pruning older tool
-    /// pairs. Counts every entry, regardless of in-context status.
+    /// Minimum number of entries from the end of history within which
+    /// `ToolCall`/`ToolResult` pairs are protected from pruning.
+    /// Counts every entry, regardless of in-context status.
     /// Minimum 1 (clamped at worker construction).
-    #[serde(default = "default_tool_age_window_max_age_entries")]
-    pub max_age_entries: usize,
+    /// Default: 100.
+    #[serde(default = "default_tool_age_window_min_age")]
+    pub min_age: usize,
 }
 
 fn default_tool_age_window_enabled() -> bool {
     DEFAULT_TOOL_AGE_WINDOW_ENABLED
 }
 
-fn default_tool_age_window_max_age_entries() -> usize {
-    DEFAULT_TOOL_AGE_WINDOW_MAX_AGE_ENTRIES
+fn default_tool_age_window_min_age() -> usize {
+    DEFAULT_TOOL_AGE_WINDOW_MIN_AGE
 }
 
 impl Default for ToolAgeWindowAutoPruneConfig {
     fn default() -> Self {
         Self {
             enabled: DEFAULT_TOOL_AGE_WINDOW_ENABLED,
-            max_age_entries: DEFAULT_TOOL_AGE_WINDOW_MAX_AGE_ENTRIES,
+            min_age: DEFAULT_TOOL_AGE_WINDOW_MIN_AGE,
         }
     }
 }
+
 
 /// Default enabled state for trivial-assistant auto-prune.
 const DEFAULT_TRIVIAL_ASSISTANT_ENABLED: bool = true;
@@ -1957,7 +2004,9 @@ max_tokens = 5000
         assert!(config.consecutive_reads.enabled);
         assert_eq!(config.consecutive_reads.keep_last, 3);
         assert!(config.tool_age_window.enabled);
-        assert_eq!(config.tool_age_window.max_age_entries, 100);
+        assert_eq!(config.read_edit.min_age, 50);
+        assert_eq!(config.double_edit.min_age, 20);
+        assert_eq!(config.tool_age_window.min_age, 100);
         assert!(config.trivial_assistant.enabled);
         assert_eq!(config.trivial_assistant.max_age_entries, 100);
         assert_eq!(config.trivial_assistant.max_tokens, 80);
@@ -2017,14 +2066,73 @@ keep_last = 5
             &path,
             r#"[auto_prune.tool_age_window]
 enabled = false
-max_age_entries = 50
+min_age = 50
 "#,
         )
         .expect("write");
 
         let prefs = load_preferences_from(&path).expect("load");
         assert!(!prefs.auto_prune.tool_age_window.enabled);
-        assert_eq!(prefs.auto_prune.tool_age_window.max_age_entries, 50);
+        assert_eq!(prefs.auto_prune.tool_age_window.min_age, 50);
+    }
+
+    #[rstest::rstest]
+    fn load_parses_auto_prune_read_edit_min_age() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[auto_prune.read_edit]
+min_age = 25
+"#,
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+        assert_eq!(prefs.auto_prune.read_edit.min_age, 25);
+    }
+
+    #[rstest::rstest]
+    fn load_parses_auto_prune_double_edit_min_age() {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[auto_prune.double_edit]
+min_age = 15
+"#,
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+        assert_eq!(prefs.auto_prune.double_edit.min_age, 15);
+    }
+
+    #[rstest::rstest]
+    fn config_without_min_age_uses_new_defaults() {
+        // Given a TOML file with auto_prune sections that omit `min_age`, the new
+        // defaults should kick in (50 for read_edit, 20 for double_edit, 100 for
+        // tool_age_window).
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[auto_prune.read_edit]
+enabled = true
+
+[auto_prune.double_edit]
+enabled = true
+
+[auto_prune.tool_age_window]
+enabled = true
+"#,
+        )
+        .expect("write");
+
+        let prefs = load_preferences_from(&path).expect("load");
+        assert_eq!(prefs.auto_prune.read_edit.min_age, 50);
+        assert_eq!(prefs.auto_prune.double_edit.min_age, 20);
+        assert_eq!(prefs.auto_prune.tool_age_window.min_age, 100);
     }
 
     #[rstest::rstest]
@@ -2033,7 +2141,7 @@ max_age_entries = 50
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
             auto_prune: AutoPruneConfig {
-                read_edit: ReadEditAutoPruneConfig { enabled: false },
+                read_edit: ReadEditAutoPruneConfig { enabled: false, min_age: 25 },
                 regex: RegexAutoPruneConfig::default(),
                 broken_edit: BrokenEditAutoPruneConfig {
                     enabled: false,
@@ -2044,7 +2152,7 @@ max_age_entries = 50
                 consecutive_reads: ConsecutiveReadsAutoPruneConfig::default(),
                 tool_age_window: ToolAgeWindowAutoPruneConfig {
                     enabled: false,
-                    max_age_entries: 7,
+                    min_age: 7,
                 },
                 trivial_assistant: TrivialAssistantAutoPruneConfig {
                     enabled: false,
@@ -2063,11 +2171,12 @@ max_age_entries = 50
 
         let reloaded = load_preferences_from(&path).expect("load");
         assert!(!reloaded.auto_prune.read_edit.enabled);
+        assert_eq!(reloaded.auto_prune.read_edit.min_age, 25);
         assert!(!reloaded.auto_prune.broken_edit.enabled);
         assert_eq!(reloaded.auto_prune.broken_edit.min_tail_entries, 3);
         assert!(!reloaded.auto_prune.todo.enabled);
         assert!(!reloaded.auto_prune.tool_age_window.enabled);
-        assert_eq!(reloaded.auto_prune.tool_age_window.max_age_entries, 7);
+        assert_eq!(reloaded.auto_prune.tool_age_window.min_age, 7);
         assert!(!reloaded.auto_prune.trivial_assistant.enabled);
         assert_eq!(reloaded.auto_prune.trivial_assistant.max_age_entries, 50);
         assert_eq!(reloaded.auto_prune.trivial_assistant.max_tokens, 40);
@@ -2085,7 +2194,7 @@ max_age_entries = 50
         assert!(prefs.auto_prune.read_edit.enabled);
         assert!(prefs.auto_prune.todo.enabled);
         assert!(prefs.auto_prune.tool_age_window.enabled);
-        assert_eq!(prefs.auto_prune.tool_age_window.max_age_entries, 100);
+        assert_eq!(prefs.auto_prune.tool_age_window.min_age, 100);
         assert!(prefs.auto_prune.trivial_assistant.enabled);
         assert_eq!(prefs.auto_prune.trivial_assistant.max_age_entries, 100);
         assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
