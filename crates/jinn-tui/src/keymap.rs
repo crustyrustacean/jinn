@@ -299,8 +299,6 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         })
         .scope(Scope::PickerTaskList, |b| {
             add_picker_base(b);
-            // q also closes the picker (same as Esc)
-            b.bind("q", Intent::EnterNormalMode, KeyCategory::General);
         });
 
     // ArgInput scope - typing positional args for a lifecycle command.

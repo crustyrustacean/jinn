@@ -326,17 +326,4 @@ fn esc_in_picker_task_list_returns_to_normal_mode() {
     );
 }
 
-#[rstest::rstest]
-fn q_in_picker_task_list_returns_to_normal_mode() {
-    // Given the keymap rooted at PickerTaskList.
-    let mut wk = keymap_at(Scope::PickerTaskList);
 
-    // When pressing `q`.
-    let intent = wk.handle_key(key("q"));
-
-    // Then it resolves to EnterNormalMode (same as Esc).
-    assert_eq!(
-        intent.map(|i| i.to_string()).as_deref(),
-        Some("enter normal mode")
-    );
-}
