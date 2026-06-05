@@ -25,6 +25,16 @@ pub fn handle_toggle_whichkey(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
+/// Handles the `ToggleAuditPopup` intent.
+///
+/// Flips the global `audit_popup_visible` flag on `FrontendState`. Always
+/// succeeds (no validator). The popup is rendered by the TUI layer when the
+/// flag is `true`.
+pub fn handle_toggle_audit_popup(state: &mut AppState) -> IntentResult {
+    state.frontend.audit_popup_visible = !state.frontend.audit_popup_visible;
+    IntentResult::empty()
+}
+
 /// Handles the Interrupt intent.
 ///
 /// When `target` is `None`, clears the input buffer.
@@ -115,6 +125,10 @@ mod tests {
         super::handle_toggle_whichkey(state)
     }
 
+    fn handle_toggle_audit_popup(state: &mut AppState) -> IntentResult {
+        super::handle_toggle_audit_popup(state)
+    }
+
     fn handle_interrupt(state: &mut AppState) -> IntentResult {
         super::handle_interrupt(state, None)
     }
@@ -142,6 +156,26 @@ mod tests {
 
         // Then the toggle_whichkey signal is set.
         assert!(state.frontend.tui_signals.toggle_whichkey);
+        assert!(result.commands.is_empty());
+    }
+    #[rstest::rstest]
+    fn toggle_audit_popup_flips_visibility() {
+        // Given a default state (popup hidden).
+        let mut state = AppState::default();
+        assert!(!state.frontend.audit_popup_visible);
+
+        // When toggling once.
+        let result = handle_toggle_audit_popup(&mut state);
+
+        // Then the flag flips to true.
+        assert!(state.frontend.audit_popup_visible);
+        assert!(result.commands.is_empty());
+
+        // When toggling a second time.
+        let result = handle_toggle_audit_popup(&mut state);
+
+        // Then the flag flips back to false.
+        assert!(!state.frontend.audit_popup_visible);
         assert!(result.commands.is_empty());
     }
 

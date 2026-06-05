@@ -215,6 +215,7 @@ impl IntentHandler {
             Intent::EnterInsertMode => feat::chat_input::intent::handle_enter_insert_mode(state),
             Intent::EnterNormalMode => feat::chat_input::intent::handle_enter_normal_mode(state),
             Intent::ToggleWhichkey => feat::global::intent::handle_toggle_whichkey(state),
+            Intent::ToggleAuditPopup => feat::global::intent::handle_toggle_audit_popup(state),
             Intent::NormalEscape => feat::chat_input::intent::handle_normal_escape(state),
             Intent::NoOp => IntentResult::empty(),
 
