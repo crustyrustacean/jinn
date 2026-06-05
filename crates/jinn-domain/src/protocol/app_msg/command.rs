@@ -19,6 +19,7 @@ use crate::common::actor::protocol::command::ProceedWithShutdown;
 pub use crate::common::actor::protocol::dynamic_command::DynamicCommand;
 use crate::feat::chat_input::protocol::command::{
     EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText,
+    SubmitSteeringMessage,
 };
 use crate::feat::context::protocol::command::{
     LoadPersonaPickerEntries, PinChatEntry, RescanPersonas, UnpinChatEntry,
@@ -62,6 +63,8 @@ pub enum Command {
     UnpinChatEntry(UnpinChatEntry),
     /// Enqueue a user message for queued processing.
     EnqueueUserMessage(EnqueueUserMessage),
+    /// Append a fragment to a session's steering buffer (see [`SubmitSteeringMessage`]).
+    SubmitSteeringMessage(SubmitSteeringMessage),
     /// Enqueue a manual resume for a session: re-assemble current history and
     /// re-send to the provider. Adds no user message.
     EnqueueResumeTurn(EnqueueResumeTurn),
@@ -157,6 +160,7 @@ impl Command {
             Self::PinChatEntry(..) => Some(PinChatEntry::NAME),
             Self::UnpinChatEntry(..) => Some(UnpinChatEntry::NAME),
             Self::EnqueueUserMessage(..) => Some(EnqueueUserMessage::NAME),
+            Self::SubmitSteeringMessage(..) => Some(SubmitSteeringMessage::NAME),
             Self::EnqueueResumeTurn(..) => Some(EnqueueResumeTurn::NAME),
             Self::SetChatInputText(..) => Some(SetChatInputText::NAME),
             Self::PushChatEntry(..) => Some(PushChatEntry::NAME),
@@ -247,6 +251,7 @@ impl std::fmt::Display for Command {
                 write!(f, "unpin entry '{}'", payload.entry_id)
             }
             Command::EnqueueUserMessage(..) => write!(f, "enqueue user message"),
+            Command::SubmitSteeringMessage(..) => write!(f, "submit steering message"),
             Command::EnqueueResumeTurn(..) => write!(f, "enqueue resume turn"),
             Command::SetChatInputText(..) => write!(f, "set chat input text"),
             Command::PushChatEntry(..) => write!(f, "push chat entry"),

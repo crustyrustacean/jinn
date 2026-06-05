@@ -96,6 +96,12 @@ pub struct Theme {
     pub scroll_indicator_bg: Color,
     /// Sidebar resize mode border color.
     pub sidebar_resize_accent: Color,
+
+    // Chat input submit-mode badge
+    /// Color for the `[QUEUE]` mode badge on the chat input border.
+    pub input_mode_queue: Color,
+    /// Color for the `[STEER]` mode badge on the chat input border.
+    pub input_mode_steer: Color,
 }
 
 /// TOML-serializable theme file with optional fields.
@@ -177,6 +183,11 @@ pub struct ThemeFile {
     pub scroll_indicator_bg: Option<ThemeColor>,
     #[serde(default)]
     pub sidebar_resize_accent: Option<ThemeColor>,
+
+    #[serde(default)]
+    pub input_mode_queue: Option<ThemeColor>,
+    #[serde(default)]
+    pub input_mode_steer: Option<ThemeColor>,
 }
 
 impl ThemeFile {
@@ -299,6 +310,14 @@ impl ThemeFile {
                 fallback.sidebar_resize_accent,
                 crate::color::ThemeColor::inner,
             ),
+            input_mode_queue: self.input_mode_queue.map_or(
+                fallback.input_mode_queue,
+                crate::color::ThemeColor::inner,
+            ),
+            input_mode_steer: self.input_mode_steer.map_or(
+                fallback.input_mode_steer,
+                crate::color::ThemeColor::inner,
+            ),
         }
     }
 
@@ -406,6 +425,12 @@ impl ThemeFile {
             sidebar_resize_accent: self
                 .sidebar_resize_accent
                 .map_or(Color::Reset, crate::color::ThemeColor::inner),
+            input_mode_queue: self
+                .input_mode_queue
+                .map_or(Color::Reset, crate::color::ThemeColor::inner),
+            input_mode_steer: self
+                .input_mode_steer
+                .map_or(Color::Reset, crate::color::ThemeColor::inner),
         }
     }
 }
@@ -451,6 +476,8 @@ mod tests {
             age_stale: None,
             scroll_indicator_bg: None,
             sidebar_resize_accent: None,
+            input_mode_queue: None,
+            input_mode_steer: None,
         };
 
         // When resolving.
@@ -501,6 +528,8 @@ mod tests {
             age_stale: None,
             scroll_indicator_bg: None,
             sidebar_resize_accent: None,
+            input_mode_queue: None,
+            input_mode_steer: None,
         };
 
         // When resolving.
@@ -564,6 +593,8 @@ mod tests {
             scroll_indicator_bg: Some(ThemeColor(Color::Black)),
             sidebar_resize_accent: Some(ThemeColor(Color::Green)),
             popup_title: Some(ThemeColor(Color::Yellow)),
+            input_mode_queue: Some(ThemeColor(Color::DarkGray)),
+            input_mode_steer: Some(ThemeColor(Color::Magenta)),
         };
 
         // When serializing to TOML and back.

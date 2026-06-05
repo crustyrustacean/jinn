@@ -7,6 +7,7 @@
 use crate::common::actor::ActorContext;
 use crate::feat::chat_input::protocol::command::{
     EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText,
+    SubmitSteeringMessage,
 };
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::context::assemble::assemble_prompt;
@@ -297,6 +298,20 @@ impl SessionPersistenceActor {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&payload.session_id);
         session.chat_input_mut().replace_all(payload.text.clone());
+    }
+
+    /// SubmitSteeringMessage: append a fragment to the session's steering buffer.
+    ///
+    /// The buffer is drained into a `User` entry at the next prompt-assembly
+    /// boundary. This handler performs no phase check - routing (queue vs steer)
+    /// is the responsibility of the chat-input layer.
+    pub(in crate::feat::session::session_actor) fn handle_submit_steering_message(
+        &self,
+        payload: &SubmitSteeringMessage,
+    ) {
+        let mut state = self.state.write();
+        let session = state.session_mut_or_create(&payload.session_id);
+        session.steering_buffer_mut().push_fragment(payload.text.clone());
     }
 
     /// PushChatEntry: push entry to session history, emit ChatEntrySubmitted event,
