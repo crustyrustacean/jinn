@@ -10,7 +10,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
-use std::sync::RwLock;
+use parking_lot::RwLock;
 use std::sync::atomic::{AtomicU16, Ordering};
 
 use jiff::Timestamp;
@@ -374,7 +374,7 @@ impl Clone for SessionUi {
             entry_line_ranges: RwLock::new(
                 self.entry_line_ranges
                     .read()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+
                     .clone(),
             ),
             viewport_height: AtomicU16::new(self.viewport_height.load(Ordering::Relaxed)),
@@ -385,7 +385,7 @@ impl Clone for SessionUi {
             visual_items: RwLock::new(
                 self.visual_items
                     .read()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+
                     .clone(),
             ),
             ignore_sweep: self.ignore_sweep,
@@ -1490,10 +1490,7 @@ impl ChatSessionState {
             return;
         };
 
-        let ranges = match self.ui.entry_line_ranges.read() {
-            Ok(guard) => guard.clone(),
-            Err(_) => return,
-        };
+        let ranges = self.ui.entry_line_ranges.read().clone();
 
         let Some(&(start, end)) = ranges.get(selected_idx) else {
             return;
@@ -1567,7 +1564,8 @@ impl ChatSessionState {
     /// `entry_line_ranges[i] = (start_wrapped_line, end_wrapped_line)` in the
     /// wrapped coordinate space. Called each frame by the chat log renderer.
     pub fn set_entry_line_ranges(&self, ranges: Vec<(u16, u16)>) {
-        if let Ok(mut guard) = self.ui.entry_line_ranges.write() {
+        {
+            let mut guard = self.ui.entry_line_ranges.write();
             *guard = ranges;
         }
     }
@@ -1594,10 +1592,7 @@ impl ChatSessionState {
     /// visible. Returns an empty range if no entries are visible or viewport
     /// data is unavailable.
     pub fn visible_entry_range(&self) -> Range<usize> {
-        let ranges = match self.ui.entry_line_ranges.read() {
-            Ok(guard) => guard.clone(),
-            Err(_) => return 0..0,
-        };
+        let ranges = self.ui.entry_line_ranges.read().clone();
         if ranges.is_empty() {
             return 0..0;
         }
@@ -2100,7 +2095,8 @@ impl ChatSessionState {
 
     /// Store the visual items list computed during render.
     pub fn set_visual_items(&self, items: Vec<crate::feat::ui::chat_log::visual_item::VisualItem>) {
-        if let Ok(mut guard) = self.ui.visual_items.write() {
+        {
+            let mut guard = self.ui.visual_items.write();
             *guard = items;
         }
     }
@@ -2108,12 +2104,12 @@ impl ChatSessionState {
     /// Read-only access to the visual items list.
     pub fn visual_items(
         &self,
-    ) -> std::sync::RwLockReadGuard<'_, Vec<crate::feat::ui::chat_log::visual_item::VisualItem>>
+    ) -> parking_lot::RwLockReadGuard<'_, Vec<crate::feat::ui::chat_log::visual_item::VisualItem>>
     {
         self.ui
             .visual_items
             .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+
     }
 
     /// The visual item at the currently selected position, if any.
@@ -2124,7 +2120,7 @@ impl ChatSessionState {
         self.ui
             .visual_items
             .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+
             .get(idx)
             .cloned()
     }
@@ -2144,8 +2140,8 @@ impl ChatSessionState {
         let items = self
             .ui
             .visual_items
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+            .read();
+
         if items.is_empty() {
             // Before first render, visual items haven't been computed yet.
             // Fall back: selected_entry_index IS a history index in this case.
