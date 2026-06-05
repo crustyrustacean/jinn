@@ -26,7 +26,9 @@ use std::sync::Arc;
 use crate::feat::auto_prune_worker::is_within_min_age;
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::DoubleEditAutoPruneConfig;
-use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
+use crate::feat::session::chat_entry::{
+    ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride,
+};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
 
@@ -299,7 +301,9 @@ mod tests {
         let mut ids: Vec<_> = mutations
             .into_iter()
             .map(|m| match m {
-                HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+                HistoryMutation::SetContextOverride {
+                    entry_id, value, ..
+                } => {
                     assert_eq!(value, ContextOverride::ForcedExclude);
                     entry_id
                 }
@@ -427,7 +431,12 @@ mod tests {
         let mut history = Vec::new();
         let e1 = edit_call_result("tc-1", "/foo.rs", "edit 1");
         let mut e1_call = e1[0].clone();
-        e1_call.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        e1_call.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         history.push(e1_call);
         let oldest_result_id = e1[1].id.clone();
         history.push(e1[1].clone());
@@ -443,7 +452,9 @@ mod tests {
 
         assert_eq!(mutations.len(), 1, "only the non-excluded result mutates");
         match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+            HistoryMutation::SetContextOverride {
+                entry_id, value, ..
+            } => {
                 assert_eq!(*entry_id, oldest_result_id);
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }
@@ -475,7 +486,9 @@ mod tests {
 
         assert_eq!(mutations.len(), 1, "only the non-protected result mutates");
         match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+            HistoryMutation::SetContextOverride {
+                entry_id, value, ..
+            } => {
                 assert_eq!(*entry_id, oldest_result_id);
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }
@@ -678,7 +691,9 @@ mod tests {
             })
             .collect();
         assert!(pruned_ids.contains(&w0[0].id), "oldest call must be pruned");
-        assert!(pruned_ids.contains(&w0[1].id), "oldest result must be pruned");
+        assert!(
+            pruned_ids.contains(&w0[1].id),
+            "oldest result must be pruned"
+        );
     }
-
 }

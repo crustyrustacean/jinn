@@ -83,7 +83,7 @@ fn compaction_entry(summary: &str) -> ChatEntry {
         },
         pin_position: None,
         context_override: ContextOverride::Default,
-    context_history: Vec::new(),
+        context_history: Vec::new(),
     }
 }
 
@@ -179,7 +179,9 @@ fn forced_exclude_ids(mutations: &[HistoryMutation]) -> Vec<ChatEntryId> {
     mutations
         .iter()
         .filter_map(|m| match m {
-            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+            HistoryMutation::SetContextOverride {
+                entry_id, value, ..
+            } => {
                 if matches!(value, ContextOverride::ForcedExclude) {
                     Some(entry_id.clone())
                 } else {

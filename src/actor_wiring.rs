@@ -33,9 +33,7 @@ use jinn_domain::actor_channel::ActorChannelService;
 use jinn_domain::common::actor::protocol::event::{ActorStarted, ActorStarting, AllActorsSpawned};
 use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
 
-use jinn_domain::feat::workflow::workflow_controller_actor::{
-    WorkflowControllerActor, WorkflowControllerActorDeps,
-};
+use jinn_domain::feat::plugin_dispatch::{PluginDispatchActor, PluginDispatchActorDeps};
 use jinn_domain::init::env_init_actor::{EnvInitActor, EnvInitActorDeps};
 use jinn_domain::init::provider_init_actor::{ProviderInitActor, ProviderInitActorDeps};
 use jinn_domain::init::system_ready_actor::{SystemReadyActor, SystemReadyActorDeps};
@@ -49,8 +47,6 @@ use jinn_domain::{
     MessageSink, ShutdownTracker, State, spawn, spawn_forwarding_task, system_spawn,
     wait_for_system_ready,
 };
-
-use crate::plugin_actor::{PluginActor, PluginActorDeps};
 
 /// Creates an `AppCore` with all actors registered and the async forwarding task started.
 ///
@@ -72,11 +68,17 @@ pub fn create_core_with_actor_host(
     bench_plan: Option<jinn_bench::orchestrator::BenchPlan>,
     bench_artifact_dir: Option<std::path::PathBuf>,
     paths: jinn_domain::AppPaths,
-) -> (AppCore, Services, ActorHostService) {
+) -> (
+    AppCore,
+    Services,
+    ActorHostService,
+    jinn_plugin::SyncPlugins,
+) {
     // Create channel first - actors need the sender, but AppCore needs services
     // which needs the actor host which needs actors. Break the cycle by creating
     // the channel independently.
     let (sender, receiver) = kanal::unbounded::<AppMsg>();
+    let async_receiver = receiver.to_async();
 
     // Create the message sink that bridges actor output to AppCore's channel.
     let sink: Arc<dyn MessageSink> = Arc::new(ActorMessageSink::new(sender.clone()));
@@ -104,14 +106,41 @@ pub fn create_core_with_actor_host(
         guard.active_session_mut().set_cwd(cwd);
     }
 
-    // Build services (needed early for infrastructure actors).
+    // ── Plugin system ────────────────────────────────────────────────────
+    // Constructed early — handles go into Services and TuiApp.
 
-    // Set themes directory from AppPaths (used by theme picker intent).
+    let plugin_command_dispatcher: jinn_plugin::CommandDispatcher = std::sync::Arc::new({
+        let sink = sink.clone();
+        move |cmd: jinn_plugin::PluginCommand| {
+            crate::plugin_wiring::handle_plugin_command(cmd, &*sink);
+        }
+    });
+    let plugin_request_handler: jinn_plugin::RequestHandler =
+        std::sync::Arc::new(crate::plugin_wiring::handle_plugin_request);
+
+    let (sync_plugins, async_plugins, plugin_sync_handle) = jinn_plugin::PluginSystem::new(
+        &paths.plugins_dir(),
+        &paths.system_plugins_dir(),
+        handle.clone(),
+        plugin_command_dispatcher,
+        plugin_request_handler,
+    );
+
+    // Store discovered plugin metadata in state for the sidebar.
     {
-        let mut guard = state.write();
-        guard.frontend.themes_dir = paths.themes_dir();
-        guard.frontend.system_themes_dir = paths.system_themes_dir();
+        let plugins =
+            jinn_plugin::discover_plugins(&paths.plugins_dir(), &paths.system_plugins_dir());
+        tracing::info!(count = plugins.len(), "discovered plugins");
+        let plugins: Vec<jinn_domain::common::app_state::DiscoveredPlugin> = plugins
+            .into_iter()
+            .map(|p| jinn_domain::common::app_state::DiscoveredPlugin {
+                name: p.name,
+                description: p.description,
+            })
+            .collect();
+        state.write().discovered_plugins = plugins;
     }
+
     let services = Services {
         paths: paths.clone(),
         handle: handle.clone(),
@@ -122,6 +151,19 @@ pub fn create_core_with_actor_host(
         config_storage: config_storage.clone(),
         session_store: session_store.clone(),
         user_preferences_storage: user_preferences_storage.clone(),
+        plugins: jinn_domain::feat::plugin_dispatch::PluginFireService::new(std::sync::Arc::new(
+            async_plugins.clone(),
+        )
+            as std::sync::Arc<dyn jinn_domain::feat::plugin_dispatch::PluginFire>),
+        plugin_sync: jinn_domain::feat::plugin_dispatch::PluginSyncCallService::new(
+            std::sync::Arc::new(plugin_sync_handle)
+                as std::sync::Arc<dyn jinn_domain::feat::plugin_dispatch::PluginSyncCall>,
+        ),
+        session_plugin_registry:
+            jinn_domain::feat::plugin_system::SessionPluginRegistryService::new(
+                std::sync::Arc::new(async_plugins.clone())
+                    as std::sync::Arc<dyn jinn_domain::feat::plugin_system::SessionPluginRegistry>,
+            ),
         tempdir: None,
     };
 
@@ -534,9 +576,7 @@ pub fn create_core_with_actor_host(
         use jinn_domain::feat::history_worker::actor::{
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
-        let regex_config = user_preferences_storage.read().auto_prune
-            .regex
-            .clone();
+        let regex_config = user_preferences_storage.read().auto_prune.regex.clone();
 
         if regex_config.enabled && !regex_config.rules.is_empty() {
             match RegexAutoPruneWorker::from_config(&regex_config) {
@@ -593,7 +633,11 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage.read().auto_prune.broken_edit.clone();
+        let config = user_preferences_storage
+            .read()
+            .auto_prune
+            .broken_edit
+            .clone();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<BrokenEditAutoPruneWorker>>(
@@ -616,7 +660,11 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage.read().auto_prune.double_edit.clone();
+        let config = user_preferences_storage
+            .read()
+            .auto_prune
+            .double_edit
+            .clone();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<DoubleEditAutoPruneWorker>>(
@@ -639,7 +687,11 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage.read().auto_prune.consecutive_reads.clone();
+        let config = user_preferences_storage
+            .read()
+            .auto_prune
+            .consecutive_reads
+            .clone();
 
         if config.enabled {
             actors.push(
@@ -656,7 +708,6 @@ pub fn create_core_with_actor_host(
             );
         }
     }
-
 
     // Shared entry-token cache for history workers.
     //
@@ -687,7 +738,11 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage.read().auto_prune.tool_age_window.clone();
+        let config = user_preferences_storage
+            .read()
+            .auto_prune
+            .tool_age_window
+            .clone();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<ToolAgeWindowAutoPruneWorker>>(
@@ -711,23 +766,29 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage.read().auto_prune.trivial_assistant.clone();
+        let config = user_preferences_storage
+            .read()
+            .auto_prune
+            .trivial_assistant
+            .clone();
 
         if config.enabled {
-            actors.push(spawn::<HistoryWorkerActor<TrivialAssistantAutoPruneWorker>>(
-                "history-worker-auto-prune-trivial-assistant",
-                &sink,
-                handle,
-                &counter,
-                &shutdown_tracker,
-                HistoryWorkerActorDeps {
-                    worker: TrivialAssistantAutoPruneWorker {
-                        config,
-                        token_cache: entry_token_cache.clone(),
-                        counter: TiktokenCounter::o200k_base(),
+            actors.push(
+                spawn::<HistoryWorkerActor<TrivialAssistantAutoPruneWorker>>(
+                    "history-worker-auto-prune-trivial-assistant",
+                    &sink,
+                    handle,
+                    &counter,
+                    &shutdown_tracker,
+                    HistoryWorkerActorDeps {
+                        worker: TrivialAssistantAutoPruneWorker {
+                            config,
+                            token_cache: entry_token_cache.clone(),
+                            counter: TiktokenCounter::o200k_base(),
+                        },
                     },
-                },
-            ));
+                ),
+            );
         }
     }
 
@@ -736,13 +797,17 @@ pub fn create_core_with_actor_host(
     // nearest anchor entry (first index, last index, or any User entry)
     // exceeds a configurable radius.
     {
-        use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
         use jinn_domain::feat::auto_prune_worker::AnchorRadiusAutoPruneWorker;
+        use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
         use jinn_domain::feat::history_worker::actor::{
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage.read().auto_prune.anchor_radius.clone();
+        let config = user_preferences_storage
+            .read()
+            .auto_prune
+            .anchor_radius
+            .clone();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<AnchorRadiusAutoPruneWorker>>(
@@ -775,69 +840,17 @@ pub fn create_core_with_actor_host(
         },
     ));
 
-    actors.push(spawn::<WorkflowControllerActor>(
-        "workflow-controller",
-        &sink,
-        handle,
-        &counter,
-        &shutdown_tracker,
-        WorkflowControllerActorDeps {
-            state: state.clone(),
-            services: services.clone(),
-        },
-    ));
-
-    // Discover Lua plugins.
-    {
-        let plugins = jinn_domain::feat::luaworkflow::discovery::discover_plugins(&paths);
-        tracing::info!(count = plugins.len(), "discovered Lua plugins");
-        state.write().discovered_plugins = plugins;
-    }
-
-    // ── Plugin actor ─────────────────────────────────────────────────────
-    // The PluginActor receives domain events and dispatches them to Lua plugin
-    // VMs. The `!Send` PluginRegistry is created on a dedicated OS thread.
-    let startup_session_id = state.read().session.active_session_id().to_string();
-    let plugin_paths = paths.clone();
-    let plugin_sink = sink.clone();
-    actors.push(spawn::<PluginActor>(
+    // ── Plugin dispatch actor (replaces plugin_lifecycle + workflow_controller) ─
+    actors.push(spawn::<PluginDispatchActor>(
         "plugin-dispatch",
         &sink,
         handle,
         &counter,
         &shutdown_tracker,
-        PluginActorDeps {
-            registry_factory: Box::new(move || {
-                let translator = crate::plugin_wiring::build_translator();
-                let cmd_sender_sink = plugin_sink.clone();
-                let cmd_sender =
-                    jinn_plugin::CommandSender::new(move |cmd: jinn_domain::Command| {
-                        let _ = cmd_sender_sink.send_command(cmd);
-                    });
-                let registry = jinn_plugin::PluginRegistry::new(translator, cmd_sender);
-
-                // Load system plugins.
-                let mut plugin_count = 0usize;
-                let system_dir = plugin_paths.system_plugins_dir();
-                if system_dir.is_dir() {
-                    let infos = registry.load_all(&system_dir);
-                    plugin_count += infos.len();
-                }
-
-                // Load user plugins.
-                let user_dir = plugin_paths.plugins_dir();
-                if user_dir.is_dir() {
-                    let infos = registry.load_all(&user_dir);
-                    plugin_count += infos.len();
-                }
-
-                if plugin_count > 0 {
-                    tracing::info!(count = plugin_count, "loaded plugins");
-                }
-
-                registry
-            }),
-            startup_session_id,
+        PluginDispatchActorDeps {
+            services: services.clone(),
+            state: state.clone(),
+            startup_session_id: state.read().session.active_session_id().to_string(),
         },
     ));
 
@@ -862,7 +875,7 @@ pub fn create_core_with_actor_host(
     let actor_host_service = ActorHostService::new(Arc::new(
         InMemoryActorHost::from_actors_with_handle(actors, handle.clone(), shutdown_tracker),
     ));
-    spawn_forwarding_task(receiver, actor_host_service.clone(), handle);
+    spawn_forwarding_task(async_receiver, actor_host_service.clone(), handle);
 
     // Signal that all actors have been spawned.
     // SystemReadyActor waits for this before checking its count.
@@ -885,5 +898,5 @@ pub fn create_core_with_actor_host(
         jinn_domain::feat::context::protocol::command::RescanPersonas,
     ));
 
-    (core, services, actor_host_service)
+    (core, services, actor_host_service, sync_plugins)
 }

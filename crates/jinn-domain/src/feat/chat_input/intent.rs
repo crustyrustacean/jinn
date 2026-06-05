@@ -216,41 +216,57 @@ pub fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
 /// Handles `SubmitMessage` - confirms autocomplete if active, executes slash commands,
 /// or submits the message as chat input.
 pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
+    tracing::info!("DIAG handle_submit_message ENTER");
     if state.active_chat_input().autocomplete().is_some() {
+        tracing::info!("DIAG handle_submit_message: autocomplete active, delegating");
         return handle_submit_message_with_autocomplete(state);
     }
 
     if validator::validate_submit_message(state).is_err() {
+        tracing::info!("DIAG handle_submit_message: validation FAILED (empty buffer?)");
         return IntentResult::empty();
     }
+    tracing::info!("DIAG handle_submit_message: validation passed");
 
     let session_id = state.session.active_session_id().clone();
-    let display = state.active_chat_input().text().to_owned();
+    let input_text = state.active_chat_input().text().to_owned();
+    tracing::info!(session_id = %session_id, input = %input_text, "DIAG handle_submit_message: extracted text");
 
     // Check for slash command execution.
-    if let Some(command_name) = display.strip_prefix('/') {
+    if let Some(command_name) = input_text.strip_prefix('/') {
         // Extract the first word after / (command name, ignoring arguments).
         let cmd = command_name.split_whitespace().next().unwrap_or("");
         if let Some(cmd) = SlashCommand::lookup(cmd) {
+            tracing::info!(?cmd, "DIAG handle_submit_message: executing slash command");
             state.active_chat_input_mut().reset();
-            return with_mark_interacted(session_id, execute_slash_command(cmd, &display, state));
+            return with_mark_interacted(
+                session_id,
+                execute_slash_command(cmd, &input_text, state),
+            );
         }
+        tracing::info!("DIAG handle_submit_message: unknown slash command, falling through");
         // Unknown /command - fall through to normal message.
     }
 
     let expanded = crate::feat::context::prompt_template::expand_tokens(
-        &display,
+        &input_text,
         &state.context.prompt_templates,
     );
     state.active_chat_input_mut().reset();
 
-    with_mark_interacted(
+    tracing::info!(session_id = %session_id, "DIAG handle_submit_message: creating EnqueueUserMessage");
+    let result = with_mark_interacted(
         session_id,
         IntentResult::with_commands(vec![Command::EnqueueUserMessage(EnqueueUserMessage {
             session_id: state.session.active_session_id().clone(),
-            entry: ChatEntry::user_expanded(display, expanded),
+            entry: ChatEntry::user_expanded(input_text, expanded),
         })]),
-    )
+    );
+    tracing::info!(
+        cmd_count = result.commands.len(),
+        "DIAG handle_submit_message: returning result"
+    );
+    result
 }
 
 /// Handles Enter when autocomplete is active - completes the selection and submits.
@@ -345,7 +361,7 @@ fn execute_slash_command(
             // Open the workflow picker to select a Lua plugin.
             crate::feat::picker::intent::handle_open_picker(
                 state,
-                crate::protocol::PickerKind::Workflow,
+                crate::protocol::PickerKind::Plugin,
             );
             IntentResult::empty()
         }

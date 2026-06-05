@@ -12,7 +12,7 @@ headless-chrome = ["jinn-web-fetch/headless-chrome"]
 members = ["crates/*", "tests/*", "vendor/*"]
 
 [workspace.package]
-version = "0.57.0"
+version = "0.58.0"
 edition = "2024"
 
 [profile.release]
@@ -35,9 +35,11 @@ jinn-web-fetch = { workspace = true, features = ["headless-chrome"] }
 clap_complete = { workspace = true }
 tokio = { workspace = true }
 kanal = { workspace = true }
+async-trait = { workspace = true }
 wherror = { workspace = true }
 error-stack = { workspace = true }
 serde_json = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 reqwest = { workspace = true }
 dirs = { workspace = true }
 jiff = { workspace = true }
@@ -73,7 +75,6 @@ jinn-workflow-tui = { path = "crates/jinn-workflow-tui" }
 jinn-bench = { path = "crates/jinn-bench" }
 jinn-theme = { path = "crates/jinn-theme" }
 jinn-web-fetch = { path = "crates/jinn-web-fetch" }
-jinn-lua-workflow = { path = "crates/jinn-lua-workflow" }
 
 # Error handling
 wherror = "2.3.1"
@@ -86,6 +87,7 @@ serde_json = "1.0"
 # Async / channels
 tokio = { version = "1", features = ["full"] }
 kanal = "0.1"
+dashmap = "6"
 futures = "0.3"
 
 # UI
@@ -101,7 +103,7 @@ mlua = { version = "0.10", features = ["lua54", "vendored", "serialize", "async"
 # State
 parking_lot = "0.12"
 arc-swap = "1"
-dashmap = "6"
+
 
 # Time
 jiff = { version = "0.2", features = ["serde"] }
@@ -150,7 +152,7 @@ quote = "1"
 proc-macro2 = "1"
 
 # UUID
-uuid = { version = "1.23.1", features = ["v7", "serde"] }
+uuid = { version = "1.23.1", features = ["v4", "v7", "serde"] }
 
 # Tokenization
 tiktoken = "3"

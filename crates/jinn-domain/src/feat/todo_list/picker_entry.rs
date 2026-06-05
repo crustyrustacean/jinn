@@ -146,9 +146,7 @@ fn render_task_list_row(
         RowStatus::Task(status) => {
             let glyph = status.indicator();
             let text = match status {
-                TaskStatus::Completed | TaskStatus::Cancelled => {
-                    dim_style(is_selected, theme)
-                }
+                TaskStatus::Completed | TaskStatus::Cancelled => dim_style(is_selected, theme),
                 TaskStatus::Pending | TaskStatus::Postponed => selected_style(is_selected, theme),
             };
             (glyph, text, text)
@@ -160,7 +158,12 @@ fn render_task_list_row(
     let desc_spans = if match_indices.is_empty() {
         vec![Span::styled(description.to_owned(), text_style)]
     } else {
-        highlight_text_with_bg(description, text_style, match_indices, theme.picker_highlight_bg)
+        highlight_text_with_bg(
+            description,
+            text_style,
+            match_indices,
+            theme.picker_highlight_bg,
+        )
     };
 
     let mut spans = vec![glyph_span];
@@ -225,7 +228,11 @@ mod tests {
         // When calling display_label.
         // Then it returns only the description, no glyph prefix.
         assert_eq!(entry.display_label(), "Write tests");
-        assert!(!entry.display_label().contains(TaskStatus::Completed.indicator()));
+        assert!(
+            !entry
+                .display_label()
+                .contains(TaskStatus::Completed.indicator())
+        );
     }
 
     #[rstest::rstest]

@@ -45,6 +45,7 @@ use jinn_domain::ToolResult;
 use jinn_domain::UnpinChatEntry;
 use jinn_domain::UserPreferencesStorageService;
 use jinn_domain::feat::context::protocol::strategy_id::PromptStrategyId;
+use jinn_plugin::SyncPlugins;
 use jinn_tui::AppStatus;
 use jinn_tui::MsgHandler;
 use jinn_tui::Scope;
@@ -144,25 +145,28 @@ impl AppWorld {
             ));
 
             // Call production wiring - spawns all 16 actors.
-            let (core, services, actor_host) = actor_wiring::create_core_with_actor_host(
-                &handle,
-                llm_service,
-                provider_registry,
-                resolved_api_keys,
-                config_storage,
-                session_store,
-                user_preferences_storage,
-                None,
-                None,
-                None,
-                paths,
-            );
+            let (core, services, actor_host, _sync_plugins) =
+                actor_wiring::create_core_with_actor_host(
+                    &handle,
+                    llm_service,
+                    provider_registry,
+                    resolved_api_keys,
+                    config_storage,
+                    session_store,
+                    user_preferences_storage,
+                    None,
+                    None,
+                    None,
+                    paths,
+                );
 
             // Intentionally leaked: each AppWorld restart gets a completely fresh tokio runtime.
             // Leaking avoids subtle issues where a reused runtime retains closed channels,
             // stale actor state, or dangling task handles from the previous app instance.
             // Test processes are short-lived, so the memory cost is negligible.
             let _ = Box::leak(Box::new(rt));
+
+            drop(_sync_plugins);
 
             handle_tx
                 .send((handle, core, services, actor_host))
@@ -194,6 +198,7 @@ impl AppWorld {
                 jinn_domain::feat::ui::sidebar::register_sections(&mut s);
                 s
             },
+            plugins: SyncPlugins::default(),
         };
 
         (app, handle)
@@ -579,7 +584,7 @@ fn when_restart_app(world: &mut AppWorld) {
             jinn_domain::SqliteSessionStore::new_in(&paths.sessions_dir()).expect("store"),
         ));
 
-        let (core, services, actor_host) = actor_wiring::create_core_with_actor_host(
+        let (core, services, actor_host, _sync_plugins) = actor_wiring::create_core_with_actor_host(
             &handle,
             llm_service,
             provider_registry,
@@ -625,6 +630,7 @@ fn when_restart_app(world: &mut AppWorld) {
             jinn_domain::feat::ui::sidebar::register_sections(&mut s);
             s
         },
+        plugins: SyncPlugins::default(),
     };
 
     world.app = app;
