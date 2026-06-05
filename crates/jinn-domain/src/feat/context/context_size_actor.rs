@@ -9,6 +9,8 @@ use crate::common::state::State;
 use crate::feat::context::assemble::assemble_prompt;
 use crate::feat::context::strategy::token_estimator::TiktokenCounter;
 use crate::protocol::Event;
+use tracing::error;
+
 
 /// Recalculates context size for the active session after context-affecting changes.
 ///
@@ -54,7 +56,7 @@ impl Actor for ContextSizeActor {
         if let ActorEnvelope::Event(event) = &msg
             && Self::is_context_relevant(event)
         {
-            self.recalculate();
+            self.recalculate().await;
         }
     }
 }
@@ -73,21 +75,34 @@ impl ContextSizeActor {
     }
 
     /// Recalculate context size for the active session.
-    fn recalculate(&self) {
+    ///
+    /// The CPU-intensive `assemble_prompt` call is moved into
+    /// `tokio::task::spawn_blocking` to avoid consuming the async worker's
+    /// coop budget during startup bursts.
+    async fn recalculate(&self) {
         let session_id = {
             let state = self.state.read();
             state.session.active_session_id().clone()
         };
 
-        let assembled = {
-            let guard = self.state.read();
-            assemble_prompt(&guard, &session_id, &self.counter, None)
-        };
+        let state_clone = self.state.clone();
+        let counter = self.counter;
+        let id_for_blocking = session_id.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let guard = state_clone.read();
+            assemble_prompt(&guard, &id_for_blocking, &counter, None).estimated_tokens()
+        })
+        .await;
 
-        {
-            let mut state = self.state.write();
-            if let Some(session) = state.session.get_mut(&session_id) {
-                session.set_context_size(assembled.estimated_tokens());
+        match result {
+            Ok(assembled_tokens) => {
+                let mut state = self.state.write();
+                if let Some(session) = state.session.get_mut(&session_id) {
+                    session.set_context_size(assembled_tokens);
+                }
+            }
+            Err(join_err) => {
+                error!(error = %join_err, "context-size recalculate task failed");
             }
         }
     }
@@ -110,8 +125,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn recalculate_updates_context_size_for_active_session() {
+    #[tokio::test]
+    async fn recalculate_updates_context_size_for_active_session() {
+
         // Given an actor with a session that has history.
         let actor = test_actor();
         let session_id = {
@@ -123,7 +139,7 @@ mod tests {
         };
 
         // When recalculating.
-        actor.recalculate();
+        actor.recalculate().await;
 
         // Then context_size is set to a positive value.
         let state = actor.state.read();
@@ -135,8 +151,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn recalculate_updates_after_entry_added() {
+    #[tokio::test]
+    async fn recalculate_updates_after_entry_added() {
         // Given an actor with empty session.
         let actor = test_actor();
         let session_id = {
@@ -145,7 +161,7 @@ mod tests {
         };
 
         // Recalculate with empty history.
-        actor.recalculate();
+        actor.recalculate().await;
         let size_before = {
             let state = actor.state.read();
             state
@@ -163,7 +179,7 @@ mod tests {
                 .active_session_mut()
                 .push_entry(ChatEntry::user("a long message that adds tokens"));
         }
-        actor.recalculate();
+        actor.recalculate().await;
 
         // Then context_size increased.
         let size_after = {
@@ -181,13 +197,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn recalculate_handles_empty_session_gracefully() {
+    #[tokio::test]
+    async fn recalculate_handles_empty_session_gracefully() {
         // Given an actor with empty session.
         let actor = test_actor();
 
         // When recalculating.
-        actor.recalculate();
+        actor.recalculate().await;
 
         // Then context_size is set (system prompt only).
         let state = actor.state.read();
@@ -202,8 +218,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn recalculate_only_updates_active_session() {
+    #[tokio::test]
+    async fn recalculate_only_updates_active_session() {
         // Given an actor with two sessions.
         let actor = test_actor();
         let second = ChatSessionState::new();
@@ -218,7 +234,7 @@ mod tests {
         }
 
         // When recalculating.
-        actor.recalculate();
+        actor.recalculate().await;
 
         // Then active session has context_size set, second does not.
         let state = actor.state.read();
