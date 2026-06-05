@@ -26,7 +26,6 @@ pub struct TuiAppBuilder {
     plugins: Option<jinn_plugin::SyncPlugins>,
 }
 
-
 impl TuiAppBuilder {
     /// Override the default services.
     #[must_use]
@@ -48,7 +47,6 @@ impl TuiAppBuilder {
         self.plugins = Some(plugins);
         self
     }
-
 
     /// Build the `TuiApp` with the configured overrides.
     pub fn build(self) -> TuiApp {

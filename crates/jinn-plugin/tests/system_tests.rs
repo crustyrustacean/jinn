@@ -6,7 +6,7 @@
     clippy::panic,
     clippy::unwrap_in_result,
     reason = "test code"
-    )]
+)]
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -17,7 +17,13 @@ use serde::Serialize;
 // ── Test Helpers ─────────────────────────────────────────────────────────
 
 /// Build a PluginSystem from plugins in the given directory.
-fn build_system(dir: &Path) -> (SyncPlugins, AsyncPluginHandle, jinn_plugin::PluginSyncHandle) {
+fn build_system(
+    dir: &Path,
+) -> (
+    SyncPlugins,
+    AsyncPluginHandle,
+    jinn_plugin::PluginSyncHandle,
+) {
     let rt = tokio::runtime::Runtime::new().expect("runtime");
     let captured: Arc<Mutex<Vec<PluginCommand>>> = Arc::new(Mutex::new(Vec::new()));
     let captured_clone = captured.clone();

@@ -1,23 +1,26 @@
 //! Sync-side plugin handle — blocking hook calls from actor threads.
 //!
 //! [`PluginSyncHandle`] is `Send + Sync + Clone`. It sends jobs through the
-//! same kanal channel as [`AsyncPluginHandle`], then blocks on a kanal
-//! unbounded response channel.
+//! same kanal channel as [`AsyncPluginHandle`], then blocks on a
+//! `tokio::sync::oneshot` receiver via `blocking_recv()`.
 //!
 //! **Do not call from the render thread** — use
 //! [`SyncPlugins`](crate::SyncPlugins) instead.
 
-use serde::de::DeserializeOwned;
+use error_stack::{Report, ResultExt};
 use serde::Serialize;
+use serde::de::DeserializeOwned;
+use tokio::sync::oneshot;
 
-use crate::async_handle::PluginJob;
+use crate::async_handle::{PluginError, PluginJob};
 
 /// Handle for calling plugin hooks synchronously from actor threads.
 ///
 /// `Send + Sync + Clone`. Cheap to clone.
 #[derive(Clone)]
 pub struct PluginSyncHandle {
-    /// Shared channel sender (same channel as AsyncPluginHandle).
+    /// Sync channel sender sharing the same channel as `AsyncPluginHandle`.
+    /// Derived via `clone_sync()` so the async sender stays valid.
     pub(crate) tx: kanal::Sender<PluginJob>,
 }
 
@@ -31,16 +34,19 @@ impl PluginSyncHandle {
         &self,
         hook: &str,
         ctx: &T,
-    ) -> Result<Vec<R>, String> {
-        let ctx_json = serde_json::to_value(ctx).map_err(|e| format!("serialize ctx: {e}"))?;
-        self.call_hooks_json(hook, &ctx_json)
-            .map(|results| {
-                results
-                    .into_iter()
-                    .map(|v| serde_json::from_value(v).map_err(|e| format!("deserialize: {e}")))
-                    .collect()
+    ) -> Result<Vec<R>, Report<PluginError>> {
+        let ctx_json = serde_json::to_value(ctx)
+            .change_context(PluginError)
+            .attach("failed to serialize hook ctx")?;
+        let results = self.call_hooks_json(hook, &ctx_json)?;
+        results
+            .into_iter()
+            .map(|v| {
+                serde_json::from_value(v)
+                    .change_context(PluginError)
+                    .attach("failed to deserialize hook return value")
             })
-            .and_then(|r| r)
+            .collect()
     }
 
     /// Call hooks with raw JSON context.
@@ -52,18 +58,21 @@ impl PluginSyncHandle {
         &self,
         hook: &str,
         ctx_json: &serde_json::Value,
-    ) -> Result<Vec<serde_json::Value>, String> {
-        let (respond_tx, respond_rx) =
-            kanal::unbounded::<Result<Vec<serde_json::Value>, String>>();
+    ) -> Result<Vec<serde_json::Value>, Report<PluginError>> {
+        let (respond_tx, respond_rx) = oneshot::channel();
         self.tx
             .send(PluginJob::SyncCollect {
                 hook: hook.to_owned(),
                 ctx_json: ctx_json.clone(),
                 respond_to: respond_tx,
             })
-            .map_err(|e| format!("send to plugin thread: {e}"))?;
+            .map_err(|_e| Report::new(PluginError))
+            .attach("failed to send SyncCollect job to plugin thread")
+            .attach(hook.to_owned())?;
         respond_rx
-            .recv()
-            .map_err(|_e| "plugin thread died".to_owned())?
+            .blocking_recv()
+            .map_err(|_e| Report::new(PluginError))
+            .attach("plugin thread dropped oneshot responder")
+            .attach(hook.to_owned())?
     }
 }

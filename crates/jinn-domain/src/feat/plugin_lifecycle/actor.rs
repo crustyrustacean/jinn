@@ -4,8 +4,8 @@
 //! Fires `on_app_started` and `on_session_created` plugin hooks respectively
 //! via [`PluginFire`](crate::feat::workflow::PluginFire).
 
-use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::actor::protocol::event::AllActorsSpawned;
+use crate::common::actor::{Actor, ActorContext, ActorEnvelope, NoDirectMsg};
 use crate::common::services::Services;
 use crate::feat::session_lifecycle::protocol::event::SessionCreated;
 use crate::protocol::{Command, Event};
@@ -16,7 +16,7 @@ use crate::protocol::{Command, Event};
 /// - [`AllActorsSpawned`] → fires `on_app_started`
 /// - [`SessionCreated`] → fires `on_session_created`
 pub struct PluginLifecycleActor {
-    /// Runtime services (for `plugins: Arc<dyn PluginFire>`).
+    /// Runtime services (for `plugins: PluginFireService`).
     services: Services,
     /// The session ID active at startup (for `on_app_started` ctx).
     startup_session_id: String,
@@ -59,7 +59,6 @@ impl PluginLifecycleActor {
     async fn handle_event(&self, event: Event) {
         match event {
             Event::AllActorsSpawned(_) => {
-                tracing::debug!("firing on_app_started plugin hook");
                 let ctx = serde_json::json!({
                     "session_id": self.startup_session_id,
                 });

@@ -63,7 +63,6 @@ pub struct DiscoveredPlugin {
     pub description: Option<String>,
 }
 
-
 impl AppState {
     /// Returns a mutable reference to the active picker's navigation interface.
     ///

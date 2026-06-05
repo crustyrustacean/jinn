@@ -230,12 +230,14 @@ where
     let name_for_system_log = name.to_owned();
 
     let send_event: Box<dyn Fn(Event) + Send + Sync> = Box::new(move |event| {
+        tracing::info!(name = %name_for_event_log, event = ?event, "DIAG routing event to actor");
         if let Err(e) = ref_for_event.send_event(event) {
             tracing::error!(name = %name_for_event_log, err = ?e, "failed to route event to actor");
         }
     });
 
     let send_command: Box<dyn Fn(Command) + Send + Sync> = Box::new(move |command| {
+        tracing::info!(name = %name_for_command_log, cmd = %command, "DIAG routing command to actor");
         if let Err(e) = ref_for_command.send_command(command) {
             tracing::error!(name = %name_for_command_log, err = ?e, "failed to route command to actor");
         }
@@ -270,19 +272,29 @@ where
     let task = handle.spawn(async move {
         let async_rx = receiver.as_async();
         let mut actor = actor;
+        tracing::info!(actor = %name_owned, "DIAG actor task started");
         while let Ok(envelope) = async_rx.recv().await {
+            let msg_kind = match &envelope {
+                ActorEnvelope::System(_) => "system",
+                ActorEnvelope::Command(cmd) => "command",
+                ActorEnvelope::Event(_) => "event",
+                ActorEnvelope::Direct(_) => "direct",
+            };
+            tracing::info!(actor = %name_owned, kind = msg_kind, "DIAG actor recv");
+            let recv_time = std::time::Instant::now();
             match &envelope {
                 ActorEnvelope::System(SystemMessage::ApplicationShuttingDown) => {
                     actor.on_shutdown(&ctx).await;
                     ctx.announce_shutdown_completed();
                     shutdown_tracker.complete(&name_owned);
-                    // Drain remaining messages until channel close.
                     while async_rx.recv().await.is_ok() {}
                     break;
                 }
                 _ => actor.handle(envelope, &ctx).await,
             }
+            tracing::info!(actor = %name_owned, kind = msg_kind, elapsed = ?recv_time.elapsed(), "DIAG actor handle done");
         }
+        tracing::info!(actor = %name_owned, "DIAG actor task ended");
         actor.shutdown().await;
     });
 
@@ -454,6 +466,7 @@ impl ActorHost for InMemoryActorHost {
                 if source.is_some_and(|s| &**s == entry.name.as_str()) {
                     continue;
                 }
+                tracing::info!(key = %event_key, actor = %entry.name, "DIAG routing event");
                 (entry.send_event)(event.clone());
             }
         }
@@ -481,8 +494,11 @@ impl ActorHost for InMemoryActorHost {
                 if source.is_some_and(|s| &**s == entry.name.as_str()) {
                     continue;
                 }
+                tracing::info!(key = %key, actor = %entry.name, cmd = %command, "DIAG routing command");
                 (entry.send_command)(command.clone());
             }
+        } else {
+            tracing::warn!(key = %key, "DIAG no actor subscribed for command");
         }
     }
 

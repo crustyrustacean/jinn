@@ -70,7 +70,11 @@ fn scan_dir(dir: &Path) -> Vec<PluginMeta> {
             continue;
         }
         let description = parse_description(&init_lua);
-        plugins.push(PluginMeta { name, path, description });
+        plugins.push(PluginMeta {
+            name,
+            path,
+            description,
+        });
     }
     plugins
 }
@@ -148,9 +152,7 @@ pub fn load_all(lua: &Lua, plugins: &[PluginMeta]) -> HashMap<String, PluginHook
 /// is stored in the Lua registry.
 fn load_plugin(lua: &Lua, source: &str) -> Result<RegistryKey, String> {
     // Create isolated environment for this script.
-    let env = lua
-        .create_table()
-        .map_err(|e| format!("create env: {e}"))?;
+    let env = lua.create_table().map_err(|e| format!("create env: {e}"))?;
 
     // Load and evaluate with isolated _ENV.
     let result: mlua::Table = lua

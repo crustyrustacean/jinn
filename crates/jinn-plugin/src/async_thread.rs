@@ -2,7 +2,7 @@
 //!
 //! Runs on a dedicated OS thread inside a `LocalSet`. Receives jobs from
 //! a single channel (`PluginJob` enum), executes plugin hooks, and sends
-//! results back through oneshot or kanal channels.
+//! results back through oneshot channels.
 //!
 //! The Lua state is `!Send`, so everything happens here — no cross-thread
 //! Lua calls.
@@ -13,15 +13,15 @@
 
 use std::collections::HashMap;
 
+use error_stack::{Report, ResultExt};
 use mlua::Lua;
 use tokio::runtime::Runtime;
 
-use crate::async_handle::PluginJob;
+use crate::async_handle::{PluginError, PluginJob};
 use crate::bindings;
 use crate::command::PluginCommand;
 use crate::plugin_data::PluginData;
 use crate::sync_state::PluginHooks;
-
 
 /// Callback type for handling async requests from plugins.
 ///
@@ -31,14 +31,14 @@ pub type RequestHandler =
 
 /// Run the async plugin thread.
 ///
-/// Blocks the calling thread forever (until both channels are closed).
+/// Blocks the calling thread forever (until the channel closes).
 /// Should be called on a dedicated OS thread.
 pub(crate) fn run_async_thread(
-    rx: kanal::Receiver<PluginJob>,
+    rx: kanal::AsyncReceiver<PluginJob>,
     lua: Lua,
     hooks: HashMap<String, PluginHooks>,
     plugin_data: PluginData,
-    emit_tx: kanal::Sender<PluginCommand>,
+    emit_tx: kanal::AsyncSender<PluginCommand>,
     request_handler: RequestHandler,
 ) {
     let rt = match Runtime::new() {
@@ -50,9 +50,7 @@ pub(crate) fn run_async_thread(
     };
     let local = tokio::task::LocalSet::new();
     local.block_on(&rt, async move {
-        let async_rx = rx.to_async();
-        async_thread_loop(async_rx, lua, hooks, plugin_data, emit_tx, request_handler)
-            .await;
+        async_thread_loop(rx, lua, hooks, plugin_data, emit_tx, request_handler).await;
     });
 }
 
@@ -61,21 +59,14 @@ async fn async_thread_loop(
     lua: Lua,
     hooks: HashMap<String, PluginHooks>,
     plugin_data: PluginData,
-    emit_tx: kanal::Sender<PluginCommand>,
+    emit_tx: kanal::AsyncSender<PluginCommand>,
     request_handler: RequestHandler,
 ) {
     loop {
         match rx.recv().await {
             Ok(job) => {
-                execute_plugin_job(
-                    &lua,
-                    &hooks,
-                    job,
-                    &plugin_data,
-                    &emit_tx,
-                    &request_handler,
-                )
-                .await;
+                execute_plugin_job(&lua, &hooks, job, &plugin_data, &emit_tx, &request_handler)
+                    .await;
             }
             Err(_) => {
                 tracing::debug!("plugin thread shutting down (channel closed)");
@@ -86,12 +77,16 @@ async fn async_thread_loop(
 }
 
 /// Execute any plugin job (Fire, Collect, or SyncCollect).
+///
+/// All three variants respond through `tokio::sync::oneshot::Sender` with
+/// `Result<T, Report<PluginError>>`. Send failures are ignored — the caller
+/// may have cancelled or panicked.
 async fn execute_plugin_job(
     lua: &Lua,
     hooks: &HashMap<String, PluginHooks>,
     job: PluginJob,
     plugin_data: &PluginData,
-    emit_tx: &kanal::Sender<PluginCommand>,
+    emit_tx: &kanal::AsyncSender<PluginCommand>,
     request_handler: &RequestHandler,
 ) {
     match job {
@@ -100,31 +95,24 @@ async fn execute_plugin_job(
             ctx_json,
             respond_to,
         } => {
-            for (plugin_name, plugin_hooks) in hooks {
-                if let Err(e) = run_single_hook(
-                    lua,
-                    plugin_hooks,
-                    &hook,
-                    &ctx_json,
-                    plugin_name,
-                    plugin_data,
-                    emit_tx,
-                    request_handler,
-                )
-                .await
-                {
-                    let _ = respond_to.send(Err(e));
-                    return;
-                }
-            }
-            let _ = respond_to.send(Ok(()));
+            let result = run_all_hooks_fire(
+                lua,
+                hooks,
+                &hook,
+                &ctx_json,
+                plugin_data,
+                emit_tx,
+                request_handler,
+            )
+            .await;
+            let _ = respond_to.send(result);
         }
         PluginJob::Collect {
             hook,
             ctx_json,
             respond_to,
         } => {
-            let results = run_all_hooks_collect(
+            let result = run_all_hooks_collect(
                 lua,
                 hooks,
                 &hook,
@@ -134,14 +122,14 @@ async fn execute_plugin_job(
                 request_handler,
             )
             .await;
-            let _ = respond_to.send(results);
+            let _ = respond_to.send(result);
         }
         PluginJob::SyncCollect {
             hook,
             ctx_json,
             respond_to,
         } => {
-            let results = run_all_hooks_collect(
+            let result = run_all_hooks_collect(
                 lua,
                 hooks,
                 &hook,
@@ -151,9 +139,37 @@ async fn execute_plugin_job(
                 request_handler,
             )
             .await;
-            let _ = respond_to.send(results);
+            let _ = respond_to.send(result);
         }
     }
+}
+
+/// Fire every plugin's hook in turn, aborting on the first error.
+///
+/// Each hook receives the shared ctx plus its own `plugin_data` injected.
+async fn run_all_hooks_fire(
+    lua: &Lua,
+    hooks: &HashMap<String, PluginHooks>,
+    hook: &str,
+    ctx_json: &serde_json::Value,
+    plugin_data: &PluginData,
+    emit_tx: &kanal::AsyncSender<PluginCommand>,
+    request_handler: &RequestHandler,
+) -> Result<(), Report<PluginError>> {
+    for (plugin_name, plugin_hooks) in hooks {
+        run_single_hook(
+            lua,
+            plugin_hooks,
+            hook,
+            ctx_json,
+            plugin_name,
+            plugin_data,
+            emit_tx,
+            request_handler,
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 /// Run all hooks for a given name, collecting non-nil return values.
@@ -163,9 +179,9 @@ async fn run_all_hooks_collect(
     hook: &str,
     ctx_json: &serde_json::Value,
     plugin_data: &PluginData,
-    emit_tx: &kanal::Sender<PluginCommand>,
+    emit_tx: &kanal::AsyncSender<PluginCommand>,
     request_handler: &RequestHandler,
-) -> Result<Vec<serde_json::Value>, String> {
+) -> Result<Vec<serde_json::Value>, Report<PluginError>> {
     let mut results = Vec::new();
     for (plugin_name, plugin_hooks) in hooks {
         match run_single_hook(
@@ -182,14 +198,18 @@ async fn run_all_hooks_collect(
         {
             Ok(Some(return_value)) => match bindings::value_to_json(lua, &return_value) {
                 Ok(json) => results.push(json),
-                Err(e) => return Err(format!("convert return: {e}")),
+                Err(e) => {
+                    return Err(Report::new(PluginError)
+                        .attach(format!("convert return for plugin {plugin_name}: {e}")));
+                }
             },
             Ok(None) => {}
-            Err(e) => return Err(e),
+            Err(report) => return Err(report),
         }
     }
     Ok(results)
 }
+
 /// Run a single hook for a single plugin.
 ///
 /// Returns `Ok(None)` if the plugin doesn't define the hook or returns nil.
@@ -201,16 +221,21 @@ async fn run_single_hook(
     ctx_json: &serde_json::Value,
     plugin_name: &str,
     plugin_data: &PluginData,
-    emit_tx: &kanal::Sender<PluginCommand>,
+    emit_tx: &kanal::AsyncSender<PluginCommand>,
     request_handler: &RequestHandler,
-) -> Result<Option<mlua::Value>, String> {
-    let table: mlua::Table = lua
-        .registry_value::<mlua::Table>(&plugin_hooks.table)
-        .map_err(|e| format!("registry lookup: {e}"))?;
+) -> Result<Option<mlua::Value>, Report<PluginError>> {
+    let table_opt: Option<mlua::Table> = lua
+        .registry_value::<Option<mlua::Table>>(&plugin_hooks.table)
+        .map_err(|e: mlua::Error| Report::new(PluginError).attach(e.to_string()))
+        .attach("registry lookup")?;
+    let table: mlua::Table = table_opt
+        .ok_or_else(|| Report::new(PluginError))
+        .attach("hook table not in registry")?;
 
     let val: mlua::Value = table
         .get::<mlua::Value>(hook)
-        .map_err(|e| format!("hook lookup: {e}"))?;
+        .map_err(|e: mlua::Error| Report::new(PluginError).attach(e.to_string()))
+        .attach(format!("hook lookup for {plugin_name}.{hook}"))?;
 
     let func: mlua::Function = match val {
         mlua::Value::Function(f) => f,
@@ -234,12 +259,14 @@ async fn run_single_hook(
         emit_tx,
         request_handler,
     )
-    .map_err(|e| format!("build ctx: {e}"))?;
+    .map_err(|e| Report::new(PluginError).attach(e.to_string()))
+    .attach("build ctx")?;
 
     let result: mlua::Value = func
         .call_async::<mlua::Value>(ctx_table)
         .await
-        .map_err(|e| format!("hook '{plugin_name}': {e}"))?;
+        .map_err(|e| Report::new(PluginError).attach(e.to_string()))
+        .attach(format!("hook '{plugin_name}.{hook}'"))?;
 
     match result {
         mlua::Value::Nil => Ok(None),
@@ -256,7 +283,7 @@ fn build_async_ctx(
     ctx_json: &serde_json::Value,
     plugin_name: &str,
     plugin_data: &PluginData,
-    emit_tx: &kanal::Sender<PluginCommand>,
+    emit_tx: &kanal::AsyncSender<PluginCommand>,
     request_handler: &RequestHandler,
 ) -> Result<mlua::Table, mlua::Error> {
     let ctx = lua.create_table()?;
@@ -269,31 +296,30 @@ fn build_async_ctx(
     }
 
     // ctx.emit(cmd, data) — fire-and-forget via channel.
+    // Uses sync `Sender` (via `clone_sync()`) so it can be called from a sync
+    // Lua closure. Unbounded channel => `send` is non-blocking.
     {
-        let emit_tx = emit_tx.clone();
-        let emit_fn =
-            lua.create_function(move |lua, (name, data): (String, mlua::Value)| {
-                let json = bindings::value_to_json(lua, &data).unwrap_or_default();
-                let _ = emit_tx.send(PluginCommand { name, data: json });
-                Ok(())
-            })?;
+        let emit_tx = emit_tx.clone_sync();
+        let emit_fn = lua.create_function(move |lua, (name, data): (String, mlua::Value)| {
+            let json = bindings::value_to_json(lua, &data).unwrap_or_default();
+            let _ = emit_tx.send(PluginCommand { name, data: json });
+            Ok(())
+        })?;
         ctx.set("emit", emit_fn)?;
     }
 
     // ctx.request(name, data) → yields coroutine, awaits response.
     {
         let handler = request_handler.clone();
-        let request_fn = lua.create_async_function(
-            move |lua, (name, data): (String, mlua::Value)| {
+        let request_fn =
+            lua.create_async_function(move |lua, (name, data): (String, mlua::Value)| {
                 let handler = handler.clone();
                 async move {
-                    let json_data =
-                        bindings::value_to_json(&lua, &data).unwrap_or_default();
+                    let json_data = bindings::value_to_json(&lua, &data).unwrap_or_default();
                     let response = handler(&name, &json_data);
                     bindings::json_to_lua_value(&lua, &response)
                 }
-            },
-        )?;
+            })?;
         ctx.set("request", request_fn)?;
     }
 

@@ -19,8 +19,8 @@ pub mod provider_infra;
 pub mod queue_actor;
 pub mod rename_session_input;
 
-pub mod session;
 pub mod plugin_lifecycle;
+pub mod session;
 pub mod session_lifecycle;
 pub mod sidebar_resize;
 pub mod skills;

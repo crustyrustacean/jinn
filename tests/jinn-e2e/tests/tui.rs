@@ -63,6 +63,14 @@ impl TuiWorld {
             user_preferences_storage: jinn_domain::UserPreferencesStorageService::new(Arc::new(
                 jinn_domain::InMemoryUserPreferencesStorage::new(),
             )),
+            plugins: jinn_domain::feat::workflow::PluginFireService::new(Arc::new(
+                jinn_domain::NoopPluginFire,
+            )
+                as Arc<dyn jinn_domain::feat::workflow::PluginFire>),
+            plugin_sync: jinn_domain::feat::workflow::PluginSyncCallService::new(Arc::new(
+                jinn_domain::NoopPluginSyncCall,
+            )
+                as Arc<dyn jinn_domain::feat::workflow::PluginSyncCall>),
         };
 
         let app = TuiApp::test_builder().services(services).build();

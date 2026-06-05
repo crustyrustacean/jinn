@@ -10,8 +10,8 @@
 
 use std::sync::Arc;
 
-use jinn_domain::common::actor::message_sink::MessageSink;
 use jinn_domain::Command;
+use jinn_domain::common::actor::message_sink::MessageSink;
 use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry};
 use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_domain::protocol::SessionId;
@@ -22,8 +22,18 @@ use jinn_plugin::PluginCommand;
 /// Matches on `cmd.name` and sends the corresponding domain `Command`
 /// through the provided sink. Unknown commands are logged and dropped.
 pub fn handle_plugin_command(cmd: PluginCommand, sink: &dyn MessageSink) {
+    tracing::info!(
+        name = cmd.name,
+        "DIAG plugin-wiring: dispatching plugin command"
+    );
     if let Some(domain_cmd) = translate_command(&cmd) {
+        tracing::info!(cmd = %domain_cmd, "DIAG plugin-wiring: sending to sink");
         let _ = sink.send_command(domain_cmd);
+    } else {
+        tracing::info!(
+            name = cmd.name,
+            "DIAG plugin-wiring: command translated to None"
+        );
     }
 }
 
@@ -116,9 +126,9 @@ mod tests {
     )]
 
     use super::*;
+    use jinn_domain::Event;
     use jinn_domain::common::actor::actor_ref::SendResult;
     use jinn_domain::common::actor::message_sink::MessageSink;
-    use jinn_domain::Event;
     use jinn_plugin::PluginCommand;
     use std::sync::{Arc, Mutex};
 

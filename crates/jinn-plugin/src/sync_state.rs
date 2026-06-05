@@ -4,17 +4,19 @@
 //! [`SyncPlugins`] is `!Send` because `mlua::Lua` is `!Send`. It must live
 //! on the render thread. Sync hooks are called directly, with no thread hops.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::cell::RefCell;
 
+use error_stack::{Report, ResultExt};
 use mlua::{Lua, RegistryKey, Value};
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
+use wherror::Error;
 
+use crate::PluginData;
 use crate::bindings;
 use crate::command::PluginCommand;
-use crate::PluginData;
 
 /// Stored hook data for a loaded plugin.
 pub struct PluginHooks {
@@ -23,6 +25,16 @@ pub struct PluginHooks {
     /// Cache of hook names known to exist on this plugin's table.
     pub(crate) hook_cache: RefCell<HashSet<String>>,
 }
+
+/// Error type for failures in the sync plugin path (render thread).
+///
+/// Colocated with [`SyncHook`] because it is the primary consumer of this
+/// error. Specific failure reasons are attached to the `Report` via
+/// `.attach("...")` calls.
+#[derive(Debug, Error)]
+#[error(debug)]
+pub struct PluginSyncStateError;
+
 
 /// Owns the sync Lua state. `!Send` — must live on the render thread.
 pub struct SyncPlugins {
@@ -34,6 +46,18 @@ pub struct SyncPlugins {
     pub(crate) plugin_data: PluginData,
     /// Channel for emitting commands from sync hooks.
     pub(crate) emit_tx: kanal::Sender<PluginCommand>,
+}
+
+impl Default for SyncPlugins {
+    fn default() -> Self {
+        let (emit_tx, _) = kanal::unbounded::<PluginCommand>();
+        Self {
+            lua: Lua::new(),
+            hooks: HashMap::new(),
+            plugin_data: PluginData::new(),
+            emit_tx,
+        }
+    }
 }
 
 /// A single sync hook ready to be called.
@@ -58,17 +82,22 @@ impl SyncHook<'_> {
     /// - `T` — the context struct (must be `Serialize`)
     /// - `R` — the expected return type (must be `DeserializeOwned`)
     ///
-    /// # Errors
-    ///
     /// Returns an error if serialization, Lua execution, or deserialization fails.
-    pub fn call<T: Serialize, R: DeserializeOwned>(&self, ctx_data: &T) -> Result<R, String> {
+    pub fn call<T: Serialize, R: DeserializeOwned>(
+        &self,
+        ctx_data: &T,
+    ) -> Result<R, Report<PluginSyncStateError>> {
         // 1. Serialize ctx_data to JSON.
         let mut ctx_json = serde_json::to_value(ctx_data)
-            .map_err(|e| format!("serialize ctx: {e}"))?;
+            .change_context(PluginSyncStateError)
+            .attach("serialize ctx")?;
 
         // 2. Inject plugin_data from DashMap (snapshot at call time).
         if let Some(data) = self.plugin_data.get(&self.plugin_name) {
-            ctx_json.as_object_mut().expect("ctx is object").insert("plugin_data".to_owned(), data);
+            ctx_json
+                .as_object_mut()
+                .expect("ctx is object")
+                .insert("plugin_data".to_owned(), data);
         }
 
         // 3. Build the Lua ctx table.
@@ -79,20 +108,24 @@ impl SyncHook<'_> {
             self.plugin_data,
             &self.emit_tx,
         )
-        .map_err(|e| format!("build ctx: {e}"))?;
+        .map_err(|e| Report::new(PluginSyncStateError).attach(e.to_string()))
+        .attach("build ctx")?;
 
         // 4. Call the hook function.
         let result: Value = self
             .func
             .call(ctx_table)
-            .map_err(|e| format!("hook '{}': {e}", self.plugin_name))?;
+            .map_err(|e| Report::new(PluginSyncStateError).attach(e.to_string()))
+            .attach(format!("hook '{}'", self.plugin_name))?;
 
         // 5. Convert return value to JSON, then deserialize.
         let result_json = bindings::value_to_json(self.lua, &result)
-            .map_err(|e| format!("convert return: {e}"))?;
+            .map_err(|e| Report::new(PluginSyncStateError).attach(e.to_string()))
+            .attach("convert return")?;
 
         serde_json::from_value(result_json)
-            .map_err(|e| format!("deserialize return: {e}"))
+            .change_context(PluginSyncStateError)
+            .attach("deserialize return")
     }
 }
 
