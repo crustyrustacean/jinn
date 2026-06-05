@@ -131,28 +131,28 @@ fn prune_backward(
         };
 
         let back_call_entry_id = back_entry.id.clone();
-        let back_call_excluded = back_entry.context_override == ContextOverride::ForcedExclude;
+        let back_call_protected = back_entry.is_protected_from_prune();
 
         // Walk forward from this edit/write call to find its matching ToolResult.
         // The result may appear anywhere after the call (not necessarily right after).
         let back_result = find_matching_result(history, j, &back_call_id);
 
-        let back_result_excluded = back_result
+        let back_result_protected = back_result
             .as_ref()
-            .is_some_and(|(_, k)| history[*k].context_override == ContextOverride::ForcedExclude);
+            .is_some_and(|(_, k)| history[*k].is_protected_from_prune());
 
-        // Skip if both call and result are already excluded — nothing to do.
-        if back_call_excluded && back_result_excluded {
+        // Skip if both call and result are protected — nothing to do.
+        if back_call_protected && back_result_protected {
             continue;
         }
 
-        if !back_call_excluded {
+        if !back_call_protected {
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: back_call_entry_id,
                 value: ContextOverride::ForcedExclude,
             });
         }
-        if let Some((result_id, _)) = back_result.filter(|_| !back_result_excluded) {
+        if let Some((result_id, _)) = back_result.filter(|_| !back_result_protected) {
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: result_id,
                 value: ContextOverride::ForcedExclude,
@@ -223,7 +223,7 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
             };
 
             let read_call_entry_id = entry.id.clone();
-            let call_already_excluded = entry.context_override == ContextOverride::ForcedExclude;
+            let call_protected = entry.is_protected_from_prune();
 
             // ── Backward pruning ──────────────────────────────────────────
             // Walk backward from the read and prune all edit/write call+result
@@ -240,12 +240,11 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
                 continue;
             };
 
-            let result_already_excluded =
-                history[result_idx].context_override == ContextOverride::ForcedExclude;
+            let result_protected = history[result_idx].is_protected_from_prune();
 
             // Skip forward pruning if both call and result are already excluded.
-            if call_already_excluded && result_already_excluded {
-                continue;
+            // Skip forward pruning if both call and result are protected.
+            if call_protected && result_protected {
             }
 
             // Count how many edit/write calls to the same file appear after
@@ -254,13 +253,13 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
                 count_subsequent_modifications(&history, i, &read_path, WRITE_THRESHOLD);
 
             if modify_count >= WRITE_THRESHOLD {
-                if !call_already_excluded {
+                if !call_protected {
                     mutations.push(HistoryMutation::SetContextOverride {
                         entry_id: read_call_entry_id,
                         value: ContextOverride::ForcedExclude,
                     });
                 }
-                if !result_already_excluded {
+                if !result_protected {
                     mutations.push(HistoryMutation::SetContextOverride {
                         entry_id: result_entry_id,
                         value: ContextOverride::ForcedExclude,
@@ -502,6 +501,33 @@ mod tests {
         match &mutations[0] {
             HistoryMutation::SetContextOverride { entry_id, value } => {
                 assert_eq!(*entry_id, read[0].id, "should target read ToolCall");
+                assert_eq!(*value, ContextOverride::ForcedExclude);
+            }
+            other => panic!("expected SetContextOverride, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn forced_included_call_no_forward_mutation() {
+        let mut history = Vec::new();
+        let read = read_call_result("tc-1", "/foo.rs", "contents");
+        let mut call = read[0].clone();
+        call.context_override = ContextOverride::ForcedInclude;
+        history.push(call);
+        history.push(read[1].clone()); // result NOT protected
+        let edit1 = edit_call_result("tc-2", "/foo.rs", "edit 1");
+        history.push(edit1[0].clone());
+        history.push(edit1[1].clone());
+        let edit2 = edit_call_result("tc-3", "/foo.rs", "edit 2");
+        history.push(edit2[0].clone());
+        history.push(edit2[1].clone());
+
+        let mutations = evaluate(history);
+        assert_eq!(mutations.len(), 1, "only result should be pruned");
+
+        match &mutations[0] {
+            HistoryMutation::SetContextOverride { entry_id, value } => {
+                assert_eq!(*entry_id, read[1].id, "should target read ToolResult");
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }
             other => panic!("expected SetContextOverride, got {other:?}"),

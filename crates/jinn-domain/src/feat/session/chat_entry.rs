@@ -536,6 +536,33 @@ impl ChatEntry {
         self.context_override == ContextOverride::ForcedExclude
     }
 
+    /// Whether an auto-pruner should suppress a `ForcedExclude` mutation for
+    /// this entry.
+    ///
+    /// Returns `true` when `context_override` is either `ForcedInclude` (user
+    /// or system explicitly kept the entry in context) or `ForcedExclude`
+    /// (already excluded — emitting again would be a no-op duplicate). Returns
+    /// `false` for `ContextOverride::Default`.
+    ///
+    /// This is the **auto-pruner suppression predicate**: every worker in
+    /// `feat::auto_prune_worker` should consult this helper at the
+    /// mutation-emission step.
+    ///
+    /// # Relation to other protection
+    ///
+    /// Pin protection (`is_pinned()`) is a **separate, older layer** and is
+    /// *not* folded in here. Auto-pruners that already check `is_pinned()`
+    /// continue to do so independently. The two layers compose: a pinned entry
+    /// is also typically not a prune candidate (filtered earlier), but even if
+    /// one reaches the emission step, both checks apply.
+    #[must_use]
+    pub fn is_protected_from_prune(&self) -> bool {
+        matches!(
+            self.context_override,
+            ContextOverride::ForcedInclude | ContextOverride::ForcedExclude
+        )
+    }
+
     /// Whether this entry kind can be pinned to the context.
     /// Whether this entry is a compaction summary.
     ///
