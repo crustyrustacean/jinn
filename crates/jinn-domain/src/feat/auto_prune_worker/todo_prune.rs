@@ -114,8 +114,9 @@ fn build_prune_mutations(
 
     // Prune all calls except the last one (most recent).
     for call_info in calls.iter().take(calls.len() - 1) {
-        // Prune the ToolCall if not already excluded.
-        if history[call_info.index].context_override() != ContextOverride::ForcedExclude {
+        // Prune the ToolCall if not protected from prune.
+        if !history[call_info.index].is_protected_from_prune() {
+
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: call_info.entry_id.clone(),
                 value: ContextOverride::ForcedExclude,
@@ -125,9 +126,9 @@ fn build_prune_mutations(
             });
         }
 
-        // Prune the corresponding ToolResult if it exists and isn't already excluded.
+        // Prune the corresponding ToolResult if it exists and isn't protected.
         if let Some((result_idx, result_entry_id)) = result_map.get(&call_info.tool_call_id)
-            && history[*result_idx].context_override() != ContextOverride::ForcedExclude
+            && !history[*result_idx].is_protected_from_prune()
         {
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: result_entry_id.clone(),
@@ -401,6 +402,43 @@ mod tests {
         assert!(
             mutations.is_empty(),
             "should not produce mutations for already-excluded entries"
+        );
+    }
+
+    #[test]
+    fn forced_included_no_mutation() {
+        let mut history = Vec::new();
+        let cr1 = get_task_list_call_result("tc-1", "list v1");
+        // Mark both as force-included.
+        let mut call = cr1[0].clone();
+        call.context_override = ContextOverride::ForcedInclude;
+        let mut result = cr1[1].clone();
+        result.context_override = ContextOverride::ForcedInclude;
+        history.push(call);
+        let result_id = result.id.clone();
+        let call_id = history[0].id.clone();
+        history.push(result);
+
+        let cr2 = get_task_list_call_result("tc-2", "list v2");
+        history.push(cr2[0].clone());
+        history.push(cr2[1].clone());
+
+        let mutations = evaluate(history);
+        // tc-1 is the older pair; both halves are ForcedInclude → no mutations for them.
+        let mutation_ids: Vec<_> = mutations
+            .iter()
+            .filter_map(|m| match m {
+                HistoryMutation::SetContextOverride { entry_id, .. } => Some(entry_id.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            !mutation_ids.contains(&call_id),
+            "ForcedInclude call must not receive ForcedExclude mutation"
+        );
+        assert!(
+            !mutation_ids.contains(&result_id),
+            "ForcedInclude result must not receive ForcedExclude mutation"
         );
     }
 

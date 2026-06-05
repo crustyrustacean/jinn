@@ -179,15 +179,15 @@ fn build_prune_mutations(
         let prune_count = matched_pairs.len() - rule.keep_last;
         let rule_ident = rule.regex.as_str();
         for (idx, (call_id, result_id)) in matched_pairs.iter().take(prune_count).enumerate() {
-            // Only emit mutations for entries not already excluded.
-            let call_already_excluded = history
+            // Only emit mutations for entries not protected from prune.
+            let call_protected = history
                 .iter()
-                .any(|e| e.id == *call_id && e.context_override() == ContextOverride::ForcedExclude);
-            let result_already_excluded = history.iter().any(|e| {
-                e.id == *result_id && e.context_override() == ContextOverride::ForcedExclude
-            });
+                .any(|e| e.id == *call_id && e.is_protected_from_prune());
+            let result_protected = history
+                .iter()
+                .any(|e| e.id == *result_id && e.is_protected_from_prune());
 
-            if !call_already_excluded {
+            if !call_protected {
                 tracing::info!(
                     rule = %rule_ident,
                     pair_index = idx,
@@ -202,7 +202,7 @@ fn build_prune_mutations(
                     },
                 });
             }
-            if !result_already_excluded {
+            if !result_protected {
                 tracing::info!(
                     rule = %rule_ident,
                     pair_index = idx,
@@ -489,6 +489,36 @@ mod tests {
         // With the new logic, excluded entries still count for positioning.
         // Both pairs match, keep_last=1, so the first pair is pruned.
         // The first call is already excluded, so only the first result gets a mutation.
+        assert_eq!(mutations.len(), 1);
+        match &mutations[0] {
+            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+                assert_eq!(*entry_id, result1_id);
+                assert_eq!(*value, ContextOverride::ForcedExclude);
+            }
+            other => panic!("expected SetContextOverride, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn forced_included_entries_are_not_pruned() {
+        let mut history = Vec::new();
+
+        let p1 = bash_call_result("tc-1", "cargo check", "errors: 0");
+        let mut call1 = p1[0].clone();
+        call1.context_override = ContextOverride::ForcedInclude; // force-included
+        history.push(call1);
+        history.push(p1[1].clone());
+
+        let p2 = bash_call_result("tc-2", "cargo check", "errors: 0");
+        history.push(p2[0].clone());
+        history.push(p2[1].clone());
+
+        // Clone ID before move.
+        let result1_id = history[1].id.clone();
+        let worker = worker_for_cargo_check(1);
+        let mutations = evaluate(&worker, history);
+
+        // Force-included call is protected; only the result mutates.
         assert_eq!(mutations.len(), 1);
         match &mutations[0] {
             HistoryMutation::SetContextOverride { entry_id, value, .. } => {

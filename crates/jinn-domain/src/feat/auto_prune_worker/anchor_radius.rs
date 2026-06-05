@@ -232,8 +232,9 @@ fn build_prune_mutations(
             continue;
         }
 
-        // Skip already-excluded entries — idempotency.
-        if entry.context_override() == ContextOverride::ForcedExclude {
+        // Skip protected entries (ForcedInclude or ForcedExclude) —
+        // ForcedInclude stays by user intent; ForcedExclude is already done.
+        if entry.is_protected_from_prune() {
             continue;
         }
 
@@ -627,6 +628,28 @@ mod tests {
         assert!(
             !excluded.contains(&asst_id),
             "already-excluded entry must not receive duplicate mutation"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // 11b. forced_included_entry_is_skipped
+    // ------------------------------------------------------------------
+    #[test]
+    fn forced_included_entry_is_skipped() {
+        let w = worker(1);
+        let mut history = vec![ChatEntry::user("anchor")];
+        let mut asst = large_assistant();
+        asst.context_override = ContextOverride::ForcedInclude;
+        let asst_id = asst.id.clone();
+        history.push(asst);
+        // Push the assistant outside radius.
+        history.extend(std::iter::repeat_n(trivial_assistant("x"), 5));
+
+        let mutations = evaluate(&w, history);
+        let excluded = excluded_ids(&mutations);
+        assert!(
+            !excluded.contains(&asst_id),
+            "ForcedInclude entry must not receive ForcedExclude mutation"
         );
     }
 

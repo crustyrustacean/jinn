@@ -236,6 +236,7 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
     // Try to continue an existing sweep.
     if let Some(target) = state.active_session_mut().take_ignore_sweep() {
         // Sweep continuation - apply fixed state, skip pinned/collapsed.
+        let mut changed_ids: Vec<crate::protocol::ChatEntryId> = Vec::new();
         loop {
             let session = state.active_session_mut();
 
@@ -256,7 +257,9 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
             }
 
             // Apply the captured state directly (not a toggle).
-            session.set_entry_context_override(target);
+            if let Some(id) = session.set_entry_context_override(target) {
+                changed_ids.push(id);
+            }
             session.rebuild_visual_items();
 
             // Rebuild may have moved cursor onto a collapsed block.
@@ -265,11 +268,7 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
                 if !advance_selection_one(session) {
                     let session_id = session.session_id().clone();
                     session.set_ignore_sweep(target);
-                    return IntentResult::with_commands(vec![Command::PersistSession(
-                        crate::feat::session_lifecycle::protocol::command::PersistSession {
-                            session_id,
-                        },
-                    )]);
+                    return finalize_sweep(state, session_id, changed_ids);
                 }
                 continue;
             }
@@ -277,11 +276,7 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
             let Some(selected) = session.selected_entry() else {
                 let session_id = session.session_id().clone();
                 session.set_ignore_sweep(target);
-                return IntentResult::with_commands(vec![Command::PersistSession(
-                    crate::feat::session_lifecycle::protocol::command::PersistSession {
-                        session_id,
-                    },
-                )]);
+                return finalize_sweep(state, session_id, changed_ids);
             };
             let entry_id = selected.id.clone();
 
@@ -298,19 +293,7 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
             session.set_ignore_sweep(target);
 
             let session_id = state.active_session().session_id().clone();
-            return IntentResult::with_commands_and_events(
-                vec![Command::PersistSession(
-                    crate::feat::session_lifecycle::protocol::command::PersistSession {
-                        session_id: session_id.clone(),
-                    },
-                )],
-                vec![Event::ContextOverrideChanged(
-                    crate::feat::context::protocol::event::ContextOverrideChanged {
-                        session_id,
-                        entry_id,
-                    },
-                )],
-            );
+            return finalize_sweep(state, session_id, changed_ids);
         }
     }
 
@@ -328,7 +311,7 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
     }
 
     // Toggle the entry's ignore state.
-    state.active_session_mut().toggle_entry_ignored();
+    let maybe_entry_id = state.active_session_mut().toggle_entry_ignored();
 
     // Capture the resulting state on the toggled entry.
     let Some(selected) = state.active_session().selected_entry() else {
@@ -349,19 +332,25 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
     // Store sweep state for potential continuation.
     state.active_session_mut().set_ignore_sweep(captured);
 
+
     let session_id = state.active_session().session_id().clone();
+
     IntentResult::with_commands_and_events(
         vec![Command::PersistSession(
             crate::feat::session_lifecycle::protocol::command::PersistSession {
                 session_id: session_id.clone(),
             },
         )],
-        vec![Event::ContextOverrideChanged(
-            crate::feat::context::protocol::event::ContextOverrideChanged {
-                session_id,
-                entry_id,
-            },
-        )],
+        maybe_entry_id
+            .map(|id| {
+                vec![Event::ContextOverrideChanged(
+                    crate::feat::context::protocol::event::ContextOverrideChanged {
+                        session_id,
+                        entry_id: id,
+                    },
+                )]
+            })
+            .unwrap_or_default(),
     )
 }
 
@@ -1843,4 +1832,30 @@ mod tests {
             "first collapsed block should not be expanded"
         );
     }
+}
+
+/// Common tail for the x-sweep: persist session and emit one
+/// `ContextOverrideChanged` event per entry whose override actually changed.
+fn finalize_sweep(
+    _state: &mut AppState,
+    session_id: crate::protocol::SessionId,
+    changed_ids: Vec<crate::protocol::ChatEntryId>,
+) -> IntentResult {
+    let events: Vec<Event> = changed_ids
+        .into_iter()
+        .map(|id| {
+            Event::ContextOverrideChanged(
+                crate::feat::context::protocol::event::ContextOverrideChanged {
+                    session_id: session_id.clone(),
+                    entry_id: id,
+                },
+            )
+        })
+        .collect();
+    IntentResult::with_commands_and_events(
+        vec![Command::PersistSession(
+            crate::feat::session_lifecycle::protocol::command::PersistSession { session_id },
+        )],
+        events,
+    )
 }
