@@ -44,6 +44,26 @@ pub struct EnqueueResumeTurn {
     pub session_id: SessionId,
 }
 
+/// Append a fragment to a session's steering buffer.
+///
+/// Submitted when the user picks STEER mode and the LLM is currently
+/// mid-turn (phase != Idle). Fragments accumulate FIFO and are drained
+/// into a single `User` entry at the next prompt-assembly boundary.
+///
+/// If submitted while phase == Idle, the chat-input layer is responsible
+/// for routing to [`EnqueueUserMessage`] instead.
+///
+/// See [`crate::feat::session::steering_buffer::SteeringBuffer`].
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("chat_input")]
+pub struct SubmitSteeringMessage {
+    /// The session whose steering buffer to append to.
+    pub session_id: SessionId,
+    /// The raw user-typed text to buffer.
+    pub text: String,
+}
+
+
 
 /// Set the chat input buffer text directly.
 ///

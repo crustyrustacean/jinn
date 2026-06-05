@@ -134,7 +134,8 @@ impl ProviderActor {
             | Command::DetachWorkflow(..)
             | Command::ToggleWorkflow(..)
             | Command::TriggerWorkflow(..)
-            | Command::FireBeforeTurn(..) => {}
+            | Command::FireBeforeTurn(..)
+            | Command::SubmitSteeringMessage(..) => {}
         }
     }
 

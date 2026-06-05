@@ -72,6 +72,8 @@ mod tests {
             ("age_stale", theme.age_stale),
             ("scroll_indicator_bg", theme.scroll_indicator_bg),
             ("sidebar_resize_accent", theme.sidebar_resize_accent),
+            ("input_mode_queue", theme.input_mode_queue),
+            ("input_mode_steer", theme.input_mode_steer),
         ];
 
         for (name, color) in &fields {

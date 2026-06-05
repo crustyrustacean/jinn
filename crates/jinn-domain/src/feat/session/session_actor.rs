@@ -242,6 +242,9 @@ impl SessionPersistenceActor {
             Command::EnqueueResumeTurn(payload) => {
                 self.handle_enqueue_resume_turn(payload, ctx).await;
             }
+            Command::SubmitSteeringMessage(payload) => {
+                self.handle_submit_steering_message(payload);
+            }
             Command::SetChatInputText(payload) => self.handle_set_chat_input_text(payload),
             Command::PushChatEntry(payload) => {
                 self.handle_push_chat_entry(payload, ctx).await;
