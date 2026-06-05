@@ -56,7 +56,7 @@ pub mod system;
 pub use async_handle::AsyncPluginHandle;
 pub use async_thread::RequestHandler;
 pub use command::PluginCommand;
-pub use loader::{PluginMeta, discover_plugins};
+pub use loader::{PluginKind, PluginMeta, discover_plugins};
 pub use plugin_data::PluginData;
 pub use sync_handle::PluginSyncHandle;
 pub use sync_state::{PluginHooks, SyncPlugins};
