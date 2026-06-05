@@ -4,7 +4,7 @@
 //! user preferences. [`FilesystemUserPreferencesStorage`] is the production
 //! implementation; [`InMemoryUserPreferencesStorage`] is for testing.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use error_stack::{Report, ResultExt as _};
@@ -64,7 +64,14 @@ impl FilesystemUserPreferencesStorage {
             path: preferences_path(),
         }
     }
+
+    /// Returns the filesystem path this storage reads from and writes to.
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
 }
+
 
 impl UserPreferencesStorage for FilesystemUserPreferencesStorage {
     fn name(&self) -> &'static str {
@@ -456,5 +463,79 @@ mod tests {
 
         // Then fresh preferences are returned from storage.
         assert_eq!(reloaded.last_model.as_deref(), Some("ollama/llama3"));
+    }
+
+    #[rstest::rstest]
+    #[should_panic(expected = "UserPreferencesStorageService::read() called before reload()")]
+    fn read_before_reload_panics_with_precise_message() {
+        // Given a service that has never been reloaded or saved.
+        let storage = InMemoryUserPreferencesStorage::new();
+        let service = UserPreferencesStorageService::new(Arc::new(storage));
+
+        // When reading without prior reload.
+        // Then panic with the documented programmer-error message.
+        let _ = service.read();
+    }
+
+    #[rstest::rstest]
+    fn read_after_reload_returns_cached_value() {
+        // Given a service reloaded once.
+        let storage = InMemoryUserPreferencesStorage::new();
+        let service = UserPreferencesStorageService::new(Arc::new(storage));
+        let first = service.reload().expect("initial reload");
+
+        // When reading after reload.
+        let second = service.read();
+
+        // Then read returns the cached value (equivalent to what reload returned).
+        // UserPreferences doesn't impl PartialEq, so compare via Debug repr.
+        assert_eq!(format!("{first:?}"), format!("{second:?}"));
+    }
+
+
+    #[rstest::rstest]
+    fn reload_failure_returns_err_and_leaves_cache_empty() {
+        // Given a service backed by storage that always fails to reload.
+        struct AlwaysFails;
+        impl UserPreferencesStorage for AlwaysFails {
+            fn name(&self) -> &'static str { "always-fails" }
+            fn reload(&self) -> Result<UserPreferences, Report<UserPreferencesError>> {
+                Err(Report::new(UserPreferencesError::Parse))
+            }
+            fn save(&self, _: &UserPreferences) -> Result<(), Report<UserPreferencesError>> {
+                Ok(())
+            }
+        }
+        let service = UserPreferencesStorageService::new(Arc::new(AlwaysFails));
+
+        // When reload is called.
+        let result = service.reload();
+
+        // Then it returns Err.
+        assert!(result.is_err());
+    }
+
+    #[rstest::rstest]
+    #[should_panic(expected = "read() called before reload")]
+    fn read_panics_after_failed_reload() {
+        // Given a service backed by storage that always fails to reload.
+        struct AlwaysFails;
+        impl UserPreferencesStorage for AlwaysFails {
+            fn name(&self) -> &'static str { "always-fails" }
+            fn reload(&self) -> Result<UserPreferences, Report<UserPreferencesError>> {
+                Err(Report::new(UserPreferencesError::Parse))
+            }
+            fn save(&self, _: &UserPreferences) -> Result<(), Report<UserPreferencesError>> {
+                Ok(())
+            }
+        }
+        let service = UserPreferencesStorageService::new(Arc::new(AlwaysFails));
+
+        // Given reload has failed (cache is empty).
+        let _ = service.reload();
+
+        // When read() is called.
+        // Then it panics (verified by #[should_panic] above).
+        let _ = service.read();
     }
 }

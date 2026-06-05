@@ -108,6 +108,23 @@ impl App {
             SessionStoreService::new(Arc::new(store.change_context(AppError)?))
         };
 
+        // Parse user preferences early — fail-fast on a bad config BEFORE
+        // any actor wiring runs. The shared service is cloned into each
+        // command arm below.
+        let user_preferences_storage = {
+            let backend = FilesystemUserPreferencesStorage::default_path();
+            let path = backend.path().to_path_buf();
+            let svc = UserPreferencesStorageService::new(Arc::new(backend));
+            if let Err(report) = svc.reload() {
+                tracing::error!(path = %path.display(), "failed to parse user preferences");
+                eprintln!("error: failed to parse user preferences at {}:", path.display());
+                eprintln!("  {report:?}");
+                std::process::exit(1);
+            }
+            svc
+        };
+
+
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Completions { shell } => {
                 use clap::CommandFactory;
@@ -124,9 +141,7 @@ impl App {
                     resolved_api_keys.clone(),
                     config_storage.clone(),
                     session_store.clone(),
-                    UserPreferencesStorageService::new(Arc::new(
-                        FilesystemUserPreferencesStorage::default_path(),
-                    )),
+                    user_preferences_storage.clone(),
                     None,
                     None,
                     None,
@@ -187,9 +202,7 @@ impl App {
                     resolved_api_keys,
                     config_storage,
                     session_store,
-                    UserPreferencesStorageService::new(Arc::new(
-                        FilesystemUserPreferencesStorage::default_path(),
-                    )),
+                    user_preferences_storage.clone(),
                     None,
                     None,
                     None,
@@ -273,9 +286,7 @@ impl App {
                                     SqliteSessionStore::open_or_create(&db_path)
                                         .change_context(AppError)?,
                                 )),
-                                UserPreferencesStorageService::new(Arc::new(
-                                    FilesystemUserPreferencesStorage::default_path(),
-                                )),
+                                user_preferences_storage.clone(),
                                 Some(csv),
                                 Some(plan),
                                 artifact_dir,
@@ -348,9 +359,7 @@ impl App {
                                 resolved_api_keys.clone(),
                                 config_storage.clone(),
                                 session_store,
-                                UserPreferencesStorageService::new(Arc::new(
-                                    FilesystemUserPreferencesStorage::default_path(),
-                                )),
+                                user_preferences_storage.clone(),
                                 None,
                                 None,
                                 None,
