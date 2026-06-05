@@ -45,8 +45,7 @@ pub fn load_compaction_model_picker_items(services: &Services, state: &mut AppSt
     // Load preferences from service.
     let prefs = services
         .user_preferences_storage
-        .load()
-        .expect("preferences");
+        .read();
 
     // Build the sentinel entry.
     let active_compaction_model = prefs.compaction.model.clone();

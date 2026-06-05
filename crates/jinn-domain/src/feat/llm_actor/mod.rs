@@ -159,8 +159,7 @@ impl LlmActor {
         let retry_config = self
             .services
             .user_preferences_storage
-            .load()
-            .expect("preferences")
+            .read()
             .request_retry
             .to_retry_config();
 

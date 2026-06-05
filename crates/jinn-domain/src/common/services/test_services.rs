@@ -237,9 +237,15 @@ impl TestServices {
             session_store: self
                 .session_store
                 .unwrap_or_else(|| SessionStoreService::new(Arc::new(FakeSessionStore))),
-            user_preferences_storage: UserPreferencesStorageService::new(Arc::new(
-                InMemoryUserPreferencesStorage::new(),
-            )),
+            user_preferences_storage: {
+                let svc = UserPreferencesStorageService::new(Arc::new(
+                    InMemoryUserPreferencesStorage::new(),
+                ));
+                // Populate the cache so test code that calls .read() works.
+                // InMemoryUserPreferencesStorage returns Ok(default) when empty.
+                svc.reload().expect("test prefs storage initial reload");
+                svc
+            },
             tempdir,
         }
     }

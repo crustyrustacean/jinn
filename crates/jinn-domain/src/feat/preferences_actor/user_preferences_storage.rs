@@ -21,15 +21,16 @@ pub trait UserPreferencesStorage: Send + Sync + 'static {
     /// Returns the storage backend name (for debugging).
     fn name(&self) -> &'static str;
 
-    /// Loads user preferences.
+    /// Reloads user preferences from the underlying storage.
     ///
-    /// Returns default preferences if none exist.
+    /// Always hits the underlying storage (filesystem, in-memory, etc.) — bypassing any
+    /// cache in the service wrapper. Returns default preferences if none exist.
     ///
     /// # Errors
     ///
     /// Returns [`UserPreferencesError::Io`] if the file cannot be read.
     /// Returns [`UserPreferencesError::Parse`] if the TOML is malformed.
-    fn load(&self) -> Result<UserPreferences, Report<UserPreferencesError>>;
+    fn reload(&self) -> Result<UserPreferences, Report<UserPreferencesError>>;
 
     /// Saves user preferences.
     ///
@@ -70,7 +71,7 @@ impl UserPreferencesStorage for FilesystemUserPreferencesStorage {
         "filesystem"
     }
 
-    fn load(&self) -> Result<UserPreferences, Report<UserPreferencesError>> {
+    fn reload(&self) -> Result<UserPreferences, Report<UserPreferencesError>> {
         super::user_preferences::load_preferences_from(&self.path)
     }
 
@@ -81,7 +82,7 @@ impl UserPreferencesStorage for FilesystemUserPreferencesStorage {
 
 /// In-memory user preferences storage for testing.
 ///
-/// Stores the serialized TOML in memory. `load()` returns the default
+/// Stores the serialized TOML in memory. `reload()` returns the default
 /// preferences if nothing has been saved. `save()` stores the serialized
 /// preferences.
 pub struct InMemoryUserPreferencesStorage {
@@ -110,7 +111,7 @@ impl UserPreferencesStorage for InMemoryUserPreferencesStorage {
         "in-memory"
     }
 
-    fn load(&self) -> Result<UserPreferences, Report<UserPreferencesError>> {
+    fn reload(&self) -> Result<UserPreferences, Report<UserPreferencesError>> {
         let guard = self.content.read();
         match guard.as_ref() {
             Some(content) => toml::from_str(content)
@@ -153,29 +154,28 @@ impl UserPreferencesStorageService {
         }
     }
 
-    /// Loads user preferences.
+    /// Reads the cached user preferences.
     ///
-    /// Returns the cached value if present, otherwise reads from storage
-    /// and caches the result.
+    /// Infallible. Returns the value cached from the most recent successful
+    /// `reload()` or `save()`. **Must** be called after a successful `reload()`
+    /// (typically at app startup); panics with a programmer-error message otherwise.
     ///
-    /// # Errors
+    /// This method never touches the underlying storage.
     ///
-    /// Returns [`UserPreferencesError::Parse`] if stored content is malformed.
-    pub fn load(&self) -> Result<UserPreferences, Report<UserPreferencesError>> {
-        {
-            let guard = self.cache.read();
-            if let Some(ref prefs) = *guard {
-                return Ok(prefs.clone());
-            }
-        }
-        let prefs = self.svc.load()?;
-        let mut guard = self.cache.write();
-        *guard = Some(prefs.clone());
-        Ok(prefs)
+    /// # Panics
+    ///
+    /// Panics if called before a successful `reload()` (or `save()`) has populated
+    /// the cache. The panic message is descriptive — this is a programmer error,
+    /// not an expected runtime condition.
+    pub fn read(&self) -> UserPreferences {
+        self.cache
+            .read()
+            .clone()
+            .expect("UserPreferencesStorageService::read() called before reload() — programmer error: the service must be reloaded (typically at app startup) before any read")
     }
 
-    /// Saves user preferences.
-    ///
+
+
     /// Writes to storage and updates the in-memory cache.
     ///
     /// # Errors
@@ -188,19 +188,29 @@ impl UserPreferencesStorageService {
         Ok(())
     }
 
-    /// Reloads preferences from storage, bypassing the cache.
+    /// Reloads preferences from the underlying storage, bypassing the cache.
     ///
-    /// Clears the cache, reads fresh from storage, and caches the result.
+    /// Reads fresh from storage and updates the cache:
+    /// - On success, the cache is populated with the result.
+    /// - On failure, the cache is **cleared** so that a subsequent `read()` panics
+    ///   with the standard "not initialized" message. This prevents the service from
+    ///   silently serving stale data after a failed refresh.
+    ///
+    /// Typically called once at app startup; may be called again later to refresh
+    /// the cache from disk.
     ///
     /// # Errors
     ///
-    /// Returns [`UserPreferencesError::Parse`] if stored content is malformed.
+    /// Returns [`UserPreferencesError::Io`] if the underlying storage cannot be read.
+    /// Returns [`UserPreferencesError::Parse`] if the stored TOML is malformed.
     pub fn reload(&self) -> Result<UserPreferences, Report<UserPreferencesError>> {
-        {
-            let mut guard = self.cache.write();
-            *guard = None;
+        let result = self.svc.reload();
+        let mut guard = self.cache.write();
+        match &result {
+            Ok(prefs) => *guard = Some(prefs.clone()),
+            Err(_) => *guard = None,
         }
-        self.load()
+        result
     }
 }
 
@@ -229,7 +239,7 @@ mod tests {
         let storage = InMemoryUserPreferencesStorage::new();
 
         // When loading.
-        let prefs = storage.load().expect("load");
+        let prefs = storage.reload().expect("reload");
 
         // Then defaults are returned.
         assert!(prefs.last_model.is_none());
@@ -262,7 +272,7 @@ mod tests {
 
         // When saving and reloading.
         storage.save(&prefs).expect("save");
-        let reloaded = storage.load().expect("load");
+        let reloaded = storage.reload().expect("reload");
 
         // Then the round-tripped data matches.
         assert_eq!(reloaded.last_model.as_deref(), Some("ollama/llama3"));
@@ -278,7 +288,7 @@ mod tests {
         assert!(!path.exists());
 
         // When loading.
-        let prefs = storage.load().expect("load");
+        let prefs = storage.reload().expect("reload");
 
         // Then defaults are returned (file is NOT auto-created on load).
         assert!(prefs.last_model.is_none());
@@ -315,7 +325,7 @@ mod tests {
 
         // When saving and reloading.
         storage.save(&prefs).expect("save");
-        let reloaded = storage.load().expect("load");
+        let reloaded = storage.reload().expect("reload");
 
         // Then the round-tripped data matches.
         assert_eq!(reloaded.last_model.as_deref(), Some("test/model"));
@@ -351,8 +361,8 @@ mod tests {
         service.save(&prefs).expect("save");
 
         // When loading twice.
-        let first = service.load().expect("first load");
-        let second = service.load().expect("second load");
+        let first = service.reload().expect("first reload");
+        let second = service.reload().expect("second reload");
 
         // Then both return the same value without error.
         assert_eq!(first.last_model, second.last_model);
@@ -410,7 +420,7 @@ mod tests {
         service.save(&updated).expect("save updated");
 
         // Then load returns the updated value.
-        let loaded = service.load().expect("load");
+        let loaded = service.reload().expect("reload");
         assert_eq!(loaded.last_model.as_deref(), Some("openrouter/gpt-4"));
     }
 

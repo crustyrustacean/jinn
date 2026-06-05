@@ -93,9 +93,7 @@ pub fn create_core_with_actor_host(
     // Set preferences
     {
         let mut guard = state.write();
-        guard.frontend.preferences = user_preferences_storage
-            .load()
-            .expect("should be able to access preferences");
+        guard.frontend.preferences = user_preferences_storage.read();
     }
 
     // Set default CWD for sessions (inherited from shell).
@@ -255,10 +253,7 @@ pub fn create_core_with_actor_host(
     );
 
     // Web fetch actor - reads backend from preferences, constructs fetcher.
-    let web_fetch_backend = user_preferences_storage
-        .load()
-        .map(|p| p.web_fetch.backend)
-        .unwrap_or(WebFetchBackend::Http);
+    let web_fetch_backend = user_preferences_storage.read().web_fetch.backend;
     tracing::info!(backend = ?web_fetch_backend, "constructing web fetcher");
     let extractors = {
         let markdown: std::sync::Arc<dyn jinn_web_fetch::Extractor> =
@@ -462,10 +457,7 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage
-            .load()
-            .map(|p| p.compaction.clone())
-            .unwrap_or_default();
+        let config = user_preferences_storage.read().compaction.clone();
         let compaction_prompt = state.read().context.compaction_prompt.clone();
 
         actors.push(spawn::<HistoryWorkerActor<CompactionWorker>>(
@@ -492,10 +484,7 @@ pub fn create_core_with_actor_host(
             CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker,
         };
 
-        let config = user_preferences_storage
-            .load()
-            .map(|p| p.compaction.clone())
-            .unwrap_or_default();
+        let config = user_preferences_storage.read().compaction.clone();
         let compaction_prompt = state.read().context.compaction_prompt.clone();
 
         actors.push(spawn::<CompactionTriggerActor>(
@@ -523,10 +512,7 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage
-            .load()
-            .map(|p| p.auto_prune.read_edit.clone())
-            .unwrap_or_default();
+        let config = user_preferences_storage.read().auto_prune.read_edit.clone();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<ReadEditAutoPruneWorker>>(
@@ -548,10 +534,7 @@ pub fn create_core_with_actor_host(
         use jinn_domain::feat::history_worker::actor::{
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
-        let regex_config = user_preferences_storage
-            .load()
-            .expect("preferences")
-            .auto_prune
+        let regex_config = user_preferences_storage.read().auto_prune
             .regex
             .clone();
 
@@ -587,10 +570,7 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage
-            .load()
-            .map(|p| p.auto_prune.todo.clone())
-            .unwrap_or_default();
+        let config = user_preferences_storage.read().auto_prune.todo.clone();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<TodoAutoPruneWorker>>(
@@ -613,10 +593,7 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage
-            .load()
-            .map(|p| p.auto_prune.broken_edit.clone())
-            .unwrap_or_default();
+        let config = user_preferences_storage.read().auto_prune.broken_edit.clone();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<BrokenEditAutoPruneWorker>>(
@@ -639,10 +616,7 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage
-            .load()
-            .map(|p| p.auto_prune.double_edit.clone())
-            .unwrap_or_default();
+        let config = user_preferences_storage.read().auto_prune.double_edit.clone();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<DoubleEditAutoPruneWorker>>(
@@ -665,10 +639,7 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage
-            .load()
-            .map(|p| p.auto_prune.consecutive_reads.clone())
-            .unwrap_or_default();
+        let config = user_preferences_storage.read().auto_prune.consecutive_reads.clone();
 
         if config.enabled {
             actors.push(
@@ -716,10 +687,7 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage
-            .load()
-            .map(|p| p.auto_prune.tool_age_window.clone())
-            .unwrap_or_default();
+        let config = user_preferences_storage.read().auto_prune.tool_age_window.clone();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<ToolAgeWindowAutoPruneWorker>>(
@@ -743,10 +711,7 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage
-            .load()
-            .map(|p| p.auto_prune.trivial_assistant.clone())
-            .unwrap_or_default();
+        let config = user_preferences_storage.read().auto_prune.trivial_assistant.clone();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<TrivialAssistantAutoPruneWorker>>(
@@ -777,10 +742,7 @@ pub fn create_core_with_actor_host(
             HistoryWorkerActor, HistoryWorkerActorDeps,
         };
 
-        let config = user_preferences_storage
-            .load()
-            .map(|p| p.auto_prune.anchor_radius.clone())
-            .unwrap_or_default();
+        let config = user_preferences_storage.read().auto_prune.anchor_radius.clone();
 
         if config.enabled {
             actors.push(spawn::<HistoryWorkerActor<AnchorRadiusAutoPruneWorker>>(
