@@ -105,7 +105,7 @@ impl App {
                 Some(path) => SqliteSessionStore::open_or_create(path),
                 None => SqliteSessionStore::new(),
             };
-            SessionStoreService::new(Arc::new(store.expect("failed to create session store")))
+            SessionStoreService::new(Arc::new(store.change_context(AppError)?))
         };
 
         match cli.command.unwrap_or(Commands::Tui) {
@@ -271,7 +271,7 @@ impl App {
                                 config_storage,
                                 SessionStoreService::new(Arc::new(
                                     SqliteSessionStore::open_or_create(&db_path)
-                                        .expect("failed to create bench session store"),
+                                        .change_context(AppError)?,
                                 )),
                                 UserPreferencesStorageService::new(Arc::new(
                                     FilesystemUserPreferencesStorage::default_path(),
@@ -338,7 +338,7 @@ impl App {
                     BenchCommands::Tui { db_path } => {
                         let session_store = SessionStoreService::new(Arc::new(
                             SqliteSessionStore::open_or_create(&db_path)
-                                .expect("failed to create session store"),
+                                .change_context(AppError)?,
                         ));
                         let (core, services, actor_host) =
                             actor_wiring::create_core_with_actor_host(

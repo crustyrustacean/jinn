@@ -145,8 +145,14 @@ pub fn parse_anchor(ref_str: &str) -> Result<Anchor, String> {
         .captures(core)
         .ok_or_else(|| diagnose_line_ref(ref_str))?;
 
-    let line_str = caps.get(1).expect("capture group 1 exists").as_str();
-    let hash_str = caps.get(2).expect("capture group 2 exists").as_str();
+    let line_str = caps
+        .get(1)
+        .ok_or_else(|| format!("[E_BAD_REF] capture group 1 missing in \"{ref_str}\""))?
+        .as_str();
+    let hash_str = caps
+        .get(2)
+        .ok_or_else(|| format!("[E_BAD_REF] capture group 2 missing in \"{ref_str}\""))?
+        .as_str();
 
     let line: usize = line_str
         .parse()
