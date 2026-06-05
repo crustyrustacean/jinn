@@ -270,7 +270,6 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
 
             let result_protected = history[result_idx].is_protected_from_prune();
 
-
             // Count how many edit/write calls to the same file appear after
             // this read. Once the threshold is reached, the read is stale.
             let modify_count =
@@ -361,10 +360,7 @@ mod tests {
     }
 
     /// Evaluate an arbitrary worker synchronously for tests.
-    fn evaluate_with(
-        w: &ReadEditAutoPruneWorker,
-        history: Vec<ChatEntry>,
-    ) -> Vec<HistoryMutation> {
+    fn evaluate_with(w: &ReadEditAutoPruneWorker, history: Vec<ChatEntry>) -> Vec<HistoryMutation> {
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         rt.block_on(async { w.evaluate(&SessionId::new(), Arc::from(history)).await })
     }
@@ -376,7 +372,9 @@ mod tests {
         mutations
             .iter()
             .filter_map(|m| match m {
-                HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+                HistoryMutation::SetContextOverride {
+                    entry_id, value, ..
+                } => {
                     assert_eq!(*value, ContextOverride::ForcedExclude);
                     Some(entry_id.clone())
                 }
@@ -503,7 +501,12 @@ mod tests {
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "contents");
         let mut call = read[0].clone();
-        call.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        call.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         history.push(call);
         history.push(read[1].clone()); // result NOT excluded
         let edit1 = edit_call_result("tc-2", "/foo.rs", "edit 1");
@@ -517,7 +520,9 @@ mod tests {
         assert_eq!(mutations.len(), 1, "only result should be pruned");
 
         match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+            HistoryMutation::SetContextOverride {
+                entry_id, value, ..
+            } => {
                 assert_eq!(*entry_id, read[1].id, "should target read ToolResult");
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }
@@ -531,7 +536,12 @@ mod tests {
         let read = read_call_result("tc-1", "/foo.rs", "contents");
         history.push(read[0].clone()); // call NOT excluded
         let mut result = read[1].clone();
-        result.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        result.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         history.push(result);
         let edit1 = edit_call_result("tc-2", "/foo.rs", "edit 1");
         history.push(edit1[0].clone());
@@ -544,7 +554,9 @@ mod tests {
         assert_eq!(mutations.len(), 1, "only call should be pruned");
 
         match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+            HistoryMutation::SetContextOverride {
+                entry_id, value, ..
+            } => {
                 assert_eq!(*entry_id, read[0].id, "should target read ToolCall");
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }
@@ -571,7 +583,9 @@ mod tests {
         assert_eq!(mutations.len(), 1, "only result should be pruned");
 
         match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+            HistoryMutation::SetContextOverride {
+                entry_id, value, ..
+            } => {
                 assert_eq!(*entry_id, read[1].id, "should target read ToolResult");
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }
@@ -584,9 +598,19 @@ mod tests {
         let mut history = Vec::new();
         let read = read_call_result("tc-1", "/foo.rs", "contents");
         let mut call = read[0].clone();
-        call.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        call.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         let mut result = read[1].clone();
-        result.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        result.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         history.push(call);
         history.push(result);
         let edit1 = edit_call_result("tc-2", "/foo.rs", "edit 1");
@@ -922,9 +946,19 @@ mod tests {
         let mut history = Vec::new();
         let edit1 = edit_call_result("tc-1", "/foo.rs", "edit applied");
         let mut edit_call = edit1[0].clone();
-        edit_call.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        edit_call.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         let mut edit_result = edit1[1].clone();
-        edit_result.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        edit_result.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         history.push(edit_call);
         history.push(edit_result);
         let read = read_call_result("tc-2", "/foo.rs", "contents");
@@ -946,9 +980,19 @@ mod tests {
         history.push(edit1[1].clone());
         let read = read_call_result("tc-2", "/foo.rs", "contents");
         let mut read_call = read[0].clone();
-        read_call.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        read_call.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         let mut read_result = read[1].clone();
-        read_result.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        read_result.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         history.push(read_call);
         history.push(read_result);
 

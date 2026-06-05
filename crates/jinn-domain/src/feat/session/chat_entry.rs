@@ -89,7 +89,6 @@ pub enum ContextOverride {
     ForcedExclude,
 }
 
-
 /// Who initiated a change to a [`ChatEntry`]'s `context_override`.
 ///
 /// Recorded on every [`ContextChangeEvent`] so the audit trail can answer
@@ -105,13 +104,9 @@ pub enum ChangeSource {
     /// requires zero changes here.
     ///
     /// [`HistoryWorker::name`]: crate::feat::history_worker::worker_trait::HistoryWorker::name
-    Worker {
-        name: String,
-    },
+    Worker { name: String },
     /// An internal session-actor sweep that isn't a worker (e.g. dangling-tool-call cleanup).
-    Internal {
-        label: String,
-    },
+    Internal { label: String },
 }
 
 /// A single recorded change to a [`ChatEntry`]'s `context_override`.
@@ -630,7 +625,6 @@ impl ChatEntry {
         self.context_override
     }
 
-
     /// Whether this entry is pinned to the context.
     pub fn is_pinned(&self) -> bool {
         self.pin_position.is_some()
@@ -848,7 +842,6 @@ impl ChatEntry {
         }
         hasher.finish()
     }
-
 }
 
 impl Serialize for ChatEntryKind {
@@ -1260,10 +1253,7 @@ mod tests {
     fn apply_context_override_noop_returns_false() {
         let mut entry = fresh_user_entry();
         let initial_history_len = entry.context_history.len();
-        let changed = entry.apply_context_override(
-            ContextOverride::Default,
-            ChangeSource::User,
-        );
+        let changed = entry.apply_context_override(ContextOverride::Default, ChangeSource::User);
         assert!(!changed);
         assert_eq!(entry.context_history.len(), initial_history_len);
     }
@@ -1271,10 +1261,8 @@ mod tests {
     #[test]
     fn apply_context_override_records_event_with_correct_from_to_source() {
         let mut entry = fresh_user_entry();
-        let changed = entry.apply_context_override(
-            ContextOverride::ForcedExclude,
-            ChangeSource::User,
-        );
+        let changed =
+            entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
         assert!(changed);
         assert_eq!(entry.context_history.len(), 1);
         let event = &entry.context_history[0];
@@ -1306,7 +1294,9 @@ mod tests {
         entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
         entry.apply_context_override(
             ContextOverride::ForcedInclude,
-            ChangeSource::Worker { name: "test_worker".to_owned() },
+            ChangeSource::Worker {
+                name: "test_worker".to_owned(),
+            },
         );
 
         let json = serde_json::to_string(&entry).expect("serialize");
@@ -1318,7 +1308,9 @@ mod tests {
         assert_eq!(loaded.context_history[0].source, ChangeSource::User);
         assert_eq!(
             loaded.context_history[1].source,
-            ChangeSource::Worker { name: "test_worker".to_owned() }
+            ChangeSource::Worker {
+                name: "test_worker".to_owned()
+            }
         );
     }
 
@@ -1335,5 +1327,4 @@ mod tests {
         // The override itself is preserved.
         assert_eq!(loaded.context_override(), ContextOverride::ForcedExclude);
     }
-
 }

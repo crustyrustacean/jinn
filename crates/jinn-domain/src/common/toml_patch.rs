@@ -152,7 +152,10 @@ fn apply_table_inner(
         let mut child_path = path.to_vec();
         child_path.push(key.clone());
         if target.contains_key(key) {
-            let child_item: &mut Item = target.get_mut(key).ok_or(PatchError::InternalInvariant { what: "just checked contains_key" })?;
+            let child_item: &mut Item =
+                target.get_mut(key).ok_or(PatchError::InternalInvariant {
+                    what: "just checked contains_key",
+                })?;
             apply_value(child_value, child_item, registry, &child_path)?;
         } else {
             target.insert(key.as_str(), value_to_item(child_value));
@@ -160,9 +163,6 @@ fn apply_table_inner(
     }
     Ok(())
 }
-
-
-
 
 fn apply_value(
     new: &toml::Value,
@@ -187,22 +187,31 @@ fn apply_table(
     path: &[String],
 ) -> Result<(), PatchError> {
     let table: &mut Table = if target.is_table() {
-        target.as_table_mut().ok_or(PatchError::InternalInvariant { what: "just checked is_table" })?
+        target.as_table_mut().ok_or(PatchError::InternalInvariant {
+            what: "just checked is_table",
+        })?
     } else if target.is_none() {
         *target = Item::Table(Table::new());
-        target.as_table_mut().ok_or(PatchError::InternalInvariant { what: "just inserted a Table variant" })?
+        target.as_table_mut().ok_or(PatchError::InternalInvariant {
+            what: "just inserted a Table variant",
+        })?
     } else {
         // Was a scalar or array — replace with a table (lossy, but the
         // document and struct disagreed on shape).
         *target = Item::Table(Table::new());
-        target.as_table_mut().ok_or(PatchError::InternalInvariant { what: "just inserted a Table variant" })?
+        target.as_table_mut().ok_or(PatchError::InternalInvariant {
+            what: "just inserted a Table variant",
+        })?
     };
 
     for (key, child_value) in new {
         let mut child_path = path.to_vec();
         child_path.push(key.clone());
         if table.contains_key(key) {
-            let child_item: &mut Item = table.get_mut(key).ok_or(PatchError::InternalInvariant { what: "just checked contains_key" })?;
+            let child_item: &mut Item =
+                table.get_mut(key).ok_or(PatchError::InternalInvariant {
+                    what: "just checked contains_key",
+                })?;
             apply_value(child_value, child_item, registry, &child_path)?;
         } else {
             table.insert(key, value_to_item(child_value));
@@ -238,18 +247,26 @@ fn apply_array_of_tables_by_key(
     key_field: &'static str,
 ) -> Result<(), PatchError> {
     let array: &mut ArrayOfTables = if target.is_array_of_tables() {
-        target.as_array_of_tables_mut().ok_or(PatchError::InternalInvariant { what: "just checked" })?
+        target
+            .as_array_of_tables_mut()
+            .ok_or(PatchError::InternalInvariant {
+                what: "just checked",
+            })?
     } else if target.is_none() || target.is_value() {
         *target = Item::ArrayOfTables(ArrayOfTables::new());
         target
             .as_array_of_tables_mut()
-            .ok_or(PatchError::InternalInvariant { what: "just inserted ArrayOfTables" })?
+            .ok_or(PatchError::InternalInvariant {
+                what: "just inserted ArrayOfTables",
+            })?
     } else {
         // Was a regular table — replace.
         *target = Item::ArrayOfTables(ArrayOfTables::new());
         target
             .as_array_of_tables_mut()
-            .ok_or(PatchError::InternalInvariant { what: "just inserted ArrayOfTables" })?
+            .ok_or(PatchError::InternalInvariant {
+                what: "just inserted ArrayOfTables",
+            })?
     };
 
     // Collect new entries keyed by their key-field value, preserving order.
@@ -276,9 +293,7 @@ fn apply_array_of_tables_by_key(
     // Walk existing array entries; mark which were matched.
     let mut matched: Vec<bool> = vec![false; array.len()];
     for (idx, entry) in array.iter().enumerate() {
-        let actual_key: Option<String> = entry
-            .get(key_field)
-            .and_then(item_to_string_key);
+        let actual_key: Option<String> = entry.get(key_field).and_then(item_to_string_key);
         match actual_key {
             Some(k) if new_by_key.contains_key(&k) => matched[idx] = true,
             None => matched[idx] = true, // missing key field — preserve
@@ -292,18 +307,30 @@ fn apply_array_of_tables_by_key(
         .enumerate()
         .filter_map(|(idx, entry)| {
             let k = entry.get(key_field).and_then(item_to_string_key)?;
-            if new_by_key.contains_key(&k) { Some((idx, k)) } else { None }
+            if new_by_key.contains_key(&k) {
+                Some((idx, k))
+            } else {
+                None
+            }
         })
         .collect();
 
     for (idx, actual_key) in matched_keys {
-        let Some(&replacement) = new_by_key.get(&actual_key) else { continue };
-        let toml::Value::Table(repl_t) = replacement else { continue };
-        let entry_mut: &mut Table = array.get_mut(idx).ok_or(PatchError::InternalInvariant { what: "idx in range" })?;
+        let Some(&replacement) = new_by_key.get(&actual_key) else {
+            continue;
+        };
+        let toml::Value::Table(repl_t) = replacement else {
+            continue;
+        };
+        let entry_mut: &mut Table = array.get_mut(idx).ok_or(PatchError::InternalInvariant {
+            what: "idx in range",
+        })?;
         for (k, child_value) in repl_t {
             if entry_mut.contains_key(k) {
                 let child_item: &mut Item =
-                    entry_mut.get_mut(k).ok_or(PatchError::InternalInvariant { what: "just checked contains_key" })?;
+                    entry_mut.get_mut(k).ok_or(PatchError::InternalInvariant {
+                        what: "just checked contains_key",
+                    })?;
                 // For nested arrays-of-tables inside an array entry, look up
                 // a fresh registry built from the path of THIS entry — not
                 // implemented yet (no nested registered arrays in scope).
@@ -347,9 +374,10 @@ fn apply_array_of_tables_by_key(
 fn entry_exists_with_key(array: &ArrayOfTables, key_field: &str, key_value: &str) -> bool {
     for entry in array {
         if let Some(actual) = entry.get(key_field).and_then(item_to_string_key)
-            && actual == key_value {
-                return true;
-            }
+            && actual == key_value
+        {
+            return true;
+        }
     }
     false
 }
@@ -468,7 +496,6 @@ fn item_to_string_key(item: &Item) -> Option<String> {
         _ => return None,
     })
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -775,7 +802,10 @@ mod tests {
 
         // Then the inner comment survives and the mutation applies.
         let out = d.to_string();
-        assert!(out.contains("# inner comment"), "inner comment lost:\n{out}");
+        assert!(
+            out.contains("# inner comment"),
+            "inner comment lost:\n{out}"
+        );
         assert!(out.contains("value = 99"), "value updated");
     }
 }

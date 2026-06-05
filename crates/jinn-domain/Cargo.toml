@@ -10,7 +10,6 @@ jinn-web-fetch = { workspace = true }
 jinn-selection-widget = { workspace = true }
 jinn-protocol-derive = { workspace = true }
 jinn-workflow = { workspace = true }
-jinn-lua-workflow = { workspace = true }
 jinn-theme = { workspace = true }
 ratatui-markdown = { workspace = true }
 

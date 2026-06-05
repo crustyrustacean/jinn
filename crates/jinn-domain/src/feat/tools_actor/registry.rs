@@ -48,4 +48,3 @@ pub fn builtin_tools(bash_config: &BashConfig) -> Vec<BuiltinToolEntry> {
 
     entries
 }
-

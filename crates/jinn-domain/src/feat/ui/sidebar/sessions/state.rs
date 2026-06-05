@@ -10,7 +10,7 @@ use crate::protocol::SessionId;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SessionEntryKind {
     Session,
-    Workflow { enabled: bool },
+    Plugin { enabled: bool },
 }
 
 /// Sessions section cursor state - stored on `FrontendState`.
@@ -185,8 +185,8 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
 /// Post-DFS pass that inserts workflow child entries under their parent sessions.
 ///
 /// After the DFS builds the session tree, this function scans the result list
-/// and for each `Session` entry, looks up its `attached_workflows` from state.
-/// Workflow entries are inserted after the session's last real child (or immediately
+/// and for each `Session` entry, looks up its `attached_plugins` from state.
+/// Plugin entries are inserted after the session's last real child (or immediately
 /// after the session if it has no children). Tree metadata (depth, continuations,
 /// `is_last_child`) is computed to maintain visual consistency.
 ///
@@ -200,7 +200,7 @@ fn insert_workflow_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
     let mut insertions: Vec<(
         usize,
         SessionId,
-        Vec<crate::feat::workflow::attached_workflow::AttachedWorkflow>,
+        Vec<crate::feat::attached_plugin::AttachedPlugin>,
     )> = Vec::new();
 
     let mut i = 0;
@@ -227,7 +227,7 @@ fn insert_workflow_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
             continue;
         };
 
-        let workflows = session.core.attached_workflows.clone();
+        let workflows = session.core.attached_plugins.clone();
         if !workflows.is_empty() {
             insertions.push((subtree_end, session_id, workflows));
         }
@@ -261,14 +261,14 @@ fn insert_workflow_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
         workflow_continuations.push(parent_continues);
 
         let wf_count = workflows.len();
-        for (j, aw) in workflows.into_iter().enumerate() {
+        for (j, ap) in workflows.into_iter().enumerate() {
             let is_last = j == wf_count - 1;
             let wf_entry = SessionEntry {
-                kind: SessionEntryKind::Workflow {
-                    enabled: aw.enabled,
+                kind: SessionEntryKind::Plugin {
+                    enabled: ap.enabled,
                 },
                 id: parent_id.clone(),
-                title: aw.label_or_default().to_owned(),
+                title: ap.label_or_name().to_owned(),
                 is_active: false,
                 created_at: parent_created_at,
                 is_idle: true,

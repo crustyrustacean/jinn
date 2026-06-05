@@ -72,7 +72,6 @@ impl FilesystemUserPreferencesStorage {
     }
 }
 
-
 impl UserPreferencesStorage for FilesystemUserPreferencesStorage {
     fn name(&self) -> &'static str {
         "filesystem"
@@ -180,8 +179,6 @@ impl UserPreferencesStorageService {
             .clone()
             .expect("UserPreferencesStorageService::read() called before reload() — programmer error: the service must be reloaded (typically at app startup) before any read")
     }
-
-
 
     /// Writes to storage and updates the in-memory cache.
     ///
@@ -498,13 +495,14 @@ mod tests {
         assert_eq!(format!("{first:?}"), format!("{second:?}"));
     }
 
-
     #[rstest::rstest]
     fn reload_failure_returns_err_and_leaves_cache_empty() {
         // Given a service backed by storage that always fails to reload.
         struct AlwaysFails;
         impl UserPreferencesStorage for AlwaysFails {
-            fn name(&self) -> &'static str { "always-fails" }
+            fn name(&self) -> &'static str {
+                "always-fails"
+            }
             fn reload(&self) -> Result<UserPreferences, Report<UserPreferencesError>> {
                 Err(Report::new(UserPreferencesError::Parse))
             }
@@ -527,7 +525,9 @@ mod tests {
         // Given a service backed by storage that always fails to reload.
         struct AlwaysFails;
         impl UserPreferencesStorage for AlwaysFails {
-            fn name(&self) -> &'static str { "always-fails" }
+            fn name(&self) -> &'static str {
+                "always-fails"
+            }
             fn reload(&self) -> Result<UserPreferences, Report<UserPreferencesError>> {
                 Err(Report::new(UserPreferencesError::Parse))
             }

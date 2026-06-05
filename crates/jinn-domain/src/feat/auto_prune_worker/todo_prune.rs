@@ -29,7 +29,6 @@ use crate::protocol::SessionId;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-
 /// Returns true if a tool name belongs to the todo tool group.
 fn is_todo_tool(name: &str) -> bool {
     name.starts_with("todo_")
@@ -116,7 +115,6 @@ fn build_prune_mutations(
     for call_info in calls.iter().take(calls.len() - 1) {
         // Prune the ToolCall if not protected from prune.
         if !history[call_info.index].is_protected_from_prune() {
-
             mutations.push(HistoryMutation::SetContextOverride {
                 entry_id: call_info.entry_id.clone(),
                 value: ContextOverride::ForcedExclude,
@@ -283,7 +281,9 @@ mod tests {
         let mutation_ids: Vec<_> = mutations
             .iter()
             .filter_map(|m| match m {
-                HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+                HistoryMutation::SetContextOverride {
+                    entry_id, value, ..
+                } => {
                     assert_eq!(*value, ContextOverride::ForcedExclude);
                     Some(entry_id.clone())
                 }
@@ -294,7 +294,6 @@ mod tests {
         assert!(
             mutation_ids.contains(&cr1[0].id),
             "tc-1 ToolCall should be pruned"
-
         );
         assert!(
             mutation_ids.contains(&cr1[1].id),
@@ -318,7 +317,9 @@ mod tests {
         let mutation_ids: Vec<_> = mutations
             .iter()
             .filter_map(|m| match m {
-                HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+                HistoryMutation::SetContextOverride {
+                    entry_id, value, ..
+                } => {
                     assert_eq!(*value, ContextOverride::ForcedExclude);
                     Some(entry_id.clone())
                 }
@@ -387,9 +388,19 @@ mod tests {
         let cr1 = get_task_list_call_result("tc-1", "list v1");
         // Mark both as already excluded.
         let mut call = cr1[0].clone();
-        call.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        call.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         let mut result = cr1[1].clone();
-        result.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        result.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         history.push(call);
         history.push(result);
 
@@ -461,7 +472,9 @@ mod tests {
         // 1 mutation: the orphan ToolCall (no result to prune).
         assert_eq!(mutations.len(), 1);
         match &mutations[0] {
-            HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+            HistoryMutation::SetContextOverride {
+                entry_id, value, ..
+            } => {
                 assert_eq!(*entry_id, orphan_id);
                 assert_eq!(*value, ContextOverride::ForcedExclude);
             }

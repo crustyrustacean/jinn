@@ -314,7 +314,6 @@ pub enum GraphError {
     },
 }
 
-
 /// Builder for constructing a [`WorkflowGraph`].
 ///
 /// Accumulates nodes and edges, then validates on [`build`](Self::build).
@@ -459,25 +458,25 @@ impl WorkflowGraphBuilder {
 
         // Add edges to petgraph (already validated by connect()).
         for (src_name, src_port, tgt_name, tgt_port) in &self.edges {
-            let src_idx = name_to_index
-                .get(src_name)
-                .copied()
-                .ok_or_else(|| Report::new(GraphError::InternalInvariant {
+            let src_idx = name_to_index.get(src_name).copied().ok_or_else(|| {
+                Report::new(GraphError::InternalInvariant {
                     what: "source node validated during connect",
-                }))?;
-            let tgt_idx = name_to_index
-                .get(tgt_name)
-                .copied()
-                .ok_or_else(|| Report::new(GraphError::InternalInvariant {
+                })
+            })?;
+            let tgt_idx = name_to_index.get(tgt_name).copied().ok_or_else(|| {
+                Report::new(GraphError::InternalInvariant {
                     what: "target node validated during connect",
-                }))?;
+                })
+            })?;
 
             // Look up port type from source node's output ports.
             let source_node = &graph[src_idx].node;
-            let port_type = find_port_type(&source_node.output_ports(), src_port)
-                .ok_or_else(|| Report::new(GraphError::InternalInvariant {
-                    what: "port validated during connect",
-                }))?;
+            let port_type =
+                find_port_type(&source_node.output_ports(), src_port).ok_or_else(|| {
+                    Report::new(GraphError::InternalInvariant {
+                        what: "port validated during connect",
+                    })
+                })?;
 
             graph.add_edge(
                 src_idx,

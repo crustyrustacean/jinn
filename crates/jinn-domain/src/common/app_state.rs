@@ -43,34 +43,23 @@ pub struct AppState {
     pub provider: ProviderState,
     /// Frontend / UI state - owned by IntentHandler.
     pub frontend: FrontendState,
-    /// Workflow execution state - owned by workflow-actor.
-    /// Live executions for running attached workflows. Ephemeral (not persisted).
-    /// Keyed by AttachedWorkflow.id (which IS a WorkflowId).
-    /// OWNER: workflow-controller-actor.
-    pub workflow_executions: std::collections::HashMap<
-        crate::feat::workflow::attached_workflow::WorkflowId,
-        LuaExecutionState,
-    >,
-    pub active_workflow: Option<(
-        crate::protocol::SessionId,
-        crate::feat::workflow::attached_workflow::WorkflowId,
-    )>,
-    pub pending_before_turn: std::collections::HashMap<
-        crate::protocol::SessionId,
-        crate::feat::workflow::attached_workflow::BeforeTurnMode,
-    >,
-    /// Queue of remaining BeforeTurn attachments for sequential execution.
-    /// Key: session_id, Value: ordered list of (AttachedWorkflow, BeforeTurnMode) pairs.
-    pub before_turn_queue: std::collections::HashMap<
-        crate::protocol::SessionId,
-        Vec<(
-            crate::feat::workflow::attached_workflow::AttachedWorkflow,
-            crate::feat::workflow::attached_workflow::BeforeTurnMode,
-        )>,
-    >,
+    // /// Active workflow tracking for UI (dead state from old WorkflowController).
+    // pub active_workflow: Option<(
+    //     crate::protocol::SessionId,
+    //     String,
+    // ),>,
     /// Discovered Lua plugins from both user and system plugin directories.
     /// OWNER: startup (actor_wiring) writes once; picker intent handler reads.
-    pub discovered_plugins: Vec<crate::feat::luaworkflow::discovery::PluginMeta>,
+    pub discovered_plugins: Vec<DiscoveredPlugin>,
+}
+
+/// Metadata for a discovered Lua plugin.
+#[derive(Debug, Clone)]
+pub struct DiscoveredPlugin {
+    /// Plugin name (directory name).
+    pub name: String,
+    /// Human-readable description from header comment.
+    pub description: Option<String>,
 }
 
 impl AppState {
@@ -88,7 +77,7 @@ impl AppState {
             PickerKind::Theme => Some(self.frontend.theme_picker_mut()),
 
             PickerKind::SessionLifecycle => Some(self.frontend.session_lifecycle_picker_mut()),
-            PickerKind::Workflow => Some(self.frontend.workflow_picker_mut()),
+            PickerKind::Plugin => Some(self.frontend.plugin_picker_mut()),
 
             PickerKind::CompactionModel => Some(self.frontend.compaction_model_picker_mut()),
             PickerKind::Tool => Some(self.frontend.tool_picker_mut()),
@@ -110,7 +99,7 @@ impl AppState {
             PickerKind::Theme => Some(self.frontend.theme_picker()),
 
             PickerKind::SessionLifecycle => Some(self.frontend.session_lifecycle_picker()),
-            PickerKind::Workflow => Some(self.frontend.workflow_picker()),
+            PickerKind::Plugin => Some(self.frontend.plugin_picker()),
 
             PickerKind::CompactionModel => Some(self.frontend.compaction_model_picker()),
             PickerKind::Tool => Some(self.frontend.tool_picker()),
@@ -118,8 +107,6 @@ impl AppState {
             PickerKind::TaskList => Some(self.frontend.task_list_picker()),
         }
     }
-
-
 
     /// Read-only access to the active chat session.
     ///
@@ -211,23 +198,5 @@ pub fn pin_sort_key(position: Option<PinPosition>) -> u8 {
         Some(PinPosition::Top) => 0,
         Some(PinPosition::Relative) | None => 1,
         Some(PinPosition::Bottom) => 2,
-    }
-}
-
-/// Ephemeral runtime state for a Lua-based attached workflow execution.
-///
-/// Lives in `AppState::workflow_executions`. Not persisted across restarts.
-pub struct LuaExecutionState {
-    /// Cancellation token for aborting execution.
-    pub cancel: tokio_util::sync::CancellationToken,
-    /// The session that owns this attached workflow.
-    pub session_id: crate::protocol::SessionId,
-}
-
-impl std::fmt::Debug for LuaExecutionState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LuaExecutionState")
-            .field("session_id", &self.session_id)
-            .finish_non_exhaustive()
     }
 }

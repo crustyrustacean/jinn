@@ -895,9 +895,8 @@ fn filtered_match_indices_returns_none_for_out_of_bounds() {
 fn clear_filter_empties_filter_and_resets_state() {
     // Given a selection state with a populated filter, advanced cursor, mid-list
     // selection, and non-zero scroll offset.
-    let mut state = SelectionState::with_items(make_items(&[
-        "alpha", "bravo", "charlie", "delta", "echo",
-    ]));
+    let mut state =
+        SelectionState::with_items(make_items(&["alpha", "bravo", "charlie", "delta", "echo"]));
     state.insert_text("bravo");
     state.move_down(5); // selection > 0
     // Then assert the state is non-empty before clear.
