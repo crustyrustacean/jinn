@@ -243,6 +243,15 @@ where
         self.recompute_filtered();
     }
 
+    /// Clears the filter text and resets selection, cursor, and scroll offset.
+    ///
+    /// Semantically equivalent to [`SelectionState::reset`], exposed under a
+    /// name that documents the user-intent ("I pressed the clear key") rather
+    /// than the underlying mechanism ("I reset the widget").
+    pub fn clear_filter(&mut self) {
+        self.reset();
+    }
+
     // --- Read access ---
 
     /// Returns the current filter text.

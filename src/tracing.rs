@@ -1,9 +1,10 @@
 //! Tracing initialization for jinn.
 //!
 //! Sets up the global tracing subscriber based on the application's run mode.
-//! In TUI mode, traces are written exclusively to a file to avoid corrupting
-//! the terminal in raw mode. In headless mode, traces go to the terminal by
-//! default, with an optional file layer.
+//! In TUI mode, traces are written exclusively to a file (to avoid corrupting
+//! the terminal in raw mode). In headless mode, traces are written to BOTH the
+//! terminal and a file. The file path is resolved at CLI parse time from the
+//! `--log-file` flag, defaulting to the XDG `state_dir` (see `AppPaths::log_path`).
 
 use std::{env, fs::File, path::PathBuf, sync::Arc};
 
@@ -19,17 +20,20 @@ use wherror::Error;
 pub struct TracingInitError;
 
 /// Decides how the tracing subscriber is configured based on run mode.
+///
+/// Both variants carry a resolved log file path (caller resolves defaults and
+/// overrides before constructing this enum).
 #[derive(Debug)]
 pub enum TracingMode {
     /// TUI mode: file-only logging to avoid corrupting the terminal.
     Tui {
-        /// Directory for the log file. Defaults to the current directory.
-        log_dir: Option<PathBuf>,
+        /// Resolved path to the log file (e.g. `~/.local/state/jinn/jinn.log`).
+        log_path: PathBuf,
     },
-    /// Headless mode: terminal logging, optionally also to a file.
+    /// Headless mode: writes to BOTH terminal and file.
     Headless {
-        /// Optional file path for additional file logging.
-        log_file: Option<PathBuf>,
+        /// Resolved path to the log file (e.g. `~/.local/state/jinn/jinn.log`).
+        log_path: PathBuf,
     },
 }
 
@@ -41,11 +45,14 @@ pub enum TracingMode {
 /// # Arguments
 ///
 /// * `verbosity` - The verbosity level from CLI flags.
-/// * `mode` - The [`TracingMode`] controlling where traces are written.
+/// * `mode` - The [`TracingMode`] controlling where traces are written. The
+///   contained `log_path` is opened in append mode; its parent directory is
+///   created if it does not exist.
 ///
 /// # Errors
 ///
-/// Returns a [`TracingInitError`] if a log file cannot be opened.
+/// Returns a [`TracingInitError`] if the log file cannot be opened or its
+/// parent directory cannot be created.
 ///
 /// # Panics
 ///
@@ -59,18 +66,15 @@ pub fn init(
         Err(_) => format!("{APP_NAME}={verbosity}"),
     };
 
+    let log_path = match &mode {
+        TracingMode::Tui { log_path } => log_path,
+        TracingMode::Headless { log_path } => log_path,
+    };
+
+    let logfile = open_log_file(log_path)?;
+
     match mode {
-        TracingMode::Tui { log_dir } => {
-            let dir = log_dir.unwrap_or_else(|| PathBuf::from("."));
-            let path = dir.join(format!("{APP_NAME}.log"));
-
-            let logfile = File::options()
-                .create(true)
-                .append(true)
-                .open(&path)
-                .change_context(TracingInitError)
-                .attach_with(|| format!("failed to open file '{}' for tracing", path.display()))?;
-
+        TracingMode::Tui { .. } => {
             let file_layer = tracing_subscriber::fmt::layer()
                 .with_file(true)
                 .with_line_number(true)
@@ -80,40 +84,24 @@ pub fn init(
 
             tracing_subscriber::registry().with(file_layer).init();
         }
-        TracingMode::Headless { log_file } => match log_file {
-            Some(path) => {
-                let logfile = File::options()
-                    .create(true)
-                    .append(true)
-                    .open(&path)
-                    .change_context(TracingInitError)
-                    .attach_with(|| {
-                        format!("failed to open file '{}' for tracing", path.display())
-                    })?;
+        TracingMode::Headless { .. } => {
+            let file_layer: Box<dyn Layer<_> + Send + Sync + 'static> =
+                tracing_subscriber::fmt::layer()
+                    .with_file(true)
+                    .with_line_number(true)
+                    .with_target(true)
+                    .with_writer(Arc::new(logfile))
+                    .with_filter(EnvFilter::new(filter.clone()))
+                    .boxed();
 
-                let file_layer: Box<dyn Layer<_> + Send + Sync + 'static> =
-                    tracing_subscriber::fmt::layer()
-                        .with_file(true)
-                        .with_line_number(true)
-                        .with_target(true)
-                        .with_writer(Arc::new(logfile))
-                        .with_filter(EnvFilter::new(filter.clone()))
-                        .boxed();
+            let terminal_layer =
+                tracing_subscriber::fmt::layer().with_filter(EnvFilter::new(filter));
 
-                let terminal_layer =
-                    tracing_subscriber::fmt::layer().with_filter(EnvFilter::new(filter));
-
-                tracing_subscriber::registry()
-                    .with(file_layer)
-                    .with(terminal_layer)
-                    .init();
-            }
-            None => {
-                tracing_subscriber::fmt()
-                    .with_env_filter(EnvFilter::new(filter))
-                    .init();
-            }
-        },
+            tracing_subscriber::registry()
+                .with(file_layer)
+                .with(terminal_layer)
+                .init();
+        }
     }
 
     tracing::info!("");
@@ -121,4 +109,30 @@ pub fn init(
     tracing::info!("");
 
     Ok(())
+}
+
+/// Creates the parent directory (if needed) and opens the log file for append.
+fn open_log_file(path: &std::path::Path) -> Result<File, Report<TracingInitError>> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .change_context(TracingInitError)
+            .attach_with(|| {
+                format!(
+                    "failed to create log directory '{}'",
+                    parent.display()
+                )
+            })?;
+    }
+
+    File::options()
+        .create(true)
+        .append(true)
+        .open(path)
+        .change_context(TracingInitError)
+        .attach_with(|| {
+            format!(
+                "failed to open file '{}' for tracing",
+                path.display()
+            )
+        })
 }

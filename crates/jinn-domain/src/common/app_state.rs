@@ -85,6 +85,29 @@ impl AppState {
             PickerKind::Skill => Some(self.frontend.skill_picker_mut()),
         }
     }
+    /// Read-only access to the active picker's navigation interface.
+    ///
+    /// Returns `None` if no picker is currently active.
+    /// Companion to [`AppState::active_picker_ops`] for the read-only
+    /// `is_filter_empty` check used by the `CtrlClear` intent.
+    pub fn active_picker_ops_ref(&self) -> Option<&dyn jinn_selection_widget::PickerOps> {
+        let kind = self.frontend.scope_stack.picker_kind().copied()?;
+        match kind {
+            PickerKind::Provider => Some(&self.provider.provider_picker),
+            PickerKind::Session => Some(self.frontend.session_picker()),
+            PickerKind::Persona => Some(self.frontend.persona_picker()),
+            PickerKind::Theme => Some(self.frontend.theme_picker()),
+
+            PickerKind::SessionLifecycle => Some(self.frontend.session_lifecycle_picker()),
+            PickerKind::Workflow => Some(self.frontend.workflow_picker()),
+
+            PickerKind::CompactionModel => Some(self.frontend.compaction_model_picker()),
+            PickerKind::Tool => Some(self.frontend.tool_picker()),
+            PickerKind::Skill => Some(self.frontend.skill_picker()),
+        }
+    }
+
+
 
     /// Read-only access to the active chat session.
     ///
