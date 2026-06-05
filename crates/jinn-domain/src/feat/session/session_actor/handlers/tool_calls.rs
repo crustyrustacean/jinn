@@ -13,7 +13,7 @@ use crate::feat::tools_actor::protocol::event::{
 };
 
 use super::super::SessionPersistenceActor;
-use crate::protocol::Command;
+use crate::protocol::{Command, Event};
 
 impl SessionPersistenceActor {
     /// Begins tracking a streaming tool call.
@@ -142,20 +142,31 @@ impl SessionPersistenceActor {
 
         // Apply pending history mutations before assembling the prompt.
         // Skip if judge session.
-        {
+        let changed = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
-            {
-                let count = session.drain_and_apply_pending_mutations();
-                if count > 0 {
-                    tracing::debug!(
-                        session_id = %event.session_id,
-                        count,
-                        "applied pending history mutations at tool batch completion"
-                    );
-                }
+            let (count, changed) = session.drain_and_apply_pending_mutations();
+            if count > 0 {
+                tracing::debug!(
+                    session_id = %event.session_id,
+                    applied = count,
+                    "applied pending history mutations"
+                );
+            }
+            changed
+        };
+        // Emit ContextOverrideChanged events outside the write lock.
+        for entry_id in changed {
+            if let Err(e) = ctx.send_event(Event::ContextOverrideChanged(
+                crate::feat::context::protocol::event::ContextOverrideChanged {
+                    session_id: event.session_id.clone(),
+                    entry_id,
+                },
+            )) {
+                tracing::warn!(err = ?e, "failed to emit ContextOverrideChanged");
             }
         }
+
 
         // Assemble the prompt directly and emit SendToLlmProvider.
         // Note: the session is already in sending state, set by on_stream_completed(ToolUse).
@@ -233,7 +244,7 @@ mod tests {
         ToolExecutionStarted, ToolUseStarted,
     };
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
-    use crate::protocol::{ChatEntry, ChatEntryKind, Command, Event};
+    use crate::protocol::{ChatEntry, ChatEntryKind, Command, Event, ChangeSource};
 
     #[tokio::test]
     async fn on_tool_batch_completed_emits_send_to_llm_provider() {
@@ -702,10 +713,7 @@ mod tests {
             session.begin_sending();
             // Queue a mutation to exclude the assistant entry.
             session.queue_mutations(vec![
-                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
-                    entry_id: entry_id.clone(),
-                    value: crate::protocol::ContextOverride::ForcedExclude,
-                },
+                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: crate::protocol::ContextOverride::ForcedExclude, source: ChangeSource::Internal { label: "test".into() } },
             ]);
             (entry_id, state.session.active_session_id().clone())
         };
@@ -733,7 +741,7 @@ mod tests {
             .find(|e| e.id == entry_id)
             .expect("assistant entry exists");
         assert_eq!(
-            assistant.context_override,
+            assistant.context_override(),
             crate::protocol::ContextOverride::ForcedExclude,
             "expected mutation to be applied at tool batch completion"
         );
