@@ -126,13 +126,6 @@ pub struct SessionCoreEphemeral {
     /// stream completion). Not persisted across restarts.
     #[serde(skip)]
     pub(crate) pending_mutations: Vec<Vec<crate::feat::session::history_mutation::HistoryMutation>>,
-
-    /// Raw user text held during BeforeTurn interception.
-    /// The text does NOT enter history until BeforeTurn resolves.
-    /// Ephemeral: lost on crash (acceptable — user re-types).
-    /// OWNER: session-actor.
-    #[serde(skip)]
-    pub(crate) pending_user_text: Option<String>,
 }
 
 // Core session state - owned by session-actor and context-actor.
@@ -225,10 +218,10 @@ pub struct SessionCore {
     /// OWNER: tools-actor (mutated by task list tools).
     #[serde(default)]
     pub(crate) task_list: crate::feat::todo_list::TaskList,
-    /// Attached workflows - persistent workflows bound to this session.
-    /// OWNER: workflow-controller-actor (attach/detach/toggle).
+    /// Attached plugins - persistent per-session plugin attachments.
+    /// OWNER: plugin-dispatch-actor (attach/detach/toggle).
     #[serde(default)]
-    pub(crate) attached_workflows: Vec<crate::feat::workflow::attached_workflow::AttachedWorkflow>,
+    pub(crate) attached_plugins: Vec<crate::feat::attached_plugin::AttachedPlugin>,
     /// Runtime-only state - not persisted across restarts.
     #[serde(skip)]
     pub(crate) ephemeral: SessionCoreEphemeral,
@@ -256,7 +249,7 @@ impl Default for SessionCore {
 
             workflow_overrides: None,
             task_list: crate::feat::todo_list::TaskList::default(),
-            attached_workflows: Vec::new(),
+            attached_plugins: Vec::new(),
             has_interacted: false,
             ephemeral: SessionCoreEphemeral::default(),
         }
@@ -349,16 +342,10 @@ pub struct SessionUi {
     /// - `override`: the `ContextOverride` to apply to subsequent entries
     ///
     /// Cleared by: >100ms gap, or any non-`ChatEntryIgnoreSelected` intent.
-    /// Cleared by: >100ms gap, or any non-`ChatEntryIgnoreSelected` intent.
-    pub(crate) ignore_sweep: Option<(std::time::Instant, ContextOverride)>,
-    /// One-shot workflow toggles pending for the next message submit.
-    /// Ephemeral UI state: toggling is free (no lifecycle events, no persistence).
-    /// Materializes into `TurnEndOneShot` attachments at submit time.
-    /// OWNER: intent-handler (toggle), session-actor (drain).
-    pub(crate) pending_one_shots: std::collections::HashMap<
-        crate::feat::workflow::attached_workflow::OneShotKind,
-        crate::feat::workflow::attached_workflow::WorkflowConfig,
-    >,
+    pub(crate) ignore_sweep: Option<(
+        std::time::Instant,
+        crate::feat::session::chat_entry::ContextOverride,
+    )>,
 }
 
 impl Clone for SessionUi {
@@ -379,7 +366,6 @@ impl Clone for SessionUi {
             shown_ignored_blocks: self.shown_ignored_blocks.clone(),
             visual_items: RwLock::new(self.visual_items.read().clone()),
             ignore_sweep: self.ignore_sweep,
-            pending_one_shots: self.pending_one_shots.clone(),
         }
     }
 }
@@ -400,7 +386,6 @@ impl Default for SessionUi {
             shown_ignored_blocks: HashSet::new(),
             visual_items: RwLock::new(Vec::new()),
             ignore_sweep: None,
-            pending_one_shots: std::collections::HashMap::new(),
         }
     }
 }
@@ -1555,6 +1540,43 @@ impl ChatSessionState {
     /// scroll handlers can resolve the "at bottom" state into a concrete offset.
     pub fn set_last_max_offset(&self, max_offset: u16) {
         self.ui.last_max_offset.store(max_offset, Ordering::Relaxed);
+    }
+
+    /// Returns the screen-space Y coordinate of the top of the currently-selected
+    /// chat entry within the chat-log area, or `None` if no entry is selected or
+    /// the render-pipeline cache is empty.
+    ///
+    /// The returned Y is in terminal (absolute) coordinates: it already incorporates
+    /// `chat_log_area_y` and `blank_count`. Callers can pass it directly as the
+    /// `entry_top_y` argument to
+    /// [`audit_popup_rect`](crate::feat::ui::chat_log::audit_popup::audit_popup_rect).
+    ///
+    /// If the selected entry's top is scrolled above the viewport, returns
+    /// `chat_log_area_y` (clamped to the top of the chat-log area).
+    ///
+    /// Returns a meaningful value only after the chat-log render pipeline has
+    /// populated the cached fields for the current frame.
+    pub fn selected_entry_screen_y(&self, chat_log_area_y: u16) -> Option<u16> {
+        let vi_idx = self.selected_entry_index()?;
+        let ranges = self.ui.entry_line_ranges.read();
+        let &(start, _end) = ranges.get(vi_idx)?;
+        drop(ranges);
+
+        let blank_count = self.ui.blank_count.load(Ordering::Relaxed);
+        let scroll_offset = self.ui.rendered_scroll_offset.load(Ordering::Relaxed);
+
+        // wrapped-line coord of entry top, with bottom-alignment blank padding
+        let abs_start = start.saturating_add(blank_count);
+
+        // viewport top in the same coord space
+        let viewport_top = scroll_offset;
+
+        // visible-Y offset within viewport (0 = top of chat-log area)
+        let viewport_offset = abs_start.saturating_sub(viewport_top);
+
+        // absolute screen Y; clamped to chat-log area top
+        let screen_y = chat_log_area_y.saturating_add(viewport_offset);
+        Some(screen_y)
     }
 
     /// Store the rendered scroll offset (actual viewport position after clamping

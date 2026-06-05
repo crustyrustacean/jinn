@@ -137,16 +137,21 @@ pub type SharedChild = std::sync::Arc<tokio::sync::Mutex<Option<tokio::process::
 
 /// Result type returned by [`spawn_setup_command`].
 pub type SpawnSetupResult = Result<
-    (SharedChild, tokio::task::JoinHandle<Result<PathBuf, Report<LifecycleCommandError>>>),
+    (
+        SharedChild,
+        tokio::task::JoinHandle<Result<PathBuf, Report<LifecycleCommandError>>>,
+    ),
     Report<LifecycleCommandError>,
 >;
 
 /// Result type returned by [`spawn_teardown_command`].
 pub type SpawnTeardownResult = Result<
-    (SharedChild, tokio::task::JoinHandle<Result<(), Report<LifecycleCommandError>>>),
+    (
+        SharedChild,
+        tokio::task::JoinHandle<Result<(), Report<LifecycleCommandError>>>,
+    ),
     Report<LifecycleCommandError>,
 >;
-
 
 /// Kill the process inside a [`SharedChild`], if it is still present.
 pub fn kill_shared_child(child_arc: &SharedChild) {
@@ -169,10 +174,7 @@ pub fn kill_shared_child(child_arc: &SharedChild) {
 /// - spawning command fails
 /// - joining fails
 /// - the returned path cannot be canonicalized
-pub fn spawn_setup_command(
-    command: &str,
-    shell: &str,
-) -> SpawnSetupResult {
+pub fn spawn_setup_command(command: &str, shell: &str) -> SpawnSetupResult {
     use error_stack::ResultExt as _;
 
     let mut child = tokio::process::Command::new(shell)
@@ -274,10 +276,7 @@ pub fn spawn_setup_command(
 /// # Errors
 ///
 /// Returns an error if the shell command fails to spawn or canonicalize the working directory.
-pub fn spawn_teardown_command(
-    command: &str,
-    shell: &str,
-) -> SpawnTeardownResult {
+pub fn spawn_teardown_command(command: &str, shell: &str) -> SpawnTeardownResult {
     use error_stack::ResultExt as _;
 
     let mut child = tokio::process::Command::new(shell)

@@ -89,8 +89,9 @@ impl HeadlessWorld {
             );
             let llm_service = LlmServiceFactoryService::new(Arc::new(NoProvidersAvailableFactory));
             let user_preferences_storage = {
-                let svc =
-                    UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
+                let svc = UserPreferencesStorageService::new(Arc::new(
+                    InMemoryUserPreferencesStorage::new(),
+                ));
                 svc.reload().expect("test prefs storage initial reload");
                 svc
             };
@@ -99,19 +100,20 @@ impl HeadlessWorld {
             ));
 
             // Call production wiring - spawns all 16 actors.
-            let (core, _services, actor_host) = actor_wiring::create_core_with_actor_host(
-                &handle,
-                llm_service,
-                provider_registry,
-                resolved_api_keys,
-                config_storage,
-                session_store,
-                user_preferences_storage,
-                None,
-                None,
-                None,
-                paths,
-            );
+            let (core, _services, actor_host, _sync_plugins) =
+                actor_wiring::create_core_with_actor_host(
+                    &handle,
+                    llm_service,
+                    provider_registry,
+                    resolved_api_keys,
+                    config_storage,
+                    session_store,
+                    user_preferences_storage,
+                    None,
+                    None,
+                    None,
+                    paths,
+                );
 
             // Intentionally leaked: each world gets a fresh tokio runtime.
             let _ = Box::leak(Box::new(rt));

@@ -100,7 +100,6 @@ pub(crate) fn tree_prefix(entry: &SessionEntry) -> String {
     prefix
 }
 
-
 /// Assembles a complete session entry line from its components.
 ///
 /// Combines the throbber indicator, arrow prefix, tree connector prefix,
@@ -116,7 +115,7 @@ pub(crate) fn assemble_entry_line(
         SessionEntryKind::Session => {
             assemble_session_line(entry, is_selected, max_title_len, throbber_state, theme)
         }
-        SessionEntryKind::Workflow { enabled } => {
+        SessionEntryKind::Plugin { enabled } => {
             assemble_workflow_line(enabled, entry, is_selected, max_title_len, theme)
         }
     }

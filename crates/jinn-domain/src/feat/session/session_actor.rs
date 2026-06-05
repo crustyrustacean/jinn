@@ -38,8 +38,6 @@ use crate::feat::session_lifecycle::protocol::command::{
     PersistSession, RunSessionSetup, RunSessionTeardown,
 };
 
-
-
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
     ToolExecutionOutput, ToolExecutionStarted, ToolUseStarted,
@@ -161,7 +159,10 @@ impl Actor for SessionPersistenceActor {
     async fn handle(&mut self, msg: ActorEnvelope<Self::Message>, ctx: &ActorContext) {
         match msg {
             ActorEnvelope::Event(event) => self.handle_event(&event, ctx).await,
-            ActorEnvelope::Command(cmd) => self.handle_command(&cmd, ctx).await,
+            ActorEnvelope::Command(cmd) => {
+                tracing::debug!(cmd = %cmd, "session-persistence: received command");
+                self.handle_command(&cmd, ctx).await;
+            }
             _ => {}
         }
     }
@@ -308,11 +309,9 @@ impl SessionPersistenceActor {
             | Command::TriggerCompaction(..)
             | Command::Dynamic(..)
             | Command::ExecuteWebFetch(..)
-            | Command::AttachWorkflow(..)
-            | Command::DetachWorkflow(..)
-            | Command::ToggleWorkflow(..)
-            | Command::TriggerWorkflow(..)
-            | Command::FireBeforeTurn(..) => {}
+            | Command::AttachPlugin(..)
+            | Command::DetachPlugin(..)
+            | Command::TogglePlugin(..) => {}
         }
     }
 }

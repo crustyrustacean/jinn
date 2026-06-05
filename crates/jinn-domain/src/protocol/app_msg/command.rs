@@ -131,16 +131,12 @@ pub enum Command {
     FinishSessionSetup(FinishSessionSetup),
     /// Request to cancel a running lifecycle command.
     CancelLifecycleCommand(CancelLifecycleCommand),
-    /// Attach a workflow to a session.
-    AttachWorkflow(crate::feat::workflow::protocol::command::AttachWorkflow),
-    /// Detach a workflow from a session.
-    DetachWorkflow(crate::feat::workflow::protocol::command::DetachWorkflow),
-    /// Toggle an attached workflow on/off.
-    ToggleWorkflow(crate::feat::workflow::protocol::command::ToggleWorkflow),
-    /// Manually trigger an attached workflow.
-    TriggerWorkflow(crate::feat::workflow::protocol::command::TriggerWorkflow),
-    /// Fire BeforeTurn workflows for a session (emitted by enqueue handler).
-    FireBeforeTurn(crate::feat::workflow::protocol::command::FireBeforeTurn),
+    /// Attach an attachable plugin to a session.
+    AttachPlugin(crate::feat::plugin_dispatch::protocol::command::AttachPlugin),
+    /// Detach a plugin from a session.
+    DetachPlugin(crate::feat::plugin_dispatch::protocol::command::DetachPlugin),
+    /// Toggle an attached plugin on/off.
+    TogglePlugin(crate::feat::plugin_dispatch::protocol::command::TogglePlugin),
 
     /// A dynamic command from a plugin, carrying an arbitrary JSON payload.
     Dynamic(DynamicCommand),
@@ -195,26 +191,16 @@ impl Command {
             Self::FinishSessionTeardown(..) => Some(FinishSessionTeardown::NAME),
             Self::FinishSessionSetup(..) => Some(FinishSessionSetup::NAME),
             Self::CancelLifecycleCommand(..) => Some(CancelLifecycleCommand::NAME),
-            Self::AttachWorkflow(..) => {
-                Some(crate::feat::workflow::protocol::command::AttachWorkflow::NAME)
+            Self::AttachPlugin(..) => {
+                Some(crate::feat::plugin_dispatch::protocol::command::AttachPlugin::NAME)
             }
-            Self::DetachWorkflow(..) => {
-                Some(crate::feat::workflow::protocol::command::DetachWorkflow::NAME)
+            Self::DetachPlugin(..) => {
+                Some(crate::feat::plugin_dispatch::protocol::command::DetachPlugin::NAME)
             }
-            Self::ToggleWorkflow(..) => {
-                Some(crate::feat::workflow::protocol::command::ToggleWorkflow::NAME)
+            Self::TogglePlugin(..) => {
+                Some(crate::feat::plugin_dispatch::protocol::command::TogglePlugin::NAME)
             }
-            Self::TriggerWorkflow(..) => {
-                Some(crate::feat::workflow::protocol::command::TriggerWorkflow::NAME)
-            }
-            Self::FireBeforeTurn(..) => {
-                Some(crate::feat::workflow::protocol::command::FireBeforeTurn::NAME)
-            }
-
-            Self::Dynamic(..) => Some(DynamicCommand::NAME),
-            Self::TriggerCompaction(..) => {
-                Some(crate::feat::session::protocol::trigger_compaction::TriggerCompaction::NAME)
-            }
+            Self::Dynamic(..) | Self::TriggerCompaction(..) => None,
         }
     }
 
@@ -345,32 +331,14 @@ impl std::fmt::Display for Command {
                     payload.session_id
                 )
             }
-            Command::AttachWorkflow(payload) => {
-                write!(f, "attach workflow to {}", payload.session_id)
+            Command::AttachPlugin(p) => {
+                write!(f, "attach plugin {} to {}", p.plugin_name, p.session_id)
             }
-            Command::DetachWorkflow(payload) => {
-                write!(
-                    f,
-                    "detach workflow {} from {}",
-                    payload.workflow_id, payload.session_id
-                )
+            Command::DetachPlugin(p) => {
+                write!(f, "detach plugin {} from {}", p.plugin_name, p.session_id)
             }
-            Command::ToggleWorkflow(payload) => {
-                write!(
-                    f,
-                    "toggle workflow {} on {}",
-                    payload.workflow_id, payload.session_id
-                )
-            }
-            Command::TriggerWorkflow(payload) => {
-                write!(
-                    f,
-                    "trigger workflow {} on {}",
-                    payload.workflow_id, payload.session_id
-                )
-            }
-            Command::FireBeforeTurn(payload) => {
-                write!(f, "fire before-turn for {}", payload.session_id)
+            Command::TogglePlugin(p) => {
+                write!(f, "toggle plugin {} on {}", p.plugin_name, p.session_id)
             }
 
             Command::Dynamic(d) => {

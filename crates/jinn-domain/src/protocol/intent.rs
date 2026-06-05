@@ -247,11 +247,6 @@ pub enum Intent {
     /// Delete the grapheme after the cursor in rename input.
     RenameDeleteForward,
 
-    ToggleOneShot {
-        /// Which one-shot workflow to toggle.
-        kind: crate::feat::workflow::attached_workflow::OneShotKind,
-    },
-
     // --- CWD Selection ---
     /// Change the session's working directory via an external picker.
     ChangeCwd {
@@ -359,8 +354,6 @@ impl std::fmt::Display for Intent {
             Intent::RenameCursorRight => write!(f, "rename cursor right"),
             Intent::RenameDeleteGrapheme => write!(f, "rename delete"),
             Intent::RenameDeleteForward => write!(f, "rename forward delete"),
-
-            Intent::ToggleOneShot { kind } => write!(f, "toggle one-shot {kind:?}"),
 
             Intent::ChangeCwd { root } => write!(f, "change cwd ({root})"),
         }

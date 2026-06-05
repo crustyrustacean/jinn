@@ -466,7 +466,12 @@ mod tests {
         let w = worker(100, 80);
         let mut history = Vec::new();
         let mut asst = trivial_assistant("done");
-        asst.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        asst.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         let asst_id = asst.id.clone();
         history.push(asst);
         history.extend(users(100));
@@ -641,7 +646,12 @@ mod tests {
         // Reset context_override so the idempotency skip doesn't hide the result.
         let mut history2 = (*history).to_vec();
         for e in &mut history2 {
-            e.apply_context_override(ContextOverride::Default, ChangeSource::Internal { label: "test".into() });
+            e.apply_context_override(
+                ContextOverride::Default,
+                ChangeSource::Internal {
+                    label: "test".into(),
+                },
+            );
         }
 
         let second = rt.block_on(async { w.evaluate(&session_id, history2.into()).await });
@@ -735,8 +745,7 @@ mod tests {
 
         let history: Arc<[ChatEntry]> = history.into();
         let rt = tokio::runtime::Runtime::new().expect("runtime");
-        let mutations =
-            rt.block_on(async { anchor.evaluate(&session_id, history).await });
+        let mutations = rt.block_on(async { anchor.evaluate(&session_id, history).await });
 
         assert!(
             excluded_ids(&mutations).contains(&target_id),

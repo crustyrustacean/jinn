@@ -63,9 +63,8 @@ pub fn handle_interrupt(state: &mut AppState, target: Option<&SessionId>) -> Int
 ///
 /// Returns `(IntentResult, Option<Intent>)` matching the `PickerConfirm` redispatch pattern.
 pub fn handle_ctrl_clear(state: &mut AppState) -> (IntentResult, Option<Intent>) {
-    use crate::common::focus::FocusScope;
     use crate::common::app_state::ArgInputState;
-
+    use crate::common::focus::FocusScope;
 
     match state.frontend.scope_stack.current() {
         FocusScope::Input => {
@@ -305,10 +304,9 @@ mod tests {
         // Given a state in Picker scope with a non-empty filter.
         use crate::protocol::PickerKind;
         let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::Picker { kind: PickerKind::Provider });
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Provider,
+        });
         {
             let picker = state.active_picker_ops().expect("picker active");
             picker.insert_char('a');
@@ -333,10 +331,9 @@ mod tests {
         use crate::feat::intent::handler::IntentHandler;
         use crate::protocol::PickerKind;
         let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::Picker { kind: PickerKind::Provider });
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Provider,
+        });
 
         // When handling CtrlClear via the IntentHandler (exercises redispatch).
         let result = IntentHandler::handle(&Intent::CtrlClear, &mut state);
@@ -452,10 +449,9 @@ mod tests {
         use crate::feat::intent::handler::IntentHandler;
         use crate::protocol::PickerKind;
         let mut state = AppState::default();
-        state
-            .frontend
-            .scope_stack
-            .push(FocusScope::Picker { kind: PickerKind::Provider });
+        state.frontend.scope_stack.push(FocusScope::Picker {
+            kind: PickerKind::Provider,
+        });
         {
             let picker = state.active_picker_ops().expect("picker active");
             picker.insert_char('a');
@@ -466,7 +462,12 @@ mod tests {
         // First press: filter is non-empty, so it should be cleared.
         let result1 = IntentHandler::handle(&Intent::CtrlClear, &mut state);
         assert!(state.frontend.scope_stack.is_picker());
-        assert!(state.active_picker_ops().expect("picker still active").is_filter_empty());
+        assert!(
+            state
+                .active_picker_ops()
+                .expect("picker still active")
+                .is_filter_empty()
+        );
         assert!(result1.commands.is_empty());
 
         // Second press: filter is now empty, so picker should close.

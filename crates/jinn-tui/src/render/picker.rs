@@ -15,8 +15,8 @@ pub(super) fn render_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) 
         Some(PickerKind::SessionLifecycle) => {
             render_session_lifecycle_picker(frame, area, ctx);
         }
-        Some(PickerKind::Workflow) => {
-            render_workflow_picker(frame, area, ctx);
+        Some(PickerKind::Plugin) => {
+            render_plugin_picker(frame, area, ctx);
         }
 
         Some(PickerKind::CompactionModel) => {
@@ -61,8 +61,8 @@ fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, ctx: &Rend
 }
 
 /// Renders the workflow picker overlay (delegates to domain render).
-fn render_workflow_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
-    jinn_domain::feat::picker::render::render_workflow_picker(frame, area, ctx);
+fn render_plugin_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
+    jinn_domain::feat::picker::render::render_plugin_picker(frame, area, ctx);
 }
 
 /// Renders the arg input popup (delegates to domain render).

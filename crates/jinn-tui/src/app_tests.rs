@@ -52,6 +52,7 @@ fn test_app() -> TuiApp {
             jinn_domain::feat::ui::sidebar::register_sections(&mut s);
             s
         },
+        plugins: jinn_plugin::SyncPlugins::default(),
     }
 }
 
@@ -242,6 +243,7 @@ fn mouse_events_not_handled_when_mouse_selection_disabled() {
             jinn_domain::feat::ui::sidebar::register_sections(&mut s);
             s
         },
+        plugins: jinn_plugin::SyncPlugins::default(),
     };
     let rect = Rect::new(5, 5, 20, 10);
     app.selectable_rects.rebuild(vec![rect]);
@@ -272,8 +274,7 @@ fn keymap_at(scope: Scope) -> WhichKeyInstance {
 }
 
 fn key<'a>(notation: &'a str) -> jinn_domain::KeyEvent {
-    jinn_domain::KeyEvent::parse_notation(notation)
-        .expect("notation should parse")
+    jinn_domain::KeyEvent::parse_notation(notation).expect("notation should parse")
 }
 
 #[rstest::rstest]
@@ -285,9 +286,11 @@ fn s_in_sidebar_task_list_opens_task_list_picker() {
     let intent = wk.handle_key(key("s"));
 
     // Then it resolves to OpenPicker { kind: TaskList } ("search task list").
-    assert_eq!(intent.map(|i| i.to_string()).as_deref(), Some("search task list"));
+    assert_eq!(
+        intent.map(|i| i.to_string()).as_deref(),
+        Some("search task list")
+    );
 }
-
 
 #[rstest::rstest]
 #[case::normal(Scope::Normal)]
@@ -325,5 +328,3 @@ fn esc_in_picker_task_list_returns_to_normal_mode() {
         Some("enter normal mode")
     );
 }
-
-

@@ -122,7 +122,7 @@ mod tests {
     use crate::common::actor::{
         Actor as _, ActorContext, ActorEnvelope, ActorRef, MessageSink, RecordingSink,
     };
-        use crate::feat::provider_infra::{ApiKeysService, FilesystemConfigStorage};
+    use crate::feat::provider_infra::{ApiKeysService, FilesystemConfigStorage};
 
     use super::{EnvInitActor, EnvInitActorDeps};
 
