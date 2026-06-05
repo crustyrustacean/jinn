@@ -132,8 +132,14 @@ impl AppWorld {
                 ProviderRegistry::from_config(empty_config).expect("empty config is valid"),
             );
             let llm_service = LlmServiceFactoryService::new(fake_factory);
-            let user_preferences_storage =
-                UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
+            let user_preferences_storage = {
+                let svc = UserPreferencesStorageService::new(Arc::new(
+                    InMemoryUserPreferencesStorage::new(),
+                ));
+                svc.reload().expect("test prefs storage initial reload");
+                svc
+            };
+
             let session_store = jinn_domain::SessionStoreService::new(Arc::new(
                 jinn_domain::SqliteSessionStore::new_in(&paths.sessions_dir()).expect("store"),
             ));
@@ -568,8 +574,12 @@ fn when_restart_app(world: &mut AppWorld) {
             ProviderRegistry::from_config(empty_config).expect("empty config is valid"),
         );
         let llm_service = LlmServiceFactoryService::new(fake_factory);
-        let user_preferences_storage =
-            UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
+        let user_preferences_storage = {
+            let svc =
+                UserPreferencesStorageService::new(Arc::new(InMemoryUserPreferencesStorage::new()));
+            svc.reload().expect("test prefs storage initial reload");
+            svc
+        };
         let session_store = jinn_domain::SessionStoreService::new(Arc::new(
             jinn_domain::SqliteSessionStore::new_in(&paths.sessions_dir()).expect("store"),
         ));
@@ -995,24 +1005,6 @@ fn then_last_token_record_zero_received(world: &mut AppWorld) {
         last.tokens_received, 0,
         "expected zero tokens_received, got {}",
         last.tokens_received
-    );
-}
-
-/// Asserts the active session's context size is cached.
-#[cucumber::then(expr = "the context size should be cached")]
-fn then_context_size_cached(world: &mut AppWorld) {
-    let context_size = world.state().active_session().context_size();
-    assert!(context_size.is_some(), "expected context size to be cached");
-}
-
-/// Asserts the active session's context size is not cached.
-#[cucumber::then(expr = "the context size should not be cached")]
-fn then_context_size_not_cached(world: &mut AppWorld) {
-    let context_size = world.state().active_session().context_size();
-    assert!(
-        context_size.is_none(),
-        "expected context size to not be cached, got {:?}",
-        context_size
     );
 }
 

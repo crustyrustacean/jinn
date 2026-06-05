@@ -17,9 +17,6 @@ Feature: Session Lifecycle
     When the app submits an EnqueueUserMessage with text "queued"
     Then the session queue should have 1 messages
 
-  Scenario: Context size is not cached by default
-    Given a fresh app
-    Then the context size should not be cached
 
   Scenario: Token ledger starts empty
     Given a fresh app

@@ -131,9 +131,13 @@ impl Services {
             api_keys: ApiKeysService::new(ApiKeys::new()),
             config_storage: ConfigStorageService::new(Arc::new(InMemoryConfigStorage::new())),
             session_store: SessionStoreService::new(Arc::new(test_services::FakeSessionStore)),
-            user_preferences_storage: UserPreferencesStorageService::new(Arc::new(
-                InMemoryUserPreferencesStorage::new(),
-            )),
+            user_preferences_storage: {
+                let svc = UserPreferencesStorageService::new(Arc::new(
+                    InMemoryUserPreferencesStorage::new(),
+                ));
+                svc.reload().expect("test prefs storage initial reload");
+                svc
+            },
             plugins: crate::feat::plugin_dispatch::PluginFireService::new(std::sync::Arc::new(
                 NoopPluginFire,
             )

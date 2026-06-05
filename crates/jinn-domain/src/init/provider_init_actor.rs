@@ -110,14 +110,7 @@ impl ProviderInitActor {
         }
         self.state.write().provider.model_cache = cache;
 
-        // Load user preferences.
-        let prefs = match self.services.user_preferences_storage.load() {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::warn!("provider-init failed to load user preferences: {e:?}");
-                return;
-            }
-        };
+        let prefs = self.services.user_preferences_storage.read();
 
         // If last_model is set, send ProviderSwitch to apply it.
         // Skip if the active session already has an explicit model (e.g., bench sessions
@@ -159,8 +152,9 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::feat::preferences_actor::user_preferences::{
-        AutoPruneConfig, CompactionConfig, ContextSlidingWindowConfig, CwdSelectorConfig,
-        MinimapConfig, OpenrouterWebSearchConfig, RequestRetryConfig, WebFetchConfig,
+        AutoPruneConfig, BashConfig, CompactionConfig, ContextSlidingWindowConfig,
+        CwdSelectorConfig, MinimapConfig, OpenrouterWebSearchConfig, RequestRetryConfig,
+        WebFetchConfig,
     };
     use crate::feat::provider_infra::ProviderEntry;
     use crate::init::EnvironmentLoaded;
@@ -216,6 +210,7 @@ mod tests {
                 cwd_selector: CwdSelectorConfig::default(),
                 minimap: MinimapConfig::default(),
                 auto_prune: AutoPruneConfig::default(),
+                bash: BashConfig::default(),
             })
             .expect("save prefs");
 
@@ -440,6 +435,7 @@ mod tests {
                 cwd_selector: CwdSelectorConfig::default(),
                 minimap: MinimapConfig::default(),
                 auto_prune: AutoPruneConfig::default(),
+                bash: BashConfig::default(),
             })
             .expect("save prefs");
 

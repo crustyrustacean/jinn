@@ -1039,11 +1039,7 @@ impl SessionPersistenceActor {
             &mut state, session_id,
         );
 
-        let prefs = self
-            .services
-            .user_preferences_storage
-            .load()
-            .unwrap_or_default();
+        let prefs = self.services.user_preferences_storage.read();
         let fresh_session = {
             let model = prefs
                 .last_model

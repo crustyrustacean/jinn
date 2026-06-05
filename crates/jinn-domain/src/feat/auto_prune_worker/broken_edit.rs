@@ -262,7 +262,9 @@ mod tests {
         let mut pruned_ids: Vec<_> = mutations
             .iter()
             .map(|m| match m {
-                HistoryMutation::SetContextOverride { entry_id, value, .. } => {
+                HistoryMutation::SetContextOverride {
+                    entry_id, value, ..
+                } => {
                     assert_eq!(*value, ContextOverride::ForcedExclude);
                     entry_id.clone()
                 }
@@ -289,7 +291,12 @@ mod tests {
     fn already_excluded_call_produces_no_duplicate_mutation() {
         let mut history = history_with_failed_edit_and_tail("/foo.rs", 10);
         // Mark the edit ToolCall as already excluded.
-        history[0].apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        history[0].apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
 
         let worker = worker_with_tail(10);
         let mutations = block_on_evaluate(&worker, history);
@@ -300,7 +307,12 @@ mod tests {
     fn already_excluded_result_produces_no_duplicate_mutation() {
         let mut history = history_with_failed_edit_and_tail("/foo.rs", 10);
         // Mark the edit ToolResult as already excluded.
-        history[1].apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        history[1].apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
 
         let worker = worker_with_tail(10);
         let mutations = block_on_evaluate(&worker, history);
@@ -319,7 +331,10 @@ mod tests {
         let mutations = block_on_evaluate(&worker, history);
         // broken_edit is pair-atomic: if either half is protected, neither mutates.
         // So protecting the call protects the entire pair.
-        assert!(mutations.is_empty(), "pair-atomic: protecting call protects result");
+        assert!(
+            mutations.is_empty(),
+            "pair-atomic: protecting call protects result"
+        );
         let _ = (call_id, result_id);
     }
 
@@ -334,7 +349,10 @@ mod tests {
         let worker = worker_with_tail(10);
         let mutations = block_on_evaluate(&worker, history);
         // pair-atomic: protecting the result also protects the call.
-        assert!(mutations.is_empty(), "pair-atomic: protecting result protects call");
+        assert!(
+            mutations.is_empty(),
+            "pair-atomic: protecting result protects call"
+        );
         let _ = (call_id, result_id);
     }
 

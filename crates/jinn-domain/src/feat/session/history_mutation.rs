@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::feat::session::chat_entry::{
-    ChatEntry, ChatEntryId, ChangeSource, ContextOverride, PinPosition,
+    ChangeSource, ChatEntry, ChatEntryId, ContextOverride, PinPosition,
 };
 
 /// A declarative mutation to apply to a session's history.

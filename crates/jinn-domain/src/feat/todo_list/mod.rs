@@ -4,6 +4,7 @@
 //! The data model is stored per-session on [`SessionCore`](crate::feat::session::chat_session::SessionCore)
 //! and persists across restarts via the existing session serialization pipeline.
 
+pub mod picker_entry;
 pub mod tools;
 
 #[cfg(test)]
@@ -215,9 +216,7 @@ pub enum TaskListError {
     /// An invariant the type system cannot prove held at runtime was violated.
     /// Carries a static description of which invariant.
     #[error("internal invariant violated: {what}")]
-    InternalInvariant {
-        what: &'static str,
-    },
+    InternalInvariant { what: &'static str },
 }
 
 // ---------------------------------------------------------------------------
@@ -548,19 +547,21 @@ impl TaskList {
         let phase = &mut self.phases[target_pi];
         match &position {
             TaskPosition::After(after_id) => {
-                let idx = phase
-                    .find_task_index(after_id)
-                    .ok_or(TaskListError::InternalInvariant {
-                        what: "postpone_task: ref task not found after lookup above",
-                    })?;
+                let idx =
+                    phase
+                        .find_task_index(after_id)
+                        .ok_or(TaskListError::InternalInvariant {
+                            what: "postpone_task: ref task not found after lookup above",
+                        })?;
                 phase.tasks.insert(idx + 1, new_task);
             }
             TaskPosition::Before(before_id) => {
-                let idx = phase
-                    .find_task_index(before_id)
-                    .ok_or(TaskListError::InternalInvariant {
-                        what: "postpone_task: ref task not found after lookup above",
-                    })?;
+                let idx =
+                    phase
+                        .find_task_index(before_id)
+                        .ok_or(TaskListError::InternalInvariant {
+                            what: "postpone_task: ref task not found after lookup above",
+                        })?;
                 phase.tasks.insert(idx, new_task);
             }
             TaskPosition::End => unreachable!(),
@@ -595,7 +596,8 @@ impl TaskList {
         for (phase_idx, phase) in self.phases.iter().enumerate() {
             for (task_idx, task) in phase.tasks.iter().enumerate() {
                 if &task.id == source_task_id {
-                    source_info = Some((phase_idx, task_idx, task.description.clone(), task.status));
+                    source_info =
+                        Some((phase_idx, task_idx, task.description.clone(), task.status));
                     break;
                 }
             }

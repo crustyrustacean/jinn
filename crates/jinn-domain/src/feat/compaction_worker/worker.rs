@@ -26,7 +26,7 @@ use crate::feat::context::strategy::token_estimator::{CharRatioEstimator, TokenE
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::CompactionConfig;
 use crate::feat::session::chat_entry::{
-    ChatEntry, ChatEntryId, ChatEntryKind, ChangeSource, ContextOverride,
+    ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride,
 };
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
@@ -160,12 +160,7 @@ impl CompactionWorker {
         trigger: &CompactionTrigger,
     ) -> Result<Vec<HistoryMutation>, error_stack::Report<CompactionError>> {
         // Load preferences from service (outside state lock).
-        let prefs = self
-            .services
-            .user_preferences_storage
-            .load()
-            .change_context(CompactionError)
-            .attach("failed to load user preferences")?;
+        let prefs = self.services.user_preferences_storage.read();
 
         // Read session state.
         let (config, model_name, history, compaction_prompt, retry_config) = {
@@ -235,11 +230,7 @@ impl CompactionWorker {
         }
 
         // Load preferences from service (outside state lock).
-        let prefs = self
-            .services
-            .user_preferences_storage
-            .load()
-            .expect("preferences");
+        let prefs = self.services.user_preferences_storage.read();
 
         let (config, model_name, compaction_prompt, retry_config, full_history) = {
             let state = self.state.read();

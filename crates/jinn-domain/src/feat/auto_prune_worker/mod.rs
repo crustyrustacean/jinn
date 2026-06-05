@@ -17,11 +17,13 @@ pub mod broken_edit;
 pub mod consecutive_reads;
 pub mod double_edit;
 pub mod entry_token_cache;
+pub(crate) mod min_age;
 pub mod read_edit;
 pub mod regex;
 pub mod todo_prune;
 pub mod tool_age_window;
 pub mod trivial_assistant;
+pub(crate) use min_age::is_within_min_age;
 
 pub use anchor_radius::AnchorRadiusAutoPruneWorker;
 pub use broken_edit::BrokenEditAutoPruneWorker;

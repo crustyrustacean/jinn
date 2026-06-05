@@ -325,6 +325,7 @@ mod tests {
         ToolContext {
             cwd: PathBuf::from("/tmp"),
             timeout: None,
+            bash_default_timeout: None,
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),
@@ -339,6 +340,7 @@ mod tests {
         ToolContext {
             cwd,
             timeout: None,
+            bash_default_timeout: None,
             state: None,
             session_id: None,
             app_paths: crate::common::app_paths::AppPaths::default(),

@@ -167,7 +167,6 @@ impl SessionPersistenceActor {
             }
         }
 
-
         // Assemble the prompt directly and emit SendToLlmProvider.
         // Note: the session is already in sending state, set by on_stream_completed(ToolUse).
         let workflow_overrides: Option<crate::feat::context::assemble::AssemblyOverrides> = {
@@ -244,7 +243,7 @@ mod tests {
         ToolExecutionStarted, ToolUseStarted,
     };
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
-    use crate::protocol::{ChatEntry, ChatEntryKind, Command, Event, ChangeSource};
+    use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind, Command, Event};
 
     #[tokio::test]
     async fn on_tool_batch_completed_emits_send_to_llm_provider() {
@@ -713,7 +712,13 @@ mod tests {
             session.begin_sending();
             // Queue a mutation to exclude the assistant entry.
             session.queue_mutations(vec![
-                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: crate::protocol::ContextOverride::ForcedExclude, source: ChangeSource::Internal { label: "test".into() } },
+                crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                    entry_id: entry_id.clone(),
+                    value: crate::protocol::ContextOverride::ForcedExclude,
+                    source: ChangeSource::Internal {
+                        label: "test".into(),
+                    },
+                },
             ]);
             (entry_id, state.session.active_session_id().clone())
         };
