@@ -128,10 +128,12 @@ impl RetryingLlmService {
                 Ok(result) => return Ok(result),
                 Err(report) => {
                     let delay = self.compute_delay(attempt, &report);
-                    if attempt >= self.config.max_retries || delay.is_none() {
+                    if attempt >= self.config.max_retries {
                         return Err(report);
                     }
-                    let wait = delay.expect("checked above");
+                    let Some(wait) = delay else {
+                        return Err(report);
+                    };
                     attempt += 1;
                     self.on_retry
                         .on_retry(attempt, self.config.max_retries, wait, &report);

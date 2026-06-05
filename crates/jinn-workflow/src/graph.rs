@@ -305,7 +305,15 @@ pub enum GraphError {
         /// The new source node name attempting to connect.
         new_source: String,
     },
+    /// An internal invariant was violated during graph building.
+    /// These should all be unreachable after the connect-time validation.
+    #[display("internal invariant violated during build: {what}")]
+    InternalInvariant {
+        /// Description of the invariant that failed.
+        what: &'static str,
+    },
 }
+
 
 /// Builder for constructing a [`WorkflowGraph`].
 ///
@@ -421,10 +429,6 @@ impl WorkflowGraphBuilder {
         Ok(self)
     }
 
-    #[expect(
-        clippy::missing_panics_doc,
-        reason = "panic is only possible if connect() validation is wrong"
-    )]
     /// Builds the graph, performing final validation.
     ///
     /// # Errors
@@ -455,22 +459,25 @@ impl WorkflowGraphBuilder {
 
         // Add edges to petgraph (already validated by connect()).
         for (src_name, src_port, tgt_name, tgt_port) in &self.edges {
-            #[expect(clippy::expect_used, reason = "validated during connect")]
             let src_idx = name_to_index
                 .get(src_name)
                 .copied()
-                .expect("source node validated during connect");
-            #[expect(clippy::expect_used, reason = "validated during connect")]
+                .ok_or_else(|| Report::new(GraphError::InternalInvariant {
+                    what: "source node validated during connect",
+                }))?;
             let tgt_idx = name_to_index
                 .get(tgt_name)
                 .copied()
-                .expect("target node validated during connect");
+                .ok_or_else(|| Report::new(GraphError::InternalInvariant {
+                    what: "target node validated during connect",
+                }))?;
 
             // Look up port type from source node's output ports.
             let source_node = &graph[src_idx].node;
-            #[expect(clippy::expect_used, reason = "validated during connect")]
             let port_type = find_port_type(&source_node.output_ports(), src_port)
-                .expect("port validated during connect");
+                .ok_or_else(|| Report::new(GraphError::InternalInvariant {
+                    what: "port validated during connect",
+                }))?;
 
             graph.add_edge(
                 src_idx,
