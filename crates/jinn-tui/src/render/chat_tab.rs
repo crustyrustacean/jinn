@@ -2,6 +2,7 @@
 
 pub mod audit_popup;
 pub mod autocomplete;
+pub mod badges;
 pub mod border;
 pub mod chat_bottom_line;
 pub mod chat_log;
@@ -111,6 +112,9 @@ pub(super) fn render_chat_tab(
 
     // Input box.
     input_box::render_input_box(ui_registry, frame, layout.input, ctx);
+
+    // Plugin chat-input badges (render-thread sync hook).
+    badges::render_badges(frame, layout.input, ctx);
 
     // Autocomplete popup.
     autocomplete::render_autocomplete(frame, layout.input, ctx);

@@ -38,6 +38,7 @@ pub use common::app_state::{
     SessionState,
 };
 pub use common::render_ctx::RenderCtx;
+pub use feat::plugin_dispatch::{BadgeDirective, InterceptOutcome, PluginSyncHooks, call_hooks_typed};
 pub use common::state::{State, StateReadGuard, StateWriteGuard};
 pub use common::tui_signals::TuiSignals;
 pub use common::{AppUiRegistry, register_all_ui_elements};

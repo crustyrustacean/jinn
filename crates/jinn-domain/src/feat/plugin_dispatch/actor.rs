@@ -109,6 +109,10 @@ impl Actor for PluginDispatchActor {
         ctx.subscribe_command::<DetachPlugin>();
         ctx.subscribe_command::<TogglePlugin>();
 
+        // Generic async-handoff: plugins emit this to route an arbitrary hook
+        // name to the plugin-async VM. Routed by runtime name via Command::Dynamic.
+        ctx.subscribe_command_by_name("plugin::fire_async");
+
         ctx.set_description(
             "Plugin dispatcher: attaches/detaches plugins per session and fires hooks on lifecycle events",
         );
@@ -155,6 +159,9 @@ impl PluginDispatchActor {
             Command::AttachPlugin(cmd) => self.handle_attach(cmd, ctx).await,
             Command::DetachPlugin(cmd) => self.handle_detach(cmd, ctx).await,
             Command::TogglePlugin(cmd) => self.handle_toggle(cmd, ctx).await,
+            Command::Dynamic(ref d) if d.name == "plugin::fire_async" => {
+                self.handle_fire_async_hook(&d.payload, ctx).await;
+            }
             _ => {}
         }
     }
@@ -377,6 +384,38 @@ impl PluginDispatchActor {
             tracing::warn!(err = %e, "{} hook failed", hook);
         }
     }
+
+    /// Handle the generic `plugin::fire_async` dynamic command: route an
+    /// arbitrary hook name to the plugin-async VM for the session.
+    ///
+    /// Payload: `{ hook: String, session_id: String, text: Option<String> }`.
+    async fn handle_fire_async_hook(&self, payload: &Value, _ctx: &ActorContext) {
+        #[derive(serde::Deserialize)]
+        struct FireAsyncPayload {
+            hook: String,
+            session_id: SessionId,
+            #[serde(default)]
+            text: Option<String>,
+        }
+
+        let payload = match serde_json::from_value::<FireAsyncPayload>(payload.clone()) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(error = %e, "plugin::fire_async payload malformed; dropped");
+                return;
+            }
+        };
+
+        let mut ctx_json = serde_json::json!({
+            "session_id": payload.session_id.to_string(),
+            "hook": payload.hook,
+        });
+        if let Some(text) = payload.text {
+            ctx_json["text"] = serde_json::Value::String(text);
+        }
+
+        self.fire_for_session(&payload.session_id, &payload.hook, &ctx_json).await;
+    }
 }
 
 // Pull in a typed-error conversion so `?` works in callers that bubble up
@@ -391,6 +430,7 @@ fn into_error<E: std::fmt::Display>(e: E) -> Report<PluginDispatchActorError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::actor::protocol::dynamic_command::DynamicCommand;
     use crate::common::actor::context::ActorContext;
     use crate::common::actor::message_sink::RecordingSink;
     use crate::common::app_state::AppState;
@@ -596,6 +636,60 @@ mod tests {
                         plugin_name: "judge_fail".to_owned(),
                     },
                 ),
+                &ctx,
+            )
+            .await;
+        assert!(sink.take_events().is_empty());
+    }
+
+    #[tokio::test]
+    async fn fire_async_hook_routes_dynamic_to_handler() {
+        let (mut actor, _sink, ctx, session_id) = make_actor();
+        // A well-formed plugin::fire_async dynamic command for the session.
+        // NoopPluginFire silently no-ops, but the handler must not panic and
+        // must resolve the session (registry miss falls back to global fire).
+        actor
+            .handle_command(
+                Command::Dynamic(DynamicCommand {
+                    name: "plugin::fire_async".to_owned(),
+                    payload: serde_json::json!({
+                        "hook": "on_enrich",
+                        "session_id": session_id.to_string(),
+                        "text": "hello",
+                    }),
+                }),
+                &ctx,
+            )
+            .await;
+        // No panic, no crash, no events (noop fire emits nothing).
+    }
+
+    #[tokio::test]
+    async fn fire_async_hook_drops_malformed_payload() {
+        let (mut actor, sink, ctx, _session_id) = make_actor();
+        // Malformed payload (session_id missing) is logged + dropped, no panic.
+        actor
+            .handle_command(
+                Command::Dynamic(DynamicCommand {
+                    name: "plugin::fire_async".to_owned(),
+                    payload: serde_json::json!({ "hook": "on_enrich" }),
+                }),
+                &ctx,
+            )
+            .await;
+        assert!(sink.take_events().is_empty());
+    }
+
+    #[tokio::test]
+    async fn unrelated_dynamic_command_is_ignored() {
+        let (mut actor, sink, ctx, _session_id) = make_actor();
+        // A dynamic command with a different name must not be handled here.
+        actor
+            .handle_command(
+                Command::Dynamic(DynamicCommand {
+                    name: "some_other::action".to_owned(),
+                    payload: serde_json::Value::Null,
+                }),
                 &ctx,
             )
             .await;
