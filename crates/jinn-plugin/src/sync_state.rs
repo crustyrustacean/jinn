@@ -21,9 +21,29 @@ use crate::command::PluginCommand;
 /// Stored hook data for a loaded plugin.
 pub struct PluginHooks {
     /// Registry key for the plugin's returned table.
-    pub(crate) table: RegistryKey,
+    table: RegistryKey,
     /// Cache of hook names known to exist on this plugin's table.
-    pub(crate) hook_cache: RefCell<HashSet<String>>,
+    hook_cache: RefCell<HashSet<String>>,
+}
+
+impl PluginHooks {
+    /// Create a new `PluginHooks` from its registry key.
+    pub(crate) fn new(table: RegistryKey) -> Self {
+        Self {
+            table,
+            hook_cache: RefCell::new(HashSet::new()),
+        }
+    }
+
+    /// Registry key for the plugin's returned table.
+    pub(crate) fn table(&self) -> &RegistryKey {
+        &self.table
+    }
+
+    /// Mutable cache of hook names known to exist on this plugin's table.
+    pub(crate) fn hook_cache(&self) -> &RefCell<HashSet<String>> {
+        &self.hook_cache
+    }
 }
 
 /// Error type for failures in the sync plugin path (render thread).
@@ -38,39 +58,78 @@ pub struct PluginSyncStateError;
 /// Owns the sync Lua state. `!Send` — must live on the render thread.
 pub struct SyncPlugins {
     /// The Lua VM owning all sync plugin state.
-    pub(crate) lua: Lua,
+    lua: Lua,
     /// Plugin name → hook data.
-    pub(crate) hooks: HashMap<String, PluginHooks>,
+    hooks: HashMap<String, PluginHooks>,
     /// Shared plugin data store.
-    pub(crate) plugin_data: PluginData,
+    plugin_data: PluginData,
     /// Channel for emitting commands from sync hooks.
-    pub(crate) emit_tx: kanal::Sender<PluginCommand>,
+    emit_tx: kanal::Sender<PluginCommand>,
+}
+
+impl SyncPlugins {
+    /// Construct a `SyncPlugins` from its owned parts.
+    ///
+    /// Called by [`crate::PluginSystem::build`] to assemble the render-thread
+    /// plugin state from the loaded Lua VM, hook map, and shared channels.
+    pub(crate) fn new(
+        lua: Lua,
+        hooks: HashMap<String, PluginHooks>,
+        plugin_data: PluginData,
+        emit_tx: kanal::Sender<PluginCommand>,
+    ) -> Self {
+        Self {
+            lua,
+            hooks,
+            plugin_data,
+            emit_tx,
+        }
+    }
+
+    /// Shared plugin data store (used to clone into the async handle).
+    pub(crate) fn plugin_data(&self) -> &PluginData {
+        &self.plugin_data
+    }
 }
 
 impl Default for SyncPlugins {
     fn default() -> Self {
         let (emit_tx, _) = kanal::unbounded::<PluginCommand>();
-        Self {
-            lua: Lua::new(),
-            hooks: HashMap::new(),
-            plugin_data: PluginData::new(),
-            emit_tx,
-        }
+        Self::new(Lua::new(), HashMap::new(), PluginData::new(), emit_tx)
     }
 }
 
 /// A single sync hook ready to be called.
 pub struct SyncHook<'a> {
     /// The Lua VM.
-    pub(crate) lua: &'a Lua,
+    lua: &'a Lua,
     /// Name of the plugin this hook belongs to.
     plugin_name: String,
     /// The hook function to call.
-    pub(crate) func: mlua::Function,
+    func: mlua::Function,
     /// Shared plugin data store.
-    pub(crate) plugin_data: &'a PluginData,
+    plugin_data: &'a PluginData,
     /// Channel for ctx.emit().
-    pub(crate) emit_tx: kanal::Sender<PluginCommand>,
+    emit_tx: kanal::Sender<PluginCommand>,
+}
+
+impl<'a> SyncHook<'a> {
+    /// Construct a single sync hook ready to be called.
+    pub(crate) fn new(
+        lua: &'a Lua,
+        plugin_name: String,
+        func: mlua::Function,
+        plugin_data: &'a PluginData,
+        emit_tx: kanal::Sender<PluginCommand>,
+    ) -> Self {
+        Self {
+            lua,
+            plugin_name,
+            func,
+            plugin_data,
+            emit_tx,
+        }
+    }
 }
 
 impl SyncHook<'_> {
@@ -80,8 +139,8 @@ impl SyncHook<'_> {
     ///
     /// - `T` — the context struct (must be `Serialize`)
     /// - `R` — the expected return type (must be `DeserializeOwned`)
-    ///
-    /// Returns an error if serialization, Lua execution, or deserialization fails.
+    /// # Errors
+    /// Returns `Err` if serialization, Lua execution, or deserialization fails.
     pub fn call<T: Serialize, R: DeserializeOwned>(
         &self,
         ctx_data: &T,
@@ -93,10 +152,11 @@ impl SyncHook<'_> {
 
         // 2. Inject plugin_data from DashMap (snapshot at call time).
         if let Some(data) = self.plugin_data.get(&self.plugin_name) {
-            ctx_json
-                .as_object_mut()
-                .expect("ctx is object")
-                .insert("plugin_data".to_owned(), data);
+            let obj = ctx_json.as_object_mut().ok_or_else(|| {
+                Report::new(PluginSyncStateError)
+                    .attach("ctx_data did not serialize to a JSON object")
+            })?;
+            obj.insert("plugin_data".to_owned(), data.clone());
         }
 
         // 3. Build the Lua ctx table.
@@ -137,22 +197,21 @@ impl SyncPlugins {
         let hook_name = hook_name.to_owned();
         self.hooks.iter().filter_map(move |(plugin_name, hooks)| {
             // Look up the function from the plugin's returned table.
-            let table: mlua::Table = self.lua.registry_value(&hooks.table).ok()?;
+            let table: mlua::Table = self.lua.registry_value(hooks.table()).ok()?;
             let val: Value = table.get(hook_name.as_str()).ok()?;
 
             match val {
-                Value::Function(f) => Some(SyncHook {
-                    lua: &self.lua,
-                    plugin_name: plugin_name.clone(),
-                    func: f,
-                    plugin_data: &self.plugin_data,
-                    emit_tx: self.emit_tx.clone(),
-                }),
+                Value::Function(f) => Some(SyncHook::new(
+                    &self.lua,
+                    plugin_name.clone(),
+                    f,
+                    &self.plugin_data,
+                    self.emit_tx.clone(),
+                )),
                 _ => None,
             }
         })
     }
-
 
     /// Create an empty SyncPlugins with no loaded plugins.
     ///

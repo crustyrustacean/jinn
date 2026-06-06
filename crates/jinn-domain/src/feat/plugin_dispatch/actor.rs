@@ -273,6 +273,10 @@ impl PluginDispatchActor {
         }
     }
 
+    #[expect(
+        clippy::unused_async,
+        reason = "trait contract requires async; the awaited event send is fire-and-forget"
+    )]
     async fn handle_toggle(&mut self, cmd: TogglePlugin, ctx: &ActorContext) {
         let TogglePlugin {
             session_id,

@@ -241,6 +241,10 @@ fn apply_array(
     }
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "linear recursive TOML-table walk that reads best as a single unit"
+)]
 fn apply_array_of_tables_by_key(
     new: &[toml::Value],
     target: &mut Item,

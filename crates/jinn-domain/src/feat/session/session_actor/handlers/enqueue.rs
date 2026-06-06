@@ -61,7 +61,7 @@ impl SessionPersistenceActor {
                 }
                 PhaseKind::Sending | PhaseKind::Streaming => {
                     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-                        payload.entry.clone(),
+                        Box::new(payload.entry.clone()),
                     ));
                     (EnqueueAction::Queued, None)
                 }
