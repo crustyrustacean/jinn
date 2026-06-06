@@ -697,6 +697,4 @@ mod ignore_selected_tests {
         // Then validation succeeds.
         assert!(result.is_ok());
     }
-
 }
-

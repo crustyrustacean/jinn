@@ -1361,7 +1361,6 @@ mod tests {
         assert_eq!(number_val.port_type(), PortType::Single(ScalarType::Number));
     }
 
-
     // Kills: get_number -> Ok(0.0), Ok(1.0), Ok(-1.0)
     #[test]
     fn get_number_returns_actual_stored_value() {

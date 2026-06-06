@@ -1262,7 +1262,11 @@ impl ChatSessionState {
                 };
                 // Propagate tool-requested pin onto both the kind variant and
                 // the entry-level field so assembly/compaction read a single source.
-                if let ChatEntryKind::ToolResult { pin_position: ref mut kp, .. } = entry.kind {
+                if let ChatEntryKind::ToolResult {
+                    pin_position: ref mut kp,
+                    ..
+                } = entry.kind
+                {
                     *kp = pin_position;
                 }
                 entry.pin_position = pin_position;
@@ -1389,7 +1393,12 @@ impl ChatSessionState {
             if !entry.is_pinned() {
                 continue;
             }
-            let ChatEntryKind::ToolResult { name: tool_name, content, .. } = &entry.kind else {
+            let ChatEntryKind::ToolResult {
+                name: tool_name,
+                content,
+                ..
+            } = &entry.kind
+            else {
                 continue;
             };
             if tool_name != "skill" {
@@ -2665,7 +2674,8 @@ enum BuilderOp {
 impl ChatSessionStateBuilder {
     /// Push a user entry onto the history.
     pub fn with_user_entry(mut self, text: &str) -> Self {
-        self.ops.push(BuilderOp::PushEntry(Box::new(ChatEntry::user(text))));
+        self.ops
+            .push(BuilderOp::PushEntry(Box::new(ChatEntry::user(text))));
         self
     }
 

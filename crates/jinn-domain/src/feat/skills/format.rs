@@ -19,7 +19,10 @@ use crate::feat::skills::skill::Skill;
 ///   </skill>
 /// </available_skills>
 /// ```
-pub fn format_skills_for_prompt<S>(skills: &[Skill], loaded: &std::collections::HashSet<String, S>) -> String
+pub fn format_skills_for_prompt<S>(
+    skills: &[Skill],
+    loaded: &std::collections::HashSet<String, S>,
+) -> String
 where
     S: std::hash::BuildHasher,
 {
