@@ -619,4 +619,84 @@ mod tests {
             "expected SendToLlmProvider when handle processes SessionPhaseChanged"
         );
     }
+
+    #[tokio::test]
+    async fn dispatch_user_message_drains_steering_buffer_before_assembly() {
+        // Given a session with a non-empty steering buffer.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.steering_buffer_mut().push_fragment("steer here".to_owned());
+            state.session.active_session_id().clone()
+        };
+
+        // When dispatching a user message.
+        actor
+            .dispatch_user_message(&session_id, &ChatEntry::user("hello"), &ctx)
+            .await;
+
+        // Then the steering buffer is drained before assembly.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        assert!(
+            session.steering_buffer().is_empty(),
+            "steering buffer must be drained during dispatch_user_message"
+        );
+
+        // And the drained steering entry appears in history.
+        let has_steering_entry = session
+            .history()
+            .iter()
+            .any(|e| {
+                matches!(
+                    &e.kind,
+                    crate::protocol::ChatEntryKind::User { expanded, .. } if expanded == "steer here"
+                )
+            });
+        assert!(
+            has_steering_entry,
+            "drained steering entry must appear in history after dispatch_user_message"
+        );
+    }
+
+    #[tokio::test]
+    async fn dispatch_resume_drains_steering_buffer_before_assembly() {
+        // Given a session with a non-empty steering buffer.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.steering_buffer_mut().push_fragment("resume steer".to_owned());
+            state.session.active_session_id().clone()
+        };
+
+        // When dispatching a resume.
+        actor.dispatch_resume(&session_id, &ctx, "test").await;
+
+        // Then the steering buffer is drained before assembly.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        assert!(
+            session.steering_buffer().is_empty(),
+            "steering buffer must be drained during dispatch_resume"
+        );
+
+        // And the drained steering entry appears in history.
+        let has_steering_entry = session
+            .history()
+            .iter()
+            .any(|e| {
+                matches!(
+                    &e.kind,
+                    crate::protocol::ChatEntryKind::User { expanded, .. } if expanded == "resume steer"
+                )
+            });
+        assert!(
+            has_steering_entry,
+            "drained steering entry must appear in history after dispatch_resume"
+        );
+    }
 }
