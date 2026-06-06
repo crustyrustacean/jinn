@@ -567,10 +567,10 @@ impl ChatSessionState {
                     _ => return None,
                 }
             };
-            if let Some(entry) = self.core.history.get_mut(hist_idx) {
-                if entry.apply_context_override(override_state, ChangeSource::User) {
-                    return Some(entry.id.clone());
-                }
+            if let Some(entry) = self.core.history.get_mut(hist_idx)
+                && entry.apply_context_override(override_state, ChangeSource::User)
+            {
+                return Some(entry.id.clone());
             }
         }
         None
@@ -1163,6 +1163,10 @@ impl ChatSessionState {
     /// execution result. When truncation is present, stores both the truncated
     /// content and the original untruncated output.
     #[expect(
+        clippy::too_many_arguments,
+        reason = "mirrors begin_tool_result + new pin_position; refactor would require struct-builder pattern"
+    )]
+    #[expect(
         clippy::indexing_slicing,
         reason = "index comes from begin_tool_result which always returns a valid index"
     )]
@@ -1382,7 +1386,7 @@ impl ChatSessionState {
     pub fn loaded_skills(&self) -> HashSet<String> {
         use crate::feat::session::chat_entry::ChatEntryKind;
         let mut out = HashSet::new();
-        for entry in self.history().iter() {
+        for entry in self.history() {
             if !entry.is_pinned() {
                 continue;
             }
@@ -2652,7 +2656,7 @@ pub struct ChatSessionStateBuilder {
 #[cfg(test)]
 #[derive(Debug)]
 enum BuilderOp {
-    PushEntry(ChatEntry),
+    PushEntry(Box<ChatEntry>),
     BeginStreaming,
     BeginSending,
     PinLast(PinPosition),
@@ -2662,13 +2666,13 @@ enum BuilderOp {
 impl ChatSessionStateBuilder {
     /// Push a user entry onto the history.
     pub fn with_user_entry(mut self, text: &str) -> Self {
-        self.ops.push(BuilderOp::PushEntry(ChatEntry::user(text)));
+        self.ops.push(BuilderOp::PushEntry(Box::new(ChatEntry::user(text))));
         self
     }
 
     /// Push any entry onto the history.
     pub fn with_entry(mut self, entry: ChatEntry) -> Self {
-        self.ops.push(BuilderOp::PushEntry(entry));
+        self.ops.push(BuilderOp::PushEntry(Box::new(entry)));
         self
     }
 
@@ -2697,6 +2701,7 @@ impl ChatSessionStateBuilder {
         for op in self.ops {
             match op {
                 BuilderOp::PushEntry(entry) => {
+                    let entry = *entry;
                     let id = entry.id.clone();
                     session.push_entry(entry);
                     last_id = Some(id);
