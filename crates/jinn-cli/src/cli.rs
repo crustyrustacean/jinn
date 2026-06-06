@@ -61,6 +61,13 @@ pub enum Commands {
         #[command(subcommand)]
         subcommand: FetchCommands,
     },
+
+    /// Manage user configuration files.
+    Config {
+        /// The config subcommand to run.
+        #[command(subcommand)]
+        subcommand: ConfigCommands,
+    },
 }
 
 /// Headless subcommands.
@@ -83,6 +90,19 @@ pub enum HeadlessCommands {
 pub enum FetchCommands {
     /// Fetch model metadata from models.dev and save locally.
     Models,
+}
+
+/// Config subcommands.
+#[derive(Debug, Subcommand)]
+pub enum ConfigCommands {
+    /// Write the default jinn.toml to disk.
+    ///
+    /// Refuses to overwrite an existing file unless --force is given.
+    Init {
+        /// Overwrite the file if it already exists.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 /// Bench subcommands.
@@ -154,7 +174,10 @@ mod tests {
     #[test]
     fn log_file_flag_global_overrides() {
         let cli = Cli::parse_from(["jinn", "--log-file", "/tmp/x.log", "tui"]);
-        assert_eq!(cli.log_file.as_deref(), Some(std::path::Path::new("/tmp/x.log")));
+        assert_eq!(
+            cli.log_file.as_deref(),
+            Some(std::path::Path::new("/tmp/x.log"))
+        );
     }
 
     // Given the old --log-dir argument.
@@ -185,8 +208,16 @@ mod tests {
     #[test]
     fn log_file_flag_works_with_headless() {
         let cli = Cli::parse_from([
-            "jinn", "--log-file", "/tmp/x.log", "headless", "send-chat", "hi",
+            "jinn",
+            "--log-file",
+            "/tmp/x.log",
+            "headless",
+            "send-chat",
+            "hi",
         ]);
-        assert_eq!(cli.log_file.as_deref(), Some(std::path::Path::new("/tmp/x.log")));
+        assert_eq!(
+            cli.log_file.as_deref(),
+            Some(std::path::Path::new("/tmp/x.log"))
+        );
     }
 }

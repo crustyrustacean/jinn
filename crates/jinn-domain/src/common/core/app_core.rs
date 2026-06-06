@@ -66,13 +66,16 @@ impl AppCore {
 /// The task ends when the `receiver` channel is dropped (happens when
 /// `AppCore` is dropped).
 pub fn spawn_forwarding_task(
-    receiver: kanal::Receiver<AppMsg>,
+    receiver: kanal::AsyncReceiver<AppMsg>,
     actor_host: crate::ActorHostService,
     handle: &tokio::runtime::Handle,
 ) -> tokio::task::JoinHandle<()> {
     handle.spawn(async move {
-        let async_rx = receiver.as_async();
-        while let Ok(msg) = async_rx.recv().await {
+        let async_rx = receiver;
+        loop {
+            let Ok(msg) = async_rx.recv().await else {
+                break;
+            };
             match msg {
                 AppMsg::Command { command, source } => {
                     actor_host.send_command(&command, source.as_ref());

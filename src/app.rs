@@ -108,22 +108,53 @@ impl App {
             SessionStoreService::new(Arc::new(store.change_context(AppError)?))
         };
 
+        // Dispatch `config` subcommands BEFORE the early preferences parse.
+        // `jinn config init` is the user's recovery tool for a missing or broken
+        // config, so it must not be guarded by load-time parsing (which itself
+        // auto-creates the file on first run).
+        if let Some(Commands::Config { subcommand }) = &cli.command {
+            use jinn_cli::cli::ConfigCommands;
+            use jinn_domain::{InitOutcome, init_default_config_to, preferences_path};
+
+            match subcommand {
+                ConfigCommands::Init { force } => {
+                    let path = preferences_path();
+                    let force = *force;
+                    match init_default_config_to(&path, force) {
+                        Ok(InitOutcome::Created) => {
+                            println!("Created {}", path.display());
+                        }
+                        Ok(InitOutcome::Overwritten) => {
+                            println!("Overwrote {}", path.display());
+                        }
+                        Err(report) => {
+                            eprintln!("{report:?}");
+                            return Err(report.change_context(AppError));
+                        }
+                    }
+                    return Ok(());
+                }
+            }
+        }
+
         // Parse user preferences early — fail-fast on a bad config BEFORE
         // any actor wiring runs. The shared service is cloned into each
-        // command arm below.
+        // command arm below. Config subcommands have already dispatched above.
         let user_preferences_storage = {
             let backend = FilesystemUserPreferencesStorage::default_path();
             let path = backend.path().to_path_buf();
             let svc = UserPreferencesStorageService::new(Arc::new(backend));
             if let Err(report) = svc.reload() {
                 tracing::error!(path = %path.display(), "failed to parse user preferences");
-                eprintln!("error: failed to parse user preferences at {}:", path.display());
+                eprintln!(
+                    "error: failed to parse user preferences at {}:",
+                    path.display()
+                );
                 eprintln!("  {report:?}");
                 std::process::exit(1);
             }
             svc
         };
-
 
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Completions { shell } => {
@@ -134,19 +165,20 @@ impl App {
                 return Ok(());
             }
             Commands::Tui => {
-                let (core, services, actor_host) = actor_wiring::create_core_with_actor_host(
-                    &self.handle(),
-                    llm_service.clone(),
-                    provider_registry.clone(),
-                    resolved_api_keys.clone(),
-                    config_storage.clone(),
-                    session_store.clone(),
-                    user_preferences_storage.clone(),
-                    None,
-                    None,
-                    None,
-                    jinn_domain::AppPaths::default(),
-                );
+                let (core, services, actor_host, _plugins) =
+                    actor_wiring::create_core_with_actor_host(
+                        &self.handle(),
+                        llm_service.clone(),
+                        provider_registry.clone(),
+                        resolved_api_keys.clone(),
+                        config_storage.clone(),
+                        session_store.clone(),
+                        user_preferences_storage.clone(),
+                        None,
+                        None,
+                        None,
+                        jinn_domain::AppPaths::default(),
+                    );
                 let paths = &services.paths;
                 load_prompt_templates(
                     &core.state,
@@ -176,7 +208,9 @@ impl App {
                     core,
                     services,
                     actor_host,
+                    plugins: _plugins,
                     ui_registry,
+
                     events: tui_events,
                     which_key,
                     suspend: jinn_tui::suspend::Suspend::new(),
@@ -195,19 +229,20 @@ impl App {
                 runner.run().change_context(AppError)?;
             }
             Commands::Headless { command, .. } => {
-                let (core, _services, actor_host) = actor_wiring::create_core_with_actor_host(
-                    &self.handle(),
-                    llm_service.clone(),
-                    provider_registry,
-                    resolved_api_keys,
-                    config_storage,
-                    session_store,
-                    user_preferences_storage.clone(),
-                    None,
-                    None,
-                    None,
-                    jinn_domain::AppPaths::default(),
-                );
+                let (core, _services, actor_host, _plugins) =
+                    actor_wiring::create_core_with_actor_host(
+                        &self.handle(),
+                        llm_service.clone(),
+                        provider_registry,
+                        resolved_api_keys,
+                        config_storage,
+                        session_store,
+                        user_preferences_storage.clone(),
+                        None,
+                        None,
+                        None,
+                        jinn_domain::AppPaths::default(),
+                    );
                 load_prompt_templates(
                     &core.state,
                     &_services.paths.prompts_dir(),
@@ -250,6 +285,7 @@ impl App {
                     }
                 }
             }
+
             Commands::Bench { subcommand } => {
                 if cli.db_path.is_some() {
                     return Err(Report::new(AppError)
@@ -275,7 +311,7 @@ impl App {
                             .attach("invalid task glob pattern")?;
                         tracing::info!(pairs = plan.pairs.len(), "built bench plan");
 
-                        let (core, services, actor_host) =
+                        let (core, services, actor_host, plugins) =
                             actor_wiring::create_core_with_actor_host(
                                 &self.handle(),
                                 llm_service,
@@ -317,6 +353,7 @@ impl App {
                         let runner = Runner::Tui(Box::new(jinn_tui::TuiApp {
                             core,
                             services,
+                            plugins,
                             actor_host,
                             ui_registry,
                             events: jinn_tui::MsgHandler::new(),
@@ -351,7 +388,7 @@ impl App {
                             SqliteSessionStore::open_or_create(&db_path)
                                 .change_context(AppError)?,
                         ));
-                        let (core, services, actor_host) =
+                        let (core, services, actor_host, plugins) =
                             actor_wiring::create_core_with_actor_host(
                                 &self.handle(),
                                 llm_service.clone(),
@@ -390,6 +427,7 @@ impl App {
                         let runner = Runner::Tui(Box::new(jinn_tui::TuiApp {
                             core,
                             services,
+                            plugins,
                             actor_host,
                             ui_registry,
                             events: jinn_tui::MsgHandler::new(),
@@ -411,6 +449,9 @@ impl App {
                     }
                 }
             }
+            // Config subcommands are dispatched above, before the early
+            // preferences parse. Reaching this match arm is impossible.
+            Commands::Config { .. } => {}
         }
 
         Ok(())

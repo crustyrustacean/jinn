@@ -13,7 +13,6 @@ use super::hash::{
 };
 use std::fmt::Write;
 
-
 // ─── Constants ──────────────────────────────────────────────────────────
 
 /// Context lines around mismatches in error messages.
@@ -318,7 +317,11 @@ pub fn format_mismatch_error(mismatches: &[HashMismatch], file_lines: &[&str]) -
 
     let n = mismatches.len();
     let mut out = String::new();
-    let _ = write!(out, "[E_STALE_ANCHOR] {n} stale anchor{}. Retry with the >>> LINE#HASH lines below; keep both endpoints for range replaces.\n\n", if n > 1 { "s" } else { "" });
+    let _ = write!(
+        out,
+        "[E_STALE_ANCHOR] {n} stale anchor{}. Retry with the >>> LINE#HASH lines below; keep both endpoints for range replaces.\n\n",
+        if n > 1 { "s" } else { "" }
+    );
 
     let mut prev = 0usize;
     for num in sorted {
@@ -603,9 +606,9 @@ fn resolve_edit_to_span(
                             "[E_NOT_FOUND] replace_text: \"{old_text}\" not found in file."
                         ));
                     }
-                    return Err(format!(
+                    Err(format!(
                         "[E_NOT_UNIQUE] replace_text: \"{old_text}\" appears more than once."
-                    ));
+                    ))
                 }
                 Some((start, end)) => Ok(Some(ResolvedSpan {
                     kind: "replace",

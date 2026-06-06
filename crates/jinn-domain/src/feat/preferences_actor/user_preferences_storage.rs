@@ -72,7 +72,6 @@ impl FilesystemUserPreferencesStorage {
     }
 }
 
-
 impl UserPreferencesStorage for FilesystemUserPreferencesStorage {
     fn name(&self) -> &'static str {
         "filesystem"
@@ -181,8 +180,6 @@ impl UserPreferencesStorageService {
             .expect("UserPreferencesStorageService::read() called before reload() — programmer error: the service must be reloaded (typically at app startup) before any read")
     }
 
-
-
     /// Writes to storage and updates the in-memory cache.
     ///
     /// # Errors
@@ -287,6 +284,7 @@ mod tests {
     }
 
     #[rstest::rstest]
+    #[rstest::rstest]
     fn filesystem_load_returns_default_when_missing() {
         // Given a temp directory with no file.
         let dir = tempfile::tempdir().expect("temp dir");
@@ -298,9 +296,11 @@ mod tests {
         // When loading.
         let prefs = storage.reload().expect("reload");
 
-        // Then defaults are returned (file is NOT auto-created on load).
+        // Then defaults are returned AND the file is auto-created with the
+        // canonical template (so users get a comment-rich starter config on
+        // first run).
         assert!(prefs.last_model.is_none());
-        assert!(!path.exists());
+        assert!(path.exists(), "first-run load should auto-create the config file");
     }
 
     #[rstest::rstest]
@@ -498,13 +498,14 @@ mod tests {
         assert_eq!(format!("{first:?}"), format!("{second:?}"));
     }
 
-
     #[rstest::rstest]
     fn reload_failure_returns_err_and_leaves_cache_empty() {
         // Given a service backed by storage that always fails to reload.
         struct AlwaysFails;
         impl UserPreferencesStorage for AlwaysFails {
-            fn name(&self) -> &'static str { "always-fails" }
+            fn name(&self) -> &'static str {
+                "always-fails"
+            }
             fn reload(&self) -> Result<UserPreferences, Report<UserPreferencesError>> {
                 Err(Report::new(UserPreferencesError::Parse))
             }
@@ -527,7 +528,9 @@ mod tests {
         // Given a service backed by storage that always fails to reload.
         struct AlwaysFails;
         impl UserPreferencesStorage for AlwaysFails {
-            fn name(&self) -> &'static str { "always-fails" }
+            fn name(&self) -> &'static str {
+                "always-fails"
+            }
             fn reload(&self) -> Result<UserPreferences, Report<UserPreferencesError>> {
                 Err(Report::new(UserPreferencesError::Parse))
             }

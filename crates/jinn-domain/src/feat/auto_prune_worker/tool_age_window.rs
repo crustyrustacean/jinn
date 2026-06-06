@@ -47,7 +47,9 @@ use std::sync::Arc;
 
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::ToolAgeWindowAutoPruneConfig;
-use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride};
+use crate::feat::session::chat_entry::{
+    ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride,
+};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::protocol::SessionId;
@@ -494,7 +496,12 @@ mod tests {
 
         let p = bash_pair("tc-1", "ls", "out");
         let mut call = p[0].clone();
-        call.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::Internal { label: "test".into() });
+        call.apply_context_override(
+            ContextOverride::ForcedExclude,
+            ChangeSource::Internal {
+                label: "test".into(),
+            },
+        );
         let call_id = call.id.clone();
         history.push(call);
         let result = p[1].clone();

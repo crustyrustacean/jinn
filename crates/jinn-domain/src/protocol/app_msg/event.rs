@@ -136,14 +136,12 @@ pub enum Event {
     /// A session has been fully loaded from persistent storage.
     SessionLoadCompleted(Box<SessionLoadCompleted>),
 
-    /// An attached workflow was added to a session.
-    WorkflowAttached(crate::feat::workflow::protocol::event::WorkflowAttached),
-    /// An attached workflow was removed from a session.
-    WorkflowDetached(crate::feat::workflow::protocol::event::WorkflowDetached),
-    /// An attached workflow was toggled on/off.
-    WorkflowToggled(crate::feat::workflow::protocol::event::WorkflowToggled),
-    /// An attached workflow completed execution.
-    AttachedWorkflowCompleted(crate::feat::workflow::protocol::event::AttachedWorkflowCompleted),
+    /// A plugin was attached to a session.
+    PluginAttached(crate::feat::plugin_dispatch::protocol::event::PluginAttached),
+    /// A plugin was detached from a session.
+    PluginDetached(crate::feat::plugin_dispatch::protocol::event::PluginDetached),
+    /// A plugin was toggled on/off.
+    PluginToggled(crate::feat::plugin_dispatch::protocol::event::PluginToggled),
 
     /// A task list was updated by a mutation tool.
     TaskListUpdated(crate::feat::session::protocol::task_list_updated::TaskListUpdated),
@@ -219,17 +217,14 @@ impl Event {
                 Some(crate::feat::session::protocol::history_snapshot_ready::HistorySnapshotReady::TYPE_NAME)
             }
             Self::SessionLoadCompleted(..) => Some(SessionLoadCompleted::TYPE_NAME),
-            Self::WorkflowAttached(..) => {
-                Some(crate::feat::workflow::protocol::event::WorkflowAttached::TYPE_NAME)
+            Self::PluginAttached(..) => {
+                Some(crate::feat::plugin_dispatch::protocol::event::PluginAttached::TYPE_NAME)
             }
-            Self::WorkflowDetached(..) => {
-                Some(crate::feat::workflow::protocol::event::WorkflowDetached::TYPE_NAME)
+            Self::PluginDetached(..) => {
+                Some(crate::feat::plugin_dispatch::protocol::event::PluginDetached::TYPE_NAME)
             }
-            Self::WorkflowToggled(..) => {
-                Some(crate::feat::workflow::protocol::event::WorkflowToggled::TYPE_NAME)
-            }
-            Self::AttachedWorkflowCompleted(..) => {
-                Some(crate::feat::workflow::protocol::event::AttachedWorkflowCompleted::TYPE_NAME)
+            Self::PluginToggled(..) => {
+                Some(crate::feat::plugin_dispatch::protocol::event::PluginToggled::TYPE_NAME)
             }
 
             Self::TaskListUpdated(..) => {

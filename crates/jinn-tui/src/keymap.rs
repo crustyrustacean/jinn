@@ -110,7 +110,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<leader>st", Intent::OpenPicker { kind: PickerKind::Tool }, KeyCategory::General)
             .bind("<leader>sk", Intent::OpenPicker { kind: PickerKind::Skill }, KeyCategory::General)
             .bind("<leader>sh", Intent::OpenPicker { kind: PickerKind::Theme }, KeyCategory::General)
-            .bind("<leader>sw", Intent::OpenPicker { kind: PickerKind::Workflow }, KeyCategory::General)
+            .bind("<leader>sp", Intent::OpenPicker { kind: PickerKind::Plugin }, KeyCategory::General)
             // Input - enter input mode
             .bind("i", Intent::EnterInsertMode, KeyCategory::Input)
             .bind("<c-j>", Intent::EnterInsertMode, KeyCategory::Input)
@@ -229,7 +229,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<c-k>", Intent::EnterNormalMode, KeyCategory::General)
             .bind("<c-c>", Intent::CtrlClear, KeyCategory::General)
             .bind("<c-e>", Intent::EditInput, KeyCategory::Input)
-            .bind("<c-g>", Intent::ToggleOneShot { kind: jinn_domain::feat::workflow::attached_workflow::OneShotKind::Consensus }, KeyCategory::Input)
+            // <c-g> consensus one-shot removed (workflow system deprecated)
             // Change CWD - search from session CWD
             .bind("<M-c>", Intent::ChangeCwd { root: CwdRoot::Session }, KeyCategory::Navigation)
             // Change CWD - search from home directory
@@ -294,7 +294,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
              .bind("<pgdn>", Intent::PreviewScrollDown, KeyCategory::Navigation)
              .bind("<c-r>", Intent::RefreshSkills, KeyCategory::General);
         })
-        .scope(Scope::PickerWorkflow, |b| {
+        .scope(Scope::PickerPlugin, |b| {
             add_picker_base(b);
         })
         .scope(Scope::PickerTaskList, |b| {
