@@ -1031,3 +1031,101 @@ fn render_text_with_blockers_no_prefix_for_completed_phase() {
     assert!(rendered.contains("Phase 1: Done"));
     assert!(!rendered.contains("(Blocked by previous phase) Phase 1"));
 }
+
+#[test]
+fn render_next_block_empty_when_no_phases() {
+    let list = TaskList::new();
+    assert_eq!(list.render_next_block(), "");
+}
+
+#[test]
+fn render_next_block_empty_when_phases_have_no_tasks() {
+    let mut list = TaskList::new();
+    list.add_phase("Empty phase");
+    // Phase exists but has zero tasks. No tasks ever created.
+    assert_eq!(list.render_next_block(), "");
+}
+
+#[test]
+fn render_next_block_points_at_active_phase_next_task() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Done");
+    let t1 = list.add_task(&p1, "Done task", TaskPosition::End).unwrap();
+    list.complete_task(&t1).unwrap();
+    let p2 = list.add_phase("Active");
+    let t2 = list.add_task(&p2, "First pending", TaskPosition::End).unwrap();
+    list.add_task(&p2, "Second pending", TaskPosition::End).unwrap();
+
+    let block = list.render_next_block();
+    assert_eq!(
+        block,
+        format!("→ NEXT: {} — First pending (2 pending in phase {})", t2, p2)
+    );
+}
+
+#[test]
+fn render_next_block_skips_cancelled_tasks() {
+    // Cancelled tasks are filtered out; the next Pending task is found.
+    // Postponed is implicitly covered by the same TaskStatus::Pending filter
+    // (and exercising postpone_task's Pending-copy semantics would conflate
+    // two behaviors).
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Active");
+    let t1 = list.add_task(&p1, "Cancelled", TaskPosition::End).unwrap();
+    list.cancel_task(&t1).unwrap();
+    let t2 = list.add_task(&p1, "Real next", TaskPosition::End).unwrap();
+
+    let block = list.render_next_block();
+    // t1 (Cancelled) should be skipped; t2 is the next.
+    assert!(
+        block.starts_with(&format!("→ NEXT: {} — Real next", t2)),
+        "got: {block}"
+    );
+}
+
+#[test]
+fn render_next_block_includes_remaining_count() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Active");
+    let t_first = list.add_task(&p1, "A", TaskPosition::End).unwrap();
+    list.add_task(&p1, "B", TaskPosition::End).unwrap();
+    list.add_task(&p1, "C", TaskPosition::End).unwrap();
+
+    let block = list.render_next_block();
+    assert!(block.contains("3 pending in phase"));
+    // First pending task is identified.
+    assert!(block.starts_with(&format!("→ NEXT: {} — A", t_first)));
+}
+
+#[test]
+fn render_next_block_all_complete_message() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("One");
+    let t1 = list.add_task(&p1, "Do", TaskPosition::End).unwrap();
+    list.complete_task(&t1).unwrap();
+
+    let block = list.render_next_block();
+    assert_eq!(block, "→ All phases complete — stop.");
+}
+
+#[test]
+fn render_next_block_all_complete_with_multiple_phases() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("One");
+    let t1 = list.add_task(&p1, "Do", TaskPosition::End).unwrap();
+    list.complete_task(&t1).unwrap();
+    let p2 = list.add_phase("Two");
+    // p2 exists but has no tasks. Counts as "no tasks ever in this phase".
+    // But p1 has had a task, so list is fully done.
+    let block = list.render_next_block();
+    assert_eq!(block, "→ All phases complete — stop.");
+    drop(p2);
+}
+
+#[test]
+fn render_next_block_empty_for_phase_with_no_tasks_anywhere() {
+    let mut list = TaskList::new();
+    list.add_phase("Empty");
+    // No tasks ever added to any phase.
+    assert_eq!(list.render_next_block(), "");
+}
