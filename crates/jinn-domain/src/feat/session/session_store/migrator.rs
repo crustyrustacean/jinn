@@ -85,6 +85,10 @@ pub fn run_migrations(conn: &mut SqliteConnection) -> Result<(), Report<SessionS
         migrate_v13(conn)?;
         record_version(conn, 13, "add_judge_meta_column")?;
     }
+    if current < 14 {
+        migrate_v14(conn)?;
+        record_version(conn, 14, "add_context_history")?;
+    }
     Ok(())
 }
 
@@ -424,6 +428,18 @@ fn migrate_v13(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErr
     Ok(())
 }
 
+/// v14: Add `context_history` column to entries.
+///
+/// Stores the audit trail of context inclusion/exclusion changes as a JSON array
+/// of `ContextChangeEvent`. Defaults to `'[]'` (empty audit) for existing rows.
+fn migrate_v14(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    sql_query("ALTER TABLE entries ADD COLUMN context_history TEXT NOT NULL DEFAULT '[]'")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("v14: add context_history column to entries")?;
+    Ok(())
+}
+
 fn migrate_v12(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query(
         "ALTER TABLE session_history ADD COLUMN context_override TEXT NOT NULL DEFAULT 'default'",
@@ -478,7 +494,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 14);
+        assert_eq!(rows.len(), 15);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -507,6 +523,8 @@ mod tests {
         assert_eq!(rows[12].name, "replace_ignored_with_context_override");
         assert_eq!(rows[13].version, 13);
         assert_eq!(rows[13].name, "add_judge_meta_column");
+        assert_eq!(rows[14].version, 14);
+        assert_eq!(rows[14].name, "add_context_history");
     }
 
     #[test]
@@ -530,7 +548,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 14);
+        assert_eq!(rows[0].count, 15);
     }
 
     /// Applies migrations up to (and including) `target` version.
@@ -597,10 +615,10 @@ mod tests {
 
     /// Verifies that each migration guard uses `<` not `<=`.
     ///
-    /// For each version N (0..=12), we build a database at exactly version N
+    /// For each version N (0..=13), we build a database at exactly version N
     /// by calling individual migration functions, then re-run `run_migrations`.
-    /// It must succeed (applying only v(N+1) through v13) and produce exactly
-    /// 14 migration rows.
+    /// It must succeed (applying only v(N+1) through v14) and produce exactly
+    /// 15 migration rows.
     ///
     /// If `current < N` were mutated to `current <= N`, vN would re-run when
     /// current == N. Most migrations would fail (duplicate table/column),
@@ -614,8 +632,8 @@ mod tests {
             count: i64,
         }
 
-        // Versions whose guards have mutants (v0 through v12).
-        for target_version in 0..=12_i32 {
+        // Versions whose guards have mutants (v0 through v13).
+        for target_version in 0..=13_i32 {
             let (_dir, mut conn) = make_conn();
 
             // Build the database at exactly `target_version`.
@@ -626,13 +644,13 @@ mod tests {
                 panic!("re-run at target_version={target_version} should succeed: {e:?}")
             });
 
-            // Verify no duplicate rows: exactly 14 migration rows total.
+            // Verify no duplicate rows: exactly 15 migration rows total.
             let rows: Vec<CountRow> = sql_query("SELECT COUNT(*) AS count FROM _migrations")
                 .load(&mut conn)
                 .expect("query count");
             assert_eq!(
-                rows[0].count, 14,
-                "at target_version={target_version}: expected 14 migration rows, no duplicates"
+                rows[0].count, 15,
+                "at target_version={target_version}: expected 15 migration rows, no duplicates"
             );
         }
     }
