@@ -48,6 +48,42 @@ pub fn handle_cwd_input_leave(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
+/// Inserts a character at the cursor position.
+pub fn handle_insert_char(state: &mut AppState, ch: char) -> IntentResult {
+    state.frontend.cwd_input.text.insert_char(ch);
+    IntentResult::empty()
+}
+
+/// Deletes the grapheme before the cursor.
+pub fn handle_delete(state: &mut AppState) -> IntentResult {
+    state.frontend.cwd_input.text.delete();
+    IntentResult::empty()
+}
+
+/// Deletes the grapheme at/after the cursor (forward delete).
+pub fn handle_delete_forward(state: &mut AppState) -> IntentResult {
+    state.frontend.cwd_input.text.delete_forward();
+    IntentResult::empty()
+}
+
+/// Moves the cursor one grapheme left.
+pub fn handle_cursor_left(state: &mut AppState) -> IntentResult {
+    state.frontend.cwd_input.text.cursor_left();
+    IntentResult::empty()
+}
+
+/// Moves the cursor one grapheme right.
+pub fn handle_cursor_right(state: &mut AppState) -> IntentResult {
+    state.frontend.cwd_input.text.cursor_right();
+    IntentResult::empty()
+}
+
+/// Handles `PasteText` - bulk inserts pasted text at the cursor.
+pub fn handle_paste(state: &mut AppState, text: &str) -> IntentResult {
+    state.frontend.cwd_input.text.paste(text);
+    IntentResult::empty()
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
