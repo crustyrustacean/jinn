@@ -377,7 +377,6 @@ mod tests {
         );
     }
 
-    // --- Mutant-killing tests for widget.rs ---
 
     // Kills: render_connections == -> != for port matching
     #[test]

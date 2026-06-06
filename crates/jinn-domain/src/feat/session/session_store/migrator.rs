@@ -632,7 +632,6 @@ mod tests {
             count: i64,
         }
 
-        // Versions whose guards have mutants (v0 through v13).
         for target_version in 0..=13_i32 {
             let (_dir, mut conn) = make_conn();
 

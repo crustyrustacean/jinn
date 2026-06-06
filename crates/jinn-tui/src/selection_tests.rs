@@ -472,7 +472,6 @@ fn selectable_rects_rebuild_replaces_previous_rects() {
     );
 }
 
-// --- Mutant-killing tests for selection.rs ---
 
 // Kills: find_for_position < -> <= (both occurrences, line 44)
 #[rstest::rstest]

@@ -3,7 +3,6 @@
 use crate::common::app_state::AppState;
 
 // =============================================================================
-// Phase 2: Boundary arithmetic & operator mutants
 // =============================================================================
 
 // --- is_valid_hash_trigger_position: kills || → && at line 549 ---
@@ -345,7 +344,6 @@ fn reactivating_slash_autocomplete_within_command() {
 #[rstest::rstest]
 fn scroll_indicators_show_at_exact_boundary() {
     // This test exercises the chat_input element rendering to kill the > → >=
-    // mutant in render_scroll_indicators. We test via the public API by ensuring
     // the element renders without panic when content exactly fills the viewport.
     // (Indirect test - the real assertion is that the element doesn't crash
     // and produces output at the exact boundary.)

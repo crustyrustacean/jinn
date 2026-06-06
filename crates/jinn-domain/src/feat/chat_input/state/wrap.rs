@@ -453,7 +453,6 @@ mod tests {
         assert_eq!(lines[1].grapheme_end - lines[1].grapheme_start, 3);
     }
 
-    // --- Boundary tests for wrap_logical_line mutants ---
 
     #[rstest::rstest]
     fn exact_width_no_wrap_boundary() {

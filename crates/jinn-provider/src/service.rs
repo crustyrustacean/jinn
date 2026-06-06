@@ -286,7 +286,6 @@ mod tests {
     #[rstest::rstest]
     fn parse_retry_after_header_zero_seconds_returns_zero_duration() {
         // "0" parses as u64=0 and returns Some(ZERO), not None.
-        // The mutant -> Some(Default::default()) would also return Some(ZERO),
         // so we instead test that non-zero values produce non-zero durations.
         let result = parse_retry_after_header("0");
         assert_eq!(result, Some(Duration::ZERO));

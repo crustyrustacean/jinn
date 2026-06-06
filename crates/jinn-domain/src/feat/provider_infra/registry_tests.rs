@@ -759,7 +759,6 @@ fn merge_cache_ignores_unknown_provider() {
     assert_eq!(registry.providers().len(), 1);
 }
 
-// --- S-Tier: Kill mutants for unavailable_providers ---
 
 #[rstest::rstest]
 fn unavailable_providers_returns_correct_entries() {
