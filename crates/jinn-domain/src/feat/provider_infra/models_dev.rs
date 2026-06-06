@@ -327,7 +327,6 @@ mod tests {
         assert_eq!(result, None);
     }
 
-    // --- S-Tier: Kill mutant for is_empty ---
 
     #[rstest::rstest]
     fn is_empty_returns_false_when_data_present() {

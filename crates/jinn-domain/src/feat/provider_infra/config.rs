@@ -559,7 +559,6 @@ tool_stream = true
         );
     }
 
-    // --- S-Tier: Kill mutants for save_config, create_default_config, default_true ---
 
     #[rstest::rstest]
     fn save_config_actually_writes_to_disk() {

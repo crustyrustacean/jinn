@@ -395,7 +395,6 @@ mod tests {
         assert!(h > 5, "diamond graph should be taller than a single node");
     }
 
-    // --- Mutant-killing tests for layout.rs ---
 
     // Kills: content_size + -> *, + -> -
     #[test]
