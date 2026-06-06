@@ -168,10 +168,27 @@ impl SyncPlugins {
             emit_tx,
         }
     }
+
     /// Returns the number of loaded plugins.
     #[must_use]
     pub fn plugin_count(&self) -> usize {
         self.hooks.len()
+    }
+}
+
+impl jinn_domain::feat::plugin_dispatch::PluginSyncHooks for SyncPlugins {
+    fn call_hooks(&self, hook: &str, ctx: &serde_json::Value) -> Vec<serde_json::Value> {
+        self.sync_hooks(hook)
+            .filter_map(|h| {
+                match h.call::<serde_json::Value, serde_json::Value>(ctx) {
+                    Ok(v) => (!v.is_null()).then_some(v),
+                    Err(e) => {
+                        tracing::warn!(hook, error = %e, "sync hook errored; dropped");
+                        None
+                    }
+                }
+            })
+            .collect()
     }
 }
 
