@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use parking_lot::Mutex;
 
 use tree_sitter_highlight::Highlighter;
 
@@ -182,53 +182,52 @@ fn get_lang(lang: &str) -> Option<LangEntry> {
 #[cfg(feature = "highlight-lang-kotlin")]
 const KOTLIN_HIGHLIGHTS: &str = r#"
 (line_comment) @comment
-(multiline_comment) @comment
+(block_comment) @comment
 
-(simple_identifier) @variable
-((simple_identifier) @variable.builtin (#eq? @variable.builtin "it"))
-((simple_identifier) @variable.builtin (#eq? @variable.builtin "field"))
+(identifier) @variable
+((identifier) @variable.builtin (#eq? @variable.builtin "it"))
+((identifier) @variable.builtin (#eq? @variable.builtin "field"))
 (this_expression) @variable.builtin
 (super_expression) @variable.builtin
 
-(class_parameter (simple_identifier) @property)
-(class_body (property_declaration (variable_declaration (simple_identifier) @property)))
-(_ (navigation_suffix (simple_identifier) @property))
+(class_parameter (identifier) @property)
+(class_body (property_declaration (variable_declaration (identifier) @property)))
 
-(enum_entry (simple_identifier) @constant)
-(type_identifier) @type
+(enum_entry (identifier) @constant)
 
-(package_header . (identifier)) @namespace
-(import_header "import" @include)
+; The -ng grammar has no `import_header` wrapper; imports are bare `import`
+; nodes. `package_header` contains identifier/qualified_identifier.
+(package_header (qualified_identifier (identifier) @namespace))
+(import (identifier) @include)
+(import (qualified_identifier) @include)
 
 (label) @label
 
-(function_declaration . (simple_identifier) @function)
+(function_declaration . (identifier) @function)
 (getter ("get") @function.builtin)
 (setter ("set") @function.builtin)
 (primary_constructor) @constructor
 (secondary_constructor ("constructor") @constructor)
-(constructor_invocation (user_type (type_identifier) @constructor))
+(constructor_invocation (user_type) @constructor)
 
-(parameter (simple_identifier) @variable.parameter)
-(parameter_with_optional_type (simple_identifier) @variable.parameter)
-(lambda_literal (lambda_parameters (variable_declaration (simple_identifier) @variable.parameter)))
+; The -ng grammar no longer models `parameter_with_optional_type` nor
+; bare `type_identifier`; types are matched via `user_type`.
+(parameter (identifier) @variable.parameter)
+(lambda_literal (lambda_parameters (variable_declaration (identifier) @variable.parameter)))
 
-(call_expression . (simple_identifier) @function)
-(call_expression (navigation_expression (navigation_suffix (simple_identifier) @function) .))
+(call_expression . (identifier) @function)
+(call_expression (navigation_expression (identifier) @function) .)
 
-(real_literal) @number
-(integer_literal) @number
-(long_literal) @number
-(hex_literal) @number
-(bin_literal) @number
-(unsigned_literal) @number
-(null_literal) @boolean
-(boolean_literal) @boolean
+; Literals were collapsed into `number_literal` in the -ng grammar;
+; `null`/`boolean` have no dedicated node and are matched as keywords below.
+(number_literal) @number
+(float_literal) @number
 (character_literal) @string
 (string_literal) @string
-(character_escape_seq) @string.escape
+(multiline_string_literal) @string
+(escape_sequence) @string.escape
 
-(type_alias "typealias" @keyword)
+(type_alias ("typealias") @keyword)
 [
   (class_modifier) (member_modifier) (function_modifier)
   (property_modifier) (platform_modifier) (variance_modifier)
@@ -237,21 +236,23 @@ const KOTLIN_HIGHLIGHTS: &str = r#"
 ] @keyword
 ["val" "var" "enum" "class" "object" "interface"] @keyword
 ("fun") @keyword.function
-(jump_expression) @exception
 ["if" "else" "when"] @conditional
 ["for" "do" "while"] @repeat
 ["try" "catch" "throw" "finally"] @exception
+; `break` and `continue` are not anonymous tokens in the -ng grammar;
+; they parse as identifiers and are matched by the (identifier) @variable rule.
+["return"] @keyword.return
 
 (annotation "@" @attribute (use_site_target)? @attribute)
-(annotation (user_type (type_identifier) @attribute))
-(annotation (constructor_invocation (user_type (type_identifier) @attribute)))
+(annotation (user_type) @attribute)
+(annotation (constructor_invocation (user_type) @attribute))
 (file_annotation "@" @attribute "file" @attribute ":" @attribute)
 
 ["!" "!=" "!==" "=" "==" "===" ">" ">=" "<" "<=" "||" "&&"
  "+" "++" "+=" "-" "--" "-=" "*" "*=" "/" "/=" "%" "%="
- "?." "?:" "!!" "is" "in" "as" "as?" ".." "..<" "->"] @operator
+ "." "?:" "!!" "is" "in" "as" "as?" ".." "..<" "->"] @operator
 
-["(" ")" "[" "]" "{" "}"] @punctuation.bracket
+[("(") (")") ("[") ("]") ("{") ("}")] @punctuation.bracket
 ["." "," ";" ":" "::"] @punctuation.delimiter
 "#;
 
@@ -269,14 +270,10 @@ const CMAKE_HIGHLIGHTS: &str = r#"
 
 (normal_command (identifier) @function)
 
-[
-  "if" "elseif" "else" "endif"
-  "foreach" "endforeach" "while" "endwhile"
-  "function" "endfunction"
-  "macro" "endmacro"
-  "block" "endblock"
-  "return" "break" "continue"
-] @keyword
+;
+; NOTE: tree-sitter-cmake has no reserved keywords. Control-flow commands like
+; if/else/foreach/while/return/macro are ordinary identifiers handled by the
+; (normal_command (identifier) @function) rule above. Do not add a @keyword block here.
 
 [
   "ENV" "CACHE"
@@ -303,7 +300,7 @@ const PROTO_HIGHLIGHTS: &str = r#"
 ["(" ")" "[" "]" "{" "}"] @punctuation.bracket
 "#;
 
-fn build_config(entry: &LangEntry) -> tree_sitter_highlight::HighlightConfiguration {
+fn build_config(entry: &LangEntry) -> Option<tree_sitter_highlight::HighlightConfiguration> {
     let mut config = tree_sitter_highlight::HighlightConfiguration::new(
         entry.language.clone(),
         "",
@@ -311,14 +308,27 @@ fn build_config(entry: &LangEntry) -> tree_sitter_highlight::HighlightConfigurat
         "",
         "",
     )
-    .expect("failed to create HighlightConfiguration");
+    .ok()?;
     config.configure(HIGHLIGHT_NAMES);
-    config
+    Some(config)
 }
 
 pub struct TreeSitterHighlighter {
     highlighter: Mutex<Highlighter>,
 }
+
+// Compile-time proof that the highlighter uses a non-poisoning mutex.
+// `parking_lot::Mutex` cannot poison (no PoisonError in its API), so the
+// `.lock().unwrap()` panic surface that `std::sync::Mutex` would create is
+// eliminated at the type level. If a future edit swaps the field back to
+// `std::sync::Mutex`, this assertion fails to compile.
+#[cfg(test)]
+const _: fn() = || {
+    fn _assert_parking_lot_mutex(h: &TreeSitterHighlighter) {
+        let _: &parking_lot::Mutex<Highlighter> = &h.highlighter;
+    }
+};
+
 
 impl TreeSitterHighlighter {
     pub fn new() -> Self {
@@ -340,8 +350,11 @@ impl CodeHighlighter for TreeSitterHighlighter {
             Some(e) => e,
             None => return Vec::new(),
         };
-        let config = build_config(&entry);
-        let mut hl = self.highlighter.lock().unwrap();
+        let config = match build_config(&entry) {
+            Some(c) => c,
+            None => return Vec::new(),
+        };
+        let mut hl = self.highlighter.lock();
 
         let events = match hl.highlight(&config, code.as_bytes(), None, |_| None) {
             Ok(e) => e,
@@ -376,4 +389,93 @@ impl CodeHighlighter for TreeSitterHighlighter {
 
         segments
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::style::{Color, Modifier, Style};
+
+    fn comment_style() -> Style {
+        Style::default()
+            .fg(Color::DarkGray)
+            .add_modifier(Modifier::ITALIC)
+    }
+
+
+
+
+    // Test 1: Kotlin renders (regression) — the original crash.
+    #[test]
+    fn kotlin_renders_without_panic() {
+        let hl = TreeSitterHighlighter::new();
+        let segs = hl.highlight("kotlin", "fun main() {}");
+        assert!(!segs.is_empty(), "Kotlin should produce highlighted segments");
+    }
+
+    // Test 2: Kotlin block comment recognized via corrected node name.
+    #[test]
+    fn kotlin_block_comment_styled() {
+        let hl = TreeSitterHighlighter::new();
+        let segs = hl.highlight("kotlin", "/* x */");
+        let has_comment = segs
+            .iter()
+            .any(|s| s.style == comment_style());
+        assert!(
+            has_comment,
+            "At least one segment should carry the comment style"
+        );
+    }
+
+    // Test 3: A malformed query degrades gracefully (returns None, no panic).
+    #[test]
+    fn build_config_rejects_invalid_query() {
+        let entry = LangEntry {
+            language: tree_sitter_rust::LANGUAGE.into(),
+            highlights_query: "(does_not_exist) @comment",
+        };
+        let config = build_config(&entry);
+        assert!(config.is_none(), "Invalid query must yield None, not panic");
+    }
+
+    // Test 4: Unknown language degrades to empty segments.
+    #[test]
+    fn unknown_language_returns_empty() {
+        let hl = TreeSitterHighlighter::new();
+        let segs = hl.highlight("brainfuck", "+[->]+");
+        assert!(segs.is_empty(), "Unknown language must yield empty segments");
+    }
+
+    // Test 5: Valid language with empty code returns empty segments.
+    #[test]
+    fn empty_code_returns_empty() {
+        let hl = TreeSitterHighlighter::new();
+        let segs = hl.highlight("rust", "");
+        assert!(segs.is_empty(), "Empty code must yield empty segments");
+    }
+
+    // Test 6: CMake query still valid (audit guard).
+    #[test]
+    fn cmake_build_config_is_some() {
+        let entry = get_lang("cmake").expect("cmake entry must exist");
+        assert!(build_config(&entry).is_some(), "CMake query must build");
+    }
+
+    // Test 7: Proto query still valid (audit guard).
+    #[test]
+    fn proto_build_config_is_some() {
+        let entry = get_lang("proto").expect("proto entry must exist");
+        assert!(build_config(&entry).is_some(), "Proto query must build");
+    }
+
+    // Test 8: Sequential highlight() calls never panic — the parking_lot
+    // mutex cannot poison, so repeated use stays alive.
+    #[test]
+    fn sequential_highlight_calls_do_not_panic() {
+        let hl = TreeSitterHighlighter::new();
+        let _ = hl.highlight("rust", "fn a() {}");
+        let _ = hl.highlight("rust", "fn b() {}");
+        // If we got here, the second lock() did not panic.
+    }
+
 }
