@@ -14,7 +14,7 @@ use error_stack::{Report, ResultExt};
 use jinn_domain::Command;
 use jinn_domain::common::actor::protocol::dynamic_command::DynamicCommand;
 use jinn_domain::common::actor::message_sink::MessageSink;
-use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry};
+use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
 use jinn_domain::feat::plugin_dispatch::protocol::command::TogglePlugin;
 use jinn_domain::feat::plugin_dispatch::DomainNodeContext;
 use jinn_domain::feat::session::chat_entry::ChatEntry;
@@ -81,6 +81,12 @@ struct LuaFireAsyncHook {
     text: Option<String>,
 }
 
+#[derive(serde::Deserialize)]
+struct LuaSetChatInput {
+    session_id: SessionId,
+    text: String,
+}
+
 // ─── Verb → Command conversions ───────────────────────────────────────
 
 fn push_chat_entry_from_lua(
@@ -135,6 +141,16 @@ fn fire_async_hook_from_lua(
     Ok(Command::Dynamic(DynamicCommand {
         name: "plugin::fire_async".to_owned(),
         payload,
+    }))
+}
+
+fn set_chat_input_from_lua(
+    _ctx: CmdCtx,
+    lua: LuaSetChatInput,
+) -> Result<Command, Report<PluginWiringError>> {
+    Ok(Command::SetChatInputText(SetChatInputText {
+        session_id: lua.session_id,
+        text: lua.text,
     }))
 }
 
@@ -198,6 +214,7 @@ fn translate_command(cmd: &PluginCommand) -> Result<Command, Report<PluginWiring
         }
         "disable_plugin" => translate::<LuaDisablePlugin>(cmd, disable_plugin_from_lua),
         "fire_async_hook" => translate::<LuaFireAsyncHook>(cmd, fire_async_hook_from_lua),
+        "set_chat_input" => translate::<LuaSetChatInput>(cmd, set_chat_input_from_lua),
         other => {
             let ctx = CmdCtx {
                 plugin_name: cmd.plugin_name.clone(),
@@ -514,5 +531,25 @@ mod tests {
         assert_eq!(d.name, "plugin::fire_async");
         assert_eq!(d.payload["hook"], "on_toggle");
         assert!(d.payload.get("text").is_none_or(|v| v.is_null()));
+    }
+
+    #[test]
+    fn set_chat_input_translates_to_set_chat_input_text() {
+        let cmd = PluginCommand {
+            plugin_name: "prompt_enrichment".to_owned(),
+            name: "set_chat_input".to_owned(),
+            data: serde_json::json!({
+                "session_id": "s-test-session",
+                "text": "enriched prompt text",
+            }),
+        };
+        let result = translate_command(&cmd).expect("should translate");
+        match result {
+            Command::SetChatInputText(s) => {
+                assert_eq!(s.session_id.to_string(), "s-test-session");
+                assert_eq!(s.text, "enriched prompt text");
+            }
+            other => panic!("expected SetChatInputText, got {other:?}"),
+        }
     }
 }
