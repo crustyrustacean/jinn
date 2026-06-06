@@ -284,6 +284,7 @@ mod tests {
     }
 
     #[rstest::rstest]
+    #[rstest::rstest]
     fn filesystem_load_returns_default_when_missing() {
         // Given a temp directory with no file.
         let dir = tempfile::tempdir().expect("temp dir");
@@ -295,9 +296,11 @@ mod tests {
         // When loading.
         let prefs = storage.reload().expect("reload");
 
-        // Then defaults are returned (file is NOT auto-created on load).
+        // Then defaults are returned AND the file is auto-created with the
+        // canonical template (so users get a comment-rich starter config on
+        // first run).
         assert!(prefs.last_model.is_none());
-        assert!(!path.exists());
+        assert!(path.exists(), "first-run load should auto-create the config file");
     }
 
     #[rstest::rstest]

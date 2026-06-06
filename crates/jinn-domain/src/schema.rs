@@ -5,6 +5,7 @@ diesel::table! {
         id -> Nullable<Text>,
         timestamp -> Text,
         kind -> Text,
+        context_history -> Text,
     }
 }
 

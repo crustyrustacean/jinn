@@ -147,6 +147,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("x", Intent::ChatEntryIgnoreSelected, KeyCategory::Context)
             // Expand/collapse tool entry
             .bind("e", Intent::ExpandToolEntry, KeyCategory::Navigation)
+            // Toggle audit popup for the selected entry
+            .bind("a", Intent::ToggleAuditPopup, KeyCategory::Navigation)
             // Toggle ignored block visibility
             .bind("h", Intent::ToggleIgnoredBlockVisibility, KeyCategory::Navigation)
             // Fork session from selected entry
