@@ -20,6 +20,7 @@
 //!   (via `fire_async_for_session_json`).
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use error_stack::Report;
 use serde_json::Value;
@@ -32,11 +33,13 @@ use crate::common::state::State;
 use crate::PhaseKind;
 use crate::SessionId;
 use crate::feat::attached_plugin::AttachedPlugin;
+use crate::feat::plugin_dispatch::DomainNodeContext;
 use crate::feat::plugin_dispatch::protocol::command::{AttachPlugin, DetachPlugin, TogglePlugin};
 use crate::feat::plugin_dispatch::protocol::event::{
     PluginAttached, PluginDetached, PluginToggled,
 };
 use crate::feat::plugin_system::SessionRegistryId;
+use crate::feat::session::chat_entry::ChatEntryKind;
 use crate::feat::session::protocol::session_phase_changed::SessionPhaseChanged;
 use crate::feat::session_lifecycle::protocol::event::SessionCreated;
 use crate::protocol::{Command, Event};
@@ -87,6 +90,9 @@ pub struct PluginDispatchActor {
     registry: AttachedPluginRegistry,
     /// The session ID active at startup (for `on_app_started` ctx).
     startup_session_id: String,
+    /// Domain LLM context shared with plugin `ctx.request("llm_oneshot")`.
+    /// Resolves pending one-shot oneshots when a workflow session completes.
+    domain_ctx: Arc<DomainNodeContext>,
 }
 
 /// Dependencies for [`PluginDispatchActor`].
@@ -94,6 +100,7 @@ pub struct PluginDispatchActorDeps {
     pub services: Services,
     pub state: State,
     pub startup_session_id: String,
+    pub domain_ctx: Arc<DomainNodeContext>,
 }
 
 impl Actor for PluginDispatchActor {
@@ -122,6 +129,7 @@ impl Actor for PluginDispatchActor {
             state: deps.state,
             registry: AttachedPluginRegistry::default(),
             startup_session_id: deps.startup_session_id,
+            domain_ctx: deps.domain_ctx,
         }
     }
 
@@ -357,6 +365,17 @@ impl PluginDispatchActor {
     }
 
     async fn fire_on_phase_changed(&self, session_id: SessionId, new_phase: PhaseKind) {
+        // Workflow session completed: resolve any pending plugin LLM one-shot oneshot.
+        // A workflow session is one spawned by DomainNodeContext::send_llm_request_oneshot;
+        // it has is_workflow=true and a pending sender in domain_ctx. Extract the last
+        // assistant entry text and resolve the awaiting coroutine.
+        if new_phase == PhaseKind::Idle {
+            if self.domain_ctx.has_pending(&session_id) {
+                let response = self.extract_last_assistant_text(&session_id);
+                self.domain_ctx.resolve_completed(&session_id, response);
+            }
+        }
+
         let hook = match new_phase {
             PhaseKind::Idle => "on_turn_end",
             PhaseKind::Sending => "on_user_submit",
@@ -383,6 +402,25 @@ impl PluginDispatchActor {
         if let Err(e) = result {
             tracing::warn!(err = %e, "{} hook failed", hook);
         }
+    }
+
+    /// Extract the text of the last assistant entry for a session.
+    /// Used to resolve a pending plugin LLM one-shot oneshot when a workflow
+    /// session completes. Returns an empty string if no assistant entry exists.
+    fn extract_last_assistant_text(&self, session_id: &SessionId) -> String {
+        let guard = self.state.read();
+        let Some(session) = guard.session.get(session_id) else {
+            return String::new();
+        };
+        session
+            .history()
+            .iter()
+            .rev()
+            .find_map(|entry| match &entry.kind {
+                ChatEntryKind::Assistant(text) => Some(text.clone()),
+                _ => None,
+            })
+            .unwrap_or_default()
     }
 
     /// Handle the generic `plugin::fire_async` dynamic command: route an
@@ -457,7 +495,9 @@ mod tests {
                 services: Services::new(),
                 state,
                 startup_session_id: session_id.to_string(),
+                domain_ctx: std::sync::Arc::new(DomainNodeContext::new(Services::new(), State::new(AppState::default()))),
             },
+
             &mut ctx,
         );
         (actor, sink, ctx, session_id)

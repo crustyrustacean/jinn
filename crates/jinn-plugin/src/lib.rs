@@ -70,7 +70,7 @@ pub use system::{CommandDispatcher, PluginSystem};
 pub fn noop_request_handler() -> RequestHandler {
     std::sync::Arc::new(|name: &str, _data: &serde_json::Value| {
         tracing::warn!(name, "no request handler configured, returning null");
-        serde_json::Value::Null
+        std::boxed::Box::pin(async { serde_json::Value::Null })
     })
 }
 

@@ -115,8 +115,31 @@ pub fn create_core_with_actor_host(
             crate::plugin_wiring::handle_plugin_command(cmd, &*sink);
         }
     });
-    let plugin_request_handler: jinn_plugin::RequestHandler =
-        std::sync::Arc::new(crate::plugin_wiring::handle_plugin_request);
+    // `DomainNodeContext` is needed by the plugin request handler (for `llm_oneshot`)
+    // but it can't be constructed until `services` is assembled (line ~168, after
+    // `PluginSystem::new`). Bridge with a `OnceLock` filled in once `services` exists.
+    let domain_ctx_cell: std::sync::Arc<
+        std::sync::OnceLock<jinn_domain::feat::plugin_dispatch::DomainNodeContext>,
+    > = std::sync::Arc::new(std::sync::OnceLock::new());
+    let handler_cell = domain_ctx_cell.clone();
+    let plugin_request_handler: jinn_plugin::RequestHandler = std::sync::Arc::new({
+        move |name: &str, data: &serde_json::Value| {
+            let cell = handler_cell.clone();
+            let name = name.to_string();
+            let data = data.clone();
+            std::boxed::Box::pin(async move {
+                match cell.get() {
+                    Some(ctx) => {
+                        crate::plugin_wiring::handle_plugin_request(&name, &data, ctx).await
+                    }
+                    None => {
+                        tracing::warn!(name, "plugin request before domain_ctx ready; returning null");
+                        serde_json::Value::Null
+                    }
+                }
+            })
+        }
+    });
 
     let (sync_plugins, async_plugins, plugin_sync_handle) = jinn_plugin::PluginSystem::new(
         &paths.plugins_dir(),
@@ -166,6 +189,14 @@ pub fn create_core_with_actor_host(
             ),
         tempdir: None,
     };
+
+    // Now that `services` + `state` exist, build the shared `DomainNodeContext`
+    // and publish it into the `OnceLock` so the plugin request handler can see it.
+    let shared_domain_ctx = std::sync::Arc::new(
+        jinn_domain::feat::plugin_dispatch::DomainNodeContext::new(services.clone(), state.clone()),
+    );
+    let _ = domain_ctx_cell.set((*shared_domain_ctx).clone());
+
 
     // ── Infrastructure actors (no lifecycle events) ──────────────────────
 
@@ -851,6 +882,7 @@ pub fn create_core_with_actor_host(
             services: services.clone(),
             state: state.clone(),
             startup_session_id: state.read().session.active_session_id().to_string(),
+            domain_ctx: shared_domain_ctx.clone(),
         },
     ));
 

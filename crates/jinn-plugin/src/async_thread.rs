@@ -37,9 +37,16 @@ use crate::sync_state::PluginHooks;
 
 /// Callback type for handling async requests from plugins.
 ///
-/// Called when a plugin invokes `ctx.request(name, data)`.
-pub type RequestHandler =
-    std::sync::Arc<dyn Fn(&str, &serde_json::Value) -> serde_json::Value + Send + Sync>;
+/// Called when a plugin invokes `ctx.request(name, data)`. Returns a pinned,
+/// boxed future so the handler may itself `.await` async work (e.g. an LLM
+/// one-shot) before resolving the awaiting Lua coroutine.
+pub type RequestHandler = std::sync::Arc<
+    dyn Fn(&str, &serde_json::Value) -> std::pin::Pin<
+        std::boxed::Box<
+            dyn std::future::Future<Output = serde_json::Value> + Send,
+        >,
+    > + Send + Sync,
+>;
 
 /// Per-session Lua state + loaded hooks.
 struct SessionState {
@@ -437,7 +444,7 @@ fn build_async_ctx(
                 let handler = handler.clone();
                 async move {
                     let json_data = bindings::value_to_json(&lua, &data).unwrap_or_default();
-                    let response = handler(&name, &json_data);
+                    let response = handler(&name, &json_data).await;
                     bindings::json_to_lua_value(&lua, &response)
                 }
             })?;
