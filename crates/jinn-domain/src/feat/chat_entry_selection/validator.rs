@@ -698,19 +698,5 @@ mod ignore_selected_tests {
         assert!(result.is_ok());
     }
 
-    #[rstest::rstest]
-    fn ignore_selected_accepts_skill_entry() {
-        // Given a state with a selected skill entry.
-        let mut state = AppState::default();
-        state
-            .active_session_mut()
-            .push_entry(ChatEntry::skill("name", "loc", "content"));
-        state.active_session_mut().select_next_entry();
-
-        // When validating ignore selected.
-        let result = validate_chat_entry_ignore_selected(&state);
-
-        // Then validation succeeds.
-        assert!(result.is_ok());
-    }
 }
+

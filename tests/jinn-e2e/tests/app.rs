@@ -735,6 +735,7 @@ async fn when_submit_tool_execution_completed(world: &mut AppWorld) {
                 success: true,
                 full_content: None,
                 truncation: None,
+                pin_position: None,
             },
         },
     ));

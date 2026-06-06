@@ -1155,6 +1155,7 @@ impl ChatSessionState {
         success: bool,
         mut full_content: Option<String>,
         mut truncation: Option<jinn_provider::tool_types::TruncationMeta>,
+        pin_position: Option<PinPosition>,
     ) {
         let status = if success {
             crate::feat::session::tool_result_status::ToolResultStatus::Success
@@ -1177,13 +1178,19 @@ impl ChatSessionState {
                     status: entry_status,
                     full_content: entry_full_content,
                     truncation: entry_truncation,
+                    pin_position: entry_kind_pin,
                     ..
                 } => {
                     content.clone_into(entry_content);
                     *entry_status = status;
                     *entry_full_content = full_content;
                     *entry_truncation = truncation;
+                    *entry_kind_pin = pin_position;
+                    // Entry-level pin mirrors the kind-level pin so assembly,
+                    // compaction, and UI consumers read a single field.
+                    entry.pin_position = pin_position;
                 }
+
                 _ => {}
             }
         } else {
@@ -1199,34 +1206,45 @@ impl ChatSessionState {
                         status: entry_status,
                         full_content: entry_full_content,
                         truncation: entry_truncation,
+                        pin_position: entry_kind_pin,
                         ..
                     } if entry_id == tool_call_id => {
                         content.clone_into(entry_content);
                         *entry_status = status;
                         *entry_full_content = full_content.take();
                         *entry_truncation = truncation.take();
+                        *entry_kind_pin = pin_position;
+                        entry.pin_position = pin_position;
                         existing_found = true;
                         break;
                     }
+
                     _ => {}
                 }
             }
 
             if !existing_found {
                 // No existing entry found - push a new one.
-                if let Some(meta) = truncation {
+                let mut entry = if let Some(meta) = truncation {
                     let full = full_content.unwrap_or_default();
-                    self.push_entry(ChatEntry::tool_result_truncated(
+                    ChatEntry::tool_result_truncated(
                         tool_call_id,
                         name,
                         content.to_owned(),
                         full,
                         status,
                         meta,
-                    ));
+                    )
                 } else {
-                    self.push_entry(ChatEntry::tool_result(tool_call_id, name, content, status));
+                    ChatEntry::tool_result(tool_call_id, name, content, status)
+                };
+                // Propagate tool-requested pin onto both the kind variant and
+                // the entry-level field so assembly/compaction read a single source.
+                if let ChatEntryKind::ToolResult { pin_position: ref mut kp, .. } = entry.kind {
+                    *kp = pin_position;
                 }
+                entry.pin_position = pin_position;
+                self.push_entry(entry);
             }
         }
     }
@@ -1337,6 +1355,35 @@ impl ChatSessionState {
     /// Used by the skill picker to commit toggle state.
     pub fn set_disabled_skills(&mut self, skills: HashSet<String>) {
         self.core.profile.disabled_skills = skills;
+    }
+    /// Compute the set of skill names that are currently loaded in this session.
+    ///
+    /// A skill is considered loaded if its body is present in history as a pinned
+    /// ToolResult from the `skill` tool whose content begins with `<skill name="X"`.
+    pub fn loaded_skills(&self) -> HashSet<String> {
+        use crate::feat::session::chat_entry::ChatEntryKind;
+        let mut out = HashSet::new();
+        for entry in self.history().iter() {
+            if !entry.is_pinned() {
+                continue;
+            }
+            let ChatEntryKind::ToolResult { name: tool_name, content, .. } = &entry.kind else {
+                continue;
+            };
+            if tool_name != "skill" {
+                continue;
+            }
+            // content starts with `<skill name="X"` — extract X.
+            let prefix = "<skill name=\"";
+            let Some(rest) = content.strip_prefix(prefix) else {
+                continue;
+            };
+            let Some(end) = rest.find('\"') else {
+                continue;
+            };
+            out.insert(rest[..end].to_owned());
+        }
+        out
     }
 
     /// The model for this session.

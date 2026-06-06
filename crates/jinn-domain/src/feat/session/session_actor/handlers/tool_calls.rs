@@ -6,6 +6,7 @@
 use crate::common::actor::ActorContext;
 use crate::feat::context::assemble::assemble_prompt;
 use crate::feat::provider::protocol::command::SendToLlmProvider;
+use crate::feat::session::chat_entry::PinPosition;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
@@ -71,6 +72,7 @@ impl SessionPersistenceActor {
                 event.result.success,
                 event.result.full_content.clone(),
                 event.result.truncation.clone(),
+                event.result.pin_position.map(PinPosition::from),
             );
         };
 
@@ -270,6 +272,7 @@ mod tests {
                 success: true,
                 full_content: None,
                 truncation: None,
+                pin_position: None,
             }],
         };
         actor.on_tool_batch_completed(&event, &ctx);
@@ -390,6 +393,7 @@ mod tests {
                 success: true,
                 full_content: None,
                 truncation: None,
+                pin_position: None,
             },
         };
         actor.on_tool_execution_completed(&event, &ctx).await;
@@ -430,6 +434,7 @@ mod tests {
                 success: true,
                 full_content: None,
                 truncation: None,
+                pin_position: None,
             }],
         };
         actor.on_tool_batch_completed(&event, &ctx);
@@ -491,6 +496,7 @@ mod tests {
                 success: true,
                 full_content: None,
                 truncation: None,
+                pin_position: None,
             }],
         };
         actor.on_tool_batch_completed(&event, &ctx);
@@ -733,6 +739,7 @@ mod tests {
                 success: true,
                 full_content: None,
                 truncation: None,
+                pin_position: None,
             }],
         };
         actor.on_tool_batch_completed(&event, &ctx);
@@ -790,6 +797,7 @@ mod tests {
                 success: true,
                 full_content: None,
                 truncation: None,
+                pin_position: None,
             }],
         };
         actor.on_tool_batch_completed(&event, &ctx);

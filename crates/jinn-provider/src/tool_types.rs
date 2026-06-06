@@ -2,7 +2,21 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Which truncation limit was hit.
+/// Where a tool result's session entry should be pinned in the assembled prompt.
+///
+/// Mirrors `jinn_domain::session::chat_entry::PinPosition`; duplicated here so
+/// `jinn-provider` can express pinning without depending on `jinn-domain`. The
+/// session actor converts to the domain type at the boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ToolResultPinPosition {
+    /// Always appear at the very beginning of the assembled prompt.
+    Top,
+    /// Always appear just before the most recent message.
+    Bottom,
+    /// Stay at this entry's original position in history.
+    Relative,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TruncatedBy {
     /// The line limit was exceeded.
@@ -100,6 +114,11 @@ pub struct ToolResult {
     /// Truncation metadata. `Some(...)` only when truncation occurred.
     #[serde(default)]
     pub truncation: Option<TruncationMeta>,
+    /// If set, the session actor pins the resulting `ChatEntryKind::ToolResult`
+    /// entry at this position when it is pushed/finalized. `None` (default)
+    /// leaves the entry in normal working history.
+    #[serde(default)]
+    pub pin_position: Option<ToolResultPinPosition>,
 }
 
 #[cfg(test)]
@@ -157,6 +176,7 @@ mod tests {
             success: true,
             full_content: None,
             truncation: None,
+            pin_position: None,
         };
         let json = serde_json::to_string(&result).expect("serialize");
         let back: ToolResult = serde_json::from_str(&json).expect("deserialize");
@@ -178,6 +198,7 @@ mod tests {
                 output_lines: 1,
                 output_bytes: 9,
             }),
+            pin_position: None,
         };
         let json = serde_json::to_string(&result).expect("serialize");
         let back: ToolResult = serde_json::from_str(&json).expect("deserialize");

@@ -234,6 +234,7 @@ impl Actor for ToolOrchestratorActor {
                         success: false,
                         full_content: None,
                         truncation: None,
+                        pin_position: None,
                     }))
                 },
             },
@@ -457,6 +458,7 @@ impl ToolOrchestratorActor {
                                     success: false,
                                     full_content: None,
                                     truncation: None,
+                                    pin_position: None,
                                 },
                             }
                         }
@@ -509,6 +511,7 @@ impl ToolOrchestratorActor {
                     success: false,
                     full_content: None,
                     truncation: None,
+                    pin_position: None,
                 };
 
                 if let Err(e) =
