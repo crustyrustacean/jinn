@@ -306,3 +306,43 @@ fn estimate_tool_schema_tokens_sums_all_tools() {
     let second = estimate_tool_schema_tokens(&estimator, &tools[1..2]);
     assert_eq!(total, first + second);
 }
+
+#[rstest::rstest]
+fn estimate_entry_tokens_for_default_error_is_zero() {
+    // Given a Default-override Error entry - Default Errors are excluded
+    // from context by `is_in_context`, so the estimator returns 0.
+    // This guards against any drift where the estimator's Default branch
+    // computes a nonzero count for entries the renderer would skip.
+    let estimator = CharRatioEstimator;
+    let entry = ChatEntry::error("some failure");
+
+    // When estimating entry tokens.
+    let tokens = estimate_entry_tokens(&estimator, &entry);
+
+    // Then it returns 0 because the entry is out of context.
+    assert_eq!(tokens, 0);
+}
+
+#[rstest::rstest]
+fn estimate_entry_tokens_for_forced_include_error_uses_actionable_framing() {
+    // Given a ForcedInclude Error entry. The estimator must compute the
+    // count for the actionable framing (not the legacy `[Error]` prefix)
+    // so budget estimates stay aligned with what the renderer emits.
+    use crate::protocol::ContextOverride;
+    let estimator = CharRatioEstimator;
+    let text = "merge conflict report";
+    let entry =
+        ChatEntry::error(text).with_context_override(ContextOverride::ForcedInclude);
+
+    // When estimating entry tokens.
+    let tokens = estimate_entry_tokens(&estimator, &entry);
+
+    // Then the estimate equals the count of the rendered string,
+    // not the count of `[Error] {text}`.
+    let rendered = format!("The user has shared the following output for you to address:\n\n{text}");
+    assert_eq!(tokens, estimator.estimate(&rendered));
+    assert_ne!(
+        tokens,
+        estimator.estimate(&format!("[Error] {text}"))
+    );
+}

@@ -652,12 +652,37 @@ fn error_entry_forced_include_produces_user_message() {
     // When converting to messages.
     let messages = entries_to_messages(&entries);
 
-    // Then a User message with [Error] prefix is produced.
+    // Then a User message is produced with the actionable framing that
+    // signals to the LLM the user wants it to address the contents
+    // (not the legacy `[Error]` prefix, which primes investigation).
     assert_eq!(messages.len(), 1);
     assert_eq!(
         messages[0],
         LlmMessage::User {
-            content: "[Error] important error".into()
+            content: "The user has shared the following output for you to address:\n\nimportant error".into()
+        }
+    );
+}
+
+#[rstest::rstest]
+fn pinned_error_with_default_override_produces_error_prefix() {
+    // Given a pinned Error entry with Default override (in context via
+    // the pin, not via ForcedInclude). This is the only path that
+    // reaches the Default branch of the override match in
+    // entries_to_messages, since unpinned Default Errors are filtered
+    // out by is_in_context upstream.
+    let entries = vec![ChatEntry::error("pinned error").with_pin(PinPosition::Top)];
+
+    // When converting to messages.
+    let messages = entries_to_messages(&entries);
+
+    // Then the legacy [Error] prefix is used. Pinning alone does not
+    // trigger the actionable framing - only ForcedInclude does.
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0],
+        LlmMessage::User {
+            content: "[Error] pinned error".into()
         }
     );
 }
