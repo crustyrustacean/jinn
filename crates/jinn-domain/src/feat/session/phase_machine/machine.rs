@@ -316,19 +316,7 @@ impl SessionPhaseMachine {
         }
     }
 
-    /// Test-only helper to force the phase machine into a specific phase.
-    ///
-    /// Bypasses the normal transition guards - intended for tests that need to
-    /// exercise phase-dependent routing logic without going through the full
-    /// event-driven lifecycle.
-    #[cfg(test)]
-    pub(crate) fn force_phase_for_test(&mut self, kind: PhaseKind) {
-        self.phase = match kind {
-            PhaseKind::Idle => Phase::Idle(IdlePhase),
-            PhaseKind::Sending => Phase::Sending(SendingPhase),
-            PhaseKind::Streaming => Phase::Streaming(StreamingPhase::default()),
-        };
-    }
+
 
     // ── Internal helpers ────────────────────────────────────────────────
 

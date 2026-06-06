@@ -67,9 +67,9 @@ impl UiElement for ChatInputBoxElement {
         };
         let buffer_count = state.active_session().steering_buffer().len();
         let badge_text = if buffer_count > 0 {
-            format!("[{} · {}]", mode_label, buffer_count)
+            format!("[{mode_label} · {buffer_count}]")
         } else {
-            format!("[{}]", mode_label)
+            format!("[{mode_label}]")
         };
         let badge = Line::from(badge_text)
             .right_aligned()

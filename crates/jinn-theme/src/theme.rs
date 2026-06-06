@@ -607,5 +607,62 @@ mod tests {
             restored.resolve().focus_accent
         );
         assert_eq!(original.resolve().gutter_bg, restored.resolve().gutter_bg);
+        assert_eq!(
+            original.resolve().input_mode_queue,
+            restored.resolve().input_mode_queue
+        );
+        assert_eq!(
+            original.resolve().input_mode_steer,
+            restored.resolve().input_mode_steer
+        );
+    }
+
+    #[test]
+    fn input_mode_fields_fall_back_when_absent() {
+        // Given a ThemeFile with both input_mode fields explicitly None.
+        let fallback = crate::default_theme::default_theme();
+        let sparse = ThemeFile {
+            focus_accent: None,
+            border_unfocused: None,
+            popup_title: None,
+            primary_text: None,
+            muted_text: None,
+            error_text: None,
+            success: None,
+            warning: None,
+            streaming: None,
+            node_awaiting_input: None,
+            gutter_bg: None,
+            gutter_context_included: None,
+            user_block_bg: None,
+            tool_fg: None,
+            tool_success_bg: None,
+            tool_failure_bg: None,
+            tool_pending_bg: None,
+            compaction_block_bg: None,
+            truncation_fg: None,
+            picker_active_marker: None,
+            picker_selected_bg: None,
+            picker_highlight_bg: None,
+            tab_active_fg: None,
+            tab_active_bg: None,
+            tab_inactive_fg: None,
+            selection_fg: None,
+            selection_bg: None,
+            accent_action: None,
+            age_fresh: None,
+            age_stale: None,
+            scroll_indicator_bg: None,
+            sidebar_resize_accent: None,
+            input_mode_queue: None,
+            input_mode_steer: None,
+        };
+
+        // When resolving with the fallback.
+        let resolved = sparse.resolve_with_fallback(&fallback);
+
+        // Then both fields take the fallback values.
+        assert_eq!(resolved.input_mode_queue, fallback.input_mode_queue);
+        assert_eq!(resolved.input_mode_steer, fallback.input_mode_steer);
     }
 }

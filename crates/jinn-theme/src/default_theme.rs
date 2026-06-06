@@ -95,4 +95,27 @@ mod tests {
         // Spot-check one field to confirm it's not Reset.
         assert_ne!(theme.focus_accent, ratatui::style::Color::Reset);
     }
+
+    #[test]
+    fn input_mode_theme_fields_have_non_reset_defaults() {
+        // Given the default theme.
+        let theme = default_theme();
+
+        // Then both input mode fields are non-Reset (i.e. have real fallback colors).
+        assert_ne!(
+            theme.input_mode_queue,
+            ratatui::style::Color::Reset,
+            "input_mode_queue must have a real default color"
+        );
+        assert_ne!(
+            theme.input_mode_steer,
+            ratatui::style::Color::Reset,
+            "input_mode_steer must have a real default color"
+        );
+        // And the steer color is distinct from queue (so users can tell modes apart).
+        assert_ne!(
+            theme.input_mode_queue, theme.input_mode_steer,
+            "queue and steer colors must differ"
+        );
+    }
 }

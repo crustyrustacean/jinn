@@ -250,7 +250,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<c-u>", Intent::ScrollUp, KeyCategory::Navigation)
             .bind("<c-d>", Intent::ScrollDown, KeyCategory::Navigation)
             .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
-            .bind("<M-s>", Intent::SidebarFocusSessions, KeyCategory::Navigation)
+
             .bind("<c-j>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
             .catch_all(|key: KeyEvent| {
                 if let Key::Char(c) = key.key {
