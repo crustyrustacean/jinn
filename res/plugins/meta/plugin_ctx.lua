@@ -44,12 +44,31 @@
 ---Fires when the user submits a message (session transitions to Sending).
 ---Future: may expose `text` (the submitted text).
 
+---
+---@class OnSubmitInterceptCtx : PluginCtx
+---Sync hook fired by `IntentHandler::handle` after a submit intent resolves
+---but before its commands are dispatched. Plugins can block or replace the
+---commands. Return `{ block = true }` to drop the commands, or `{ block = false }`
+---for pass-through. Runs on the render-thread (sync) Lua state — cannot call `ctx.request`.
+---
+---@field input_text string The current chat-input draft at submit time.
+
+---
+---@class OnChatInputBadgesRenderCtx : PluginCtx
+---Sync hook fired by the chat-input renderer each frame. Plugins return a list
+---of badge directives (`{ slot, text, style? }`) drawn into the consistent
+---chat-input badge location. Runs on the render-thread (sync) Lua state.
+---
+---@field active_session_id string The session currently in focus.
+
 -- ─── Verb payload shapes ───────────────────────────────────────────
 
 ---@alias PluginVerb
 ---| '"push_chat_entry"'
 ---| '"enqueue_user_message"'
 ---| '"disable_plugin"'
+---| '"fire_async_hook"'
+---| '"set_chat_input"'
 
 ---@class PushChatEntryPayload
 ---@field session_id string
@@ -66,3 +85,38 @@
 ---@class DisablePluginPayload
 ---@field session_id string
 ---@field plugin_name string
+
+---@class FireAsyncHookPayload
+---Generic handoff from the sync VM to the async VM. The plugin actor resolves
+---the `session_id`, then fires the named async `hook` with this payload as its
+---ctx. Enables sync hooks to kick off coroutine-capable work (e.g. LLM calls).
+---
+---@field hook string The async hook name to fire (e.g. `"on_enrich"`).
+---@field session_id string The session scope for the async hook.
+---@field text? string Optional payload forwarded into the async hook ctx.
+
+---@class SetChatInputPayload
+---Replaces the chat input box text for the given session.
+---
+---@field session_id string
+---@field text string The replacement text.
+
+--- ─── ctx.request contracts ───────────────────────────────────────
+---
+---`ctx.request(name, data)` is a blocking coroutine call resolved by a oneshot.
+---Named contracts:
+---
+---@alias PluginRequestName
+---| '"llm_oneshot"'
+
+---@class LlmOneshotRequest
+---History-less one-shot LLM call. Inherits the session's provider+model
+---configuration; sends NO chat history. Used for transformations like prompt
+---enrichment that don't need conversational context.
+---
+---@field session_id string The session whose provider+model to inherit.
+---@field system string The system prompt.
+---@field prompt string The user prompt (e.g. the draft to enrich).
+
+---@class LlmOneshotResponse
+---@field text string The model's response text.
