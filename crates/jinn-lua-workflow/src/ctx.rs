@@ -1,4 +1,3 @@
-
 //!
 //! [`CtxBuilder`] takes a serializable data struct and registers async
 //! capability methods via [`with_method`]. The resulting ctx table is passed
@@ -9,8 +8,6 @@ use mlua::{Function, Lua, Table, Value};
 
 use crate::registry::LuaError;
 use serde::Serialize;
-
-
 
 /// Builder for constructing the Lua ctx table.
 ///

@@ -96,6 +96,11 @@ mod tests {
     #![allow(
         clippy::expect_used,
         clippy::indexing_slicing,
+        clippy::manual_assert,
+        clippy::panic,
+        clippy::map_unwrap_or,
+        clippy::redundant_closure_for_method_calls,
+        clippy::collapsible_if,
         reason = "test code, panics are acceptable"
     )]
     //! Render-level tests for the audit popup overlay.
@@ -109,8 +114,8 @@ mod tests {
     //!
     //! Together they pin the contract that the popup paints at the computed
     //! rect with the expected text and is registered as a selectable region.
-    use jinn_domain::RenderCtx;
     use jinn_domain::FocusScope;
+    use jinn_domain::RenderCtx;
     use jinn_domain::feat::session::chat_entry::{ChangeSource, ChatEntry, ContextOverride};
     use jinn_domain::feat::ui::chat_log::audit_popup::AUDIT_POPUP_WIDTH;
     use jinn_testutil::setup_term;
@@ -118,19 +123,18 @@ mod tests {
 
     use super::render_audit_popup;
 
-
-
     /// Build an app with one user entry that has one audit event, with the
     /// audit popup toggle ON.
     fn app_with_audit_visible() -> crate::TuiApp {
         let app = crate::TuiApp::test_builder().build();
         let mut entry = ChatEntry::user("hello");
-        entry.apply_context_override(
-            ContextOverride::ForcedExclude,
-            ChangeSource::User,
-        );
+        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
         app.core.state.write().frontend.audit_popup_visible = true;
-        app.core.state.write().active_session_mut().push_entry(entry);
+        app.core
+            .state
+            .write()
+            .active_session_mut()
+            .push_entry(entry);
         app
     }
 
@@ -190,7 +194,11 @@ mod tests {
             .unwrap();
 
         // Then exactly one rect is registered, matching the popup width.
-        assert_eq!(rects.len(), 1, "exactly one popup rect should be registered");
+        assert_eq!(
+            rects.len(),
+            1,
+            "exactly one popup rect should be registered"
+        );
         let popup = rects[0];
         assert_eq!(popup.width, AUDIT_POPUP_WIDTH, "popup width");
         assert_eq!(
@@ -201,7 +209,10 @@ mod tests {
 
         // And the popup height accommodates header + body + 2 borders
         // (1 header + 1 body = 2 content lines + 2 borders = 4).
-        assert_eq!(popup.height, 4, "popup height should be content + 2 borders");
+        assert_eq!(
+            popup.height, 4,
+            "popup height should be content + 2 borders"
+        );
 
         // And the rendered buffer contains the header text on the first body
         // line (popup.y + 1, since row 0 is the top border).
@@ -283,7 +294,8 @@ mod tests {
                 .unwrap_or("");
             assert_eq!(left, "│", "missing left border at ({}, {})", popup.x, y);
             assert_eq!(
-                right, "│",
+                right,
+                "│",
                 "missing right border at ({}, {})",
                 popup.x + popup.width - 1,
                 y
@@ -329,10 +341,13 @@ mod tests {
         // Given a state with audit popup visibility OFF.
         let mut app = crate::TuiApp::test_builder().build();
         let mut entry = ChatEntry::user("hello");
-        entry
-            .apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
+        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
         // audit_popup_visible stays at default (false)
-        app.core.state.write().active_session_mut().push_entry(entry);
+        app.core
+            .state
+            .write()
+            .active_session_mut()
+            .push_entry(entry);
         let (mut terminal, _area) = setup_term(80, 24);
 
         // When rendering.

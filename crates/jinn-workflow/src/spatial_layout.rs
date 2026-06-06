@@ -703,7 +703,6 @@ mod tests {
         assert_eq!(result.as_deref(), Some("b"));
     }
 
-
     // Kills: overlaps_x < -> <=
     #[test]
     fn overlaps_x_touching_not_overlapping() {

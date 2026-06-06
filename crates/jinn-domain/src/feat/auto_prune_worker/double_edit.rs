@@ -170,7 +170,7 @@ fn collect_edit_write_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Ve
         let result_protected = history
             .iter()
             .find(|e| e.id == result_id)
-            .is_some_and(|e| e.is_protected_from_prune());
+            .is_some_and(ChatEntry::is_protected_from_prune);
 
         groups.entry(path.clone()).or_default().push(EditWritePair {
             call_entry_id: call_entry.id.clone(),

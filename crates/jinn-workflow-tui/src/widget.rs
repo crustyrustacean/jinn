@@ -377,7 +377,6 @@ mod tests {
         );
     }
 
-
     // Kills: render_connections == -> != for port matching
     #[test]
     fn widget_renders_connections_for_correct_ports() {
