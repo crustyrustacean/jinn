@@ -172,7 +172,14 @@ impl SessionPersistenceActor {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&event.session_id);
             if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
-                session.push_entry(entry);
+                let entry_id = entry.id.clone();
+                let index = session.push_entry(entry);
+                tracing::debug!(
+                    session_id = %event.session_id,
+                    entry_id = %entry_id,
+                    history_index = index,
+                    "drained steering entry into history at tool-batch boundary"
+                );
             }
         }
         // Note: the session is already in sending state, set by on_stream_completed(ToolUse).

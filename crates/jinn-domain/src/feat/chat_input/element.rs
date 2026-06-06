@@ -72,7 +72,7 @@ impl UiElement for ChatInputBoxElement {
             format!("[{mode_label}]")
         };
         let badge = Line::from(badge_text)
-            .right_aligned()
+            .left_aligned()
             .style(Style::default().fg(mode_color));
 
         let block = Block::default()

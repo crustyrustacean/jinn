@@ -226,35 +226,28 @@ pub fn handle_toggle_input_mode(state: &mut AppState) -> IntentResult {
 /// Handles `SubmitMessage` - confirms autocomplete if active, executes slash commands,
 /// or submits the message as chat input.
 pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
-    tracing::info!("DIAG handle_submit_message ENTER");
     if state.active_chat_input().autocomplete().is_some() {
-        tracing::info!("DIAG handle_submit_message: autocomplete active, delegating");
         return handle_submit_message_with_autocomplete(state);
     }
 
     if validator::validate_submit_message(state).is_err() {
-        tracing::info!("DIAG handle_submit_message: validation FAILED (empty buffer?)");
         return IntentResult::empty();
     }
-    tracing::info!("DIAG handle_submit_message: validation passed");
 
     let session_id = state.session.active_session_id().clone();
     let input_text = state.active_chat_input().text().to_owned();
-    tracing::info!(session_id = %session_id, input = %input_text, "DIAG handle_submit_message: extracted text");
 
     // Check for slash command execution.
     if let Some(command_name) = input_text.strip_prefix('/') {
         // Extract the first word after / (command name, ignoring arguments).
         let cmd = command_name.split_whitespace().next().unwrap_or("");
         if let Some(cmd) = SlashCommand::lookup(cmd) {
-            tracing::info!(?cmd, "DIAG handle_submit_message: executing slash command");
             state.active_chat_input_mut().reset();
             return with_mark_interacted(
                 session_id,
                 execute_slash_command(cmd, &input_text, state),
             );
         }
-        tracing::info!("DIAG handle_submit_message: unknown slash command, falling through");
         // Unknown /command - fall through to normal message.
     }
 
@@ -264,14 +257,8 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
     );
     state.active_chat_input_mut().reset();
 
-    tracing::info!(session_id = %session_id, "DIAG handle_submit_message: routing submit by mode/phase");
     let command = route_to_enqueue_or_steer(state, &session_id, input_text, expanded);
-    let result = with_mark_interacted(session_id, IntentResult::with_commands(vec![command]));
-    tracing::info!(
-        cmd_count = result.commands.len(),
-        "DIAG handle_submit_message: returning result"
-    );
-    result
+    with_mark_interacted(session_id, IntentResult::with_commands(vec![command]))
 }
 
 
@@ -349,15 +336,29 @@ fn route_to_enqueue_or_steer(
     let phase = state.active_session().phase();
     match (mode, phase) {
         (InputMode::Steer, PhaseKind::Idle) | (InputMode::Queue, _) => {
+            tracing::debug!(
+                session_id = %session_id,
+                mode = ?mode,
+                phase = ?phase,
+                "submit routed to enqueue"
+            );
             Command::EnqueueUserMessage(EnqueueUserMessage {
                 session_id: session_id.clone(),
                 entry: ChatEntry::user_expanded(display, expanded),
             })
         }
-        (InputMode::Steer, _) => Command::SubmitSteeringMessage(SubmitSteeringMessage {
-            session_id: session_id.clone(),
-            text: display,
-        }),
+        (InputMode::Steer, _) => {
+            tracing::debug!(
+                session_id = %session_id,
+                mode = ?mode,
+                phase = ?phase,
+                "submit routed to steering buffer"
+            );
+            Command::SubmitSteeringMessage(SubmitSteeringMessage {
+                session_id: session_id.clone(),
+                text: display,
+            })
+        }
     }
 }
 

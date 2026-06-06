@@ -145,7 +145,13 @@ impl QueueActor {
             session.push_entry(entry.clone());
             // Drain any pending steering fragments into history before assembly.
             if let Some(steer_entry) = session.steering_buffer_mut().drain_into_entry() {
+                let entry_id = steer_entry.id.clone();
                 session.push_entry(steer_entry);
+                tracing::debug!(
+                    session_id = %session_id,
+                    entry_id = %entry_id,
+                    "drained steering entry into history at queue_actor::dispatch_user_message"
+                );
             }
             session.begin_sending();
         }
@@ -218,7 +224,14 @@ impl QueueActor {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(session_id);
             if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
+                let entry_id = entry.id.clone();
                 session.push_entry(entry);
+                tracing::debug!(
+                    session_id = %session_id,
+                    entry_id = %entry_id,
+                    label = %label,
+                    "drained steering entry into history at queue_actor::dispatch_resume"
+                );
             }
         }
         let assembled = {
