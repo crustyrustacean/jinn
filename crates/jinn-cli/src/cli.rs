@@ -61,6 +61,13 @@ pub enum Commands {
         #[command(subcommand)]
         subcommand: FetchCommands,
     },
+
+    /// Manage user configuration files.
+    Config {
+        /// The config subcommand to run.
+        #[command(subcommand)]
+        subcommand: ConfigCommands,
+    },
 }
 
 /// Headless subcommands.
@@ -83,6 +90,19 @@ pub enum HeadlessCommands {
 pub enum FetchCommands {
     /// Fetch model metadata from models.dev and save locally.
     Models,
+}
+
+/// Config subcommands.
+#[derive(Debug, Subcommand)]
+pub enum ConfigCommands {
+    /// Write the default jinn.toml to disk.
+    ///
+    /// Refuses to overwrite an existing file unless --force is given.
+    Init {
+        /// Overwrite the file if it already exists.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 /// Bench subcommands.

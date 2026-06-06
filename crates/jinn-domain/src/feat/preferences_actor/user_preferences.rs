@@ -2,7 +2,8 @@
 //!
 //! Defines [`UserPreferences`] as the schema for `jinn.toml`,
 //! along with loading and saving logic. The file lives at
-//! `~/.config/jinn/jinn.toml` and is auto-created on first save.
+//! `~/.config/jinn/jinn.toml` and is auto-created on first run from
+//! [`DEFAULT_CONFIG`] (a comment-rich template embedded at compile time).
 
 use std::path::{Path, PathBuf};
 
@@ -11,6 +12,15 @@ use crate::common::toml_patch::DocumentPatcher;
 use error_stack::{Report, ResultExt as _};
 use serde::{Deserialize, Serialize};
 use wherror::Error;
+
+/// Canonical default `jinn.toml` embedded at compile time.
+///
+/// Used both to auto-create the file on first run and to back the
+/// `jinn config init` subcommand. A round-trip equality test in this
+/// module's test suite asserts that this string deserializes to
+/// exactly `UserPreferences::default()`, which is the CI gate that
+/// prevents the shipped template from drifting from the struct.
+pub(crate) const DEFAULT_CONFIG: &str = include_str!("default_jinn.toml");
 
 /// Errors that can occur during user preferences I/O.
 #[derive(Debug, Error)]
@@ -29,7 +39,7 @@ pub enum UserPreferencesError {
 /// runs when creating a new session; the teardown command runs when closing it.
 /// Commands may contain positional parameters (`$1`, `$2`) that are collected
 /// from the user before execution.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SessionLifecycle {
     /// Human-readable name shown in the lifecycle picker.
     pub name: String,
@@ -56,7 +66,7 @@ pub struct SessionLifecycle {
 ///
 /// Serialized as `[cwd_selector]` in `jinn.toml`.
 /// Controls the shell command used to select a new working directory.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CwdSelectorConfig {
     /// Shell command template. `{path}` is replaced with the search root.
     /// Default: `find -L {path} -type d 2>/dev/null | fzf --no-multi`
@@ -86,7 +96,7 @@ const DEFAULT_MINIMAP_MAX_TOKENS: u32 = 2000;
 ///
 /// Serialized as `[minimap]` in `jinn.toml`.
 /// Controls the token-count range used for the vertical minimap color gradient.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MinimapConfig {
     /// Maximum token count for the top band of the minimap gradient.
     /// Entries with more tokens than this get the last band color.
@@ -125,7 +135,7 @@ const DEFAULT_TODO_ENABLED: bool = true;
 /// Serialized as `[auto_prune.read_edit]` in `jinn.toml`.
 /// Controls the auto-prune worker that excludes stale read tool calls and results
 /// after the file has been edited twice.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReadEditAutoPruneConfig {
     #[serde(default = "default_read_edit_enabled")]
     pub enabled: bool,
@@ -160,7 +170,7 @@ impl Default for ReadEditAutoPruneConfig {
 /// Serialized as `[auto_prune.todo]` in `jinn.toml`.
 /// Controls the auto-prune worker that excludes stale todo tool call+result
 /// pairs, keeping only the most recent one for each tool name.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TodoAutoPruneConfig {
     /// Whether the todo auto-prune worker is active.
     /// Default: `true`.
@@ -191,7 +201,7 @@ const DEFAULT_BROKEN_EDIT_ENABLED: bool = true;
 /// Serialized as `[auto_prune.broken_edit]` in `jinn.toml`.
 /// Controls the auto-prune worker that excludes failed edit tool call+result pairs
 /// from the LLM context once enough conversation has moved on.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BrokenEditAutoPruneConfig {
     /// Whether the broken-edit auto-prune worker is active.
     /// Default: `true`.
@@ -239,7 +249,7 @@ const DEFAULT_DOUBLE_EDIT_MIN_AGE: usize = 20;
 /// Serialized as `[auto_prune.double_edit]` in `jinn.toml`.
 /// Controls the auto-prune worker that caps the number of edit/write
 /// tool call+result pairs per file path, keeping only the most recent ones.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DoubleEditAutoPruneConfig {
     /// Whether the double-edit auto-prune worker is active.
     /// Default: `true`.
@@ -293,7 +303,7 @@ const DEFAULT_CONSECUTIVE_READS_ENABLED: bool = true;
 /// Serialized as `[auto_prune.consecutive_reads]` in `jinn.toml`.
 /// Controls the auto-prune worker that caps the number of `read`
 /// tool call+result pairs per file path, keeping only the most recent ones.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConsecutiveReadsAutoPruneConfig {
     /// Whether the consecutive-reads auto-prune worker is active.
     /// Default: `true`.
@@ -345,7 +355,7 @@ const DEFAULT_TOOL_AGE_WINDOW_MIN_AGE: usize = 100;
 /// status, so that multiple auto-prune workers compose cleanly: each
 /// worker's prune region is fixed by raw history length alone, not by what
 /// has already been `ForcedExclude`d by other workers.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolAgeWindowAutoPruneConfig {
     /// Whether the tool-age-window auto-prune worker is active.
     /// Default: `true`.
@@ -376,7 +386,6 @@ impl Default for ToolAgeWindowAutoPruneConfig {
         }
     }
 }
-
 /// Default enabled state for trivial-assistant auto-prune.
 const DEFAULT_TRIVIAL_ASSISTANT_ENABLED: bool = true;
 
@@ -401,7 +410,7 @@ const DEFAULT_TRIVIAL_ASSISTANT_MAX_TOKENS: usize = 80;
 /// has already been `ForcedExclude`d by other workers. Tokens are counted
 /// via the same tiktoken `o200k_base` encoder used by the token-count
 /// actor and minimap.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TrivialAssistantAutoPruneConfig {
     /// Whether the trivial-assistant auto-prune worker is active.
     /// Default: `true`.
@@ -453,7 +462,7 @@ const DEFAULT_ANCHOR_RADIUS: usize = 100;
 /// Anchor-radius auto-prune strategy configuration.
 ///
 /// Serialized as `[auto_prune.anchor_radius]` in `jinn.toml`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnchorRadiusAutoPruneConfig {
     /// Whether the anchor-radius auto-prune worker is active.
     /// Default: `true`.
@@ -485,7 +494,6 @@ impl Default for AnchorRadiusAutoPruneConfig {
         }
     }
 }
-
 /// Default regex prune rule tool name.
 const DEFAULT_REGEX_TOOL_NAME: &str = "bash";
 
@@ -500,7 +508,7 @@ const DEFAULT_REGEX_ENABLED: bool = true;
 /// Serialized as `[[auto_prune.regex]]` in `jinn.toml`.
 /// Each rule matches tool calls by name and content, keeping only the
 /// most recent `keep_last` matching call+result pairs in context.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegexPruneRule {
     /// Regex pattern to match against the tool call's text output.
     /// The regex is tested against `"{name}: {arguments}"`.
@@ -528,7 +536,7 @@ fn default_regex_keep_last() -> usize {
 ///
 /// Serialized as `[auto_prune.regex]` in `jinn.toml`.
 /// Contains a list of regex rules that identify tool calls to prune.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegexAutoPruneConfig {
     /// Whether the regex auto-prune worker is active.
     /// Default: `true`.
@@ -557,7 +565,7 @@ impl Default for RegexAutoPruneConfig {
 ///
 /// Serialized as `[auto_prune]` in `jinn.toml`.
 /// Groups all auto-prune strategy configurations.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AutoPruneConfig {
     /// Read-edit auto-prune strategy configuration.
     #[serde(default)]
@@ -601,7 +609,7 @@ const DEFAULT_FALLBACK_CONTEXT_WINDOW: usize = 150_000;
 ///
 /// Serialized as `[compaction]` in `jinn.toml`.
 /// Controls when and how context compaction summarizes conversation history.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompactionConfig {
     /// Provider/model for compaction summarization (e.g., "anthropic/claude-sonnet-4-20250514").
     /// Falls back to the session model if not set or if provider construction fails.
@@ -651,7 +659,7 @@ const DEFAULT_SLIDING_WINDOW_SIZE: usize = 5;
 /// Sliding window configuration.
 ///
 /// Serialized as `[context_sliding_window]` in `jinn.toml`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContextSlidingWindowConfig {
     /// The default window size for new sessions using the sliding-window strategy.
     #[serde(default = "default_sliding_window_size")]
@@ -688,7 +696,7 @@ pub enum WebFetchBackend {
 ///
 /// Serialized as `[web_fetch]` in `jinn.toml`.
 /// Controls which backend the `web-fetch` tool uses.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WebFetchConfig {
     /// The backend to use for web fetching. Default: `"http"`.
     #[serde(default)]
@@ -717,7 +725,7 @@ fn default_bash_default_timeout_secs() -> Option<u64> {
 /// Serialized as `[bash]` in `jinn.toml`.
 /// Controls the default execution timeout for the `bash` builtin tool.
 /// The model can override per-call via the `timeout` JSON argument.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BashConfig {
     /// Default timeout in seconds for bash commands. Default: 180 (3 minutes).
     /// Set to `None` to disable the default timeout.
@@ -732,14 +740,13 @@ impl Default for BashConfig {
         }
     }
 }
-
 /// OpenRouter web search server tool configuration.
 ///
 /// Serialized as `[openrouter_web_search]` in `jinn.toml`.
 /// Controls parameters sent to the `openrouter:web_search` server tool.
 /// All fields are optional - when `None`, the parameter is omitted from
 /// the request and OpenRouter uses its default.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OpenrouterWebSearchConfig {
     /// Search engine: "auto", "native", "exa", "firecrawl", or "parallel".
     /// Default: "exa".
@@ -790,7 +797,7 @@ const DEFAULT_RETRY_MAX_DELAY_SECS: u64 = 60;
 ///
 /// Serialized as `[request_retry]` in `jinn.toml`.
 /// Controls exponential backoff behavior for transient errors.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RequestRetryConfig {
     /// Maximum number of retry attempts. Default: 5.
     #[serde(default = "default_retry_max_retries")]
@@ -840,7 +847,7 @@ impl RequestRetryConfig {
 ///
 /// This file stores user behavior preferences that should survive
 /// app restarts - e.g., the last model and strategy selected from pickers.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct UserPreferences {
     /// The provider ID of the last model selected from the model picker.
     /// Format: `{provider_name}/{model}` (e.g., `"ollama/llama3"`).
@@ -937,6 +944,10 @@ pub fn load_preferences() -> Result<UserPreferences, Report<UserPreferencesError
 }
 
 /// Loads preferences from a specific path.
+///
+/// If the path does not exist, the canonical default template
+/// (`DEFAULT_CONFIG`) is written there first so the user gets a
+/// comment-rich starter file, then parsed.
 pub(crate) fn load_preferences_from<P>(
     path: P,
 ) -> Result<UserPreferences, Report<UserPreferencesError>>
@@ -946,7 +957,7 @@ where
     let path = path.as_ref();
 
     if !path.exists() {
-        return Ok(UserPreferences::default());
+        create_default_preferences_to(path)?;
     }
 
     let content = std::fs::read_to_string(path)
@@ -956,6 +967,89 @@ where
     toml::from_str(&content)
         .change_context(UserPreferencesError::Parse)
         .attach("failed to parse user preferences")
+}
+
+/// Writes the canonical default preferences template to `path`.
+///
+/// Creates parent directories as needed.
+///
+/// # Errors
+///
+/// Returns [`UserPreferencesError::Io`] if directory creation or file writing fails.
+pub(crate) fn create_default_preferences_to<P>(path: P) -> Result<(), Report<UserPreferencesError>>
+where
+    P: AsRef<Path>,
+{
+    let path = path.as_ref();
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .change_context(UserPreferencesError::Io)
+            .attach("failed to create preferences directory")?;
+    }
+
+    std::fs::write(path, DEFAULT_CONFIG)
+        .change_context(UserPreferencesError::Io)
+        .attach("failed to write default user preferences")
+}
+
+/// Error returned by [`init_default_config_to`].
+#[derive(Debug, wherror::Error)]
+#[error(debug)]
+pub struct InitDefaultConfigError;
+
+/// Outcome of [`init_default_config_to`].
+#[derive(Debug)]
+pub enum InitOutcome {
+    /// Template was written to a previously-missing path.
+    Created,
+    /// Existing file was overwritten (caller passed `force: true`).
+    Overwritten,
+}
+
+/// Writes [`DEFAULT_CONFIG`] to `path`.
+///
+/// - If `path` does not exist: writes the template, returns [`InitOutcome::Created`].
+/// - If `path` exists and `force` is false: returns `Err(InitDefaultConfigError)`.
+/// - If `path` exists and `force` is true: overwrites, returns [`InitOutcome::Overwritten`].
+///
+/// Creates parent directories as needed.
+///
+/// # Errors
+///
+/// Returns [`Report<InitDefaultConfigError>`] if the file already exists and
+/// `force` is false, or if directory creation / file writing fails.
+pub fn init_default_config_to<P>(
+    path: P,
+    force: bool,
+) -> Result<InitOutcome, Report<InitDefaultConfigError>>
+where
+    P: AsRef<Path>,
+{
+    let path = path.as_ref();
+    let existed = path.exists();
+
+    if existed && !force {
+        return Err(Report::new(InitDefaultConfigError))
+            .attach("jinn.toml already exists; pass --force to overwrite")
+            .attach(format!("path: {}", path.display()));
+    }
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .change_context(InitDefaultConfigError)
+            .attach("failed to create preferences directory")?;
+    }
+
+    std::fs::write(path, DEFAULT_CONFIG)
+        .change_context(InitDefaultConfigError)
+        .attach("failed to write default user preferences")?;
+
+    if existed {
+        Ok(InitOutcome::Overwritten)
+    } else {
+        Ok(InitOutcome::Created)
+    }
 }
 
 /// Saves preferences to the default path.
@@ -1048,7 +1142,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn load_returns_default_when_file_missing() {
+    fn load_returns_defaults_and_creates_file_when_missing() {
         // Given a path to a nonexistent file.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
@@ -1060,6 +1154,112 @@ mod tests {
         assert!(prefs.last_model.is_none());
         assert!(prefs.last_strategy.is_none());
         assert!(prefs.tool_entry_max_lines.is_none());
+        // And the file is created.
+        assert!(path.exists());
+    }
+
+    #[rstest::rstest]
+    fn load_creates_file_with_template_bytes_when_missing() {
+        // Given a path to a nonexistent file.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+
+        // When loading.
+        load_preferences_from(&path).expect("load");
+
+        // Then the file's bytes are exactly the embedded template.
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(on_disk, DEFAULT_CONFIG);
+    }
+
+    #[rstest::rstest]
+    fn load_does_not_touch_existing_file() {
+        // Given an existing file with custom content.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let marker = "# user-managed\nlast_model = \"x/y\"\n";
+        std::fs::write(&path, marker).expect("write");
+        let mtime_before = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .expect("metadata");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then the file on disk is unchanged.
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(on_disk, marker);
+        // And the parsed prefs reflect the file, not the defaults.
+        assert_eq!(prefs.last_model.as_deref(), Some("x/y"));
+        // And the mtime is preserved.
+        let mtime_after = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .expect("metadata");
+        assert_eq!(mtime_before, mtime_after);
+    }
+
+    #[rstest::rstest]
+    fn default_config_template_round_trips_to_user_preferences_default() {
+        // Given the shipped default_jinn.toml template.
+        // When checking it against UserPreferences::default().
+        let result = crate::common::default_config_check::check_default_round_trips_to_default::<
+            UserPreferences,
+        >(DEFAULT_CONFIG);
+
+        // Then the template deserializes to the inherent default with no drift.
+        assert!(
+            result.is_ok(),
+            "default_jinn.toml has drifted from UserPreferences::default(): {result:?}",
+        );
+    }
+
+    #[rstest::rstest]
+    fn init_writes_template_when_missing() {
+        // Given a path to a nonexistent file.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+
+        // When initializing the default config (no force).
+        let outcome = init_default_config_to(&path, false).expect("init");
+
+        // Then the file is created with the template bytes.
+        assert!(matches!(outcome, InitOutcome::Created));
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(on_disk, DEFAULT_CONFIG);
+    }
+
+    #[rstest::rstest]
+    fn init_returns_already_exists_when_present_and_no_force() {
+        // Given an existing file with custom content.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let marker = "# user-managed\nlast_model = \"x/y\"\n";
+        std::fs::write(&path, marker).expect("write");
+
+        // When initializing without --force.
+        let result = init_default_config_to(&path, false);
+
+        // Then the call fails with InitDefaultConfigError.
+        assert!(result.is_err());
+        // And the file is unchanged.
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(on_disk, marker);
+    }
+
+    #[rstest::rstest]
+    fn init_overwrites_when_force() {
+        // Given an existing file with custom content.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, "# stale\n").expect("write");
+
+        // When initializing with --force.
+        let outcome = init_default_config_to(&path, true).expect("init");
+
+        // Then the file is overwritten with the template bytes.
+        assert!(matches!(outcome, InitOutcome::Overwritten));
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(on_disk, DEFAULT_CONFIG);
     }
 
     #[rstest::rstest]
