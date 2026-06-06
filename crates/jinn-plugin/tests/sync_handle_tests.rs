@@ -32,7 +32,7 @@ fn build_system(dir: &Path) -> (PluginSyncHandle, Arc<Mutex<Vec<PluginCommand>>>
         Arc::new(move |cmd| {
             captured_clone.lock().expect("lock").push(cmd);
         }),
-        Arc::new(|_, _| serde_json::Value::Null),
+        Arc::new(|_, _| Box::pin(async { serde_json::Value::Null })),
     );
 
     (sync_handle, captured)
@@ -165,7 +165,7 @@ fn build_both(
         Arc::new(move |cmd| {
             captured_clone.lock().expect("lock").push(cmd);
         }),
-        Arc::new(|_, _| serde_json::Value::Null),
+        Arc::new(|_, _| Box::pin(async { serde_json::Value::Null })),
     );
     (async_handle, sync_handle, captured)
 }
