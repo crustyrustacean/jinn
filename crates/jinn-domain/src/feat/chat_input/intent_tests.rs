@@ -1,4 +1,9 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::uninlined_format_args,
+    reason = "test code"
+)]
 
 use crate::common::app_state::AppState;
 use crate::feat::chat_input::{AutocompleteMatch, AutocompleteTrigger, InputMode};
@@ -776,12 +781,12 @@ fn enter_normal_mode_does_not_drain_queue() {
     state
         .active_session_mut()
         .enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-            ChatEntry::user("msg1"),
+            Box::new(ChatEntry::user("msg1")),
         ));
     state
         .active_session_mut()
         .enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-            ChatEntry::user("msg2"),
+            Box::new(ChatEntry::user("msg2")),
         ));
 
     // When handling EnterNormalMode.
@@ -804,12 +809,12 @@ fn enter_normal_mode_with_queue_emits_no_cancel_stream() {
     state
         .active_session_mut()
         .enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-            ChatEntry::user("msg1"),
+            Box::new(ChatEntry::user("msg1")),
         ));
     state
         .active_session_mut()
         .enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-            ChatEntry::user("msg2"),
+            Box::new(ChatEntry::user("msg2")),
         ));
 
     // When handling EnterNormalMode.

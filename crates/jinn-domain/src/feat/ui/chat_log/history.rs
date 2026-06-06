@@ -47,8 +47,8 @@ use super::visual_item::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
 };
 use super::{
-    actor, assistant, compaction, error_entry, system, thinking, tool_call, tool_result,
-    transient, user,
+    actor, assistant, compaction, error_entry, system, thinking, tool_call, tool_result, transient,
+    user,
 };
 use viewport::ScrollState;
 

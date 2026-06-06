@@ -139,7 +139,6 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                     ),
                 });
             }
-
         }
     }
 
