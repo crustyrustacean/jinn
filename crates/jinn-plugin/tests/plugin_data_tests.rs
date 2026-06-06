@@ -40,7 +40,7 @@ fn build_system(dir: &Path) -> TestSystem {
     let captured_clone = captured.clone();
 
     let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
-    let (sync, async_handle, _) = PluginSystem::new(
+    let (sync, async_handle, _) = PluginSystem::build(
         dir,
         Path::new("/nonexistent"),
         rt.handle().clone(),

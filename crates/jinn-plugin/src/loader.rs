@@ -171,13 +171,7 @@ pub fn load_all(lua: &Lua, plugins: &[PluginMeta]) -> HashMap<String, PluginHook
 
         match load_plugin(lua, &source) {
             Ok(table_key) => {
-                hooks.insert(
-                    meta.name.clone(),
-                    PluginHooks {
-                        table: table_key,
-                        hook_cache: std::cell::RefCell::new(std::collections::HashSet::new()),
-                    },
-                );
+                hooks.insert(meta.name.clone(), PluginHooks::new(table_key));
                 tracing::debug!(plugin = meta.name, "loaded plugin");
             }
             Err(e) => {
@@ -403,7 +397,7 @@ mod tests {
 
         // Plugin alpha returns 1, plugin beta returns 2.
         for (name, ph) in &hooks {
-            let table: mlua::Table = lua.registry_value(&ph.table).expect("get table");
+            let table: mlua::Table = lua.registry_value(ph.table()).expect("get table");
             let func: mlua::Function = table.get("on_test").expect("get func");
             let result: i64 = func.call(()).expect("call");
             match name.as_str() {

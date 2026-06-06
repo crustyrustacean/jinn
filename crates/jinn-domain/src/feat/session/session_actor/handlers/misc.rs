@@ -193,7 +193,12 @@ fn build_skills_refresh_message(skills: &[crate::feat::skills::Skill]) -> String
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::unnecessary_mut_passed,
+        reason = "test code"
+    )]
     use super::super::super::helpers::{test_actor, test_actor_with_store};
     use crate::feat::provider::protocol::event::ModelsRefreshed;
     use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;

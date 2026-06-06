@@ -140,7 +140,6 @@ impl TuiApp {
                         let intent_opt = self.which_key.handle_key(protocol_key);
 
                         let Some(intent) = intent_opt else {
-
                             return;
                         };
 
@@ -232,13 +231,11 @@ impl TuiApp {
         reason = "Intent is consumed by intent routing, ownership is semantic"
     )]
     pub fn route_intent(&mut self, intent: Intent) {
-
         // Step 1–3: Handle intent, collect results, release lock.
         let (commands, events, signals) = {
             let mut state = self.core.state.write();
 
             let result = IntentHandler::handle(&intent, &mut state);
-
 
             // Cancel selection when mode changes away from Picker.
             if matches!(intent, Intent::EnterNormalMode | Intent::NormalEscape) {

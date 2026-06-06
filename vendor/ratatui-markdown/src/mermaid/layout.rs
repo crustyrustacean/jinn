@@ -34,6 +34,25 @@ const H_SPACING: usize = 4;
 const V_SPACING: usize = 3;
 const MIN_NODE_WIDTH: usize = 6;
 
+/// Compute the rendered width for a node id within `diagram`.
+/// Returns the label width (plus horizontal padding, floored at
+/// `MIN_NODE_WIDTH`) when the id exists, or `MIN_NODE_WIDTH` when it does
+/// not — so a missing node degrades gracefully instead of panicking.
+///
+/// Extracted as a pure helper so the missing-node fallback is directly
+/// unit-testable (it is unreachable through the public `compute_layout`
+/// path because `assign_layers` only emits ids sourced from
+/// `diagram.nodes`).
+fn node_width(node_id: &str, diagram: &MermaidDiagram) -> usize {
+    match diagram.nodes.iter().find(|n| n.id == node_id) {
+        Some(node) => {
+            let text_w = unicode_width::UnicodeWidthStr::width(node.label.as_str());
+            (text_w + NODE_H_PADDING * 2).max(MIN_NODE_WIDTH)
+        }
+        None => MIN_NODE_WIDTH,
+    }
+}
+
 pub fn compute_layout(
     diagram: &MermaidDiagram,
     max_width: usize,
@@ -63,15 +82,7 @@ pub fn compute_layout(
 
         let mut node_widths: Vec<usize> = layer
             .iter()
-            .map(|id| {
-                let node = diagram
-                    .nodes
-                    .iter()
-                    .find(|n| &n.id == id)
-                    .expect("layer node must exist in diagram nodes");
-                let text_w = unicode_width::UnicodeWidthStr::width(node.label.as_str());
-                (text_w + NODE_H_PADDING * 2).max(MIN_NODE_WIDTH)
-            })
+            .map(|id| node_width(id, diagram))
             .collect();
 
         let total_w: usize = node_widths.iter().sum::<usize>() + h_spacing * (node_count - 1);
@@ -114,11 +125,10 @@ pub fn compute_layout(
 
         let mut x = x_start;
         for (i, id) in layer.iter().enumerate() {
-            let node = diagram
-                .nodes
-                .iter()
-                .find(|n| &n.id == id)
-                .expect("layer node must exist in diagram nodes");
+            let node = match diagram.nodes.iter().find(|n| &n.id == id) {
+                Some(n) => n,
+                None => continue,
+            };
             let w = node_widths[i];
 
             let (nx, ny) = if is_vertical {
@@ -381,4 +391,53 @@ fn truncate_label(label: &str, max_chars: usize) -> String {
         result.push('…');
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mermaid::types::{
+        Direction, MermaidDiagram, MermaidNode, NodeShape,
+    };
+
+    // AC4: the missing-node fallback in `node_width` must return
+    // MIN_NODE_WIDTH rather than panicking. This directly exercises the
+    // `None` branch that is unreachable through `compute_layout`'s public
+    // entry point (assign_layers only emits ids present in diagram.nodes).
+    #[test]
+    fn node_width_missing_node_falls_back_to_min() {
+        let diagram = MermaidDiagram {
+            direction: Direction::TopDown,
+            nodes: vec![MermaidNode {
+                id: "A".to_string(),
+                label: "A".to_string(),
+                shape: NodeShape::Rect,
+            }],
+            edges: vec![],
+        };
+        // "MISSING" is absent from diagram.nodes → the None branch.
+        let w = node_width("MISSING", &diagram);
+        assert_eq!(
+            w, MIN_NODE_WIDTH,
+            "Missing node must fall back to MIN_NODE_WIDTH, got {}",
+            w
+        );
+    }
+
+    // Sanity check: a known node returns its padded label width.
+    #[test]
+    fn node_width_known_node_uses_label_width() {
+        let diagram = MermaidDiagram {
+            direction: Direction::TopDown,
+            nodes: vec![MermaidNode {
+                id: "A".to_string(),
+                label: "hello".to_string(), // width 5
+                shape: NodeShape::Rect,
+            }],
+            edges: vec![],
+        };
+        // label width 5 + padding 2*2 = 9
+        let w = node_width("A", &diagram);
+        assert_eq!(w, 9, "Known node width should be label + padding");
+    }
 }

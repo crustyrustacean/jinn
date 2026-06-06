@@ -153,7 +153,6 @@ fn tool_result_entry_has_tool_result_kind() {
 #[case::actor(ChatEntry::actor("src", "t"))]
 #[case::tool_call(ChatEntry::tool_call("id", "name", "args"))]
 #[case::tool_result(ChatEntry::tool_result("id", "name", "content", ToolResultStatus::Success))]
-
 #[case::transient(ChatEntry::transient("info"))]
 fn pin_position_defaults_to_none(#[case] entry: ChatEntry) {
     // Given an entry created with any ChatEntry constructor.
@@ -307,7 +306,6 @@ fn thinking_entry_pin_position_defaults_to_none() {
     // Then pin_position is None.
     assert_eq!(entry.pin_position, None);
 }
-
 
 // --- Transient entry tests ---
 
@@ -595,7 +593,6 @@ fn tool_result_kind_is_included_by_default() {
     assert!(entry.kind.is_included_by_default());
 }
 
-
 #[rstest::rstest]
 fn compaction_kind_is_included_by_default() {
     // Given a Compaction entry.
@@ -751,7 +748,6 @@ fn all_include_default_kinds_are_in_context() {
         ChatEntry::assistant("response"),
         ChatEntry::tool_call("id", "name", "{}"),
         ChatEntry::tool_result("id", "name", "content", ToolResultStatus::Success),
-
     ];
 
     // Then all are in context by default.

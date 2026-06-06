@@ -579,7 +579,6 @@ mod tests {
         );
     }
 
-
     #[rstest::rstest]
     fn node_count_returns_actual_node_count() {
         let graph = linear_graph();
