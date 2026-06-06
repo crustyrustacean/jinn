@@ -84,23 +84,21 @@ pub fn handle_ctrl_clear(state: &mut AppState) -> (IntentResult, Option<Intent>)
             }
         }
         FocusScope::ArgInput => {
-            if state.frontend.arg_input.input.is_empty() {
+            if state.frontend.arg_input.text.input.is_empty() {
                 state.frontend.scope_stack.pop();
                 state.frontend.arg_input = ArgInputState::default();
             } else {
-                let arg = &mut state.frontend.arg_input;
-                arg.input.clear();
-                arg.cursor_pos = 0;
+                state.frontend.arg_input.text.set(String::new());
             }
             (IntentResult::empty(), None)
         }
         FocusScope::RenameSessionInput => {
-            if state.frontend.rename_session_input.input.is_empty() {
+            if state.frontend.rename_session_input.text.input.is_empty() {
                 (IntentResult::empty(), Some(Intent::RenameSessionLeave))
             } else {
                 let input = &mut state.frontend.rename_session_input;
-                input.input.clear();
-                input.cursor_pos = 0;
+                input.text.input.clear();
+                input.text.cursor_pos = 0;
                 (IntentResult::empty(), None)
             }
         }
@@ -405,8 +403,7 @@ mod tests {
         use crate::common::app_state::ArgInputState;
         let mut state = AppState::default();
         state.frontend.arg_input = ArgInputState {
-            input: "some arg".to_owned(),
-            cursor_pos: 8,
+            text: crate::common::line_input::LineInput { input: "some arg".to_owned(), cursor_pos: 8 },
             lifecycle_name: "abc".to_owned(),
             template_display: String::new(),
         };
@@ -416,8 +413,8 @@ mod tests {
         let (result, maybe_intent) = handle_ctrl_clear(&mut state);
 
         // Then the input is cleared and scope is unchanged.
-        assert!(state.frontend.arg_input.input.is_empty());
-        assert_eq!(state.frontend.arg_input.cursor_pos, 0);
+        assert!(state.frontend.arg_input.text.input.is_empty());
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 0);
         assert_eq!(state.frontend.scope_stack.current(), &FocusScope::ArgInput);
         assert!(result.commands.is_empty());
         assert!(maybe_intent.is_none());
@@ -430,8 +427,7 @@ mod tests {
         let lifecycle = "abc".to_owned();
         let mut state = AppState::default();
         state.frontend.arg_input = ArgInputState {
-            input: String::new(),
-            cursor_pos: 0,
+            text: crate::common::line_input::LineInput { input: String::new(), cursor_pos: 0 },
             lifecycle_name: lifecycle.clone(),
             template_display: String::new(),
         };
@@ -454,8 +450,7 @@ mod tests {
         use crate::common::app_state::RenameSessionInputState;
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "New Name".to_owned(),
-            cursor_pos: 8,
+            text: crate::common::line_input::LineInput { input: "New Name".to_owned(), cursor_pos: 8 },
         };
         state
             .frontend
@@ -466,8 +461,8 @@ mod tests {
         let (result, maybe_intent) = handle_ctrl_clear(&mut state);
 
         // Then the input is cleared and scope is unchanged.
-        assert!(state.frontend.rename_session_input.input.is_empty());
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 0);
+        assert!(state.frontend.rename_session_input.text.input.is_empty());
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 0);
         assert_eq!(
             state.frontend.scope_stack.current(),
             &FocusScope::RenameSessionInput
@@ -493,7 +488,7 @@ mod tests {
 
         // Then scope is popped back to Normal and rename_session_input is reset.
         assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
-        assert!(state.frontend.rename_session_input.input.is_empty());
+        assert!(state.frontend.rename_session_input.text.input.is_empty());
         assert!(result.commands.is_empty());
     }
 
@@ -540,8 +535,7 @@ mod tests {
         use crate::common::app_state::RenameSessionInputState;
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "My Session".to_owned(),
-            cursor_pos: 10,
+            text: crate::common::line_input::LineInput { input: "My Session".to_owned(), cursor_pos: 10 },
         };
         state
             .frontend
@@ -552,8 +546,8 @@ mod tests {
         let (result, maybe_intent) = handle_ctrl_clear(&mut state);
 
         // Then text is cleared but scope is unchanged (NOT persisted/closed).
-        assert!(state.frontend.rename_session_input.input.is_empty());
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 0);
+        assert!(state.frontend.rename_session_input.text.input.is_empty());
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 0);
         assert_eq!(
             state.frontend.scope_stack.current(),
             &FocusScope::RenameSessionInput
