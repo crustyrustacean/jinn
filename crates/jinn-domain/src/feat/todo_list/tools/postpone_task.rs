@@ -136,6 +136,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     success: true,
                     full_content: None,
                     truncation: None,
+                    pin_position: None,
                 }
             }
             Err(content) => ToolResult {
@@ -145,6 +146,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 success: false,
                 full_content: None,
                 truncation: None,
+                pin_position: None,
             },
         }
     })
@@ -158,6 +160,7 @@ fn tool_error(call: ToolCall, msg: &str) -> ToolResult {
         success: false,
         full_content: None,
         truncation: None,
+        pin_position: None,
     }
 }
 
