@@ -71,7 +71,15 @@ impl SessionPersistenceActor {
 
         match action {
             EnqueueAction::DispatchDirectly => {
-                super::super::helpers::emit_history_appended(ctx, &payload.session_id);
+            super::super::helpers::emit_history_appended(ctx, &payload.session_id);
+            // Drain any pending steering fragments into history before assembly.
+            {
+                let mut state = self.state.write();
+                let session = state.session_mut_or_create(&payload.session_id);
+                if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
+                    session.push_entry(entry);
+                }
+            }
                 // Assemble the prompt directly and emit SendToLlmProvider.
                 let assembled = {
                     let guard = self.state.read();
@@ -203,6 +211,14 @@ impl SessionPersistenceActor {
             tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted for resume marker");
         }
 
+        // Drain any pending steering fragments into history before assembly.
+        {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&payload.session_id);
+            if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
+                session.push_entry(entry);
+            }
+        }
         // Assemble prompt and dispatch. Marker is excluded by default.
         let assembled = {
             let guard = self.state.read();
