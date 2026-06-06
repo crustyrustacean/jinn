@@ -9,12 +9,54 @@ use super::autocomplete::AutocompleteState;
 use super::autocomplete::AutocompleteTrigger;
 use crate::feat::chat_input::AutocompleteMatch;
 
+
+/// Submission mode for the chat input box.
+///
+/// Controls where `SubmitMessage` sends the text:
+/// - `Queue`: enqueue a normal `UserMessage` on the turn queue (the default).
+/// - `Steer`: append a fragment to the in-memory steering buffer for mid-turn
+///   injection, with a fall-through to `EnqueueUserMessage` when the session
+///   is `Idle` (no live turn to steer into).
+///
+/// Mode is sticky across submissions and phase transitions; it does not persist
+/// across app restarts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InputMode {
+    /// Submissions go to the normal turn queue (default).
+    #[default]
+    Queue,
+    /// Submissions route to the steering buffer (or fall back to queue when phase is Idle).
+    Steer,
+}
+
+impl InputMode {
+    /// Flip to the other mode.
+    #[must_use]
+    pub fn toggle(self) -> Self {
+        match self {
+            Self::Queue => Self::Steer,
+            Self::Steer => Self::Queue,
+        }
+    }
+
+    /// Short label for the input border badge (e.g. `"QUEUE"`, `"STEER"`).
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Queue => "QUEUE",
+            Self::Steer => "STEER",
+        }
+    }
+}
+
 /// The user's in-progress message being composed in the input box.
 ///
 /// Both the text buffer and cursor position are private. All mutation goes through
 /// semantic methods that keep the cursor in sync with the buffer content.
 #[derive(Debug, Clone)]
 pub struct ChatInputBoxState {
+    /// Active submission mode (Queue vs Steer). Sticky, not persisted.
+    input_mode: InputMode,
     /// The text the user has typed so far.
     input_buffer: String,
     /// Cursor position as a grapheme-cluster index (0 = before first grapheme).
@@ -38,6 +80,7 @@ impl ChatInputBoxState {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            input_mode: InputMode::default(),
             input_buffer: String::new(),
             cursor_pos: 0,
             desired_col: None,
@@ -45,6 +88,17 @@ impl ChatInputBoxState {
             wrap_width: usize::MAX,
             scroll_offset: 0,
         }
+    }
+
+    /// Returns the current submission mode.
+    #[must_use]
+    pub fn input_mode(&self) -> InputMode {
+        self.input_mode
+    }
+
+    /// Flip the submission mode Queue ↔ Steer.
+    pub fn toggle_input_mode(&mut self) {
+        self.input_mode = self.input_mode.toggle();
     }
 
     /// Returns a reference to the current input text.
@@ -58,6 +112,7 @@ impl ChatInputBoxState {
     pub fn is_empty(&self) -> bool {
         self.input_buffer.is_empty()
     }
+
 
     /// Returns the current cursor position as a grapheme index.
     #[must_use]

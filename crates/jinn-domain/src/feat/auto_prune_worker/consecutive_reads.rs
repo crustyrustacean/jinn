@@ -5,6 +5,10 @@
 //! pairs as [`ForcedExclude`]. This removes stale file contents from the LLM
 //! context window.
 //!
+//! The `min_age` field (default: 50) is a raw-distance protection floor:
+//! pairs whose `ToolCall` is within `min_age` slots of the end of history are
+//! never pruned. With `min_age = 0` no pair is protected (back-compat baseline).
+//!
 //! Pruning is immediate — no threshold or delay.
 //! Path matching is exact string comparison (no normalization).
 //!
@@ -25,6 +29,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::feat::auto_prune_worker::is_within_min_age;
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::ConsecutiveReadsAutoPruneConfig;
 use crate::feat::session::chat_entry::{
@@ -75,8 +80,9 @@ fn find_matching_result(
     None
 }
 
-/// A matched read pair (ToolCall + its corresponding ToolResult).
+/** A matched read pair (ToolCall + its corresponding ToolResult). */
 struct ReadPair {
+    call_idx: usize,
     call_entry_id: ChatEntryId,
     result_entry_id: ChatEntryId,
 }
@@ -112,6 +118,7 @@ fn collect_read_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Vec<Read
         };
 
         pairs_by_path.entry(read_path).or_default().push(ReadPair {
+            call_idx: i,
             call_entry_id: entry.id.clone(),
             result_entry_id: result_id,
         });
@@ -120,18 +127,15 @@ fn collect_read_pairs_by_path(history: &[ChatEntry]) -> HashMap<String, Vec<Read
     pairs_by_path
 }
 
-/// For each path group exceeding `keep_last`, emit `SetContextOverride` mutations
-/// for the oldest pairs that are not already excluded.
-///
-/// Pairs are in history order (oldest first), so `.take()` selects the
-/// oldest pairs to prune.
 fn build_prune_mutations(
     history: &[ChatEntry],
     groups: &HashMap<String, Vec<ReadPair>>,
     keep_last: usize,
+    min_age: usize,
     worker_name: &str,
 ) -> Vec<HistoryMutation> {
     let mut mutations = Vec::new();
+    let history_len = history.len();
 
     for pairs in groups.values() {
         if pairs.len() <= keep_last {
@@ -141,6 +145,12 @@ fn build_prune_mutations(
         // Pairs are oldest-first. Prune the oldest ones beyond keep_last.
         let prune_count = pairs.len() - keep_last;
         for pair in pairs.iter().take(prune_count) {
+            // Protection floor: never prune pairs whose call is within
+            // `min_age` slots of the end of history.
+            if is_within_min_age(history_len, pair.call_idx, min_age) {
+                continue;
+            }
+
             // Only emit mutations for entries not protected from prune.
             let call_protected = history
                 .iter()
@@ -188,7 +198,13 @@ impl HistoryWorker for ConsecutiveReadsAutoPruneWorker {
         let keep_last = self.config.keep_last.max(1);
 
         let groups = collect_read_pairs_by_path(&history);
-        build_prune_mutations(&history, &groups, keep_last, self.name())
+        build_prune_mutations(
+            &history,
+            &groups,
+            keep_last,
+            self.config.min_age,
+            self.name(),
+        )
     }
 }
 
@@ -222,10 +238,15 @@ mod tests {
     }
 
     fn worker_with_keep_last(keep_last: usize) -> ConsecutiveReadsAutoPruneWorker {
+        worker_with(keep_last, 0)
+    }
+
+    fn worker_with(keep_last: usize, min_age: usize) -> ConsecutiveReadsAutoPruneWorker {
         ConsecutiveReadsAutoPruneWorker {
             config: ConsecutiveReadsAutoPruneConfig {
                 enabled: true,
                 keep_last,
+                min_age,
             },
         }
     }
@@ -497,5 +518,62 @@ mod tests {
         let worker = worker_with_keep_last(3);
         let mutations = evaluate(&worker, vec![]);
         assert!(mutations.is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // min_age protection tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn min_age_zero_prunes_old_read_pair() {
+        // With min_age = 0, old read pairs are pruned even when recent.
+        let history = history_with_n_reads("/foo.rs", 4);
+        let worker = worker_with(3, 0);
+        let mutations = evaluate(&worker, history);
+        // 1 pair pruned × 2 entries = 2 mutations.
+        assert_eq!(mutations.len(), 2);
+    }
+
+    #[test]
+    fn min_age_protects_recent_read_pair() {
+        // 4 reads of same file, keep_last = 3 → oldest pair normally pruned.
+        // History length = 8, oldest pair at idx 0 → age = 7.
+        // With min_age = 50, age 7 < 50 → protected → not pruned.
+        let history = history_with_n_reads("/foo.rs", 4);
+        let worker = worker_with(3, 50);
+        let mutations = evaluate(&worker, history);
+        assert!(
+            mutations.is_empty(),
+            "recent read pair must be protected by min_age"
+        );
+    }
+
+    #[test]
+    fn min_age_boundary_strict_less_than_consecutive_reads() {
+        // Build history so oldest pair has age exactly at the floor.
+        // 4 reads of /foo.rs (8 entries, idx 0..7), then N user entries.
+        // history_len = 8 + N. Oldest call at idx 0 → age = 8 + N - 1.
+        // For age = N + 7 = min_age = N + 7: NOT protected (strict <).
+        // For age = N + 7 < min_age = N + 8: protected.
+        const N: usize = 10;
+        let mut history = history_with_n_reads("/foo.rs", 4);
+        for i in 0..N {
+            history.push(ChatEntry::user(format!("padding {i}")));
+        }
+        // history.len() = 18, oldest call at idx 0, age = 17.
+
+        // Protected case: age 17 < min_age 18.
+        let worker = worker_with(3, N + 8);
+        let mutations = evaluate(&worker, history.clone());
+        assert!(mutations.is_empty(), "age = min_age - 1 must be protected");
+
+        // Not-protected case: age 17 = min_age 17.
+        let worker = worker_with(3, N + 7);
+        let mutations = evaluate(&worker, history);
+        assert_eq!(
+            mutations.len(),
+            2,
+            "age = min_age must NOT be protected (strict less-than)"
+        );
     }
 }

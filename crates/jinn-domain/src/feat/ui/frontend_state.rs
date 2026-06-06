@@ -99,6 +99,11 @@ pub struct FrontendState {
     ///         consumed on second ESC or dismissed on any other key).
     pub cancel_stream_prompt: bool,
 
+    /// Whether the audit popup is shown for the currently selected chat entry.
+    /// OWNER: IntentHandler (ToggleAuditPopup intent).
+    /// Global toggle (not per-session); not persisted across process restarts.
+    pub audit_popup_visible: bool,
+
     /// Whether the "Press x again to confirm closure" prompt is showing.
     /// OWNER: IntentHandler (set on first SidebarSessionClose, consumed on second
     ///         SidebarSessionClose or dismissed on any other key).
@@ -146,6 +151,7 @@ impl Default for FrontendState {
             theme: crate::feat::theme::default_theme(),
             caches: FrontendCaches::default(),
             cancel_stream_prompt: false,
+            audit_popup_visible: false,
             close_session_prompt: false,
             pickers: PickerStates::default(),
             themes_dir: std::path::PathBuf::new(),

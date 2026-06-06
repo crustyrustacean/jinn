@@ -1,7 +1,7 @@
 # Maintainer: Jayson Lennon <jayson@jaysonlennon.dev>
 
 pkgname=jinn
-pkgver=0.58.0
+pkgver=0.60.0
 pkgrel=1
 pkgdesc='Agentic LLM agent harness'
 url='https://github.com/jayson-lennon/jinn'
@@ -40,11 +40,18 @@ package() {
     install -Dm0644 -t "$pkgdir/usr/share/jinn/personas/" res/personas/*.md
     install -Dm0644 -t "$pkgdir/usr/share/jinn/prompts/" res/prompts/*.md
 
-    # Install default plugins to /usr/share/jinn/plugins/.
-    for plugin_dir in res/plugins/*/; do
-        local plugin_name=$(basename "$plugin_dir")
-        install -Dm0644 "$plugin_dir"init.lua -t "$pkgdir/usr/share/jinn/plugins/$plugin_name/"
+    # Install default plugins to /usr/share/jinn/plugins/, preserving the
+    # global/attachable/meta split expected by discover_plugins. global and
+    # attachable are nested (<kind>/<plugin>/init.lua); meta is flat (meta/*.lua).
+    for kind in global attachable; do
+        for plugin_dir in res/plugins/$kind/*/; do
+            local plugin_name=$(basename "$plugin_dir")
+            for file in "$plugin_dir"*; do
+                install -Dm0644 "$file" -t "$pkgdir/usr/share/jinn/plugins/$kind/$plugin_name/"
+            done
+        done
     done
+    install -Dm0644 -t "$pkgdir/usr/share/jinn/plugins/meta/" res/plugins/meta/*.lua
 
     # Install shell completions.
     local _bin="target/release/jinn"

@@ -4594,3 +4594,41 @@ fn is_workflow_returns_real_value() {
     // Then is_workflow returns true (not hardcoded false).
     assert!(wf_session.is_workflow());
 }
+
+// --- Steering buffer persistence tests ---
+
+#[rstest::rstest]
+fn steering_buffer_not_persisted_across_serialization() {
+    // Given a session with a non-empty steering buffer.
+    let mut session = ChatSessionState::new();
+    session
+        .ui
+        .steering_buffer
+        .push_fragment("fragment one".to_owned());
+    session
+        .ui
+        .steering_buffer
+        .push_fragment("fragment two".to_owned());
+
+    // When serializing to JSON.
+    let json = serde_json::to_string(&session).expect("serialize");
+
+    // Then the serialized output does not contain any steering buffer fields.
+    assert!(
+        !json.contains("steering_buffer"),
+        "steering_buffer must not appear in serialized output: {}",
+        json
+    );
+    assert!(
+        !json.contains("fragments"),
+        "fragments must not appear in serialized output: {}",
+        json
+    );
+
+    // And deserializing produces an empty buffer.
+    let restored: ChatSessionState = serde_json::from_str(&json).expect("deserialize");
+    assert!(
+        restored.ui.steering_buffer.is_empty(),
+        "deserialized steering buffer must be empty"
+    );
+}

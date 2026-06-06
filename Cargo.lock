@@ -211,9 +211,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
-version = "2.12.1"
+version = "2.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84d7ced0ae9557296835c32bf1b1e02b44c746701f898460fb000d7eaa84f00a"
+checksum = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8"
 
 [[package]]
 name = "block-buffer"
@@ -502,7 +502,7 @@ version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b9f2e4c67f833b660cdb0a3523065869fb35570177239812ed4c905aeff87b"
 dependencies = [
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
  "crossterm_winapi",
  "derive_more",
  "document-features",
@@ -828,7 +828,7 @@ version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e0e367e4e7da84520dedcac1901e4da967309406d1e51017ae1abfb97adbd38"
 dependencies = [
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
  "objc2",
 ]
 
@@ -1237,7 +1237,7 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bf760ebf69878d9fd8f110c89703d90ce35095324d1f1edcb595c63945ee757"
 dependencies = [
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
  "ignore",
  "walkdir",
 ]
@@ -1805,7 +1805,7 @@ dependencies = [
 
 [[package]]
 name = "jinn"
-version = "0.58.0"
+version = "0.60.0"
 dependencies = [
  "async-trait",
  "clap",
@@ -1838,7 +1838,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-bench"
-version = "0.58.0"
+version = "0.60.0"
 dependencies = [
  "comfy-table",
  "csv",
@@ -1862,7 +1862,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-cli"
-version = "0.58.0"
+version = "0.60.0"
 dependencies = [
  "clap",
  "clap-verbosity-flag",
@@ -1871,7 +1871,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-domain"
-version = "0.58.0"
+version = "0.60.0"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
@@ -1923,7 +1923,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-e2e"
-version = "0.58.0"
+version = "0.60.0"
 dependencies = [
  "crossterm",
  "cucumber",
@@ -1940,8 +1940,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-lua-workflow"
+version = "0.60.0"
+dependencies = [
+ "error-stack",
+ "futures",
+ "kanal",
+ "mlua",
+ "parking_lot",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "wherror",
+]
+
+[[package]]
 name = "jinn-plugin"
-version = "0.58.0"
+version = "0.60.0"
 dependencies = [
  "async-trait",
  "dashmap",
@@ -1962,7 +1980,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-protocol-derive"
-version = "0.58.0"
+version = "0.60.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1972,7 +1990,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-provider"
-version = "0.58.0"
+version = "0.60.0"
 dependencies = [
  "async-trait",
  "error-stack",
@@ -1993,7 +2011,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-selection-widget"
-version = "0.58.0"
+version = "0.60.0"
 dependencies = [
  "fuzzy-matcher",
  "jinn-testutil",
@@ -2004,14 +2022,14 @@ dependencies = [
 
 [[package]]
 name = "jinn-testutil"
-version = "0.58.0"
+version = "0.60.0"
 dependencies = [
  "ratatui",
 ]
 
 [[package]]
 name = "jinn-theme"
-version = "0.58.0"
+version = "0.60.0"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
@@ -2027,7 +2045,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-tui"
-version = "0.58.0"
+version = "0.60.0"
 dependencies = [
  "arboard",
  "crossterm",
@@ -2057,7 +2075,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-web-fetch"
-version = "0.58.0"
+version = "0.60.0"
 dependencies = [
  "async-trait",
  "headless_chrome",
@@ -2074,7 +2092,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-workflow"
-version = "0.58.0"
+version = "0.60.0"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -2093,7 +2111,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-workflow-tui"
-version = "0.58.0"
+version = "0.60.0"
 dependencies = [
  "async-trait",
  "crossterm",
@@ -2199,7 +2217,7 @@ version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9bd35dcd25f8578944c44cd75649d6487d74cf895002f6d86613164f2635b72"
 dependencies = [
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
 ]
 
 [[package]]
@@ -2451,7 +2469,7 @@ version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71e2746dc3a24dd78b3cfcb7be93368c6de9963d30f43a6a73998a9cf4b17b46"
 dependencies = [
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
  "cfg-if",
  "cfg_aliases",
  "libc",
@@ -2547,7 +2565,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d49e936b501e5c5bf01fda3a9452ff86dc3ea98ad5f283e1455153142d97518c"
 dependencies = [
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
  "objc2",
  "objc2-core-graphics",
  "objc2-foundation",
@@ -2559,7 +2577,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536"
 dependencies = [
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
  "dispatch2",
  "objc2",
 ]
@@ -2570,7 +2588,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e022c9d066895efa1345f8e33e584b9f958da2fd4cd116792e15e07e4720a807"
 dependencies = [
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
  "dispatch2",
  "objc2",
  "objc2-core-foundation",
@@ -2589,7 +2607,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3e0adef53c21f888deb4fa59fc59f7eb17404926ee8a6f59f5df0fd7f9f3272"
 dependencies = [
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
  "objc2",
  "objc2-core-foundation",
 ]
@@ -2600,7 +2618,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "180788110936d59bab6bd83b6060ffdfffb3b922ba1396b312ae795e1de9d81d"
 dependencies = [
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
  "objc2",
  "objc2-core-foundation",
 ]
@@ -3163,7 +3181,7 @@ version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42d3603f354bba8c595fa47860e60142d7372b7210c27044c6a7d0e1a4336b44"
 dependencies = [
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
  "compact_str",
  "critical-section",
  "hashbrown 0.17.1",
@@ -3294,7 +3312,7 @@ version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ef4f17dd7ac3abf5adc2b920a03c61eee4bfe6a88fa5191936895525371d79c"
 dependencies = [
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
  "hashbrown 0.17.1",
  "indoc",
  "instability",
@@ -3325,7 +3343,7 @@ version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
 dependencies = [
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
 ]
 
 [[package]]
@@ -3499,7 +3517,7 @@ version = "0.38.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
 dependencies = [
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
@@ -3512,7 +3530,7 @@ version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
 dependencies = [
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
@@ -4066,7 +4084,7 @@ checksum = "4676b37242ccbd1aabf56edb093a4827dc49086c0ffd764a5705899e0f35f8f7"
 dependencies = [
  "anyhow",
  "base64",
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
  "fancy-regex",
  "filedescriptor",
  "finl_unicode",
@@ -4393,7 +4411,7 @@ version = "0.6.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4cfcf7e2740e6fc6d4d688b4ef00650406bb94adf4731e43c096c3a19fe40840"
 dependencies = [
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
  "bytes",
  "futures-util",
  "http",
@@ -5259,7 +5277,7 @@ version = "0.244.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47b807c72e1bac69382b3a6fb3dbe8ea4c0ed87ff5629b8685ae6b9a611028fe"
 dependencies = [
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
  "hashbrown 0.15.5",
  "indexmap",
  "semver",
@@ -5785,7 +5803,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d66ea20e9553b30172b5e831994e35fbde2d165325bec84fc43dbf6f4eb9cb2"
 dependencies = [
  "anyhow",
- "bitflags 2.12.1",
+ "bitflags 2.13.0",
  "indexmap",
  "log",
  "serde",

@@ -21,7 +21,8 @@ fn main() {
             log_path: log_path.clone(),
         },
         Some(jinn_cli::cli::Commands::Headless { .. })
-        | Some(jinn_cli::cli::Commands::Fetch { .. }) => TracingMode::Headless {
+        | Some(jinn_cli::cli::Commands::Fetch { .. })
+        | Some(jinn_cli::cli::Commands::Config { .. }) => TracingMode::Headless {
             log_path: log_path.clone(),
         },
     };

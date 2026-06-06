@@ -108,9 +108,38 @@ impl App {
             SessionStoreService::new(Arc::new(store.change_context(AppError)?))
         };
 
+        // Dispatch `config` subcommands BEFORE the early preferences parse.
+        // `jinn config init` is the user's recovery tool for a missing or broken
+        // config, so it must not be guarded by load-time parsing (which itself
+        // auto-creates the file on first run).
+        if let Some(Commands::Config { subcommand }) = &cli.command {
+            use jinn_cli::cli::ConfigCommands;
+            use jinn_domain::{InitOutcome, init_default_config_to, preferences_path};
+
+            match subcommand {
+                ConfigCommands::Init { force } => {
+                    let path = preferences_path();
+                    let force = *force;
+                    match init_default_config_to(&path, force) {
+                        Ok(InitOutcome::Created) => {
+                            println!("Created {}", path.display());
+                        }
+                        Ok(InitOutcome::Overwritten) => {
+                            println!("Overwrote {}", path.display());
+                        }
+                        Err(report) => {
+                            eprintln!("{report:?}");
+                            return Err(report.change_context(AppError));
+                        }
+                    }
+                    return Ok(());
+                }
+            }
+        }
+
         // Parse user preferences early — fail-fast on a bad config BEFORE
         // any actor wiring runs. The shared service is cloned into each
-        // command arm below.
+        // command arm below. Config subcommands have already dispatched above.
         let user_preferences_storage = {
             let backend = FilesystemUserPreferencesStorage::default_path();
             let path = backend.path().to_path_buf();
@@ -256,6 +285,7 @@ impl App {
                     }
                 }
             }
+
             Commands::Bench { subcommand } => {
                 if cli.db_path.is_some() {
                     return Err(Report::new(AppError)
@@ -419,6 +449,9 @@ impl App {
                     }
                 }
             }
+            // Config subcommands are dispatched above, before the early
+            // preferences parse. Reaching this match arm is impossible.
+            Commands::Config { .. } => {}
         }
 
         Ok(())
