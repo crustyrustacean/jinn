@@ -327,7 +327,6 @@ mod tests {
         assert_eq!(result, None);
     }
 
-
     #[rstest::rstest]
     fn is_empty_returns_false_when_data_present() {
         // Kills: replace is_empty with true.

@@ -1970,7 +1970,6 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         assert!(written.contains("last_model = \"ollama/llama3\""));
     }
 
-
     #[rstest::rstest]
     fn to_retry_config_uses_actual_values_not_defaults() {
         // Kills: replace to_retry_config with Default::default().

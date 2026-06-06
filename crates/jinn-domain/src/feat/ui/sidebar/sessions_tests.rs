@@ -1747,7 +1747,6 @@ fn multi_level_intermediate_hiding_reparents_to_nearest_loaded_ancestor() {
     );
 }
 
-
 #[rstest::rstest]
 fn sorted_sessions_last_root_is_marked_as_last_child() {
     // Given 3 root sessions (no parent-child relationships).
@@ -1817,7 +1816,6 @@ fn tree_children_last_child_flag_is_correct() {
     );
 }
 
-
 #[rstest::rstest]
 fn update_visual_parents_on_removal_reparents_only_children_of_removed_session() {
     // Given a chain: root -> A -> B.
@@ -1880,7 +1878,6 @@ fn update_visual_parents_on_removal_reparents_only_children_of_removed_session()
     );
 }
 
-
 #[rstest::rstest]
 fn clear_visual_parents_on_load_removes_only_entries_pointing_to_loaded_session() {
     // Given a state with visual_parents entries.
@@ -1920,7 +1917,6 @@ fn clear_visual_parents_on_load_removes_only_entries_pointing_to_loaded_session(
         "entry pointing to other session should be kept"
     );
 }
-
 
 #[rstest::rstest]
 fn clear_visual_parents_on_load_actually_removes_entries() {

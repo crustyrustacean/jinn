@@ -518,7 +518,6 @@ mod tests {
         );
     }
 
-
     #[tokio::test]
     async fn on_stream_token_appends_text_to_assistant_entry() {
         // Given a session in streaming state.
@@ -619,7 +618,6 @@ mod tests {
             session.phase()
         );
     }
-
 
     #[tokio::test]
     async fn on_stream_completed_finished_persists_session() {

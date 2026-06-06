@@ -331,18 +331,15 @@ fn estimate_entry_tokens_for_forced_include_error_uses_actionable_framing() {
     use crate::protocol::ContextOverride;
     let estimator = CharRatioEstimator;
     let text = "merge conflict report";
-    let entry =
-        ChatEntry::error(text).with_context_override(ContextOverride::ForcedInclude);
+    let entry = ChatEntry::error(text).with_context_override(ContextOverride::ForcedInclude);
 
     // When estimating entry tokens.
     let tokens = estimate_entry_tokens(&estimator, &entry);
 
     // Then the estimate equals the count of the rendered string,
     // not the count of `[Error] {text}`.
-    let rendered = format!("The user has shared the following output for you to address:\n\n{text}");
+    let rendered =
+        format!("The user has shared the following output for you to address:\n\n{text}");
     assert_eq!(tokens, estimator.estimate(&rendered));
-    assert_ne!(
-        tokens,
-        estimator.estimate(&format!("[Error] {text}"))
-    );
+    assert_ne!(tokens, estimator.estimate(&format!("[Error] {text}")));
 }

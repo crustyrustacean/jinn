@@ -76,7 +76,9 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 Ok(()) => {
                     let next_block = list.render_next_block();
                     let rendered = list.render_text_with_blockers();
-                    Ok(format!("{next_block}\nTask [{task_id}] cancelled.\n\n{rendered}"))
+                    Ok(format!(
+                        "{next_block}\nTask [{task_id}] cancelled.\n\n{rendered}"
+                    ))
                 }
                 Err(e) => Err(format!("Error: {e}")),
             }

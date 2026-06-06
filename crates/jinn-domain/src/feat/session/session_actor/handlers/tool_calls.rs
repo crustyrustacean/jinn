@@ -252,12 +252,12 @@ mod tests {
     use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::feat::session::token_stats::TokenRecord;
+    use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::feat::tools_actor::protocol::event::{
         ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionOutput,
         ToolExecutionStarted, ToolUseStarted,
     };
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
-    use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind, Command, Event};
 
     #[tokio::test]
@@ -832,10 +832,22 @@ mod tests {
             session.push_entry(ChatEntry::user("list files"));
             session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
             session.push_entry(ChatEntry::assistant("checking"));
-            session.push_entry(ChatEntry::tool_result("tc-1", "bash", "file1.txt", ToolResultStatus::Success));
-            session.push_entry(ChatEntry::tool_result("tc-1", "bash", "file2.txt", ToolResultStatus::Success));
+            session.push_entry(ChatEntry::tool_result(
+                "tc-1",
+                "bash",
+                "file1.txt",
+                ToolResultStatus::Success,
+            ));
+            session.push_entry(ChatEntry::tool_result(
+                "tc-1",
+                "bash",
+                "file2.txt",
+                ToolResultStatus::Success,
+            ));
             // Prime steering buffer.
-            session.steering_buffer_mut().push_fragment("stay at the foo part");
+            session
+                .steering_buffer_mut()
+                .push_fragment("stay at the foo part");
             // Tool batch already completed; transition to Sending so on_tool_batch_completed
             // routes through the drain path.
             session.finish_streaming(true);

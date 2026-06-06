@@ -300,7 +300,10 @@ mod tests {
         // canonical template (so users get a comment-rich starter config on
         // first run).
         assert!(prefs.last_model.is_none());
-        assert!(path.exists(), "first-run load should auto-create the config file");
+        assert!(
+            path.exists(),
+            "first-run load should auto-create the config file"
+        );
     }
 
     #[rstest::rstest]
