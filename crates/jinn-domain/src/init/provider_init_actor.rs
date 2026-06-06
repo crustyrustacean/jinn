@@ -210,7 +210,7 @@ mod tests {
                 cwd_selector: CwdSelectorConfig::default(),
                 minimap: MinimapConfig::default(),
                 auto_prune: AutoPruneConfig::default(),
-            bash: BashConfig::default(),
+                bash: BashConfig::default(),
             })
             .expect("save prefs");
 
@@ -435,7 +435,7 @@ mod tests {
                 cwd_selector: CwdSelectorConfig::default(),
                 minimap: MinimapConfig::default(),
                 auto_prune: AutoPruneConfig::default(),
-            bash: BashConfig::default(),
+                bash: BashConfig::default(),
             })
             .expect("save prefs");
 

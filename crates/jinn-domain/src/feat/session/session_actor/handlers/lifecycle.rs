@@ -486,13 +486,12 @@ impl SessionPersistenceActor {
                     session.begin_busy();
                     use crate::feat::session_lifecycle::command_template::CommandTemplate;
                     let template = CommandTemplate::parse(shell_cmd);
-                    
-                    let rendered = if lifecycle_args.is_empty() {
+
+                    if lifecycle_args.is_empty() {
                         shell_cmd.clone()
                     } else {
                         template.render(&lifecycle_args)
-                    };
-                    rendered
+                    }
                 };
 
                 // Push "running" entry.
@@ -695,12 +694,12 @@ impl SessionPersistenceActor {
                             };
                             session.begin_busy();
                             let template = CommandTemplate::parse(&shell_cmd);
-                            let rendered = if lifecycle_args.is_empty() {
+
+                            if lifecycle_args.is_empty() {
                                 shell_cmd.clone()
                             } else {
                                 template.render(&lifecycle_args)
-                            };
-                            rendered
+                            }
                         };
 
                         self.push_and_save(&payload.session_id, teardown_running_msg(), ctx)
@@ -1040,10 +1039,7 @@ impl SessionPersistenceActor {
             &mut state, session_id,
         );
 
-        let prefs = self
-            .services
-            .user_preferences_storage
-            .read();
+        let prefs = self.services.user_preferences_storage.read();
         let fresh_session = {
             let model = prefs
                 .last_model

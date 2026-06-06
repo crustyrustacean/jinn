@@ -52,8 +52,8 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
         PickerKind::SessionLifecycle => {
             state.frontend.session_lifecycle_picker_mut().reset();
         }
-        PickerKind::Workflow => {
-            state.frontend.workflow_picker_mut().reset();
+        PickerKind::Plugin => {
+            state.frontend.plugin_picker_mut().reset();
         }
 
         PickerKind::CompactionModel => {
@@ -95,15 +95,17 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
                 LoadPersonaPickerEntries,
             )])
         }
-        PickerKind::Theme | PickerKind::Tool | PickerKind::Skill | PickerKind::TaskList => IntentResult::empty(),
+        PickerKind::Theme | PickerKind::Tool | PickerKind::Skill | PickerKind::TaskList => {
+            IntentResult::empty()
+        }
         PickerKind::SessionLifecycle => {
             // Populate from user preferences + implicit blank lifecycle.
             load_lifecycle_picker_entries(state);
             IntentResult::empty()
         }
-        PickerKind::Workflow => {
+        PickerKind::Plugin => {
             // Populate from discovered Lua plugins.
-            load_workflow_picker_entries(state);
+            load_plugin_picker_entries(state);
             IntentResult::empty()
         }
 
@@ -112,25 +114,24 @@ pub fn handle_open_picker(state: &mut AppState, kind: PickerKind) -> IntentResul
                 crate::feat::provider::protocol::command::LoadCompactionModelPickerEntries,
             )])
         }
-
     }
 }
 
-fn load_workflow_picker_entries(state: &mut AppState) {
+fn load_plugin_picker_entries(state: &mut AppState) {
+    use crate::feat::plugin_dispatch::picker_entry::PluginPickerEntry;
     use crate::feat::theme::default_theme;
-    use crate::feat::workflow::picker_entry::WorkflowPickerEntry;
 
     let mut entries = Vec::new();
 
     for plugin in &state.discovered_plugins {
-        entries.push(WorkflowPickerEntry {
+        entries.push(PluginPickerEntry {
             name: plugin.name.clone(),
             description: plugin.description.clone(),
             theme: default_theme(),
         });
     }
 
-    state.frontend.pickers.workflow_picker.set_items(entries);
+    state.frontend.pickers.plugin_picker.set_items(entries);
 }
 
 /// Loads discovered themes into the theme picker.
@@ -280,9 +281,11 @@ pub fn handle_picker_confirm(state: &mut AppState) -> (IntentResult, Option<Inte
         Some(PickerKind::Persona) => (confirm_persona(state), None),
         Some(PickerKind::Theme) => (confirm_theme(state), None),
         Some(PickerKind::SessionLifecycle) => (confirm_session_lifecycle(state), None),
-        Some(PickerKind::Workflow) => (confirm_workflow(state), None),
+        Some(PickerKind::Plugin) => (confirm_plugin(state), None),
 
-        Some(PickerKind::CompactionModel | PickerKind::TaskList) | None => (IntentResult::empty(), None),
+        Some(PickerKind::CompactionModel | PickerKind::TaskList) | None => {
+            (IntentResult::empty(), None)
+        }
         Some(PickerKind::Tool) => (confirm_tool(state), None),
         Some(PickerKind::Skill) => (confirm_skill(state), None),
     }
@@ -517,8 +520,8 @@ fn confirm_session_lifecycle(state: &mut AppState) -> IntentResult {
 }
 
 /// Confirms the selected workflow, starts it, and switches to the Workflow tab.
-fn confirm_workflow(state: &mut AppState) -> IntentResult {
-    let Some(entry) = state.frontend.workflow_picker().selected_item() else {
+fn confirm_plugin(state: &mut AppState) -> IntentResult {
+    let Some(entry) = state.frontend.plugin_picker().selected_item() else {
         return IntentResult::empty();
     };
     let script = entry.name.clone();
@@ -526,16 +529,11 @@ fn confirm_workflow(state: &mut AppState) -> IntentResult {
     // Pop picker overlay.
     state.frontend.scope_stack.pop();
 
-    let config = crate::feat::workflow::attached_workflow::WorkflowConfig {
-        script: script.clone(),
-        data: serde_json::json!({}),
-    };
     let session_id = state.session.active_session_id().clone();
-    IntentResult::with_commands(vec![Command::AttachWorkflow(
-        crate::feat::workflow::protocol::command::AttachWorkflow {
+    IntentResult::with_commands(vec![Command::AttachPlugin(
+        crate::feat::plugin_dispatch::protocol::command::AttachPlugin {
             session_id,
-            config,
-            trigger: crate::feat::workflow::attached_workflow::WorkflowTrigger::TurnEnd,
+            plugin_name: script.clone(),
         },
     )])
 }
@@ -613,8 +611,8 @@ fn load_skill_picker_entries(state: &mut AppState) {
 /// Empty task lists produce an empty picker - no panic.
 fn load_task_list_picker_entries(state: &mut AppState) {
     use crate::feat::theme::default_theme;
-    use crate::feat::todo_list::picker_entry::TaskListTreeEntry;
     use crate::feat::todo_list::TaskStatus;
+    use crate::feat::todo_list::picker_entry::TaskListTreeEntry;
 
     let theme = default_theme();
     let entries: Vec<TaskListTreeEntry> = state
@@ -705,8 +703,8 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
     use crate::feat::session::ChatSessionState;
-    use crate::feat::todo_list::picker_entry::RowStatus;
     use crate::feat::todo_list::TaskStatus;
+    use crate::feat::todo_list::picker_entry::RowStatus;
     use crate::protocol::ChatEntryKind;
     use jinn_selection_widget::TreeItem;
     use std::path::PathBuf;
@@ -1072,7 +1070,7 @@ mod tests {
     // --- Workflow picker tests ---
 
     fn setup_state_with_plugins() -> AppState {
-        use crate::feat::luaworkflow::discovery::PluginMeta;
+        use crate::common::app_state::DiscoveredPlugin;
 
         let mut state = AppState::default();
         let origin = ChatSessionState::new();
@@ -1082,11 +1080,11 @@ mod tests {
             .set_active(state.session.active_session_id().clone());
 
         state.discovered_plugins = vec![
-            PluginMeta {
+            DiscoveredPlugin {
                 name: "judge-fail".to_owned(),
                 description: Some("Runs judge on failure".to_owned()),
             },
-            PluginMeta {
+            DiscoveredPlugin {
                 name: "consensus".to_owned(),
                 description: Some("Multi-model consensus".to_owned()),
             },
@@ -1096,15 +1094,15 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn load_workflow_picker_entries_populates_from_discovered_plugins() {
+    fn load_plugin_picker_entries_populates_from_discovered_plugins() {
         // Given state with two discovered plugins.
         let mut state = setup_state_with_plugins();
 
         // When loading workflow picker entries.
-        load_workflow_picker_entries(&mut state);
+        load_plugin_picker_entries(&mut state);
 
         // Then the picker has two entries matching the plugins.
-        let items = state.frontend.workflow_picker().items();
+        let items = state.frontend.plugin_picker().items();
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].name, "judge-fail");
         assert_eq!(
@@ -1119,7 +1117,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn load_workflow_picker_entries_empty_when_no_plugins() {
+    fn load_plugin_picker_entries_empty_when_no_plugins() {
         // Given state with no discovered plugins.
         let mut state = AppState::default();
         let origin = ChatSessionState::new();
@@ -1129,57 +1127,51 @@ mod tests {
             .set_active(state.session.active_session_id().clone());
 
         // When loading workflow picker entries.
-        load_workflow_picker_entries(&mut state);
+        load_plugin_picker_entries(&mut state);
 
         // Then the picker is empty.
-        let items = state.frontend.workflow_picker().items();
+        let items = state.frontend.plugin_picker().items();
         assert!(items.is_empty());
     }
 
     #[rstest::rstest]
-    fn confirm_workflow_emits_attach_workflow_with_lua_config() {
+    fn confirm_plugin_emits_attach_workflow_with_lua_config() {
         // Given a workflow picker populated with plugins.
         let mut state = setup_state_with_plugins();
-        load_workflow_picker_entries(&mut state);
+        load_plugin_picker_entries(&mut state);
         // Select the second entry (consensus).
-        state.frontend.workflow_picker_mut().move_down(1);
-        state.frontend.workflow_picker_mut().move_down(1);
+        state.frontend.plugin_picker_mut().move_down(1);
+        state.frontend.plugin_picker_mut().move_down(1);
         // Push a picker scope so the pop has something to remove.
         state.frontend.scope_stack.push(FocusScope::Picker {
-            kind: PickerKind::Workflow,
+            kind: PickerKind::Plugin,
         });
 
         // When confirming.
-        let result = confirm_workflow(&mut state);
+        let result = confirm_plugin(&mut state);
 
-        // Then an AttachWorkflow command is emitted with the selected plugin name.
+        // Then an AttachPlugin command is emitted with the selected plugin name.
         assert_eq!(result.commands.len(), 1);
         let cmd = &result.commands[0];
-        let Command::AttachWorkflow(attach) = cmd else {
-            panic!("expected AttachWorkflow, got {cmd:?}");
+        let Command::AttachPlugin(attach) = cmd else {
+            panic!("expected AttachPlugin, got {cmd:?}");
         };
-        assert_eq!(attach.config.script, "consensus");
-        assert!(matches!(
-            attach.trigger,
-            crate::feat::workflow::attached_workflow::WorkflowTrigger::TurnEnd
-        ));
-        // And the data is an empty JSON object.
-        assert_eq!(attach.config.data, serde_json::json!({}));
+        assert_eq!(attach.plugin_name, "consensus");
     }
 
     #[rstest::rstest]
-    fn confirm_workflow_pops_picker_scope() {
+    fn confirm_plugin_pops_picker_scope() {
         // Given a workflow picker with a Picker scope on the stack.
         let mut state = setup_state_with_plugins();
-        load_workflow_picker_entries(&mut state);
+        load_plugin_picker_entries(&mut state);
         // Select an entry.
-        state.frontend.workflow_picker_mut().move_down(1);
+        state.frontend.plugin_picker_mut().move_down(1);
         state.frontend.scope_stack.push(FocusScope::Picker {
-            kind: PickerKind::Workflow,
+            kind: PickerKind::Plugin,
         });
 
         // When confirming.
-        let _ = confirm_workflow(&mut state);
+        let _ = confirm_plugin(&mut state);
 
         // Then the Picker scope was popped.
         assert!(!matches!(
@@ -1242,7 +1234,6 @@ mod tests {
         assert!(result.commands.is_empty());
     }
 
-
     fn setup_state_with_task_list() -> (AppState, crate::feat::todo_list::TaskId) {
         use crate::feat::todo_list::TaskPosition;
 
@@ -1258,7 +1249,10 @@ mod tests {
             .task_list_mut()
             .add_task(&phase1, "Write notes", TaskPosition::End)
             .expect("add_task");
-        origin.task_list_mut().complete_task(&task2).expect("complete");
+        origin
+            .task_list_mut()
+            .complete_task(&task2)
+            .expect("complete");
 
         // Phase 2 with 3 tasks (Pending, Cancelled, plus a Postponed source).
         // postpone_task marks the source as Postponed AND inserts a new Pending
@@ -1356,7 +1350,6 @@ mod tests {
         assert_eq!(research_children.len(), 2);
         assert_eq!(build_children.len(), 3);
     }
-
 
     #[rstest::rstest]
     fn load_task_list_picker_entries_carries_status_through() {
@@ -1465,4 +1458,3 @@ mod tests {
         );
     }
 }
-

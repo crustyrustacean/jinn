@@ -23,7 +23,6 @@ pub mod regex;
 pub mod todo_prune;
 pub mod tool_age_window;
 pub mod trivial_assistant;
-
 pub(crate) use min_age::is_within_min_age;
 
 pub use anchor_radius::AnchorRadiusAutoPruneWorker;

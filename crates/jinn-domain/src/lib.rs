@@ -45,6 +45,9 @@ pub use feat::context::prompt_template::PromptTemplateStore;
 pub use feat::provider_infra::NO_PROVIDER_ID;
 
 // Re-export services types
+pub use common::services::NoopPluginFire;
+pub use common::services::NoopPluginSyncCall;
+pub use common::services::NoopSessionPluginRegistry;
 pub use common::services::Services;
 pub use common::services::test_services::TestServices;
 
@@ -83,6 +86,7 @@ pub use feat::preferences_actor::InMemoryUserPreferencesStorage;
 pub use feat::preferences_actor::RequestRetryConfig;
 pub use feat::preferences_actor::UserPreferences;
 pub use feat::preferences_actor::UserPreferencesStorageService;
+pub use feat::preferences_actor::{InitOutcome, init_default_config_to, preferences_path};
 pub use feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 pub use feat::preferences_actor::protocol::event::PreferencesUpdated;
 

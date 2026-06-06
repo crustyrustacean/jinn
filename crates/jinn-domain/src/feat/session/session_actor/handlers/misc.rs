@@ -9,6 +9,7 @@ use crate::feat::provider::protocol::event::ModelsRefreshed;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
+
 use crate::feat::ui::picker_states::PickerExt;
 use crate::protocol::Event;
 use crate::protocol::{ChatEntry, PickerKind};
@@ -202,13 +203,12 @@ mod tests {
     use std::collections::HashMap;
 
     fn test_ctx() -> crate::common::actor::context::ActorContext {
-        use std::sync::Arc;
         use crate::common::actor::context::ActorContext;
         use crate::common::actor::message_sink::{MessageSink, RecordingSink};
+        use std::sync::Arc;
         let sink: Arc<dyn MessageSink> = Arc::new(RecordingSink::new());
         ActorContext::new("test", sink)
     }
-
 
     // --- on_models_refreshed ---
 
@@ -347,7 +347,6 @@ mod tests {
         );
     }
 
-
     // --- handle_submit_history_mutations ---
 
     #[test]
@@ -372,7 +371,13 @@ mod tests {
             &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
                 session_id: session_id.clone(),
                 mutations: vec![
-                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: entry_id.clone(), value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude, source: crate::feat::session::chat_entry::ChangeSource::Internal { label: "test".to_string() } },
+                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                        entry_id: entry_id.clone(),
+                        value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
+                        source: crate::feat::session::chat_entry::ChangeSource::Internal {
+                            label: "test".to_string(),
+                        },
+                    },
                 ],
             },
             &mut test_ctx(),
@@ -424,7 +429,13 @@ mod tests {
             &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
                 session_id: new_session_id.clone(),
                 mutations: vec![
-                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: crate::feat::session::chat_entry::ChatEntryId::new(), value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude, source: crate::feat::session::chat_entry::ChangeSource::Internal { label: "test".to_string() } },
+                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                        entry_id: crate::feat::session::chat_entry::ChatEntryId::new(),
+                        value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
+                        source: crate::feat::session::chat_entry::ChangeSource::Internal {
+                            label: "test".to_string(),
+                        },
+                    },
                 ],
             },
             &mut test_ctx(),
@@ -466,7 +477,13 @@ mod tests {
             &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
                 session_id: session_id.clone(),
                 mutations: vec![
-                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: entry_id_1, value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude, source: crate::feat::session::chat_entry::ChangeSource::Internal { label: "test".to_string() } },
+                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                        entry_id: entry_id_1,
+                        value: crate::feat::session::chat_entry::ContextOverride::ForcedExclude,
+                        source: crate::feat::session::chat_entry::ChangeSource::Internal {
+                            label: "test".to_string(),
+                        },
+                    },
                 ],
             },
             &mut test_ctx(),
@@ -475,7 +492,13 @@ mod tests {
             &crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations {
                 session_id: session_id.clone(),
                 mutations: vec![
-                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride { entry_id: entry_id_2, value: crate::feat::session::chat_entry::ContextOverride::ForcedInclude, source: crate::feat::session::chat_entry::ChangeSource::Internal { label: "test".to_string() } },
+                    crate::feat::session::history_mutation::HistoryMutation::SetContextOverride {
+                        entry_id: entry_id_2,
+                        value: crate::feat::session::chat_entry::ContextOverride::ForcedInclude,
+                        source: crate::feat::session::chat_entry::ChangeSource::Internal {
+                            label: "test".to_string(),
+                        },
+                    },
                 ],
             },
             &mut test_ctx(),
@@ -511,7 +534,9 @@ mod tests {
         };
         let entry_id = {
             let state = actor.state.read();
-            state.session.get(&session_id).unwrap().history()[0].id.clone()
+            state.session.get(&session_id).unwrap().history()[0]
+                .id
+                .clone()
         };
 
         // When submitting a SetContextOverride mutation with a real change.
@@ -567,7 +592,9 @@ mod tests {
         };
         let entry_id = {
             let state = actor.state.read();
-            state.session.get(&session_id).unwrap().history()[0].id.clone()
+            state.session.get(&session_id).unwrap().history()[0]
+                .id
+                .clone()
         };
 
         // When submitting a SetContextOverride that matches the current value (no-op).
@@ -589,12 +616,9 @@ mod tests {
 
         // Then no ContextOverrideChanged event is emitted.
         let events = sink.events();
-        let has_event = events.iter().any(|ev| {
-            matches!(
-                ev,
-                crate::protocol::Event::ContextOverrideChanged(_)
-            )
-        });
+        let has_event = events
+            .iter()
+            .any(|ev| matches!(ev, crate::protocol::Event::ContextOverrideChanged(_)));
         assert!(
             !has_event,
             "expected no ContextOverrideChanged for no-op mutation"

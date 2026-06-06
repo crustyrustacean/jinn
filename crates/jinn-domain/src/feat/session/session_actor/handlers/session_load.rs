@@ -64,10 +64,10 @@ impl SessionPersistenceActor {
             state.session.clear_load();
         }
 
-        // Re-register attached workflows in the runtime workflow map.
+        // Re-register attached plugins for the loaded session.
         // Must be called after the write lock above is released, since
-        // rehydrate_attached_workflows acquires its own write lock.
-        self.rehydrate_attached_workflows(&session_id);
+        // rehydrate_attached_plugins acquires its own write lock.
+        self.rehydrate_attached_plugins(&session_id);
 
         // Validate CWD - fallback to default if non-existent on disk.
         // This check is async (tokio::fs), so it runs outside the state lock.
@@ -101,37 +101,28 @@ impl SessionPersistenceActor {
         self.save_active_session(&session_id).await;
     }
 
-    /// Re-registers attached workflows for a loaded session into the runtime WorkflowMap.
+    /// Reset `Running` → `Idle` for attached plugins on loaded sessions.
     ///
-    /// WorkflowState (the execution graph) is ephemeral and must be rebuilt on load.
-    /// Also resets Running → Ready for crash/restart safety.
+    /// Crash/restart safety: a plugin that was `Running` when the process died
+    /// would otherwise be stuck in `Running` forever. The dispatcher will
+    /// re-attach and re-fire as needed on next lifecycle event.
     ///
     /// Call this after inserting a session into the SessionMap.
     /// Acquires its own write lock — do NOT call inside another write-lock scope.
-    pub(in crate::feat::session::session_actor) fn rehydrate_attached_workflows(
+    pub(in crate::feat::session::session_actor) fn rehydrate_attached_plugins(
         &self,
         session_id: &crate::protocol::SessionId,
     ) {
         let mut state = self.state.write();
-        let Some(session) = state.session.get(session_id) else {
-            return;
-        };
-        let _attached_workflows = session.core.attached_workflows.clone();
-        let _ = session; // release the shared borrow
-
-        // No-op: Lua workflows don't need runtime registration.
-        // Just reset Running → Ready for crash/restart safety.
-
-        // Reset Running → Ready for all attached workflows (crash/restart safety).
         let Some(session) = state.session.get_mut(session_id) else {
             return;
         };
-        for aw in &mut session.core.attached_workflows {
+        for ap in &mut session.core.attached_plugins {
             if matches!(
-                aw.state,
-                crate::feat::workflow::attached_workflow::AttachedWorkflowState::Running
+                ap.run_state,
+                crate::feat::attached_plugin::PluginRunState::Running
             ) {
-                aw.state = crate::feat::workflow::attached_workflow::AttachedWorkflowState::Ready;
+                ap.run_state = crate::feat::attached_plugin::PluginRunState::Idle;
             }
         }
     }
