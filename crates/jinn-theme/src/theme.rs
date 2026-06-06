@@ -96,6 +96,22 @@ pub struct Theme {
     pub scroll_indicator_bg: Color,
     /// Sidebar resize mode border color.
     pub sidebar_resize_accent: Color,
+
+    // Chat input submit-mode badge
+    /// Color for the `[QUEUE]` mode badge on the chat input border.
+    pub input_mode_queue: Color,
+    /// Color for the `[STEER]` mode badge on the chat input border.
+    pub input_mode_steer: Color,
+
+    // Info popup
+    /// Background color for info/debug popup overlays (audit, debug, etc.).
+    pub infopopup_bg: Color,
+    /// Title/header text color for info popups.
+    pub infopopup_title: Color,
+    /// Border color for info popups.
+    pub infopopup_border: Color,
+    /// Body text color for info popups.
+    pub infopopup_fg: Color,
 }
 
 /// TOML-serializable theme file with optional fields.
@@ -177,7 +193,23 @@ pub struct ThemeFile {
     pub scroll_indicator_bg: Option<ThemeColor>,
     #[serde(default)]
     pub sidebar_resize_accent: Option<ThemeColor>,
+
+    #[serde(default)]
+    pub input_mode_queue: Option<ThemeColor>,
+    #[serde(default)]
+    pub input_mode_steer: Option<ThemeColor>,
+
+    // Info popup
+    #[serde(default)]
+    pub infopopup_bg: Option<ThemeColor>,
+    #[serde(default)]
+    pub infopopup_title: Option<ThemeColor>,
+    #[serde(default)]
+    pub infopopup_border: Option<ThemeColor>,
+    #[serde(default)]
+    pub infopopup_fg: Option<ThemeColor>,
 }
+
 
 impl ThemeFile {
     /// Resolves this file into a full [`Theme`], filling missing fields
@@ -299,7 +331,33 @@ impl ThemeFile {
                 fallback.sidebar_resize_accent,
                 crate::color::ThemeColor::inner,
             ),
+
+            input_mode_queue: self.input_mode_queue.map_or(
+                fallback.input_mode_queue,
+                crate::color::ThemeColor::inner,
+            ),
+            input_mode_steer: self.input_mode_steer.map_or(
+                fallback.input_mode_steer,
+                crate::color::ThemeColor::inner,
+            ),
+            infopopup_bg: self
+                .infopopup_bg
+                .map_or(fallback.infopopup_bg, crate::color::ThemeColor::inner),
+            infopopup_title: self
+                .infopopup_title
+                .map_or(fallback.infopopup_title, crate::color::ThemeColor::inner),
+            infopopup_border: self
+                .infopopup_border
+                .map_or(fallback.infopopup_border, crate::color::ThemeColor::inner),
+            infopopup_fg: self
+                .infopopup_fg
+                .map_or(fallback.infopopup_fg, crate::color::ThemeColor::inner),
         }
+    }
+
+    /// Resolve a single optional ThemeColor into a Color (Reset when absent).
+    fn resolve_field(field: Option<crate::color::ThemeColor>) -> Color {
+        field.map_or(Color::Reset, crate::color::ThemeColor::inner)
     }
 
     /// Resolves this file without any fallback theme.
@@ -310,101 +368,47 @@ impl ThemeFile {
     #[must_use]
     pub fn resolve_standalone(&self) -> Theme {
         Theme {
-            focus_accent: self
-                .focus_accent
+            focus_accent: Self::resolve_field(self.focus_accent),
+            border_unfocused: Self::resolve_field(self.border_unfocused),
+            popup_title: Self::resolve_field(self.popup_title),
+            primary_text: Self::resolve_field(self.primary_text),
+            muted_text: Self::resolve_field(self.muted_text),
+            error_text: Self::resolve_field(self.error_text),
+            success: Self::resolve_field(self.success),
+            warning: Self::resolve_field(self.warning),
+            streaming: Self::resolve_field(self.streaming),
+            node_awaiting_input: Self::resolve_field(self.node_awaiting_input),
+            gutter_bg: Self::resolve_field(self.gutter_bg),
+            gutter_context_included: Self::resolve_field(self.gutter_context_included),
+            user_block_bg: Self::resolve_field(self.user_block_bg),
+            tool_fg: Self::resolve_field(self.tool_fg),
+            tool_success_bg: Self::resolve_field(self.tool_success_bg),
+            tool_failure_bg: Self::resolve_field(self.tool_failure_bg),
+            tool_pending_bg: Self::resolve_field(self.tool_pending_bg),
+            compaction_block_bg: Self::resolve_field(self.compaction_block_bg),
+            truncation_fg: Self::resolve_field(self.truncation_fg),
+            picker_active_marker: Self::resolve_field(self.picker_active_marker),
+            picker_selected_bg: Self::resolve_field(self.picker_selected_bg),
+            picker_highlight_bg: Self::resolve_field(self.picker_highlight_bg),
+            tab_active_fg: Self::resolve_field(self.tab_active_fg),
+            tab_active_bg: Self::resolve_field(self.tab_active_bg),
+            tab_inactive_fg: Self::resolve_field(self.tab_inactive_fg),
+            selection_fg: Self::resolve_field(self.selection_fg),
+            selection_bg: Self::resolve_field(self.selection_bg),
+            accent_action: Self::resolve_field(self.accent_action),
+            age_fresh: Self::resolve_field(self.age_fresh),
+            age_stale: Self::resolve_field(self.age_stale),
+            scroll_indicator_bg: Self::resolve_field(self.scroll_indicator_bg),
+            sidebar_resize_accent: Self::resolve_field(self.sidebar_resize_accent),
+            infopopup_bg: Self::resolve_field(self.infopopup_bg),
+            infopopup_title: Self::resolve_field(self.infopopup_title),
+            infopopup_border: Self::resolve_field(self.infopopup_border),
+            infopopup_fg: Self::resolve_field(self.infopopup_fg),
+            input_mode_queue: self
+                .input_mode_queue
                 .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            border_unfocused: self
-                .border_unfocused
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            popup_title: self
-                .popup_title
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            primary_text: self
-                .primary_text
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            muted_text: self
-                .muted_text
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            error_text: self
-                .error_text
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            success: self
-                .success
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            warning: self
-                .warning
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            streaming: self
-                .streaming
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            node_awaiting_input: self
-                .node_awaiting_input
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            gutter_bg: self
-                .gutter_bg
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            gutter_context_included: self
-                .gutter_context_included
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            user_block_bg: self
-                .user_block_bg
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            tool_fg: self
-                .tool_fg
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            tool_success_bg: self
-                .tool_success_bg
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            tool_failure_bg: self
-                .tool_failure_bg
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            tool_pending_bg: self
-                .tool_pending_bg
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            compaction_block_bg: self
-                .compaction_block_bg
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            truncation_fg: self
-                .truncation_fg
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            picker_active_marker: self
-                .picker_active_marker
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            picker_selected_bg: self
-                .picker_selected_bg
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            picker_highlight_bg: self
-                .picker_highlight_bg
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            tab_active_fg: self
-                .tab_active_fg
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            tab_active_bg: self
-                .tab_active_bg
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            tab_inactive_fg: self
-                .tab_inactive_fg
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            selection_fg: self
-                .selection_fg
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            selection_bg: self
-                .selection_bg
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            accent_action: self
-                .accent_action
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            age_fresh: self
-                .age_fresh
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            age_stale: self
-                .age_stale
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            scroll_indicator_bg: self
-                .scroll_indicator_bg
-                .map_or(Color::Reset, crate::color::ThemeColor::inner),
-            sidebar_resize_accent: self
-                .sidebar_resize_accent
+            input_mode_steer: self
+                .input_mode_steer
                 .map_or(Color::Reset, crate::color::ThemeColor::inner),
         }
     }
@@ -451,6 +455,12 @@ mod tests {
             age_stale: None,
             scroll_indicator_bg: None,
             sidebar_resize_accent: None,
+            input_mode_queue: None,
+            input_mode_steer: None,
+            infopopup_bg: None,
+            infopopup_title: None,
+            infopopup_border: None,
+            infopopup_fg: None,
         };
 
         // When resolving.
@@ -463,6 +473,10 @@ mod tests {
         assert_eq!(theme.popup_title, default.popup_title);
         assert_eq!(theme.gutter_bg, default.gutter_bg);
         assert_eq!(theme.sidebar_resize_accent, default.sidebar_resize_accent);
+        assert_eq!(theme.infopopup_bg, default.infopopup_bg);
+        assert_eq!(theme.infopopup_title, default.infopopup_title);
+        assert_eq!(theme.infopopup_border, default.infopopup_border);
+        assert_eq!(theme.infopopup_fg, default.infopopup_fg);
     }
 
     #[rstest::rstest]
@@ -501,6 +515,12 @@ mod tests {
             age_stale: None,
             scroll_indicator_bg: None,
             sidebar_resize_accent: None,
+            input_mode_queue: None,
+            input_mode_steer: None,
+            infopopup_bg: None,
+            infopopup_title: None,
+            infopopup_border: None,
+            infopopup_fg: None,
         };
 
         // When resolving.
@@ -563,7 +583,13 @@ mod tests {
             age_stale: Some(ThemeColor(Color::Red)),
             scroll_indicator_bg: Some(ThemeColor(Color::Black)),
             sidebar_resize_accent: Some(ThemeColor(Color::Green)),
+            infopopup_bg: Some(ThemeColor(Color::Rgb(40, 44, 52))),
+            infopopup_title: Some(ThemeColor(Color::Yellow)),
+            infopopup_border: Some(ThemeColor(Color::Cyan)),
+            infopopup_fg: Some(ThemeColor(Color::Rgb(220, 220, 220))),
             popup_title: Some(ThemeColor(Color::Yellow)),
+            input_mode_queue: Some(ThemeColor(Color::DarkGray)),
+            input_mode_steer: Some(ThemeColor(Color::Magenta)),
         };
 
         // When serializing to TOML and back.
@@ -576,5 +602,66 @@ mod tests {
             restored.resolve().focus_accent
         );
         assert_eq!(original.resolve().gutter_bg, restored.resolve().gutter_bg);
+        assert_eq!(
+            original.resolve().input_mode_queue,
+            restored.resolve().input_mode_queue
+        );
+        assert_eq!(
+            original.resolve().input_mode_steer,
+            restored.resolve().input_mode_steer
+        );
+    }
+
+    #[test]
+    fn input_mode_fields_fall_back_when_absent() {
+        // Given a ThemeFile with both input_mode fields explicitly None.
+        let fallback = crate::default_theme::default_theme();
+        let sparse = ThemeFile {
+            focus_accent: None,
+            border_unfocused: None,
+            popup_title: None,
+            primary_text: None,
+            muted_text: None,
+            error_text: None,
+            success: None,
+            warning: None,
+            streaming: None,
+            node_awaiting_input: None,
+            gutter_bg: None,
+            gutter_context_included: None,
+            user_block_bg: None,
+            tool_fg: None,
+            tool_success_bg: None,
+            tool_failure_bg: None,
+            tool_pending_bg: None,
+            compaction_block_bg: None,
+            truncation_fg: None,
+            picker_active_marker: None,
+            picker_selected_bg: None,
+            picker_highlight_bg: None,
+            tab_active_fg: None,
+            tab_active_bg: None,
+            tab_inactive_fg: None,
+            selection_fg: None,
+            selection_bg: None,
+            accent_action: None,
+            age_fresh: None,
+            age_stale: None,
+            scroll_indicator_bg: None,
+            sidebar_resize_accent: None,
+            input_mode_queue: None,
+            input_mode_steer: None,
+            infopopup_bg: None,
+            infopopup_title: None,
+            infopopup_border: None,
+            infopopup_fg: None,
+        };
+
+        // When resolving with the fallback.
+        let resolved = sparse.resolve_with_fallback(&fallback);
+
+        // Then both fields take the fallback values.
+        assert_eq!(resolved.input_mode_queue, fallback.input_mode_queue);
+        assert_eq!(resolved.input_mode_steer, fallback.input_mode_steer);
     }
 }

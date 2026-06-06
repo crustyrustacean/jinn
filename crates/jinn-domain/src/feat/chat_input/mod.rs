@@ -28,8 +28,7 @@ pub mod state;
 pub mod validator;
 
 // Re-export state types for convenience.
-pub use state::AutocompleteState;
-pub use state::ChatInputBoxState;
+pub use state::{ChatInputBoxState, InputMode};
 pub use state::autocomplete::AutocompleteTrigger;
 
 /// A single match for the prompt template autocomplete popup.

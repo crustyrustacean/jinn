@@ -67,12 +67,20 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             let list = session.task_list_mut();
             match list.complete_task(&task_id) {
                 Ok(()) => {
-                    let rendered = list.render_text();
+                    let phase_id = list.phase_id_for_task(&task_id);
+                    let next_block = match &phase_id {
+                        Some(pid) => list.render_next_block_after_completion(pid),
+                        None => list.render_next_block(),
+                    };
+                    let rendered = list.render_text_with_blockers();
                     Ok(format!(
-                        "Task [{task_id}] marked as completed.\n\n{rendered}"
+                        "{next_block}\nTask [{task_id}] marked as completed.\n\n{rendered}"
                     ))
                 }
-                Err(e) => Err(format!("Error: {e}")),
+                Err(e) => {
+                    let rendered = list.render_text_with_blockers();
+                    Err(format!("Error: {e}\n\n{rendered}"))
+                }
             }
         };
 
@@ -209,5 +217,173 @@ mod tests {
         let result = execute(call, ctx);
         let result = futures::executor::block_on(result);
         assert!(!result.success);
+    }
+
+    #[test]
+    fn complete_task_next_block_appears_at_top() {
+        let (state, session_id, tid) = setup_with_task();
+        let call = ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_complete_task".to_owned(),
+            arguments: serde_json::json!({"task_id": tid}).to_string(),
+        };
+        let ctx = make_context(Some(state), Some(session_id));
+        let result = execute(call, ctx);
+        let result = futures::executor::block_on(result);
+        assert!(result.success);
+        // NEXT block (→) appears before the confirmation line.
+        let next_idx = result.content.find("→").unwrap_or(usize::MAX);
+        let confirm_idx = result.content.find("marked as completed").unwrap_or(usize::MAX);
+        assert!(
+            next_idx < confirm_idx,
+            "NEXT block must precede confirmation: {:?}",
+            result.content
+        );
+    }
+
+    #[test]
+    fn complete_task_next_block_when_more_tasks_in_phase() {
+        // Two tasks in same phase; complete the first.
+        let app = AppState::default();
+        let state = State::new(app);
+        let session_id = {
+            let r = state.read();
+            r.session.active_session_id().clone()
+        };
+        let (tid, second_id) = {
+            let mut w = state.write();
+            let session = w.session_mut(&session_id);
+            let pid = session.task_list_mut().add_phase("Build");
+            let first = session
+                .task_list_mut()
+                .add_task(&pid, "First", TaskPosition::End)
+                .unwrap()
+                .to_string();
+            let second = session
+                .task_list_mut()
+                .add_task(&pid, "Second", TaskPosition::End)
+                .unwrap()
+                .to_string();
+            (first, second)
+        };
+
+        let call = ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_complete_task".to_owned(),
+            arguments: serde_json::json!({"task_id": tid}).to_string(),
+        };
+        let ctx = make_context(Some(state), Some(session_id));
+        let result = execute(call, ctx);
+        let result = futures::executor::block_on(result);
+        assert!(result.success);
+        // NEXT block names the second task.
+        assert!(
+            result.content.contains(&format!("→ NEXT: {} — Second", second_id)),
+            "expected NEXT naming second task, got: {:?}",
+            result.content
+        );
+        assert!(result.content.contains("1 pending in phase"));
+    }
+
+    #[test]
+    fn complete_task_next_block_when_phase_done_with_later_blocked() {
+        // Complete last task in P1 while P2 still has pending work.
+        let app = AppState::default();
+        let state = State::new(app);
+        let session_id = {
+            let r = state.read();
+            r.session.active_session_id().clone()
+        };
+        let tid = {
+            let mut w = state.write();
+            let session = w.session_mut(&session_id);
+            let p1 = session.task_list_mut().add_phase("Build");
+            let only = session
+                .task_list_mut()
+                .add_task(&p1, "Only", TaskPosition::End)
+                .unwrap()
+                .to_string();
+            let p2 = session.task_list_mut().add_phase("Test");
+            session.task_list_mut().add_task(&p2, "First", TaskPosition::End).unwrap();
+            // P3 stays blocked — P2 has work, so P2 becomes active after P1 completes.
+            let p3 = session.task_list_mut().add_phase("Ship");
+            session.task_list_mut().add_task(&p3, "Later", TaskPosition::End).unwrap();
+            only
+        };
+
+        let call = ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_complete_task".to_owned(),
+            arguments: serde_json::json!({"task_id": tid}).to_string(),
+        };
+        let ctx = make_context(Some(state), Some(session_id));
+        let result = execute(call, ctx);
+        let result = futures::executor::block_on(result);
+        assert!(result.success);
+        assert!(
+            result.content.contains("complete — proceed to verify"),
+            "expected phase-complete NEXT, got: {:?}",
+            result.content
+        );
+        // After completing P1, P2 becomes active (has pending work). P3 still blocked.
+        assert!(result.content.contains("(Blocked by previous phase)"));
+    }
+
+    #[test]
+    fn complete_task_next_block_when_all_phases_complete() {
+        // Complete the last pending task across all phases.
+        let app = AppState::default();
+        let state = State::new(app);
+        let session_id = {
+            let r = state.read();
+            r.session.active_session_id().clone()
+        };
+        let tid = {
+            let mut w = state.write();
+            let session = w.session_mut(&session_id);
+            let pid = session.task_list_mut().add_phase("Build");
+            session
+                .task_list_mut()
+                .add_task(&pid, "Only", TaskPosition::End)
+                .unwrap()
+                .to_string()
+        };
+
+        let call = ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_complete_task".to_owned(),
+            arguments: serde_json::json!({"task_id": tid}).to_string(),
+        };
+        let ctx = make_context(Some(state), Some(session_id));
+        let result = execute(call, ctx);
+        let result = futures::executor::block_on(result);
+        assert!(result.success);
+        // When the last task in the last phase completes, the model still
+        // needs to verify — so the message is still 'phase complete — proceed to verify'.
+        // The 'all phases complete — stop' message comes from non-completion tools
+        // (used after verification passes).
+        assert!(
+            result.content.contains("complete — proceed to verify"),
+            "expected phase-complete NEXT (verify still pending), got: {:?}",
+            result.content
+        );
+    }
+
+    #[test]
+    fn complete_task_error_includes_rendered_list() {
+        // Error path should also return the prefix-aware list for self-correction.
+        let (state, session_id, _tid) = setup_with_task();
+        let call = ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_complete_task".to_owned(),
+            arguments: r#"{"task_id": "t99"}"#.to_owned(),
+        };
+        let ctx = make_context(Some(state), Some(session_id));
+        let result = execute(call, ctx);
+        let result = futures::executor::block_on(result);
+        assert!(!result.success);
+        assert!(result.content.contains("task not found"));
+        // The rendered list (phase header) follows the error line.
+        assert!(result.content.contains("Build"));
     }
 }

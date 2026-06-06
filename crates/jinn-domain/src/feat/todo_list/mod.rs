@@ -296,6 +296,13 @@ impl Phase {
     pub(crate) fn find_task_index(&self, task_id: &TaskId) -> Option<usize> {
         self.tasks.iter().position(|t| &t.id == task_id)
     }
+
+    /// Returns true if this phase contains any task in the [`TaskStatus::Pending`] state.
+    ///
+    /// Postponed, Cancelled, and Completed tasks are not "work to do".
+    pub fn has_pending_work(&self) -> bool {
+        self.tasks.iter().any(|t| t.status == TaskStatus::Pending)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -629,16 +636,15 @@ impl TaskList {
             .tasks
             .iter_mut()
             .find(|t| &t.id == source_task_id);
-        match source_task {
-            Some(t) => t.status = TaskStatus::Postponed,
-            None => {
-                tracing::error!(
-                    source_task_id = %source_task_id,
-                    src_phase_index = src_phase_idx,
-                    "postpone_to_phase: source task missing on second lookup; returning TaskNotFound"
-                );
-                return Err(TaskListError::TaskNotFound(source_task_id.clone()));
-            }
+        if let Some(t) = source_task {
+            t.status = TaskStatus::Postponed;
+        } else {
+            tracing::error!(
+                source_task_id = %source_task_id,
+                src_phase_index = src_phase_idx,
+                "postpone_to_phase: source task missing on second lookup; returning TaskNotFound"
+            );
+            return Err(TaskListError::TaskNotFound(source_task_id.clone()));
         }
 
         // Generate new task ID.
@@ -709,6 +715,32 @@ impl TaskList {
         &self.phases
     }
 
+    /// Returns the earliest phase that still has pending work.
+    ///
+    /// A phase has pending work if it contains at least one task in the
+    /// [`TaskStatus::Pending`] state. The "active" phase is the one the agent
+    /// is currently supposed to be working on.
+    ///
+    /// Returns `None` when:
+    /// - the list is empty, or
+    /// - every phase contains only Completed / Cancelled / Postponed tasks
+    ///   (i.e., nothing left to do).
+    #[must_use]
+    pub fn active_phase(&self) -> Option<&Phase> {
+        self.phases.iter().find(|p| p.has_pending_work())
+    }
+
+    /// Returns the ID of the phase containing the given task, if any.
+    #[must_use]
+    pub fn phase_id_for_task(&self, task_id: &TaskId) -> Option<PhaseId> {
+        for phase in &self.phases {
+            if phase.tasks.iter().any(|t| &t.id == task_id) {
+                return Some(phase.id.clone());
+            }
+        }
+        None
+    }
+
     /// Returns true if the task list has no phases.
     pub fn is_empty(&self) -> bool {
         self.phases.is_empty()
@@ -730,31 +762,47 @@ impl TaskList {
                 phase.description,
                 phase.id
             ));
-            if phase.tasks.is_empty() {
-                lines.push("  (no tasks)".to_owned());
-            } else {
-                let visible: Vec<_> = phase
-                    .tasks
-                    .iter()
-                    .filter(|t| t.status != TaskStatus::Postponed)
-                    .collect();
-                if visible.is_empty() {
-                    lines.push("  (no tasks)".to_owned());
-                } else {
-                    for task in visible {
-                        let (check, desc) = match task.status {
-                            TaskStatus::Pending => (" ", task.description.clone()),
-                            TaskStatus::Completed => ("\u{2713}", task.description.clone()),
-                            TaskStatus::Cancelled => {
-                                ("\u{2717}", format!("CANCELLED: {}", task.description))
-                            }
-                            // Postponed tasks are filtered out above; this arm is unreachable.
-                            TaskStatus::Postponed => (" ", task.description.clone()),
-                        };
-                        lines.push(format!("- [{}] {} [{}]", check, desc, task.id));
-                    }
+            Self::push_task_lines(&phase.tasks, &mut lines);
+        }
+
+        // Remove trailing newline.
+        if lines.last() == Some(&String::new()) {
+            lines.pop();
+        }
+
+        lines.join("\n")
+    }
+    /// Renders the task list as formatted markdown text, with `(Blocked by previous
+    /// phase)` prefixed on every non-active phase header that still has pending work.
+    ///
+    /// The active phase (the earliest phase with any [`TaskStatus::Pending`] task)
+    /// renders normally. Completed phases (no pending work) also render normally.
+    /// This is the variant used by all `todo_*` tool returns to give the agent a
+    /// salient cue about which phases it should not be jumping into.
+    #[must_use]
+    pub fn render_text_with_blockers(&self) -> String {
+        if self.phases.is_empty() {
+            return "No phases defined.".to_owned();
+        }
+
+        let active_id = self.active_phase().map(|p| &p.id);
+        let mut lines = Vec::new();
+        for (i, phase) in self.phases.iter().enumerate() {
+            let prefix = match active_id {
+                Some(active) if active == &phase.id => String::new(),
+                Some(_) if phase.has_pending_work() => {
+                    "(Blocked by previous phase) ".to_owned()
                 }
-            }
+                _ => String::new(),
+            };
+            lines.push(format!(
+                "## Phase {}: {}{} [{}]",
+                i + 1,
+                prefix,
+                phase.description,
+                phase.id
+            ));
+            Self::push_task_lines(&phase.tasks, &mut lines);
             lines.push(String::new());
         }
 
@@ -766,8 +814,167 @@ impl TaskList {
         lines.join("\n")
     }
 
+    /// Appends rendered task lines (or `(no tasks)`) for a slice of tasks.
+    /// Postponed tasks are filtered out before rendering.
+    fn push_task_lines(tasks: &[Task], out: &mut Vec<String>) {
+        if tasks.is_empty() {
+            out.push("  (no tasks)".to_owned());
+            return;
+        }
+        let visible: Vec<_> = tasks
+            .iter()
+            .filter(|t| t.status != TaskStatus::Postponed)
+            .collect();
+        if visible.is_empty() {
+            out.push("  (no tasks)".to_owned());
+            return;
+        }
+        for task in visible {
+            let (check, desc) = match task.status {
+                TaskStatus::Pending | TaskStatus::Postponed => (" ", task.description.clone()),
+                TaskStatus::Completed => ("\u{2713}", task.description.clone()),
+                TaskStatus::Cancelled => {
+                    ("\u{2717}", format!("CANCELLED: {}", task.description))
+                }
+            };
+            out.push(format!("- [{}] {} [{}]", check, desc, task.id));
+        }
+    }
+
+
+    /// Produces the `→ NEXT` cue line for a tool return.
+    ///
+    /// Three branches:
+    /// 1. Active phase has pending work →
+    ///    `→ NEXT: {task_id} — {desc} ({n} pending in phase {phase_id})`
+    /// 2. No active phase, but at least one task exists →
+    ///    `→ All phases complete — stop.`
+    /// 3. No phases / no tasks ever → empty string (caller omits the line).
+    ///
+    /// This helper covers the common case used by every `todo_*` tool except
+    /// `complete_task`, which needs its own helper to emit the "phase complete —
+    /// proceed to verify" variant when the just-completed task emptied the
+    /// active phase but other phases still have pending work.
+    #[must_use]
+    /// # Panics
+    ///
+    /// Panics if `active_phase()` returns a phase with no `TaskStatus::Pending`
+    /// task — which the constructor of `Phase` and `active_phase()` invariantly forbid.
+    #[must_use]
+    pub fn render_next_block(&self) -> String {
+        if self.phases.is_empty() {
+            return String::new();
+        }
+
+        if let Some(active) = self.active_phase() {
+            // Safety: active_phase() implies has_pending_work(), which implies
+            // at least one task with TaskStatus::Pending.
+            let next_task = active
+                .tasks
+                .iter()
+                .find(|t| t.status == TaskStatus::Pending)
+                .expect("active_phase must contain at least one pending task");
+            let remaining = active
+                .tasks
+                .iter()
+                .filter(|t| t.status == TaskStatus::Pending)
+                .count();
+            return format!(
+                "→ NEXT: {} — {} ({} pending in phase {})",
+                next_task.id, next_task.description, remaining, active.id
+            );
+        }
+
+        // No active phase.
+        let any_tasks_ever = self.phases.iter().any(|p| !p.tasks.is_empty());
+        if any_tasks_ever {
+            "→ All phases complete — stop.".to_owned()
+        } else {
+            String::new()
+        }
+    }
+
+    /// Returns a NEXT block that is aware of which task was just completed.
+    ///
+    /// Same shape as [`render_next_block`] when there is still work in the same phase,
+    /// but switches to a 'phase complete — proceed to verify' message when the completed
+    /// task was the last pending one in its phase, regardless of whether later phases
+    /// still have work (those are blocked until verification passes).
+    ///
+    /// # Arguments
+    ///
+    /// * `completed_phase_id` - The phase ID of the task that was just marked complete.
+    #[must_use]
+    pub fn render_next_block_after_completion(
+        &self,
+        completed_phase_id: &PhaseId,
+    ) -> String {
+        // Find the phase that just had a task completed.
+        let completed_phase = self
+            .phases
+            .iter()
+            .find(|p| &p.id == completed_phase_id);
+
+        let Some(completed_phase) = completed_phase else {
+            // Phase no longer exists (e.g., list replaced); fall back to global next.
+            return self.render_next_block();
+        };
+
+        if completed_phase.has_pending_work() {
+            // Same phase still has work; emit the normal NEXT line for that phase.
+            let pending: Vec<_> = completed_phase
+                .tasks
+                .iter()
+                .filter(|t| t.status == TaskStatus::Pending)
+                .collect();
+            let next_task = &pending[0];
+            let remaining = pending.len();
+            return format!(
+                "→ NEXT: {} — {} ({} pending in phase {})",
+                next_task.id, next_task.description, remaining, completed_phase.id
+            );
+        }
+
+        // Phase is fully complete.
+        // Are there later phases that still have work? Those are blocked until verify.
+        let completed_idx = self
+            .phases
+            .iter()
+            .position(|p| &p.id == completed_phase_id);
+        let later_blocked = match completed_idx {
+            Some(idx) => self.phases[idx + 1..]
+                .iter()
+                .any(Phase::has_pending_work),
+            None => false,
+        };
+
+        if later_blocked {
+            format!(
+                "→ Phase {} complete — proceed to verify. Later phases are blocked until then.",
+                completed_phase.id
+            )
+        } else {
+            format!(
+                "→ Phase {} complete — proceed to verify.",
+                completed_phase.id
+            )
+        }
+    }
     /// Renders a single phase as formatted markdown text.
+    ///
+    /// When `with_blocker` is true and the requested phase is not the active phase
+    /// (i.e., it's blocked by earlier pending work), the header is prefixed with
+    /// `(Blocked by previous phase) `.
     pub fn render_phase_text(&self, phase_id: &PhaseId) -> Option<String> {
+        let prefix = match self.active_phase() {
+            Some(active) if active.id != *phase_id => "(Blocked by previous phase) ",
+            _ => "",
+        };
+        self.render_phase_text_with_prefix(phase_id, prefix)
+    }
+
+    /// Renders a single phase with an explicit header prefix.
+    fn render_phase_text_with_prefix(&self, phase_id: &PhaseId, prefix: &str) -> Option<String> {
         let (i, phase) = self
             .phases
             .iter()
@@ -775,38 +982,15 @@ impl TaskList {
             .find(|(_, p)| &p.id == phase_id)?;
 
         let mut lines = vec![format!(
-            "## Phase {}: {} [{}]",
+            "## Phase {}:{}{} [{}]",
             i + 1,
+            if prefix.is_empty() { " ".to_owned() } else { format!(" {prefix} ") },
             phase.description,
             phase.id
         )];
 
-        if phase.tasks.is_empty() {
-            lines.push("  (no tasks)".to_owned());
-        } else {
-            let visible: Vec<_> = phase
-                .tasks
-                .iter()
-                .filter(|t| t.status != TaskStatus::Postponed)
-                .collect();
-            if visible.is_empty() {
-                lines.push("  (no tasks)".to_owned());
-            } else {
-                for task in visible {
-                    let (check, desc) = match task.status {
-                        TaskStatus::Pending => (" ", task.description.clone()),
-                        TaskStatus::Completed => ("\u{2713}", task.description.clone()),
-                        TaskStatus::Cancelled => {
-                            ("\u{2717}", format!("CANCELLED: {}", task.description))
-                        }
-                        // Postponed tasks are filtered out above; this arm is structurally unreachable.
-                        TaskStatus::Postponed => continue,
-                    };
-                    lines.push(format!("- [{}] {} [{}]", check, desc, task.id));
-                }
-            }
-        }
-
+        Self::push_task_lines(&phase.tasks, &mut lines);
         Some(lines.join("\n"))
     }
 }
+

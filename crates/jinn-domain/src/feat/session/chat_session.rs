@@ -20,6 +20,7 @@ use serde_json::Value as JsonValue;
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::context::strategy::types::StrategyState;
 use crate::feat::session::chat_history::ChatHistory;
+use crate::feat::session::steering_buffer::SteeringBuffer;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::token_stats::TokenRecord;
@@ -277,6 +278,13 @@ pub(crate) struct SavedHistoryPosition {
 pub struct SessionUi {
     /// The user's in-progress message for this session.
     pub(crate) chat_input: ChatInputBoxState,
+    /// In-memory steering buffer for this session.
+    ///
+    /// Accumulates user-submitted text fragments that will be drained
+    /// into a single `User` chat entry at the next prompt-assembly
+    /// boundary. Not serialized - `SessionUi` itself is in-memory only,
+    /// so this field is dropped on session close.
+    pub(crate) steering_buffer: SteeringBuffer,
     /// Number of lines to skip from the top when rendering (ratatui scroll offset).
     ///
     /// `None` means "show the bottom of the conversation" (auto-scroll).
@@ -352,6 +360,7 @@ impl Clone for SessionUi {
     fn clone(&self) -> Self {
         Self {
             chat_input: self.chat_input.clone(),
+            steering_buffer: self.steering_buffer.clone(),
             scroll_offset: self.scroll_offset,
             selected_cursor_id: self.selected_cursor_id.clone(),
             last_max_offset: AtomicU16::new(self.last_max_offset.load(Ordering::Relaxed)),
@@ -374,6 +383,7 @@ impl Default for SessionUi {
     fn default() -> Self {
         Self {
             chat_input: ChatInputBoxState::new(),
+            steering_buffer: SteeringBuffer::default(),
             scroll_offset: None,
             selected_cursor_id: None,
             last_max_offset: AtomicU16::new(0),
@@ -452,11 +462,20 @@ impl ChatSessionState {
     pub fn chat_input(&self) -> &ChatInputBoxState {
         &self.ui.chat_input
     }
+    /// Immutable access to this session's steering buffer.
+    pub fn steering_buffer(&self) -> &SteeringBuffer {
+        &self.ui.steering_buffer
+    }
+    /// Mutable access to this session's steering buffer.
+    pub fn steering_buffer_mut(&mut self) -> &mut SteeringBuffer {
+        &mut self.ui.steering_buffer
+    }
 
     /// Mutable access to this session's input box state.
     pub fn chat_input_mut(&mut self) -> &mut ChatInputBoxState {
         &mut self.ui.chat_input
     }
+
 
     /// The session's persona name.
     pub fn persona_name(&self) -> &str {
@@ -1587,6 +1606,43 @@ impl ChatSessionState {
     /// scroll handlers can resolve the "at bottom" state into a concrete offset.
     pub fn set_last_max_offset(&self, max_offset: u16) {
         self.ui.last_max_offset.store(max_offset, Ordering::Relaxed);
+    }
+
+    /// Returns the screen-space Y coordinate of the top of the currently-selected
+    /// chat entry within the chat-log area, or `None` if no entry is selected or
+    /// the render-pipeline cache is empty.
+    ///
+    /// The returned Y is in terminal (absolute) coordinates: it already incorporates
+    /// `chat_log_area_y` and `blank_count`. Callers can pass it directly as the
+    /// `entry_top_y` argument to
+    /// [`audit_popup_rect`](crate::feat::ui::chat_log::audit_popup::audit_popup_rect).
+    ///
+    /// If the selected entry's top is scrolled above the viewport, returns
+    /// `chat_log_area_y` (clamped to the top of the chat-log area).
+    ///
+    /// Returns a meaningful value only after the chat-log render pipeline has
+    /// populated the cached fields for the current frame.
+    pub fn selected_entry_screen_y(&self, chat_log_area_y: u16) -> Option<u16> {
+        let vi_idx = self.selected_entry_index()?;
+        let ranges = self.ui.entry_line_ranges.read();
+        let &(start, _end) = ranges.get(vi_idx)?;
+        drop(ranges);
+
+        let blank_count = self.ui.blank_count.load(Ordering::Relaxed);
+        let scroll_offset = self.ui.rendered_scroll_offset.load(Ordering::Relaxed);
+
+        // wrapped-line coord of entry top, with bottom-alignment blank padding
+        let abs_start = start.saturating_add(blank_count);
+
+        // viewport top in the same coord space
+        let viewport_top = scroll_offset;
+
+        // visible-Y offset within viewport (0 = top of chat-log area)
+        let viewport_offset = abs_start.saturating_sub(viewport_top);
+
+        // absolute screen Y; clamped to chat-log area top
+        let screen_y = chat_log_area_y.saturating_add(viewport_offset);
+        Some(screen_y)
     }
 
     /// Store the rendered scroll offset (actual viewport position after clamping

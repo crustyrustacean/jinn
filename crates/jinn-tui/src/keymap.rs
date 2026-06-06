@@ -147,6 +147,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("x", Intent::ChatEntryIgnoreSelected, KeyCategory::Context)
             // Expand/collapse tool entry
             .bind("e", Intent::ExpandToolEntry, KeyCategory::Navigation)
+            // Toggle audit popup for the selected entry
+            .bind("a", Intent::ToggleAuditPopup, KeyCategory::Navigation)
             // Toggle ignored block visibility
             .bind("h", Intent::ToggleIgnoredBlockVisibility, KeyCategory::Navigation)
             // Fork session from selected entry
@@ -223,6 +225,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         // Input scope: typing into the input buffer
         .scope(Scope::Input, |b| {
             b.bind("<enter>", Intent::SubmitMessage, KeyCategory::Input)
+                .bind("<M-s>", Intent::ToggleInputMode, KeyCategory::Input)
             .bind("<s-enter>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
             .bind("<c-enter>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
             .bind("<esc>", Intent::EnterNormalMode, KeyCategory::General)
@@ -249,7 +252,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<c-u>", Intent::ScrollUp, KeyCategory::Navigation)
             .bind("<c-d>", Intent::ScrollDown, KeyCategory::Navigation)
             .bind("<c-l>", Intent::SidebarFocus, KeyCategory::Navigation)
-            .bind("<M-s>", Intent::SidebarFocusSessions, KeyCategory::Navigation)
+
             .bind("<c-j>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
             .catch_all(|key: KeyEvent| {
                 if let Key::Char(c) = key.key {

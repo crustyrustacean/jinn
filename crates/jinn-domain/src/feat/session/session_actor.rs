@@ -98,6 +98,7 @@ impl Actor for SessionPersistenceActor {
 
         // Session lifecycle subscriptions.
         ctx.subscribe_command::<EnqueueUserMessage>();
+        ctx.subscribe_command::<crate::feat::chat_input::protocol::command::SubmitSteeringMessage>();
         ctx.subscribe_command::<EnqueueResumeTurn>();
         ctx.subscribe_command::<SetChatInputText>();
         ctx.subscribe_command::<PushChatEntry>();
@@ -242,6 +243,9 @@ impl SessionPersistenceActor {
             }
             Command::EnqueueResumeTurn(payload) => {
                 self.handle_enqueue_resume_turn(payload, ctx).await;
+            }
+            Command::SubmitSteeringMessage(payload) => {
+                self.handle_submit_steering_message(payload);
             }
             Command::SetChatInputText(payload) => self.handle_set_chat_input_text(payload),
             Command::PushChatEntry(payload) => {

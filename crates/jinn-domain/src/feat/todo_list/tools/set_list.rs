@@ -129,8 +129,9 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             let list = session.task_list_mut();
             match list.set_from_descriptions(phase_data) {
                 Ok(()) => {
-                    let rendered = list.render_text();
-                    Ok(format!("Task list replaced.\n\n{rendered}"))
+                    let next_block = list.render_next_block();
+                    let rendered = list.render_text_with_blockers();
+                    Ok(format!("{next_block}\nTask list replaced.\n\n{rendered}"))
                 }
                 Err(e) => Err(format!("Error: {e}")),
             }
@@ -331,5 +332,30 @@ mod tests {
         let result = futures::executor::block_on(result);
         assert!(!result.success);
         assert!(result.content.contains("no application state"));
+    }
+
+    #[test]
+    fn set_list_return_has_next_block_at_top() {
+        let (state, session_id) = setup_with_existing_list();
+        let call = ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_set_list".to_owned(),
+            arguments: serde_json::json!({
+                "phases": [
+                    { "description": "Research", "tasks": ["Read docs"] },
+                    { "description": "Build", "tasks": ["Write code"] }
+                ]
+            })
+            .to_string(),
+        };
+        let ctx = make_context(Some(state), Some(session_id));
+        let result = execute(call, ctx);
+        let result = futures::executor::block_on(result);
+        assert!(result.success);
+        assert!(
+            result.content.starts_with("\u{2192}"),
+            "expected NEXT block at top, got: {:?}",
+            result.content
+        );
     }
 }

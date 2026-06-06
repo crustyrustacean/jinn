@@ -2,7 +2,8 @@
 //!
 //! Defines [`UserPreferences`] as the schema for `jinn.toml`,
 //! along with loading and saving logic. The file lives at
-//! `~/.config/jinn/jinn.toml` and is auto-created on first save.
+//! `~/.config/jinn/jinn.toml` and is auto-created on first run from
+//! [`DEFAULT_CONFIG`] (a comment-rich template embedded at compile time).
 
 use std::path::{Path, PathBuf};
 
@@ -11,6 +12,15 @@ use crate::common::toml_patch::DocumentPatcher;
 use error_stack::{Report, ResultExt as _};
 use serde::{Deserialize, Serialize};
 use wherror::Error;
+
+/// Canonical default `jinn.toml` embedded at compile time.
+///
+/// Used both to auto-create the file on first run and to back the
+/// `jinn config init` subcommand. A round-trip equality test in this
+/// module's test suite asserts that this string deserializes to
+/// exactly `UserPreferences::default()`, which is the CI gate that
+/// prevents the shipped template from drifting from the struct.
+pub(crate) const DEFAULT_CONFIG: &str = include_str!("default_jinn.toml");
 
 /// Errors that can occur during user preferences I/O.
 #[derive(Debug, Error)]
@@ -29,7 +39,7 @@ pub enum UserPreferencesError {
 /// runs when creating a new session; the teardown command runs when closing it.
 /// Commands may contain positional parameters (`$1`, `$2`) that are collected
 /// from the user before execution.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SessionLifecycle {
     /// Human-readable name shown in the lifecycle picker.
     pub name: String,
@@ -56,7 +66,7 @@ pub struct SessionLifecycle {
 ///
 /// Serialized as `[cwd_selector]` in `jinn.toml`.
 /// Controls the shell command used to select a new working directory.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CwdSelectorConfig {
     /// Shell command template. `{path}` is replaced with the search root.
     /// Default: `find -L {path} -type d 2>/dev/null | fzf --no-multi`
@@ -86,7 +96,7 @@ const DEFAULT_MINIMAP_MAX_TOKENS: u32 = 2000;
 ///
 /// Serialized as `[minimap]` in `jinn.toml`.
 /// Controls the token-count range used for the vertical minimap color gradient.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MinimapConfig {
     /// Maximum token count for the top band of the minimap gradient.
     /// Entries with more tokens than this get the last band color.
@@ -120,12 +130,15 @@ const DEFAULT_READ_EDIT_MIN_AGE: usize = 50;
 /// Default enabled state for todo auto-prune.
 const DEFAULT_TODO_ENABLED: bool = true;
 
+/// Default minimum age for todo auto-prune.
+const DEFAULT_TODO_MIN_AGE: usize = 50;
+
 /// Read-edit auto-prune configuration.
 ///
 /// Serialized as `[auto_prune.read_edit]` in `jinn.toml`.
 /// Controls the auto-prune worker that excludes stale read tool calls and results
 /// after the file has been edited twice.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReadEditAutoPruneConfig {
     #[serde(default = "default_read_edit_enabled")]
     pub enabled: bool,
@@ -160,28 +173,40 @@ impl Default for ReadEditAutoPruneConfig {
 /// Serialized as `[auto_prune.todo]` in `jinn.toml`.
 /// Controls the auto-prune worker that excludes stale todo tool call+result
 /// pairs, keeping only the most recent one for each tool name.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TodoAutoPruneConfig {
     /// Whether the todo auto-prune worker is active.
     /// Default: `true`.
     #[serde(default = "default_todo_enabled")]
     pub enabled: bool,
+    /// Minimum number of entries from the end of history that must
+    /// appear after a todo tool call before pruning may exclude the
+    /// call+result pair. Counts every entry, regardless of in-context
+    /// status. Set to 0 to disable protection.
+    /// Default: 50.
+    #[serde(default = "default_todo_min_age")]
+    pub min_age: usize,
 }
 
 fn default_todo_enabled() -> bool {
     DEFAULT_TODO_ENABLED
 }
 
+fn default_todo_min_age() -> usize {
+    DEFAULT_TODO_MIN_AGE
+}
+
 impl Default for TodoAutoPruneConfig {
     fn default() -> Self {
         Self {
             enabled: DEFAULT_TODO_ENABLED,
+            min_age: DEFAULT_TODO_MIN_AGE,
         }
     }
 }
 
-/// Default minimum number of in-context entries after a failed edit before pruning.
-const DEFAULT_BROKEN_EDIT_MIN_TAIL_ENTRIES: usize = 10;
+/// Default minimum age for broken-edit auto-prune.
+const DEFAULT_BROKEN_EDIT_MIN_AGE: usize = 10;
 
 /// Default enabled state for broken-edit auto-prune.
 const DEFAULT_BROKEN_EDIT_ENABLED: bool = true;
@@ -191,32 +216,34 @@ const DEFAULT_BROKEN_EDIT_ENABLED: bool = true;
 /// Serialized as `[auto_prune.broken_edit]` in `jinn.toml`.
 /// Controls the auto-prune worker that excludes failed edit tool call+result pairs
 /// from the LLM context once enough conversation has moved on.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BrokenEditAutoPruneConfig {
     /// Whether the broken-edit auto-prune worker is active.
     /// Default: `true`.
     #[serde(default = "default_broken_edit_enabled")]
     pub enabled: bool,
-    /// Minimum number of in-context entries that must appear after the failed edit
-    /// ToolCall before the call+result pair is pruned.
+    /// Minimum number of entries from the end of history that must
+    /// appear after the failed edit ToolCall before the call+result
+    /// pair may be pruned. Counts every entry, regardless of in-context
+    /// status. Set to 0 to disable protection.
     /// Default: 10.
-    #[serde(default = "default_broken_edit_min_tail_entries")]
-    pub min_tail_entries: usize,
+    #[serde(default = "default_broken_edit_min_age", alias = "min_tail_entries")]
+    pub min_age: usize,
 }
 
 fn default_broken_edit_enabled() -> bool {
     DEFAULT_BROKEN_EDIT_ENABLED
 }
 
-fn default_broken_edit_min_tail_entries() -> usize {
-    DEFAULT_BROKEN_EDIT_MIN_TAIL_ENTRIES
+fn default_broken_edit_min_age() -> usize {
+    DEFAULT_BROKEN_EDIT_MIN_AGE
 }
 
 impl Default for BrokenEditAutoPruneConfig {
     fn default() -> Self {
         Self {
             enabled: DEFAULT_BROKEN_EDIT_ENABLED,
-            min_tail_entries: DEFAULT_BROKEN_EDIT_MIN_TAIL_ENTRIES,
+            min_age: DEFAULT_BROKEN_EDIT_MIN_AGE,
         }
     }
 }
@@ -239,7 +266,7 @@ const DEFAULT_DOUBLE_EDIT_MIN_AGE: usize = 20;
 /// Serialized as `[auto_prune.double_edit]` in `jinn.toml`.
 /// Controls the auto-prune worker that caps the number of edit/write
 /// tool call+result pairs per file path, keeping only the most recent ones.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DoubleEditAutoPruneConfig {
     /// Whether the double-edit auto-prune worker is active.
     /// Default: `true`.
@@ -288,12 +315,15 @@ const DEFAULT_CONSECUTIVE_READS_KEEP_LAST: usize = 3;
 /// Default enabled state for consecutive-reads auto-prune.
 const DEFAULT_CONSECUTIVE_READS_ENABLED: bool = true;
 
+/// Default minimum age for consecutive-reads auto-prune.
+const DEFAULT_CONSECUTIVE_READS_MIN_AGE: usize = 50;
+
 /// Consecutive-reads auto-prune configuration.
 ///
 /// Serialized as `[auto_prune.consecutive_reads]` in `jinn.toml`.
 /// Controls the auto-prune worker that caps the number of `read`
 /// tool call+result pairs per file path, keeping only the most recent ones.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConsecutiveReadsAutoPruneConfig {
     /// Whether the consecutive-reads auto-prune worker is active.
     /// Default: `true`.
@@ -305,6 +335,13 @@ pub struct ConsecutiveReadsAutoPruneConfig {
     /// Default: 3.
     #[serde(default = "default_consecutive_reads_keep_last")]
     pub keep_last: usize,
+    /// Minimum number of entries from the end of history within which
+    /// read pairs are protected from pruning even when they would
+    /// otherwise be pruned by `keep_last`. Counts every entry, regardless
+    /// of in-context status. Set to 0 to disable protection.
+    /// Default: `50`.
+    #[serde(default = "default_consecutive_reads_min_age")]
+    pub min_age: usize,
 }
 
 fn default_consecutive_reads_enabled() -> bool {
@@ -315,11 +352,16 @@ fn default_consecutive_reads_keep_last() -> usize {
     DEFAULT_CONSECUTIVE_READS_KEEP_LAST
 }
 
+fn default_consecutive_reads_min_age() -> usize {
+    DEFAULT_CONSECUTIVE_READS_MIN_AGE
+}
+
 impl Default for ConsecutiveReadsAutoPruneConfig {
     fn default() -> Self {
         Self {
             enabled: DEFAULT_CONSECUTIVE_READS_ENABLED,
             keep_last: DEFAULT_CONSECUTIVE_READS_KEEP_LAST,
+            min_age: DEFAULT_CONSECUTIVE_READS_MIN_AGE,
         }
     }
 }
@@ -345,7 +387,7 @@ const DEFAULT_TOOL_AGE_WINDOW_MIN_AGE: usize = 100;
 /// status, so that multiple auto-prune workers compose cleanly: each
 /// worker's prune region is fixed by raw history length alone, not by what
 /// has already been `ForcedExclude`d by other workers.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolAgeWindowAutoPruneConfig {
     /// Whether the tool-age-window auto-prune worker is active.
     /// Default: `true`.
@@ -376,13 +418,11 @@ impl Default for ToolAgeWindowAutoPruneConfig {
         }
     }
 }
-
 /// Default enabled state for trivial-assistant auto-prune.
 const DEFAULT_TRIVIAL_ASSISTANT_ENABLED: bool = true;
 
-/// Default number of entries to keep before pruning older trivial
-/// assistant entries.
-const DEFAULT_TRIVIAL_ASSISTANT_MAX_AGE_ENTRIES: usize = 100;
+/// Default minimum age for trivial-assistant auto-prune.
+const DEFAULT_TRIVIAL_ASSISTANT_MIN_AGE: usize = 100;
 
 /// Default token threshold below which an assistant entry is considered
 /// "trivial" (small enough to prune when it lands outside the window).
@@ -392,7 +432,7 @@ const DEFAULT_TRIVIAL_ASSISTANT_MAX_TOKENS: usize = 80;
 ///
 /// Serialized as `[auto_prune.trivial_assistant]` in `jinn.toml`.
 /// Controls the auto-prune worker that excludes any `Assistant` entry that
-/// (a) is older than `max_age_entries` entries from the end of history and
+/// (a) is older than `min_age` entries from the end of history and
 /// (b) is at most `max_tokens` tokens long.
 ///
 /// The window counts every entry in raw history regardless of in-context
@@ -401,18 +441,22 @@ const DEFAULT_TRIVIAL_ASSISTANT_MAX_TOKENS: usize = 80;
 /// has already been `ForcedExclude`d by other workers. Tokens are counted
 /// via the same tiktoken `o200k_base` encoder used by the token-count
 /// actor and minimap.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TrivialAssistantAutoPruneConfig {
     /// Whether the trivial-assistant auto-prune worker is active.
     /// Default: `true`.
     #[serde(default = "default_trivial_assistant_enabled")]
     pub enabled: bool,
-    /// Number of most recent entries to keep before pruning older trivial
-    /// assistant entries. Counts every entry, regardless of in-context
-    /// status. Minimum 1 (clamped at evaluation time).
-    /// Default: `100`.
-    #[serde(default = "default_trivial_assistant_max_age_entries")]
-    pub max_age_entries: usize,
+    /// Minimum number of entries from the end of history within which
+    /// assistant entries are protected from pruning even when they would
+    /// otherwise qualify as trivial. Counts every entry, regardless of
+    /// in-context status. Set to 0 to disable protection.
+    /// Default: `50`.
+    #[serde(
+        default = "default_trivial_assistant_min_age",
+        alias = "max_age_entries"
+    )]
+    pub min_age: usize,
     /// Maximum number of tokens (tiktoken `o200k_base`) below which an
     /// `Assistant` entry is considered trivial. Minimum 1 (clamped at
     /// evaluation time).
@@ -425,8 +469,8 @@ fn default_trivial_assistant_enabled() -> bool {
     DEFAULT_TRIVIAL_ASSISTANT_ENABLED
 }
 
-fn default_trivial_assistant_max_age_entries() -> usize {
-    DEFAULT_TRIVIAL_ASSISTANT_MAX_AGE_ENTRIES
+fn default_trivial_assistant_min_age() -> usize {
+    DEFAULT_TRIVIAL_ASSISTANT_MIN_AGE
 }
 
 fn default_trivial_assistant_max_tokens() -> usize {
@@ -437,7 +481,7 @@ impl Default for TrivialAssistantAutoPruneConfig {
     fn default() -> Self {
         Self {
             enabled: DEFAULT_TRIVIAL_ASSISTANT_ENABLED,
-            max_age_entries: DEFAULT_TRIVIAL_ASSISTANT_MAX_AGE_ENTRIES,
+            min_age: DEFAULT_TRIVIAL_ASSISTANT_MIN_AGE,
             max_tokens: DEFAULT_TRIVIAL_ASSISTANT_MAX_TOKENS,
         }
     }
@@ -450,10 +494,13 @@ const DEFAULT_ANCHOR_RADIUS_ENABLED: bool = true;
 /// protected from pruning regardless of token count.
 const DEFAULT_ANCHOR_RADIUS: usize = 100;
 
+/// Default minimum age for anchor-radius auto-prune.
+const DEFAULT_ANCHOR_RADIUS_MIN_AGE: usize = 50;
+
 /// Anchor-radius auto-prune strategy configuration.
 ///
 /// Serialized as `[auto_prune.anchor_radius]` in `jinn.toml`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnchorRadiusAutoPruneConfig {
     /// Whether the anchor-radius auto-prune worker is active.
     /// Default: `true`.
@@ -467,6 +514,13 @@ pub struct AnchorRadiusAutoPruneConfig {
     /// Default: `100`.
     #[serde(default = "default_anchor_radius")]
     pub radius: usize,
+    /// Minimum number of entries from the end of history within which
+    /// Assistant entries are protected from pruning even when both anchor
+    /// distances exceed the radius. Counts every entry, regardless of
+    /// in-context status. Set to 0 to disable protection.
+    /// Default: `50`.
+    #[serde(default = "default_anchor_radius_min_age")]
+    pub min_age: usize,
 }
 
 fn default_anchor_radius_enabled() -> bool {
@@ -477,15 +531,19 @@ fn default_anchor_radius() -> usize {
     DEFAULT_ANCHOR_RADIUS
 }
 
+fn default_anchor_radius_min_age() -> usize {
+    DEFAULT_ANCHOR_RADIUS_MIN_AGE
+}
+
 impl Default for AnchorRadiusAutoPruneConfig {
     fn default() -> Self {
         Self {
             enabled: DEFAULT_ANCHOR_RADIUS_ENABLED,
             radius: DEFAULT_ANCHOR_RADIUS,
+            min_age: DEFAULT_ANCHOR_RADIUS_MIN_AGE,
         }
     }
 }
-
 /// Default regex prune rule tool name.
 const DEFAULT_REGEX_TOOL_NAME: &str = "bash";
 
@@ -495,12 +553,15 @@ const DEFAULT_REGEX_KEEP_LAST: usize = 1;
 /// Default enabled state for regex auto-prune.
 const DEFAULT_REGEX_ENABLED: bool = true;
 
+/// Default minimum age for regex auto-prune.
+const DEFAULT_REGEX_MIN_AGE: usize = 50;
+
 /// A single regex-based auto-prune rule.
 ///
 /// Serialized as `[[auto_prune.regex]]` in `jinn.toml`.
 /// Each rule matches tool calls by name and content, keeping only the
 /// most recent `keep_last` matching call+result pairs in context.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegexPruneRule {
     /// Regex pattern to match against the tool call's text output.
     /// The regex is tested against `"{name}: {arguments}"`.
@@ -514,6 +575,12 @@ pub struct RegexPruneRule {
     /// Default: 1.
     #[serde(default = "default_regex_keep_last")]
     pub keep_last: usize,
+    /// Raw-distance protection floor: matching pairs whose `ToolCall` is within
+    /// `min_age` slots of the end of history are never pruned by this rule.
+    /// With `min_age = 0` no pair is protected (back-compat baseline).
+    /// Default: 50.
+    #[serde(default = "default_regex_min_age")]
+    pub min_age: usize,
 }
 
 fn default_regex_tool_name() -> String {
@@ -528,7 +595,7 @@ fn default_regex_keep_last() -> usize {
 ///
 /// Serialized as `[auto_prune.regex]` in `jinn.toml`.
 /// Contains a list of regex rules that identify tool calls to prune.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegexAutoPruneConfig {
     /// Whether the regex auto-prune worker is active.
     /// Default: `true`.
@@ -540,8 +607,8 @@ pub struct RegexAutoPruneConfig {
     pub rules: Vec<RegexPruneRule>,
 }
 
-fn default_regex_enabled() -> bool {
-    DEFAULT_REGEX_ENABLED
+fn default_regex_min_age() -> usize {
+    DEFAULT_REGEX_MIN_AGE
 }
 
 impl Default for RegexAutoPruneConfig {
@@ -553,11 +620,15 @@ impl Default for RegexAutoPruneConfig {
     }
 }
 
+fn default_regex_enabled() -> bool {
+    DEFAULT_REGEX_ENABLED
+}
+
 /// Auto-prune configuration.
 ///
 /// Serialized as `[auto_prune]` in `jinn.toml`.
 /// Groups all auto-prune strategy configurations.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AutoPruneConfig {
     /// Read-edit auto-prune strategy configuration.
     #[serde(default)]
@@ -601,7 +672,7 @@ const DEFAULT_FALLBACK_CONTEXT_WINDOW: usize = 150_000;
 ///
 /// Serialized as `[compaction]` in `jinn.toml`.
 /// Controls when and how context compaction summarizes conversation history.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompactionConfig {
     /// Provider/model for compaction summarization (e.g., "anthropic/claude-sonnet-4-20250514").
     /// Falls back to the session model if not set or if provider construction fails.
@@ -651,7 +722,7 @@ const DEFAULT_SLIDING_WINDOW_SIZE: usize = 5;
 /// Sliding window configuration.
 ///
 /// Serialized as `[context_sliding_window]` in `jinn.toml`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContextSlidingWindowConfig {
     /// The default window size for new sessions using the sliding-window strategy.
     #[serde(default = "default_sliding_window_size")]
@@ -688,7 +759,7 @@ pub enum WebFetchBackend {
 ///
 /// Serialized as `[web_fetch]` in `jinn.toml`.
 /// Controls which backend the `web-fetch` tool uses.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WebFetchConfig {
     /// The backend to use for web fetching. Default: `"http"`.
     #[serde(default)]
@@ -717,7 +788,7 @@ fn default_bash_default_timeout_secs() -> Option<u64> {
 /// Serialized as `[bash]` in `jinn.toml`.
 /// Controls the default execution timeout for the `bash` builtin tool.
 /// The model can override per-call via the `timeout` JSON argument.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BashConfig {
     /// Default timeout in seconds for bash commands. Default: 180 (3 minutes).
     /// Set to `None` to disable the default timeout.
@@ -732,14 +803,13 @@ impl Default for BashConfig {
         }
     }
 }
-
 /// OpenRouter web search server tool configuration.
 ///
 /// Serialized as `[openrouter_web_search]` in `jinn.toml`.
 /// Controls parameters sent to the `openrouter:web_search` server tool.
 /// All fields are optional - when `None`, the parameter is omitted from
 /// the request and OpenRouter uses its default.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OpenrouterWebSearchConfig {
     /// Search engine: "auto", "native", "exa", "firecrawl", or "parallel".
     /// Default: "exa".
@@ -790,7 +860,7 @@ const DEFAULT_RETRY_MAX_DELAY_SECS: u64 = 60;
 ///
 /// Serialized as `[request_retry]` in `jinn.toml`.
 /// Controls exponential backoff behavior for transient errors.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RequestRetryConfig {
     /// Maximum number of retry attempts. Default: 5.
     #[serde(default = "default_retry_max_retries")]
@@ -840,7 +910,7 @@ impl RequestRetryConfig {
 ///
 /// This file stores user behavior preferences that should survive
 /// app restarts - e.g., the last model and strategy selected from pickers.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct UserPreferences {
     /// The provider ID of the last model selected from the model picker.
     /// Format: `{provider_name}/{model}` (e.g., `"ollama/llama3"`).
@@ -937,6 +1007,10 @@ pub fn load_preferences() -> Result<UserPreferences, Report<UserPreferencesError
 }
 
 /// Loads preferences from a specific path.
+///
+/// If the path does not exist, the canonical default template
+/// (`DEFAULT_CONFIG`) is written there first so the user gets a
+/// comment-rich starter file, then parsed.
 pub(crate) fn load_preferences_from<P>(
     path: P,
 ) -> Result<UserPreferences, Report<UserPreferencesError>>
@@ -946,7 +1020,7 @@ where
     let path = path.as_ref();
 
     if !path.exists() {
-        return Ok(UserPreferences::default());
+        create_default_preferences_to(path)?;
     }
 
     let content = std::fs::read_to_string(path)
@@ -956,6 +1030,89 @@ where
     toml::from_str(&content)
         .change_context(UserPreferencesError::Parse)
         .attach("failed to parse user preferences")
+}
+
+/// Writes the canonical default preferences template to `path`.
+///
+/// Creates parent directories as needed.
+///
+/// # Errors
+///
+/// Returns [`UserPreferencesError::Io`] if directory creation or file writing fails.
+pub(crate) fn create_default_preferences_to<P>(path: P) -> Result<(), Report<UserPreferencesError>>
+where
+    P: AsRef<Path>,
+{
+    let path = path.as_ref();
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .change_context(UserPreferencesError::Io)
+            .attach("failed to create preferences directory")?;
+    }
+
+    std::fs::write(path, DEFAULT_CONFIG)
+        .change_context(UserPreferencesError::Io)
+        .attach("failed to write default user preferences")
+}
+
+/// Error returned by [`init_default_config_to`].
+#[derive(Debug, wherror::Error)]
+#[error(debug)]
+pub struct InitDefaultConfigError;
+
+/// Outcome of [`init_default_config_to`].
+#[derive(Debug)]
+pub enum InitOutcome {
+    /// Template was written to a previously-missing path.
+    Created,
+    /// Existing file was overwritten (caller passed `force: true`).
+    Overwritten,
+}
+
+/// Writes [`DEFAULT_CONFIG`] to `path`.
+///
+/// - If `path` does not exist: writes the template, returns [`InitOutcome::Created`].
+/// - If `path` exists and `force` is false: returns `Err(InitDefaultConfigError)`.
+/// - If `path` exists and `force` is true: overwrites, returns [`InitOutcome::Overwritten`].
+///
+/// Creates parent directories as needed.
+///
+/// # Errors
+///
+/// Returns [`Report<InitDefaultConfigError>`] if the file already exists and
+/// `force` is false, or if directory creation / file writing fails.
+pub fn init_default_config_to<P>(
+    path: P,
+    force: bool,
+) -> Result<InitOutcome, Report<InitDefaultConfigError>>
+where
+    P: AsRef<Path>,
+{
+    let path = path.as_ref();
+    let existed = path.exists();
+
+    if existed && !force {
+        return Err(Report::new(InitDefaultConfigError))
+            .attach("jinn.toml already exists; pass --force to overwrite")
+            .attach(format!("path: {}", path.display()));
+    }
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .change_context(InitDefaultConfigError)
+            .attach("failed to create preferences directory")?;
+    }
+
+    std::fs::write(path, DEFAULT_CONFIG)
+        .change_context(InitDefaultConfigError)
+        .attach("failed to write default user preferences")?;
+
+    if existed {
+        Ok(InitOutcome::Overwritten)
+    } else {
+        Ok(InitOutcome::Created)
+    }
 }
 
 /// Saves preferences to the default path.
@@ -1048,7 +1205,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn load_returns_default_when_file_missing() {
+    fn load_returns_defaults_and_creates_file_when_missing() {
         // Given a path to a nonexistent file.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
@@ -1060,6 +1217,112 @@ mod tests {
         assert!(prefs.last_model.is_none());
         assert!(prefs.last_strategy.is_none());
         assert!(prefs.tool_entry_max_lines.is_none());
+        // And the file is created.
+        assert!(path.exists());
+    }
+
+    #[rstest::rstest]
+    fn load_creates_file_with_template_bytes_when_missing() {
+        // Given a path to a nonexistent file.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+
+        // When loading.
+        load_preferences_from(&path).expect("load");
+
+        // Then the file's bytes are exactly the embedded template.
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(on_disk, DEFAULT_CONFIG);
+    }
+
+    #[rstest::rstest]
+    fn load_does_not_touch_existing_file() {
+        // Given an existing file with custom content.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let marker = "# user-managed\nlast_model = \"x/y\"\n";
+        std::fs::write(&path, marker).expect("write");
+        let mtime_before = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .expect("metadata");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then the file on disk is unchanged.
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(on_disk, marker);
+        // And the parsed prefs reflect the file, not the defaults.
+        assert_eq!(prefs.last_model.as_deref(), Some("x/y"));
+        // And the mtime is preserved.
+        let mtime_after = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .expect("metadata");
+        assert_eq!(mtime_before, mtime_after);
+    }
+
+    #[rstest::rstest]
+    fn default_config_template_round_trips_to_user_preferences_default() {
+        // Given the shipped default_jinn.toml template.
+        // When checking it against UserPreferences::default().
+        let result = crate::common::default_config_check::check_default_round_trips_to_default::<
+            UserPreferences,
+        >(DEFAULT_CONFIG);
+
+        // Then the template deserializes to the inherent default with no drift.
+        assert!(
+            result.is_ok(),
+            "default_jinn.toml has drifted from UserPreferences::default(): {result:?}",
+        );
+    }
+
+    #[rstest::rstest]
+    fn init_writes_template_when_missing() {
+        // Given a path to a nonexistent file.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+
+        // When initializing the default config (no force).
+        let outcome = init_default_config_to(&path, false).expect("init");
+
+        // Then the file is created with the template bytes.
+        assert!(matches!(outcome, InitOutcome::Created));
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(on_disk, DEFAULT_CONFIG);
+    }
+
+    #[rstest::rstest]
+    fn init_returns_already_exists_when_present_and_no_force() {
+        // Given an existing file with custom content.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        let marker = "# user-managed\nlast_model = \"x/y\"\n";
+        std::fs::write(&path, marker).expect("write");
+
+        // When initializing without --force.
+        let result = init_default_config_to(&path, false);
+
+        // Then the call fails with InitDefaultConfigError.
+        assert!(result.is_err());
+        // And the file is unchanged.
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(on_disk, marker);
+    }
+
+    #[rstest::rstest]
+    fn init_overwrites_when_force() {
+        // Given an existing file with custom content.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(&path, "# stale\n").expect("write");
+
+        // When initializing with --force.
+        let outcome = init_default_config_to(&path, true).expect("init");
+
+        // Then the file is overwritten with the template bytes.
+        assert!(matches!(outcome, InitOutcome::Overwritten));
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert_eq!(on_disk, DEFAULT_CONFIG);
     }
 
     #[rstest::rstest]
@@ -2011,7 +2274,7 @@ max_tokens = 5000
         assert_eq!(config.double_edit.min_age, 20);
         assert_eq!(config.tool_age_window.min_age, 100);
         assert!(config.trivial_assistant.enabled);
-        assert_eq!(config.trivial_assistant.max_age_entries, 100);
+        assert_eq!(config.trivial_assistant.min_age, 100);
         assert_eq!(config.trivial_assistant.max_tokens, 80);
     }
 
@@ -2023,7 +2286,7 @@ max_tokens = 5000
         assert!(prefs.auto_prune.consecutive_reads.enabled);
         assert!(prefs.auto_prune.tool_age_window.enabled);
         assert!(prefs.auto_prune.trivial_assistant.enabled);
-        assert_eq!(prefs.auto_prune.trivial_assistant.max_age_entries, 100);
+        assert_eq!(prefs.auto_prune.trivial_assistant.min_age, 100);
         assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
     }
 
@@ -2151,9 +2414,12 @@ enabled = true
                 regex: RegexAutoPruneConfig::default(),
                 broken_edit: BrokenEditAutoPruneConfig {
                     enabled: false,
-                    min_tail_entries: 3,
+                    min_age: 3,
                 },
-                todo: TodoAutoPruneConfig { enabled: false },
+                todo: TodoAutoPruneConfig {
+                    enabled: false,
+                    min_age: 0,
+                },
                 double_edit: DoubleEditAutoPruneConfig::default(),
                 consecutive_reads: ConsecutiveReadsAutoPruneConfig::default(),
                 tool_age_window: ToolAgeWindowAutoPruneConfig {
@@ -2162,12 +2428,13 @@ enabled = true
                 },
                 trivial_assistant: TrivialAssistantAutoPruneConfig {
                     enabled: false,
-                    max_age_entries: 50,
+                    min_age: 50,
                     max_tokens: 40,
                 },
                 anchor_radius: AnchorRadiusAutoPruneConfig {
                     enabled: false,
                     radius: 42,
+                    min_age: 0,
                 },
             },
             ..UserPreferences::default()
@@ -2179,12 +2446,12 @@ enabled = true
         assert!(!reloaded.auto_prune.read_edit.enabled);
         assert_eq!(reloaded.auto_prune.read_edit.min_age, 25);
         assert!(!reloaded.auto_prune.broken_edit.enabled);
-        assert_eq!(reloaded.auto_prune.broken_edit.min_tail_entries, 3);
+        assert_eq!(reloaded.auto_prune.broken_edit.min_age, 3);
         assert!(!reloaded.auto_prune.todo.enabled);
         assert!(!reloaded.auto_prune.tool_age_window.enabled);
         assert_eq!(reloaded.auto_prune.tool_age_window.min_age, 7);
         assert!(!reloaded.auto_prune.trivial_assistant.enabled);
-        assert_eq!(reloaded.auto_prune.trivial_assistant.max_age_entries, 50);
+        assert_eq!(reloaded.auto_prune.trivial_assistant.min_age, 50);
         assert_eq!(reloaded.auto_prune.trivial_assistant.max_tokens, 40);
         assert!(!reloaded.auto_prune.anchor_radius.enabled);
         assert_eq!(reloaded.auto_prune.anchor_radius.radius, 42);
@@ -2202,7 +2469,7 @@ enabled = true
         assert!(prefs.auto_prune.tool_age_window.enabled);
         assert_eq!(prefs.auto_prune.tool_age_window.min_age, 100);
         assert!(prefs.auto_prune.trivial_assistant.enabled);
-        assert_eq!(prefs.auto_prune.trivial_assistant.max_age_entries, 100);
+        assert_eq!(prefs.auto_prune.trivial_assistant.min_age, 100);
         assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
         assert!(prefs.auto_prune.anchor_radius.enabled);
         assert_eq!(prefs.auto_prune.anchor_radius.radius, 100);
@@ -2226,6 +2493,47 @@ enabled = false
         assert!(prefs.auto_prune.read_edit.enabled);
     }
 
+    #[rstest::rstest]
+    fn default_min_age_is_50_for_new_workers() {
+        // Given the three newly-min_age'd configs and the per-rule default.
+        // Then their Default impls all produce min_age == 50.
+        assert_eq!(AnchorRadiusAutoPruneConfig::default().min_age, 50);
+        assert_eq!(ConsecutiveReadsAutoPruneConfig::default().min_age, 50);
+        assert_eq!(TodoAutoPruneConfig::default().min_age, 50);
+        // RegexPruneRule has no Default impl (pattern is required), so verify
+        // via the serde default function directly.
+        assert_eq!(default_regex_min_age(), 50);
+    }
+
+    #[rstest::rstest]
+    fn toml_roundtrip_with_renamed_fields() {
+        // Given a TOML that uses the legacy aliases (`max_age_entries` and
+        // `min_tail_entries`) instead of the new `min_age` field name.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[auto_prune.trivial_assistant]
+enabled = true
+max_age_entries = 100
+max_tokens = 80
+
+[auto_prune.broken_edit]
+enabled = true
+min_tail_entries = 10
+"#,
+        )
+        .expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then the legacy keys are accepted via serde alias and populate
+        // the new `min_age` field.
+        assert_eq!(prefs.auto_prune.trivial_assistant.min_age, 100);
+        assert_eq!(prefs.auto_prune.broken_edit.min_age, 10);
+    }
+
     // --- RegexAutoPruneConfig tests ---
 
     #[rstest::rstest]
@@ -2241,9 +2549,11 @@ enabled = false
             pattern: "cargo check".to_owned(),
             tool_name: default_regex_tool_name(),
             keep_last: default_regex_keep_last(),
+            min_age: default_regex_min_age(),
         };
         assert_eq!(rule.tool_name, "bash");
         assert_eq!(rule.keep_last, 1);
+        assert_eq!(rule.min_age, 50);
     }
 
     #[rstest::rstest]
@@ -2259,11 +2569,13 @@ enabled = false
                             pattern: "cargo check".to_owned(),
                             tool_name: "bash".to_owned(),
                             keep_last: 1,
+                            min_age: 50,
                         },
                         RegexPruneRule {
                             pattern: "cargo test".to_owned(),
                             tool_name: "bash".to_owned(),
                             keep_last: 2,
+                            min_age: 50,
                         },
                     ],
                 },
@@ -2384,11 +2696,13 @@ keep_last = 1
                             pattern: "ls".to_owned(),
                             tool_name: "bash".to_owned(),
                             keep_last: 1,
+                            min_age: 0,
                         },
                         RegexPruneRule {
                             pattern: "cargo check".to_owned(),
                             tool_name: "bash".to_owned(),
                             keep_last: 1,
+                            min_age: 0,
                         },
                     ],
                 },
