@@ -206,7 +206,6 @@ mod tests {
         assert_eq!(outputs.get_text("out").unwrap(), "test");
     }
 
-    // --- Mutant-killing tests for code.rs ---
 
     // Kills: CodeNode::name -> "", CodeNode::name -> "xyzzy"
     #[test]

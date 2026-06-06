@@ -1187,7 +1187,6 @@ mod tests {
         assert_eq!(graph.description(), None);
     }
 
-    // --- Mutant-killing tests for graph.rs ---
 
     // Kills: node_config -> None (always)
     // TestNode doesn't override config(), so node_config returns None for it.

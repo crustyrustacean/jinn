@@ -1883,7 +1883,6 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
             "description updated:\n{written}"
         );
     }
-    // --- S-Tier: Kill mutants for load_preferences / save_preferences ---
 
     #[rstest::rstest]
     fn load_preferences_actually_reads_file_content() {
@@ -1971,7 +1970,6 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         assert!(written.contains("last_model = \"ollama/llama3\""));
     }
 
-    // --- S-Tier: Kill mutant for RequestRetryConfig::to_retry_config ---
 
     #[rstest::rstest]
     fn to_retry_config_uses_actual_values_not_defaults() {

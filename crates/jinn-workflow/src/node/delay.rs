@@ -148,7 +148,6 @@ mod tests {
         TestContext
     }
 
-    // --- Mutant-killing tests for delay.rs ---
 
     // Kills: DelayNode::input_ports -> vec![]
     #[test]

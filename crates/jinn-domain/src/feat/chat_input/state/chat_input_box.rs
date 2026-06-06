@@ -841,7 +841,6 @@ mod tests {
         // Then it returns 5 (not 0, not 1).
         let start = state.autocomplete_token_start();
         assert_eq!(start, Some(5));
-        // Kill the specific mutants: not Some(0), not Some(1).
         assert_ne!(start, Some(0));
         assert_ne!(start, Some(1));
     }

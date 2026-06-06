@@ -297,7 +297,6 @@ mod tests {
         assert_eq!(date.len(), 10);
     }
 
-    // --- Mutant-killing tests for date_from_days ---
 
     #[rstest::rstest]
     fn date_from_days_one_day() {
@@ -359,7 +358,6 @@ mod tests {
         assert_ne!(date, "");
     }
 
-    // --- Mutant-killing tests for load_project_context_files ---
 
     #[rstest::rstest]
     #[tokio::test]

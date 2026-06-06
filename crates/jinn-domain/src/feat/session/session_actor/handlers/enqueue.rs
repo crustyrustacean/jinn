@@ -497,7 +497,6 @@ mod tests {
             _ => None,
         });
         // With default model (NO_PROVIDER_ID), provider_id should be None.
-        // Mutant (== -> !=) would send Some(NO_PROVIDER_ID) instead.
         assert_eq!(
             send_cmd,
             Some(None),
