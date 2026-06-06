@@ -96,7 +96,6 @@ mod tests {
         let result = compute_scroll(10, 20, Some(2), &ranges, Some(5));
 
         // Then clamped scrolls up to show entry 2.
-        // kills: abs_start < viewport_top -> abs_start <= viewport_top (mutant)
         assert_eq!(result.clamped, 2, "should scroll up to show selected entry");
     }
 
@@ -110,9 +109,6 @@ mod tests {
 
         // Then clamped scrolls down so entry 15's end is at viewport bottom.
         // abs_end = 16, area_height = 10, so clamped = 16 - 10 = 6.
-        // kills: abs_end > viewport_bottom -> abs_end == viewport_bottom (mutant)
-        //        abs_end > viewport_bottom -> abs_end < viewport_bottom (mutant)
-        //        abs_end > viewport_bottom -> abs_end >= viewport_bottom (mutant)
         assert_eq!(
             result.clamped, 6,
             "should scroll down to show selected entry"
@@ -145,8 +141,6 @@ mod tests {
         // abs_start (3) < viewport_bottom (4), so neither else-if fires.
         let result = compute_scroll(4, 8, Some(3), &ranges, Some(0));
 
-        // kills: entry_height <= area_height -> entry_height > area_height (mutant)
-        // The mutant would treat entry_height > area_height as entry_height <= area_height,
         // entering the first branch and scrolling to abs_start = 3.
         // The correct behavior is NOT scrolling because the entry is partially visible.
         assert_eq!(
@@ -218,12 +212,10 @@ mod tests {
 
         // Then entries that overlap [1, 4) are visible.
         // Entry 0: [0,1) -> abs_end=1 > viewport_top=1? NO (1 > 1 is false).
-        //   kills: abs_end > viewport_top -> abs_end >= viewport_top (mutant would include it)
         // Entry 1: [1,2) -> visible
         // Entry 2: [2,3) -> visible
         // Entry 3: [3,4) -> abs_start=3 < viewport_bottom=4? YES. visible
         // Entry 4: [4,5) -> abs_start=4 < viewport_bottom=4? NO (4 < 4 is false).
-        //   kills: abs_start < viewport_bottom -> abs_start <= viewport_bottom (mutant would include it)
         assert_eq!(visible, vec![1, 2, 3]);
     }
 

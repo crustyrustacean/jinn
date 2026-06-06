@@ -1685,7 +1685,6 @@ fn enter_normal_mode_dismissing_autocomplete_emits_no_commands() {
     assert!(result.commands.is_empty());
 }
 
-// --- compute_matches and compute_slash_matches mutants ---
 
 #[rstest::rstest]
 fn hash_autocomplete_populates_matches_from_template_store() {

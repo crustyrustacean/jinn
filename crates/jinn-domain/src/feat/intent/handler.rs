@@ -703,7 +703,6 @@ mod tests {
         assert!(result.commands.is_empty());
     }
 
-    // --- Mutant-killing tests for ArgInput scope guards ---
 
     #[test]
     fn insert_char_routes_to_arg_input_when_scope_is_arg_input() {
@@ -844,7 +843,6 @@ mod tests {
         assert!(state.frontend.arg_input.input.is_empty());
     }
 
-    // --- Mutant-killing tests for PasteText dispatch ---
 
     #[test]
     fn paste_text_in_picker_scope_routes_to_picker() {
@@ -891,7 +889,6 @@ mod tests {
         assert_eq!(state.frontend.rename_session_input.input, "old new");
     }
 
-    // --- Mutant-killing tests for cancel stream prompt ---
 
     #[test]
     fn cancel_stream_prompt_esc_confirms() {
@@ -941,7 +938,6 @@ mod tests {
         assert!(!state.frontend.cancel_stream_prompt);
     }
 
-    // --- Mutant-killing tests for close session prompt ---
 
     #[test]
     fn close_session_prompt_sidebar_close_confirms() {

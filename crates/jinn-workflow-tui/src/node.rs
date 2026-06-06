@@ -769,7 +769,6 @@ mod tests {
         assert_eq!(buf.cell(Position::new(col, 0)).unwrap().symbol(), "●");
     }
 
-    // --- Mutant-killing tests for node.rs ---
 
     // Kills: truncate_str -> String::new(), truncate_str -> "xyzzy"
     #[test]

@@ -703,7 +703,6 @@ mod tests {
         assert_eq!(result.as_deref(), Some("b"));
     }
 
-    // --- Mutant-killing tests for spatial_layout.rs ---
 
     // Kills: overlaps_x < -> <=
     #[test]

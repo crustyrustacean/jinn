@@ -325,7 +325,6 @@ mod tests {
         let cell = diff_cell_f64(1.0, 0.5);
 
         let content = cell.content();
-        // Should show "-$0.5000", not "$-0.5000" (sign deletion mutant)
         assert!(content.contains('-'), "expected '-' in {content}");
         assert!(
             !content.contains("$-"),
