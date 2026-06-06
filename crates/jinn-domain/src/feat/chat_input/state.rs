@@ -4,5 +4,4 @@ pub mod autocomplete;
 pub mod chat_input_box;
 pub mod wrap;
 
-pub use autocomplete::AutocompleteState;
-pub use chat_input_box::ChatInputBoxState;
+pub use chat_input_box::{ChatInputBoxState, InputMode};

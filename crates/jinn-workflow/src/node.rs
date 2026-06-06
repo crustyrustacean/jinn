@@ -225,7 +225,6 @@ mod tests {
         assert!(!format!("{err:?}").is_empty());
     }
 
-    // --- Mutant-killing tests for node.rs ---
 
     // Kills: WorkflowNode::config -> Some(Default::default())
     // The default impl returns None, not Some(default).

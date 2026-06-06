@@ -167,7 +167,21 @@ impl SessionPersistenceActor {
             }
         }
 
-        // Assemble the prompt directly and emit SendToLlmProvider.
+        // Drain any pending steering fragments into history before assembly.
+        {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&event.session_id);
+            if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
+                let entry_id = entry.id.clone();
+                let index = session.push_entry(entry);
+                tracing::debug!(
+                    session_id = %event.session_id,
+                    entry_id = %entry_id,
+                    history_index = index,
+                    "drained steering entry into history at tool-batch boundary"
+                );
+            }
+        }
         // Note: the session is already in sending state, set by on_stream_completed(ToolUse).
         let workflow_overrides: Option<crate::feat::context::assemble::AssemblyOverrides> = {
             let state = self.state.read();
@@ -243,6 +257,7 @@ mod tests {
         ToolExecutionStarted, ToolUseStarted,
     };
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolResult};
+    use crate::feat::session::tool_result_status::ToolResultStatus;
     use crate::protocol::{ChangeSource, ChatEntry, ChatEntryKind, Command, Event};
 
     #[tokio::test]
@@ -803,5 +818,70 @@ mod tests {
             has_send,
             "expected SendToLlmProvider with empty mutation queue"
         );
+    }
+
+    #[tokio::test]
+    async fn on_tool_batch_completed_drained_steering_entry_lands_after_tool_results() {
+        // Given a session with [user][assistant+tool_call][tool_result] in history
+        // and a non-empty steering buffer.
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.push_entry(ChatEntry::user("list files"));
+            session.push_entry(ChatEntry::tool_call("tc-1", "bash", r#"{"command":"ls"}"#));
+            session.push_entry(ChatEntry::assistant("checking"));
+            session.push_entry(ChatEntry::tool_result("tc-1", "bash", "file1.txt", ToolResultStatus::Success));
+            session.push_entry(ChatEntry::tool_result("tc-1", "bash", "file2.txt", ToolResultStatus::Success));
+            // Prime steering buffer.
+            session.steering_buffer_mut().push_fragment("stay at the foo part");
+            // Tool batch already completed; transition to Sending so on_tool_batch_completed
+            // routes through the drain path.
+            session.finish_streaming(true);
+            session.begin_sending();
+            state.session.active_session_id().clone()
+        };
+
+        // When handling ToolBatchCompleted.
+        let event = ToolBatchCompleted {
+            session_id: session_id.clone(),
+            results: vec![ToolResult {
+                tool_call_id: "tc-1".to_owned(),
+                name: "bash".to_owned(),
+                content: "file1.txt".to_owned(),
+                success: true,
+                full_content: None,
+                truncation: None,
+            }],
+        };
+        actor.on_tool_batch_completed(&event, &ctx);
+
+        // Then the drained steering entry's index is greater than both tool_result indices.
+        let state = actor.state.read();
+        let session = state.session.active_session();
+        let history = session.history();
+        let tool_result_indices: Vec<usize> = history
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| matches!(e.kind, ChatEntryKind::ToolResult { .. }))
+            .map(|(i, _)| i)
+            .collect();
+        let steer_index = history
+            .iter()
+            .enumerate()
+            .find(|(_, e)| matches!(&e.kind, ChatEntryKind::User { expanded, .. } if expanded == "stay at the foo part"))
+            .map(|(i, _)| i);
+        assert!(
+            !tool_result_indices.is_empty(),
+            "expected tool_result entries in history"
+        );
+        let steer_idx = steer_index.expect("drained steering entry must appear in history");
+        for &tr_idx in &tool_result_indices {
+            assert!(
+                steer_idx > tr_idx,
+                "steering entry at {steer_idx} must come after tool_result at {tr_idx}"
+            );
+        }
     }
 }
