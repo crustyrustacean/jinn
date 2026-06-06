@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use error_stack::{Report, ResultExt};
-use mlua::{Lua, RegistryKey, Value};
+use mlua::{Lua, LuaSerdeExt, RegistryKey, Value};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use wherror::Error;
@@ -46,13 +46,19 @@ pub struct PluginKeybind {
 /// table. Maps the Lua field names to the strongly typed [`PluginKeybind`].
 #[derive(Debug, Clone, serde::Deserialize)]
 struct PluginKeybindRaw {
+    /// The key sequence string (e.g. `"<M-e>"`).
     keys: String,
+    /// The action hook name to fire on the async VM when the keybind triggers.
     action: String,
+    /// Human-readable description shown in the which-key help popup.
     description: String,
+    /// Target keymap scope (e.g. `"input"`, `"normal"`).
     scope: String,
 }
 
 impl PluginKeybindRaw {
+    /// Convert the raw serde shape into a typed keybind, attaching the
+    /// declaring plugin's name.
     fn into_keybind(self, plugin_name: String) -> PluginKeybind {
         PluginKeybind {
             plugin_name,
@@ -119,7 +125,15 @@ impl SyncHook<'_> {
     /// - `T` — the context struct (must be `Serialize`)
     /// - `R` — the expected return type (must be `DeserializeOwned`)
     ///
+    /// # Errors
+    ///
     /// Returns an error if serialization, Lua execution, or deserialization fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `ctx_data` serializes to a non-object JSON value (e.g. an array
+    /// or scalar). All call sites pass struct-typed contexts, so this is a
+    /// programming-error invariant rather than a recoverable failure.
     pub fn call<T: Serialize, R: DeserializeOwned>(
         &self,
         ctx_data: &T,
@@ -131,6 +145,7 @@ impl SyncHook<'_> {
 
         // 2. Inject plugin_data from DashMap (snapshot at call time).
         if let Some(data) = self.plugin_data.get(&self.plugin_name) {
+            // ctx_data is always a JSON object (struct); see build_sync_ctx contract.
             ctx_json
                 .as_object_mut()
                 .expect("ctx is object")
@@ -192,6 +207,9 @@ impl SyncPlugins {
     }
 
     /// Number of loaded plugins.
+    pub fn plugin_count(&self) -> usize {
+        self.hooks.len()
+    }
 
     /// Create an empty SyncPlugins with no loaded plugins.
     ///
@@ -207,11 +225,6 @@ impl SyncPlugins {
         }
     }
 
-    /// Returns the number of loaded plugins.
-    #[must_use]
-    pub fn plugin_count(&self) -> usize {
-        self.hooks.len()
-    }
 
     /// Returns keybinds declared by all loaded plugins.
     ///
@@ -256,6 +269,7 @@ impl SyncPlugins {
             }
         };
         let mut out = Vec::new();
+        // Deserialize via mlua's serde support (`serialize` feature).
         for entry_result in arr.clone().sequence_values::<Value>() {
             let entry = match entry_result {
                 Ok(v) => v,
@@ -264,8 +278,6 @@ impl SyncPlugins {
                     continue;
                 }
             };
-            // Deserialize via mlua's serde support (`serialize` feature).
-            use mlua::LuaSerdeExt as _;
             match self.lua.from_value::<PluginKeybindRaw>(entry) {
                 Ok(raw) => out.push(raw.into_keybind(plugin_name.to_owned())),
                 Err(e) => {
