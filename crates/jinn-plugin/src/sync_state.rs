@@ -153,7 +153,6 @@ impl SyncPlugins {
         })
     }
 
-    /// Number of loaded plugins.
 
     /// Create an empty SyncPlugins with no loaded plugins.
     ///

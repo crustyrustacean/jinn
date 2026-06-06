@@ -50,7 +50,7 @@ use crate::protocol::{Command, Event};
 pub struct PluginDispatchActorError;
 
 /// Map key: (session id, plugin name).
-
+///
 /// Tracks per-session plugin Lua-state registry IDs.
 ///
 /// Each session has at most one registry (one Lua state). All attached

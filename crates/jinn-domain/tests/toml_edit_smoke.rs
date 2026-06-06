@@ -4,7 +4,7 @@
 //! before we build abstractions on top of it. Not part of any production
 //! code path.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::items_after_statements, reason = "test code")]
 
 use toml_edit::DocumentMut;
 

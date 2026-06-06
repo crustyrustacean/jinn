@@ -1,6 +1,7 @@
 #![allow(
     clippy::expect_used,
     clippy::indexing_slicing,
+    clippy::needless_lifetimes,
     reason = "test file, panics are acceptable"
 )]
 

@@ -96,6 +96,11 @@ mod tests {
     #![allow(
         clippy::expect_used,
         clippy::indexing_slicing,
+        clippy::manual_assert,
+        clippy::panic,
+        clippy::map_unwrap_or,
+        clippy::redundant_closure_for_method_calls,
+        clippy::collapsible_if,
         reason = "test code, panics are acceptable"
     )]
     //! Render-level tests for the audit popup overlay.
