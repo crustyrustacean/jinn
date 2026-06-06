@@ -108,7 +108,6 @@ mod tests {
         assert_eq!(clone.get("NEW_KEY"), Some("value".to_owned()));
     }
 
-    // --- S-Tier: Kill mutants for is_set / is_empty ---
 
     #[rstest::rstest]
     fn is_set_returns_true_when_key_present() {

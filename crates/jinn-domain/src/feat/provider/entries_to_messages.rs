@@ -2,8 +2,7 @@
 
 use crate::feat::provider::llm_message::LlmMessage;
 use crate::feat::tools_actor::tool_types::ToolCall;
-use crate::protocol::ChatEntry;
-use crate::protocol::ChatEntryKind;
+use crate::protocol::{ChatEntry, ChatEntryKind, ContextOverride};
 
 /// Convert chat history entries to LLM messages.
 ///
@@ -21,7 +20,7 @@ use crate::protocol::ChatEntryKind;
 /// | ToolResult | `LlmMessage::Tool` | |
 /// | System | `LlmMessage::System` | Only when in context (pinned or forced-include) |
 /// | Actor | `LlmMessage::User` with `[Actor: source]` prefix | Only when in context |
-/// | Error | `LlmMessage::User` with `[Error]` prefix | Only when in context (pinned or forced-include) |
+/// | Error | `LlmMessage::User` with `[Error]` prefix or actionable framing | `[Error]` prefix when `Default` (incl. pinned); actionable framing (`The user has shared...`) when `ForcedInclude` |
 /// | Thinking | `LlmMessage::User` with `[Thinking]` prefix | Only when in context |
 /// | Transient | `LlmMessage::User` with `[Transient]` prefix | Only when in context |
 /// | Skill | `LlmMessage::System` with skill XML | Always in context by default |
@@ -96,12 +95,24 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                     content: format!("[Actor: {source}] {text}"),
                 });
             }
-            // Error entries produce a User message with [Error] prefix
-            // when in context (pinned or forced-include).
+            // Error entries produce a User message when in context (pinned
+            // or forced-include). Default-override entries (including pinned)
+            // get the legacy `[Error]` prefix; ForcedInclude entries get an
+            // actionable framing that signals the user wants the LLM to act
+            // on the contents rather than investigate the failure.
             ChatEntryKind::Error(text) => {
-                messages.push(LlmMessage::User {
-                    content: format!("[Error] {text}"),
-                });
+                let content = match entry.context_override() {
+                    ContextOverride::ForcedInclude => {
+                        format!("The user has shared the following output for you to address:\n\n{text}")
+                    }
+                    // Default and ForcedExclude (unreachable here; already
+                    // filtered by is_in_context). Pin alone does not trigger
+                    // the actionable framing.
+                    ContextOverride::Default | ContextOverride::ForcedExclude => {
+                        format!("[Error] {text}")
+                    }
+                };
+                messages.push(LlmMessage::User { content });
             }
             // Thinking entries produce a User message with [Thinking] prefix
             // when in context (pinned or forced-include).

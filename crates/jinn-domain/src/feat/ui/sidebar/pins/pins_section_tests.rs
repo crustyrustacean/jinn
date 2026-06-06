@@ -530,7 +530,6 @@ fn sync_chat_log_cursor_sets_correct_entry_when_multiple_entries_exist() {
     sync_chat_log_cursor(&mut state);
 
     // Then the cursor is set to entry_b (not entry_a or entry_c).
-    // This kills the == -> != mutant which would match the wrong entry.
     assert_eq!(
         state.active_session().selected_cursor_id(),
         Some(&id_b),
