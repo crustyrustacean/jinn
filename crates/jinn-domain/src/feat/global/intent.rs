@@ -391,7 +391,7 @@ mod tests {
         });
 
         // When handling CtrlClear via the IntentHandler (exercises redispatch).
-        let result = IntentHandler::handle(&Intent::CtrlClear, &mut state);
+        let result = IntentHandler::handle(&Intent::CtrlClear, &mut state, None);
 
         // Then scope is back to Normal (picker closed).
         assert!(!state.frontend.scope_stack.is_picker());
@@ -489,7 +489,7 @@ mod tests {
 
         // When handling CtrlClear via IntentHandler (exercises RenameSessionLeave redispatch).
         use crate::feat::intent::handler::IntentHandler;
-        let result = IntentHandler::handle(&Intent::CtrlClear, &mut state);
+        let result = IntentHandler::handle(&Intent::CtrlClear, &mut state, None);
 
         // Then scope is popped back to Normal and rename_session_input is reset.
         assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
@@ -515,7 +515,7 @@ mod tests {
         }
 
         // First press: filter is non-empty, so it should be cleared.
-        let result1 = IntentHandler::handle(&Intent::CtrlClear, &mut state);
+        let result1 = IntentHandler::handle(&Intent::CtrlClear, &mut state, None);
         assert!(state.frontend.scope_stack.is_picker());
         assert!(
             state
@@ -526,7 +526,7 @@ mod tests {
         assert!(result1.commands.is_empty());
 
         // Second press: filter is now empty, so picker should close.
-        let result2 = IntentHandler::handle(&Intent::CtrlClear, &mut state);
+        let result2 = IntentHandler::handle(&Intent::CtrlClear, &mut state, None);
         assert!(!state.frontend.scope_stack.is_picker());
         assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
         assert!(result2.commands.is_empty());

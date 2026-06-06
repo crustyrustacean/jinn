@@ -237,7 +237,7 @@ impl TuiApp {
         let (commands, events, signals) = {
             let mut state = self.core.state.write();
 
-            let result = IntentHandler::handle(&intent, &mut state);
+            let result = IntentHandler::handle(&intent, &mut state, Some(&self.plugins));
 
 
             // Cancel selection when mode changes away from Picker.
