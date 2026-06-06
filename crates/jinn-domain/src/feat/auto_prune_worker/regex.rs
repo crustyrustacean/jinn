@@ -33,6 +33,9 @@ struct CompiledRegexRule {
     tool_name: String,
     /// Number of most recent matching pairs to keep (minimum 1).
     keep_last: usize,
+    /// Raw-distance protection floor: pairs whose call is within `min_age`
+    /// slots of the end of history are never pruned.
+    min_age: usize,
 }
 
 /// Regex-based auto-prune worker.
@@ -44,9 +47,6 @@ struct CompiledRegexRule {
 pub struct RegexAutoPruneWorker {
     /// Compiled regex rules (empty if disabled or no rules configured).
     rules: Vec<CompiledRegexRule>,
-    /// Raw-distance protection floor: pairs whose call is within `min_age`
-    /// slots of the end of history are never pruned.
-    min_age: usize,
 }
 
 impl RegexAutoPruneWorker {
@@ -61,10 +61,7 @@ impl RegexAutoPruneWorker {
     /// Returns `regex::Error` if any pattern string fails to compile.
     pub fn from_config(config: &RegexAutoPruneConfig) -> Result<Self, regex::Error> {
         if !config.enabled || config.rules.is_empty() {
-            return Ok(Self {
-                rules: Vec::new(),
-                min_age: config.min_age,
-            });
+            return Ok(Self { rules: Vec::new() });
         }
 
         let mut compiled = Vec::with_capacity(config.rules.len());
@@ -74,13 +71,11 @@ impl RegexAutoPruneWorker {
                 regex,
                 tool_name: rule.tool_name.clone(),
                 keep_last: rule.keep_last.max(1),
+                min_age: rule.min_age,
             });
         }
 
-        Ok(Self {
-            rules: compiled,
-            min_age: config.min_age,
-        })
+        Ok(Self { rules: compiled })
     }
 }
 
@@ -92,6 +87,7 @@ impl Clone for CompiledRegexRule {
             regex: self.regex.clone(),
             tool_name: self.tool_name.clone(),
             keep_last: self.keep_last,
+            min_age: self.min_age,
         }
     }
 }
@@ -175,7 +171,6 @@ fn collect_matching_pairs(
 fn build_prune_mutations(
     history: &[ChatEntry],
     rules: &[CompiledRegexRule],
-    min_age: usize,
     worker_name: &str,
 ) -> Vec<HistoryMutation> {
     let mut mutations = Vec::new();
@@ -202,8 +197,8 @@ fn build_prune_mutations(
             matched_pairs.iter().take(prune_count).enumerate()
         {
             // Protection floor: never prune pairs whose call is within
-            // `min_age` slots of the end of history.
-            if is_within_min_age(history_len, *call_idx, min_age) {
+            // the rule's `min_age` slots of the end of history.
+            if is_within_min_age(history_len, *call_idx, rule.min_age) {
                 continue;
             }
 
@@ -262,7 +257,7 @@ impl HistoryWorker for RegexAutoPruneWorker {
         _session_id: &SessionId,
         history: std::sync::Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
-        let mutations = build_prune_mutations(&history, &self.rules, self.min_age, self.name());
+        let mutations = build_prune_mutations(&history, &self.rules, self.name());
 
         tracing::info!(total_mutations = mutations.len(), "regex worker done");
         mutations
@@ -299,11 +294,11 @@ mod tests {
     fn worker_for_cargo_check(keep_last: usize) -> RegexAutoPruneWorker {
         RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
             enabled: true,
-            min_age: 0,
             rules: vec![RegexPruneRule {
                 pattern: "cargo check".to_owned(),
                 tool_name: "bash".to_owned(),
                 keep_last,
+                min_age: 0,
             }],
         })
         .expect("valid config")
@@ -326,8 +321,8 @@ mod tests {
                 pattern: "cargo check".to_owned(),
                 tool_name: "bash".to_owned(),
                 keep_last: 0,
+                min_age: 0,
             }],
-            min_age: 0,
         })
         .expect("valid config");
 
@@ -347,11 +342,11 @@ mod tests {
     fn from_config_returns_error_for_invalid_regex() {
         let result = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
             enabled: true,
-            min_age: 0,
             rules: vec![RegexPruneRule {
                 pattern: "[".to_owned(),
                 tool_name: "bash".to_owned(),
                 keep_last: 1,
+                min_age: 0,
             }],
         });
         assert!(result.is_err(), "invalid regex should return error");
@@ -365,8 +360,8 @@ mod tests {
                 pattern: "cargo check".to_owned(),
                 tool_name: "bash".to_owned(),
                 keep_last: 1,
+                min_age: 0,
             }],
-            min_age: 0,
         })
         .expect("valid config");
 
@@ -581,14 +576,15 @@ mod tests {
                     pattern: "cargo check".to_owned(),
                     tool_name: "bash".to_owned(),
                     keep_last: 1,
+                    min_age: 0,
                 },
                 RegexPruneRule {
                     pattern: "cargo test".to_owned(),
                     tool_name: "bash".to_owned(),
                     keep_last: 1,
+                    min_age: 0,
                 },
             ],
-            min_age: 0,
         })
         .expect("valid config");
 
@@ -626,8 +622,8 @@ mod tests {
                 pattern: "foo".to_owned(),
                 tool_name: "bash".to_owned(),
                 keep_last: 1,
+                min_age: 0,
             }],
-            min_age: 0,
         })
         .expect("valid config");
 
@@ -653,8 +649,8 @@ mod tests {
                 pattern: r"bash:.*cargo check".to_owned(),
                 tool_name: "bash".to_owned(),
                 keep_last: 1,
+                min_age: 0,
             }],
-            min_age: 0,
         })
         .expect("valid config");
 
@@ -703,14 +699,15 @@ mod tests {
                     pattern: "cargo check".to_owned(),
                     tool_name: "bash".to_owned(),
                     keep_last: 1,
+                    min_age: 0,
                 },
                 RegexPruneRule {
                     pattern: "cargo clippy".to_owned(),
                     tool_name: "bash".to_owned(),
                     keep_last: 1,
+                    min_age: 0,
                 },
             ],
-            min_age: 0,
         })
         .expect("valid config");
 
@@ -746,11 +743,11 @@ mod tests {
     fn worker_with_min_age(keep_last: usize, min_age: usize) -> RegexAutoPruneWorker {
         RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
             enabled: true,
-            min_age,
             rules: vec![RegexPruneRule {
                 pattern: "cargo check".to_owned(),
                 tool_name: "bash".to_owned(),
                 keep_last,
+                min_age,
             }],
         })
         .expect("valid config")
