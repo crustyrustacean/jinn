@@ -131,6 +131,7 @@ impl WebFetchActor {
                     success: false,
                     full_content: None,
                     truncation: None,
+                    pin_position: None,
                 };
             }
         };
@@ -159,6 +160,7 @@ impl WebFetchActor {
                     success: true,
                     full_content: None,
                     truncation: None,
+                    pin_position: None,
                 }
             }
             Err(e) => {
@@ -170,6 +172,7 @@ impl WebFetchActor {
                     success: false,
                     full_content: None,
                     truncation: None,
+                    pin_position: None,
                 }
             }
         }

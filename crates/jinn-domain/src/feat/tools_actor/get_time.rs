@@ -30,6 +30,7 @@ pub fn execute(call: ToolCall, _ctx: ToolContext) -> BoxedToolFuture {
             success: true,
             full_content: None,
             truncation: None,
+            pin_position: None,
         }
     })
 }
