@@ -191,6 +191,8 @@ pub enum Intent {
     ChatEntryPinSelected,
     /// Toggle expand/collapse of the selected tool entry (tool call or tool result).
     ExpandToolEntry,
+    /// Toggle visibility of the audit popup for the currently selected chat entry.
+    ToggleAuditPopup,
     /// Toggle visibility of the ignored entry block at the cursor.
     ToggleIgnoredBlockVisibility,
     /// Fork the session at the currently selected chat entry.
@@ -329,6 +331,7 @@ impl std::fmt::Display for Intent {
             Intent::ChatEntrySelectPrev => write!(f, "select prev entry"),
             Intent::ChatEntryPinSelected => write!(f, "pin selected entry"),
             Intent::ExpandToolEntry => write!(f, "expand tool entry"),
+            Intent::ToggleAuditPopup => write!(f, "toggle audit popup"),
             Intent::ToggleIgnoredBlockVisibility => write!(f, "toggle ignored block visibility"),
             Intent::ForkFromEntry => write!(f, "fork from entry"),
             Intent::YankSelectedEntry => write!(f, "yank selected entry"),
