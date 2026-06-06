@@ -282,7 +282,8 @@ pub struct SessionUi {
     ///
     /// Accumulates user-submitted text fragments that will be drained
     /// into a single `User` chat entry at the next prompt-assembly
-    /// boundary. Not serialized - dropped on session close.
+    /// boundary. Not serialized - `SessionUi` itself is in-memory only,
+    /// so this field is dropped on session close.
     pub(crate) steering_buffer: SteeringBuffer,
     /// Number of lines to skip from the top when rendering (ratatui scroll offset).
     ///

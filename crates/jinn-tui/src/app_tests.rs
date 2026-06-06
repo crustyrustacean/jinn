@@ -328,3 +328,33 @@ fn esc_in_picker_task_list_returns_to_normal_mode() {
         Some("enter normal mode")
     );
 }
+
+#[test]
+fn alt_s_in_input_scope_toggles_input_mode() {
+    // Given the keymap rooted at Input scope.
+    let mut wk = keymap_at(Scope::Input);
+
+    // When pressing Alt+s (notation: `m-s`).
+    let intent = wk.handle_key(key("m-s"));
+
+    // Then it resolves to ToggleInputMode (Queue ↔ Steer).
+    assert_eq!(
+        intent.map(|i| i.to_string()).as_deref(),
+        Some("toggle input mode")
+    );
+}
+
+#[test]
+fn alt_s_in_normal_scope_focuses_sidebar_sessions() {
+    // Given the keymap rooted at Normal scope.
+    let mut wk = keymap_at(Scope::Normal);
+
+    // When pressing Alt+s (notation: `m-s`).
+    let intent = wk.handle_key(key("m-s"));
+
+    // Then it resolves to SidebarFocusSessions (scope-aware binding).
+    assert_eq!(
+        intent.map(|i| i.to_string()).as_deref(),
+        Some("sidebar focus sessions")
+    );
+}
