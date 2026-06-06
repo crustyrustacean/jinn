@@ -833,6 +833,53 @@ impl TaskList {
         }
     }
 
+
+    /// Produces the `→ NEXT` cue line for a tool return.
+    ///
+    /// Three branches:
+    /// 1. Active phase has pending work →
+    ///    `→ NEXT: {task_id} — {desc} ({n} pending in phase {phase_id})`
+    /// 2. No active phase, but at least one task exists →
+    ///    `→ All phases complete — stop.`
+    /// 3. No phases / no tasks ever → empty string (caller omits the line).
+    ///
+    /// This helper covers the common case used by every `todo_*` tool except
+    /// `complete_task`, which needs its own helper to emit the "phase complete —
+    /// proceed to verify" variant when the just-completed task emptied the
+    /// active phase but other phases still have pending work.
+    #[must_use]
+    pub fn render_next_block(&self) -> String {
+        if self.phases.is_empty() {
+            return String::new();
+        }
+
+        if let Some(active) = self.active_phase() {
+            // Safety: active_phase() implies has_pending_work(), which implies
+            // at least one task with TaskStatus::Pending.
+            let next_task = active
+                .tasks
+                .iter()
+                .find(|t| t.status == TaskStatus::Pending)
+                .expect("active_phase must contain at least one pending task");
+            let remaining = active
+                .tasks
+                .iter()
+                .filter(|t| t.status == TaskStatus::Pending)
+                .count();
+            return format!(
+                "→ NEXT: {} — {} ({} pending in phase {})",
+                next_task.id, next_task.description, remaining, active.id
+            );
+        }
+
+        // No active phase.
+        let any_tasks_ever = self.phases.iter().any(|p| !p.tasks.is_empty());
+        if any_tasks_ever {
+            "→ All phases complete — stop.".to_owned()
+        } else {
+            String::new()
+        }
+    }
     /// Renders a single phase as formatted markdown text.
     pub fn render_phase_text(&self, phase_id: &PhaseId) -> Option<String> {
         let (i, phase) = self
