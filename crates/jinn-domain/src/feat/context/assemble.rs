@@ -919,7 +919,6 @@ mod tests {
         assert_eq!(result.tool_definitions[0].name, "bash");
     }
 
-    // --- Mutant-killing tests ---
 
     #[test]
     fn assemble_prompt_uses_matching_persona() {

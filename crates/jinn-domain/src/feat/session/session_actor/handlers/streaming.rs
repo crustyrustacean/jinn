@@ -518,7 +518,6 @@ mod tests {
         );
     }
 
-    // --- Mutant killers: on_stream_token ---
 
     #[tokio::test]
     async fn on_stream_token_appends_text_to_assistant_entry() {
@@ -621,7 +620,6 @@ mod tests {
         );
     }
 
-    // --- Mutant killers: on_stream_completed should_save, token counting, preserve_assistant ---
 
     #[tokio::test]
     async fn on_stream_completed_finished_persists_session() {

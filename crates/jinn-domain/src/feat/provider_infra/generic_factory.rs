@@ -120,7 +120,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // --- S-Tier: Kill mutants for Backend::Anthropic/Google match arms ---
 
     #[rstest::rstest]
     fn create_routes_anthropic_to_anthropic_factory() {

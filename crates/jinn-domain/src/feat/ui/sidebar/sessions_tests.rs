@@ -1747,7 +1747,6 @@ fn multi_level_intermediate_hiding_reparents_to_nearest_loaded_ancestor() {
     );
 }
 
-// --- sorted_open_sessions: is_last_child for roots (kills == -> != and - -> +// mutants on line 165) ---
 
 #[rstest::rstest]
 fn sorted_sessions_last_root_is_marked_as_last_child() {
@@ -1787,7 +1786,6 @@ fn sorted_sessions_single_root_is_marked_as_last_child() {
 }
 
 // --- dfs_children: is_last_child for non-root entries (kills == -> !=
-// and - -> +/- // mutants on line 308) ---
 
 #[rstest::rstest]
 fn tree_children_last_child_flag_is_correct() {
@@ -1819,7 +1817,6 @@ fn tree_children_last_child_flag_is_correct() {
     );
 }
 
-// --- update_visual_parents_on_removal: kills == -> != mutant on line 250 ---
 
 #[rstest::rstest]
 fn update_visual_parents_on_removal_reparents_only_children_of_removed_session() {
@@ -1883,7 +1880,6 @@ fn update_visual_parents_on_removal_reparents_only_children_of_removed_session()
     );
 }
 
-// --- clear_visual_parents_on_load: kills != -> == mutant on line 279 ---
 
 #[rstest::rstest]
 fn clear_visual_parents_on_load_removes_only_entries_pointing_to_loaded_session() {
@@ -1925,7 +1921,6 @@ fn clear_visual_parents_on_load_removes_only_entries_pointing_to_loaded_session(
     );
 }
 
-// --- clear_visual_parents_on_load: kills replace fn with () mutant ---
 
 #[rstest::rstest]
 fn clear_visual_parents_on_load_actually_removes_entries() {

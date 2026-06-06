@@ -579,7 +579,6 @@ mod tests {
         );
     }
 
-    // --- Mutant-killing tests for execution.rs ---
 
     #[rstest::rstest]
     fn node_count_returns_actual_node_count() {
