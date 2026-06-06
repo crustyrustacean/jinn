@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
 use jinn_domain::Command;
+use jinn_domain::common::actor::protocol::dynamic_command::DynamicCommand;
 use jinn_domain::common::actor::message_sink::MessageSink;
 use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry};
 use jinn_domain::feat::plugin_dispatch::protocol::command::TogglePlugin;
@@ -69,7 +70,17 @@ struct LuaDisablePlugin {
     plugin_name: String,
 }
 
-// ─── Verb → Command conversions ──────────────────���───────────────────
+#[derive(serde::Deserialize)]
+struct LuaFireAsyncHook {
+    /// Name of the async hook to fire on the plugin-async VM.
+    hook: String,
+    session_id: SessionId,
+    /// Optional extra context (e.g. the input text being enriched).
+    #[serde(default)]
+    text: Option<String>,
+}
+
+// ─── Verb → Command conversions ───────────────────────────────────────
 
 fn push_chat_entry_from_lua(
     _ctx: CmdCtx,
@@ -103,6 +114,26 @@ fn disable_plugin_from_lua(
     Ok(Command::TogglePlugin(TogglePlugin {
         session_id: lua.session_id,
         plugin_name: lua.plugin_name,
+    }))
+}
+
+/// Generic async handoff: routes an arbitrary hook name to the async VM via
+/// the existing `Command::Dynamic` bus path. The payload is routed by the
+/// runtime name `"plugin::fire_async"` to the plugin dispatch actor, which
+/// resolves the session's registry and fires the hook. No new typed
+/// `Command` variant is needed; every future plugin reuses this verb.
+fn fire_async_hook_from_lua(
+    _ctx: CmdCtx,
+    lua: LuaFireAsyncHook,
+) -> Result<Command, Report<PluginWiringError>> {
+    let payload = serde_json::json!({
+        "hook": lua.hook,
+        "session_id": lua.session_id.to_string(),
+        "text": lua.text,
+    });
+    Ok(Command::Dynamic(DynamicCommand {
+        name: "plugin::fire_async".to_owned(),
+        payload,
     }))
 }
 
@@ -165,6 +196,7 @@ fn translate_command(cmd: &PluginCommand) -> Result<Command, Report<PluginWiring
             translate::<LuaEnqueueUserMessage>(cmd, enqueue_user_message_from_lua)
         }
         "disable_plugin" => translate::<LuaDisablePlugin>(cmd, disable_plugin_from_lua),
+        "fire_async_hook" => translate::<LuaFireAsyncHook>(cmd, fire_async_hook_from_lua),
         other => {
             let ctx = CmdCtx {
                 plugin_name: cmd.plugin_name.clone(),
@@ -411,5 +443,47 @@ mod tests {
             report_str.contains("test-plugin"),
             "missing plugin_name: {report_str}"
         );
+    }
+
+    #[test]
+    fn fire_async_hook_translates_to_dynamic_command() {
+        let cmd = PluginCommand {
+            plugin_name: "prompt_enrichment".to_owned(),
+            name: "fire_async_hook".to_owned(),
+            data: serde_json::json!({
+                "hook": "on_enrich",
+                "session_id": "s-test-session",
+                "text": "hello world",
+            }),
+        };
+        let result = translate_command(&cmd).expect("should translate");
+        match result {
+            Command::Dynamic(d) => {
+                assert_eq!(d.name, "plugin::fire_async");
+                assert_eq!(d.payload["hook"], "on_enrich");
+                assert_eq!(d.payload["session_id"], "s-test-session");
+                assert_eq!(d.payload["text"], "hello world");
+            }
+            other => panic!("expected Dynamic, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fire_async_hook_works_without_text() {
+        let cmd = PluginCommand {
+            plugin_name: "prompt_enrichment".to_owned(),
+            name: "fire_async_hook".to_owned(),
+            data: serde_json::json!({
+                "hook": "on_toggle",
+                "session_id": "s-test-session",
+            }),
+        };
+        let result = translate_command(&cmd).expect("should translate");
+        let Command::Dynamic(d) = result else {
+            panic!("expected Dynamic");
+        };
+        assert_eq!(d.name, "plugin::fire_async");
+        assert_eq!(d.payload["hook"], "on_toggle");
+        assert!(d.payload.get("text").is_none_or(|v| v.is_null()));
     }
 }
