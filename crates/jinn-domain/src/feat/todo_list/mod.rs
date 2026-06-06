@@ -636,16 +636,15 @@ impl TaskList {
             .tasks
             .iter_mut()
             .find(|t| &t.id == source_task_id);
-        match source_task {
-            Some(t) => t.status = TaskStatus::Postponed,
-            None => {
-                tracing::error!(
-                    source_task_id = %source_task_id,
-                    src_phase_index = src_phase_idx,
-                    "postpone_to_phase: source task missing on second lookup; returning TaskNotFound"
-                );
-                return Err(TaskListError::TaskNotFound(source_task_id.clone()));
-            }
+        if let Some(t) = source_task {
+            t.status = TaskStatus::Postponed;
+        } else {
+            tracing::error!(
+                source_task_id = %source_task_id,
+                src_phase_index = src_phase_idx,
+                "postpone_to_phase: source task missing on second lookup; returning TaskNotFound"
+            );
+            return Err(TaskListError::TaskNotFound(source_task_id.clone()));
         }
 
         // Generate new task ID.
@@ -832,13 +831,11 @@ impl TaskList {
         }
         for task in visible {
             let (check, desc) = match task.status {
-                TaskStatus::Pending => (" ", task.description.clone()),
+                TaskStatus::Pending | TaskStatus::Postponed => (" ", task.description.clone()),
                 TaskStatus::Completed => ("\u{2713}", task.description.clone()),
                 TaskStatus::Cancelled => {
                     ("\u{2717}", format!("CANCELLED: {}", task.description))
                 }
-                // Postponed tasks are filtered out above; this arm is unreachable.
-                TaskStatus::Postponed => (" ", task.description.clone()),
             };
             out.push(format!("- [{}] {} [{}]", check, desc, task.id));
         }
@@ -858,6 +855,11 @@ impl TaskList {
     /// `complete_task`, which needs its own helper to emit the "phase complete —
     /// proceed to verify" variant when the just-completed task emptied the
     /// active phase but other phases still have pending work.
+    #[must_use]
+    /// # Panics
+    ///
+    /// Panics if `active_phase()` returns a phase with no `TaskStatus::Pending`
+    /// task — which the constructor of `Phase` and `active_phase()` invariantly forbid.
     #[must_use]
     pub fn render_next_block(&self) -> String {
         if self.phases.is_empty() {
@@ -942,7 +944,7 @@ impl TaskList {
         let later_blocked = match completed_idx {
             Some(idx) => self.phases[idx + 1..]
                 .iter()
-                .any(|p| p.has_pending_work()),
+                .any(Phase::has_pending_work),
             None => false,
         };
 
@@ -982,7 +984,7 @@ impl TaskList {
         let mut lines = vec![format!(
             "## Phase {}:{}{} [{}]",
             i + 1,
-            if prefix.is_empty() { " ".to_owned() } else { format!(" {} ", prefix) },
+            if prefix.is_empty() { " ".to_owned() } else { format!(" {prefix} ") },
             phase.description,
             phase.id
         )];
