@@ -130,6 +130,9 @@ const DEFAULT_READ_EDIT_MIN_AGE: usize = 50;
 /// Default enabled state for todo auto-prune.
 const DEFAULT_TODO_ENABLED: bool = true;
 
+/// Default minimum age for todo auto-prune.
+const DEFAULT_TODO_MIN_AGE: usize = 50;
+
 /// Read-edit auto-prune configuration.
 ///
 /// Serialized as `[auto_prune.read_edit]` in `jinn.toml`.
@@ -176,22 +179,34 @@ pub struct TodoAutoPruneConfig {
     /// Default: `true`.
     #[serde(default = "default_todo_enabled")]
     pub enabled: bool,
+    /// Minimum number of entries from the end of history that must
+    /// appear after a todo tool call before pruning may exclude the
+    /// call+result pair. Counts every entry, regardless of in-context
+    /// status. Set to 0 to disable protection.
+    /// Default: 50.
+    #[serde(default = "default_todo_min_age")]
+    pub min_age: usize,
 }
 
 fn default_todo_enabled() -> bool {
     DEFAULT_TODO_ENABLED
 }
 
+fn default_todo_min_age() -> usize {
+    DEFAULT_TODO_MIN_AGE
+}
+
 impl Default for TodoAutoPruneConfig {
     fn default() -> Self {
         Self {
             enabled: DEFAULT_TODO_ENABLED,
+            min_age: DEFAULT_TODO_MIN_AGE,
         }
     }
 }
 
-/// Default minimum number of in-context entries after a failed edit before pruning.
-const DEFAULT_BROKEN_EDIT_MIN_TAIL_ENTRIES: usize = 10;
+/// Default minimum age for broken-edit auto-prune.
+const DEFAULT_BROKEN_EDIT_MIN_AGE: usize = 10;
 
 /// Default enabled state for broken-edit auto-prune.
 const DEFAULT_BROKEN_EDIT_ENABLED: bool = true;
@@ -207,26 +222,28 @@ pub struct BrokenEditAutoPruneConfig {
     /// Default: `true`.
     #[serde(default = "default_broken_edit_enabled")]
     pub enabled: bool,
-    /// Minimum number of in-context entries that must appear after the failed edit
-    /// ToolCall before the call+result pair is pruned.
+    /// Minimum number of entries from the end of history that must
+    /// appear after the failed edit ToolCall before the call+result
+    /// pair may be pruned. Counts every entry, regardless of in-context
+    /// status. Set to 0 to disable protection.
     /// Default: 10.
-    #[serde(default = "default_broken_edit_min_tail_entries")]
-    pub min_tail_entries: usize,
+    #[serde(default = "default_broken_edit_min_age", alias = "min_tail_entries")]
+    pub min_age: usize,
 }
 
 fn default_broken_edit_enabled() -> bool {
     DEFAULT_BROKEN_EDIT_ENABLED
 }
 
-fn default_broken_edit_min_tail_entries() -> usize {
-    DEFAULT_BROKEN_EDIT_MIN_TAIL_ENTRIES
+fn default_broken_edit_min_age() -> usize {
+    DEFAULT_BROKEN_EDIT_MIN_AGE
 }
 
 impl Default for BrokenEditAutoPruneConfig {
     fn default() -> Self {
         Self {
             enabled: DEFAULT_BROKEN_EDIT_ENABLED,
-            min_tail_entries: DEFAULT_BROKEN_EDIT_MIN_TAIL_ENTRIES,
+            min_age: DEFAULT_BROKEN_EDIT_MIN_AGE,
         }
     }
 }
@@ -298,6 +315,9 @@ const DEFAULT_CONSECUTIVE_READS_KEEP_LAST: usize = 3;
 /// Default enabled state for consecutive-reads auto-prune.
 const DEFAULT_CONSECUTIVE_READS_ENABLED: bool = true;
 
+/// Default minimum age for consecutive-reads auto-prune.
+const DEFAULT_CONSECUTIVE_READS_MIN_AGE: usize = 50;
+
 /// Consecutive-reads auto-prune configuration.
 ///
 /// Serialized as `[auto_prune.consecutive_reads]` in `jinn.toml`.
@@ -315,6 +335,13 @@ pub struct ConsecutiveReadsAutoPruneConfig {
     /// Default: 3.
     #[serde(default = "default_consecutive_reads_keep_last")]
     pub keep_last: usize,
+    /// Minimum number of entries from the end of history within which
+    /// read pairs are protected from pruning even when they would
+    /// otherwise be pruned by `keep_last`. Counts every entry, regardless
+    /// of in-context status. Set to 0 to disable protection.
+    /// Default: `50`.
+    #[serde(default = "default_consecutive_reads_min_age")]
+    pub min_age: usize,
 }
 
 fn default_consecutive_reads_enabled() -> bool {
@@ -325,11 +352,16 @@ fn default_consecutive_reads_keep_last() -> usize {
     DEFAULT_CONSECUTIVE_READS_KEEP_LAST
 }
 
+fn default_consecutive_reads_min_age() -> usize {
+    DEFAULT_CONSECUTIVE_READS_MIN_AGE
+}
+
 impl Default for ConsecutiveReadsAutoPruneConfig {
     fn default() -> Self {
         Self {
             enabled: DEFAULT_CONSECUTIVE_READS_ENABLED,
             keep_last: DEFAULT_CONSECUTIVE_READS_KEEP_LAST,
+            min_age: DEFAULT_CONSECUTIVE_READS_MIN_AGE,
         }
     }
 }
@@ -389,9 +421,8 @@ impl Default for ToolAgeWindowAutoPruneConfig {
 /// Default enabled state for trivial-assistant auto-prune.
 const DEFAULT_TRIVIAL_ASSISTANT_ENABLED: bool = true;
 
-/// Default number of entries to keep before pruning older trivial
-/// assistant entries.
-const DEFAULT_TRIVIAL_ASSISTANT_MAX_AGE_ENTRIES: usize = 100;
+/// Default minimum age for trivial-assistant auto-prune.
+const DEFAULT_TRIVIAL_ASSISTANT_MIN_AGE: usize = 100;
 
 /// Default token threshold below which an assistant entry is considered
 /// "trivial" (small enough to prune when it lands outside the window).
@@ -401,7 +432,7 @@ const DEFAULT_TRIVIAL_ASSISTANT_MAX_TOKENS: usize = 80;
 ///
 /// Serialized as `[auto_prune.trivial_assistant]` in `jinn.toml`.
 /// Controls the auto-prune worker that excludes any `Assistant` entry that
-/// (a) is older than `max_age_entries` entries from the end of history and
+/// (a) is older than `min_age` entries from the end of history and
 /// (b) is at most `max_tokens` tokens long.
 ///
 /// The window counts every entry in raw history regardless of in-context
@@ -416,12 +447,16 @@ pub struct TrivialAssistantAutoPruneConfig {
     /// Default: `true`.
     #[serde(default = "default_trivial_assistant_enabled")]
     pub enabled: bool,
-    /// Number of most recent entries to keep before pruning older trivial
-    /// assistant entries. Counts every entry, regardless of in-context
-    /// status. Minimum 1 (clamped at evaluation time).
-    /// Default: `100`.
-    #[serde(default = "default_trivial_assistant_max_age_entries")]
-    pub max_age_entries: usize,
+    /// Minimum number of entries from the end of history within which
+    /// assistant entries are protected from pruning even when they would
+    /// otherwise qualify as trivial. Counts every entry, regardless of
+    /// in-context status. Set to 0 to disable protection.
+    /// Default: `50`.
+    #[serde(
+        default = "default_trivial_assistant_min_age",
+        alias = "max_age_entries"
+    )]
+    pub min_age: usize,
     /// Maximum number of tokens (tiktoken `o200k_base`) below which an
     /// `Assistant` entry is considered trivial. Minimum 1 (clamped at
     /// evaluation time).
@@ -434,8 +469,8 @@ fn default_trivial_assistant_enabled() -> bool {
     DEFAULT_TRIVIAL_ASSISTANT_ENABLED
 }
 
-fn default_trivial_assistant_max_age_entries() -> usize {
-    DEFAULT_TRIVIAL_ASSISTANT_MAX_AGE_ENTRIES
+fn default_trivial_assistant_min_age() -> usize {
+    DEFAULT_TRIVIAL_ASSISTANT_MIN_AGE
 }
 
 fn default_trivial_assistant_max_tokens() -> usize {
@@ -446,7 +481,7 @@ impl Default for TrivialAssistantAutoPruneConfig {
     fn default() -> Self {
         Self {
             enabled: DEFAULT_TRIVIAL_ASSISTANT_ENABLED,
-            max_age_entries: DEFAULT_TRIVIAL_ASSISTANT_MAX_AGE_ENTRIES,
+            min_age: DEFAULT_TRIVIAL_ASSISTANT_MIN_AGE,
             max_tokens: DEFAULT_TRIVIAL_ASSISTANT_MAX_TOKENS,
         }
     }
@@ -458,6 +493,9 @@ const DEFAULT_ANCHOR_RADIUS_ENABLED: bool = true;
 /// Default radius (in raw history entries) within which an Assistant entry is
 /// protected from pruning regardless of token count.
 const DEFAULT_ANCHOR_RADIUS: usize = 100;
+
+/// Default minimum age for anchor-radius auto-prune.
+const DEFAULT_ANCHOR_RADIUS_MIN_AGE: usize = 50;
 
 /// Anchor-radius auto-prune strategy configuration.
 ///
@@ -476,6 +514,13 @@ pub struct AnchorRadiusAutoPruneConfig {
     /// Default: `100`.
     #[serde(default = "default_anchor_radius")]
     pub radius: usize,
+    /// Minimum number of entries from the end of history within which
+    /// Assistant entries are protected from pruning even when both anchor
+    /// distances exceed the radius. Counts every entry, regardless of
+    /// in-context status. Set to 0 to disable protection.
+    /// Default: `50`.
+    #[serde(default = "default_anchor_radius_min_age")]
+    pub min_age: usize,
 }
 
 fn default_anchor_radius_enabled() -> bool {
@@ -486,11 +531,16 @@ fn default_anchor_radius() -> usize {
     DEFAULT_ANCHOR_RADIUS
 }
 
+fn default_anchor_radius_min_age() -> usize {
+    DEFAULT_ANCHOR_RADIUS_MIN_AGE
+}
+
 impl Default for AnchorRadiusAutoPruneConfig {
     fn default() -> Self {
         Self {
             enabled: DEFAULT_ANCHOR_RADIUS_ENABLED,
             radius: DEFAULT_ANCHOR_RADIUS,
+            min_age: DEFAULT_ANCHOR_RADIUS_MIN_AGE,
         }
     }
 }
@@ -502,6 +552,9 @@ const DEFAULT_REGEX_KEEP_LAST: usize = 1;
 
 /// Default enabled state for regex auto-prune.
 const DEFAULT_REGEX_ENABLED: bool = true;
+
+/// Default minimum age for regex auto-prune.
+const DEFAULT_REGEX_MIN_AGE: usize = 50;
 
 /// A single regex-based auto-prune rule.
 ///
@@ -522,6 +575,12 @@ pub struct RegexPruneRule {
     /// Default: 1.
     #[serde(default = "default_regex_keep_last")]
     pub keep_last: usize,
+    /// Raw-distance protection floor: matching pairs whose `ToolCall` is within
+    /// `min_age` slots of the end of history are never pruned by this rule.
+    /// With `min_age = 0` no pair is protected (back-compat baseline).
+    /// Default: 50.
+    #[serde(default = "default_regex_min_age")]
+    pub min_age: usize,
 }
 
 fn default_regex_tool_name() -> String {
@@ -548,8 +607,8 @@ pub struct RegexAutoPruneConfig {
     pub rules: Vec<RegexPruneRule>,
 }
 
-fn default_regex_enabled() -> bool {
-    DEFAULT_REGEX_ENABLED
+fn default_regex_min_age() -> usize {
+    DEFAULT_REGEX_MIN_AGE
 }
 
 impl Default for RegexAutoPruneConfig {
@@ -559,6 +618,10 @@ impl Default for RegexAutoPruneConfig {
             rules: Vec::new(),
         }
     }
+}
+
+fn default_regex_enabled() -> bool {
+    DEFAULT_REGEX_ENABLED
 }
 
 /// Auto-prune configuration.
@@ -2211,7 +2274,7 @@ max_tokens = 5000
         assert_eq!(config.double_edit.min_age, 20);
         assert_eq!(config.tool_age_window.min_age, 100);
         assert!(config.trivial_assistant.enabled);
-        assert_eq!(config.trivial_assistant.max_age_entries, 100);
+        assert_eq!(config.trivial_assistant.min_age, 100);
         assert_eq!(config.trivial_assistant.max_tokens, 80);
     }
 
@@ -2223,7 +2286,7 @@ max_tokens = 5000
         assert!(prefs.auto_prune.consecutive_reads.enabled);
         assert!(prefs.auto_prune.tool_age_window.enabled);
         assert!(prefs.auto_prune.trivial_assistant.enabled);
-        assert_eq!(prefs.auto_prune.trivial_assistant.max_age_entries, 100);
+        assert_eq!(prefs.auto_prune.trivial_assistant.min_age, 100);
         assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
     }
 
@@ -2351,9 +2414,12 @@ enabled = true
                 regex: RegexAutoPruneConfig::default(),
                 broken_edit: BrokenEditAutoPruneConfig {
                     enabled: false,
-                    min_tail_entries: 3,
+                    min_age: 3,
                 },
-                todo: TodoAutoPruneConfig { enabled: false },
+                todo: TodoAutoPruneConfig {
+                    enabled: false,
+                    min_age: 0,
+                },
                 double_edit: DoubleEditAutoPruneConfig::default(),
                 consecutive_reads: ConsecutiveReadsAutoPruneConfig::default(),
                 tool_age_window: ToolAgeWindowAutoPruneConfig {
@@ -2362,12 +2428,13 @@ enabled = true
                 },
                 trivial_assistant: TrivialAssistantAutoPruneConfig {
                     enabled: false,
-                    max_age_entries: 50,
+                    min_age: 50,
                     max_tokens: 40,
                 },
                 anchor_radius: AnchorRadiusAutoPruneConfig {
                     enabled: false,
                     radius: 42,
+                    min_age: 0,
                 },
             },
             ..UserPreferences::default()
@@ -2379,12 +2446,12 @@ enabled = true
         assert!(!reloaded.auto_prune.read_edit.enabled);
         assert_eq!(reloaded.auto_prune.read_edit.min_age, 25);
         assert!(!reloaded.auto_prune.broken_edit.enabled);
-        assert_eq!(reloaded.auto_prune.broken_edit.min_tail_entries, 3);
+        assert_eq!(reloaded.auto_prune.broken_edit.min_age, 3);
         assert!(!reloaded.auto_prune.todo.enabled);
         assert!(!reloaded.auto_prune.tool_age_window.enabled);
         assert_eq!(reloaded.auto_prune.tool_age_window.min_age, 7);
         assert!(!reloaded.auto_prune.trivial_assistant.enabled);
-        assert_eq!(reloaded.auto_prune.trivial_assistant.max_age_entries, 50);
+        assert_eq!(reloaded.auto_prune.trivial_assistant.min_age, 50);
         assert_eq!(reloaded.auto_prune.trivial_assistant.max_tokens, 40);
         assert!(!reloaded.auto_prune.anchor_radius.enabled);
         assert_eq!(reloaded.auto_prune.anchor_radius.radius, 42);
@@ -2402,7 +2469,7 @@ enabled = true
         assert!(prefs.auto_prune.tool_age_window.enabled);
         assert_eq!(prefs.auto_prune.tool_age_window.min_age, 100);
         assert!(prefs.auto_prune.trivial_assistant.enabled);
-        assert_eq!(prefs.auto_prune.trivial_assistant.max_age_entries, 100);
+        assert_eq!(prefs.auto_prune.trivial_assistant.min_age, 100);
         assert_eq!(prefs.auto_prune.trivial_assistant.max_tokens, 80);
         assert!(prefs.auto_prune.anchor_radius.enabled);
         assert_eq!(prefs.auto_prune.anchor_radius.radius, 100);
@@ -2426,6 +2493,47 @@ enabled = false
         assert!(prefs.auto_prune.read_edit.enabled);
     }
 
+    #[rstest::rstest]
+    fn default_min_age_is_50_for_new_workers() {
+        // Given the three newly-min_age'd configs and the per-rule default.
+        // Then their Default impls all produce min_age == 50.
+        assert_eq!(AnchorRadiusAutoPruneConfig::default().min_age, 50);
+        assert_eq!(ConsecutiveReadsAutoPruneConfig::default().min_age, 50);
+        assert_eq!(TodoAutoPruneConfig::default().min_age, 50);
+        // RegexPruneRule has no Default impl (pattern is required), so verify
+        // via the serde default function directly.
+        assert_eq!(default_regex_min_age(), 50);
+    }
+
+    #[rstest::rstest]
+    fn toml_roundtrip_with_renamed_fields() {
+        // Given a TOML that uses the legacy aliases (`max_age_entries` and
+        // `min_tail_entries`) instead of the new `min_age` field name.
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join(PREFS_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"[auto_prune.trivial_assistant]
+enabled = true
+max_age_entries = 100
+max_tokens = 80
+
+[auto_prune.broken_edit]
+enabled = true
+min_tail_entries = 10
+"#,
+        )
+        .expect("write");
+
+        // When loading.
+        let prefs = load_preferences_from(&path).expect("load");
+
+        // Then the legacy keys are accepted via serde alias and populate
+        // the new `min_age` field.
+        assert_eq!(prefs.auto_prune.trivial_assistant.min_age, 100);
+        assert_eq!(prefs.auto_prune.broken_edit.min_age, 10);
+    }
+
     // --- RegexAutoPruneConfig tests ---
 
     #[rstest::rstest]
@@ -2441,9 +2549,11 @@ enabled = false
             pattern: "cargo check".to_owned(),
             tool_name: default_regex_tool_name(),
             keep_last: default_regex_keep_last(),
+            min_age: default_regex_min_age(),
         };
         assert_eq!(rule.tool_name, "bash");
         assert_eq!(rule.keep_last, 1);
+        assert_eq!(rule.min_age, 50);
     }
 
     #[rstest::rstest]
@@ -2459,11 +2569,13 @@ enabled = false
                             pattern: "cargo check".to_owned(),
                             tool_name: "bash".to_owned(),
                             keep_last: 1,
+                            min_age: 50,
                         },
                         RegexPruneRule {
                             pattern: "cargo test".to_owned(),
                             tool_name: "bash".to_owned(),
                             keep_last: 2,
+                            min_age: 50,
                         },
                     ],
                 },
@@ -2584,11 +2696,13 @@ keep_last = 1
                             pattern: "ls".to_owned(),
                             tool_name: "bash".to_owned(),
                             keep_last: 1,
+                            min_age: 0,
                         },
                         RegexPruneRule {
                             pattern: "cargo check".to_owned(),
                             tool_name: "bash".to_owned(),
                             keep_last: 1,
+                            min_age: 0,
                         },
                     ],
                 },
