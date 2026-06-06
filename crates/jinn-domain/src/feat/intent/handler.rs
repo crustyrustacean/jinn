@@ -164,6 +164,7 @@ impl IntentHandler {
                 feat::chat_input::intent::handle_delete_grapheme_forward(state)
             }
             Intent::SubmitMessage => feat::chat_input::intent::handle_submit_message(state),
+            Intent::ToggleInputMode => feat::chat_input::intent::handle_toggle_input_mode(state),
             Intent::AutocompleteConfirm => {
                 feat::chat_input::intent::handle_autocomplete_confirm(state)
             }

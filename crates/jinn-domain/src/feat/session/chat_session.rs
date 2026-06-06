@@ -20,6 +20,7 @@ use serde_json::Value as JsonValue;
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::context::strategy::types::StrategyState;
 use crate::feat::session::chat_history::ChatHistory;
+use crate::feat::session::steering_buffer::SteeringBuffer;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::profile::SessionProfile;
 use crate::feat::session::token_stats::TokenRecord;
@@ -277,6 +278,13 @@ pub(crate) struct SavedHistoryPosition {
 pub struct SessionUi {
     /// The user's in-progress message for this session.
     pub(crate) chat_input: ChatInputBoxState,
+    /// In-memory steering buffer for this session.
+    ///
+    /// Accumulates user-submitted text fragments that will be drained
+    /// into a single `User` chat entry at the next prompt-assembly
+    /// boundary. Not serialized - `SessionUi` itself is in-memory only,
+    /// so this field is dropped on session close.
+    pub(crate) steering_buffer: SteeringBuffer,
     /// Number of lines to skip from the top when rendering (ratatui scroll offset).
     ///
     /// `None` means "show the bottom of the conversation" (auto-scroll).
@@ -352,6 +360,7 @@ impl Clone for SessionUi {
     fn clone(&self) -> Self {
         Self {
             chat_input: self.chat_input.clone(),
+            steering_buffer: self.steering_buffer.clone(),
             scroll_offset: self.scroll_offset,
             selected_cursor_id: self.selected_cursor_id.clone(),
             last_max_offset: AtomicU16::new(self.last_max_offset.load(Ordering::Relaxed)),
@@ -374,6 +383,7 @@ impl Default for SessionUi {
     fn default() -> Self {
         Self {
             chat_input: ChatInputBoxState::new(),
+            steering_buffer: SteeringBuffer::default(),
             scroll_offset: None,
             selected_cursor_id: None,
             last_max_offset: AtomicU16::new(0),
@@ -452,11 +462,20 @@ impl ChatSessionState {
     pub fn chat_input(&self) -> &ChatInputBoxState {
         &self.ui.chat_input
     }
+    /// Immutable access to this session's steering buffer.
+    pub fn steering_buffer(&self) -> &SteeringBuffer {
+        &self.ui.steering_buffer
+    }
+    /// Mutable access to this session's steering buffer.
+    pub fn steering_buffer_mut(&mut self) -> &mut SteeringBuffer {
+        &mut self.ui.steering_buffer
+    }
 
     /// Mutable access to this session's input box state.
     pub fn chat_input_mut(&mut self) -> &mut ChatInputBoxState {
         &mut self.ui.chat_input
     }
+
 
     /// The session's persona name.
     pub fn persona_name(&self) -> &str {

@@ -1479,6 +1479,42 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn steering_buffer_is_not_persisted_across_save_and_load() {
+        // Given a session with two steering fragments in its buffer.
+        let store = fresh_store();
+        let mut session = make_session();
+        session.steering_buffer_mut().push_fragment("first".to_owned());
+        session.steering_buffer_mut().push_fragment("second".to_owned());
+        assert_eq!(
+            session.steering_buffer().len(),
+            2,
+            "pre-save buffer should hold both fragments"
+        );
+
+        // When saving the session.
+        let id = session.session_id().clone();
+        store.save(&session).await.expect("save");
+
+        // And loading it back.
+        let loaded = store
+            .load_session(&id)
+            .await
+            .expect("load")
+            .expect("session should exist after save");
+
+        // Then the steering buffer is dropped on reload.
+        assert!(
+            loaded.steering_buffer().is_empty(),
+            "steering buffer must not be persisted; should be empty after load"
+        );
+        assert_eq!(
+            loaded.steering_buffer().len(),
+            0,
+            "loaded buffer len should be zero"
+        );
+    }
+
     // ── context_history persistence ─────────────────────────────────
 
     #[tokio::test]

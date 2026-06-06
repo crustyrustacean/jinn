@@ -37,6 +37,9 @@ pub enum Intent {
     DeleteGraphemeForward,
     /// Submit the current input as a user message.
     SubmitMessage,
+    /// Toggle the input submission mode between Queue and Steer.
+    ToggleInputMode,
+
     /// Move the cursor one grapheme left.
     MoveCursorLeft,
     /// Move the cursor one grapheme right.
@@ -263,6 +266,7 @@ impl std::fmt::Display for Intent {
             Intent::DeleteGrapheme => write!(f, "delete"),
             Intent::DeleteGraphemeForward => write!(f, "forward delete"),
             Intent::SubmitMessage => write!(f, "submit message"),
+            Intent::ToggleInputMode => write!(f, "toggle input mode"),
             Intent::MoveCursorLeft => write!(f, "cursor left"),
             Intent::MoveCursorRight => write!(f, "cursor right"),
             Intent::MoveCursorToStart => write!(f, "cursor home"),

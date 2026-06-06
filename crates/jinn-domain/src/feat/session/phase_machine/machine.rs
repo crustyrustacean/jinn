@@ -316,6 +316,8 @@ impl SessionPhaseMachine {
         }
     }
 
+
+
     // ── Internal helpers ────────────────────────────────────────────────
 
     /// Validate the current phase, then swap to `next`.
