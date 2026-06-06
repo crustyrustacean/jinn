@@ -6,7 +6,15 @@
 //!
 //! Regex patterns are compiled once at construction time via
 //! [`RegexAutoPruneWorker::from_config`] and never recompiled during evaluation.
+//!
+//! The top-level `min_age` field (default: 50) is a raw-distance protection
+//! floor: matching pairs whose `ToolCall` is within `min_age` slots of the
+//! end of history are never pruned. With `min_age = 0` no pair is protected
+//! (back-compat baseline).
+//!
+//! [`ForcedExclude`]: crate::feat::session::chat_entry::ContextOverride::ForcedExclude
 
+use crate::feat::auto_prune_worker::is_within_min_age;
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::RegexAutoPruneConfig;
 use crate::feat::session::chat_entry::{
@@ -14,7 +22,6 @@ use crate::feat::session::chat_entry::{
 };
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
-
 /// A compiled regex prune rule (non-serializable runtime type).
 ///
 /// Created from [`RegexPruneRule`](crate::feat::preferences_actor::user_preferences::RegexPruneRule)
@@ -37,6 +44,9 @@ struct CompiledRegexRule {
 pub struct RegexAutoPruneWorker {
     /// Compiled regex rules (empty if disabled or no rules configured).
     rules: Vec<CompiledRegexRule>,
+    /// Raw-distance protection floor: pairs whose call is within `min_age`
+    /// slots of the end of history are never pruned.
+    min_age: usize,
 }
 
 impl RegexAutoPruneWorker {
@@ -51,7 +61,10 @@ impl RegexAutoPruneWorker {
     /// Returns `regex::Error` if any pattern string fails to compile.
     pub fn from_config(config: &RegexAutoPruneConfig) -> Result<Self, regex::Error> {
         if !config.enabled || config.rules.is_empty() {
-            return Ok(Self { rules: Vec::new() });
+            return Ok(Self {
+                rules: Vec::new(),
+                min_age: config.min_age,
+            });
         }
 
         let mut compiled = Vec::with_capacity(config.rules.len());
@@ -64,7 +77,10 @@ impl RegexAutoPruneWorker {
             });
         }
 
-        Ok(Self { rules: compiled })
+        Ok(Self {
+            rules: compiled,
+            min_age: config.min_age,
+        })
     }
 }
 
@@ -101,7 +117,7 @@ fn find_matching_result(
 }
 
 /// Scan history for ToolCalls matching a single regex rule and collect
-/// (call_entry_id, result_entry_id) pairs.
+/// `(call_idx, call_entry_id, result_entry_id)` tuples.
 ///
 /// Matches regardless of exclusion status — already-excluded entries still
 /// count toward `keep_last` positioning so that the "most recent N" window
@@ -109,8 +125,8 @@ fn find_matching_result(
 fn collect_matching_pairs(
     history: &[ChatEntry],
     rule: &CompiledRegexRule,
-) -> Vec<(ChatEntryId, ChatEntryId)> {
-    let mut matched_pairs: Vec<(ChatEntryId, ChatEntryId)> = Vec::new();
+) -> Vec<(usize, ChatEntryId, ChatEntryId)> {
+    let mut matched_pairs: Vec<(usize, ChatEntryId, ChatEntryId)> = Vec::new();
 
     for (i, entry) in history.iter().enumerate() {
         // Only interested in ToolCall entries matching the rule's tool_name.
@@ -143,7 +159,7 @@ fn collect_matching_pairs(
                 result_id = %result_id,
                 "matched pair"
             );
-            matched_pairs.push((entry.id.clone(), result_id));
+            matched_pairs.push((i, entry.id.clone(), result_id));
         } else {
             tracing::warn!(call_id = %entry.id, "no matching result found");
         }
@@ -159,6 +175,7 @@ fn collect_matching_pairs(
 fn build_prune_mutations(
     history: &[ChatEntry],
     rules: &[CompiledRegexRule],
+    min_age: usize,
     worker_name: &str,
 ) -> Vec<HistoryMutation> {
     let mut mutations = Vec::new();
@@ -180,8 +197,16 @@ fn build_prune_mutations(
         // Pairs are oldest-first. Prune the oldest ones beyond keep_last.
         let prune_count = matched_pairs.len() - rule.keep_last;
         let rule_ident = rule.regex.as_str();
-        for (idx, (call_id, result_id)) in matched_pairs.iter().take(prune_count).enumerate() {
-            // Only emit mutations for entries not protected from prune.
+        let history_len = history.len();
+        for (idx, (call_idx, call_id, result_id)) in
+            matched_pairs.iter().take(prune_count).enumerate()
+        {
+            // Protection floor: never prune pairs whose call is within
+            // `min_age` slots of the end of history.
+            if is_within_min_age(history_len, *call_idx, min_age) {
+                continue;
+            }
+
             let call_protected = history
                 .iter()
                 .any(|e| e.id == *call_id && e.is_protected_from_prune());
@@ -237,7 +262,7 @@ impl HistoryWorker for RegexAutoPruneWorker {
         _session_id: &SessionId,
         history: std::sync::Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
-        let mutations = build_prune_mutations(&history, &self.rules, self.name());
+        let mutations = build_prune_mutations(&history, &self.rules, self.min_age, self.name());
 
         tracing::info!(total_mutations = mutations.len(), "regex worker done");
         mutations
@@ -274,6 +299,7 @@ mod tests {
     fn worker_for_cargo_check(keep_last: usize) -> RegexAutoPruneWorker {
         RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
             enabled: true,
+            min_age: 0,
             rules: vec![RegexPruneRule {
                 pattern: "cargo check".to_owned(),
                 tool_name: "bash".to_owned(),
@@ -301,6 +327,7 @@ mod tests {
                 tool_name: "bash".to_owned(),
                 keep_last: 0,
             }],
+            min_age: 0,
         })
         .expect("valid config");
 
@@ -320,6 +347,7 @@ mod tests {
     fn from_config_returns_error_for_invalid_regex() {
         let result = RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
             enabled: true,
+            min_age: 0,
             rules: vec![RegexPruneRule {
                 pattern: "[".to_owned(),
                 tool_name: "bash".to_owned(),
@@ -338,6 +366,7 @@ mod tests {
                 tool_name: "bash".to_owned(),
                 keep_last: 1,
             }],
+            min_age: 0,
         })
         .expect("valid config");
 
@@ -559,6 +588,7 @@ mod tests {
                     keep_last: 1,
                 },
             ],
+            min_age: 0,
         })
         .expect("valid config");
 
@@ -597,6 +627,7 @@ mod tests {
                 tool_name: "bash".to_owned(),
                 keep_last: 1,
             }],
+            min_age: 0,
         })
         .expect("valid config");
 
@@ -623,6 +654,7 @@ mod tests {
                 tool_name: "bash".to_owned(),
                 keep_last: 1,
             }],
+            min_age: 0,
         })
         .expect("valid config");
 
@@ -678,6 +710,7 @@ mod tests {
                     keep_last: 1,
                 },
             ],
+            min_age: 0,
         })
         .expect("valid config");
 
@@ -705,5 +738,115 @@ mod tests {
 
         // Each rule prunes 1 oldest pair = 2 rules * 2 mutations = 4 total.
         assert_eq!(mutations.len(), 4);
+    }
+
+    // --- min_age tests ---
+
+    /// Helper: like `worker_for_cargo_check` but with explicit `min_age`.
+    fn worker_with_min_age(keep_last: usize, min_age: usize) -> RegexAutoPruneWorker {
+        RegexAutoPruneWorker::from_config(&RegexAutoPruneConfig {
+            enabled: true,
+            min_age,
+            rules: vec![RegexPruneRule {
+                pattern: "cargo check".to_owned(),
+                tool_name: "bash".to_owned(),
+                keep_last,
+            }],
+        })
+        .expect("valid config")
+    }
+
+    /// Build a history containing `n` cargo-check pairs and tail padding.
+    ///
+    /// Layout: indices 0..2n are the n pairs; indices 2n..history_len are
+    /// `trivial_assistant("tail")` padding so history_len is fixed at 52.
+    /// With 2 pairs the oldest call_idx is 0 → age = 51.
+    fn history_with_two_check_pairs_and_tail() -> (Vec<ChatEntry>, ChatEntryId, ChatEntryId) {
+        let mut history = Vec::new();
+        let p1 = bash_call_result("tc-1", "cargo check", "ok");
+        let p1_call_id = p1[0].id.clone();
+        let p1_result_id = p1[1].id.clone();
+        history.push(p1[0].clone());
+        history.push(p1[1].clone());
+
+        let p2 = bash_call_result("tc-2", "cargo check", "ok");
+        history.push(p2[0].clone());
+        history.push(p2[1].clone());
+
+        // Pad to history_len = 52 with trivial assistant entries.
+        // history.len() is currently 4; need 48 more.
+        history.extend(std::iter::repeat_n(ChatEntry::assistant("tail"), 48));
+        (history, p1_call_id, p1_result_id)
+    }
+
+    #[test]
+    fn min_age_zero_prunes_old_matching_pair_regex() {
+        // Given a history with two cargo-check pairs (oldest at idx 0)
+        // padded to history_len = 52, and keep_last=1.
+        // With min_age=0, the older pair should be pruned (back-compat baseline).
+        let (history, _call_id, _result_id) = history_with_two_check_pairs_and_tail();
+        let worker = worker_with_min_age(1, 0);
+
+        // When evaluating the worker.
+        let mutations = evaluate(&worker, history);
+
+        // Then exactly 2 mutations are emitted (call + result of older pair).
+        assert_eq!(
+            mutations.len(),
+            2,
+            "min_age=0 must prune the older pair (back-compat baseline)"
+        );
+    }
+
+    #[test]
+    fn min_age_protects_recent_matching_pair_regex() {
+        // Given a history with two cargo-check pairs padded to 52 entries,
+        // where the oldest call_idx is 0 (age = 51).
+        // With min_age = 60, age 51 < 60 → the pair is protected.
+        let (history, call_id, result_id) = history_with_two_check_pairs_and_tail();
+        let worker = worker_with_min_age(1, 60);
+
+        // When evaluating the worker.
+        let mutations = evaluate(&worker, history);
+
+        // Then no mutations are emitted — the pair within min_age is protected.
+        assert!(
+            mutations.is_empty(),
+            "min_age must protect recent matching pair"
+        );
+        // And specifically, the call_id and result_id we know are protected.
+        for m in &mutations {
+            if let HistoryMutation::SetContextOverride { entry_id, .. } = m {
+                assert!(
+                    entry_id != &call_id && entry_id != &result_id,
+                    "protected pair must not appear in mutations"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn min_age_boundary_strict_less_than_regex() {
+        // history_len = 52, oldest call_idx = 0, age = 51.
+        //
+        // is_within_min_age returns true when age < min_age (strict less-than).
+        //
+        // At min_age = 52: age=51 < 52 → protected.
+        // At min_age = 51: age=51 < 51 is false → NOT protected.
+        let (history, _, _) = history_with_two_check_pairs_and_tail();
+
+        // Protected: age = 51 < min_age = 52.
+        let worker = worker_with_min_age(1, 52);
+        let mutations = evaluate(&worker, history.clone());
+        assert!(mutations.is_empty(), "age = min_age - 1 must be protected");
+
+        // Not protected: age = 51 = min_age.
+        let worker = worker_with_min_age(1, 51);
+        let mutations = evaluate(&worker, history);
+        assert_eq!(
+            mutations.len(),
+            2,
+            "age = min_age must NOT be protected (strict less-than)"
+        );
     }
 }

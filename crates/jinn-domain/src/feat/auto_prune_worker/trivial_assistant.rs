@@ -1,28 +1,25 @@
 //! Trivial-assistant auto-prune worker.
 //!
-//! Keeps the most recent `max_age_entries` (default: 100) entries' worth
-//! of history untouched, and prunes any `Assistant` entry outside that
-//! window whose estimated token count is at most `max_tokens` (default:
-//! 80). Targets low-value "narration" turns the model emits between tool
-//! calls during autonomous coding.
+//! Prunes any `Assistant` entry whose estimated token count is at most
+//! `max_tokens` (default: 80) AND whose age (distance from the end of raw
+//! history) is at least `min_age` (default: 100). Targets low-value
+//! "narration" turns the model emits between tool calls during autonomous
+//! coding.
 //!
 //! # Semantics
 //!
-//! - The threshold counts every entry in raw history — already-excluded,
+//! - Age is computed against every entry in raw history — already-excluded,
 //!   thinking, transient, system, error, and pending-result entries all
-//!   count. This makes the window position independent of what other
+//!   count. This makes the protection floor independent of what other
 //!   auto-prune workers have already `ForcedExclude`d, so multiple workers
-//!   compose cleanly: each worker's prune region is fixed by raw history
-//!   length alone, not by what has already been `ForcedExclude`d by other
-//!   workers.
-//! - The window is measured from the end of history backward: the last
-//!   `max_age_entries` entries form the keep region, everything older is
-//!   the prune window.
+//!   compose cleanly.
+//! - An entry is **protected** when its age is strictly less than `min_age`.
+//!   With `min_age = 0`, no entry is ever protected (back-compat baseline).
 //! - Only `ChatEntryKind::Assistant(_)` entries are candidates. Non-assistant
-//!   entries in the prune region are never targeted.
-//! - Assistant entries inside the window are never pruned, regardless of
-//!   token count.
-//! - Assistant entries outside the window are pruned only if their
+//!   entries are never targeted.
+//! - Assistant entries inside the protection floor are never pruned,
+//!   regardless of token count.
+//! - Assistant entries outside the protection floor are pruned only if their
 //!   estimated token count is `<= max_tokens`. Larger entries survive
 //!   (a separate future worker will address large stale entries).
 //! - Empty assistant entries are skipped defensively — they are already
@@ -53,21 +50,21 @@
 //! `Assistant` entry therefore cannot orphan a `ToolCall` or produce an
 //! invalid provider request.
 //!
-//! # Example (max_age_entries = 4, max_tokens = 80)
+//! # Example (min_age = 4, max_tokens = 80)
 //!
 //! ```text
-//! X  [User]                  ← index 0 (untouched — not Assistant)
-//!    [Assistant: "ok"]       ← index 1 (kept: inside window)
-//! X  [Assistant: "done"]     ← index 2 (pruned: outside window AND ≤80 tokens)
-//!    [Assistant: long...]    ← index 3 (kept: outside window but >80 tokens)
-//!    [Tool Call]: bash       ← index 4 (kept: inside window; not a target)
-//!    [Tool Result] (OK)      ← index 5 (kept)
-//!    [Assistant: "ok"]       ← index 6 (kept: inside window)
+//! X  [User]                  ← age 6 (not Assistant anyway)
+//! X  [Assistant: "ok"]       ← age 5 (NOT protected; 1 token → pruned)
+//!    [Assistant: "done"]     ← age 4 (NOT protected: age >= min_age)
+//!    [Assistant: long...]    ← age 3 (protected: age 3 < min_age 4)
+//!    [Tool Call]: bash       ← age 2 (protected; not Assistant anyway)
+//!    [Tool Result] (OK)      ← age 1 (protected; not Assistant anyway)
+//!    [Assistant: "ok"]       ← age 0 (protected; last entry)
 //! ```
 
 use std::sync::Arc;
 
-use crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache;
+use crate::feat::auto_prune_worker::{HistoryWorkerChatEntryTokenCache, is_within_min_age};
 use crate::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCounter};
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::TrivialAssistantAutoPruneConfig;
@@ -78,8 +75,8 @@ use crate::protocol::SessionId;
 /// Trivial-assistant auto-prune worker.
 ///
 /// See module docs for full semantics. Construct with
-/// [`TrivialAssistantAutoPruneConfig`]; `max_age_entries` and `max_tokens`
-/// are clamped to a minimum of 1 at evaluation time.
+/// [`TrivialAssistantAutoPruneConfig`]; `min_age` is unclamped (0 means
+/// "protect nothing"), `max_tokens` is clamped to a minimum of 1.
 #[derive(Clone)]
 pub struct TrivialAssistantAutoPruneWorker {
     /// Configuration for the trivial-assistant auto-prune strategy.
@@ -93,26 +90,6 @@ pub struct TrivialAssistantAutoPruneWorker {
     pub counter: TiktokenCounter,
 }
 
-/// Compute the index of the first entry inside the keep window.
-///
-/// The keep window is the last `max_age` entries in raw history, regardless
-/// of whether each entry is currently in LLM context. Counting every entry
-/// (rather than only `is_in_context()` entries) makes the window position
-/// independent of decisions made by other auto-prune workers, so the
-/// workers compose cleanly: each worker's prune region is fixed by raw
-/// history length alone, not by what has already been `ForcedExclude`d.
-///
-/// `max_age` is clamped to a minimum of 1.
-///
-/// Returns `None` if `history.len() < max_age` (nothing to prune).
-fn compute_keep_window_start(history: &[ChatEntry], max_age: usize) -> Option<usize> {
-    let max_age = max_age.max(1);
-    if history.len() < max_age {
-        return None;
-    }
-    Some(history.len() - max_age)
-}
-
 /// Build the list of `SetContextOverride::ForcedExclude` mutations for a
 /// single snapshot.
 ///
@@ -120,16 +97,18 @@ fn compute_keep_window_start(history: &[ChatEntry], max_age: usize) -> Option<us
 /// spinning up a tokio runtime.
 ///
 /// Algorithm:
-/// 1. Find the keep window start index (the `max_age`-th entry from the
-///    end of raw history, regardless of in-context status).
-/// 2. For every `Assistant` entry at an index strictly less than the keep
-///    window start, look up (or compute and cache) the token count via the
-///    shared `HistoryWorkerChatEntryTokenCache`. Skips empty, pinned, or
+/// 1. For every entry in raw history, compute its age (distance from the
+///    end).
+/// 2. Skip entries protected by `min_age` (age < min_age). `min_age = 0`
+///    protects nothing.
+/// 3. For every `Assistant` entry not protected, look up (or compute and
+///    cache) the token count via the shared
+///    `HistoryWorkerChatEntryTokenCache`. Skips empty, pinned, or
 ///    already-excluded entries.
-/// 3. If the count is `<= max_tokens`, emit a `SetContextOverride::ForcedExclude` mutation.
+/// 4. If the count is `<= max_tokens`, emit a `SetContextOverride::ForcedExclude` mutation.
 fn build_trivial_assistant_mutations(
     history: &[ChatEntry],
-    max_age: usize,
+    min_age: usize,
     max_tokens: u32,
     session_id: &SessionId,
     token_cache: &HistoryWorkerChatEntryTokenCache,
@@ -137,16 +116,17 @@ fn build_trivial_assistant_mutations(
     worker_name: &str,
 ) -> Vec<HistoryMutation> {
     let max_tokens = max_tokens.max(1);
-
-    let Some(keep_window_start) = compute_keep_window_start(history, max_age) else {
-        // Fewer than max_age entries — nothing to prune.
-        return Vec::new();
-    };
+    let history_len = history.len();
 
     let mut mutations = Vec::new();
 
-    for entry in history.iter().take(keep_window_start) {
-        // Only Assistant entries in the prune region are candidates.
+    for (idx, entry) in history.iter().enumerate() {
+        // Skip entries protected by min_age (age < min_age).
+        if is_within_min_age(history_len, idx, min_age) {
+            continue;
+        }
+
+        // Only Assistant entries are candidates.
         let text = match &entry.kind {
             ChatEntryKind::Assistant(t) => t.as_str(),
             _ => continue,
@@ -181,7 +161,8 @@ fn build_trivial_assistant_mutations(
                 entry_id = %entry.id,
                 tokens,
                 max_tokens,
-                keep_window_start,
+                age = history_len - idx - 1,
+                min_age,
                 "trivial_assistant: excluding old trivial assistant entry",
             );
             mutations.push(HistoryMutation::SetContextOverride {
@@ -211,7 +192,7 @@ impl HistoryWorker for TrivialAssistantAutoPruneWorker {
     ) -> Vec<HistoryMutation> {
         let mutations = build_trivial_assistant_mutations(
             &history,
-            self.config.max_age_entries,
+            self.config.min_age,
             self.config.max_tokens as u32,
             session_id,
             &self.token_cache,
@@ -220,7 +201,7 @@ impl HistoryWorker for TrivialAssistantAutoPruneWorker {
         );
         tracing::debug!(
             mutations = mutations.len(),
-            max_age_entries = self.config.max_age_entries,
+            min_age = self.config.min_age,
             max_tokens = self.config.max_tokens,
             history_len = history.len(),
             "trivial_assistant evaluate done"
@@ -239,11 +220,11 @@ mod tests {
     use crate::protocol::SessionId;
 
     /// Build a worker with the given thresholds (enabled = true).
-    fn worker(max_age: usize, max_tokens: usize) -> TrivialAssistantAutoPruneWorker {
+    fn worker(min_age: usize, max_tokens: usize) -> TrivialAssistantAutoPruneWorker {
         TrivialAssistantAutoPruneWorker {
             config: TrivialAssistantAutoPruneConfig {
                 enabled: true,
-                max_age_entries: max_age,
+                min_age,
                 max_tokens,
             },
             token_cache: HistoryWorkerChatEntryTokenCache::new(),
@@ -509,14 +490,15 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // 10. max_age_entries_clamped_to_1
+    // ------------------------------------------------------------------
+    // 10. min_age_zero_prunes_old_entries
     //
-    // max_age = 0 → clamped to 1. Two entries (trivial assistant, user).
-    // Window covers only the last entry (user). The trivial assistant at
-    // idx 0 is outside the (clamped) window → pruned.
+    // min_age = 0 means "protect nothing" — every entry is a candidate.
+    // Two entries (trivial assistant, user). Trivial assistant at idx 0
+    // is NOT protected → pruned.
     // ------------------------------------------------------------------
     #[test]
-    fn max_age_entries_clamped_to_1() {
+    fn min_age_zero_prunes_old_entries() {
         let w = worker(0, 80);
         let mut history = Vec::new();
         let asst = trivial_assistant("done");
@@ -529,6 +511,65 @@ mod tests {
         assert!(excluded.contains(&asst_id));
     }
 
+    // ------------------------------------------------------------------
+    // 10b. min_age_protects_recent_trivial_assistant
+    //
+    // Trivial assistant at idx 0 in a 2-entry history has age 1.
+    // With min_age = 5, age 1 < 5 → protected → not pruned.
+    // ------------------------------------------------------------------
+    #[test]
+    fn min_age_protects_recent_trivial_assistant() {
+        let w = worker(5, 80);
+        let mut history = Vec::new();
+        let asst = trivial_assistant("done");
+        let asst_id = asst.id.clone();
+        history.push(asst);
+        history.push(ChatEntry::user("after"));
+
+        let mutations = evaluate(&w, history);
+        assert!(
+            !excluded_ids(&mutations).contains(&asst_id),
+            "recent trivial assistant must be protected by min_age"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // 10c. min_age_boundary_strict_less_than
+    //
+    // age = history_len - idx - 1.
+    // history_len = 100, trivial_assistant at idx 95 → age = 4. With
+    // min_age = 5: 4 < 5 → protected. With min_age = 4: 4 < 4 → not protected.
+    // ------------------------------------------------------------------
+    #[test]
+    fn min_age_boundary_strict_less_than() {
+        // Protected case: age 4 < min_age 5.
+        let w = worker(5, 80);
+        let mut history = users(95); // 95 user entries
+        let asst = trivial_assistant("done");
+        let asst_id = asst.id.clone();
+        history.push(asst);
+        history.extend(users(4)); // total 100, assistant at idx 95, age = 4
+
+        let mutations = evaluate(&w, history);
+        assert!(
+            !excluded_ids(&mutations).contains(&asst_id),
+            "age = min_age - 1 must be protected"
+        );
+
+        // Not-protected case: age 4 = min_age 4.
+        let w = worker(4, 80);
+        let mut history = users(95);
+        let asst = trivial_assistant("done");
+        let asst_id = asst.id.clone();
+        history.push(asst);
+        history.extend(users(4));
+
+        let mutations = evaluate(&w, history);
+        assert!(
+            excluded_ids(&mutations).contains(&asst_id),
+            "age = min_age must NOT be protected (strict less-than)"
+        );
+    }
     // ------------------------------------------------------------------
     // 11. max_tokens_clamped_to_1
     //
@@ -714,7 +755,7 @@ mod tests {
         let _trivial = TrivialAssistantAutoPruneWorker {
             config: TrivialAssistantAutoPruneConfig {
                 enabled: true,
-                max_age_entries: 100,
+                min_age: 100,
                 max_tokens: 80,
             },
             token_cache: shared_cache.clone(),
@@ -725,6 +766,7 @@ mod tests {
             config: AnchorRadiusAutoPruneConfig {
                 enabled: true,
                 radius: 5,
+                min_age: 0,
             },
             token_cache: shared_cache.clone(),
             counter: TiktokenCounter::o200k_base(),

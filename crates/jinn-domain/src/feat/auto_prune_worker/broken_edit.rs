@@ -2,11 +2,14 @@
 //!
 //! Detects `edit` tool calls whose `ToolResult` has `status: Failure` and marks
 //! both the `ToolCall` and `ToolResult` as [`ForcedExclude`] once enough
-//! in-context entries have accumulated after the failed edit. This removes
+//! conversation has accumulated after the failed edit. This removes
 //! useless failed-edit noise from the LLM context window.
 //!
-//! Pruning does not occur until `min_tail_entries` (default: 10) in-context
-//! entries have accumulated after the failed edit.
+//! The `min_age` field (default: 10) is a raw-distance protection floor:
+//! a failed-edit pair is only pruned when its position in history is at
+//! least `min_age` slots from the end of history. A `min_age` of 0
+//! disables protection entirely (everything is eligible, back-compat
+//! baseline).
 //!
 //! # Example
 //!
@@ -22,6 +25,7 @@
 
 use std::sync::Arc;
 
+use crate::feat::auto_prune_worker::is_within_min_age;
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::BrokenEditAutoPruneConfig;
 use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride};
@@ -30,10 +34,9 @@ use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::protocol::SessionId;
 
 /// Broken-edit auto-prune worker.
-///
-/// Inspects history for `edit` tool calls whose results failed. Once
-/// `min_tail_entries` in-context entries have accumulated after the edit
-/// `ToolCall`, both the call and its result are excluded from context.
+/// Inspects history for `edit` tool calls whose results failed. Once the
+/// failed `ToolCall` is at least `min_age` entries from the end of history,
+/// both the call and its result are excluded from context.
 #[derive(Clone)]
 pub struct BrokenEditAutoPruneWorker {
     /// Configuration for the broken-edit auto-prune strategy.
@@ -64,18 +67,6 @@ fn find_failed_edit_result(
     }
     // No matching result found — the call is still pending or orphaned.
     None
-}
-
-/// Count in-context entries that appear after the given index.
-///
-/// Only entries where [`ChatEntry::is_in_context()`] returns true are counted.
-/// Used to determine whether enough conversation has happened after a failed
-/// edit to safely prune it.
-fn count_in_context_after(history: &[ChatEntry], after_idx: usize) -> usize {
-    history[(after_idx + 1)..]
-        .iter()
-        .filter(|e| e.is_in_context())
-        .count()
 }
 
 #[async_trait::async_trait]
@@ -131,27 +122,26 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
                 continue;
             }
 
-            // Only prune once enough in-context entries have accumulated after
-            // the edit. This ensures the failed edit isn't pruned too early,
-            // while the LLM might still benefit from seeing the failure context.
-            let in_context_count = count_in_context_after(&history, i);
-
-            if in_context_count >= self.config.min_tail_entries {
-                mutations.push(HistoryMutation::SetContextOverride {
-                    entry_id: edit_call_entry_id,
-                    value: ContextOverride::ForcedExclude,
-                    source: ChangeSource::Worker {
-                        name: self.name().to_owned(),
-                    },
-                });
-                mutations.push(HistoryMutation::SetContextOverride {
-                    entry_id: result_id,
-                    value: ContextOverride::ForcedExclude,
-                    source: ChangeSource::Worker {
-                        name: self.name().to_owned(),
-                    },
-                });
+            // Skip if the failed-edit call is within the protection floor.
+            // A `min_age` of 0 disables protection entirely.
+            if is_within_min_age(history.len(), i, self.config.min_age) {
+                continue;
             }
+
+            mutations.push(HistoryMutation::SetContextOverride {
+                entry_id: edit_call_entry_id,
+                value: ContextOverride::ForcedExclude,
+                source: ChangeSource::Worker {
+                    name: self.name().to_owned(),
+                },
+            });
+            mutations.push(HistoryMutation::SetContextOverride {
+                entry_id: result_id,
+                value: ContextOverride::ForcedExclude,
+                source: ChangeSource::Worker {
+                    name: self.name().to_owned(),
+                },
+            });
         }
 
         mutations
@@ -196,11 +186,12 @@ mod tests {
         history
     }
 
-    fn worker_with_tail(tail: usize) -> BrokenEditAutoPruneWorker {
+    /// Build a worker with the given `min_age`.
+    fn worker_with_min_age(min_age: usize) -> BrokenEditAutoPruneWorker {
         BrokenEditAutoPruneWorker {
             config: BrokenEditAutoPruneConfig {
                 enabled: true,
-                min_tail_entries: tail,
+                min_age,
             },
         }
     }
@@ -220,8 +211,6 @@ mod tests {
         rt.block_on(async { run_evaluate(worker, history).await })
     }
 
-    // --- Worker evaluate() tests ---
-
     #[test]
     fn no_edit_produces_no_mutations() {
         let history = vec![
@@ -230,7 +219,7 @@ mod tests {
             ChatEntry::user("what is 2+2?"),
             ChatEntry::assistant("4"),
         ];
-        let worker = worker_with_tail(10);
+        let worker = worker_with_min_age(0);
         let mutations = block_on_evaluate(&worker, history);
         assert!(mutations.is_empty());
     }
@@ -241,55 +230,63 @@ mod tests {
         let edit = successful_edit_call_result("tc-1", "/foo.rs", "edit applied");
         history.push(edit[0].clone());
         history.push(edit[1].clone());
-        for i in 0..10 {
+        for i in 0..100 {
             history.push(ChatEntry::user(format!("tail message {i}")));
         }
-        let worker = worker_with_tail(10);
+        let worker = worker_with_min_age(50);
         let mutations = block_on_evaluate(&worker, history);
         assert!(mutations.is_empty());
     }
 
     #[test]
-    fn failed_edit_with_enough_tail_prunes_both() {
-        let history = history_with_failed_edit_and_tail("/foo.rs", 10);
-        let expected_call_id = history[0].id.clone();
-        let expected_result_id = history[1].id.clone();
-        let worker = worker_with_tail(10);
+    fn min_age_zero_prunes_old_failed_edit() {
+        // With min_age = 0, the failed edit is pruned even when it is recent.
+        let history = history_with_failed_edit_and_tail("/foo.rs", 1);
+        let worker = worker_with_min_age(0);
         let mutations = block_on_evaluate(&worker, history);
-
         assert_eq!(mutations.len(), 2);
-
-        let mut pruned_ids: Vec<_> = mutations
-            .iter()
-            .map(|m| match m {
-                HistoryMutation::SetContextOverride {
-                    entry_id, value, ..
-                } => {
-                    assert_eq!(*value, ContextOverride::ForcedExclude);
-                    entry_id.clone()
-                }
-                other => panic!("expected SetContextOverride, got {other:?}"),
-            })
-            .collect();
-        pruned_ids.sort_by_key(std::string::ToString::to_string);
-
-        let mut expected = vec![expected_call_id, expected_result_id];
-        expected.sort_by_key(std::string::ToString::to_string);
-
-        assert_eq!(pruned_ids, expected);
     }
 
     #[test]
-    fn tail_below_threshold_does_not_prune() {
-        let history = history_with_failed_edit_and_tail("/foo.rs", 5);
-        let worker = worker_with_tail(10);
+    fn min_age_protects_recent_failed_edit() {
+        // Failed edit at idx 0, history len = 12, age = 11. With min_age = 50, protected.
+        let history = history_with_failed_edit_and_tail("/foo.rs", 10);
+        let worker = worker_with_min_age(50);
         let mutations = block_on_evaluate(&worker, history);
         assert!(mutations.is_empty());
+    }
+
+    #[test]
+    fn min_age_zero_prunes_old_failed_edit_with_long_history() {
+        // Long history, failed edit far back, min_age = 0 → prune.
+        let history = history_with_failed_edit_and_tail("/foo.rs", 100);
+        let worker = worker_with_min_age(0);
+        let mutations = block_on_evaluate(&worker, history);
+        assert_eq!(mutations.len(), 2);
+    }
+
+    #[test]
+    fn failed_edit_at_boundary_protected() {
+        // Failed edit at idx 0. history.len() = 51 (edit + result + 49 user).
+        // age = 51 - 0 - 1 = 50. min_age = 50 → 50 < 50 false → NOT protected → prunes.
+        let history = history_with_failed_edit_and_tail("/foo.rs", 49);
+        let worker = worker_with_min_age(50);
+        let mutations = block_on_evaluate(&worker, history);
+        assert_eq!(mutations.len(), 2, "age == min_age is not protected");
+    }
+
+    #[test]
+    fn failed_edit_one_below_boundary_not_protected() {
+        // history.len() = 50, age = 49. min_age = 50 → 49 < 50 → protected.
+        let history = history_with_failed_edit_and_tail("/foo.rs", 48);
+        let worker = worker_with_min_age(50);
+        let mutations = block_on_evaluate(&worker, history);
+        assert!(mutations.is_empty(), "age = min_age - 1 is protected");
     }
 
     #[test]
     fn already_excluded_call_produces_no_duplicate_mutation() {
-        let mut history = history_with_failed_edit_and_tail("/foo.rs", 10);
+        let mut history = history_with_failed_edit_and_tail("/foo.rs", 100);
         // Mark the edit ToolCall as already excluded.
         history[0].apply_context_override(
             ContextOverride::ForcedExclude,
@@ -298,14 +295,14 @@ mod tests {
             },
         );
 
-        let worker = worker_with_tail(10);
+        let worker = worker_with_min_age(0);
         let mutations = block_on_evaluate(&worker, history);
         assert!(mutations.is_empty());
     }
 
     #[test]
     fn already_excluded_result_produces_no_duplicate_mutation() {
-        let mut history = history_with_failed_edit_and_tail("/foo.rs", 10);
+        let mut history = history_with_failed_edit_and_tail("/foo.rs", 100);
         // Mark the edit ToolResult as already excluded.
         history[1].apply_context_override(
             ContextOverride::ForcedExclude,
@@ -314,20 +311,20 @@ mod tests {
             },
         );
 
-        let worker = worker_with_tail(10);
+        let worker = worker_with_min_age(0);
         let mutations = block_on_evaluate(&worker, history);
         assert!(mutations.is_empty());
     }
 
     #[test]
     fn forced_included_call_produces_no_mutation() {
-        let mut history = history_with_failed_edit_and_tail("/foo.rs", 10);
+        let mut history = history_with_failed_edit_and_tail("/foo.rs", 100);
         // Mark the edit ToolCall as force-included.
         history[0].context_override = ContextOverride::ForcedInclude;
         let call_id = history[0].id.clone();
         let result_id = history[1].id.clone();
 
-        let worker = worker_with_tail(10);
+        let worker = worker_with_min_age(0);
         let mutations = block_on_evaluate(&worker, history);
         // broken_edit is pair-atomic: if either half is protected, neither mutates.
         // So protecting the call protects the entire pair.
@@ -340,13 +337,13 @@ mod tests {
 
     #[test]
     fn forced_included_result_produces_no_mutation() {
-        let mut history = history_with_failed_edit_and_tail("/foo.rs", 10);
+        let mut history = history_with_failed_edit_and_tail("/foo.rs", 100);
         // Mark the edit ToolResult as force-included.
         history[1].context_override = ContextOverride::ForcedInclude;
         let call_id = history[0].id.clone();
         let result_id = history[1].id.clone();
 
-        let worker = worker_with_tail(10);
+        let worker = worker_with_min_age(0);
         let mutations = block_on_evaluate(&worker, history);
         // pair-atomic: protecting the result also protects the call.
         assert!(
@@ -357,7 +354,7 @@ mod tests {
     }
 
     #[test]
-    fn multiple_failed_edits_all_pruned() {
+    fn multiple_failed_edits_all_pruned_when_old_enough() {
         let mut history = Vec::new();
 
         // First failed edit.
@@ -371,11 +368,11 @@ mod tests {
         history.push(edit2[1].clone());
 
         // Tail entries after last edit.
-        for i in 0..10 {
+        for i in 0..100 {
             history.push(ChatEntry::user(format!("tail {i}")));
         }
 
-        let worker = worker_with_tail(10);
+        let worker = worker_with_min_age(50);
         let mutations = block_on_evaluate(&worker, history);
         assert_eq!(
             mutations.len(),
@@ -393,61 +390,17 @@ mod tests {
             "edit",
             r#"{"path": "/foo.rs"}"#,
         ));
-        for i in 0..10 {
+        for i in 0..100 {
             history.push(ChatEntry::user(format!("tail {i}")));
         }
 
-        let worker = worker_with_tail(10);
+        let worker = worker_with_min_age(0);
         let mutations = block_on_evaluate(&worker, history);
         assert!(mutations.is_empty());
     }
 
     #[test]
-    fn exact_threshold_prunes() {
-        // Exactly min_tail_entries should prune.
-        let history = history_with_failed_edit_and_tail("/foo.rs", 10);
-        let worker = worker_with_tail(10);
-        let mutations = block_on_evaluate(&worker, history);
-        assert_eq!(mutations.len(), 2);
-    }
-
-    #[test]
-    fn one_below_threshold_does_not_prune() {
-        // min_tail_entries=10. History: edit_call, edit_result, 9 users.
-        // In-context after edit call: edit_result (1) + 9 users = 10.
-        // Actually that's 10 which IS the threshold. Let's use 8 users for 9 total.
-        let history = history_with_failed_edit_and_tail("/foo.rs", 8);
-        let worker = worker_with_tail(10);
-        let mutations = block_on_evaluate(&worker, history);
-        assert!(mutations.is_empty());
-    }
-
-    #[test]
-    fn only_counts_in_context_entries() {
-        // After edit ToolCall: edit_result (in-context) + 8 user (in-context) + 6 transient (not in-context).
-        // In-context count = 9 < 10, so no prune.
-        let mut history = Vec::new();
-        let edit = failed_edit_call_result("tc-1", "/foo.rs", "failed");
-        history.push(edit[0].clone());
-        history.push(edit[1].clone());
-        for i in 0..8 {
-            history.push(ChatEntry::user(format!("msg {i}")));
-        }
-        for i in 0..6 {
-            history.push(ChatEntry::transient(format!("transient {i}")));
-        }
-        // Total after edit ToolCall = 15, but only 9 in-context (edit result + 8 users).
-
-        let worker = worker_with_tail(10);
-        let mutations = block_on_evaluate(&worker, history);
-        assert!(
-            mutations.is_empty(),
-            "should not prune: only 9 in-context entries"
-        );
-    }
-
-    #[test]
-    fn mix_of_success_and_failure_only_prunes_failures() {
+    fn only_failed_edits_are_pruned_not_successful_ones() {
         let mut history = Vec::new();
 
         // Successful edit.
@@ -461,11 +414,11 @@ mod tests {
         history.push(fail_edit[1].clone());
 
         // Tail entries.
-        for i in 0..10 {
+        for i in 0..100 {
             history.push(ChatEntry::user(format!("tail {i}")));
         }
 
-        let worker = worker_with_tail(10);
+        let worker = worker_with_min_age(50);
         let mutations = block_on_evaluate(&worker, history);
         assert_eq!(
             mutations.len(),
