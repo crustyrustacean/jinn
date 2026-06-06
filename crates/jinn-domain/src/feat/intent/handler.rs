@@ -157,6 +157,57 @@ impl IntentHandler {
                 crate::protocol::IntentResult::empty()
             }
 
+            // --- Cwd Input text-edit guards (mirror ArgInput) ---
+            Intent::InsertChar { ch }
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::CwdInput
+                ) =>
+            {
+                feat::cwd_input::intent::handle_insert_char(state, *ch)
+            }
+            Intent::DeleteGrapheme
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::CwdInput
+                ) =>
+            {
+                feat::cwd_input::intent::handle_delete(state)
+            }
+            Intent::DeleteGraphemeForward
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::CwdInput
+                ) =>
+            {
+                feat::cwd_input::intent::handle_delete_forward(state)
+            }
+            Intent::MoveCursorLeft
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::CwdInput
+                ) =>
+            {
+                feat::cwd_input::intent::handle_cursor_left(state)
+            }
+            Intent::MoveCursorRight
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::CwdInput
+                ) =>
+            {
+                feat::cwd_input::intent::handle_cursor_right(state)
+            }
+            Intent::EnterNormalMode
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::CwdInput
+                ) =>
+            {
+                // ESC cancels cwd input - pop scope, clear state.
+                feat::cwd_input::intent::handle_cwd_input_leave(state)
+            }
+
             // --- Chat Input ---
             Intent::InsertChar { ch } => feat::chat_input::intent::handle_insert_char(*ch, state),
             Intent::DeleteGrapheme => feat::chat_input::intent::handle_delete_grapheme(state),
@@ -196,6 +247,9 @@ impl IntentHandler {
                 }
                 crate::common::app_state::FocusScope::RenameSessionInput => {
                     feat::rename_session_input::intent::handle_paste(state, text)
+                }
+                crate::common::app_state::FocusScope::CwdInput => {
+                    feat::cwd_input::intent::handle_paste(state, text)
                 }
                 _ => IntentResult::empty(),
             },
