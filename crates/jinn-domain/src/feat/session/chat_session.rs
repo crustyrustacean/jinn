@@ -461,6 +461,10 @@ impl ChatSessionState {
     pub fn chat_input(&self) -> &ChatInputBoxState {
         &self.ui.chat_input
     }
+    /// Immutable access to this session's steering buffer.
+    pub fn steering_buffer(&self) -> &SteeringBuffer {
+        &self.ui.steering_buffer
+    }
     /// Mutable access to this session's steering buffer.
     pub fn steering_buffer_mut(&mut self) -> &mut SteeringBuffer {
         &mut self.ui.steering_buffer

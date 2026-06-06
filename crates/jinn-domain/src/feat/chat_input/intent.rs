@@ -17,7 +17,8 @@ use crate::common::app_state::AppState;
 use crate::feat::chat_input::AutocompleteMatch;
 use crate::feat::chat_input::AutocompleteTrigger;
 use crate::feat::chat_input::ChatInputBoxState;
-use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
+use crate::feat::chat_input::InputMode;
+use crate::feat::chat_input::protocol::command::{EnqueueUserMessage, SubmitSteeringMessage};
 use crate::feat::chat_input::slash_command::SlashCommand;
 use crate::feat::chat_input::state::autocomplete::AutocompleteState;
 use crate::feat::context::prompt_template::PromptTemplateStore;
@@ -213,6 +214,15 @@ pub fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
 
 // --- Submission ---
 
+
+// --- Input mode toggle ---
+
+/// Handles `ToggleInputMode` - flips Queue ↔ Steer.
+pub fn handle_toggle_input_mode(state: &mut AppState) -> IntentResult {
+    state.active_chat_input_mut().toggle_input_mode();
+    IntentResult::empty()
+}
+
 /// Handles `SubmitMessage` - confirms autocomplete if active, executes slash commands,
 /// or submits the message as chat input.
 pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
@@ -254,20 +264,16 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
     );
     state.active_chat_input_mut().reset();
 
-    tracing::info!(session_id = %session_id, "DIAG handle_submit_message: creating EnqueueUserMessage");
-    let result = with_mark_interacted(
-        session_id,
-        IntentResult::with_commands(vec![Command::EnqueueUserMessage(EnqueueUserMessage {
-            session_id: state.session.active_session_id().clone(),
-            entry: ChatEntry::user_expanded(input_text, expanded),
-        })]),
-    );
+    tracing::info!(session_id = %session_id, "DIAG handle_submit_message: routing submit by mode/phase");
+    let command = route_to_enqueue_or_steer(state, &session_id, input_text, expanded);
+    let result = with_mark_interacted(session_id, IntentResult::with_commands(vec![command]));
     tracing::info!(
         cmd_count = result.commands.len(),
         "DIAG handle_submit_message: returning result"
     );
     result
 }
+
 
 /// Handles Enter when autocomplete is active - completes the selection and submits.
 ///
@@ -321,14 +327,40 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
     );
     state.active_chat_input_mut().reset();
 
-    with_mark_interacted(
-        session_id,
-        IntentResult::with_commands(vec![Command::EnqueueUserMessage(EnqueueUserMessage {
-            session_id: state.session.active_session_id().clone(),
-            entry: ChatEntry::user_expanded(display, expanded),
-        })]),
-    )
+    let command = route_to_enqueue_or_steer(state, &session_id, display, expanded);
+    with_mark_interacted(session_id, IntentResult::with_commands(vec![command]))
 }
+
+/// Routes a submitted (display, expanded) message based on input mode × session phase.
+///
+/// - Mode `Queue` (any phase) → `EnqueueUserMessage`
+/// - Mode `Steer` + phase != `Idle` → `SubmitSteeringMessage`
+/// - Mode `Steer` + phase == `Idle` → `EnqueueUserMessage` (fall-through)
+///
+/// When steering, the buffer accumulates the raw display text; `expanded` is
+/// discarded since prompt-template tokens aren't meaningful as steering fragments.
+fn route_to_enqueue_or_steer(
+    state: &AppState,
+    session_id: &SessionId,
+    display: String,
+    expanded: String,
+) -> Command {
+    let mode = state.active_chat_input().input_mode();
+    let phase = state.active_session().phase();
+    match (mode, phase) {
+        (InputMode::Steer, PhaseKind::Idle) | (InputMode::Queue, _) => {
+            Command::EnqueueUserMessage(EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry: ChatEntry::user_expanded(display, expanded),
+            })
+        }
+        (InputMode::Steer, _) => Command::SubmitSteeringMessage(SubmitSteeringMessage {
+            session_id: session_id.clone(),
+            text: display,
+        }),
+    }
+}
+
 
 /// Prepends a `MarkSessionInteracted` command to the result.
 fn with_mark_interacted(session_id: SessionId, mut result: IntentResult) -> IntentResult {

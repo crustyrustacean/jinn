@@ -167,7 +167,14 @@ impl SessionPersistenceActor {
             }
         }
 
-        // Assemble the prompt directly and emit SendToLlmProvider.
+        // Drain any pending steering fragments into history before assembly.
+        {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&event.session_id);
+            if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
+                session.push_entry(entry);
+            }
+        }
         // Note: the session is already in sending state, set by on_stream_completed(ToolUse).
         let workflow_overrides: Option<crate::feat::context::assemble::AssemblyOverrides> = {
             let state = self.state.read();

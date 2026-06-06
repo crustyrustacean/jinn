@@ -143,6 +143,10 @@ impl QueueActor {
                 session.set_title(title);
             }
             session.push_entry(entry.clone());
+            // Drain any pending steering fragments into history before assembly.
+            if let Some(steer_entry) = session.steering_buffer_mut().drain_into_entry() {
+                session.push_entry(steer_entry);
+            }
             session.begin_sending();
         }
 
@@ -209,6 +213,14 @@ impl QueueActor {
         ctx: &ActorContext,
         label: &str,
     ) {
+        // Drain any pending steering fragments into history before assembly.
+        {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(session_id);
+            if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
+                session.push_entry(entry);
+            }
+        }
         let assembled = {
             let guard = self.state.read();
             assemble_prompt(&guard, session_id, &self.counter, None)
