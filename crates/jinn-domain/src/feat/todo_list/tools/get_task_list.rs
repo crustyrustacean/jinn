@@ -49,7 +49,13 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let rendered = {
             let r = state.read();
             let session = r.session(&session_id);
-            session.task_list().render_text()
+            let next_block = session.task_list().render_next_block();
+            let body = session.task_list().render_text_with_blockers();
+            if next_block.is_empty() {
+                body
+            } else {
+                format!("{next_block}\n\n{body}")
+            }
         };
 
         ToolResult {
@@ -149,6 +155,40 @@ mod tests {
         assert!(result.success);
         assert!(result.content.contains("Phase 1: Build"));
         assert!(result.content.contains("Write code"));
+    }
+
+    #[test]
+    fn get_task_list_return_has_next_block_at_top() {
+        let app = AppState::default();
+        let state = State::new(app);
+        let session_id = {
+            let r = state.read();
+            r.session.active_session_id().clone()
+        };
+        {
+            let mut w = state.write();
+            let session = w.session_mut(&session_id);
+            let pid = session.task_list_mut().add_phase("Build");
+            session
+                .task_list_mut()
+                .add_task(&pid, "Write code", TaskPosition::End)
+                .unwrap();
+        }
+
+        let call = ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_get_task_list".to_owned(),
+            arguments: "{}".to_owned(),
+        };
+        let ctx = make_context(Some(state), Some(session_id));
+        let result = execute(call, ctx);
+        let result = futures::executor::block_on(result);
+        assert!(result.success);
+        assert!(
+            result.content.starts_with("\u{2192}"),
+            "expected NEXT block at top, got: {:?}",
+            result.content
+        );
     }
 
     #[test]

@@ -959,7 +959,20 @@ impl TaskList {
         }
     }
     /// Renders a single phase as formatted markdown text.
+    ///
+    /// When `with_blocker` is true and the requested phase is not the active phase
+    /// (i.e., it's blocked by earlier pending work), the header is prefixed with
+    /// `(Blocked by previous phase) `.
     pub fn render_phase_text(&self, phase_id: &PhaseId) -> Option<String> {
+        let prefix = match self.active_phase() {
+            Some(active) if active.id != *phase_id => "(Blocked by previous phase) ",
+            _ => "",
+        };
+        self.render_phase_text_with_prefix(phase_id, prefix)
+    }
+
+    /// Renders a single phase with an explicit header prefix.
+    fn render_phase_text_with_prefix(&self, phase_id: &PhaseId, prefix: &str) -> Option<String> {
         let (i, phase) = self
             .phases
             .iter()
@@ -967,8 +980,9 @@ impl TaskList {
             .find(|(_, p)| &p.id == phase_id)?;
 
         let mut lines = vec![format!(
-            "## Phase {}: {} [{}]",
+            "## Phase {}:{}{} [{}]",
             i + 1,
+            if prefix.is_empty() { " ".to_owned() } else { format!(" {} ", prefix) },
             phase.description,
             phase.id
         )];
@@ -977,3 +991,4 @@ impl TaskList {
         Some(lines.join("\n"))
     }
 }
+
