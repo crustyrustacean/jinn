@@ -567,6 +567,12 @@ pub struct RegexPruneRule {
     /// Default: 1.
     #[serde(default = "default_regex_keep_last")]
     pub keep_last: usize,
+    /// Raw-distance protection floor: matching pairs whose `ToolCall` is within
+    /// `min_age` slots of the end of history are never pruned by this rule.
+    /// With `min_age = 0` no pair is protected (back-compat baseline).
+    /// Default: 50.
+    #[serde(default = "default_regex_min_age")]
+    pub min_age: usize,
 }
 
 fn default_regex_tool_name() -> String {
@@ -591,17 +597,6 @@ pub struct RegexAutoPruneConfig {
     /// Default: empty (no rules).
     #[serde(default)]
     pub rules: Vec<RegexPruneRule>,
-    /// Minimum number of entries from the end of history within which
-    /// matching pairs are protected from pruning even when they would
-    /// otherwise be pruned by a rule's `keep_last`. Counts every entry,
-    /// regardless of in-context status. Set to 0 to disable protection.
-    /// Default: `50`.
-    #[serde(default = "default_regex_min_age")]
-    pub min_age: usize,
-}
-
-fn default_regex_enabled() -> bool {
-    DEFAULT_REGEX_ENABLED
 }
 
 fn default_regex_min_age() -> usize {
@@ -613,9 +608,12 @@ impl Default for RegexAutoPruneConfig {
         Self {
             enabled: DEFAULT_REGEX_ENABLED,
             rules: Vec::new(),
-            min_age: DEFAULT_REGEX_MIN_AGE,
         }
     }
+}
+
+fn default_regex_enabled() -> bool {
+    DEFAULT_REGEX_ENABLED
 }
 
 /// Auto-prune configuration.
@@ -2297,12 +2295,14 @@ enabled = false
 
     #[rstest::rstest]
     fn default_min_age_is_50_for_new_workers() {
-        // Given the four newly-min_age'd configs.
+        // Given the three newly-min_age'd configs and the per-rule default.
         // Then their Default impls all produce min_age == 50.
         assert_eq!(AnchorRadiusAutoPruneConfig::default().min_age, 50);
         assert_eq!(ConsecutiveReadsAutoPruneConfig::default().min_age, 50);
-        assert_eq!(RegexAutoPruneConfig::default().min_age, 50);
         assert_eq!(TodoAutoPruneConfig::default().min_age, 50);
+        // RegexPruneRule has no Default impl (pattern is required), so verify
+        // via the serde default function directly.
+        assert_eq!(default_regex_min_age(), 50);
     }
 
     #[rstest::rstest]
@@ -2349,9 +2349,11 @@ min_tail_entries = 10
             pattern: "cargo check".to_owned(),
             tool_name: default_regex_tool_name(),
             keep_last: default_regex_keep_last(),
+            min_age: default_regex_min_age(),
         };
         assert_eq!(rule.tool_name, "bash");
         assert_eq!(rule.keep_last, 1);
+        assert_eq!(rule.min_age, 50);
     }
 
     #[rstest::rstest]
@@ -2367,14 +2369,15 @@ min_tail_entries = 10
                             pattern: "cargo check".to_owned(),
                             tool_name: "bash".to_owned(),
                             keep_last: 1,
+                            min_age: 50,
                         },
                         RegexPruneRule {
                             pattern: "cargo test".to_owned(),
                             tool_name: "bash".to_owned(),
                             keep_last: 2,
+                            min_age: 50,
                         },
                     ],
-                    min_age: 0,
                 },
                 ..AutoPruneConfig::default()
             },
@@ -2493,14 +2496,15 @@ keep_last = 1
                             pattern: "ls".to_owned(),
                             tool_name: "bash".to_owned(),
                             keep_last: 1,
+                            min_age: 0,
                         },
                         RegexPruneRule {
                             pattern: "cargo check".to_owned(),
                             tool_name: "bash".to_owned(),
                             keep_last: 1,
+                            min_age: 0,
                         },
                     ],
-                    min_age: 0,
                 },
                 ..AutoPruneConfig::default()
             },
