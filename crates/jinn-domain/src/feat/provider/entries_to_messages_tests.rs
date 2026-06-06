@@ -374,7 +374,6 @@ fn entries_to_messages_skips_thinking_entries() {
     );
 }
 
-
 #[rstest::rstest]
 fn transient_entries_are_skipped() {
     // Given Transient (unpinned, not in context), user, and assistant entries.

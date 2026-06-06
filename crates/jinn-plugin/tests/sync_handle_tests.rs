@@ -11,6 +11,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use jinn_domain::feat::plugin_system::SessionPluginRegistry;
 use jinn_plugin::{PluginCommand, PluginSyncHandle, PluginSystem};
 use serde::Serialize;
 
@@ -25,7 +26,7 @@ fn build_system(dir: &Path) -> (PluginSyncHandle, Arc<Mutex<Vec<PluginCommand>>>
     let captured_clone = captured.clone();
 
     let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
-    let (_, _, sync_handle) = PluginSystem::new(
+    let (_, _, sync_handle) = PluginSystem::build(
         dir,
         Path::new("/nonexistent"),
         rt.handle().clone(),
@@ -158,7 +159,7 @@ fn build_both(
     let captured: Arc<Mutex<Vec<PluginCommand>>> = Arc::new(Mutex::new(Vec::new()));
     let captured_clone = captured.clone();
     let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
-    let (_, async_handle, sync_handle) = PluginSystem::new(
+    let (_, async_handle, sync_handle) = PluginSystem::build(
         dir,
         Path::new("/nonexistent"),
         rt.handle().clone(),

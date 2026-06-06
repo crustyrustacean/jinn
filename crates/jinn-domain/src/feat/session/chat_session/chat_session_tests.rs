@@ -1,4 +1,9 @@
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::uninlined_format_args, reason = "test code")]
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::uninlined_format_args,
+    reason = "test code"
+)]
 
 use crate::feat::context::strategy::compaction_data::CompactionSessionData;
 use crate::feat::context::strategy::types::StrategyState;
@@ -292,7 +297,7 @@ fn enqueue_message_adds_to_queue() {
 
     // When enqueuing a message.
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        ChatEntry::user("hello"),
+        Box::new(ChatEntry::user("hello")),
     ));
 
     // Then the queue has one message.
@@ -311,10 +316,10 @@ fn dequeue_message_returns_first_in_order() {
     // Given a session with two queued messages.
     let mut session = ChatSessionState::new();
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        ChatEntry::user("first"),
+        Box::new(ChatEntry::user("first")),
     ));
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        ChatEntry::user("second"),
+        Box::new(ChatEntry::user("second")),
     ));
 
     // When dequeuing a message.
@@ -353,13 +358,13 @@ fn drain_returns_all_in_order() {
     // Given a session with three queued messages.
     let mut session = ChatSessionState::new();
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        ChatEntry::user("a"),
+        Box::new(ChatEntry::user("a")),
     ));
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        ChatEntry::user("b"),
+        Box::new(ChatEntry::user("b")),
     ));
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        ChatEntry::user("c"),
+        Box::new(ChatEntry::user("c")),
     ));
 
     // When draining the queue.
@@ -370,7 +375,7 @@ fn drain_returns_all_in_order() {
     let entries: Vec<ChatEntry> = drained
         .into_iter()
         .map(|item| match item {
-            crate::feat::session::queue_item::QueueItem::UserMessage(e) => e,
+            crate::feat::session::queue_item::QueueItem::UserMessage(e) => *e,
             crate::feat::session::queue_item::QueueItem::ToolContinuation => {
                 panic!("expected UserMessage")
             }
@@ -405,13 +410,13 @@ fn drain_empties_queue() {
     // Given a session with three queued messages.
     let mut session = ChatSessionState::new();
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        ChatEntry::user("a"),
+        Box::new(ChatEntry::user("a")),
     ));
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        ChatEntry::user("b"),
+        Box::new(ChatEntry::user("b")),
     ));
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        ChatEntry::user("c"),
+        Box::new(ChatEntry::user("c")),
     ));
 
     // When draining the queue.
@@ -3311,10 +3316,10 @@ fn cancel_stream_and_drain_puts_user_display_text_in_input() {
     let mut session = ChatSessionState::new();
     session.begin_streaming();
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        ChatEntry::user("hello world"),
+        Box::new(ChatEntry::user("hello world")),
     ));
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        ChatEntry::user("second message"),
+        Box::new(ChatEntry::user("second message")),
     ));
 
     // When cancelling and draining.
@@ -3332,7 +3337,7 @@ fn cancel_stream_and_drain_discards_non_user_items() {
     session.begin_streaming();
     session.enqueue(crate::feat::session::queue_item::QueueItem::ToolContinuation);
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        ChatEntry::user("keep this"),
+        Box::new(ChatEntry::user("keep this")),
     ));
 
     // When cancelling and draining.
@@ -3384,7 +3389,7 @@ fn cancel_stream_and_drain_uses_display_not_expanded() {
     let mut session = ChatSessionState::new();
     session.begin_streaming();
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        entry,
+        Box::new(entry),
     ));
 
     // When cancelling and draining.
@@ -4565,7 +4570,7 @@ fn enqueue_front_puts_item_at_front_of_queue() {
 
     // Enqueue a user message normally (back of queue).
     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-        session.history()[0].clone(),
+        Box::new(session.history()[0].clone()),
     ));
 
     // When enqueuing a ToolContinuation at the front.

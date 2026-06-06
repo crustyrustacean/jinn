@@ -11,7 +11,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum QueueItem {
     /// A user-submitted message to send to the LLM.
-    UserMessage(ChatEntry),
+    ///
+    /// Boxed because `ChatEntry` is large (~208 B) and the queue stores
+    /// many items — boxing shrinks each slot to a pointer.
+    UserMessage(Box<ChatEntry>),
     /// Continue after a tool batch - re-assemble prompt with updated history.
     ToolContinuation,
 }

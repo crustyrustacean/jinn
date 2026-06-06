@@ -225,7 +225,6 @@ mod tests {
         assert!(!format!("{err:?}").is_empty());
     }
 
-
     // Kills: WorkflowNode::config -> Some(Default::default())
     // The default impl returns None, not Some(default).
     #[test]

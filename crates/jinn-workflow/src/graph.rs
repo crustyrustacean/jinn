@@ -1187,7 +1187,6 @@ mod tests {
         assert_eq!(graph.description(), None);
     }
 
-
     // Kills: node_config -> None (always)
     // TestNode doesn't override config(), so node_config returns None for it.
     // We need a node that overrides config() to test that node_config returns actual values.

@@ -81,7 +81,6 @@ impl From<jinn_provider::tool_types::ToolResultPinPosition> for PinPosition {
     }
 }
 
-
 /// User-controlled override for whether an entry is included in LLM context.
 ///
 /// Tri-state that replaces the old `ignored: bool` field, supporting both
@@ -475,8 +474,6 @@ impl ChatEntry {
             context_history: Vec::new(),
         }
     }
-
-
 
     /// Create a new transient chat entry with the current timestamp.
     ///
@@ -1158,7 +1155,6 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             "ToolCall",
                             "ToolResult",
                             "Thinking",
-
                             "Transient",
                             "Compaction",
                         ],
@@ -1189,7 +1185,6 @@ impl ChatEntryKind {
                 | ChatEntryKind::Assistant(..)
                 | ChatEntryKind::ToolCall { .. }
                 | ChatEntryKind::ToolResult { .. }
-
                 | ChatEntryKind::Compaction { .. }
         )
     }

@@ -148,12 +148,11 @@ impl Actor for BenchActor {
 impl BenchActor {
     /// Start the next pair in the plan.
     ///
-    /// Creates a new session in AppState with the correct model and lifecycle_name,
-    /// then emits setup commands. Does nothing if no plan or all pairs are done.
-    #[expect(
-        clippy::expect_used,
-        reason = "Should always be available; Programming error on crash"
-    )]
+    /// Creates a new session in `AppState` with the correct model and
+    /// lifecycle name, applies the user's saved preferences, and dispatches
+    /// the initial prompt for the current pair in the plan.
+    ///
+    /// No-ops if there is no plan or all pairs have been started.
     fn start_next_pair(&mut self, ctx: &ActorContext) {
         let Some(ref plan) = self.plan else {
             return;

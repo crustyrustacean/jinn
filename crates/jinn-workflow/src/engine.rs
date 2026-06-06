@@ -1646,7 +1646,6 @@ mod tests {
         );
     }
 
-
     // Kills: initialize_tracking += replaced with *=
     // If *= were used, pending_count for b would be 0*0=0 instead of 1-1=0
     // only because b starts with pending_count=1 (one incoming edge) and

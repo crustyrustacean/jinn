@@ -261,7 +261,7 @@ mod tests {
             let session = state.active_session_mut();
             session.begin_streaming();
             session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-                ChatEntry::user("queued message"),
+                Box::new(ChatEntry::user("queued message")),
             ));
             assert_eq!(session.queue_len(), 1);
             state.session.active_session_id().clone()
@@ -296,10 +296,10 @@ mod tests {
             let session = state.active_session_mut();
             session.begin_streaming();
             session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-                ChatEntry::user("first message"),
+                Box::new(ChatEntry::user("first message")),
             ));
             session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-                ChatEntry::user("second message"),
+                Box::new(ChatEntry::user("second message")),
             ));
             state.session.active_session_id().clone()
         };
@@ -333,7 +333,7 @@ mod tests {
             let session = state.active_session_mut();
             session.begin_streaming();
             session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
-                ChatEntry::user("queued message"),
+                Box::new(ChatEntry::user("queued message")),
             ));
             assert_eq!(session.queue_len(), 1);
             state.session.active_session_id().clone()

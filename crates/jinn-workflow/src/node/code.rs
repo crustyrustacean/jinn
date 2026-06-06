@@ -206,7 +206,6 @@ mod tests {
         assert_eq!(outputs.get_text("out").unwrap(), "test");
     }
 
-
     // Kills: CodeNode::name -> "", CodeNode::name -> "xyzzy"
     #[test]
     fn code_node_name_returns_actual_name() {
