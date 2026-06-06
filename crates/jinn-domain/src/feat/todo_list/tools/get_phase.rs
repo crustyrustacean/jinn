@@ -66,22 +66,28 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let result = {
             let r = state.read();
             let session = r.session(&session_id);
-            session.task_list().render_phase_text(&phase_id)
+            let list = session.task_list();
+            let rendered_phase = list.render_phase_text(&phase_id);
+            let next_block = list.render_next_block();
+            match rendered_phase {
+                Some(rendered) => Ok(format!("{next_block}\n{rendered}")),
+                None => Err(format!("Error: phase not found: {phase_id_str}")),
+            }
         };
 
         match result {
-            Some(rendered) => ToolResult {
+            Ok(content) => ToolResult {
                 tool_call_id: call.id,
                 name: call.name,
-                content: rendered,
+                content,
                 success: true,
                 full_content: None,
                 truncation: None,
             },
-            None => ToolResult {
+            Err(content) => ToolResult {
                 tool_call_id: call.id,
                 name: call.name,
-                content: format!("Error: phase not found: {phase_id_str}"),
+                content,
                 success: false,
                 full_content: None,
                 truncation: None,
@@ -188,5 +194,24 @@ mod tests {
         let result = execute(call, ctx);
         let result = futures::executor::block_on(result);
         assert!(!result.success);
+    }
+
+    #[test]
+    fn get_phase_return_has_next_block_at_top() {
+        let (state, session_id, pid) = setup_with_phase();
+        let call = ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_get_phase".to_owned(),
+            arguments: serde_json::json!({"phase_id": pid}).to_string(),
+        };
+        let ctx = make_context(Some(state), Some(session_id));
+        let result = execute(call, ctx);
+        let result = futures::executor::block_on(result);
+        assert!(result.success);
+        assert!(
+            result.content.starts_with("\u{2192}"),
+            "expected NEXT block at top, got: {:?}",
+            result.content
+        );
     }
 }
