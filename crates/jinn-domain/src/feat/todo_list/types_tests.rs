@@ -1129,3 +1129,65 @@ fn render_next_block_empty_for_phase_with_no_tasks_anywhere() {
     // No tasks ever added to any phase.
     assert_eq!(list.render_next_block(), "");
 }
+
+#[test]
+fn render_next_block_after_completion_same_phase_remaining() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Build");
+    let t1 = list.add_task(&p1, "First", TaskPosition::End).unwrap();
+    let t2 = list.add_task(&p1, "Second", TaskPosition::End).unwrap();
+
+    list.complete_task(&t1).unwrap();
+
+    let block = list.render_next_block_after_completion(&p1);
+    assert!(
+        block.starts_with(&format!("→ NEXT: {} — Second", t2)),
+        "got: {block}"
+    );
+    assert!(block.contains("1 pending in phase"));
+}
+
+#[test]
+fn render_next_block_after_completion_phase_done_no_later() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Build");
+    let t1 = list.add_task(&p1, "Only", TaskPosition::End).unwrap();
+    list.complete_task(&t1).unwrap();
+
+    let block = list.render_next_block_after_completion(&p1);
+    assert_eq!(
+        block,
+        format!("→ Phase {} complete — proceed to verify.", p1)
+    );
+}
+
+#[test]
+fn render_next_block_after_completion_phase_done_with_later_blocked() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Build");
+    let t1 = list.add_task(&p1, "Only", TaskPosition::End).unwrap();
+    list.complete_task(&t1).unwrap();
+    let p2 = list.add_phase("Test");
+    list.add_task(&p2, "Later", TaskPosition::End).unwrap();
+
+    let block = list.render_next_block_after_completion(&p1);
+    assert_eq!(
+        block,
+        format!(
+            "→ Phase {} complete — proceed to verify. Later phases are blocked until then.",
+            p1
+        )
+    );
+}
+
+#[test]
+fn render_next_block_after_completion_falls_back_when_phase_missing() {
+    let mut list = TaskList::new();
+    let p1 = list.add_phase("Build");
+    list.add_task(&p1, "Task", TaskPosition::End).unwrap();
+
+    let bogus = PhaseId::new(&[]);
+    let block = list.render_next_block_after_completion(&bogus);
+    // Falls back to global next-task.
+    assert!(block.starts_with("→ NEXT:"));
+}
