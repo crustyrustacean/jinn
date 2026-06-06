@@ -12,7 +12,7 @@ use jinn_domain::feat::ui::chat_log::audit_popup::{audit_popup_rect, format_audi
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
 /// Render the audit popup, if it should be visible.
 ///
@@ -60,10 +60,11 @@ pub(super) fn render_audit_popup(
     // Clear underlying buffer so the popup is opaque.
     frame.render_widget(Clear, rect);
 
-    // Render the popup body. The block provides top+bottom borders; the
-    // header line is the first body line (so it scrolls with content).
+    // Render the popup body. The block draws a full rounded rectangle around
+    // the popup; the header line is the first body line (so it scrolls with content).
     let block = Block::default()
-        .borders(Borders::TOP | Borders::BOTTOM)
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .style(
             Style::default()
                 .bg(ctx.state.frontend.theme.infopopup_bg)
@@ -111,14 +112,13 @@ mod tests {
     use jinn_domain::RenderCtx;
     use jinn_domain::FocusScope;
     use jinn_domain::feat::session::chat_entry::{ChangeSource, ChatEntry, ContextOverride};
+    use jinn_domain::feat::ui::chat_log::audit_popup::AUDIT_POPUP_WIDTH;
     use jinn_testutil::setup_term;
     use ratatui::layout::Rect;
 
     use super::render_audit_popup;
 
-    /// Width of the audit popup (matches `AUDIT_POPUP_WIDTH` in the domain).
-    /// Duplicated here because the constant is private to the domain crate.
-    const AUDIT_POPUP_WIDTH: u16 = 60;
+
 
     /// Build an app with one user entry that has one audit event, with the
     /// audit popup toggle ON.
@@ -228,6 +228,99 @@ mod tests {
         assert!(
             body_row.contains("user") && body_row.contains("Default"),
             "body row at y={body_y}: {body_row:?}"
+        );
+    }
+
+    /// Render the audit popup into an 80×24 terminal and return a snapshot
+    /// of the rendered buffer together with the popup's screen rect.
+    ///
+    /// Mirrors the paint test's setup: one excluded entry, audit visible,
+    /// pre-populated line ranges, popup rendered right-aligned in a 70-col
+    /// chat-log area.
+    fn render_popup_buffer() -> (ratatui::buffer::Buffer, Rect) {
+        let app = app_with_audit_visible();
+        let (mut terminal, _area) = setup_term(100, 24);
+
+        {
+            let mut wstate = app.core.state.write();
+            let session = wstate.active_session_mut();
+            session.set_entry_line_ranges(vec![(0, 0)]);
+            session.set_rendered_scroll_offset(0);
+            session.set_viewport_height(24);
+            session.set_blank_count(0);
+        }
+
+        let chat_log_area = Rect::new(30, 0, 70, 24);
+
+        let mut rects: Vec<Rect> = Vec::new();
+        terminal
+            .draw(|frame| {
+                let guard = app.core.state.read();
+                let ctx = RenderCtx::new(&guard);
+                render_audit_popup(frame, chat_log_area, &ctx, &mut rects);
+            })
+            .unwrap();
+
+        let popup = rects
+            .into_iter()
+            .next()
+            .expect("audit popup rect should be registered");
+        (terminal.backend().buffer().clone(), popup)
+    }
+
+    #[rstest::rstest]
+    fn render_audit_popup_paints_vertical_borders_on_every_content_row() {
+        // Given the audit popup rendered into a buffer.
+        let (buffer, popup) = render_popup_buffer();
+
+        // Then every content row (strictly between the top and bottom border
+        // rows) is bounded by the vertical border glyph on both edges.
+        for y in (popup.y + 1)..(popup.y + popup.height - 1) {
+            let left = buffer.cell((popup.x, y)).map(|c| c.symbol()).unwrap_or("");
+            let right = buffer
+                .cell((popup.x + popup.width - 1, y))
+                .map(|c| c.symbol())
+                .unwrap_or("");
+            assert_eq!(left, "│", "missing left border at ({}, {})", popup.x, y);
+            assert_eq!(
+                right, "│",
+                "missing right border at ({}, {})",
+                popup.x + popup.width - 1,
+                y
+            );
+        }
+    }
+
+    #[rstest::rstest]
+    fn render_audit_popup_paints_four_rounded_corners() {
+        // Given the audit popup rendered into a buffer.
+        let (buffer, popup) = render_popup_buffer();
+
+        let top = popup.y;
+        let bottom = popup.y + popup.height - 1;
+        let left = popup.x;
+        let right = popup.x + popup.width - 1;
+
+        // Then the four corners are the rounded border glyphs.
+        assert_eq!(
+            buffer.cell((left, top)).map(|c| c.symbol()),
+            Some("╭"),
+            "top-left corner"
+        );
+        assert_eq!(
+            buffer.cell((right, top)).map(|c| c.symbol()),
+            Some("╮"),
+            "top-right corner"
+        );
+        assert_eq!(
+            buffer.cell((left, bottom)).map(|c| c.symbol()),
+            Some("╰"),
+            "bottom-left corner"
+        );
+        assert_eq!(
+            buffer.cell((right, bottom)).map(|c| c.symbol()),
+            Some("╯"),
+            "bottom-right corner"
         );
     }
 
