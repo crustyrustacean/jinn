@@ -110,9 +110,10 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             let list = session.task_list_mut();
             match list.postpone_task(&source_id, position) {
                 Ok(new_task_id) => {
-                    let rendered = list.render_text();
+                    let next_block = list.render_next_block();
+                    let rendered = list.render_text_with_blockers();
                     Ok(format!(
-                        "Postponed task [{source_id}] \u{2192} created copy [{new_task_id}].\n\n{rendered}"
+                        "{next_block}\nPostponed task [{source_id}] \u{2192} created copy [{new_task_id}].\n\n{rendered}"
                     ))
                 }
                 Err(e) => Err(format!("Error: {e}")),
@@ -312,6 +313,26 @@ mod tests {
         let result = futures::executor::block_on(result);
         assert!(!result.success);
         assert!(result.content.contains("task not found"));
+    }
+
+    #[test]
+    fn postpone_task_return_has_next_block_at_top() {
+        let (state, session_id, _p1, t1, _p2, t2) = setup_with_two_phases();
+        let call = ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_postpone_task".to_owned(),
+            arguments: serde_json::json!({"task_id": t1, "after_task": t2}).to_string(),
+        };
+        let ctx = make_context(Some(state), Some(session_id));
+        let result = execute(call, ctx);
+        let result = futures::executor::block_on(result);
+        assert!(result.success);
+        assert!(
+            result.content.starts_with("\u{2192}"),
+            "expected NEXT block at top, got: {:?}",
+            result.content
+        );
+        assert!(result.content.contains("Postponed task"));
     }
 
     #[test]
