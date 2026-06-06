@@ -525,7 +525,7 @@ impl TaskList {
             .iter_mut()
             .find(|t| &t.id == source_task_id);
         if let Some(t) = source_task {
-            t.status = TaskStatus::Postponed
+            t.status = TaskStatus::Postponed;
         } else {
             tracing::error!(
                 source_task_id = %source_task_id,
@@ -850,7 +850,7 @@ impl TaskList {
     /// `complete_task`, which needs its own helper to emit the "phase complete —
     /// proceed to verify" variant when the just-completed task emptied the
     /// active phase but other phases still have pending work.
-    #[must_use]
+    ///
     /// # Panics
     ///
     /// Panics if `active_phase()` returns a phase with no `TaskStatus::Pending`

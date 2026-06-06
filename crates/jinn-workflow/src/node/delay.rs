@@ -148,7 +148,6 @@ mod tests {
         TestContext
     }
 
-
     // Kills: DelayNode::input_ports -> vec![]
     #[test]
     fn delay_node_input_ports_returns_actual_ports() {

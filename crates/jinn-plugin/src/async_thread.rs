@@ -43,7 +43,9 @@ pub type RequestHandler =
 
 /// Per-session Lua state + loaded hooks.
 struct SessionState {
+    /// Lua interpreter for this session.
     lua: Lua,
+    /// Hooks registered per plugin for this session.
     hooks: HashMap<String, PluginHooks>,
 }
 
@@ -51,6 +53,7 @@ struct SessionState {
 struct ThreadState {
     /// Global plugins state.
     global_lua: Lua,
+    /// Hooks registered for global plugins.
     global_hooks: HashMap<String, PluginHooks>,
     /// Per-session states keyed by registry ID.
     sessions: HashMap<SessionRegistryId, SessionState>,
@@ -86,7 +89,7 @@ pub(crate) fn run_async_thread(
     };
 
     // Partition discovered plugins into global (already loaded) and attachable.
-    // Global plugins were loaded into `lua` by PluginSystem::new; the remaining
+    // Global plugins were loaded into `lua` by PluginSystem::build; the remaining
     // attachable plugins are kept here for on-demand per-session loading.
     let attachable_plugins: Vec<PluginMeta> = all_plugins
         .into_iter()
@@ -109,6 +112,9 @@ pub(crate) fn run_async_thread(
     });
 }
 
+/// Drive the async plugin thread, executing each received [`PluginJob`] in turn.
+///
+/// Exits when the job channel closes.
 async fn async_thread_loop(rx: kanal::AsyncReceiver<PluginJob>, mut state: ThreadState) {
     loop {
         match rx.recv().await {
@@ -126,6 +132,10 @@ async fn async_thread_loop(rx: kanal::AsyncReceiver<PluginJob>, mut state: Threa
 /// All variants respond through `tokio::sync::oneshot::Sender` with
 /// `Result<T, Report<PluginError>>`. Send failures are ignored — the caller
 /// may have cancelled or panicked.
+#[expect(
+    clippy::match_same_arms,
+    reason = "Collect and SyncCollect share dispatch but originate from distinct caller paths (sync vs async); kept separate for traceability"
+)]
 async fn execute_plugin_job(state: &mut ThreadState, job: PluginJob) {
     match job {
         PluginJob::Fire {
@@ -160,7 +170,7 @@ async fn execute_plugin_job(state: &mut ThreadState, job: PluginJob) {
             plugin_names,
             respond_to,
         } => {
-            let result = load_session_plugins(state, registry_id, plugin_names);
+            let result = load_session_plugins(state, registry_id, &plugin_names);
             let _ = respond_to.send(result);
         }
         PluginJob::DestroySession { registry_id } => {
@@ -173,7 +183,7 @@ async fn execute_plugin_job(state: &mut ThreadState, job: PluginJob) {
 fn load_session_plugins(
     state: &mut ThreadState,
     registry_id: SessionRegistryId,
-    plugin_names: Vec<String>,
+    plugin_names: &[String],
 ) -> Result<(), Report<PluginError>> {
     // Resolve each name to a PluginMeta in the attachable set.
     let metas: Vec<PluginMeta> = plugin_names
@@ -326,6 +336,10 @@ async fn run_hooks_collect(
 ///
 /// Returns `Ok(None)` if the plugin doesn't define the hook or returns nil.
 /// Returns `Ok(Some(value))` if the hook returned a non-nil value.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "run-single-hook needs the full Lua+plugin+emit+handler context; bundling into a context struct is a follow-up refactor"
+)]
 async fn run_single_hook(
     lua: &Lua,
     plugin_hooks: &PluginHooks,
@@ -337,7 +351,7 @@ async fn run_single_hook(
     request_handler: &RequestHandler,
 ) -> Result<Option<mlua::Value>, Report<PluginError>> {
     let table_opt: Option<mlua::Table> = lua
-        .registry_value::<Option<mlua::Table>>(&plugin_hooks.table)
+        .registry_value::<Option<mlua::Table>>(plugin_hooks.table())
         .map_err(|e: mlua::Error| Report::new(PluginError).attach(e.to_string()))
         .attach("registry lookup")?;
     let table: mlua::Table = table_opt
@@ -448,8 +462,8 @@ fn build_async_ctx(
     {
         let pd = plugin_data.clone();
         let pname = plugin_name.to_owned();
-        let set_data_fn = lua.create_function(move |_lua, value: mlua::Value| {
-            let json = bindings::value_to_json(_lua, &value).unwrap_or_default();
+        let set_data_fn = lua.create_function(move |lua, value: mlua::Value| {
+            let json = bindings::value_to_json(lua, &value).unwrap_or_default();
             pd.set(pname.clone(), json);
             Ok(())
         })?;

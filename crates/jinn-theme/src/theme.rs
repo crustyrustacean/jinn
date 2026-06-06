@@ -210,7 +210,6 @@ pub struct ThemeFile {
     pub infopopup_fg: Option<ThemeColor>,
 }
 
-
 impl ThemeFile {
     /// Resolves this file into a full [`Theme`], filling missing fields
     /// from the default theme.
@@ -332,14 +331,12 @@ impl ThemeFile {
                 crate::color::ThemeColor::inner,
             ),
 
-            input_mode_queue: self.input_mode_queue.map_or(
-                fallback.input_mode_queue,
-                crate::color::ThemeColor::inner,
-            ),
-            input_mode_steer: self.input_mode_steer.map_or(
-                fallback.input_mode_steer,
-                crate::color::ThemeColor::inner,
-            ),
+            input_mode_queue: self
+                .input_mode_queue
+                .map_or(fallback.input_mode_queue, crate::color::ThemeColor::inner),
+            input_mode_steer: self
+                .input_mode_steer
+                .map_or(fallback.input_mode_steer, crate::color::ThemeColor::inner),
             infopopup_bg: self
                 .infopopup_bg
                 .map_or(fallback.infopopup_bg, crate::color::ThemeColor::inner),
