@@ -8,6 +8,7 @@ pub mod app_state;
 #[cfg(test)]
 mod app_state_tests;
 pub mod core;
+pub mod default_config_check;
 pub mod focus;
 pub mod frontmatter;
 pub mod render_ctx;
