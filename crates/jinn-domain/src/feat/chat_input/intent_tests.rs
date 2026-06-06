@@ -238,11 +238,21 @@ fn queue_submit_always_enqueues() {
 }
 
 #[rstest::rstest]
-fn steer_submit_while_streaming_routes_to_steer() {
-    // Given Steer mode + Streaming phase with text typed.
+fn steer_submit_while_busy_routes_to_steer(#[values(PhaseKind::Streaming, PhaseKind::Sending)] phase: PhaseKind) {
+    // Given Steer mode + a non-Idle phase with text typed.
     let mut state = AppState::default();
     crate::feat::chat_input::intent::handle_toggle_input_mode(&mut state);
-    state.session.active_session_mut().begin_streaming();
+    match phase {
+        PhaseKind::Streaming => state.session.active_session_mut().begin_streaming(),
+        PhaseKind::Sending => state.session.active_session_mut().begin_sending(),
+        PhaseKind::Idle => unreachable!("Idle is the fall-through case, tested separately"),
+    }
+    // Sanity: phase is not Idle.
+    assert_ne!(
+        state.session.active_session().phase(),
+        PhaseKind::Idle,
+        "test setup: phase must not be Idle"
+    );
     state
         .active_chat_input_mut()
         .insert_text("h");
@@ -251,14 +261,16 @@ fn steer_submit_while_streaming_routes_to_steer() {
     let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
 
     // Then SubmitSteeringMessage command emitted (not EnqueueUserMessage).
-    assert!(matches!(
-        result.commands[1],
-        Command::SubmitSteeringMessage(_)
-    ));
+    assert!(
+        matches!(result.commands[1], Command::SubmitSteeringMessage(_)),
+        "phase {:?}: expected SubmitSteeringMessage",
+        phase
+    );
     // And no new history entry was created.
     assert!(
         state.session.active_session().history().is_empty(),
-        "no entry appears in history yet"
+        "phase {:?}: no entry should appear in history yet",
+        phase
     );
 }
 
