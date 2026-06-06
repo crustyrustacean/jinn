@@ -48,11 +48,14 @@ fn build_system(dir: &Path) -> TestSystem {
             captured_clone.lock().expect("lock").push(cmd);
         }),
         Arc::new(|name, _data| {
-            if name == "llm" {
-                json!("FAIL")
-            } else {
-                json!(null)
-            }
+            let name = name.to_owned();
+            Box::pin(async move {
+                if name == "llm" {
+                    json!("FAIL")
+                } else {
+                    json!(null)
+                }
+            })
         }),
     );
 
