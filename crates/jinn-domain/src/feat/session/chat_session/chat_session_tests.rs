@@ -2024,7 +2024,7 @@ fn finalize_tool_result_completes_pending_entry() {
     );
 
     // When finalizing with success.
-    session.finalize_tool_result("call_1", "bash", "final output", true, None, None);
+    session.finalize_tool_result("call_1", "bash", "final output", true, None, None, None);
 
     // Then the entry is updated with final content and Success status.
     assert_eq!(session.history().len(), 1);
@@ -2054,7 +2054,7 @@ fn finalize_tool_result_pushes_new_entry_for_unknown_id() {
     let mut session = ChatSessionState::new();
 
     // When finalizing for a tool that never streamed.
-    session.finalize_tool_result("call_1", "bash", "output", true, None, None);
+    session.finalize_tool_result("call_1", "bash", "output", true, None, None, None);
 
     // Then a new entry is pushed.
     assert_eq!(session.history().len(), 1);
@@ -2124,7 +2124,7 @@ fn finalize_tool_result_updates_existing_pending_by_kind_id() {
     assert_eq!(session.history().len(), 1);
 
     // When finalizing the tool result (no streaming index available).
-    session.finalize_tool_result("call_1", "bash", "actual output", true, None, None);
+    session.finalize_tool_result("call_1", "bash", "actual output", true, None, None, None);
 
     // Then the existing entry was updated in-place (same ChatEntryId).
     assert_eq!(
@@ -2172,6 +2172,7 @@ fn finalize_tool_result_updates_existing_with_truncation() {
         true,
         Some("full output...".to_owned()),
         Some(meta.clone()),
+        None,
     );
 
     // Then the existing entry was updated in-place with truncation data.
@@ -2214,6 +2215,7 @@ fn finalize_tool_result_pushes_new_with_truncation_when_no_existing() {
         true,
         Some("full".to_owned()),
         Some(meta),
+        None,
     );
 
     // Then a new truncated entry was pushed.

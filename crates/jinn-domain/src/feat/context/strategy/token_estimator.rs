@@ -36,7 +36,6 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
         ChatEntryKind::User { expanded, .. } => estimator.estimate(expanded),
         ChatEntryKind::Assistant(text)
         | ChatEntryKind::System(text)
-        | ChatEntryKind::Skill { content: text, .. }
         | ChatEntryKind::Compaction { summary: text, .. } => estimator.estimate(text),
         ChatEntryKind::ToolCall {
             name, arguments, ..

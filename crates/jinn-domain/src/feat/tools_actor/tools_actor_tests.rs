@@ -856,6 +856,7 @@ async fn tool_execution_completed_for_unknown_session_is_ignored() {
             success: true,
             full_content: None,
             truncation: None,
+            pin_position: None,
         },
     });
     actor.handle_event(&event, &ctx);
@@ -1096,6 +1097,7 @@ async fn handle_processes_tool_execution_completed_event() {
             success: false,
             full_content: None,
             truncation: None,
+            pin_position: None,
         },
     });
     actor

@@ -137,19 +137,7 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
                     ),
                 });
             }
-            // Skill entries produce System messages with the skill XML format.
-            // Skills are always pinned, so they always produce a message.
-            ChatEntryKind::Skill {
-                name,
-                location,
-                content,
-            } => {
-                messages.push(LlmMessage::System {
-                    content: format!(
-                        "<skill name=\"{name}\" location=\"{location}\">\n{content}\n</skill>"
-                    ),
-                });
-            }
+
         }
     }
 

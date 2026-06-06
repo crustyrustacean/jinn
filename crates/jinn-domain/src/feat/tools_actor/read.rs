@@ -77,6 +77,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     success: false,
                     full_content: None,
                     truncation: None,
+                    pin_position: None,
                 };
             }
         };
@@ -93,6 +94,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     success: false,
                     full_content: None,
                     truncation: None,
+                    pin_position: None,
                 };
             }
         };
@@ -132,6 +134,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     success: true,
                     full_content: Some(content.clone()),
                     truncation: Some(meta),
+                    pin_position: None,
                 }
             } else {
                 // truncated but no meta - return unformatted truncated content
@@ -142,6 +145,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     success: true,
                     full_content: Some(content.clone()),
                     truncation: None,
+                    pin_position: None,
                 }
             }
         } else {
@@ -152,6 +156,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 success: true,
                 full_content: Some(content.clone()),
                 truncation: None,
+                pin_position: None,
             }
         }
     })

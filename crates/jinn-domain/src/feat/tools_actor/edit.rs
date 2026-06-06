@@ -29,6 +29,7 @@ fn err_result(call: &ToolCall, content: String) -> ToolResult {
         success: false,
         full_content: None,
         truncation: None,
+        pin_position: None,
     }
 }
 
@@ -41,6 +42,7 @@ fn ok_result(call: &ToolCall, content: String) -> ToolResult {
         success: true,
         full_content: None,
         truncation: None,
+        pin_position: None,
     }
 }
 
