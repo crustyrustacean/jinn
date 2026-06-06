@@ -769,7 +769,6 @@ mod tests {
         assert_eq!(buf.cell(Position::new(col, 0)).unwrap().symbol(), "●");
     }
 
-
     // Kills: truncate_str -> String::new(), truncate_str -> "xyzzy"
     #[test]
     fn truncate_str_returns_actual_content() {

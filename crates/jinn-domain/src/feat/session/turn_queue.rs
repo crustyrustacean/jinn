@@ -78,7 +78,7 @@ mod tests {
     use super::*;
 
     fn user_msg(text: &str) -> QueueItem {
-        QueueItem::UserMessage(crate::protocol::ChatEntry::user(text))
+        QueueItem::UserMessage(Box::new(crate::protocol::ChatEntry::user(text)))
     }
 
     #[rstest::rstest]

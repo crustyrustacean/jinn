@@ -395,7 +395,6 @@ mod tests {
         assert!(h > 5, "diamond graph should be taller than a single node");
     }
 
-
     // Kills: content_size + -> *, + -> -
     #[test]
     fn content_size_uses_addition() {

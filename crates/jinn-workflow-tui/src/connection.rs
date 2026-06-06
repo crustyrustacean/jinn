@@ -626,7 +626,6 @@ mod tests {
         assert!(cell.mixed, "shared cell should be marked mixed");
     }
 
-
     // Kills: render_merged_grid >= -> ==, >= -> <=, >= -> <
     // The boundary check is `x >= area.x + area.width` - we verify it excludes the right edge.
     #[test]

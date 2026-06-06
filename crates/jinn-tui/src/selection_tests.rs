@@ -472,7 +472,6 @@ fn selectable_rects_rebuild_replaces_previous_rects() {
     );
 }
 
-
 // Kills: find_for_position < -> <= (both occurrences, line 44)
 #[rstest::rstest]
 fn find_for_position_excludes_right_and_bottom_edges() {

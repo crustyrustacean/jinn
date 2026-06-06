@@ -448,6 +448,35 @@ pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<Edi
     })
 }
 
+/// Read-only context shared by every edit-resolver helper.
+///
+/// Bundles the file geometry + a sink for NOOP records so each resolver
+/// only takes its edit-specific parameters on top of `&self`.
+struct ResolveCtx<'a> {
+    content: &'a str,
+    file_lines: &'a [&'a str],
+    line_starts: &'a [usize],
+    has_terminal_newline: bool,
+    noop_edits: &'a mut Vec<NoopEdit>,
+}
+
+impl ResolveCtx<'_> {
+    /// Records a NOOP edit and returns the "resolved to nothing" sentinel.
+    fn record_noop(
+        &mut self,
+        index: usize,
+        loc: String,
+        current_content: String,
+    ) -> Option<ResolvedSpan> {
+        self.noop_edits.push(NoopEdit {
+            edit_index: index,
+            loc,
+            current_content,
+        });
+        None
+    }
+}
+
 /// Resolves a single edit to a byte span (or `None` for NOOPs).
 fn resolve_edit_to_span(
     edit: &HashlineEdit,
@@ -458,169 +487,228 @@ fn resolve_edit_to_span(
     has_terminal_newline: bool,
     noop_edits: &mut Vec<NoopEdit>,
 ) -> Result<Option<ResolvedSpan>, String> {
+    let mut ctx = ResolveCtx {
+        content,
+        file_lines,
+        line_starts,
+        has_terminal_newline,
+        noop_edits,
+    };
+    let label = describe_edit(edit);
     match edit {
-        HashlineEdit::Replace { pos, end, lines } => {
-            let start_line = pos.line;
-            let end_line = end.as_ref().map_or(start_line, |a| a.line);
-
-            // NOOP check
-            let original: Vec<&str> =
-                file_lines[start_line - 1..end_line.min(file_lines.len())].to_vec();
-            if original.len() == lines.len()
-                && original.iter().zip(lines.iter()).all(|(a, b)| a == b)
-            {
-                noop_edits.push(NoopEdit {
-                    edit_index: index,
-                    loc: format!("{}#{}", pos.line, pos.hash),
-                    current_content: original.join("\n"),
-                });
-                return Ok(None);
-            }
-
-            let start_byte = line_starts[start_line - 1];
-            let end_byte = line_starts[end_line - 1] + file_lines[end_line - 1].len();
-            let replacement = lines.join("\n");
-
-            Ok(Some(ResolvedSpan {
-                kind: "replace",
-                index,
-                label: describe_edit(edit),
-                start: start_byte,
-                end: end_byte,
-                replacement,
-                boundary: None,
-            }))
-        }
-        HashlineEdit::Append { pos, lines } => {
-            if lines.is_empty() {
-                // NOOP: inserting nothing
-                noop_edits.push(NoopEdit {
-                    edit_index: index,
-                    loc: pos
-                        .as_ref()
-                        .map_or("EOF".to_owned(), |a| format!("{}#{}", a.line, a.hash)),
-                    current_content: String::new(),
-                });
-                return Ok(None);
-            }
-
-            let inserted_text = lines.join("\n");
-            if content.is_empty() {
-                return Ok(Some(ResolvedSpan {
-                    kind: "insert",
-                    index,
-                    label: describe_edit(edit),
-                    start: 0,
-                    end: 0,
-                    replacement: inserted_text,
-                    boundary: Some(0),
-                }));
-            }
-
-            let Some(anchor) = pos else {
-                // Append at EOF
-                let replacement = if has_terminal_newline {
-                    format!("{inserted_text}\n")
-                } else {
-                    format!("\n{inserted_text}")
-                };
-                return Ok(Some(ResolvedSpan {
-                    kind: "insert",
-                    index,
-                    label: describe_edit(edit),
-                    start: content.len(),
-                    end: content.len(),
-                    replacement,
-                    boundary: Some(file_lines.len()),
-                }));
-            };
-
-            let is_sentinel = has_terminal_newline && anchor.line == file_lines.len();
-            let insert_pos = if is_sentinel {
-                content.len()
-            } else {
-                line_starts[anchor.line - 1] + file_lines[anchor.line - 1].len()
-            };
-            let replacement = if is_sentinel {
-                format!("{inserted_text}\n")
-            } else {
-                format!("\n{inserted_text}")
-            };
-
-            Ok(Some(ResolvedSpan {
-                kind: "insert",
-                index,
-                label: describe_edit(edit),
-                start: insert_pos,
-                end: insert_pos,
-                replacement,
-                boundary: Some(anchor.line),
-            }))
-        }
-        HashlineEdit::Prepend { pos, lines } => {
-            if lines.is_empty() {
-                noop_edits.push(NoopEdit {
-                    edit_index: index,
-                    loc: pos
-                        .as_ref()
-                        .map_or("BOF".to_owned(), |a| format!("{}#{}", a.line, a.hash)),
-                    current_content: String::new(),
-                });
-                return Ok(None);
-            }
-
-            let inserted_text = lines.join("\n");
-            let insert_pos = pos.as_ref().map_or(0, |a| line_starts[a.line - 1]);
-            let replacement = if content.is_empty() {
-                inserted_text
-            } else {
-                format!("{inserted_text}\n")
-            };
-
-            Ok(Some(ResolvedSpan {
-                kind: "insert",
-                index,
-                label: describe_edit(edit),
-                start: insert_pos,
-                end: insert_pos,
-                replacement,
-                boundary: pos.as_ref().map(|a| a.line.saturating_sub(1)),
-            }))
-        }
+        HashlineEdit::Replace { pos, end, lines } => Ok(resolve_replace_span(
+            &mut ctx,
+            pos,
+            end.as_ref(),
+            lines,
+            index,
+            &label,
+        )),
+        HashlineEdit::Append { pos, lines } => Ok(resolve_append_span(
+            &mut ctx,
+            pos.as_ref(),
+            lines,
+            index,
+            &label,
+        )),
+        HashlineEdit::Prepend { pos, lines } => Ok(resolve_prepend_span(
+            &mut ctx,
+            pos.as_ref(),
+            lines,
+            index,
+            &label,
+        )),
         HashlineEdit::ReplaceText { old_text, new_text } => {
-            if old_text == new_text {
-                noop_edits.push(NoopEdit {
-                    edit_index: index,
-                    loc: format!("replace_text \"{old_text}\""),
-                    current_content: old_text.clone(),
-                });
-                return Ok(None);
-            }
-
-            let found = find_exact_unique_match(content, old_text);
-            match found {
-                None => {
-                    // Check if text doesn't exist at all vs. exists multiple times
-                    if !content.contains(old_text.as_str()) {
-                        return Err(format!(
-                            "[E_NOT_FOUND] replace_text: \"{old_text}\" not found in file."
-                        ));
-                    }
-                    Err(format!(
-                        "[E_NOT_UNIQUE] replace_text: \"{old_text}\" appears more than once."
-                    ))
-                }
-                Some((start, end)) => Ok(Some(ResolvedSpan {
-                    kind: "replace",
-                    index,
-                    label: describe_edit(edit),
-                    start,
-                    end,
-                    replacement: new_text.clone(),
-                    boundary: None,
-                })),
-            }
+            resolve_replace_text_span(&mut ctx, old_text, new_text, index, &label)
         }
+    }
+}
+
+/// Resolves a `Replace` edit (line-range swap) to a byte span.
+fn resolve_replace_span(
+    ctx: &mut ResolveCtx<'_>,
+    pos: &Anchor,
+    end: Option<&Anchor>,
+    lines: &[String],
+    index: usize,
+    label: &str,
+) -> Option<ResolvedSpan> {
+    let start_line = pos.line;
+    let end_line = end.map_or(start_line, |a| a.line);
+
+    // NOOP check
+    let original: Vec<&str> =
+        ctx.file_lines[start_line - 1..end_line.min(ctx.file_lines.len())].to_vec();
+    if original.len() == lines.len() && original.iter().zip(lines.iter()).all(|(a, b)| a == b) {
+        return ctx.record_noop(
+            index,
+            format!("{}#{}", pos.line, pos.hash),
+            original.join("\n"),
+        );
+    }
+
+    let start_byte = ctx.line_starts[start_line - 1];
+    let end_byte = ctx.line_starts[end_line - 1] + ctx.file_lines[end_line - 1].len();
+    let replacement = lines.join("\n");
+
+    Some(ResolvedSpan {
+        kind: "replace",
+        index,
+        label: label.to_owned(),
+        start: start_byte,
+        end: end_byte,
+        replacement,
+        boundary: None,
+    })
+}
+
+/// Resolves an `Append` edit (insert after `pos`, or at EOF) to a byte span.
+fn resolve_append_span(
+    ctx: &mut ResolveCtx<'_>,
+    pos: Option<&Anchor>,
+    lines: &[String],
+    index: usize,
+    label: &str,
+) -> Option<ResolvedSpan> {
+    if lines.is_empty() {
+        // NOOP: inserting nothing
+        return ctx.record_noop(
+            index,
+            pos.map_or("EOF".to_owned(), |a| format!("{}#{}", a.line, a.hash)),
+            String::new(),
+        );
+    }
+
+    let inserted_text = lines.join("\n");
+    if ctx.content.is_empty() {
+        return Some(ResolvedSpan {
+            kind: "insert",
+            index,
+            label: label.to_owned(),
+            start: 0,
+            end: 0,
+            replacement: inserted_text,
+            boundary: Some(0),
+        });
+    }
+
+    let Some(anchor) = pos else {
+        // Append at EOF
+        let replacement = if ctx.has_terminal_newline {
+            format!("{inserted_text}\n")
+        } else {
+            format!("\n{inserted_text}")
+        };
+        return Some(ResolvedSpan {
+            kind: "insert",
+            index,
+            label: label.to_owned(),
+            start: ctx.content.len(),
+            end: ctx.content.len(),
+            replacement,
+            boundary: Some(ctx.file_lines.len()),
+        });
+    };
+
+    let is_sentinel = ctx.has_terminal_newline && anchor.line == ctx.file_lines.len();
+    let insert_pos = if is_sentinel {
+        ctx.content.len()
+    } else {
+        ctx.line_starts[anchor.line - 1] + ctx.file_lines[anchor.line - 1].len()
+    };
+    let replacement = if is_sentinel {
+        format!("{inserted_text}\n")
+    } else {
+        format!("\n{inserted_text}")
+    };
+
+    Some(ResolvedSpan {
+        kind: "insert",
+        index,
+        label: label.to_owned(),
+        start: insert_pos,
+        end: insert_pos,
+        replacement,
+        boundary: Some(anchor.line),
+    })
+}
+
+/// Resolves a `Prepend` edit (insert before `pos`, or at BOF) to a byte span.
+fn resolve_prepend_span(
+    ctx: &mut ResolveCtx<'_>,
+    pos: Option<&Anchor>,
+    lines: &[String],
+    index: usize,
+    label: &str,
+) -> Option<ResolvedSpan> {
+    if lines.is_empty() {
+        return ctx.record_noop(
+            index,
+            pos.map_or("BOF".to_owned(), |a| format!("{}#{}", a.line, a.hash)),
+            String::new(),
+        );
+    }
+
+    let inserted_text = lines.join("\n");
+    let insert_pos = pos.map_or(0, |a| ctx.line_starts[a.line - 1]);
+    let replacement = if ctx.content.is_empty() {
+        inserted_text
+    } else {
+        format!("{inserted_text}\n")
+    };
+
+    Some(ResolvedSpan {
+        kind: "insert",
+        index,
+        label: label.to_owned(),
+        start: insert_pos,
+        end: insert_pos,
+        replacement,
+        boundary: pos.map(|a| a.line.saturating_sub(1)),
+    })
+}
+
+/// Resolves a `ReplaceText` edit (unique-text swap) to a byte span.
+///
+/// Unlike the other resolvers this can fail when `old_text` is absent or
+/// not unique, so it keeps the `Result` return.
+fn resolve_replace_text_span(
+    ctx: &mut ResolveCtx<'_>,
+    old_text: &str,
+    new_text: &str,
+    index: usize,
+    label: &str,
+) -> Result<Option<ResolvedSpan>, String> {
+    if old_text == new_text {
+        return Ok(ctx.record_noop(
+            index,
+            format!("replace_text \"{old_text}\""),
+            old_text.to_owned(),
+        ));
+    }
+
+    let found = find_exact_unique_match(ctx.content, old_text);
+    match found {
+        None => {
+            // Check if text doesn't exist at all vs. exists multiple times
+            if !ctx.content.contains(old_text) {
+                return Err(format!(
+                    "[E_NOT_FOUND] replace_text: \"{old_text}\" not found in file."
+                ));
+            }
+            Err(format!(
+                "[E_NOT_UNIQUE] replace_text: \"{old_text}\" appears more than once."
+            ))
+        }
+        Some((start, end)) => Ok(Some(ResolvedSpan {
+            kind: "replace",
+            index,
+            label: label.to_owned(),
+            start,
+            end,
+            replacement: new_text.to_owned(),
+            boundary: None,
+        })),
     }
 }
 

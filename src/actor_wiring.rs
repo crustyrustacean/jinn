@@ -118,7 +118,7 @@ pub fn create_core_with_actor_host(
     let plugin_request_handler: jinn_plugin::RequestHandler =
         std::sync::Arc::new(crate::plugin_wiring::handle_plugin_request);
 
-    let (sync_plugins, async_plugins, plugin_sync_handle) = jinn_plugin::PluginSystem::new(
+    let (sync_plugins, async_plugins, plugin_sync_handle) = jinn_plugin::PluginSystem::build(
         &paths.plugins_dir(),
         &paths.system_plugins_dir(),
         handle.clone(),

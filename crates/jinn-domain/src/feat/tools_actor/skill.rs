@@ -32,7 +32,6 @@ pub fn definition() -> ToolDefinition {
     }
 }
 
-
 /// Executes the `skill` built-in tool.
 ///
 /// Reads the skill's SKILL.md file, strips YAML frontmatter, and returns the
@@ -66,9 +65,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 truncation: None,
                 pin_position: None,
             };
-       }
-
-
+        }
 
         // Reject disabled skills.
         if let (Some(state), Some(session_id)) = (ctx.state.as_ref(), &ctx.session_id) {
@@ -110,8 +107,6 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             }
         }
 
-
-
         let skill_path = ctx.app_paths.skills_dir().join(&name).join("SKILL.md");
 
         let content = match tokio::fs::read_to_string(&skill_path).await {
@@ -131,9 +126,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
         let body = strip_frontmatter(&content);
         let location = skill_path.to_string_lossy().to_string();
-        let xml = format!(
-            "<skill name=\"{name}\" location=\"{location}\">\n{body}\n</skill>"
-        );
+        let xml = format!("<skill name=\"{name}\" location=\"{location}\">\n{body}\n</skill>");
 
         ToolResult {
             tool_call_id: call.id,
@@ -146,7 +139,6 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         }
     })
 }
-
 
 fn parse_args(raw: &str) -> Result<String, serde_json::Error> {
     let v: serde_json::Value = serde_json::from_str(raw)?;
@@ -261,7 +253,6 @@ mod tests {
         assert!(result.content.contains("failed to parse arguments"));
     }
 
-
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_returns_skill_body_in_tool_result() {
@@ -298,7 +289,9 @@ mod tests {
         // Then if the skill exists, the tool result contains the body wrapped in <skill> XML, pinned Relative.
         if result.success {
             assert!(
-                result.content.starts_with("<skill name=\"phased-task-loop\""),
+                result
+                    .content
+                    .starts_with("<skill name=\"phased-task-loop\""),
                 "tool result should contain the skill body in <skill> XML, got: {}",
                 &result.content[..result.content.len().min(80)]
             );
@@ -309,7 +302,6 @@ mod tests {
             );
         }
     }
-
 
     #[rstest::rstest]
     #[tokio::test]
@@ -370,8 +362,7 @@ mod tests {
             result.content
         );
         assert_eq!(
-            result.pin_position,
-            None,
+            result.pin_position, None,
             "already-loaded rejection should not pin anything"
         );
     }
@@ -391,8 +382,7 @@ mod tests {
         {
             let mut guard = state.write();
             let session = guard.session_mut_or_create(&session_id);
-            let seeded_xml =
-                "<skill name=\"rust-programming\" location=\"/tmp\">\nbody\n</skill>";
+            let seeded_xml = "<skill name=\"rust-programming\" location=\"/tmp\">\nbody\n</skill>";
             let mut entry = ChatEntry::tool_result(
                 "seeded_call_id",
                 "skill",
@@ -428,7 +418,9 @@ mod tests {
         // because the name differs from the already-loaded skill).
         if result.success {
             assert!(
-                result.content.starts_with("<skill name=\"phased-task-loop\""),
+                result
+                    .content
+                    .starts_with("<skill name=\"phased-task-loop\""),
                 "different-name load should succeed with body in <skill> XML, got: {}",
                 &result.content[..result.content.len().min(80)]
             );

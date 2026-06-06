@@ -1,6 +1,6 @@
 //! Plugin system construction — entry point for the entire plugin system.
 //!
-//! [`PluginSystem::new`] discovers plugins, loads them into two Lua states
+//! [`PluginSystem::build`] discovers plugins, loads them into two Lua states
 //! (sync + async), spawns the background thread and drainer tasks, and
 //! returns three handles.
 
@@ -53,10 +53,10 @@ impl PluginSystem {
     ///
     /// Panics if the OS refuses to spawn the plugin-async thread.
     #[expect(
-        clippy::too_many_arguments,
-        reason = "construction takes many inputs by design"
+        clippy::needless_pass_by_value,
+        reason = "trait-object wrappers and runtime handle are intentionally moved into the plugin system"
     )]
-    pub fn new(
+    pub fn build(
         user_dir: &Path,
         system_dir: &Path,
         runtime_handle: tokio::runtime::Handle,
@@ -115,6 +115,10 @@ impl PluginSystem {
         let async_emit_tx = emit_tx.clone_async();
         let async_request_handler = request_handler.clone();
 
+        #[expect(
+            clippy::expect_used,
+            reason = "thread spawn failure is fatal — see `# Panics`"
+        )]
         std::thread::Builder::new()
             .name("plugin-async".to_owned())
             .spawn(move || {
@@ -132,23 +136,13 @@ impl PluginSystem {
             })
             .expect("spawn plugin-async thread");
 
-        let sync = SyncPlugins {
-            lua: sync_lua,
-            hooks: sync_hooks,
-            plugin_data,
-            emit_tx,
-        };
+        let sync = SyncPlugins::new(sync_lua, sync_hooks, plugin_data.clone(), emit_tx);
 
-        let async_handle = AsyncPluginHandle {
-            tx: job_tx.clone(),
-            plugin_data: sync.plugin_data.clone(),
-        };
+        let async_handle = AsyncPluginHandle::new(job_tx.clone(), plugin_data);
 
         // clone_sync() preserves the async sender while creating a new sync
         // sender sharing the same channel internal.
-        let sync_handle = PluginSyncHandle {
-            tx: job_tx.clone_sync(),
-        };
+        let sync_handle = PluginSyncHandle::new(job_tx.clone_sync());
 
         (sync, async_handle, sync_handle)
     }

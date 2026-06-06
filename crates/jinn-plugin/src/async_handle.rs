@@ -90,8 +90,20 @@ pub(crate) enum PluginJob {
 /// Cloning is cheap — just clones a channel sender and an `Arc<DashMap>`.
 #[derive(Clone)]
 pub struct AsyncPluginHandle {
-    pub(crate) tx: kanal::AsyncSender<PluginJob>,
-    pub(crate) plugin_data: PluginData,
+    /// Channel sender for async plugin jobs.
+    tx: kanal::AsyncSender<PluginJob>,
+    /// Shared plugin data store.
+    plugin_data: PluginData,
+}
+
+impl AsyncPluginHandle {
+    /// Construct an async plugin handle from its owned parts.
+    ///
+    /// Called by [`crate::PluginSystem::build`] to wire the async
+    /// background-thread sender and shared plugin-data store.
+    pub(crate) fn new(tx: kanal::AsyncSender<PluginJob>, plugin_data: PluginData) -> Self {
+        Self { tx, plugin_data }
+    }
 }
 
 impl AsyncPluginHandle {
@@ -227,7 +239,7 @@ impl AsyncPluginHandle {
     ///
     /// Returns an error if any of the named plugins cannot be found or
     /// fails to load.
-    pub async fn create_session_registry(
+    pub async fn create_session_registry_impl(
         &self,
         plugin_names: Vec<String>,
     ) -> Result<crate::session_registry::SessionRegistryId, Report<PluginError>> {
@@ -260,7 +272,7 @@ impl AsyncPluginHandle {
     /// # Errors
     ///
     /// Returns an error only if the plugin thread is dead.
-    pub async fn destroy_session_registry(
+    pub async fn destroy_session_registry_impl(
         &self,
         registry_id: crate::session_registry::SessionRegistryId,
     ) -> Result<(), Report<PluginError>> {
@@ -288,7 +300,7 @@ impl jinn_domain::feat::plugin_system::SessionPluginRegistry for AsyncPluginHand
         jinn_domain::feat::plugin_system::SessionRegistryId,
         Report<jinn_domain::feat::plugin_system::SessionPluginRegistryError>,
     > {
-        AsyncPluginHandle::create_session_registry(self, plugin_names)
+        AsyncPluginHandle::create_session_registry_impl(self, plugin_names)
             .await
             .map_err(|_e| Report::new(jinn_domain::feat::plugin_system::SessionPluginRegistryError))
             .attach("create per-session plugin registry")
@@ -298,7 +310,7 @@ impl jinn_domain::feat::plugin_system::SessionPluginRegistry for AsyncPluginHand
         &self,
         registry_id: jinn_domain::feat::plugin_system::SessionRegistryId,
     ) -> Result<(), Report<jinn_domain::feat::plugin_system::SessionPluginRegistryError>> {
-        AsyncPluginHandle::destroy_session_registry(self, registry_id)
+        AsyncPluginHandle::destroy_session_registry_impl(self, registry_id)
             .await
             .map_err(|_e| Report::new(jinn_domain::feat::plugin_system::SessionPluginRegistryError))
             .attach("destroy per-session plugin registry")

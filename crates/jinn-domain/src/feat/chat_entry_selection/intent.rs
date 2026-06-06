@@ -353,6 +353,32 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
     )
 }
 
+/// Common tail for the x-sweep: persist session and emit one
+/// `ContextOverrideChanged` event per entry whose override actually changed.
+fn finalize_sweep(
+    _state: &mut AppState,
+    session_id: crate::protocol::SessionId,
+    changed_ids: Vec<crate::protocol::ChatEntryId>,
+) -> IntentResult {
+    let events: Vec<Event> = changed_ids
+        .into_iter()
+        .map(|id| {
+            Event::ContextOverrideChanged(
+                crate::feat::context::protocol::event::ContextOverrideChanged {
+                    session_id: session_id.clone(),
+                    entry_id: id,
+                },
+            )
+        })
+        .collect();
+    IntentResult::with_commands_and_events(
+        vec![Command::PersistSession(
+            crate::feat::session_lifecycle::protocol::command::PersistSession { session_id },
+        )],
+        events,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
@@ -1841,30 +1867,4 @@ mod tests {
             "first collapsed block should not be expanded"
         );
     }
-}
-
-/// Common tail for the x-sweep: persist session and emit one
-/// `ContextOverrideChanged` event per entry whose override actually changed.
-fn finalize_sweep(
-    _state: &mut AppState,
-    session_id: crate::protocol::SessionId,
-    changed_ids: Vec<crate::protocol::ChatEntryId>,
-) -> IntentResult {
-    let events: Vec<Event> = changed_ids
-        .into_iter()
-        .map(|id| {
-            Event::ContextOverrideChanged(
-                crate::feat::context::protocol::event::ContextOverrideChanged {
-                    session_id: session_id.clone(),
-                    entry_id: id,
-                },
-            )
-        })
-        .collect();
-    IntentResult::with_commands_and_events(
-        vec![Command::PersistSession(
-            crate::feat::session_lifecycle::protocol::command::PersistSession { session_id },
-        )],
-        events,
-    )
 }

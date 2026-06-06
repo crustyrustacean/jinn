@@ -98,7 +98,6 @@ impl std::str::FromStr for Scope {
             "Picker(theme)" => Ok(Self::PickerTheme),
             "Picker(lifecycle)" => Ok(Self::PickerLifecycle),
             "Picker(plugin)" => Ok(Self::PickerPlugin),
-            "Picker(workflow)" => Ok(Self::PickerPlugin), // back-compat
 
             "Picker(compaction-model)" => Ok(Self::PickerCompactionModel),
             "Picker(tool)" => Ok(Self::PickerTool),
