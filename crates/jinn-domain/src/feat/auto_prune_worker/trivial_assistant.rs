@@ -570,6 +570,31 @@ mod tests {
             "age = min_age must NOT be protected (strict less-than)"
         );
     }
+
+    // ------------------------------------------------------------------
+    // 11b. config_alias_max_age_entries_still_parses
+    //
+    // Legacy `max_age_entries` field must still deserialize via serde
+    // alias and populate the new `min_age` field. Back-compat for users
+    // with existing `jinn.toml` files.
+    // ------------------------------------------------------------------
+    #[test]
+    fn config_alias_max_age_entries_still_parses() {
+        // Given a TOML fragment using the legacy `max_age_entries` field.
+        let toml_src = r#"
+            enabled = true
+            max_age_entries = 100
+            max_tokens = 80
+        "#;
+
+        // When deserializing.
+        let config: TrivialAssistantAutoPruneConfig = toml::from_str(toml_src).expect("parse");
+
+        // Then the legacy field populates the new min_age field via serde alias.
+        assert_eq!(config.min_age, 100);
+        assert!(config.enabled);
+        assert_eq!(config.max_tokens, 80);
+    }
     // ------------------------------------------------------------------
     // 11. max_tokens_clamped_to_1
     //

@@ -284,6 +284,29 @@ mod tests {
         assert!(mutations.is_empty(), "age = min_age - 1 is protected");
     }
 
+    // ------------------------------------------------------------------
+    // config_alias_min_tail_entries_still_parses
+    //
+    // Legacy `min_tail_entries` field must still deserialize via serde
+    // alias and populate the new `min_age` field. Back-compat for users
+    // with existing `jinn.toml` files.
+    // ------------------------------------------------------------------
+    #[test]
+    fn config_alias_min_tail_entries_still_parses() {
+        // Given a TOML fragment using the legacy `min_tail_entries` field.
+        let toml_src = r#"
+            enabled = true
+            min_tail_entries = 10
+        "#;
+
+        // When deserializing.
+        let config: BrokenEditAutoPruneConfig = toml::from_str(toml_src).expect("parse");
+
+        // Then the legacy field populates the new min_age field via serde alias.
+        assert_eq!(config.min_age, 10);
+        assert!(config.enabled);
+    }
+
     #[test]
     fn already_excluded_call_produces_no_duplicate_mutation() {
         let mut history = history_with_failed_edit_and_tail("/foo.rs", 100);
