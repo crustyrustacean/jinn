@@ -1361,7 +1361,6 @@ mod tests {
         assert_eq!(number_val.port_type(), PortType::Single(ScalarType::Number));
     }
 
-    // --- Mutant-killing tests for port.rs ---
 
     // Kills: get_number -> Ok(0.0), Ok(1.0), Ok(-1.0)
     #[test]

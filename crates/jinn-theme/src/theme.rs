@@ -97,6 +97,12 @@ pub struct Theme {
     /// Sidebar resize mode border color.
     pub sidebar_resize_accent: Color,
 
+    // Chat input submit-mode badge
+    /// Color for the `[QUEUE]` mode badge on the chat input border.
+    pub input_mode_queue: Color,
+    /// Color for the `[STEER]` mode badge on the chat input border.
+    pub input_mode_steer: Color,
+
     // Info popup
     /// Background color for info/debug popup overlays (audit, debug, etc.).
     pub infopopup_bg: Color,
@@ -188,6 +194,11 @@ pub struct ThemeFile {
     #[serde(default)]
     pub sidebar_resize_accent: Option<ThemeColor>,
 
+    #[serde(default)]
+    pub input_mode_queue: Option<ThemeColor>,
+    #[serde(default)]
+    pub input_mode_steer: Option<ThemeColor>,
+
     // Info popup
     #[serde(default)]
     pub infopopup_bg: Option<ThemeColor>,
@@ -198,6 +209,7 @@ pub struct ThemeFile {
     #[serde(default)]
     pub infopopup_fg: Option<ThemeColor>,
 }
+
 
 impl ThemeFile {
     /// Resolves this file into a full [`Theme`], filling missing fields
@@ -319,6 +331,15 @@ impl ThemeFile {
                 fallback.sidebar_resize_accent,
                 crate::color::ThemeColor::inner,
             ),
+
+            input_mode_queue: self.input_mode_queue.map_or(
+                fallback.input_mode_queue,
+                crate::color::ThemeColor::inner,
+            ),
+            input_mode_steer: self.input_mode_steer.map_or(
+                fallback.input_mode_steer,
+                crate::color::ThemeColor::inner,
+            ),
             infopopup_bg: self
                 .infopopup_bg
                 .map_or(fallback.infopopup_bg, crate::color::ThemeColor::inner),
@@ -383,6 +404,12 @@ impl ThemeFile {
             infopopup_title: Self::resolve_field(self.infopopup_title),
             infopopup_border: Self::resolve_field(self.infopopup_border),
             infopopup_fg: Self::resolve_field(self.infopopup_fg),
+            input_mode_queue: self
+                .input_mode_queue
+                .map_or(Color::Reset, crate::color::ThemeColor::inner),
+            input_mode_steer: self
+                .input_mode_steer
+                .map_or(Color::Reset, crate::color::ThemeColor::inner),
         }
     }
 }
@@ -428,6 +455,8 @@ mod tests {
             age_stale: None,
             scroll_indicator_bg: None,
             sidebar_resize_accent: None,
+            input_mode_queue: None,
+            input_mode_steer: None,
             infopopup_bg: None,
             infopopup_title: None,
             infopopup_border: None,
@@ -486,6 +515,8 @@ mod tests {
             age_stale: None,
             scroll_indicator_bg: None,
             sidebar_resize_accent: None,
+            input_mode_queue: None,
+            input_mode_steer: None,
             infopopup_bg: None,
             infopopup_title: None,
             infopopup_border: None,
@@ -557,6 +588,8 @@ mod tests {
             infopopup_border: Some(ThemeColor(Color::Cyan)),
             infopopup_fg: Some(ThemeColor(Color::Rgb(220, 220, 220))),
             popup_title: Some(ThemeColor(Color::Yellow)),
+            input_mode_queue: Some(ThemeColor(Color::DarkGray)),
+            input_mode_steer: Some(ThemeColor(Color::Magenta)),
         };
 
         // When serializing to TOML and back.
@@ -569,5 +602,66 @@ mod tests {
             restored.resolve().focus_accent
         );
         assert_eq!(original.resolve().gutter_bg, restored.resolve().gutter_bg);
+        assert_eq!(
+            original.resolve().input_mode_queue,
+            restored.resolve().input_mode_queue
+        );
+        assert_eq!(
+            original.resolve().input_mode_steer,
+            restored.resolve().input_mode_steer
+        );
+    }
+
+    #[test]
+    fn input_mode_fields_fall_back_when_absent() {
+        // Given a ThemeFile with both input_mode fields explicitly None.
+        let fallback = crate::default_theme::default_theme();
+        let sparse = ThemeFile {
+            focus_accent: None,
+            border_unfocused: None,
+            popup_title: None,
+            primary_text: None,
+            muted_text: None,
+            error_text: None,
+            success: None,
+            warning: None,
+            streaming: None,
+            node_awaiting_input: None,
+            gutter_bg: None,
+            gutter_context_included: None,
+            user_block_bg: None,
+            tool_fg: None,
+            tool_success_bg: None,
+            tool_failure_bg: None,
+            tool_pending_bg: None,
+            compaction_block_bg: None,
+            truncation_fg: None,
+            picker_active_marker: None,
+            picker_selected_bg: None,
+            picker_highlight_bg: None,
+            tab_active_fg: None,
+            tab_active_bg: None,
+            tab_inactive_fg: None,
+            selection_fg: None,
+            selection_bg: None,
+            accent_action: None,
+            age_fresh: None,
+            age_stale: None,
+            scroll_indicator_bg: None,
+            sidebar_resize_accent: None,
+            input_mode_queue: None,
+            input_mode_steer: None,
+            infopopup_bg: None,
+            infopopup_title: None,
+            infopopup_border: None,
+            infopopup_fg: None,
+        };
+
+        // When resolving with the fallback.
+        let resolved = sparse.resolve_with_fallback(&fallback);
+
+        // Then both fields take the fallback values.
+        assert_eq!(resolved.input_mode_queue, fallback.input_mode_queue);
+        assert_eq!(resolved.input_mode_steer, fallback.input_mode_steer);
     }
 }

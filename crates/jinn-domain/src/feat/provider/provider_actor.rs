@@ -132,7 +132,8 @@ impl ProviderActor {
             | Command::ExecuteWebFetch(..)
             | Command::AttachPlugin(..)
             | Command::DetachPlugin(..)
-            | Command::TogglePlugin(..) => {}
+            | Command::TogglePlugin(..)
+            | Command::SubmitSteeringMessage(..) => {}
         }
     }
 
@@ -866,7 +867,6 @@ mod tests {
         assert_eq!(cache.entries["anthropic"][0].context_length, Some(200_000));
     }
 
-    // --- S-Tier: Kill mutants for provider_actor dispatch and handlers ---
 
     #[rstest::rstest]
     #[tokio::test]

@@ -468,7 +468,6 @@ mod tests {
         assert_eq!(state.frontend.rename_session_input.cursor_pos, 1);
     }
 
-    // --- Boundary tests for off-by-one mutant killing ---
 
     #[rstest::rstest]
     fn handle_delete_noop_at_position_zero() {

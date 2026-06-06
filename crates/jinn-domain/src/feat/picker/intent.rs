@@ -709,7 +709,6 @@ mod tests {
     use jinn_selection_widget::TreeItem;
     use std::path::PathBuf;
 
-    // --- A-Tier: Kill mutants for picker confirm and validation ---
 
     #[rstest::rstest]
     fn confirm_provider_rejects_unavailable() {
@@ -842,7 +841,6 @@ mod tests {
         assert!(!result.commands.is_empty());
     }
 
-    // --- A-Tier: Kill mutant for == with != in confirm_session_lifecycle ---
 
     #[rstest::rstest]
     fn confirm_session_lifecycle_finds_correct_lifecycle_for_args() {
@@ -897,7 +895,6 @@ mod tests {
         );
     }
 
-    // --- B-Tier: Kill mutant for replace load_lifecycle_picker_entries with () ---
 
     #[rstest::rstest]
     fn load_lifecycle_picker_entries_populates_picker() {

@@ -524,7 +524,7 @@ mod tests {
     fn handle_submit_history_mutations_emits_context_override_changed_on_change() {
         // Given a session with one entry at Default.
         let actor = test_actor();
-        let (sink, mut ctx) = crate::feat::session::session_actor::helpers::test_context();
+        let (sink, ctx) = crate::feat::session::session_actor::helpers::test_context();
         // Override actor's state to use our sink-equipped context for event capture.
         let session_id = {
             let mut state = actor.state.write();

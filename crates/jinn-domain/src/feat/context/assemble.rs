@@ -425,6 +425,65 @@ mod tests {
     }
 
     #[test]
+    fn assemble_prompt_drained_steering_sits_at_tail_preserving_tool_pairing() {
+        // Given a tool_call/tool_result pair followed by a drained steering entry.
+        let assistant = ChatEntry::assistant("using tool");
+        let tool_result = ChatEntry::tool_result(
+            "call-1",
+            "bash",
+            "ok",
+            crate::feat::session::tool_result_status::ToolResultStatus::Success,
+        );
+        let steer = ChatEntry::user_expanded("stay at the foo part", "stay at the foo part");
+        let (state, session_id) =
+            state_with_history(vec![ChatEntry::user("initial"), assistant, tool_result, steer]);
+
+        // When assembling.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then the steering entry sits at the tail of the messages.
+        let last = result.messages.last().expect("has last message");
+        match last {
+            LlmMessage::User { content } => {
+                assert_eq!(content, "stay at the foo part");
+            }
+            other => panic!("expected User (steering) at tail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn assemble_prompt_steering_and_bottom_pin_coexist_at_respective_positions() {
+        // Given a user-pinned entry and a tail steering entry.
+        use crate::feat::session::chat_entry::PinPosition;
+        let pinned = ChatEntry::user("pinned constraint").with_pin(PinPosition::Bottom);
+        let middle = ChatEntry::user("middle");
+        let assistant = ChatEntry::assistant("response");
+        let steer = ChatEntry::user_expanded("steer msg", "steer msg");
+        let entries = vec![pinned, middle, assistant, steer];
+        let (state, session_id) = state_with_history(entries);
+
+        // When assembling.
+        let guard = state.read();
+        let result = assemble_prompt(&guard, &session_id, &counter(), None);
+
+        // Then both the pinned message and the steering message appear in the assembled prompt.
+        let body = result.messages.iter().map(|m| match m {
+            LlmMessage::User { content } => content.as_str(),
+            _ => "",
+        }).collect::<Vec<_>>();
+        assert!(
+            body.iter().any(|s| s.contains("pinned constraint")),
+            "pinned message must appear in prompt: {body:?}"
+        );
+        assert!(
+            body.iter().any(|s| s.contains("steer msg")),
+            "steering message must appear in prompt: {body:?}"
+        );
+        // Steering entry remains at the tail.
+        assert_eq!(body.last().copied(), Some("steer msg"));
+    }
+    #[test]
     fn assemble_prompt_excludes_thinking_entries() {
         // Given a session with a thinking entry and a user message.
         let thinking = ChatEntry::thinking("internal thoughts");
@@ -860,7 +919,6 @@ mod tests {
         assert_eq!(result.tool_definitions[0].name, "bash");
     }
 
-    // --- Mutant-killing tests ---
 
     #[test]
     fn assemble_prompt_uses_matching_persona() {

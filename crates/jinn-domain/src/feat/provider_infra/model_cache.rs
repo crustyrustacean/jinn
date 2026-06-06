@@ -279,7 +279,6 @@ mod tests {
         assert!(result.unwrap().is_none());
     }
 
-    // --- S-Tier: Kill mutant for cache_path ---
 
     #[rstest::rstest]
     fn cache_path_returns_nonempty_path() {

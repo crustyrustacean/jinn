@@ -274,7 +274,6 @@ mod tests {
         assert!(guard.frontend.preferences.last_strategy.is_none());
     }
 
-    // --- S-Tier: Kill mutant for persona_name == condition ---
 
     #[rstest::rstest]
     #[tokio::test]

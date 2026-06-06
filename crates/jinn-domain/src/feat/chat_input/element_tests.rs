@@ -92,9 +92,9 @@ fn render_input_mode_yellow_border() {
         })
         .unwrap();
 
-    // Then the bottom border is yellow.
+    // Then the bottom border is yellow (sample a cell away from the badge at x=1).
     let buffer = terminal.backend().buffer().clone();
-    let cell = buffer.cell((0, 2)).expect("cell should exist");
+    let cell = buffer.cell((20, 2)).expect("cell should exist");
     assert_eq!(cell.style().fg, Some(default_theme().focus_accent));
 }
 
@@ -590,4 +590,123 @@ fn render_cursor_mixed_ascii_cjk() {
     terminal
         .backend_mut()
         .assert_cursor_position(ratatui::layout::Position { x: 5, y: 0 });
+}
+
+// ===== Mode badge rendering tests =====
+
+#[rstest::rstest]
+fn render_queue_badge_in_queue_mode() {
+    // Given a ChatInputBoxElement in default (Queue) mode with empty buffer.
+    let mut element = ChatInputBoxElement;
+    let state = AppState::default();
+
+    let (mut terminal, area) = setup_term(40, 3);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the bottom border shows [QUEUE] starting at x=0 (left-aligned to edge).
+    let buffer = terminal.backend().buffer().clone();
+    let bracket_cell = buffer.cell((0, 2)).expect("cell should exist");
+    assert_eq!(bracket_cell.symbol(), "[");
+    assert_eq!(bracket_cell.style().fg, Some(default_theme().input_mode_queue));
+    let q_cell = buffer.cell((1, 2)).expect("cell should exist");
+    assert_eq!(q_cell.symbol(), "Q");
+}
+
+#[rstest::rstest]
+fn render_steer_badge_in_steer_mode() {
+    // Given a ChatInputBoxElement toggled to Steer mode.
+    let mut element = ChatInputBoxElement;
+    let state = {
+        let mut s = AppState::default();
+        s.active_chat_input_mut().toggle_input_mode();
+        s
+    };
+
+    let (mut terminal, area) = setup_term(40, 3);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the bottom border shows [STEER] in the steer color, starting at x=0.
+    let buffer = terminal.backend().buffer().clone();
+    let bracket_cell = buffer.cell((0, 2)).expect("cell should exist");
+    assert_eq!(bracket_cell.symbol(), "[");
+    assert_eq!(bracket_cell.style().fg, Some(default_theme().input_mode_steer));
+    let s_cell = buffer.cell((1, 2)).expect("cell should exist");
+    assert_eq!(s_cell.symbol(), "S");
+}
+
+
+#[rstest::rstest]
+fn render_steer_badge_shows_buffer_count_when_nonzero() {
+    // Given Steer mode with 2 fragments buffered.
+    let mut element = ChatInputBoxElement;
+    let state = {
+        let mut s = AppState::default();
+        s.active_chat_input_mut().toggle_input_mode();
+        s.active_session_mut()
+            .steering_buffer_mut()
+            .push_fragment("first".to_owned());
+        s.active_session_mut()
+            .steering_buffer_mut()
+            .push_fragment("second".to_owned());
+        s
+    };
+
+    let (mut terminal, area) = setup_term(40, 3);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the badge shows [STEER · 2] (11 chars), starting at x=0.
+    let buffer = terminal.backend().buffer().clone();
+    let bracket_cell = buffer.cell((0, 2)).expect("cell should exist");
+    assert_eq!(bracket_cell.symbol(), "[");
+    let count_cell = buffer.cell((10, 2)).expect("cell should exist");
+    assert_eq!(count_cell.symbol(), "]");
+    // Separator dot at position 7 within the 11-char badge: x = 0 + 7 = 7.
+    let dot_cell = buffer.cell((7, 2)).expect("cell should exist");
+    assert_eq!(dot_cell.symbol(), "·");
+}
+
+#[rstest::rstest]
+fn render_queue_badge_no_count_when_buffer_empty() {
+    // Given Queue mode (default) - even if buffer had fragments, badge width is just [QUEUE].
+    let mut element = ChatInputBoxElement;
+    let state = AppState::default();
+
+    let (mut terminal, area) = setup_term(40, 3);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the bracket sits at x = 0 (badge is 7 chars wide: x=0..6).
+    let buffer = terminal.backend().buffer().clone();
+    let bracket_cell = buffer.cell((0, 2)).expect("cell should exist");
+    assert_eq!(bracket_cell.symbol(), "[");
+    // x = 7 (right after badge) should be the bottom-border line character.
+    let right_cell = buffer.cell((7, 2)).expect("cell should exist");
+    assert_eq!(right_cell.symbol(), "─");
 }

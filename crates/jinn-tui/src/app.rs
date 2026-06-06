@@ -136,14 +136,14 @@ impl TuiApp {
                             scope = ?self.which_key.scope(),
                             "key event received"
                         );
-                        tracing::info!(?protocol_key, scope = ?self.which_key.scope(), "DIAG handle_key ENTER");
+
                         let intent_opt = self.which_key.handle_key(protocol_key);
-                        tracing::info!(?intent_opt, "DIAG handle_key result");
+
                         let Some(intent) = intent_opt else {
-                            tracing::info!("DIAG handle_key returned None — key dropped");
+
                             return;
                         };
-                        tracing::info!(?intent, "DIAG calling route_intent");
+
                         self.route_intent(intent);
                     }
                     crossterm::event::Event::Mouse(mouse) => {
@@ -232,18 +232,13 @@ impl TuiApp {
         reason = "Intent is consumed by intent routing, ownership is semantic"
     )]
     pub fn route_intent(&mut self, intent: Intent) {
-        tracing::info!(?intent, "DIAG route_intent ENTER");
+
         // Step 1–3: Handle intent, collect results, release lock.
         let (commands, events, signals) = {
             let mut state = self.core.state.write();
-            tracing::info!(?intent, "DIAG route_intent got write lock");
+
             let result = IntentHandler::handle(&intent, &mut state);
-            tracing::info!(
-                cmd_count = result.commands.len(),
-                event_count = result.events.len(),
-                ?intent,
-                "DIAG route_intent handler returned"
-            );
+
 
             // Cancel selection when mode changes away from Picker.
             if matches!(intent, Intent::EnterNormalMode | Intent::NormalEscape) {
@@ -254,37 +249,24 @@ impl TuiApp {
             let signals = signals::TuiSignalsSnapshot::from_state(&state);
             let commands = result.commands;
             let events = result.events;
-
-            tracing::info!(?commands, ?events, "DIAG route_intent result collected");
             (commands, events, signals)
         };
 
         // Step 4: Send commands to core channel.
-        tracing::info!(
-            cmd_count = commands.len(),
-            "DIAG route_intent sending commands"
-        );
-        for (i, cmd) in commands.iter().enumerate() {
-            tracing::info!(idx = i, ?cmd, "DIAG route_intent sending command");
-            let send_result = self.core.sender().send(AppMsg::Command {
+        for cmd in &commands {
+            let _ = self.core.sender().send(AppMsg::Command {
                 command: cmd.clone(),
                 source: None,
             });
-            tracing::info!(idx = i, ?send_result, "DIAG route_intent send result");
         }
 
         // Step 5: Send events to core channel.
-        tracing::info!(
-            event_count = events.len(),
-            "DIAG route_intent sending events"
-        );
-        for (i, event) in events.iter().enumerate() {
-            tracing::info!(idx = i, ?event, "DIAG route_intent sending event");
-            let send_result = self.core.sender().send(AppMsg::Event {
+
+        for event in &events {
+            let _ = self.core.sender().send(AppMsg::Event {
                 event: event.clone(),
                 source: None,
             });
-            tracing::info!(idx = i, ?send_result, "DIAG route_intent event send result");
         }
 
         // Step 6: Handle TUI signals.

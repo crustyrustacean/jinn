@@ -1,11 +1,9 @@
 //! Tests for DiscoverActor - command dispatch and handle routing.
 //!
-//! These tests kill mutants related to the actor's command dispatch
 //! (handle, handle_command, RefreshModels match arm) by verifying
 //! that commands are received and processed.
 //!
 //! Note: Testing the full `refresh_models` flow requires actual network calls,
-//! so those specific mutants are killed by integration tests instead.
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
