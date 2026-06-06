@@ -74,6 +74,10 @@ mod tests {
             ("sidebar_resize_accent", theme.sidebar_resize_accent),
             ("input_mode_queue", theme.input_mode_queue),
             ("input_mode_steer", theme.input_mode_steer),
+            ("infopopup_bg", theme.infopopup_bg),
+            ("infopopup_title", theme.infopopup_title),
+            ("infopopup_border", theme.infopopup_border),
+            ("infopopup_fg", theme.infopopup_fg),
         ];
 
         for (name, color) in &fields {

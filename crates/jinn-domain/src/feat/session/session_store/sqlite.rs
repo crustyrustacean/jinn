@@ -393,6 +393,7 @@ struct EntryRow {
     id: Option<String>,
     timestamp: String,
     kind: String,
+    context_history: String,
 }
 
 /// Insert model for the `entries` table.
@@ -402,6 +403,7 @@ struct NewEntryRow {
     id: String,
     timestamp: String,
     kind: String,
+    context_history: String,
 }
 
 /// Reading model for the `session_history` table.
@@ -795,15 +797,24 @@ fn save_blocking(
                 .map_err(|e| diesel::result::Error::SerializationError(Box::new(e)))?;
             let pin_str = entry.pin_position.map(|p| p.to_string());
 
-            // Insert entry (ignore if already exists - shared across sessions).
+            // Serialize audit trail (empty array if no events recorded).
+            let context_history_json = serde_json::to_string(&entry.context_history)
+                .map_err(|e| diesel::result::Error::SerializationError(Box::new(e)))?;
+
+            // Insert entry. On conflict (entry shared across sessions), update
+            // context_history since it mutates after first insertion via
+            // `apply_context_override`.
+            let context_history_value = context_history_json.clone();
             insert_into(entries::table)
                 .values(&NewEntryRow {
                     id: entry_id_str.clone(),
                     timestamp: timestamp_str,
                     kind: kind_json,
+                    context_history: context_history_json,
                 })
                 .on_conflict(entries::dsl::id)
-                .do_nothing()
+                .do_update()
+                .set(entries::dsl::context_history.eq(context_history_value))
                 .execute(txn)?;
 
             // Insert junction row.
@@ -950,6 +961,19 @@ fn load_session_blocking(
                     }
                 });
             chat_entry.restore_context_override(override_value);
+
+            // Restore audit trail. Empty array (default) loads as Vec::new().
+            // Corrupt JSON falls back to empty with a warning.
+            chat_entry.context_history = serde_json::from_str(&entry.context_history)
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        entry_id = %chat_entry.id.as_uuid(),
+                        raw = %entry.context_history,
+                        error = %e,
+                        "failed to deserialize context_history, falling back to empty"
+                    );
+                    Vec::new()
+                });
             chat_entry
         })
         .collect();
@@ -1488,6 +1512,97 @@ mod tests {
             loaded.steering_buffer().len(),
             0,
             "loaded buffer len should be zero"
+        );
+    }
+
+    // ── context_history persistence ─────────────────────────────────
+
+    #[tokio::test]
+    async fn context_history_survives_persistence_round_trip() {
+        // Given an entry pre-populated with two audit events.
+        use crate::feat::session::chat_entry::ChangeSource;
+
+        let store = fresh_store();
+        let mut entry = ChatEntry::user("hello world");
+        entry.apply_context_override(ContextOverride::ForcedExclude, ChangeSource::User);
+        entry.apply_context_override(
+            ContextOverride::ForcedInclude,
+            ChangeSource::Worker {
+                name: "compactor".to_owned(),
+            },
+        );
+        let entry_id = entry.id.clone();
+        let mut session = ChatSessionState::new();
+        session.push_entry(entry);
+        store.save(&session).await.expect("save");
+
+        // When reloading the session.
+        let loaded = store
+            .load_session(session.session_id())
+            .await
+            .expect("load")
+            .expect("session should exist");
+
+        // Then the audit trail is preserved with both events in order.
+        let loaded_entry = loaded
+            .history()
+            .iter()
+            .find(|e| e.id == entry_id)
+            .expect("entry should exist");
+        assert_eq!(
+            loaded_entry.context_history.len(),
+            2,
+            "both audit events should survive the round trip"
+        );
+
+        // And the first event records Default -> ForcedExclude by the user.
+        assert_eq!(
+            loaded_entry.context_history[0].from,
+            ContextOverride::Default
+        );
+        assert_eq!(
+            loaded_entry.context_history[0].to,
+            ContextOverride::ForcedExclude
+        );
+        assert!(matches!(
+            &loaded_entry.context_history[0].source,
+            ChangeSource::User
+        ));
+
+        // And the second event records ForcedExclude -> ForcedInclude by the compactor.
+        assert_eq!(
+            loaded_entry.context_history[1].from,
+            ContextOverride::ForcedExclude
+        );
+        assert_eq!(
+            loaded_entry.context_history[1].to,
+            ContextOverride::ForcedInclude
+        );
+        assert!(matches!(
+            &loaded_entry.context_history[1].source,
+            ChangeSource::Worker { name } if name == "compactor"
+        ));
+    }
+
+    #[tokio::test]
+    async fn context_history_loads_as_empty_for_entries_with_default_value() {
+        // Given a freshly-saved session with no audit events.
+        let store = fresh_store();
+        let session = make_session();
+        let id = session.session_id().clone();
+        store.save(&session).await.expect("save");
+
+        // When reloading.
+        let loaded = store
+            .load_session(&id)
+            .await
+            .expect("load")
+            .expect("session should exist");
+
+        // Then the entry has an empty context_history (not an error).
+        assert!(
+            loaded.history()[0].context_history.is_empty(),
+            "fresh entry should have no audit events"
         );
     }
 }

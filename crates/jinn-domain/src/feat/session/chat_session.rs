@@ -1561,6 +1561,43 @@ impl ChatSessionState {
         self.ui.last_max_offset.store(max_offset, Ordering::Relaxed);
     }
 
+    /// Returns the screen-space Y coordinate of the top of the currently-selected
+    /// chat entry within the chat-log area, or `None` if no entry is selected or
+    /// the render-pipeline cache is empty.
+    ///
+    /// The returned Y is in terminal (absolute) coordinates: it already incorporates
+    /// `chat_log_area_y` and `blank_count`. Callers can pass it directly as the
+    /// `entry_top_y` argument to
+    /// [`audit_popup_rect`](crate::feat::ui::chat_log::audit_popup::audit_popup_rect).
+    ///
+    /// If the selected entry's top is scrolled above the viewport, returns
+    /// `chat_log_area_y` (clamped to the top of the chat-log area).
+    ///
+    /// Returns a meaningful value only after the chat-log render pipeline has
+    /// populated the cached fields for the current frame.
+    pub fn selected_entry_screen_y(&self, chat_log_area_y: u16) -> Option<u16> {
+        let vi_idx = self.selected_entry_index()?;
+        let ranges = self.ui.entry_line_ranges.read();
+        let &(start, _end) = ranges.get(vi_idx)?;
+        drop(ranges);
+
+        let blank_count = self.ui.blank_count.load(Ordering::Relaxed);
+        let scroll_offset = self.ui.rendered_scroll_offset.load(Ordering::Relaxed);
+
+        // wrapped-line coord of entry top, with bottom-alignment blank padding
+        let abs_start = start.saturating_add(blank_count);
+
+        // viewport top in the same coord space
+        let viewport_top = scroll_offset;
+
+        // visible-Y offset within viewport (0 = top of chat-log area)
+        let viewport_offset = abs_start.saturating_sub(viewport_top);
+
+        // absolute screen Y; clamped to chat-log area top
+        let screen_y = chat_log_area_y.saturating_add(viewport_offset);
+        Some(screen_y)
+    }
+
     /// Store the rendered scroll offset (actual viewport position after clamping
     /// and scroll-to-selected adjustment). Called by the render pipeline each frame.
     pub fn set_rendered_scroll_offset(&self, offset: u16) {
