@@ -93,13 +93,15 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         };
 
         let phase_id;
+        let next_block;
         let rendered;
         {
             let mut w = state.write();
             let session = w.session_mut(&session_id);
             let list = session.task_list_mut();
             phase_id = list.add_phase(&description);
-            rendered = list.render_text();
+            next_block = list.render_next_block();
+            rendered = list.render_text_with_blockers();
         }
 
         if let Some(sink) = &ctx.sink {
@@ -113,7 +115,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         ToolResult {
             tool_call_id: call.id,
             name: call.name,
-            content: format!("Created phase [{phase_id}].\n\n{rendered}"),
+            content: format!("{next_block}\nCreated phase [{phase_id}].\n\n{rendered}"),
             success: true,
             full_content: None,
             truncation: None,
@@ -125,6 +127,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 mod tests {
     use crate::common::app_state::AppState;
     use crate::common::state::State;
+    use crate::feat::todo_list::TaskPosition;
     use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext};
     use crate::protocol::SessionId;
 
@@ -218,5 +221,63 @@ mod tests {
         let result = futures::executor::block_on(result);
         assert!(!result.success);
         assert!(result.content.contains("missing 'description'"));
+    }
+
+    #[test]
+    fn add_phase_return_has_next_block_at_top() {
+        let app = AppState::default();
+        let state = State::new(app);
+        let session_id = {
+            let r = state.read();
+            r.session.active_session_id().clone()
+        };
+        let call = ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_add_phase".to_owned(),
+            arguments: r#"{"description": "Research"}"#.to_owned(),
+        };
+        let ctx = make_context(Some(state), Some(session_id));
+        let result = execute(call, ctx);
+        let result = futures::executor::block_on(result);
+        assert!(result.success);
+        // Empty list has no tasks to point at; NEXT block is empty (no leading '\u{2192}').
+        assert!(
+            !result.content.starts_with("\u{2192}"),
+            "empty task list should produce no NEXT block, got: {:?}",
+            result.content
+        );
+        assert!(result.content.contains("Created phase"));
+    }
+
+    #[test]
+    fn add_phase_new_trailing_phase_renders_with_blocker_when_active_phase_has_work() {
+        // Existing phase has a pending task; the newly added trailing phase
+        // has no tasks yet, so it must NOT carry the blocker prefix (no pending work).
+        let app = AppState::default();
+        let state = State::new(app);
+        let session_id = {
+            let r = state.read();
+            r.session.active_session_id().clone()
+        };
+        {
+            let mut w = state.write();
+            let session = w.session_mut(&session_id);
+            let p1 = session.task_list_mut().add_phase("First");
+            session
+                .task_list_mut()
+                .add_task(&p1, "work", TaskPosition::End)
+                .unwrap();
+        }
+        let call = ToolCall {
+            id: "call-1".to_owned(),
+            name: "todo_add_phase".to_owned(),
+            arguments: r#"{"description": "Second"}"#.to_owned(),
+        };
+        let ctx = make_context(Some(state.clone()), Some(session_id));
+        let result = execute(call, ctx);
+        let result = futures::executor::block_on(result);
+        assert!(result.success);
+        // Second phase has no pending tasks (empty), so it renders without prefix.
+        assert!(!result.content.contains("(Blocked by previous phase)"));
     }
 }

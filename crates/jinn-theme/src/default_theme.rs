@@ -72,6 +72,10 @@ mod tests {
             ("age_stale", theme.age_stale),
             ("scroll_indicator_bg", theme.scroll_indicator_bg),
             ("sidebar_resize_accent", theme.sidebar_resize_accent),
+            ("infopopup_bg", theme.infopopup_bg),
+            ("infopopup_title", theme.infopopup_title),
+            ("infopopup_border", theme.infopopup_border),
+            ("infopopup_fg", theme.infopopup_fg),
         ];
 
         for (name, color) in &fields {

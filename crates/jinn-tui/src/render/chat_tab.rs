@@ -1,5 +1,6 @@
 //! Chat tab rendering - dispatches to individual chat sub-components.
 
+pub mod audit_popup;
 pub mod autocomplete;
 pub mod border;
 pub mod chat_bottom_line;
@@ -62,6 +63,9 @@ pub(super) fn render_chat_tab(
         ctx,
         rects,
     );
+
+    // Audit popup overlay - renders above the chat log when toggled on.
+    audit_popup::render_audit_popup(frame, chat_log_area, ctx, rects);
 
     // Streaming indicator.
     let indicator_y = content_area.y + content_area.height.saturating_sub(bottom_lines);

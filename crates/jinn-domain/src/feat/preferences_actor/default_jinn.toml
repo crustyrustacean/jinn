@@ -1,0 +1,145 @@
+# jinn default configuration
+#
+# This file is auto-generated on first run. Comments are preserved across
+# saves, so feel free to annotate values that you have customized.
+#
+# Defaults reflect `UserPreferences::default()` exactly; a unit test in
+# `user_preferences.rs` (round-trip equality) guards against drift.
+
+# ---------------------------------------------------------------------------
+# Runtime state (will be moved to a separate state file in a future release)
+# ---------------------------------------------------------------------------
+
+# Last model chosen in the model picker.
+# last_model = "provider/model-name"
+
+# Last strategy chosen in the strategy picker.
+# last_strategy = "balanced"
+
+# Sidebar column width in characters.
+# sidebar_width = 30
+
+# ---------------------------------------------------------------------------
+# Session lifecycle recipes
+# ---------------------------------------------------------------------------
+#
+# Define named command sequences that run automatically when a session
+# transitions between states (e.g. on creation, before compaction, on close).
+# Uncomment and edit the example below to get started.
+#
+# [[session_lifecycle]]
+# name = "startup-summary"
+# on = "session_created"
+# steps = [
+#     { kind = "bash", command = "git status --short" },
+#     { kind = "message", text = "Welcome back." },
+# ]
+
+session_lifecycle = []
+
+# ---------------------------------------------------------------------------
+# Context compaction
+# ---------------------------------------------------------------------------
+
+[compaction]
+# Compact the conversation when the used context window exceeds this fraction.
+threshold = 0.7
+# Number of tokens to reserve for the next reply after compaction.
+reserve_tokens = 20000
+# Fallback context window size (in tokens) when the provider does not report one.
+fallback_context_window = 150000
+
+# ---------------------------------------------------------------------------
+# Sliding-window context budget
+# ---------------------------------------------------------------------------
+
+[context_sliding_window]
+# Number of recent turns kept verbatim when budgeting the context window.
+size = 5
+
+# ---------------------------------------------------------------------------
+# Provider request retry policy
+# ---------------------------------------------------------------------------
+
+[request_retry]
+max_retries = 5
+base_delay_secs = 2
+max_delay_secs = 60
+
+# ---------------------------------------------------------------------------
+# Tool backends
+# ---------------------------------------------------------------------------
+
+[web_fetch]
+# HTTP backend used by the web_fetch tool. One of: "http".
+backend = "http"
+
+[openrouter_web_search]
+# Search engine used by the openrouter_web_search tool. One of: "exa".
+engine = "exa"
+
+[cwd_selector]
+# Shell command template run by the cwd_selector tool. `{path}` is replaced
+# with the starting directory. Must print a single absolute path on stdout.
+command = "find -L {path} -type d 2>/dev/null | fzf --no-multi"
+
+[minimap]
+# Maximum number of tokens the minimap may consume.
+max_tokens = 2000
+
+# ---------------------------------------------------------------------------
+# Auto-prune rules
+# ---------------------------------------------------------------------------
+#
+# Each rule removes specific kinds of low-value entries from the conversation
+# history before context compaction kicks in. Disable any rule by setting
+# `enabled = false`.
+
+[auto_prune.read_edit]
+enabled = true
+# Minimum age (in turns from the end of the conversation) before a read-edit
+# pair becomes eligible for pruning.
+min_age = 50
+
+[auto_prune.regex]
+enabled = true
+# User-supplied regex rules. Each entry is a struct; see the README for shape.
+rules = []
+
+[auto_prune.broken_edit]
+enabled = true
+# Only prune a broken-edit pattern when at least this many tail entries exist.
+min_tail_entries = 10
+
+[auto_prune.todo]
+enabled = true
+
+[auto_prune.double_edit]
+enabled = true
+max_file_edits = 2
+min_age = 20
+
+[auto_prune.consecutive_reads]
+enabled = true
+keep_last = 3
+
+[auto_prune.tool_age_window]
+enabled = true
+min_age = 100
+
+[auto_prune.trivial_assistant]
+enabled = true
+max_age_entries = 100
+max_tokens = 80
+
+[auto_prune.anchor_radius]
+enabled = true
+radius = 100
+
+# ---------------------------------------------------------------------------
+# Bash tool
+# ---------------------------------------------------------------------------
+
+[bash]
+# Default timeout (in seconds) for bash tool invocations.
+default_timeout_secs = 180

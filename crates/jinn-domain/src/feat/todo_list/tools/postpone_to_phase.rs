@@ -128,13 +128,15 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
 
             match list.postpone_to_phase(&source_id, &target_pid) {
                 Ok(new_task_id) => {
-                    let rendered = list.render_text();
+                    let next_block = list.render_next_block();
+                    let rendered = list.render_text_with_blockers();
                     Ok(format!(
-                        "Postponed task [{source_id}] \u{2192} created copy [{new_task_id}] in phase [{target_pid}].\n\n{rendered}"
+                        "{next_block}\nPostponed task [{source_id}] \u{2192} created copy [{new_task_id}] in phase [{target_pid}].\n\n{rendered}"
                     ))
                 }
                 Err(e) => Err(format!("Error: {e}")),
             }
+
         };
 
         match result {
