@@ -25,6 +25,16 @@ pub fn handle_toggle_whichkey(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
+/// Handles the `ToggleAuditPopup` intent.
+///
+/// Flips the global `audit_popup_visible` flag on `FrontendState`. Always
+/// succeeds (no validator). The popup is rendered by the TUI layer when the
+/// flag is `true`.
+pub fn handle_toggle_audit_popup(state: &mut AppState) -> IntentResult {
+    state.frontend.audit_popup_visible = !state.frontend.audit_popup_visible;
+    IntentResult::empty()
+}
+
 /// Handles the Interrupt intent.
 ///
 /// When `target` is `None`, clears the input buffer.
@@ -114,6 +124,10 @@ mod tests {
         super::handle_toggle_whichkey(state)
     }
 
+    fn handle_toggle_audit_popup(state: &mut AppState) -> IntentResult {
+        super::handle_toggle_audit_popup(state)
+    }
+
     fn handle_interrupt(state: &mut AppState) -> IntentResult {
         super::handle_interrupt(state, None)
     }
@@ -142,6 +156,81 @@ mod tests {
         // Then the toggle_whichkey signal is set.
         assert!(state.frontend.tui_signals.toggle_whichkey);
         assert!(result.commands.is_empty());
+    }
+    #[rstest::rstest]
+    fn toggle_audit_popup_off_to_on_sets_visibility_flag() {
+        // Given a default state (popup hidden).
+        let mut state = AppState::default();
+        assert!(!state.frontend.audit_popup_visible);
+
+        // When toggling once.
+        let result = handle_toggle_audit_popup(&mut state);
+
+        // Then the flag flips to true.
+        assert!(state.frontend.audit_popup_visible);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn toggle_audit_popup_on_to_off_clears_visibility_flag() {
+        // Given a state with the popup toggled on.
+        let mut state = AppState::default();
+        handle_toggle_audit_popup(&mut state);
+        assert!(state.frontend.audit_popup_visible);
+
+        // When toggling a second time.
+        let result = handle_toggle_audit_popup(&mut state);
+
+        // Then the flag flips back to false.
+        assert!(!state.frontend.audit_popup_visible);
+        assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn audit_popup_remains_visible_when_input_mode_entered() {
+        // Given a state with the audit popup toggled on, scoped to Normal mode.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(crate::common::focus::FocusScope::Normal);
+        handle_toggle_audit_popup(&mut state);
+        assert!(state.frontend.audit_popup_visible);
+
+        // When the user enters Input mode (pushes Input focus scope).
+        state
+            .frontend
+            .scope_stack
+            .push(crate::common::focus::FocusScope::Input);
+
+        // Then the popup flag remains on — it lives on FrontendState, not Mode.
+        assert!(state.frontend.audit_popup_visible);
+        // And the scope stack reflects Input mode (the `a` keybind is not
+        // registered in Input mode, so the toggle cannot be flipped from here).
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
+    }
+
+    #[rstest::rstest]
+    fn audit_popup_remains_visible_after_input_mode_exited() {
+        // Given a state with the popup toggled on, scoped to Normal, then Input mode entered.
+        let mut state = AppState::default();
+        state
+            .frontend
+            .scope_stack
+            .swap_base(crate::common::focus::FocusScope::Normal);
+        handle_toggle_audit_popup(&mut state);
+        state
+            .frontend
+            .scope_stack
+            .push(crate::common::focus::FocusScope::Input);
+        assert!(state.frontend.audit_popup_visible);
+
+        // When the user pops back to Normal.
+        state.frontend.scope_stack.pop();
+
+        // Then the flag still persists.
+        assert!(state.frontend.audit_popup_visible);
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Normal);
     }
 
     #[rstest::rstest]

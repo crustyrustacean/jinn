@@ -51,3 +51,9 @@ age_stale = "red"
 
 # Scroll indicator
 scroll_indicator_bg = "black"
+
+# Info popup (audit, debug)
+infopopup_bg = [40, 44, 52]
+infopopup_title = "yellow"
+infopopup_border = "cyan"
+infopopup_fg = [220, 220, 220]
