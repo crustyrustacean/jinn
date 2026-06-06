@@ -3228,6 +3228,7 @@ dependencies = [
  "crossterm",
  "image",
  "lipsum",
+ "parking_lot",
  "pest",
  "pest_derive",
  "ratatui",
