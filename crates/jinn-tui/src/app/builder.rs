@@ -70,14 +70,19 @@ impl TuiAppBuilder {
         let initial_scope =
             crate::app::scope_for_focus(core.state.read().frontend.scope_stack.current());
 
+
+        let plugins = self.plugins.unwrap_or_else(jinn_plugin::SyncPlugins::empty);
+        let mut keymap = crate::keymap::init();
+        crate::keymap::bind_plugin_keybinds(&mut keymap, &plugins);
+
         TuiApp {
             core,
             services,
-            plugins: self.plugins.unwrap_or_else(jinn_plugin::SyncPlugins::empty),
+            plugins,
             actor_host: fake_host,
             ui_registry,
             events: MsgHandler::new(),
-            which_key: WhichKeyInstance::new(crate::keymap::init(), initial_scope),
+            which_key: WhichKeyInstance::new(keymap, initial_scope),
             suspend: Suspend::new(),
             event_thread: None,
             status: AppStatus::Starting,

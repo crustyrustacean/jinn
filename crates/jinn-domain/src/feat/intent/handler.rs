@@ -514,9 +514,15 @@ impl IntentHandler {
             Intent::ChangeCwd { root } => {
                 crate::feat::navigation::intent::handle_change_cwd(state, *root)
             }
+
+            // Plugin keybind triggers are fired by the TUI layer (`route_intent`),
+            // which has access to the plugin actor via `Services`. The domain handler
+            // produces no commands here.
+            Intent::TriggerPlugin { .. } => IntentResult::empty(),
         }
     }
 }
+
 /// Returns `true` when the cursor in the sessions sidebar section is on a workflow entry.
 ///
 /// Used by session-management intents to no-op when a workflow is selected,

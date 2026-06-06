@@ -4,6 +4,8 @@
 //! Binds keys to [`Intent`] variants. Parameterized on
 //! [`KeyEvent`] so the keymap works in both TUI and headless modes.
 
+use std::str::FromStr;
+
 use crossterm::event::{self, MouseEventKind};
 use derive_more::Display;
 use jinn_domain::Intent;
@@ -30,6 +32,8 @@ pub enum KeyCategory {
     Input,
     /// Context strategy and prompt template management.
     Context,
+    /// Plugin-declared keybinds (e.g. toggle prompt enrichment).
+    Plugin,
 }
 
 /// Builds and returns the full keymap with all scope bindings.
@@ -361,4 +365,56 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             _ => None,
         }
     })
+}
+
+/// Registers keybinds declared by plugins into the keymap.
+///
+/// Each plugin's `keybinds` table entry produces an [`Intent::TriggerPlugin`] bound
+/// under [`KeyCategory::Plugin`]. Plugins that don't declare keybinds, or whose
+/// entries are malformed, are skipped (malformed entries are logged at warn by
+/// `SyncPlugins::declared_keybinds`).
+pub fn bind_plugin_keybinds(
+    keymap: &mut Keymap<KeyEvent, Scope, Intent, KeyCategory>,
+    plugins: &jinn_plugin::SyncPlugins,
+) {
+    for kb in plugins.declared_keybinds() {
+        let scope = match Scope::from_str(&kb.scope) {
+            Ok(s) => s,
+            Err(_) => {
+                tracing::warn!(
+                    plugin = %kb.plugin_name,
+                    keys = %kb.keys,
+                    scope = %kb.scope,
+                    "plugin keybind has unknown scope; skipping"
+                );
+                continue;
+            }
+        };
+        keymap.bind(
+            &kb.keys,
+            Intent::TriggerPlugin {
+                plugin_name: kb.plugin_name.clone(),
+                action: kb.action.clone(),
+                description: kb.description.clone(),
+                session_id: None,
+            },
+            KeyCategory::Plugin,
+            scope,
+        );
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bind_plugin_keybinds_no_plugins_is_noop() {
+        // No plugins loaded => no keybinds to bind; function must be a no-op.
+        let mut keymap = init();
+        let plugins = jinn_plugin::SyncPlugins::empty();
+        bind_plugin_keybinds(&mut keymap, &plugins);
+        // No panic, no bindings added => success.
+    }
 }
