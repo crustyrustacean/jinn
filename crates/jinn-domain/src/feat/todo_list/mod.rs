@@ -790,9 +790,7 @@ impl TaskList {
         for (i, phase) in self.phases.iter().enumerate() {
             let prefix = match active_id {
                 Some(active) if active == &phase.id => String::new(),
-                Some(_) if phase.has_pending_work() => {
-                    "(Blocked by previous phase) ".to_owned()
-                }
+                Some(_) if phase.has_pending_work() => "(Blocked by previous phase) ".to_owned(),
                 _ => String::new(),
             };
             lines.push(format!(
@@ -833,14 +831,11 @@ impl TaskList {
             let (check, desc) = match task.status {
                 TaskStatus::Pending | TaskStatus::Postponed => (" ", task.description.clone()),
                 TaskStatus::Completed => ("\u{2713}", task.description.clone()),
-                TaskStatus::Cancelled => {
-                    ("\u{2717}", format!("CANCELLED: {}", task.description))
-                }
+                TaskStatus::Cancelled => ("\u{2717}", format!("CANCELLED: {}", task.description)),
             };
             out.push(format!("- [{}] {} [{}]", check, desc, task.id));
         }
     }
-
 
     /// Produces the `→ NEXT` cue line for a tool return.
     ///
@@ -905,15 +900,9 @@ impl TaskList {
     ///
     /// * `completed_phase_id` - The phase ID of the task that was just marked complete.
     #[must_use]
-    pub fn render_next_block_after_completion(
-        &self,
-        completed_phase_id: &PhaseId,
-    ) -> String {
+    pub fn render_next_block_after_completion(&self, completed_phase_id: &PhaseId) -> String {
         // Find the phase that just had a task completed.
-        let completed_phase = self
-            .phases
-            .iter()
-            .find(|p| &p.id == completed_phase_id);
+        let completed_phase = self.phases.iter().find(|p| &p.id == completed_phase_id);
 
         let Some(completed_phase) = completed_phase else {
             // Phase no longer exists (e.g., list replaced); fall back to global next.
@@ -937,14 +926,9 @@ impl TaskList {
 
         // Phase is fully complete.
         // Are there later phases that still have work? Those are blocked until verify.
-        let completed_idx = self
-            .phases
-            .iter()
-            .position(|p| &p.id == completed_phase_id);
+        let completed_idx = self.phases.iter().position(|p| &p.id == completed_phase_id);
         let later_blocked = match completed_idx {
-            Some(idx) => self.phases[idx + 1..]
-                .iter()
-                .any(Phase::has_pending_work),
+            Some(idx) => self.phases[idx + 1..].iter().any(Phase::has_pending_work),
             None => false,
         };
 
@@ -984,7 +968,11 @@ impl TaskList {
         let mut lines = vec![format!(
             "## Phase {}:{}{} [{}]",
             i + 1,
-            if prefix.is_empty() { " ".to_owned() } else { format!(" {prefix} ") },
+            if prefix.is_empty() {
+                " ".to_owned()
+            } else {
+                format!(" {prefix} ")
+            },
             phase.description,
             phase.id
         )];
@@ -993,4 +981,3 @@ impl TaskList {
         Some(lines.join("\n"))
     }
 }
-

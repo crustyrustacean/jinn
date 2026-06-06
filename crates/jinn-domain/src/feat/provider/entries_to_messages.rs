@@ -103,7 +103,9 @@ pub fn entries_to_messages(entries: &[ChatEntry]) -> Vec<LlmMessage> {
             ChatEntryKind::Error(text) => {
                 let content = match entry.context_override() {
                     ContextOverride::ForcedInclude => {
-                        format!("The user has shared the following output for you to address:\n\n{text}")
+                        format!(
+                            "The user has shared the following output for you to address:\n\n{text}"
+                        )
                     }
                     // Default and ForcedExclude (unreachable here; already
                     // filtered by is_in_context). Pin alone does not trigger

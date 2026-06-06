@@ -9,7 +9,6 @@ use super::autocomplete::AutocompleteState;
 use super::autocomplete::AutocompleteTrigger;
 use crate::feat::chat_input::AutocompleteMatch;
 
-
 /// Submission mode for the chat input box.
 ///
 /// Controls where `SubmitMessage` sends the text:
@@ -112,7 +111,6 @@ impl ChatInputBoxState {
     pub fn is_empty(&self) -> bool {
         self.input_buffer.is_empty()
     }
-
 
     /// Returns the current cursor position as a grapheme index.
     #[must_use]

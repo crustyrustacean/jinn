@@ -709,7 +709,6 @@ mod tests {
     use jinn_selection_widget::TreeItem;
     use std::path::PathBuf;
 
-
     #[rstest::rstest]
     fn confirm_provider_rejects_unavailable() {
         // Kills: delete ! in confirm_provider.
@@ -841,7 +840,6 @@ mod tests {
         assert!(!result.commands.is_empty());
     }
 
-
     #[rstest::rstest]
     fn confirm_session_lifecycle_finds_correct_lifecycle_for_args() {
         // Kills: replace == with != in confirm_session_lifecycle.
@@ -894,7 +892,6 @@ mod tests {
             state.frontend.arg_input.template_display,
         );
     }
-
 
     #[rstest::rstest]
     fn load_lifecycle_picker_entries_populates_picker() {

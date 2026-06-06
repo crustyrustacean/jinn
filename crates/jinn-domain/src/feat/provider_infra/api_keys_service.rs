@@ -108,7 +108,6 @@ mod tests {
         assert_eq!(clone.get("NEW_KEY"), Some("value".to_owned()));
     }
 
-
     #[rstest::rstest]
     fn is_set_returns_true_when_key_present() {
         // Kills: replace is_set with false.

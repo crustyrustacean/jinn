@@ -1008,7 +1008,6 @@ fn provider_name_match_appears_in_highlighted_row() {
     );
 }
 
-
 #[rstest::rstest]
 fn sorted_entries_does_not_promote_when_filter_is_nonempty() {
     // Kills: replace && with || in sorted_entries.

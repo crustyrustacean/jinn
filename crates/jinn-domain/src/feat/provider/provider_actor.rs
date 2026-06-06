@@ -867,7 +867,6 @@ mod tests {
         assert_eq!(cache.entries["anthropic"][0].context_length, Some(200_000));
     }
 
-
     #[rstest::rstest]
     #[tokio::test]
     async fn handle_dispatches_provider_switch_command() {

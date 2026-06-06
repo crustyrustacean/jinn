@@ -352,7 +352,6 @@ mod tests {
         assert_eq!(state.active_session().selected_entry_index(), Some(0));
     }
 
-
     #[rstest::rstest]
     fn scroll_up_half_page_with_known_viewport() {
         // Given a state with entries and a viewport of 10.
