@@ -358,7 +358,12 @@ impl SessionPersistenceActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::uninlined_format_args,
+        reason = "test code"
+    )]
     use super::super::super::helpers::{test_actor, test_context};
     use crate::feat::chat_input::protocol::command::{
         EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText,
