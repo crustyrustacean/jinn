@@ -759,7 +759,6 @@ fn merge_cache_ignores_unknown_provider() {
     assert_eq!(registry.providers().len(), 1);
 }
 
-
 #[rstest::rstest]
 fn unavailable_providers_returns_correct_entries() {
     // Kills: replace unavailable_providers with vec![] and delete ! in filter.

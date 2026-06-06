@@ -324,7 +324,6 @@ mod tests {
         assert_eq!(reloaded.default_provider.as_deref(), Some("ollama"));
     }
 
-
     #[rstest::rstest]
     fn config_storage_service_save_actually_persists() {
         // Kills: replace ConfigStorageService::save with Ok(()).

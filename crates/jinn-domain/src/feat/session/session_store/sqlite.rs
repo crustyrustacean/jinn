@@ -1484,8 +1484,12 @@ mod tests {
         // Given a session with two steering fragments in its buffer.
         let store = fresh_store();
         let mut session = make_session();
-        session.steering_buffer_mut().push_fragment("first".to_owned());
-        session.steering_buffer_mut().push_fragment("second".to_owned());
+        session
+            .steering_buffer_mut()
+            .push_fragment("first".to_owned());
+        session
+            .steering_buffer_mut()
+            .push_fragment("second".to_owned());
         assert_eq!(
             session.steering_buffer().len(),
             2,

@@ -214,7 +214,6 @@ pub fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
 
 // --- Submission ---
 
-
 // --- Input mode toggle ---
 
 /// Handles `ToggleInputMode` - flips Queue ↔ Steer.
@@ -260,7 +259,6 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
     let command = route_to_enqueue_or_steer(state, &session_id, input_text, expanded);
     with_mark_interacted(session_id, IntentResult::with_commands(vec![command]))
 }
-
 
 /// Handles Enter when autocomplete is active - completes the selection and submits.
 ///
@@ -361,7 +359,6 @@ fn route_to_enqueue_or_steer(
         }
     }
 }
-
 
 /// Prepends a `MarkSessionInteracted` command to the result.
 fn with_mark_interacted(session_id: SessionId, mut result: IntentResult) -> IntentResult {

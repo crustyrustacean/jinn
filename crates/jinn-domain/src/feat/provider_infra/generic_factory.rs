@@ -120,7 +120,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-
     #[rstest::rstest]
     fn create_routes_anthropic_to_anthropic_factory() {
         // Kills: delete match arm Backend::Anthropic.

@@ -559,7 +559,6 @@ tool_stream = true
         );
     }
 
-
     #[rstest::rstest]
     fn save_config_actually_writes_to_disk() {
         // Kills: replace save_config with Ok(()).
