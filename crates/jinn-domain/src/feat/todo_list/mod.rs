@@ -731,6 +731,17 @@ impl TaskList {
         self.phases.iter().find(|p| p.has_pending_work())
     }
 
+    /// Returns the ID of the phase containing the given task, if any.
+    #[must_use]
+    pub fn phase_id_for_task(&self, task_id: &TaskId) -> Option<PhaseId> {
+        for phase in &self.phases {
+            if phase.tasks.iter().any(|t| &t.id == task_id) {
+                return Some(phase.id.clone());
+            }
+        }
+        None
+    }
+
     /// Returns true if the task list has no phases.
     pub fn is_empty(&self) -> bool {
         self.phases.is_empty()
@@ -878,6 +889,73 @@ impl TaskList {
             "→ All phases complete — stop.".to_owned()
         } else {
             String::new()
+        }
+    }
+
+    /// Returns a NEXT block that is aware of which task was just completed.
+    ///
+    /// Same shape as [`render_next_block`] when there is still work in the same phase,
+    /// but switches to a 'phase complete — proceed to verify' message when the completed
+    /// task was the last pending one in its phase, regardless of whether later phases
+    /// still have work (those are blocked until verification passes).
+    ///
+    /// # Arguments
+    ///
+    /// * `completed_phase_id` - The phase ID of the task that was just marked complete.
+    #[must_use]
+    pub fn render_next_block_after_completion(
+        &self,
+        completed_phase_id: &PhaseId,
+    ) -> String {
+        // Find the phase that just had a task completed.
+        let completed_phase = self
+            .phases
+            .iter()
+            .find(|p| &p.id == completed_phase_id);
+
+        let Some(completed_phase) = completed_phase else {
+            // Phase no longer exists (e.g., list replaced); fall back to global next.
+            return self.render_next_block();
+        };
+
+        if completed_phase.has_pending_work() {
+            // Same phase still has work; emit the normal NEXT line for that phase.
+            let pending: Vec<_> = completed_phase
+                .tasks
+                .iter()
+                .filter(|t| t.status == TaskStatus::Pending)
+                .collect();
+            let next_task = &pending[0];
+            let remaining = pending.len();
+            return format!(
+                "→ NEXT: {} — {} ({} pending in phase {})",
+                next_task.id, next_task.description, remaining, completed_phase.id
+            );
+        }
+
+        // Phase is fully complete.
+        // Are there later phases that still have work? Those are blocked until verify.
+        let completed_idx = self
+            .phases
+            .iter()
+            .position(|p| &p.id == completed_phase_id);
+        let later_blocked = match completed_idx {
+            Some(idx) => self.phases[idx + 1..]
+                .iter()
+                .any(|p| p.has_pending_work()),
+            None => false,
+        };
+
+        if later_blocked {
+            format!(
+                "→ Phase {} complete — proceed to verify. Later phases are blocked until then.",
+                completed_phase.id
+            )
+        } else {
+            format!(
+                "→ Phase {} complete — proceed to verify.",
+                completed_phase.id
+            )
         }
     }
     /// Renders a single phase as formatted markdown text.
