@@ -66,6 +66,32 @@ trigger enum and no merge strategies. Plugins self-orchestrate via `ctx.emit`.
 **Adding a new hook requires three updates**: the actor handler, the LuaCATS
 meta file, and any existing Lua plugins that should opt in. See §10.
 
+### Sync hooks (render thread)
+
+Two sync hooks are fired directly from the render thread (not via the actor).
+They use the `PluginSyncHooks` trait (`call_hooks` / `call_hooks_typed`) — see §5.
+Their ctx is built by the call site (`IntentHandler::handle`, the chat-input
+renderer) and round-trips through JSON into the sync Lua state.
+
+| Fire site                                  | Hook fired                     | Scope    | Ctx source                          |
+| ------------------------------------------ | ------------------------------ | -------- | ----------------------------------- |
+| `IntentHandler::handle` (after match)      | `on_submit_intercept`          | Global   | `IntentHandler::handle`             |
+| Chat-input renderer (`chat_tab.rs`)        | `on_chat_input_badges_render`  | Global   | input-area render call site         |
+
+`on_submit_intercept` lets a plugin block or replace an intent's resolved
+commands (`{ block = true }`, `{ block = false }`, or a replacement list).
+`on_chat_input_badges_render` lets a plugin return badge directives
+(`{ slot, text, style? }`) drawn in the consistent chat-input badge location.
+
+### Plugin-defined async action hooks
+
+A plugin may also define its own named async hooks fired on demand via the
+`fire_async_hook` verb (see §7) or the `Intent::TriggerPlugin` keybind path.
+These are not lifecycle events; they are plugin-specific action handlers
+invoked from the render thread and executed on the plugin-async thread.
+Example: `prompt_enrichment` defines `on_toggle_enrich` (keybind action) and
+`on_enrich` (fired by `on_submit_intercept` via `fire_async_hook`).
+
 ---
 
 ## 4. Per-Session Lua States
@@ -109,6 +135,29 @@ The session-scoped variants exist on `PluginFireService`:
 The render-thread sync path has no per-session variants. Sync plugins are
 global only (the render thread doesn't swap Lua states per session).
 
+### `PluginSyncHooks` — the domain-facing sync trait
+
+The render-thread sync path is exposed to `jinn-domain` via the
+`PluginSyncHooks` trait (`crates/jinn-domain/src/feat/plugin_dispatch/plugin_sync_hooks.rs`).
+It is **not `Send`** (it fronts the `!Send` `SyncPlugins` Lua state), unlike the
+actor-path traits (`PluginFire`, `PluginSyncCall`) which are `Send + Sync`.
+
+```rust
+pub trait PluginSyncHooks {
+    fn call_hooks(&self, hook: &str, ctx: &serde_json::Value) -> Vec<serde_json::Value>;
+}
+pub fn call_hooks_typed<T: DeserializeOwned>(
+    plugins: &dyn PluginSyncHooks, hook: &str, ctx: &serde_json::Value,
+) -> Vec<T>;  // silent-drop malformed + warn!
+```
+
+The raw `call_hooks` returns `Vec<Value>` for object-safety (the trait is held
+as `&dyn PluginSyncHooks`); the typed `call_hooks_typed::<T>` free function
+deserializes each result and drops malformed ones with a `warn!` log (plugin
+robustness). Call sites pick a hook + build ctx + loop the typed results.
+Used by interception (`on_submit_intercept` → `InterceptOutcome`) and rendering
+(`on_chat_input_badges_render` → `BadgeDirective`).
+
 ---
 
 ## 6. Ctx Fields
@@ -127,8 +176,11 @@ receives the same shape.
 | `set_plugin_data(value)` | function         | Replaces this plugin's entry in the shared `PluginData` store.          |
 
 Additional fields can be added to the ctx_json at the actor's fire site
-(`fire_on_phase_changed` etc). Those flow into ctx via the JSON-to-table
-conversion at the top of `build_async_ctx`.
+(`fire_on_phase_changed` etc) or at the sync hook call site. Those flow into ctx
+via the JSON-to-table conversion at the top of `build_async_ctx`. For example,
+the sync `on_submit_intercept` ctx carries `input_text` (the current chat-input
+draft), set by `IntentHandler::handle` before firing the hook.
+
 
 **LuaCATS source of truth**: `res/plugins/meta/plugin_ctx.lua`. Per-hook
 subclassing (e.g., `OnTurnEndCtx : PluginCtx`) lives there.
@@ -148,11 +200,23 @@ Currently wired verbs:
 | `push_chat_entry`      | `{ session_id, kind: { system = "..." } }` or `{ transient = "..." }` | `Command::PushChatEntry`                                                         |
 | `enqueue_user_message` | `{ session_id, text }`                                                | `Command::EnqueueUserMessage` (actually dispatches through LLM pipeline)         |
 | `disable_plugin`       | `{ session_id, plugin_name }`                                         | `Command::TogglePlugin` (idempotent toggle; plugin can disable itself or others) |
+| `fire_async_hook`      | `{ hook, session_id, ... }`                                            | `Command::Dynamic { name: "plugin::fire_async", payload }` (generic async handoff; actor subscribes by name and calls `fire_async_for_session_json`) |
+| `set_chat_input`       | `{ session_id, text }`                                                 | `Command::SetChatInputText` (replaces the chat input box text for the session)   |
 
 Kinds accepted by `push_chat_entry` are limited to `system`, `transient`, and
 `error` via `LuaChatEntryKind` in `plugin_wiring.rs`. `user`, `assistant`,
 `tool`, and other variants are **not** Lua-pushable — they have to go through
 the proper constructors (`enqueue_user_message` for user entries, etc.).
+
+`ctx.request(name, data)` resolves to handlers in `handle_plugin_request`
+(`src/plugin_wiring.rs`). Currently wired request names:
+
+| Request name   | Payload                           | Returns         |
+| -------------- | --------------------------------- | --------------- |
+| `llm_oneshot`  | `{ session_id, system, prompt }`  | `{ text }`      |
+
+`llm_oneshot` runs a history-less LLM call inheriting only the session's
+provider+model (no chat history). Used by prompt enrichment.
 
 ---
 
@@ -205,6 +269,11 @@ right columns.**
 | `PluginData` semantics in `crates/jinn-plugin/src/plugin_data.rs`          | §8 plugin data section                                                                                                        | Persistence story stays accurate.                                   |
 | `PluginDispatchActor` event subscriptions                                  | §3 hook lifecycle table                                                                                                       | Doc reflects which events fire which hooks.                         |
 | `AttachedPlugin` struct (`crates/jinn-domain/src/feat/attached_plugin.rs`) | §4 per-session Lua states                                                                                                     | Attachment model documented.                                        |
+| `PluginSyncHooks` trait (non-`Send`, `crates/jinn-domain/.../plugin_sync_hooks.rs`) | (1) §5 access patterns (sync direct vs channeled). (2) Any new sync hook name → §3 + `plugin_ctx.lua` `OnXxxCtx` subclass. | Sync hooks (interception, badge render) stay documented and typed.   |
+| Sync hook name fired from `IntentHandler::handle` or a renderer        | (1) `res/plugins/meta/plugin_ctx.lua` — new `OnXxxCtx` subclass. (2) §3 hook lifecycle table. (3) The matching call site's ctx_json shape. | Sync ctx typed in editor; doc reflects fire source.                |
+| `Intent::TriggerPlugin` variant or `KeyCategory::Plugin` (`crates/jinn-domain`/`jinn-tui`) | (1) `res/plugins/meta/plugin_ctx.lua` — document the `keybinds` table contract (keys, action, description, scope). (2) §3 hook lifecycle (plugin-declared action hooks fired via `fire_async_hook`). | Plugin keybind declaration contract visible to authors.             |
+| `fire_async_hook` / `set_chat_input` verbs (`src/plugin_wiring.rs`)       | (1) `res/plugins/meta/plugin_ctx.lua` — `PluginVerb` alias + payload classes. (2) §7 verb catalog.                           | New verbs typed + catalogued.                                       |
+| `llm_oneshot` request name (`src/plugin_wiring.rs::handle_plugin_request`) | `res/plugins/meta/plugin_ctx.lua` — document the request name + its `{ session_id, system, prompt }` → `{ text }` contract.  | One-shot LLM request shape discoverable.                            |
 
 ---
 
