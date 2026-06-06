@@ -24,54 +24,20 @@
 //! 1. Skip if the entry is empty (placeholder for tool-call-only responses).
 //! 2. Skip if already [`ForcedExclude`]d.
 //! 3. Skip if the entry is pinned.
-//! 4. Look up (or compute and cache) the token count via the shared
+//! 4. Skip if the entry is within `min_age` of the end of history.
+//! 5. Look up (or compute and cache) the token count via the shared
 //!    [`HistoryWorkerChatEntryTokenCache`].
-//! 5. Skip if `tokens <= 80` (owned by `TrivialAssistantAutoPruneWorker`).
-//! 6. Compute `(d_back, d_fwd)` — distances to the nearest preceding and
-//!    following anchors.
-//! 7. Prune if **both** distances exceed `radius`. An entry only qualifies
-//!    for pruning when it lies outside every anchor's window.
+//! 6. Skip if `tokens <= 80` (owned by `TrivialAssistantAutoPruneWorker`).
+//! 7. Compute the distance to the nearest anchor on each side.
+//! 8. Prune if **both** sides exceed `radius`.
 //!
-//! Distance is measured in **raw chat entries** (index diff), independent of
-//! any other worker's [`ForcedExclude`] decisions, so multiple workers
-//! compose cleanly.
-//!
-//! # Token-cache integration
-//!
-//! Per-entry counts are looked up via
-//! [`HistoryWorkerChatEntryTokenCache::get_or_insert_with`]. The first
-//! worker to evaluate a session pays the tiktoken cost; subsequent
-//! evaluations and concurrent workers hit the cache.
-//!
-//! # Safety: pruning `Assistant` is unconditionally safe
-//!
-//! A `ToolCall` entry in `entries_to_messages` auto-creates an empty
-//! `LlmMessage::Assistant { content: "", tool_calls: Some(vec![...]) }`
-//! when its preceding `Assistant` message is missing. Excluding an
-//! `Assistant` entry therefore cannot orphan a `ToolCall` or produce an
-//! invalid provider request.
-//!
-//! # Example (`radius = 4`, all assistant entries `> 80` tokens)
-//!
-//! ```text
-//!    [User]                  ← index 0  (anchor: first + User)
-//!    [Assistant: long...]    ← index 1  (kept: d_back=1 ≤ R)
-//!    [Tool Call]: bash       ← index 2  (not a target)
-//!    [Tool Result]           ← index 3  (not a target)
-//!    [Assistant: long...]    ← index 4  (kept: d_back=4 ≤ R=4)
-//! X  [Assistant: long...]    ← index 5  (candidate, no User anchor within R;
-//!                                         pruned only if far from last anchor)
-//!    [User]                  ← index 6  (anchor)
-//!    [Assistant: long...]    ← index 7  (kept: d_back=1 ≤ R)
-//!    [Assistant: long...]    ← index 8  (kept: last anchor → d_fwd=0)
-//! ```
-//!
-//! [`ForcedExclude`]: crate::feat::session::chat_entry::ContextOverride::ForcedExclude
-//! [`TrivialAssistantAutoPruneWorker`]: crate::feat::auto_prune_worker::TrivialAssistantAutoPruneWorker
-//! [`HistoryWorkerChatEntryTokenCache`]: crate::feat::auto_prune_worker::HistoryWorkerChatEntryTokenCache
+//! `min_age` is a raw-distance protection floor: a candidate entry is only
+//! pruned when it is at least `min_age` slots from the end of history. With
+//! `min_age = 0` no entry is protected.
 
 use std::sync::Arc;
 
+use crate::feat::auto_prune_worker::is_within_min_age;
 use crate::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCounter};
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::AnchorRadiusAutoPruneConfig;
@@ -200,6 +166,7 @@ fn distances_to_nearest_anchors(
 fn build_prune_mutations(
     history: &[ChatEntry],
     radius: usize,
+    min_age: usize,
     session_id: &SessionId,
     token_cache: &super::HistoryWorkerChatEntryTokenCache,
     counter: &TiktokenCounter,
@@ -213,6 +180,7 @@ fn build_prune_mutations(
     let anchor_indices = collect_anchor_indices(history);
 
     let mut mutations = Vec::new();
+    let history_len = history.len();
 
     for (idx, entry) in history.iter().enumerate() {
         // Only Assistant entries are candidates.
@@ -235,6 +203,12 @@ fn build_prune_mutations(
         // Skip protected entries (ForcedInclude or ForcedExclude) —
         // ForcedInclude stays by user intent; ForcedExclude is already done.
         if entry.is_protected_from_prune() {
+            continue;
+        }
+
+        // Protection floor: never prune entries within `min_age` of the
+        // end of history. `min_age = 0` disables protection entirely.
+        if is_within_min_age(history_len, idx, min_age) {
             continue;
         }
 
@@ -299,6 +273,7 @@ impl HistoryWorker for AnchorRadiusAutoPruneWorker {
         let mutations = build_prune_mutations(
             &history,
             self.config.radius,
+            self.config.min_age,
             session_id,
             &self.token_cache,
             &self.counter,
@@ -329,11 +304,18 @@ mod tests {
     // ------------------------------------------------------------------
 
     /// Build a worker with the given radius (enabled = true).
+    /// Build a worker with the given radius and `min_age = 0` (back-compat baseline).
     fn worker(radius: usize) -> AnchorRadiusAutoPruneWorker {
+        worker_with_min_age(radius, 0)
+    }
+
+    /// Build a worker with the given radius and `min_age`.
+    fn worker_with_min_age(radius: usize, min_age: usize) -> AnchorRadiusAutoPruneWorker {
         AnchorRadiusAutoPruneWorker {
             config: AnchorRadiusAutoPruneConfig {
                 enabled: true,
                 radius,
+                min_age,
             },
             token_cache: super::super::HistoryWorkerChatEntryTokenCache::new(),
             counter: TiktokenCounter::o200k_base(),
@@ -1110,6 +1092,91 @@ mod tests {
         assert!(
             !excluded.contains(&trailing_id),
             "last entry must be kept (last anchor)"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // min_age protection tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn min_age_zero_prunes_old_large_assistant() {
+        // Layout: idx 0 = User anchor; idx 1..=100 = padding; idx 101 = candidate;
+        // idx 102..=151 = trivial_assistant padding (no trailing User).
+        // Anchors = [0, 151]. candidate d_back=101, d_fwd=50 → both > radius(3) → pruned.
+        let radius = 3;
+        let w = worker(radius); // min_age = 0
+        let mut history = vec![ChatEntry::user("anchor at 0")];
+        history.extend(std::iter::repeat_n(large_assistant(), 100));
+        let middle = large_assistant();
+        let middle_id = middle.id.clone();
+        history.push(middle);
+        history.extend(std::iter::repeat_n(trivial_assistant("tail"), 50));
+
+        let mutations = evaluate(&w, history);
+        let excluded = excluded_ids(&mutations);
+        assert!(
+            excluded.contains(&middle_id),
+            "with min_age = 0, candidate beyond radius from all anchors must be pruned"
+        );
+    }
+
+    #[test]
+    fn min_age_protects_recent_large_assistant() {
+        // Same layout as above (history_len=152, candidate idx=101, age=51).
+        // With min_age=200, candidate is inside the floor and must be kept
+        // even though both anchor distances exceed the radius.
+        let radius = 3;
+        let w = worker_with_min_age(radius, 200);
+        let mut history = vec![ChatEntry::user("anchor at 0")];
+        history.extend(std::iter::repeat_n(large_assistant(), 100));
+        let middle = large_assistant();
+        let middle_id = middle.id.clone();
+        history.push(middle);
+        history.extend(std::iter::repeat_n(trivial_assistant("tail"), 50));
+
+        let mutations = evaluate(&w, history);
+        let excluded = excluded_ids(&mutations);
+        assert!(
+            !excluded.contains(&middle_id),
+            "recent large assistant inside min_age floor must be protected"
+        );
+    }
+
+    #[test]
+    fn min_age_boundary_strict_less_than_anchor_radius() {
+        // Layout: idx 0 = User anchor; idx 1..=100 = padding; idx 101 = candidate;
+        // idx 102..=151 = trivial_assistant padding. history_len = 152.
+        // candidate idx = 101 → age = 152 - 101 - 1 = 50.
+        //
+        // is_within_min_age returns true when age < min_age (strict less-than).
+        //
+        // At min_age = 51: age=50 < 51 → protected.
+        // At min_age = 50: age=50 < 50 is false → NOT protected.
+        let radius = 3;
+        let mut history = vec![ChatEntry::user("anchor at 0")];
+        history.extend(std::iter::repeat_n(large_assistant(), 100));
+        let middle = large_assistant();
+        let middle_id = middle.id.clone();
+        history.push(middle);
+        history.extend(std::iter::repeat_n(trivial_assistant("tail"), 50));
+
+        // Protected: age = 50 < min_age = 51.
+        let w = worker_with_min_age(radius, 51);
+        let mutations = evaluate(&w, history.clone());
+        let excluded = excluded_ids(&mutations);
+        assert!(
+            !excluded.contains(&middle_id),
+            "age = min_age - 1 must be protected"
+        );
+
+        // Not protected: age = 50 = min_age.
+        let w = worker_with_min_age(radius, 50);
+        let mutations = evaluate(&w, history);
+        let excluded = excluded_ids(&mutations);
+        assert!(
+            excluded.contains(&middle_id),
+            "age = min_age must NOT be protected (strict less-than)"
         );
     }
 }

@@ -19,8 +19,15 @@
 //!    [Assistant]: all done
 //! ```
 //!
-//! [`ForcedExclude`]: crate::feat::session::chat_entry::ContextOverride::ForcedExclude
+//!
+//! # `min_age` protection
+//!
+//! Each call's `call_info.index` (raw position in history) is checked against
+//! `min_age`: any pair whose call sits within `min_age` slots of the end of
+//! history is left in place. `min_age = 0` disables the floor and reproduces
+//! the pre-fix behavior (only the last pair is kept).
 
+use crate::feat::auto_prune_worker::is_within_min_age;
 use crate::feat::history_worker::worker_trait::HistoryWorker;
 use crate::feat::preferences_actor::user_preferences::TodoAutoPruneConfig;
 use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride};
@@ -102,6 +109,7 @@ fn build_prune_mutations(
     history: &[ChatEntry],
     calls: &[CallInfo],
     result_map: &HashMap<String, (usize, crate::feat::session::chat_entry::ChatEntryId)>,
+    min_age: usize,
     worker_name: &str,
 ) -> Vec<HistoryMutation> {
     // Need at least 2 calls to have something to prune.
@@ -113,6 +121,12 @@ fn build_prune_mutations(
 
     // Prune all calls except the last one (most recent).
     for call_info in calls.iter().take(calls.len() - 1) {
+        // Protection floor: never prune pairs whose call sits within
+        // `min_age` slots of the end of history.
+        if is_within_min_age(history.len(), call_info.index, min_age) {
+            continue;
+        }
+
         // Prune the ToolCall if not protected from prune.
         if !history[call_info.index].is_protected_from_prune() {
             mutations.push(HistoryMutation::SetContextOverride {
@@ -154,7 +168,13 @@ impl HistoryWorker for TodoAutoPruneWorker {
         history: Arc<[ChatEntry]>,
     ) -> Vec<HistoryMutation> {
         let (calls, result_map) = collect_all_todo_pairs(&history);
-        build_prune_mutations(&history, &calls, &result_map, self.name())
+        build_prune_mutations(
+            &history,
+            &calls,
+            &result_map,
+            self.config.min_age,
+            self.name(),
+        )
     }
 }
 
@@ -221,7 +241,10 @@ mod tests {
 
     fn worker() -> TodoAutoPruneWorker {
         TodoAutoPruneWorker {
-            config: TodoAutoPruneConfig { enabled: true },
+            config: TodoAutoPruneConfig {
+                enabled: true,
+                min_age: 0,
+            },
         }
     }
 
@@ -620,5 +643,93 @@ mod tests {
         // g-1 (most recent) NOT pruned.
         assert!(!mutation_ids.contains(&g1[0].id));
         assert!(!mutation_ids.contains(&g1[1].id));
+    }
+
+    // --- min_age tests ---
+
+    /// Evaluate with explicit min_age.
+    fn evaluate_with_min_age(history: Vec<ChatEntry>, min_age: usize) -> Vec<HistoryMutation> {
+        let w = TodoAutoPruneWorker {
+            config: TodoAutoPruneConfig {
+                enabled: true,
+                min_age,
+            },
+        };
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        rt.block_on(async { w.evaluate(&SessionId::new(), Arc::from(history)).await })
+    }
+
+    /// Build a history with two get_task_list pairs (oldest at idx 0) plus
+    /// padding to history_len = 52. With 2 pairs the oldest call_idx is 0 →
+    /// age = 51.
+    fn history_with_two_todo_pairs_and_tail() -> Vec<ChatEntry> {
+        let mut history = Vec::new();
+        let cr1 = get_task_list_call_result("tc-1", "list v1");
+        history.push(cr1[0].clone());
+        history.push(cr1[1].clone());
+        let cr2 = get_task_list_call_result("tc-2", "list v2");
+        history.push(cr2[0].clone());
+        history.push(cr2[1].clone());
+        // Pad to history_len = 52 with trivial assistant entries.
+        // history.len() is currently 4; need 48 more.
+        history.extend(std::iter::repeat_n(ChatEntry::assistant("tail"), 48));
+        history
+    }
+
+    #[test]
+    fn min_age_zero_prunes_older_todo_pair() {
+        // Given a history with two get_task_list pairs padded to history_len = 52.
+        // With min_age=0, the older pair should be pruned (back-compat baseline).
+        let history = history_with_two_todo_pairs_and_tail();
+
+        // When evaluating with min_age=0.
+        let mutations = evaluate_with_min_age(history, 0);
+
+        // Then exactly 2 mutations are emitted (call + result of older pair).
+        assert_eq!(
+            mutations.len(),
+            2,
+            "min_age=0 must prune the older todo pair (back-compat baseline)"
+        );
+    }
+
+    #[test]
+    fn min_age_protects_recent_todo_pair() {
+        // Given a history with two get_task_list pairs padded to 52 entries,
+        // where the oldest call_idx is 0 (age = 51).
+        // With min_age = 60, age 51 < 60 → the older pair is protected.
+        let history = history_with_two_todo_pairs_and_tail();
+
+        // When evaluating with min_age=60.
+        let mutations = evaluate_with_min_age(history, 60);
+
+        // Then no mutations are emitted — the pair within min_age is protected.
+        assert!(
+            mutations.is_empty(),
+            "min_age must protect recent todo pair"
+        );
+    }
+
+    #[test]
+    fn min_age_boundary_strict_less_than_todo() {
+        // history_len = 52, oldest call_idx = 0, age = 51.
+        //
+        // is_within_min_age returns true when age < min_age (strict less-than).
+        //
+        // At min_age = 52: age=51 < 52 → protected.
+        // At min_age = 51: age=51 < 51 is false → NOT protected.
+        let history = history_with_two_todo_pairs_and_tail();
+
+        // Protected: age = 51 < min_age = 52.
+        let mutations = evaluate_with_min_age(history.clone(), 52);
+        assert!(mutations.is_empty(), "age = min_age - 1 must be protected");
+
+        // Not protected: age = 51 = min_age.
+        let mutations = evaluate_with_min_age(history, 51);
+        assert_eq!(
+            mutations.len(),
+            2,
+            "age = min_age must NOT be protected (strict less-than)"
+        );
     }
 }
