@@ -5,6 +5,7 @@ use parking_lot::RwLock;
 use crate::common::focus::{FocusScope, ScopeStack};
 use crate::common::tui_signals::TuiSignals;
 use crate::feat::preferences_actor::UserPreferences;
+use crate::feat::cwd_input::state::CwdInputState;
 use crate::feat::rename_session_input::state::RenameSessionInputState;
 
 use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
@@ -131,6 +132,10 @@ pub struct FrontendState {
     /// OWNER: IntentHandler (rename input editing, confirmation).
     pub rename_session_input: RenameSessionInputState,
 
+    /// Cwd input popup state - active when `FocusScope::CwdInput` is on the scope stack.
+    /// OWNER: IntentHandler (cwd input editing, confirmation).
+    pub cwd_input: CwdInputState,
+
     pub sidebar_width: u16,
 }
 
@@ -158,6 +163,7 @@ impl Default for FrontendState {
             system_themes_dir: std::path::PathBuf::new(),
             arg_input: ArgInputState::default(),
             rename_session_input: RenameSessionInputState::default(),
+            cwd_input: CwdInputState::default(),
 
             sidebar_width: 30,
         }

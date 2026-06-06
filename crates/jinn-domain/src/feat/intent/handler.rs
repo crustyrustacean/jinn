@@ -449,6 +449,17 @@ impl IntentHandler {
                 feat::rename_session_input::intent::handle_delete_forward(state)
             }
 
+            // --- CWD Input (type a path) ---
+            Intent::OpenCwdInput => {
+                feat::cwd_input::intent::handle_cwd_input_enter(state)
+            }
+            Intent::CwdInputConfirm => {
+                feat::cwd_input::intent::handle_cwd_input_confirm(state)
+            }
+            Intent::CwdInputLeave => {
+                feat::cwd_input::intent::handle_cwd_input_leave(state)
+            }
+
             // --- CWD Selection ---
             Intent::ChangeCwd { root } => {
                 crate::feat::navigation::intent::handle_change_cwd(state, *root)
