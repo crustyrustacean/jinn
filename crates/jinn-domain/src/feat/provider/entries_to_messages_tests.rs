@@ -638,7 +638,9 @@ fn error_entry_forced_include_produces_user_message() {
     assert_eq!(
         messages[0],
         LlmMessage::User {
-            content: "The user has shared the following output for you to address:\n\nimportant error".into()
+            content:
+                "The user has shared the following output for you to address:\n\nimportant error"
+                    .into()
         }
     );
 }

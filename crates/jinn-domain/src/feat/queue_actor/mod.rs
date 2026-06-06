@@ -277,7 +277,6 @@ mod tests {
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::protocol::ChatEntry;
 
-
     fn test_actor() -> QueueActor {
         QueueActor {
             state: crate::common::state::State::new(AppState::default()),
@@ -641,7 +640,9 @@ mod tests {
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
-            session.steering_buffer_mut().push_fragment("steer here".to_owned());
+            session
+                .steering_buffer_mut()
+                .push_fragment("steer here".to_owned());
             state.session.active_session_id().clone()
         };
 
@@ -659,15 +660,12 @@ mod tests {
         );
 
         // And the drained steering entry appears in history.
-        let has_steering_entry = session
-            .history()
-            .iter()
-            .any(|e| {
-                matches!(
-                    &e.kind,
-                    crate::protocol::ChatEntryKind::User { expanded, .. } if expanded == "steer here"
-                )
-            });
+        let has_steering_entry = session.history().iter().any(|e| {
+            matches!(
+                &e.kind,
+                crate::protocol::ChatEntryKind::User { expanded, .. } if expanded == "steer here"
+            )
+        });
         assert!(
             has_steering_entry,
             "drained steering entry must appear in history after dispatch_user_message"
@@ -682,7 +680,9 @@ mod tests {
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
-            session.steering_buffer_mut().push_fragment("resume steer".to_owned());
+            session
+                .steering_buffer_mut()
+                .push_fragment("resume steer".to_owned());
             state.session.active_session_id().clone()
         };
 
@@ -698,15 +698,12 @@ mod tests {
         );
 
         // And the drained steering entry appears in history.
-        let has_steering_entry = session
-            .history()
-            .iter()
-            .any(|e| {
-                matches!(
-                    &e.kind,
-                    crate::protocol::ChatEntryKind::User { expanded, .. } if expanded == "resume steer"
-                )
-            });
+        let has_steering_entry = session.history().iter().any(|e| {
+            matches!(
+                &e.kind,
+                crate::protocol::ChatEntryKind::User { expanded, .. } if expanded == "resume steer"
+            )
+        });
         assert!(
             has_steering_entry,
             "drained steering entry must appear in history after dispatch_resume"

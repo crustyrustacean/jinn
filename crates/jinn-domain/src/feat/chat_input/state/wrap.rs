@@ -453,7 +453,6 @@ mod tests {
         assert_eq!(lines[1].grapheme_end - lines[1].grapheme_start, 3);
     }
 
-
     #[rstest::rstest]
     fn exact_width_no_wrap_boundary() {
         // Given text exactly at width (col == width, NOT > width).

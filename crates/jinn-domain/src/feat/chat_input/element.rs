@@ -71,14 +71,9 @@ impl UiElement for ChatInputBoxElement {
         } else {
             format!("[{mode_label}]")
         };
-        let badge = Line::from(badge_text)
-            .left_aligned()
-            .style(Style::default().fg(mode_color));
-
         let block = Block::default()
             .borders(Borders::BOTTOM)
-            .border_style(border_style)
-            .title_bottom(badge);
+            .border_style(border_style);
         let inner = block.inner(area);
         let max_visible_lines = inner.height as usize;
 
@@ -93,6 +88,10 @@ impl UiElement for ChatInputBoxElement {
 
         let input_widget = Paragraph::new(lines).block(block);
         frame.render_widget(input_widget, area);
+
+        // Overlay the mode badge 2 columns in so it aligns with the cursor on an empty box
+        // and exposes the bottom border `─` line in columns 0–1.
+        render_mode_badge(frame, area, &badge_text, Style::default().fg(mode_color));
 
         // Render scroll position indicators if content overflows.
         let total_lines = state.active_chat_input().wrapped_lines().len();
@@ -217,6 +216,23 @@ fn render_indicator_overlay(frame: &mut Frame<'_>, label: &str, inner: Rect, y: 
         height: 1,
     };
     frame.render_widget(indicator, indicator_area);
+}
+
+/// Render the `[QUEUE]`/`[STEER]` mode badge as an overlay 2 columns in from the left, so
+/// it aligns with the cursor column (the `"> "` prompt prefix is 2 cells wide) and exposes
+/// the bottom border `─` line in columns 0–1.
+fn render_mode_badge(frame: &mut Frame<'_>, area: Rect, badge_text: &str, style: Style) {
+    let badge_line = Line::from(Span::styled(badge_text, style));
+    let badge_width = u16::try_from(badge_line.width())
+        .unwrap_or(area.width)
+        .min(area.width.saturating_sub(2));
+    let badge_area = Rect {
+        x: area.x + 2,
+        y: area.bottom().saturating_sub(1),
+        width: badge_width,
+        height: 1,
+    };
+    frame.render_widget(Paragraph::new(badge_line), badge_area);
 }
 
 /// Converts a grapheme offset within a wrapped line to a display column.

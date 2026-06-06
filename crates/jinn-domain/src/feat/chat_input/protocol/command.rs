@@ -63,7 +63,6 @@ pub struct SubmitSteeringMessage {
     pub text: String,
 }
 
-
 /// Set the chat input buffer text directly.
 ///
 /// Used when draining queued messages back into the input box (e.g. on cancel).

@@ -610,12 +610,20 @@ fn render_queue_badge_in_queue_mode() {
         })
         .unwrap();
 
-    // Then the bottom border shows [QUEUE] starting at x=0 (left-aligned to edge).
+    // Then the bottom border shows [QUEUE] starting at x=2 (aligned with the cursor column),
+    // exposing the `─` border line in columns 0 and 1.
     let buffer = terminal.backend().buffer().clone();
-    let bracket_cell = buffer.cell((0, 2)).expect("cell should exist");
+    let border0_cell = buffer.cell((0, 2)).expect("cell should exist");
+    assert_eq!(border0_cell.symbol(), "─");
+    let border1_cell = buffer.cell((1, 2)).expect("cell should exist");
+    assert_eq!(border1_cell.symbol(), "─");
+    let bracket_cell = buffer.cell((2, 2)).expect("cell should exist");
     assert_eq!(bracket_cell.symbol(), "[");
-    assert_eq!(bracket_cell.style().fg, Some(default_theme().input_mode_queue));
-    let q_cell = buffer.cell((1, 2)).expect("cell should exist");
+    assert_eq!(
+        bracket_cell.style().fg,
+        Some(default_theme().input_mode_queue)
+    );
+    let q_cell = buffer.cell((3, 2)).expect("cell should exist");
     assert_eq!(q_cell.symbol(), "Q");
 }
 
@@ -639,15 +647,22 @@ fn render_steer_badge_in_steer_mode() {
         })
         .unwrap();
 
-    // Then the bottom border shows [STEER] in the steer color, starting at x=0.
+    // Then the bottom border shows [STEER] in the steer color, starting at x=2 (aligned with
+    // the cursor column), exposing the `─` border line in columns 0 and 1.
     let buffer = terminal.backend().buffer().clone();
-    let bracket_cell = buffer.cell((0, 2)).expect("cell should exist");
+    let border0_cell = buffer.cell((0, 2)).expect("cell should exist");
+    assert_eq!(border0_cell.symbol(), "─");
+    let border1_cell = buffer.cell((1, 2)).expect("cell should exist");
+    assert_eq!(border1_cell.symbol(), "─");
+    let bracket_cell = buffer.cell((2, 2)).expect("cell should exist");
     assert_eq!(bracket_cell.symbol(), "[");
-    assert_eq!(bracket_cell.style().fg, Some(default_theme().input_mode_steer));
-    let s_cell = buffer.cell((1, 2)).expect("cell should exist");
+    assert_eq!(
+        bracket_cell.style().fg,
+        Some(default_theme().input_mode_steer)
+    );
+    let s_cell = buffer.cell((3, 2)).expect("cell should exist");
     assert_eq!(s_cell.symbol(), "S");
 }
-
 
 #[rstest::rstest]
 fn render_steer_badge_shows_buffer_count_when_nonzero() {
@@ -675,14 +690,19 @@ fn render_steer_badge_shows_buffer_count_when_nonzero() {
         })
         .unwrap();
 
-    // Then the badge shows [STEER · 2] (11 chars), starting at x=0.
+    // Then the badge shows [STEER · 2] (11 chars), starting at x=2 (aligned with the cursor
+    // column), exposing the `─` border line in columns 0 and 1.
     let buffer = terminal.backend().buffer().clone();
-    let bracket_cell = buffer.cell((0, 2)).expect("cell should exist");
+    let border0_cell = buffer.cell((0, 2)).expect("cell should exist");
+    assert_eq!(border0_cell.symbol(), "─");
+    let border1_cell = buffer.cell((1, 2)).expect("cell should exist");
+    assert_eq!(border1_cell.symbol(), "─");
+    let bracket_cell = buffer.cell((2, 2)).expect("cell should exist");
     assert_eq!(bracket_cell.symbol(), "[");
-    let count_cell = buffer.cell((10, 2)).expect("cell should exist");
-    assert_eq!(count_cell.symbol(), "]");
-    // Separator dot at position 7 within the 11-char badge: x = 0 + 7 = 7.
-    let dot_cell = buffer.cell((7, 2)).expect("cell should exist");
+    let close_bracket_cell = buffer.cell((12, 2)).expect("cell should exist");
+    assert_eq!(close_bracket_cell.symbol(), "]");
+    // Separator dot at index 7 within the 11-char badge: x = 2 + 7 = 9.
+    let dot_cell = buffer.cell((9, 2)).expect("cell should exist");
     assert_eq!(dot_cell.symbol(), "·");
 }
 
@@ -702,11 +722,16 @@ fn render_queue_badge_no_count_when_buffer_empty() {
         })
         .unwrap();
 
-    // Then the bracket sits at x = 0 (badge is 7 chars wide: x=0..6).
+    // Then the bracket sits at x = 2 (badge is 7 chars wide: x=2..8), aligned with the cursor
+    // column, exposing the `─` border line in columns 0 and 1.
     let buffer = terminal.backend().buffer().clone();
-    let bracket_cell = buffer.cell((0, 2)).expect("cell should exist");
+    let border0_cell = buffer.cell((0, 2)).expect("cell should exist");
+    assert_eq!(border0_cell.symbol(), "─");
+    let border1_cell = buffer.cell((1, 2)).expect("cell should exist");
+    assert_eq!(border1_cell.symbol(), "─");
+    let bracket_cell = buffer.cell((2, 2)).expect("cell should exist");
     assert_eq!(bracket_cell.symbol(), "[");
-    // x = 7 (right after badge) should be the bottom-border line character.
-    let right_cell = buffer.cell((7, 2)).expect("cell should exist");
+    // x = 9 (right after the 7-char badge at x=2..8) is the bottom-border line character.
+    let right_cell = buffer.cell((9, 2)).expect("cell should exist");
     assert_eq!(right_cell.symbol(), "─");
 }

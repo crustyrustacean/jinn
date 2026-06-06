@@ -136,7 +136,6 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 }
                 Err(e) => Err(format!("Error: {e}")),
             }
-
         };
 
         match result {

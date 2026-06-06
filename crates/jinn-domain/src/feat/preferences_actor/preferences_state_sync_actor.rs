@@ -274,7 +274,6 @@ mod tests {
         assert!(guard.frontend.preferences.last_strategy.is_none());
     }
 
-
     #[rstest::rstest]
     #[tokio::test]
     async fn persona_name_sync_sets_correct_persona() {
