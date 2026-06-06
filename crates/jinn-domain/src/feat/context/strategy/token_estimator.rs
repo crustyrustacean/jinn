@@ -7,7 +7,7 @@
 use std::sync::OnceLock;
 
 use crate::feat::tools_actor::tool_types::ToolDefinition;
-use crate::protocol::{ChatEntry, ChatEntryKind};
+use crate::protocol::{ChatEntry, ChatEntryKind, ContextOverride};
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Estimates the token count of text.
@@ -48,8 +48,21 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
         ChatEntryKind::Actor { source, text } => {
             estimator.estimate(&format!("[Actor: {source}] {text}"))
         }
-        // Error entries produce LlmMessage::User with [Error] prefix.
-        ChatEntryKind::Error(text) => estimator.estimate(&format!("[Error] {text}")),
+        // Error entries produce LlmMessage::User. The prefix matches the
+        // renderer: `[Error]` for Default (incl. pinned) and the actionable
+        // framing for ForcedInclude. Keeping this in sync with
+        // entries_to_messages prevents budget drift.
+        ChatEntryKind::Error(text) => {
+            let formatted = match entry.context_override() {
+                ContextOverride::ForcedInclude => {
+                    format!("The user has shared the following output for you to address:\n\n{text}")
+                }
+                ContextOverride::Default | ContextOverride::ForcedExclude => {
+                    format!("[Error] {text}")
+                }
+            };
+            estimator.estimate(&formatted)
+        }
         // Thinking entries produce LlmMessage::User with [Thinking] prefix when in context.
         ChatEntryKind::Thinking(text) => estimator.estimate(&format!("[Thinking] {text}")),
         // Transient entries produce LlmMessage::User with [Transient] prefix when in context.
