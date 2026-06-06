@@ -269,7 +269,6 @@ fn config_snapshot_returns_current_config() {
     assert_eq!(config.default_provider.as_deref(), Some("ollama/llama3"));
 }
 
-
 #[rstest::rstest]
 fn is_available_returns_false_for_key_required_without_key() {
     // Kills: replace is_available with true.

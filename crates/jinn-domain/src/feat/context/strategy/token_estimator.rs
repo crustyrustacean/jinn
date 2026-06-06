@@ -55,7 +55,9 @@ pub fn estimate_entry_tokens(estimator: &dyn TokenEstimator, entry: &ChatEntry) 
         ChatEntryKind::Error(text) => {
             let formatted = match entry.context_override() {
                 ContextOverride::ForcedInclude => {
-                    format!("The user has shared the following output for you to address:\n\n{text}")
+                    format!(
+                        "The user has shared the following output for you to address:\n\n{text}"
+                    )
                 }
                 ContextOverride::Default | ContextOverride::ForcedExclude => {
                     format!("[Error] {text}")

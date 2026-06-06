@@ -20,9 +20,9 @@ use serde_json::Value as JsonValue;
 use crate::feat::chat_input::ChatInputBoxState;
 use crate::feat::context::strategy::types::StrategyState;
 use crate::feat::session::chat_history::ChatHistory;
-use crate::feat::session::steering_buffer::SteeringBuffer;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::profile::SessionProfile;
+use crate::feat::session::steering_buffer::SteeringBuffer;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{
@@ -475,7 +475,6 @@ impl ChatSessionState {
     pub fn chat_input_mut(&mut self) -> &mut ChatInputBoxState {
         &mut self.ui.chat_input
     }
-
 
     /// The session's persona name.
     pub fn persona_name(&self) -> &str {

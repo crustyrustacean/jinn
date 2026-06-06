@@ -279,7 +279,6 @@ mod tests {
         assert!(result.unwrap().is_none());
     }
 
-
     #[rstest::rstest]
     fn cache_path_returns_nonempty_path() {
         // Kills: replace cache_path with Default::default().

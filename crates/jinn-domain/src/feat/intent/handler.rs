@@ -703,7 +703,6 @@ mod tests {
         assert!(result.commands.is_empty());
     }
 
-
     #[test]
     fn insert_char_routes_to_arg_input_when_scope_is_arg_input() {
         // Given ArgInput scope is active.
@@ -843,7 +842,6 @@ mod tests {
         assert!(state.frontend.arg_input.input.is_empty());
     }
 
-
     #[test]
     fn paste_text_in_picker_scope_routes_to_picker() {
         // Given Picker scope is active.
@@ -888,7 +886,6 @@ mod tests {
         // Then rename input received the paste.
         assert_eq!(state.frontend.rename_session_input.input, "old new");
     }
-
 
     #[test]
     fn cancel_stream_prompt_esc_confirms() {
@@ -937,7 +934,6 @@ mod tests {
         // The prompt remains false.
         assert!(!state.frontend.cancel_stream_prompt);
     }
-
 
     #[test]
     fn close_session_prompt_sidebar_close_confirms() {

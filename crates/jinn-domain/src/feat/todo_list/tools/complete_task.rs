@@ -230,7 +230,10 @@ mod tests {
         assert!(result.success);
         // NEXT block (→) appears before the confirmation line.
         let next_idx = result.content.find("→").unwrap_or(usize::MAX);
-        let confirm_idx = result.content.find("marked as completed").unwrap_or(usize::MAX);
+        let confirm_idx = result
+            .content
+            .find("marked as completed")
+            .unwrap_or(usize::MAX);
         assert!(
             next_idx < confirm_idx,
             "NEXT block must precede confirmation: {:?}",
@@ -275,7 +278,9 @@ mod tests {
         assert!(result.success);
         // NEXT block names the second task.
         assert!(
-            result.content.contains(&format!("→ NEXT: {} — Second", second_id)),
+            result
+                .content
+                .contains(&format!("→ NEXT: {} — Second", second_id)),
             "expected NEXT naming second task, got: {:?}",
             result.content
         );
@@ -301,10 +306,16 @@ mod tests {
                 .unwrap()
                 .to_string();
             let p2 = session.task_list_mut().add_phase("Test");
-            session.task_list_mut().add_task(&p2, "First", TaskPosition::End).unwrap();
+            session
+                .task_list_mut()
+                .add_task(&p2, "First", TaskPosition::End)
+                .unwrap();
             // P3 stays blocked — P2 has work, so P2 becomes active after P1 completes.
             let p3 = session.task_list_mut().add_phase("Ship");
-            session.task_list_mut().add_task(&p3, "Later", TaskPosition::End).unwrap();
+            session
+                .task_list_mut()
+                .add_task(&p3, "Later", TaskPosition::End)
+                .unwrap();
             only
         };
 

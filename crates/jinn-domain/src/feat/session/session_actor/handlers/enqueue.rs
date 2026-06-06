@@ -6,8 +6,7 @@
 
 use crate::common::actor::ActorContext;
 use crate::feat::chat_input::protocol::command::{
-    EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText,
-    SubmitSteeringMessage,
+    EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText, SubmitSteeringMessage,
 };
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::context::assemble::assemble_prompt;
@@ -71,22 +70,22 @@ impl SessionPersistenceActor {
 
         match action {
             EnqueueAction::DispatchDirectly => {
-            super::super::helpers::emit_history_appended(ctx, &payload.session_id);
-            // Drain any pending steering fragments into history before assembly.
-            {
-                let mut state = self.state.write();
-                let session = state.session_mut_or_create(&payload.session_id);
-                if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
-                    let entry_id = entry.id.clone();
-                    let index = session.push_entry(entry);
-                    tracing::debug!(
-                        session_id = %payload.session_id,
-                        entry_id = %entry_id,
-                        history_index = index,
-                        "drained steering entry into history at enqueue (Idle dispatch)"
-                    );
+                super::super::helpers::emit_history_appended(ctx, &payload.session_id);
+                // Drain any pending steering fragments into history before assembly.
+                {
+                    let mut state = self.state.write();
+                    let session = state.session_mut_or_create(&payload.session_id);
+                    if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
+                        let entry_id = entry.id.clone();
+                        let index = session.push_entry(entry);
+                        tracing::debug!(
+                            session_id = %payload.session_id,
+                            entry_id = %entry_id,
+                            history_index = index,
+                            "drained steering entry into history at enqueue (Idle dispatch)"
+                        );
+                    }
                 }
-            }
                 // Assemble the prompt directly and emit SendToLlmProvider.
                 let assembled = {
                     let guard = self.state.read();
@@ -304,7 +303,9 @@ impl SessionPersistenceActor {
         let new_depth = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
-            session.steering_buffer_mut().push_fragment(payload.text.clone());
+            session
+                .steering_buffer_mut()
+                .push_fragment(payload.text.clone());
             session.steering_buffer().len()
         };
         tracing::debug!(
@@ -804,7 +805,9 @@ mod tests {
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
-            session.steering_buffer_mut().push_fragment("steer here".to_owned());
+            session
+                .steering_buffer_mut()
+                .push_fragment("steer here".to_owned());
             state.session.active_session_id().clone()
         };
 
@@ -828,10 +831,9 @@ mod tests {
         );
 
         // And the drained steering entry appears in history.
-        let has_steering_entry = session
-            .history()
-            .iter()
-            .any(|e| matches!(&e.kind, ChatEntryKind::User { expanded, .. } if expanded == "steer here"));
+        let has_steering_entry = session.history().iter().any(
+            |e| matches!(&e.kind, ChatEntryKind::User { expanded, .. } if expanded == "steer here"),
+        );
         assert!(
             has_steering_entry,
             "drained steering entry must appear in history after Idle dispatch"

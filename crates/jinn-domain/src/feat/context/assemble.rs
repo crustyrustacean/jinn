@@ -435,8 +435,12 @@ mod tests {
             crate::feat::session::tool_result_status::ToolResultStatus::Success,
         );
         let steer = ChatEntry::user_expanded("stay at the foo part", "stay at the foo part");
-        let (state, session_id) =
-            state_with_history(vec![ChatEntry::user("initial"), assistant, tool_result, steer]);
+        let (state, session_id) = state_with_history(vec![
+            ChatEntry::user("initial"),
+            assistant,
+            tool_result,
+            steer,
+        ]);
 
         // When assembling.
         let guard = state.read();
@@ -468,10 +472,14 @@ mod tests {
         let result = assemble_prompt(&guard, &session_id, &counter(), None);
 
         // Then both the pinned message and the steering message appear in the assembled prompt.
-        let body = result.messages.iter().map(|m| match m {
-            LlmMessage::User { content } => content.as_str(),
-            _ => "",
-        }).collect::<Vec<_>>();
+        let body = result
+            .messages
+            .iter()
+            .map(|m| match m {
+                LlmMessage::User { content } => content.as_str(),
+                _ => "",
+            })
+            .collect::<Vec<_>>();
         assert!(
             body.iter().any(|s| s.contains("pinned constraint")),
             "pinned message must appear in prompt: {body:?}"
@@ -918,7 +926,6 @@ mod tests {
         assert_eq!(result.tool_definitions.len(), 1);
         assert_eq!(result.tool_definitions[0].name, "bash");
     }
-
 
     #[test]
     fn assemble_prompt_uses_matching_persona() {

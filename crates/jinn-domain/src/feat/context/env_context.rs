@@ -297,7 +297,6 @@ mod tests {
         assert_eq!(date.len(), 10);
     }
 
-
     #[rstest::rstest]
     fn date_from_days_one_day() {
         // Given 1 day since epoch.
@@ -357,7 +356,6 @@ mod tests {
         assert_ne!(date, "xyzzy");
         assert_ne!(date, "");
     }
-
 
     #[rstest::rstest]
     #[tokio::test]
