@@ -77,7 +77,14 @@ impl SessionPersistenceActor {
                 let mut state = self.state.write();
                 let session = state.session_mut_or_create(&payload.session_id);
                 if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
-                    session.push_entry(entry);
+                    let entry_id = entry.id.clone();
+                    let index = session.push_entry(entry);
+                    tracing::debug!(
+                        session_id = %payload.session_id,
+                        entry_id = %entry_id,
+                        history_index = index,
+                        "drained steering entry into history at enqueue (Idle dispatch)"
+                    );
                 }
             }
                 // Assemble the prompt directly and emit SendToLlmProvider.
@@ -216,7 +223,14 @@ impl SessionPersistenceActor {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
             if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
-                session.push_entry(entry);
+                let entry_id = entry.id.clone();
+                let index = session.push_entry(entry);
+                tracing::debug!(
+                    session_id = %payload.session_id,
+                    entry_id = %entry_id,
+                    history_index = index,
+                    "drained steering entry into history at enqueue (resume turn)"
+                );
             }
         }
         // Assemble prompt and dispatch. Marker is excluded by default.
@@ -286,9 +300,19 @@ impl SessionPersistenceActor {
         &self,
         payload: &SubmitSteeringMessage,
     ) {
-        let mut state = self.state.write();
-        let session = state.session_mut_or_create(&payload.session_id);
-        session.steering_buffer_mut().push_fragment(payload.text.clone());
+        let fragment_len = payload.text.len();
+        let new_depth = {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&payload.session_id);
+            session.steering_buffer_mut().push_fragment(payload.text.clone());
+            session.steering_buffer().len()
+        };
+        tracing::debug!(
+            session_id = %payload.session_id,
+            fragment_len,
+            new_depth,
+            "steering fragment buffered"
+        );
     }
 
     /// PushChatEntry: push entry to session history, emit ChatEntrySubmitted event,
