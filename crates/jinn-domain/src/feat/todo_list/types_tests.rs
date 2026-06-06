@@ -869,8 +869,12 @@ fn serde_roundtrip_with_cancelled() {
 fn has_pending_work_true_when_any_pending() {
     let mut list = TaskList::new();
     let pid = list.add_phase("Build");
-    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
-    let _t2 = list.add_task(&pid, "Write tests", TaskPosition::End).unwrap();
+    let t1 = list
+        .add_task(&pid, "Write code", TaskPosition::End)
+        .unwrap();
+    let _t2 = list
+        .add_task(&pid, "Write tests", TaskPosition::End)
+        .unwrap();
     list.complete_task(&t1).unwrap();
 
     let phase = list.get_phase(&pid).unwrap();
@@ -880,14 +884,19 @@ fn has_pending_work_true_when_any_pending() {
     );
 }
 
-
 #[test]
 fn has_pending_work_false_when_only_completed_cancelled_postponed() {
     let mut list = TaskList::new();
     let pid = list.add_phase("Build");
-    let t1 = list.add_task(&pid, "Write code", TaskPosition::End).unwrap();
-    let t2 = list.add_task(&pid, "Write tests", TaskPosition::End).unwrap();
-    let t3 = list.add_task(&pid, "Write docs", TaskPosition::End).unwrap();
+    let t1 = list
+        .add_task(&pid, "Write code", TaskPosition::End)
+        .unwrap();
+    let t2 = list
+        .add_task(&pid, "Write tests", TaskPosition::End)
+        .unwrap();
+    let t3 = list
+        .add_task(&pid, "Write docs", TaskPosition::End)
+        .unwrap();
     let other_pid = list.add_phase("Other");
     let t_other = list
         .add_task(&other_pid, "Anchor", TaskPosition::End)
@@ -895,7 +904,8 @@ fn has_pending_work_false_when_only_completed_cancelled_postponed() {
 
     list.complete_task(&t1).unwrap();
     list.cancel_task(&t2).unwrap();
-    list.postpone_task(&t3, TaskPosition::After(t_other.clone())).unwrap();
+    list.postpone_task(&t3, TaskPosition::After(t_other.clone()))
+        .unwrap();
 
     let phase = list.get_phase(&pid).unwrap();
     assert!(
@@ -921,9 +931,11 @@ fn active_phase_returns_earliest_with_pending() {
     let t1 = list.add_task(&p1, "Done task", TaskPosition::End).unwrap();
     list.complete_task(&t1).unwrap();
     let p2 = list.add_phase("Active");
-    list.add_task(&p2, "Pending task", TaskPosition::End).unwrap();
+    list.add_task(&p2, "Pending task", TaskPosition::End)
+        .unwrap();
     let p3 = list.add_phase("Later");
-    list.add_task(&p3, "Pending task", TaskPosition::End).unwrap();
+    list.add_task(&p3, "Pending task", TaskPosition::End)
+        .unwrap();
 
     let active = list.active_phase().expect("active phase should exist");
     assert_eq!(active.id, p2);
@@ -953,9 +965,12 @@ fn active_phase_skips_phase_with_only_postponed_cancelled_completed() {
 
     list.complete_task(&t1).unwrap();
     list.cancel_task(&t2).unwrap();
-    list.postpone_task(&t3, TaskPosition::After(t_anchor)).unwrap();
+    list.postpone_task(&t3, TaskPosition::After(t_anchor))
+        .unwrap();
 
-    let active = list.active_phase().expect("active phase should skip stale phase");
+    let active = list
+        .active_phase()
+        .expect("active phase should skip stale phase");
     assert_eq!(active.id, p2);
 }
 
@@ -1053,8 +1068,11 @@ fn render_next_block_points_at_active_phase_next_task() {
     let t1 = list.add_task(&p1, "Done task", TaskPosition::End).unwrap();
     list.complete_task(&t1).unwrap();
     let p2 = list.add_phase("Active");
-    let t2 = list.add_task(&p2, "First pending", TaskPosition::End).unwrap();
-    list.add_task(&p2, "Second pending", TaskPosition::End).unwrap();
+    let t2 = list
+        .add_task(&p2, "First pending", TaskPosition::End)
+        .unwrap();
+    list.add_task(&p2, "Second pending", TaskPosition::End)
+        .unwrap();
 
     let block = list.render_next_block();
     assert_eq!(

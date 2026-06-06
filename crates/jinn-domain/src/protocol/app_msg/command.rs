@@ -18,8 +18,7 @@ pub use crate::common::actor::command_msg::CommandMsg;
 use crate::common::actor::protocol::command::ProceedWithShutdown;
 pub use crate::common::actor::protocol::dynamic_command::DynamicCommand;
 use crate::feat::chat_input::protocol::command::{
-    EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText,
-    SubmitSteeringMessage,
+    EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText, SubmitSteeringMessage,
 };
 use crate::feat::context::protocol::command::{
     LoadPersonaPickerEntries, PinChatEntry, RescanPersonas, UnpinChatEntry,
