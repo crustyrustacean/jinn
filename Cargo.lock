@@ -1940,6 +1940,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "jinn-lua-workflow"
+version = "0.58.0"
+dependencies = [
+ "error-stack",
+ "futures",
+ "kanal",
+ "mlua",
+ "parking_lot",
+ "rstest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "wherror",
+]
+
+[[package]]
 name = "jinn-plugin"
 version = "0.58.0"
 dependencies = [
