@@ -16,6 +16,7 @@ use jinn_domain::common::actor::protocol::dynamic_command::DynamicCommand;
 use jinn_domain::common::actor::message_sink::MessageSink;
 use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry};
 use jinn_domain::feat::plugin_dispatch::protocol::command::TogglePlugin;
+use jinn_domain::feat::plugin_dispatch::DomainNodeContext;
 use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_domain::protocol::SessionId;
 use jinn_plugin::PluginCommand;
@@ -217,14 +218,42 @@ fn translate_command(cmd: &PluginCommand) -> Result<Command, Report<PluginWiring
 /// Handle a request from an async hook's `ctx.request(name, data)` call.
 ///
 /// Returns a JSON response value. Unknown requests return null.
-#[must_use]
-pub fn handle_plugin_request(name: &str, _data: &serde_json::Value) -> serde_json::Value {
+pub async fn handle_plugin_request(
+    name: &str,
+    data: &serde_json::Value,
+    domain_ctx: &DomainNodeContext,
+) -> serde_json::Value {
     match name {
+        "llm_oneshot" => {
+            // History-less one-shot LLM request: inherits only the source session's
+            // provider+model. Request shape:
+            //   { session_id, system: Option<String>, prompt: String }
+            #[derive(serde::Deserialize)]
+            struct LlmOneshotPayload {
+                session_id: SessionId,
+                system: Option<String>,
+                prompt: String,
+            }
+            match serde_json::from_value::<LlmOneshotPayload>(data.clone()) {
+                Ok(p) => match domain_ctx
+                    .send_llm_request_oneshot(&p.session_id, p.prompt, p.system)
+                    .await
+                {
+                    Ok(text) => serde_json::json!({ "text": text }),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "llm_oneshot request failed");
+                        serde_json::Value::Null
+                    }
+                },
+                Err(e) => {
+                    tracing::warn!(error = %e, "llm_oneshot malformed payload");
+                    serde_json::Value::Null
+                }
+            }
+        }
         "llm" => {
-            // LLM requests are handled by the workflow controller, not here.
-            // For now, return null — the plugin system's request handler
-            // will be wired to the domain LLM service in a future phase.
-            tracing::warn!(name, "llm request handler not yet wired");
+            // Full-context LLM (future use): not wired in this phase.
+            tracing::warn!(name, "full-context llm request handler not yet wired");
             serde_json::Value::Null
         }
         _ => {
