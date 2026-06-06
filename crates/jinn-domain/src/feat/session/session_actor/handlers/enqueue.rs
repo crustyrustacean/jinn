@@ -7,6 +7,7 @@
 use crate::common::actor::ActorContext;
 use crate::feat::chat_input::protocol::command::{
     EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText,
+    SubmitSteeringMessage,
 };
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 use crate::feat::context::assemble::assemble_prompt;
@@ -70,7 +71,22 @@ impl SessionPersistenceActor {
 
         match action {
             EnqueueAction::DispatchDirectly => {
-                super::super::helpers::emit_history_appended(ctx, &payload.session_id);
+            super::super::helpers::emit_history_appended(ctx, &payload.session_id);
+            // Drain any pending steering fragments into history before assembly.
+            {
+                let mut state = self.state.write();
+                let session = state.session_mut_or_create(&payload.session_id);
+                if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
+                    let entry_id = entry.id.clone();
+                    let index = session.push_entry(entry);
+                    tracing::debug!(
+                        session_id = %payload.session_id,
+                        entry_id = %entry_id,
+                        history_index = index,
+                        "drained steering entry into history at enqueue (Idle dispatch)"
+                    );
+                }
+            }
                 // Assemble the prompt directly and emit SendToLlmProvider.
                 let assembled = {
                     let guard = self.state.read();
@@ -202,6 +218,21 @@ impl SessionPersistenceActor {
             tracing::warn!(err = ?e, "session-actor failed to emit ChatEntrySubmitted for resume marker");
         }
 
+        // Drain any pending steering fragments into history before assembly.
+        {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&payload.session_id);
+            if let Some(entry) = session.steering_buffer_mut().drain_into_entry() {
+                let entry_id = entry.id.clone();
+                let index = session.push_entry(entry);
+                tracing::debug!(
+                    session_id = %payload.session_id,
+                    entry_id = %entry_id,
+                    history_index = index,
+                    "drained steering entry into history at enqueue (resume turn)"
+                );
+            }
+        }
         // Assemble prompt and dispatch. Marker is excluded by default.
         let assembled = {
             let guard = self.state.read();
@@ -258,6 +289,30 @@ impl SessionPersistenceActor {
         let mut state = self.state.write();
         let session = state.session_mut_or_create(&payload.session_id);
         session.chat_input_mut().replace_all(payload.text.clone());
+    }
+
+    /// SubmitSteeringMessage: append a fragment to the session's steering buffer.
+    ///
+    /// The buffer is drained into a `User` entry at the next prompt-assembly
+    /// boundary. This handler performs no phase check - routing (queue vs steer)
+    /// is the responsibility of the chat-input layer.
+    pub(in crate::feat::session::session_actor) fn handle_submit_steering_message(
+        &self,
+        payload: &SubmitSteeringMessage,
+    ) {
+        let fragment_len = payload.text.len();
+        let new_depth = {
+            let mut state = self.state.write();
+            let session = state.session_mut_or_create(&payload.session_id);
+            session.steering_buffer_mut().push_fragment(payload.text.clone());
+            session.steering_buffer().len()
+        };
+        tracing::debug!(
+            session_id = %payload.session_id,
+            fragment_len,
+            new_depth,
+            "steering fragment buffered"
+        );
     }
 
     /// PushChatEntry: push entry to session history, emit ChatEntrySubmitted event,
@@ -674,6 +729,124 @@ mod tests {
             .filter(|e| matches!(e.kind, crate::protocol::ChatEntryKind::System { .. }))
             .collect();
         assert_eq!(markers.len(), 1, "expected one System marker pushed");
+    }
+
+    #[tokio::test]
+    async fn handle_enqueue_resume_turn_drains_steering_buffer_before_assembly() {
+        // Given an idle session with a non-empty steering buffer.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let _ = state.active_session_mut();
+            let id = state.session.active_session_id().clone();
+            let session = state.session_mut_or_create(&id);
+            session
+                .ui
+                .steering_buffer
+                .push_fragment("stay at the foo part".to_owned());
+            id
+        };
+
+        // Sanity: buffer is non-empty before dispatch.
+        {
+            let state = actor.state.read();
+            let session = state.session.get(&session_id).expect("session");
+            assert_eq!(session.ui.steering_buffer.len(), 1);
+        }
+
+        // When resume is requested.
+        actor
+            .handle_enqueue_resume_turn(
+                &EnqueueResumeTurn {
+                    session_id: session_id.clone(),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the steering buffer is drained.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        assert!(
+            session.ui.steering_buffer.is_empty(),
+            "steering buffer must be drained before assembly"
+        );
+
+        // And the drained entry is now in history.
+        let user_entries: Vec<_> = session
+            .history()
+            .iter()
+            .filter(|e| matches!(e.kind, crate::protocol::ChatEntryKind::User { .. }))
+            .collect();
+        assert!(
+            user_entries
+                .iter()
+                .any(|e| matches!(&e.kind, crate::protocol::ChatEntryKind::User { expanded, .. } if expanded == "stay at the foo part")),
+            "drained steering entry must appear in history; history = {:?}",
+            user_entries
+        );
+
+        // And SendToLlmProvider was emitted (proving dispatch ran through to assembly).
+        let commands = sink.commands();
+        assert!(
+            commands
+                .iter()
+                .any(|c| matches!(c, Command::SendToLlmProvider(_))),
+            "SendToLlmProvider must be emitted after drain"
+        );
+    }
+
+    #[tokio::test]
+    async fn handle_enqueue_user_message_drains_steering_buffer_on_idle_dispatch() {
+        // Given an idle session with a non-empty steering buffer.
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let mut state = actor.state.write();
+            let session = state.active_session_mut();
+            session.steering_buffer_mut().push_fragment("steer here".to_owned());
+            state.session.active_session_id().clone()
+        };
+
+        // When enqueuing a user message from Idle (inline dispatch path).
+        actor
+            .handle_enqueue_user_message(
+                &EnqueueUserMessage {
+                    session_id: session_id.clone(),
+                    entry: ChatEntry::user("user prompt"),
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then the steering buffer is drained before assembly.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session");
+        assert!(
+            session.steering_buffer().is_empty(),
+            "steering buffer must be drained during Idle dispatch"
+        );
+
+        // And the drained steering entry appears in history.
+        let has_steering_entry = session
+            .history()
+            .iter()
+            .any(|e| matches!(&e.kind, ChatEntryKind::User { expanded, .. } if expanded == "steer here"));
+        assert!(
+            has_steering_entry,
+            "drained steering entry must appear in history after Idle dispatch"
+        );
+
+        // And SendToLlmProvider was emitted (the drain happened before assembly).
+        let has_send = sink
+            .commands()
+            .iter()
+            .any(|c| matches!(c, Command::SendToLlmProvider(_)));
+        assert!(
+            has_send,
+            "SendToLlmProvider must be emitted after drain on Idle dispatch"
+        );
     }
     // --- Helpers ---
 }

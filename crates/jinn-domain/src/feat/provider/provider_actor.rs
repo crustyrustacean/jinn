@@ -132,7 +132,8 @@ impl ProviderActor {
             | Command::ExecuteWebFetch(..)
             | Command::AttachPlugin(..)
             | Command::DetachPlugin(..)
-            | Command::TogglePlugin(..) => {}
+            | Command::TogglePlugin(..)
+            | Command::SubmitSteeringMessage(..) => {}
         }
     }
 

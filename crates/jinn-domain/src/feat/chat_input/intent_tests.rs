@@ -1,9 +1,10 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
 use crate::common::app_state::AppState;
-use crate::feat::chat_input::{AutocompleteMatch, AutocompleteTrigger};
+use crate::feat::chat_input::{AutocompleteMatch, AutocompleteTrigger, InputMode};
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::protocol::{ChatEntry, Command};
+
 
 #[rstest::rstest]
 fn insert_char_appends_to_buffer() {
@@ -173,6 +174,132 @@ fn submit_message_with_hash_autocomplete_clears_buffer() {
 
     // Then the input buffer is cleared.
     assert!(state.active_chat_input().is_empty());
+}
+
+// ─── Input mode & routing (steering) ──────────────────────────────────
+
+#[rstest::rstest]
+fn toggle_input_mode_flips_queue_to_steer() {
+    // Given default state (mode = Queue).
+    let mut state = AppState::default();
+    assert_eq!(
+        state.active_chat_input().input_mode(),
+        InputMode::Queue,
+        "default mode is Queue"
+    );
+
+    // When toggling.
+    crate::feat::chat_input::intent::handle_toggle_input_mode(&mut state);
+
+    // Then mode is Steer.
+    assert_eq!(state.active_chat_input().input_mode(), InputMode::Steer);
+    // And no commands emitted.
+    assert!(state.active_chat_input().is_empty());
+}
+
+#[rstest::rstest]
+fn toggle_input_mode_is_sticky_across_submissions() {
+    // Given Steer mode with text typed.
+    let mut state = AppState::default();
+    crate::feat::chat_input::intent::handle_toggle_input_mode(&mut state);
+    state
+        .active_chat_input_mut()
+        .insert_text("h");
+
+    // When submitting while Idle (falls back to enqueue).
+    let _ = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+
+    // Then mode remains Steer (sticky).
+    assert_eq!(
+        state.active_chat_input().input_mode(),
+        InputMode::Steer,
+        "mode sticky across submissions"
+    );
+}
+
+#[rstest::rstest]
+fn queue_submit_always_enqueues() {
+    // Given Queue mode with text typed, mid-stream.
+    let mut state = AppState::default();
+    state.session.active_session_mut().begin_streaming();
+    state
+        .active_chat_input_mut()
+        .insert_text("h");
+
+    // When submitting.
+    let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+
+    // Then an EnqueueUserMessage command is emitted.
+    assert_eq!(result.commands.len(), 2);
+    assert!(matches!(
+        result.commands[1],
+        Command::EnqueueUserMessage(_)
+    ));
+}
+
+#[rstest::rstest]
+fn steer_submit_while_busy_routes_to_steer(#[values(PhaseKind::Streaming, PhaseKind::Sending)] phase: PhaseKind) {
+    // Given Steer mode + a non-Idle phase with text typed.
+    let mut state = AppState::default();
+    crate::feat::chat_input::intent::handle_toggle_input_mode(&mut state);
+    match phase {
+        PhaseKind::Streaming => state.session.active_session_mut().begin_streaming(),
+        PhaseKind::Sending => state.session.active_session_mut().begin_sending(),
+        PhaseKind::Idle => unreachable!("Idle is the fall-through case, tested separately"),
+    }
+    // Sanity: phase is not Idle.
+    assert_ne!(
+        state.session.active_session().phase(),
+        PhaseKind::Idle,
+        "test setup: phase must not be Idle"
+    );
+    state
+        .active_chat_input_mut()
+        .insert_text("h");
+
+    // When submitting.
+    let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+
+    // Then SubmitSteeringMessage command emitted (not EnqueueUserMessage).
+    assert!(
+        matches!(result.commands[1], Command::SubmitSteeringMessage(_)),
+        "phase {:?}: expected SubmitSteeringMessage",
+        phase
+    );
+    // And no new history entry was created.
+    assert!(
+        state.session.active_session().history().is_empty(),
+        "phase {:?}: no entry should appear in history yet",
+        phase
+    );
+}
+
+#[test]
+fn steer_submit_while_idle_falls_back_to_enqueue() {
+    // Given Steer mode + Idle phase with text typed.
+    let mut state = AppState::default();
+    crate::feat::chat_input::intent::handle_toggle_input_mode(&mut state);
+    state
+        .active_chat_input_mut()
+        .insert_text("h");
+
+    // Sanity check phase is Idle.
+    assert_eq!(state.session.active_session().phase(), PhaseKind::Idle);
+
+    // When submitting.
+    let result = crate::feat::chat_input::intent::handle_submit_message(&mut state);
+
+    // Then EnqueueUserMessage command emitted (fall-through).
+    assert!(matches!(
+        result.commands[1],
+        Command::EnqueueUserMessage(_)
+    ));
+    // And mode display remains Steer.
+    assert_eq!(
+        state.active_chat_input().input_mode(),
+        InputMode::Steer,
+        "mode display unaffected by Idle fall-through"
+    );
 }
 
 #[rstest::rstest]

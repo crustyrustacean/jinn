@@ -51,9 +51,34 @@ impl UiElement for ChatInputBoxElement {
 
         let text_style = Style::default();
 
+        let (mode_label, mode_color) = {
+            let mode = state.active_chat_input().input_mode();
+            (
+                mode.label(),
+                match mode {
+                    crate::feat::chat_input::state::chat_input_box::InputMode::Queue => {
+                        theme.input_mode_queue
+                    }
+                    crate::feat::chat_input::state::chat_input_box::InputMode::Steer => {
+                        theme.input_mode_steer
+                    }
+                },
+            )
+        };
+        let buffer_count = state.active_session().steering_buffer().len();
+        let badge_text = if buffer_count > 0 {
+            format!("[{mode_label} · {buffer_count}]")
+        } else {
+            format!("[{mode_label}]")
+        };
+        let badge = Line::from(badge_text)
+            .left_aligned()
+            .style(Style::default().fg(mode_color));
+
         let block = Block::default()
             .borders(Borders::BOTTOM)
-            .border_style(border_style);
+            .border_style(border_style)
+            .title_bottom(badge);
         let inner = block.inner(area);
         let max_visible_lines = inner.height as usize;
 

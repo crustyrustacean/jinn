@@ -48,3 +48,8 @@ age_stale = "#ed8796"          # red
 
 # Scroll indicator
 scroll_indicator_bg = [30, 32, 38]
+
+
+# Input mode badge (queue vs steer)
+input_mode_queue = "#7a7a7a"
+input_mode_steer = "#c586e0"
