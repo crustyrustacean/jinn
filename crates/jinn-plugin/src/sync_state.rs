@@ -26,6 +26,44 @@ pub struct PluginHooks {
     pub(crate) hook_cache: RefCell<HashSet<String>>,
 }
 
+/// A keybind declared by a plugin, deserialized from the plugin module's
+/// `keybinds` table. Consumed by the TUI to register dynamic bindings.
+#[derive(Debug, Clone)]
+pub struct PluginKeybind {
+    /// Name of the plugin that declared this keybind.
+    pub plugin_name: String,
+    /// The key sequence (e.g. `"<M-e>"`).
+    pub keys: String,
+    /// The action name the plugin registered.
+    pub action: String,
+    /// Human-readable description shown in which-key help.
+    pub description: String,
+    /// Target scope (e.g. `"input"`, `"normal"`), parsed by [`Scope::from_str`].
+    pub scope: String,
+}
+
+/// Intermediate serde shape for a single entry of the plugin's `keybinds`
+/// table. Maps the Lua field names to the strongly typed [`PluginKeybind`].
+#[derive(Debug, Clone, serde::Deserialize)]
+struct PluginKeybindRaw {
+    keys: String,
+    action: String,
+    description: String,
+    scope: String,
+}
+
+impl PluginKeybindRaw {
+    fn into_keybind(self, plugin_name: String) -> PluginKeybind {
+        PluginKeybind {
+            plugin_name,
+            keys: self.keys,
+            action: self.action,
+            description: self.description,
+            scope: self.scope,
+        }
+    }
+}
+
 /// Error type for failures in the sync plugin path (render thread).
 ///
 /// Colocated with [`SyncHook`] because it is the primary consumer of this
@@ -173,6 +211,69 @@ impl SyncPlugins {
     #[must_use]
     pub fn plugin_count(&self) -> usize {
         self.hooks.len()
+    }
+
+    /// Returns keybinds declared by all loaded plugins.
+    ///
+    /// Reads each plugin module's `keybinds` table and deserializes it into
+    /// [`PluginKeybind`] records. Plugins that don't declare any keybinds, or
+    /// whose `keybinds` field is missing/malformed, are skipped (malformed
+    /// entries are logged at warn and dropped).
+    #[must_use]
+    pub fn declared_keybinds(&self) -> Vec<PluginKeybind> {
+        self.hooks
+            .iter()
+            .flat_map(|(plugin_name, hooks)| {
+                self.keybinds_for_plugin(plugin_name, hooks).unwrap_or_default()
+            })
+            .collect()
+    }
+
+    /// Reads a single plugin's `keybinds` table.
+    fn keybinds_for_plugin(
+        &self,
+        plugin_name: &str,
+        hooks: &PluginHooks,
+    ) -> Result<Vec<PluginKeybind>, Report<PluginSyncStateError>> {
+        let table: mlua::Table = self
+            .lua
+            .registry_value(&hooks.table)
+            .map_err(|e| Report::new(PluginSyncStateError).attach(e.to_string()))
+            .attach("failed to read plugin table")?;
+        let val: Value = table.get("keybinds").unwrap_or(Value::Nil);
+        if val == Value::Nil {
+            return Ok(Vec::new());
+        }
+        let arr: mlua::Table = match val {
+            Value::Table(t) => t,
+            other => {
+                tracing::warn!(
+                    plugin = plugin_name,
+                    "plugin `keybinds` is not a table; skipping"
+                );
+                let _ = other;
+                return Ok(Vec::new());
+            }
+        };
+        let mut out = Vec::new();
+        for entry_result in arr.clone().sequence_values::<Value>() {
+            let entry = match entry_result {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!(plugin = plugin_name, error = %e, "bad keybind entry; skipped");
+                    continue;
+                }
+            };
+            // Deserialize via mlua's serde support (`serialize` feature).
+            use mlua::LuaSerdeExt as _;
+            match self.lua.from_value::<PluginKeybindRaw>(entry) {
+                Ok(raw) => out.push(raw.into_keybind(plugin_name.to_owned())),
+                Err(e) => {
+                    tracing::warn!(plugin = plugin_name, error = %e, "malformed keybind entry; skipped");
+                }
+            }
+        }
+        Ok(out)
     }
 }
 
