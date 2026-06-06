@@ -47,7 +47,7 @@ use super::visual_item::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, VisualItem, build_visual_items,
 };
 use super::{
-    actor, assistant, compaction, error_entry, skill, system, thinking, tool_call, tool_result,
+    actor, assistant, compaction, error_entry, system, thinking, tool_call, tool_result,
     transient, user,
 };
 use viewport::ScrollState;
@@ -552,7 +552,7 @@ pub fn entry_to_lines(entry: &ChatEntry, ctx: &RenderContext) -> Vec<Line<'stati
             ..
         } => tool_result::to_lines(name, content, *status, truncation.as_ref(), ctx),
         ChatEntryKind::Thinking(text) => thinking::to_lines(text, ctx),
-        ChatEntryKind::Skill { name, content, .. } => skill::to_lines(name, content, ctx),
+
         ChatEntryKind::Transient(text) => transient::to_lines(text, ctx),
         ChatEntryKind::Compaction {
             summary,

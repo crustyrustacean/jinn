@@ -185,6 +185,7 @@ fn error_tool_result(tool_call_id: String, name: String, content: String) -> Too
         success: false,
         full_content: None,
         truncation: None,
+        pin_position: None,
     }
 }
 
@@ -248,6 +249,7 @@ fn format_exit_result(
                 success,
                 full_content: Some(content),
                 truncation: Some(meta),
+                pin_position: None,
             }
         } else {
             // truncated but no meta - return unformatted truncated content
@@ -258,6 +260,7 @@ fn format_exit_result(
                 success,
                 full_content: Some(content),
                 truncation: None,
+                pin_position: None,
             }
         }
     } else {
@@ -268,6 +271,7 @@ fn format_exit_result(
             success,
             full_content: None,
             truncation: None,
+            pin_position: None,
         }
     }
 }
