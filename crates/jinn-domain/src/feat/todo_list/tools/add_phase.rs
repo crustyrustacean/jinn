@@ -61,6 +61,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 success: false,
                 full_content: None,
                 truncation: None,
+                pin_position: None,
             };
         };
         let Some(session_id) = ctx.session_id else {
@@ -71,6 +72,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 success: false,
                 full_content: None,
                 truncation: None,
+                pin_position: None,
             };
         };
 
@@ -88,6 +90,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     success: false,
                     full_content: None,
                     truncation: None,
+                    pin_position: None,
                 };
             }
         };
@@ -117,6 +120,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             success: true,
             full_content: None,
             truncation: None,
+            pin_position: None,
         }
     })
 }

@@ -60,6 +60,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                     success: false,
                     full_content: None,
                     truncation: None,
+                    pin_position: None,
                 };
             }
         };
@@ -80,6 +81,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 success: false,
                 full_content: None,
                 truncation: None,
+                pin_position: None,
             };
         }
 
@@ -91,6 +93,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 success: true,
                 full_content: None,
                 truncation: None,
+                pin_position: None,
             },
             Err(e) => ToolResult {
                 tool_call_id: call.id,
@@ -99,6 +102,7 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
                 success: false,
                 full_content: None,
                 truncation: None,
+                pin_position: None,
             },
         }
     })

@@ -71,6 +71,17 @@ impl std::fmt::Display for PinPosition {
     }
 }
 
+impl From<jinn_provider::tool_types::ToolResultPinPosition> for PinPosition {
+    fn from(pos: jinn_provider::tool_types::ToolResultPinPosition) -> Self {
+        match pos {
+            jinn_provider::tool_types::ToolResultPinPosition::Top => Self::Top,
+            jinn_provider::tool_types::ToolResultPinPosition::Bottom => Self::Bottom,
+            jinn_provider::tool_types::ToolResultPinPosition::Relative => Self::Relative,
+        }
+    }
+}
+
+
 /// User-controlled override for whether an entry is included in LLM context.
 ///
 /// Tri-state that replaces the old `ignored: bool` field, supporting both
@@ -220,20 +231,11 @@ pub enum ChatEntryKind {
         full_content: Option<String>,
         /// Truncation metadata, if truncation occurred.
         truncation: Option<jinn_provider::tool_types::TruncationMeta>,
+        /// Where this entry should appear in the assembled prompt. `None` (default)
+        /// means the entry participates in normal history compaction/trimming.
+        pin_position: Option<PinPosition>,
     },
-    /// A skill loaded into the session context.
-    ///
-    /// Created when the `skill` built-in tool loads a SKILL.md file.
-    /// Always pinned to TOP. Renders as a collapsible entry showing
-    /// only the skill name by default.
-    Skill {
-        /// The skill name.
-        name: String,
-        /// Absolute path to the SKILL.md file.
-        location: String,
-        /// The full skill content (body of SKILL.md with frontmatter stripped).
-        content: String,
-    },
+
     /// A transient UI-only message (not sent to the LLM).
     ///
     /// Used for welcome messages, status notifications, and other ephemeral
@@ -434,6 +436,7 @@ impl ChatEntry {
                 status,
                 full_content: None,
                 truncation: None,
+                pin_position: None,
             },
             pin_position: None,
             context_override: ContextOverride::Default,
@@ -465,6 +468,7 @@ impl ChatEntry {
                 status,
                 full_content: Some(full_content),
                 truncation: Some(truncation),
+                pin_position: None,
             },
             pin_position: None,
             context_override: ContextOverride::Default,
@@ -472,27 +476,7 @@ impl ChatEntry {
         }
     }
 
-    /// Create a new skill entry with the current timestamp.
-    #[must_use]
-    pub fn skill<N, L, C>(name: N, location: L, content: C) -> Self
-    where
-        N: Into<String>,
-        L: Into<String>,
-        C: Into<String>,
-    {
-        Self {
-            id: ChatEntryId::new(),
-            timestamp: jiff::Timestamp::now(),
-            kind: ChatEntryKind::Skill {
-                name: name.into(),
-                location: location.into(),
-                content: content.into(),
-            },
-            pin_position: None,
-            context_override: ContextOverride::Default,
-            context_history: Vec::new(),
-        }
-    }
+
 
     /// Create a new transient chat entry with the current timestamp.
     ///
@@ -750,7 +734,7 @@ impl ChatEntry {
             ChatEntryKind::Thinking(..) => "thinking",
             ChatEntryKind::ToolCall { .. } => "tool_call",
             ChatEntryKind::ToolResult { .. } => "tool_result",
-            ChatEntryKind::Skill { .. } => "skill",
+
             ChatEntryKind::Transient(..) => "transient",
             ChatEntryKind::Compaction { .. } => "compaction",
         }
@@ -779,7 +763,7 @@ impl ChatEntry {
             ChatEntryKind::ToolResult { name, content, .. } => {
                 format!("{name}: {content}")
             }
-            ChatEntryKind::Skill { content, .. } => content.clone(),
+
             ChatEntryKind::Compaction { summary, .. } => summary.clone(),
         }
     }
@@ -823,10 +807,7 @@ impl ChatEntry {
                 // invalidates when the indicator line is added or removed.
                 truncation.is_some().hash(&mut hasher);
             }
-            ChatEntryKind::Skill { name, content, .. } => {
-                name.hash(&mut hasher);
-                content.hash(&mut hasher);
-            }
+
             ChatEntryKind::Compaction {
                 summary,
                 tokens_after,
@@ -928,6 +909,7 @@ impl Serialize for ChatEntryKind {
                 status,
                 full_content,
                 truncation,
+                pin_position,
             } => {
                 #[derive(Serialize)]
                 struct ToolResultData {
@@ -939,6 +921,8 @@ impl Serialize for ChatEntryKind {
                     full_content: Option<String>,
                     #[serde(skip_serializing_if = "Option::is_none")]
                     truncation: Option<jinn_provider::tool_types::TruncationMeta>,
+                    #[serde(default, skip_serializing_if = "Option::is_none")]
+                    pin_position: Option<PinPosition>,
                 }
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry(
@@ -950,32 +934,12 @@ impl Serialize for ChatEntryKind {
                         status: *status,
                         full_content: full_content.clone(),
                         truncation: truncation.clone(),
+                        pin_position: *pin_position,
                     },
                 )?;
                 map.end()
             }
-            ChatEntryKind::Skill {
-                name,
-                location,
-                content,
-            } => {
-                #[derive(Serialize)]
-                struct SkillData {
-                    name: String,
-                    location: String,
-                    content: String,
-                }
-                let mut map = serializer.serialize_map(Some(1))?;
-                map.serialize_entry(
-                    "Skill",
-                    &SkillData {
-                        name: name.clone(),
-                        location: location.clone(),
-                        content: content.clone(),
-                    },
-                )?;
-                map.end()
-            }
+
             ChatEntryKind::Thinking(t) => {
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry("Thinking", t)?;
@@ -1108,7 +1072,10 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             full_content: Option<String>,
                             #[serde(default)]
                             truncation: Option<jinn_provider::tool_types::TruncationMeta>,
+                            #[serde(default)]
+                            pin_position: Option<PinPosition>,
                         }
+                        // Try new format first, fall back to old format.
                         #[derive(Deserialize)]
                         struct ToolResultDataOld {
                             id: String,
@@ -1116,7 +1083,6 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             content: String,
                             success: bool,
                         }
-                        // Try new format first, fall back to old format.
                         let value: serde_json::Value = map.next_value()?;
                         let result = serde_json::from_value::<ToolResultDataNew>(value.clone())
                             .map(|data| ChatEntryKind::ToolResult {
@@ -1126,6 +1092,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                                 status: data.status,
                                 full_content: data.full_content,
                                 truncation: data.truncation,
+                                pin_position: data.pin_position,
                             })
                             .or_else(|_| {
                                 serde_json::from_value::<ToolResultDataOld>(value).map(|data| {
@@ -1140,6 +1107,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                                         },
                                         full_content: None,
                                         truncation: None,
+                                        pin_position: None,
                                     }
                                 })
                             })
@@ -1148,20 +1116,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             })?;
                         Ok(result)
                     }
-                    "Skill" => {
-                        #[derive(Deserialize)]
-                        struct SkillData {
-                            name: String,
-                            location: String,
-                            content: String,
-                        }
-                        let data: SkillData = map.next_value()?;
-                        Ok(ChatEntryKind::Skill {
-                            name: data.name,
-                            location: data.location,
-                            content: data.content,
-                        })
-                    }
+
                     "Thinking" => {
                         let text: String = map.next_value()?;
                         Ok(ChatEntryKind::Thinking(text))
@@ -1203,7 +1158,7 @@ impl<'de> Deserialize<'de> for ChatEntryKind {
                             "ToolCall",
                             "ToolResult",
                             "Thinking",
-                            "Skill",
+
                             "Transient",
                             "Compaction",
                         ],
@@ -1223,7 +1178,7 @@ impl ChatEntryKind {
     /// (before considering pin or user override).
     ///
     /// Kinds included by default: User, Assistant, ToolCall, ToolResult,
-    /// Skill, Compaction.
+    /// Kinds included by default: User, Assistant, ToolCall, ToolResult, Compaction.
     ///
     /// Kinds excluded by default: Error, Thinking, Transient, System, Actor.
     #[must_use]
@@ -1234,7 +1189,7 @@ impl ChatEntryKind {
                 | ChatEntryKind::Assistant(..)
                 | ChatEntryKind::ToolCall { .. }
                 | ChatEntryKind::ToolResult { .. }
-                | ChatEntryKind::Skill { .. }
+
                 | ChatEntryKind::Compaction { .. }
         )
     }

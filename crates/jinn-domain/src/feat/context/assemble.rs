@@ -163,7 +163,7 @@ pub fn assemble_prompt(
             .filter(|s| !disabled_skills.contains(&s.name))
             .cloned()
             .collect();
-        format_skills_for_prompt(&filtered)
+        format_skills_for_prompt(&filtered, &session.loaded_skills())
     };
 
     // Apply overrides: env context.

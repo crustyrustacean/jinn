@@ -14,6 +14,7 @@ use crate::common::state::State;
 use crate::protocol::SessionId;
 
 // Re-export provider types.
+pub use jinn_provider::tool_types::ToolResultPinPosition;
 pub use jinn_provider::{ToolCall, ToolDefinition, ToolResult};
 
 /// Context provided to every built-in tool at execution time.

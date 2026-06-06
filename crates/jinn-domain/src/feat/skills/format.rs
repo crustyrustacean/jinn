@@ -19,7 +19,7 @@ use crate::feat::skills::skill::Skill;
 ///   </skill>
 /// </available_skills>
 /// ```
-pub fn format_skills_for_prompt(skills: &[Skill]) -> String {
+pub fn format_skills_for_prompt(skills: &[Skill], loaded: &std::collections::HashSet<String>) -> String {
     if skills.is_empty() {
         return String::new();
     }
@@ -27,15 +27,20 @@ pub fn format_skills_for_prompt(skills: &[Skill]) -> String {
     let mut lines = vec![
         String::new(),
         "The following skills provide specialized instructions for specific tasks.".to_owned(),
-        "Use the skill tool to load a skill's file when the task matches its description."
-            .to_owned(),
+        "Use the skill tool to load a skill's file when the task matches its description.".to_owned(),
+        "Skills marked loaded='true' are already in context as a pinned tool result — do not call the skill tool for them.".to_owned(),
         "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.".to_owned(),
         String::new(),
         "<available_skills>".to_owned(),
     ];
 
     for skill in skills {
-        lines.push("  <skill>".to_owned());
+        let loaded_attr = if loaded.contains(&skill.name) {
+            " loaded=\"true\""
+        } else {
+            ""
+        };
+        lines.push(format!("  <skill{loaded_attr}>"));
         lines.push(format!("    <name>{}</name>", escape_xml(&skill.name)));
         lines.push(format!(
             "    <description>{}</description>",
@@ -83,7 +88,7 @@ mod tests {
         let skills: Vec<Skill> = vec![];
 
         // When formatting.
-        let result = format_skills_for_prompt(&skills);
+        let result = format_skills_for_prompt(&skills, &std::collections::HashSet::new());
 
         // Then the result is empty.
         assert!(result.is_empty());
@@ -95,7 +100,7 @@ mod tests {
         let skills = vec![test_skill("my-skill", "A test skill")];
 
         // When formatting.
-        let result = format_skills_for_prompt(&skills);
+        let result = format_skills_for_prompt(&skills, &std::collections::HashSet::new());
 
         // Then the output contains the XML block.
         assert!(result.contains("<available_skills>"));
@@ -113,7 +118,7 @@ mod tests {
         let skills = vec![test_skill("test", "Test skill")];
 
         // When formatting.
-        let result = format_skills_for_prompt(&skills);
+        let result = format_skills_for_prompt(&skills, &std::collections::HashSet::new());
 
         // Then usage instructions are included.
         assert!(result.contains("Use the skill tool"));
@@ -132,7 +137,7 @@ mod tests {
         }];
 
         // When formatting.
-        let result = format_skills_for_prompt(&skills);
+        let result = format_skills_for_prompt(&skills, &std::collections::HashSet::new());
 
         // Then special characters are escaped.
         assert!(result.contains("&lt;special&gt;"));
@@ -150,11 +155,73 @@ mod tests {
         ];
 
         // When formatting.
-        let result = format_skills_for_prompt(&skills);
+        let result = format_skills_for_prompt(&skills, &std::collections::HashSet::new());
 
         // Then all three skills are included.
         assert!(result.contains("<name>skill-a</name>"));
         assert!(result.contains("<name>skill-b</name>"));
         assert!(result.contains("<name>skill-c</name>"));
+    }
+
+    #[rstest::rstest]
+    fn format_marks_loaded_skill_with_attribute() {
+        // Given one loaded and one unloaded skill.
+        let skills = vec![
+            test_skill("loaded-skill", "A loaded skill"),
+            test_skill("unloaded-skill", "An unloaded skill"),
+        ];
+        let mut loaded = std::collections::HashSet::new();
+        loaded.insert("loaded-skill".to_owned());
+
+        // When formatting.
+        let result = format_skills_for_prompt(&skills, &loaded);
+
+        // Then only the loaded skill has the attribute.
+        assert!(
+            result.contains("  <skill loaded=\"true\">"),
+            "loaded skill should carry loaded='true' attribute: {result}"
+        );
+        assert!(
+            result.contains("  <skill>"),
+            "unloaded skill should have no attribute: {result}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn format_loaded_instruction_only_appears_once() {
+        // Given several skills.
+        let skills = vec![
+            test_skill("a", "A"),
+            test_skill("b", "B"),
+            test_skill("c", "C"),
+        ];
+        let mut loaded = std::collections::HashSet::new();
+        loaded.insert("a".to_owned());
+        loaded.insert("c".to_owned());
+
+        // When formatting.
+        let result = format_skills_for_prompt(&skills, &loaded);
+
+        // Then the instruction line appears exactly once.
+        assert_eq!(
+            result.matches("Skills marked loaded='true'").count(),
+            1,
+            "instruction line should appear exactly once: {result}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn format_empty_loaded_set_no_attributes() {
+        // Given skills with no loaded set.
+        let skills = vec![test_skill("foo", "Foo")];
+
+        // When formatting with empty loaded set.
+        let result = format_skills_for_prompt(&skills, &std::collections::HashSet::new());
+
+        // Then no <skill> opening tag carries the loaded attribute.
+        assert!(
+            !result.contains("<skill loaded="),
+            "no <skill> tag should carry the loaded attribute when set is empty: {result}"
+        );
     }
 }

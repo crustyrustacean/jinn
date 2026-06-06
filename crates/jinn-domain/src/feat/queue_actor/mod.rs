@@ -251,7 +251,7 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::feat::session::phase_machine::PhaseKind;
     use crate::protocol::ChatEntry;
-    use jinn_provider::LlmMessage;
+
 
     fn test_actor() -> QueueActor {
         QueueActor {
