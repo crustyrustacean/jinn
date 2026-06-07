@@ -103,9 +103,8 @@ pub fn resolve_cwd_input(raw: &str, current_cwd: &Path) -> CwdResolution {
     // Canonicalize resolves `..`, `.`, and symlinks. A failure here means the
     // path doesn't exist - treat as NotADir so the footer shows the error.
     let normalized = normalize_lexically(&absolute);
-    let canonical = match std::fs::canonicalize(&normalized) {
-        Ok(c) => c,
-        Err(_) => return CwdResolution::NotADir(absolute.display().to_string()),
+    let Ok(canonical) = std::fs::canonicalize(&normalized) else {
+        return CwdResolution::NotADir(absolute.display().to_string());
     };
 
     if canonical.is_dir() {
