@@ -42,3 +42,16 @@ pub struct RescanPersonas;
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("context")]
 pub struct LoadPersonaPickerEntries;
+
+/// Scan project context files (AGENTS.md/CLAUDE.md) for a specific session.
+///
+/// The actor reads the session's cwd, walks the bounded ancestor chain
+/// (stopping at an exclusive `$HOME` or inclusive VCS root, whichever comes
+/// first), reads the first existing candidate per walked dir, and writes the
+/// result into that session's ephemeral discovered-context-files set.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("context")]
+pub struct ScanContextFiles {
+    /// The session whose cwd drives the scan.
+    pub session_id: SessionId,
+}

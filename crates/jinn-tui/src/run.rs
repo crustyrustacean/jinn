@@ -316,13 +316,18 @@ fn handle_suspend_action(
                         .active_session_mut()
                         .set_cwd(canonical);
 
-                    // Rescan context files from the new CWD.
-                    let new_cwd = app.core.state.read().active_session().cwd().to_owned();
-                    let context_files =
-                        jinn_domain::feat::context::env_context::load_project_context_files_sync(
-                            &new_cwd,
-                        );
-                    app.core.state.write().context.context_files = context_files;
+                    // Trigger async re-scan of skills/prompts/context-files for the
+                    // now-updated cwd. Each scan actor reads the session's cwd and
+                    // walks the bounded ancestor chain off-thread.
+                    let session_id =
+                        app.core.state.read().active_session().session_id().clone();
+                    for command in
+                        jinn_domain::feat::context::env_context::scan_commands_for_session(
+                            &session_id,
+                        )
+                    {
+                        app.core.submit_command(command);
+                    }
 
                     tracing::info!(
                         cwd = %app.core.state.read().active_session().cwd().display(),

@@ -63,7 +63,7 @@ pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
                     .take_while(|(i, _)| *i < cursor_before_insert)
                     .map(|(_, g)| g)
                     .collect();
-                if let Some(template) = state.context.prompt_templates.find_by_name(&filter) {
+                if let Some(template) = state.active_session().discovered_prompt_templates().find_by_name(&filter) {
                     let body = template.body.clone();
                     state.active_chat_input_mut().expand_autocomplete(&body);
                 } else {
@@ -76,7 +76,7 @@ pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
                     .autocomplete_filter()
                     .unwrap_or_default();
                 let matches =
-                    compute_updated_matches(&state.context.prompt_templates, trigger, &filter);
+                    compute_updated_matches(state.active_session().discovered_prompt_templates(), trigger, &filter);
                 state
                     .active_chat_input_mut()
                     .update_autocomplete_matches(matches);
@@ -90,7 +90,7 @@ pub fn handle_insert_char(ch: char, state: &mut AppState) -> IntentResult {
                 let input = state.active_chat_input();
                 if is_valid_hash_trigger_position(input) {
                     let token_start = input.cursor_pos() - 1;
-                    let matches = compute_matches(&state.context.prompt_templates, "");
+                    let matches = compute_matches(state.active_session().discovered_prompt_templates(), "");
                     state.active_chat_input_mut().activate_autocomplete(
                         token_start,
                         AutocompleteTrigger::Hash,
@@ -159,7 +159,7 @@ pub fn handle_delete_grapheme(state: &mut AppState) -> IntentResult {
             .autocomplete()
             .as_ref()
             .map(AutocompleteState::trigger);
-        let matches = compute_updated_matches(&state.context.prompt_templates, trigger, &filter);
+        let matches = compute_updated_matches(state.active_session().discovered_prompt_templates(), trigger, &filter);
         state
             .active_chat_input_mut()
             .update_autocomplete_matches(matches);
@@ -198,7 +198,7 @@ pub fn handle_delete_grapheme_forward(state: &mut AppState) -> IntentResult {
                     .as_ref()
                     .map(AutocompleteState::trigger);
                 let matches =
-                    compute_updated_matches(&state.context.prompt_templates, trigger, &filter);
+                    compute_updated_matches(state.active_session().discovered_prompt_templates(), trigger, &filter);
                 state
                     .active_chat_input_mut()
                     .update_autocomplete_matches(matches);
@@ -252,7 +252,7 @@ pub fn handle_submit_message(state: &mut AppState) -> IntentResult {
 
     let expanded = crate::feat::context::prompt_template::expand_tokens(
         &input_text,
-        &state.context.prompt_templates,
+        state.active_session().discovered_prompt_templates(),
     );
     state.active_chat_input_mut().reset();
 
@@ -306,10 +306,10 @@ fn handle_submit_message_with_autocomplete(state: &mut AppState) -> IntentResult
         _ => {}
     }
 
-    let expanded = crate::feat::context::prompt_template::expand_tokens(
-        &display,
-        &state.context.prompt_templates,
-    );
+    let expanded = {
+        let store = state.active_session().discovered_prompt_templates();
+        crate::feat::context::prompt_template::expand_tokens(&display, store)
+    };
     state.active_chat_input_mut().reset();
 
     let command = route_to_enqueue_or_steer(state, &session_id, display, expanded);
@@ -416,7 +416,7 @@ pub fn handle_autocomplete_confirm(state: &mut AppState) -> IntentResult {
                 .as_ref()
                 .map(AutocompleteState::trigger);
             let matches =
-                compute_updated_matches(&state.context.prompt_templates, trigger, &filter);
+                compute_updated_matches(state.active_session().discovered_prompt_templates(), trigger, &filter);
             state
                 .active_chat_input_mut()
                 .update_autocomplete_matches(matches);
@@ -808,7 +808,7 @@ fn try_reactivate_autocomplete(state: &mut AppState) {
     let Some((token_start, filter)) = find_hash_token_at_cursor(state.active_chat_input()) else {
         return;
     };
-    let matches = compute_matches(&state.context.prompt_templates, &filter);
+    let matches = compute_matches(state.active_session().discovered_prompt_templates(), &filter);
     state.active_chat_input_mut().activate_autocomplete(
         token_start,
         AutocompleteTrigger::Hash,

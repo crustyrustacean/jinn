@@ -98,6 +98,53 @@ impl PromptTemplateStore {
         })
     }
 
+    /// Loads templates from system, user, and ordered project directories,
+    /// merging results with most-local-wins precedence.
+    ///
+    /// Layering (lowest to highest priority):
+    /// 1. `system_dir`
+    /// 2. `user_dir`
+    /// 3. `project_dirs` — least-local ancestor first, cwd last. Each later
+    ///    project dir overrides a template of the same name from any earlier layer.
+    ///
+    /// This generalizes [`Self::load_from_dirs`] to add project-local
+    /// `.agents/prompts` dirs discovered via the bounded walk.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any directory cannot be read due to I/O failure.
+    pub fn load_from_dirs_ordered(
+        user_dir: &Path,
+        system_dir: &Path,
+        project_dirs: &[std::path::PathBuf],
+    ) -> Result<Self, Report<PromptTemplateStoreError>> {
+        let mut templates = Vec::new();
+        let mut seen_names = std::collections::HashSet::new();
+
+        // System templates first (lowest priority).
+        if system_dir.exists() {
+            Self::scan_dir(system_dir, &mut templates, &mut seen_names)?;
+        }
+
+        // User templates override system ones.
+        if user_dir.exists() {
+            Self::scan_dir_override(user_dir, &mut templates, &mut seen_names)?;
+        }
+
+        // Project templates (least-local first, cwd last = highest priority).
+        // Each project dir is scanned with override semantics so a closer
+        // ancestor replaces a template of the same name from a further layer.
+        for dir in project_dirs {
+            if dir.exists() {
+                Self::scan_dir_override(dir, &mut templates, &mut seen_names)?;
+            }
+        }
+
+        Ok(Self {
+            templates: templates.into(),
+        })
+    }
+
     /// Creates a store from a pre-built list of templates (for testing).
     #[must_use]
     pub fn from_vec(templates: Vec<PromptTemplate>) -> Self {
