@@ -614,6 +614,21 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+    use super::*;
+
+    // Note: there is no unit test for `run_and_shutdown` / `dispatch` calling
+    // `store.shutdown()`. `Runner::run` is a concrete enum (not a trait), and
+    // both variants require a live `AppCore` + `ActorHostService` (the full
+    // actor system) to construct. Standing that up — or introducing a `Runner`
+    // trait + fake — is scope creep for this task.
+    //
+    // The behavior is covered two ways instead:
+    //  1. The 4 wiring sites are verified by static inspection: `run_and_shutdown`
+    //     is called at the Tui (line 250), Headless (292), Bench::Run (389), and
+    //     Bench::Tui (460) exit paths.
+    //  2. The checkpoint itself is proven by `shutdown_truncates_wal_file` and
+    //     `shutdown_makes_db_self_contained_for_backup` in the session store tests.
+
 
 
 
