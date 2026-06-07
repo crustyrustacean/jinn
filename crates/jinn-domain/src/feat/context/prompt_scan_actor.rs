@@ -1,11 +1,20 @@
-//! Prompt template scan actor - scans and reloads prompt templates on command.
+//! Prompt template scan actor - scans and reloads prompt templates.
 //!
-//! Subscribes to [`RescanPromptTemplates`] commands, scans system, user, and
-//! project prompts directories for the active session's cwd, writes the merged
-//! result into that session's ephemeral discovered-prompt-templates store, and
-//! emits [`PromptTemplatesLoaded`] events with the results.
+//! Two trigger paths:
+//! - **Event-driven** (automatic): subscribes to session lifecycle events
+//!   ([`EnvironmentLoaded`], [`SessionCreated`], [`SessionSetupCompleted`],
+//!   [`SessionLoadCompleted`], [`SessionCwdChanged`]). Each event resolves a
+//!   session id, applies the `"."`-sentinel gate via
+//!   [`scan_cwd_for_session`](crate::common::actor::scan_actor::scan_cwd_for_session),
+//!   and scans when the cwd is settled.
+//! - **Command-driven** (manual reload): subscribes to
+//!   [`RescanPromptTemplates`] commands.
+//!
+//! On either trigger, scans system, user, and project prompts directories for
+//!   the session's cwd, writes the merged result into that session's ephemeral
+//!   discovered set, and emits [`PromptTemplatesLoaded`] events.
 
-use crate::common::actor::scan_actor::NoDirectMsg;
+use crate::common::actor::scan_actor::{scan_cwd_for_session, NoDirectMsg};
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope};
 use crate::common::services::Services;
 use crate::common::state::State;
@@ -13,6 +22,11 @@ use crate::feat::context::prompt_template::PromptTemplateStore;
 use crate::feat::discovery::project_prompts_dirs;
 use crate::feat::provider::protocol::command::RescanPromptTemplates;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
+use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+use crate::feat::session_lifecycle::protocol::event::{
+    SessionCreated, SessionCwdChanged, SessionSetupCompleted,
+};
+use crate::init::env_init_actor::EnvironmentLoaded;
 use crate::protocol::{Command, Event};
 
 /// Dependencies for [`PromptScanActor`].
@@ -43,6 +57,13 @@ impl Actor for PromptScanActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.set_description("Scans and reloads prompt templates");
         ctx.subscribe_command::<RescanPromptTemplates>();
+        // Event-driven triggers: scan automatically when a session's cwd
+        // becomes the active discovery target.
+        ctx.subscribe_event::<EnvironmentLoaded>();
+        ctx.subscribe_event::<SessionCreated>();
+        ctx.subscribe_event::<SessionSetupCompleted>();
+        ctx.subscribe_event::<SessionLoadCompleted>();
+        ctx.subscribe_event::<SessionCwdChanged>();
         Self {
             services: deps.services,
             state: deps.state,
@@ -50,8 +71,14 @@ impl Actor for PromptScanActor {
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
-        if let ActorEnvelope::Command(command) = msg {
-            self.handle_command(&command, ctx).await;
+        match msg {
+            ActorEnvelope::Command(command) => {
+                self.handle_command(&command, ctx).await;
+            }
+            ActorEnvelope::Event(event) => {
+                self.handle_event(&event, ctx).await;
+            }
+            _ => {}
         }
     }
 }
@@ -61,6 +88,34 @@ impl PromptScanActor {
     async fn handle_command(&mut self, command: &Command, ctx: &ActorContext) {
         if let Command::RescanPromptTemplates(payload) = command {
             self.run_scan(&payload.session_id, ctx).await;
+        }
+    }
+
+    /// Dispatches incoming lifecycle events to a session-targeted scan.
+    ///
+    /// Extracts the relevant session id, applies the `"."`-sentinel gate via
+    /// [`scan_cwd_for_session`], and scans when the cwd is settled. The gate
+    /// defers lifecycle-setup sessions to `SessionSetupCompleted`.
+    async fn handle_event(&self, event: &Event, ctx: &ActorContext) {
+        let Some(session_id) = self.session_id_for_event(event) else {
+            return;
+        };
+        if scan_cwd_for_session(&self.state, &session_id).is_some() {
+            self.run_scan(&session_id, ctx).await;
+        }
+    }
+
+    /// Resolves the session id a discovery trigger event targets, if any.
+    fn session_id_for_event(&self, event: &Event) -> Option<crate::SessionId> {
+        match event {
+            Event::EnvironmentLoaded(_) => {
+                Some(self.state.read().session.active_session_id().clone())
+            }
+            Event::SessionCreated(payload) => Some(payload.session_id.clone()),
+            Event::SessionSetupCompleted(payload) => Some(payload.session_id.clone()),
+            Event::SessionLoadCompleted(payload) => Some(payload.session_id().clone()),
+            Event::SessionCwdChanged(payload) => Some(payload.session_id.clone()),
+            _ => None,
         }
     }
 

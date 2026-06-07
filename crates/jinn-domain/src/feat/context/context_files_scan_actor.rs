@@ -1,13 +1,22 @@
-//! Context-files scan actor - scans project context files on command.
+//! Context-files scan actor - scans project context files.
 //!
-//! Subscribes to [`ScanContextFiles`] commands, walks the bounded ancestor
-//! chain for the active session's cwd (stopping at an exclusive `$HOME` or an
-//! inclusive VCS root, whichever comes first), reads the first existing
-//! candidate (AGENTS.md / CLAUDE.md) per walked dir on a blocking thread,
-//! writes the result into that session's ephemeral discovered-context-files
-//! set, and emits [`ContextFilesLoaded`] events with the results.
+//! Two trigger paths:
+//! - **Event-driven** (automatic): subscribes to session lifecycle events
+//!   ([`EnvironmentLoaded`], [`SessionCreated`], [`SessionSetupCompleted`],
+//!   [`SessionLoadCompleted`], [`SessionCwdChanged`]). Each event resolves a
+//!   session id, applies the `"."`-sentinel gate via
+//!   [`scan_cwd_for_session`](crate::common::actor::scan_actor::scan_cwd_for_session),
+//!   and scans when the cwd is settled.
+//! - **Command-driven** (manual reload): subscribes to
+//!   [`ScanContextFiles`] commands.
+//!
+//! On either trigger, walks the bounded ancestor chain for the session's cwd
+//!   (stopping at an exclusive `$HOME` or an inclusive VCS root, whichever
+//!   comes first), reads the first existing candidate (AGENTS.md / CLAUDE.md)
+//!   per walked dir, writes the result into that session's ephemeral
+//!   discovered set, and emits [`ContextFilesLoaded`] events.
 
-use crate::common::actor::scan_actor::NoDirectMsg;
+use crate::common::actor::scan_actor::{scan_cwd_for_session, NoDirectMsg};
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope};
 use crate::common::services::Services;
 use crate::common::state::State;
@@ -15,6 +24,11 @@ use crate::feat::context::env_context::ContextFile;
 use crate::feat::context::protocol::command::ScanContextFiles;
 use crate::feat::context::protocol::event::ContextFilesLoaded;
 use crate::feat::discovery::project_context_files;
+use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+use crate::feat::session_lifecycle::protocol::event::{
+    SessionCreated, SessionCwdChanged, SessionSetupCompleted,
+};
+use crate::init::env_init_actor::EnvironmentLoaded;
 use crate::protocol::{Command, Event};
 
 /// Dependencies for [`ContextFilesScanActor`].
@@ -44,6 +58,13 @@ impl Actor for ContextFilesScanActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.set_description("Scans and loads project context files (AGENTS.md/CLAUDE.md)");
         ctx.subscribe_command::<ScanContextFiles>();
+        // Event-driven triggers: scan automatically when a session's cwd
+        // becomes the active discovery target.
+        ctx.subscribe_event::<EnvironmentLoaded>();
+        ctx.subscribe_event::<SessionCreated>();
+        ctx.subscribe_event::<SessionSetupCompleted>();
+        ctx.subscribe_event::<SessionLoadCompleted>();
+        ctx.subscribe_event::<SessionCwdChanged>();
         Self {
             services: deps.services,
             state: deps.state,
@@ -51,8 +72,14 @@ impl Actor for ContextFilesScanActor {
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
-        if let ActorEnvelope::Command(command) = msg {
-            self.handle_command(&command, ctx).await;
+        match msg {
+            ActorEnvelope::Command(command) => {
+                self.handle_command(&command, ctx).await;
+            }
+            ActorEnvelope::Event(event) => {
+                self.handle_event(&event, ctx).await;
+            }
+            _ => {}
         }
     }
 }
@@ -62,6 +89,34 @@ impl ContextFilesScanActor {
     async fn handle_command(&mut self, command: &Command, ctx: &ActorContext) {
         if let Command::ScanContextFiles(payload) = command {
             self.run_scan(&payload.session_id, ctx).await;
+        }
+    }
+
+    /// Dispatches incoming lifecycle events to a session-targeted scan.
+    ///
+    /// Extracts the relevant session id, applies the `"."`-sentinel gate via
+    /// [`scan_cwd_for_session`], and scans when the cwd is settled. The gate
+    /// defers lifecycle-setup sessions to `SessionSetupCompleted`.
+    async fn handle_event(&self, event: &Event, ctx: &ActorContext) {
+        let Some(session_id) = self.session_id_for_event(event) else {
+            return;
+        };
+        if scan_cwd_for_session(&self.state, &session_id).is_some() {
+            self.run_scan(&session_id, ctx).await;
+        }
+    }
+
+    /// Resolves the session id a discovery trigger event targets, if any.
+    fn session_id_for_event(&self, event: &Event) -> Option<crate::SessionId> {
+        match event {
+            Event::EnvironmentLoaded(_) => {
+                Some(self.state.read().session.active_session_id().clone())
+            }
+            Event::SessionCreated(payload) => Some(payload.session_id.clone()),
+            Event::SessionSetupCompleted(payload) => Some(payload.session_id.clone()),
+            Event::SessionLoadCompleted(payload) => Some(payload.session_id().clone()),
+            Event::SessionCwdChanged(payload) => Some(payload.session_id.clone()),
+            _ => None,
         }
     }
 
