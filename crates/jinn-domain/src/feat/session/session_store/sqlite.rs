@@ -329,7 +329,8 @@ impl SessionStore for SqliteSessionStore {
                 .get()
                 .change_context(SessionStoreError)
                 .attach("failed to acquire connection from pool")?;
-            shutdown_blocking(&mut conn)
+            shutdown_blocking(&mut conn);
+            Ok(())
         })
         .await
         .change_context(SessionStoreError)
@@ -1171,35 +1172,18 @@ fn load_unarchived_summaries_blocking(
     Ok(summaries)
 }
 
-/// Deletes empty unarchived sessions and orphaned entries during shutdown.
+/// Non-destructive no-op called during shutdown.
 ///
-/// An "empty" session is one with no rows in `session_history`. These can
-/// accumulate when `SaveNewLifecycleSession` persists a session before its
-/// setup command runs, and the app exits before the session gets any entries.
-fn shutdown_blocking(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
-    // Delete unarchived sessions that have no chat history entries.
-    let result = sql_query(
-        "DELETE FROM sessions WHERE archived = 0 AND id NOT IN (SELECT DISTINCT session_id FROM session_history)",
-    )
-    .execute(conn)
-    .change_context(SessionStoreError)
-    .attach("failed to delete empty sessions during shutdown")?;
-
-    if result > 0 {
-        tracing::info!(
-            count = result,
-            "deleted empty unarchived sessions during shutdown"
-        );
-    }
-
-    // Clean up orphaned entries (not referenced by any session).
-    sql_query("DELETE FROM entries WHERE id NOT IN (SELECT entry_id FROM session_history)")
-        .execute(conn)
-        .change_context(SessionStoreError)
-        .attach("failed to delete orphaned entries during shutdown")?;
-
-    Ok(())
-}
+/// Previously this deleted "empty" unarchived sessions (no `session_history`
+/// rows) and orphaned entries. That heuristic was a data-destruction hazard:
+/// with `PRAGMA foreign_keys=ON` the session delete cascaded through
+/// `token_ledger`, and it fired against any transiently-empty junction table
+/// state (e.g. after a migration). The migration framework now runs with
+/// foreign keys disabled, and orphan reaping lives only in `delete`/`fork`
+/// where the removing session is known, so this hook no longer needs to delete
+/// anything. Retained as a no-op to preserve the shutdown plumbing for any
+/// future non-destructive flush work.
+fn shutdown_blocking(_conn: &mut SqliteConnection) {}
 
 #[cfg(test)]
 mod tests {
@@ -1434,30 +1418,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn shutdown_cleans_up_empty_sessions() {
-        // Given a store with an empty session (no history entries).
+    async fn shutdown_preserves_all_sessions() {
+        // Given a store with an empty session (no history entries) and a full one.
         let store = fresh_store();
         let empty_session = ChatSessionState::new();
         let empty_id = empty_session.session_id().clone();
         store.save(&empty_session).await.expect("save empty");
 
-        // Also save a non-empty session that should survive.
         let full_session = make_session();
         let full_id = full_session.session_id().clone();
         store.save(&full_session).await.expect("save full");
 
-        // Verify both are visible before shutdown.
-        let before = store.load_summaries().await.expect("load_summaries");
-        assert_eq!(
-            before.len(),
-            2,
-            "both sessions should be visible before shutdown"
-        );
-
         // When shutting down.
         store.shutdown().await.expect("shutdown");
 
-        // Then only the non-empty session survives.
+        // Then both sessions survive — shutdown is a non-destructive no-op.
         let after = store
             .load_summaries()
             .await
@@ -1468,8 +1443,8 @@ mod tests {
             "non-empty session should survive shutdown"
         );
         assert!(
-            !ids.contains(&&empty_id),
-            "empty session should be cleaned up during shutdown"
+            ids.contains(&&empty_id),
+            "empty session should survive shutdown (no destructive cleanup)"
         );
     }
 
