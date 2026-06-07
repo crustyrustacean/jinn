@@ -617,21 +617,31 @@ fn render_queue_badge_in_queue_mode() {
         })
         .unwrap();
 
-    // Then the bottom border shows [QUEUE] starting at x=2 (aligned with the cursor column),
-    // exposing the `─` border line in columns 0 and 1.
+    // Then the bottom border shows [Q:QUEUE] starting at x=2 (aligned with the cursor
+    // column), exposing the `─` border line in columns 0 and 1. The leading `Q` is the
+    // orange accent_action; everything else is primary_text.
     let buffer = terminal.backend().buffer().clone();
+    let theme = default_theme();
     let border0_cell = buffer.cell((0, 2)).expect("cell should exist");
     assert_eq!(border0_cell.symbol(), "─");
     let border1_cell = buffer.cell((1, 2)).expect("cell should exist");
     assert_eq!(border1_cell.symbol(), "─");
+    // [ at x=2 — primary_text
     let bracket_cell = buffer.cell((2, 2)).expect("cell should exist");
     assert_eq!(bracket_cell.symbol(), "[");
-    assert_eq!(
-        bracket_cell.style().fg,
-        Some(default_theme().input_mode_queue)
-    );
+    assert_eq!(bracket_cell.style().fg, Some(theme.primary_text));
+    // Q at x=3 — accent_action (orange hotkey)
     let q_cell = buffer.cell((3, 2)).expect("cell should exist");
     assert_eq!(q_cell.symbol(), "Q");
+    assert_eq!(q_cell.style().fg, Some(theme.accent_action));
+    // : at x=4 — primary_text
+    let colon_cell = buffer.cell((4, 2)).expect("cell should exist");
+    assert_eq!(colon_cell.symbol(), ":");
+    assert_eq!(colon_cell.style().fg, Some(theme.primary_text));
+    // ] at x=10 — primary_text
+    let close_cell = buffer.cell((10, 2)).expect("cell should exist");
+    assert_eq!(close_cell.symbol(), "]");
+    assert_eq!(close_cell.style().fg, Some(theme.primary_text));
 }
 
 #[rstest::rstest]
@@ -650,21 +660,31 @@ fn render_steer_badge_in_steer_mode() {
         })
         .unwrap();
 
-    // Then the bottom border shows [STEER] in the steer color, starting at x=2 (aligned with
-    // the cursor column), exposing the `─` border line in columns 0 and 1.
+    // Then the bottom border shows [Q:STEER] starting at x=2 (aligned with the cursor
+    // column), exposing the `─` border line in columns 0 and 1. The leading `Q` is the
+    // orange accent_action; everything else is input_mode_steer (magenta).
     let buffer = terminal.backend().buffer().clone();
+    let theme = default_theme();
     let border0_cell = buffer.cell((0, 2)).expect("cell should exist");
     assert_eq!(border0_cell.symbol(), "─");
     let border1_cell = buffer.cell((1, 2)).expect("cell should exist");
     assert_eq!(border1_cell.symbol(), "─");
+    // [ at x=2 — input_mode_steer (magenta)
     let bracket_cell = buffer.cell((2, 2)).expect("cell should exist");
     assert_eq!(bracket_cell.symbol(), "[");
-    assert_eq!(
-        bracket_cell.style().fg,
-        Some(default_theme().input_mode_steer)
-    );
-    let s_cell = buffer.cell((3, 2)).expect("cell should exist");
-    assert_eq!(s_cell.symbol(), "S");
+    assert_eq!(bracket_cell.style().fg, Some(theme.input_mode_steer));
+    // Q at x=3 — accent_action (orange hotkey)
+    let q_cell = buffer.cell((3, 2)).expect("cell should exist");
+    assert_eq!(q_cell.symbol(), "Q");
+    assert_eq!(q_cell.style().fg, Some(theme.accent_action));
+    // : at x=4 — input_mode_steer (magenta)
+    let colon_cell = buffer.cell((4, 2)).expect("cell should exist");
+    assert_eq!(colon_cell.symbol(), ":");
+    assert_eq!(colon_cell.style().fg, Some(theme.input_mode_steer));
+    // ] at x=10 — input_mode_steer (magenta)
+    let close_cell = buffer.cell((10, 2)).expect("cell should exist");
+    assert_eq!(close_cell.symbol(), "]");
+    assert_eq!(close_cell.style().fg, Some(theme.input_mode_steer));
 }
 
 #[rstest::rstest]
@@ -692,20 +712,35 @@ fn render_steer_badge_shows_buffer_count_when_nonzero() {
         })
         .unwrap();
 
-    // Then the badge shows [STEER · 2] (11 chars), starting at x=2 (aligned with the cursor
-    // column), exposing the `─` border line in columns 0 and 1.
+    // Then the badge shows [Q:STEER · 2] (13 display cells), starting at x=2
+    // (aligned with the cursor column), exposing the `─` border line in columns 0 and 1.
+    // The `Q` is accent_action (orange); everything else is input_mode_steer (magenta).
     let buffer = terminal.backend().buffer().clone();
+    let theme = default_theme();
     let border0_cell = buffer.cell((0, 2)).expect("cell should exist");
     assert_eq!(border0_cell.symbol(), "─");
     let border1_cell = buffer.cell((1, 2)).expect("cell should exist");
     assert_eq!(border1_cell.symbol(), "─");
+    // [ at x=2 — input_mode_steer
     let bracket_cell = buffer.cell((2, 2)).expect("cell should exist");
     assert_eq!(bracket_cell.symbol(), "[");
-    let close_bracket_cell = buffer.cell((12, 2)).expect("cell should exist");
-    assert_eq!(close_bracket_cell.symbol(), "]");
-    // Separator dot at index 7 within the 11-char badge: x = 2 + 7 = 9.
-    let dot_cell = buffer.cell((9, 2)).expect("cell should exist");
+    assert_eq!(bracket_cell.style().fg, Some(theme.input_mode_steer));
+    // Q at x=3 — accent_action
+    let q_cell = buffer.cell((3, 2)).expect("cell should exist");
+    assert_eq!(q_cell.symbol(), "Q");
+    assert_eq!(q_cell.style().fg, Some(theme.accent_action));
+    // · at x=11 — input_mode_steer
+    let dot_cell = buffer.cell((11, 2)).expect("cell should exist");
     assert_eq!(dot_cell.symbol(), "·");
+    assert_eq!(dot_cell.style().fg, Some(theme.input_mode_steer));
+    // 2 at x=13 — input_mode_steer
+    let count_cell = buffer.cell((13, 2)).expect("cell should exist");
+    assert_eq!(count_cell.symbol(), "2");
+    assert_eq!(count_cell.style().fg, Some(theme.input_mode_steer));
+    // ] at x=14 — input_mode_steer
+    let close_cell = buffer.cell((14, 2)).expect("cell should exist");
+    assert_eq!(close_cell.symbol(), "]");
+    assert_eq!(close_cell.style().fg, Some(theme.input_mode_steer));
 }
 
 #[rstest::rstest]
@@ -732,21 +767,31 @@ fn render_queue_badge_shows_queue_count_when_nonzero() {
         })
         .unwrap();
 
-    // Then the badge shows [QUEUE · 2] (11 chars) in input_mode_queue color,
-    // starting at x=2 (aligned with the cursor column).
+    // Then the badge shows [Q:QUEUE · 2] (13 display cells), starting at x=2
+    // (aligned with the cursor column). The `Q` is accent_action (orange);
+    // everything else is primary_text (regular text).
     let buffer = terminal.backend().buffer().clone();
-    let expected_color = Some(default_theme().input_mode_queue);
+    let theme = default_theme();
+    // [ at x=2 — primary_text
     let bracket_cell = buffer.cell((2, 2)).expect("cell should exist");
     assert_eq!(bracket_cell.symbol(), "[");
-    assert_eq!(bracket_cell.style().fg, expected_color);
-    let close_bracket_cell = buffer.cell((12, 2)).expect("cell should exist");
-    assert_eq!(close_bracket_cell.symbol(), "]");
-    assert_eq!(close_bracket_cell.style().fg, expected_color);
-    // Separator dot at index 7 within the 11-char badge: x = 2 + 7 = 9.
-    let dot_cell = buffer.cell((9, 2)).expect("cell should exist");
+    assert_eq!(bracket_cell.style().fg, Some(theme.primary_text));
+    // Q at x=3 — accent_action
+    let q_cell = buffer.cell((3, 2)).expect("cell should exist");
+    assert_eq!(q_cell.symbol(), "Q");
+    assert_eq!(q_cell.style().fg, Some(theme.accent_action));
+    // · at x=11 — primary_text
+    let dot_cell = buffer.cell((11, 2)).expect("cell should exist");
     assert_eq!(dot_cell.symbol(), "·");
-    let count_cell = buffer.cell((11, 2)).expect("cell should exist");
+    assert_eq!(dot_cell.style().fg, Some(theme.primary_text));
+    // 2 at x=13 — primary_text
+    let count_cell = buffer.cell((13, 2)).expect("cell should exist");
     assert_eq!(count_cell.symbol(), "2");
+    assert_eq!(count_cell.style().fg, Some(theme.primary_text));
+    // ] at x=14 — primary_text
+    let close_bracket_cell = buffer.cell((14, 2)).expect("cell should exist");
+    assert_eq!(close_bracket_cell.symbol(), "]");
+    assert_eq!(close_bracket_cell.style().fg, Some(theme.primary_text));
 }
 
 #[rstest::rstest]
@@ -765,8 +810,9 @@ fn render_queue_badge_no_count_when_buffer_empty() {
         })
         .unwrap();
 
-    // Then the bracket sits at x = 2 (badge is 7 chars wide: x=2..8), aligned with the cursor
-    // column, exposing the `─` border line in columns 0 and 1.
+    // Then the badge shows [Q:QUEUE] (9 display cells), starting at x=2
+    // (aligned with the cursor column), exposing the `─` border line in columns 0, 1,
+    // and resuming at x=11 (right after the 9-cell badge at x=2..11).
     let buffer = terminal.backend().buffer().clone();
     let border0_cell = buffer.cell((0, 2)).expect("cell should exist");
     assert_eq!(border0_cell.symbol(), "─");
@@ -774,7 +820,9 @@ fn render_queue_badge_no_count_when_buffer_empty() {
     assert_eq!(border1_cell.symbol(), "─");
     let bracket_cell = buffer.cell((2, 2)).expect("cell should exist");
     assert_eq!(bracket_cell.symbol(), "[");
-    // x = 9 (right after the 7-char badge at x=2..8) is the bottom-border line character.
-    let right_cell = buffer.cell((9, 2)).expect("cell should exist");
+    let close_cell = buffer.cell((10, 2)).expect("cell should exist");
+    assert_eq!(close_cell.symbol(), "]");
+    // x = 11 (right after the 9-cell badge at x=2..11) is the bottom-border line character.
+    let right_cell = buffer.cell((11, 2)).expect("cell should exist");
     assert_eq!(right_cell.symbol(), "─");
 }
