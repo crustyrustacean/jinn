@@ -20,9 +20,10 @@ pub fn handle_cwd_input_enter(state: &mut AppState) -> IntentResult {
 /// Confirms the cwd input.
 //
 // Resolves the typed path against the active session cwd; on success sets the
-// session cwd and rescans context files inline, then pops the scope and clears
-// state. On failure (not a dir / empty) stays open with the inline error shown
-// by the render footer.
+// session cwd and emits the three re-scan commands (skills, prompts,
+// context-files) so the scan actors pick up the new cwd off the intent thread.
+// Then pops the scope and clears state. On failure (not a dir / empty) stays
+// open with the inline error shown by the render footer.
 pub fn handle_cwd_input_confirm(state: &mut AppState) -> IntentResult {
     let raw = state.frontend.cwd_input.text.input.trim().to_owned();
     let current_cwd = state.active_session().cwd().to_owned();
@@ -30,10 +31,16 @@ pub fn handle_cwd_input_confirm(state: &mut AppState) -> IntentResult {
 
     if let CwdResolution::Ok(path) = resolution {
         state.active_session_mut().set_cwd(path.clone());
-        state.context.context_files =
-            crate::feat::context::env_context::load_project_context_files_sync(&path);
+
+        // Re-scan all three resource types for the active session on the
+        // async scan actors. Each reads the session's (now-updated) cwd and
+        // walks the bounded ancestor chain off this thread.
+        let session_id = state.session.active_session_id().clone();
+        let commands = crate::feat::context::env_context::scan_commands_for_session(&session_id);
+
         state.frontend.scope_stack.pop();
         state.frontend.cwd_input = CwdInputState::default();
+        return IntentResult::with_commands(commands);
     }
 
     IntentResult::empty()
@@ -146,16 +153,15 @@ mod tests {
         // Then the session cwd is now the tempdir (canonicalized).
         let expected = std::fs::canonicalize(target).unwrap();
         assert_eq!(state.active_session().cwd(), expected);
-        // And context files were rescanned (non-empty vector, even if no
-        // AGENTS.md present the vector is well-formed).
-        let _ = &state.context.context_files;
+        // And three re-scan commands were emitted for the active session
+        // (skills, prompts, context-files).
+        assert_eq!(result.commands.len(), 3);
         // And scope was popped + state cleared.
         assert!(!matches!(
             state.frontend.scope_stack.current(),
             FocusScope::CwdInput
         ));
         assert_eq!(state.frontend.cwd_input.text.input, "");
-        assert!(result.commands.is_empty());
     }
 
     #[rstest::rstest]
