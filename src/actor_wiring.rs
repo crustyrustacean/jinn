@@ -866,7 +866,6 @@ pub fn create_core_with_actor_host(
                 state: state.clone(),
                 csv_path: bench_csv_path.clone(),
                 plan: bench_plan,
-                user_preferences_storage: user_preferences_storage.clone(),
             },
         ));
     }

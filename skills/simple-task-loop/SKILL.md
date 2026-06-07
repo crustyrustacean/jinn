@@ -7,13 +7,15 @@ description: Structured phased implementation workflow for multi-phase coding ta
 
 A disciplined workflow for implementing multi-phase coding tasks. The task list tracks progress in real time.
 
+
+**Project commands are referenced by role** (`check`, `test`, `lint`, `format`, `commit`, `sync-trunk`, `vcs`). The project's `AGENTS.md` resolves each role to its actual command (e.g. for jinn: `test` → `just test`, `commit` → `fossil commit`, `sync-trunk` → `fossil merge trunk`). When this skill says "run the project's `test` command," look up `test` in `AGENTS.md` and run that. If the project does not define a role, skip it.
 ---
 
 ## Constraints
 
-1.  **Branch only.** Never commit to `trunk`. Your environment is on the correct branch.
-2.  **Sync before next phase.** Run `fossil merge trunk` before moving to the next phase.
-3.  **No reverse merge.** Never merge your branch onto trunk.
+1.  **Stay on your branch.** Never commit to the project's main line (e.g. `trunk`/`main`/`master`). Your environment is on the correct branch.
+2.  **Sync before next phase.** Run the project's `sync-trunk` command before moving to the next phase.
+3.  **No reverse merge.** Never merge your branch onto the main line.
 4.  **Continuous execution.** Proceed from one phase to the next without stopping. Only stop when all phases are complete or an unrecoverable error blocks progress.
 5.  **Stay in `.plans/<task>/`.** All execution plans go here. Do not create new directories.
 6.  **Never rewrite the spec.** The spec (`plan.md`) is immutable — annotate only (strikethrough, divergence notes). The task list tracks status, not checkboxes in the spec.
@@ -81,11 +83,12 @@ Update the task list **at the moment a decision is made**, never retroactively:
 5.  **Commit and cleanup.**
 
     ```
-    fossil commit -m "<TASK> Phase N: <brief description>"
-    fossil merge trunk   # resolve conflicts, re-test, commit
+    # e.g. for jinn (Fossil):
+    fossil commit -m "<TASK> Phase N: <brief description>"   # the project's `commit` command
+    fossil merge trunk                                       # the project's `sync-trunk` command (resolve conflicts, re-test, commit)
     ```
 
-    Never merge your branch onto trunk.
+    Never merge your branch onto the project's main line.
 
 6.  **Annotate the spec.** Add strikethrough / divergence from spec notes only. Never rewrite. For structural changes use `todo_add_phase`, `todo_postpone_task`, or `todo_cancel_task`.
 
@@ -93,9 +96,12 @@ Update the task list **at the moment a decision is made**, never retroactively:
 
 ## When you are done
 
-After finishing all phases, tidy up:
+If the project defines `lint` and `format` commands, run them and fix every error and warning, then `commit` the result. For example, on jinn (Fossil + Rust):
 
 ```
-just clippy          # fix all errors/warnings
-fossil commit -m "<TASK>: Clippy lints fixed"
+just lint            # the project's `lint` command
+just fmt-fix         # the project's `format` command
+fossil commit -m "<TASK>: Lints fixed"   # the project's `commit` command
 ```
+
+All reported errors and warnings must be fixed. If the project defines no `lint`/`format` commands, skip this step.

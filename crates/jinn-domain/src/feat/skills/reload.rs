@@ -13,8 +13,6 @@ use crate::feat::ui::picker_states::PickerExt;
 /// Builds sorted `SkillEntry` items and calls `set_items` on the skill picker,
 /// which preserves the current filter text and clamps selection.
 pub fn reload_skill_picker_entries(state: &mut AppState) {
-    // Bodies may have changed on rescan - drop any cached preview lines.
-    state.frontend.caches.skill_preview_cache.read().clear();
     let disabled = state.active_session().disabled_skills();
     let theme = state.frontend.theme.clone();
 
@@ -50,6 +48,7 @@ mod tests {
     use crate::feat::skills::skill::Skill;
     use crate::feat::ui::picker_states::PickerExt;
     use crate::protocol::PickerKind;
+
     use jinn_selection_widget::PreviewCache;
     use std::path::PathBuf;
 
@@ -136,20 +135,21 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn reload_clears_skill_preview_cache() {
+    fn reload_preserves_skill_preview_cache() {
         // Given a cache populated with a rendered skill preview.
         let mut state = AppState::default();
         state.context.skills = make_skills();
         state.frontend.caches
             .skill_preview_cache
             .write()
-            .insert("web-coder".to_owned(), 80, vec![ratatui::text::Line::raw("stale")]);
+            .insert("web-coder".to_owned(), 80, vec![ratatui::text::Line::raw("rendered")]);
         assert_eq!(state.frontend.caches.skill_preview_cache.read().len(), 1);
 
-        // When reloading.
+        // When reloading (e.g. the picker is reopened). The bodies haven't changed,
+        // so the cache must survive to avoid re-rendering already-viewed skills.
         reload_skill_picker_entries(&mut state);
 
-        // Then the cache is cleared (bodies may have changed).
-        assert!(state.frontend.caches.skill_preview_cache.read().is_empty());
+        // Then the cache is preserved.
+        assert_eq!(state.frontend.caches.skill_preview_cache.read().len(), 1);
     }
 }
