@@ -51,30 +51,30 @@ impl UiElement for ChatInputBoxElement {
 
         let text_style = Style::default();
 
-        let (mode_label, mode_color, buffer_count) = {
+        let badge_line = {
+            use crate::feat::chat_input::state::chat_input_box::InputMode;
             let mode = state.active_chat_input().input_mode();
-            let count = match mode {
-                crate::feat::chat_input::state::chat_input_box::InputMode::Queue => {
-                    state.active_session().queue_len()
-                }
-                crate::feat::chat_input::state::chat_input_box::InputMode::Steer => {
-                    state.active_session().steering_buffer().len()
-                }
+            let buffer_count = match mode {
+                InputMode::Queue => state.active_session().queue_len(),
+                InputMode::Steer => state.active_session().steering_buffer().len(),
             };
-            let color = match mode {
-                crate::feat::chat_input::state::chat_input_box::InputMode::Queue => {
-                    theme.input_mode_queue
-                }
-                crate::feat::chat_input::state::chat_input_box::InputMode::Steer => {
-                    theme.input_mode_steer
-                }
+            // Word + surrounding text color: primary_text for Queue, magenta for Steer.
+            let word_color = match mode {
+                InputMode::Queue => theme.primary_text,
+                InputMode::Steer => theme.input_mode_steer,
             };
-            (mode.label(), color, count)
-        };
-        let badge_text = if buffer_count > 0 {
-            format!("[{mode_label} · {buffer_count}]")
-        } else {
-            format!("[{mode_label}]")
+            // The `Q` (hotkey mnemonic) is always the orange accent.
+            let accent = theme.accent_action;
+            let rest = if buffer_count > 0 {
+                format!(":{} · {}]", mode.label(), buffer_count)
+            } else {
+                format!(":{}]", mode.label())
+            };
+            Line::from(vec![
+                Span::styled("[", Style::default().fg(word_color)),
+                Span::styled("Q", Style::default().fg(accent)),
+                Span::styled(rest, Style::default().fg(word_color)),
+            ])
         };
         let block = Block::default()
             .borders(Borders::BOTTOM)
@@ -94,9 +94,7 @@ impl UiElement for ChatInputBoxElement {
         let input_widget = Paragraph::new(lines).block(block);
         frame.render_widget(input_widget, area);
 
-        // Overlay the mode badge 2 columns in so it aligns with the cursor on an empty box
-        // and exposes the bottom border `─` line in columns 0–1.
-        render_mode_badge(frame, area, &badge_text, Style::default().fg(mode_color));
+        render_mode_badge(frame, area, badge_line);
 
         // Render scroll position indicators if content overflows.
         let total_lines = state.active_chat_input().wrapped_lines().len();
@@ -223,11 +221,11 @@ fn render_indicator_overlay(frame: &mut Frame<'_>, label: &str, inner: Rect, y: 
     frame.render_widget(indicator, indicator_area);
 }
 
-/// Render the `[QUEUE]`/`[STEER]` mode badge as an overlay 2 columns in from the left, so
-/// it aligns with the cursor column (the `"> "` prompt prefix is 2 cells wide) and exposes
-/// the bottom border `─` line in columns 0–1.
-fn render_mode_badge(frame: &mut Frame<'_>, area: Rect, badge_text: &str, style: Style) {
-    let badge_line = Line::from(Span::styled(badge_text, style));
+/// Render the `[Q:QUEUE]`/`[Q:STEER]` mode badge as an overlay 2 columns in from the
+/// left, so it aligns with the cursor column (the `"> "` prompt prefix is 2 cells wide)
+/// and exposes the bottom border `─` line in columns 0–1. The `Q` is the orange hotkey
+/// accent; the rest of the badge uses the per-mode word color.
+fn render_mode_badge(frame: &mut Frame<'_>, area: Rect, badge_line: Line<'_>) {
     let badge_width = u16::try_from(badge_line.width())
         .unwrap_or(area.width)
         .min(area.width.saturating_sub(2));
@@ -239,6 +237,7 @@ fn render_mode_badge(frame: &mut Frame<'_>, area: Rect, badge_text: &str, style:
     };
     frame.render_widget(Paragraph::new(badge_line), badge_area);
 }
+
 
 /// Converts a grapheme offset within a wrapped line to a display column.
 ///
