@@ -439,7 +439,7 @@ mod tests {
         // When processing SessionSetupCompleted.
         let event = Event::SessionSetupCompleted(SessionSetupCompleted {
             session_id: session_id.clone(),
-            cwd: cwd.to_path_buf(),
+            cwd: cwd.clone(),
             error: None,
         });
         actor.handle_event(&event, &ctx).await;
@@ -464,7 +464,7 @@ mod tests {
         // When processing SessionCwdChanged.
         let event = Event::SessionCwdChanged(SessionCwdChanged {
             session_id: session_id.clone(),
-            cwd: cwd.to_path_buf(),
+            cwd: cwd.clone(),
         });
         actor.handle_event(&event, &ctx).await;
 
