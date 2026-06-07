@@ -4,8 +4,6 @@
 //! runtime, builds shared [`Services`], and dispatches to the appropriate
 //! [`Runner`] variant (TUI or headless).
 
-
-
 use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
@@ -21,7 +19,6 @@ use jinn_domain::ProviderRegistry;
 use jinn_domain::ProviderRegistryService;
 use jinn_domain::SessionStoreService;
 use jinn_domain::SqliteSessionStore;
-
 
 use jinn_domain::UserPreferencesStorageService;
 use tokio::runtime::Runtime;
@@ -198,8 +195,8 @@ impl App {
                 return Ok(());
             }
             Commands::Tui => {
-                let (core, services, actor_host, _plugins) = actor_wiring::ActorSystemBuilder::new(
-                    actor_wiring::ActorSystemBuilderArgs {
+                let (core, services, actor_host, _plugins) =
+                    actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                         handle: self.handle(),
                         llm_service: llm_service.clone(),
                         provider_registry: provider_registry.clone(),
@@ -208,8 +205,8 @@ impl App {
                         session_store: session_store.clone(),
                         user_preferences_storage: user_preferences_storage.clone(),
                         paths: jinn_domain::AppPaths::default(),
-                    },
-                ).build();
+                    })
+                    .build();
                 let app = jinn_tui::launch(core, services, actor_host, _plugins)
                     .change_context(AppError)?;
                 let runner = Runner::Tui(Box::new(app));
@@ -217,8 +214,8 @@ impl App {
             }
             Commands::Headless { command, .. } => {
                 let store_for_shutdown = session_store.clone();
-                let (core, _services, actor_host, _plugins) = actor_wiring::ActorSystemBuilder::new(
-                    actor_wiring::ActorSystemBuilderArgs {
+                let (core, _services, actor_host, _plugins) =
+                    actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                         handle: self.handle(),
                         llm_service: llm_service.clone(),
                         provider_registry,
@@ -227,14 +224,15 @@ impl App {
                         session_store,
                         user_preferences_storage: user_preferences_storage.clone(),
                         paths: jinn_domain::AppPaths::default(),
-                    },
-                ).build();
+                    })
+                    .build();
 
                 jinn_tui::load_compaction_prompt(
                     &core.state,
                     &_services.paths.prompts_dir(),
                     &_services.paths.system_prompts_dir(),
-                ).change_context(AppError)?;
+                )
+                .change_context(AppError)?;
                 jinn_tui::load_theme(
                     &core.state,
                     &_services.paths.themes_dir(),
@@ -298,25 +296,25 @@ impl App {
                                 .change_context(AppError)?,
                         ));
                         let store_for_shutdown = session_store.clone();
-                        let (core, services, actor_host, plugins) = actor_wiring::ActorSystemBuilder::new(
-                            actor_wiring::ActorSystemBuilderArgs {
-                                handle: self.handle(),
-                                llm_service,
-                                provider_registry,
-                                api_keys: resolved_api_keys,
-                                config_storage,
-                                session_store,
-                                user_preferences_storage,
-                                paths: jinn_domain::AppPaths::default(),
-                            }
-                        )
+                        let (core, services, actor_host, plugins) =
+                            actor_wiring::ActorSystemBuilder::new(
+                                actor_wiring::ActorSystemBuilderArgs {
+                                    handle: self.handle(),
+                                    llm_service,
+                                    provider_registry,
+                                    api_keys: resolved_api_keys,
+                                    config_storage,
+                                    session_store,
+                                    user_preferences_storage,
+                                    paths: jinn_domain::AppPaths::default(),
+                                },
+                            )
                             .with_bench_actor(csv, plan, artifact_dir)
                             .build();
                         let app = jinn_tui::launch(core, services, actor_host, plugins)
                             .change_context(AppError)?;
                         let runner = Runner::Tui(Box::new(app));
                         self.run_and_shutdown(runner, &store_for_shutdown)?;
-
                     }
                     BenchCommands::Show { csv } => {
                         jinn_bench::show::show_results(&csv).map_err(|e| {
@@ -334,23 +332,24 @@ impl App {
                                 .change_context(AppError)?,
                         ));
                         let store_for_shutdown = session_store.clone();
-                        let (core, services, actor_host, plugins) = actor_wiring::ActorSystemBuilder::new(
-                            actor_wiring::ActorSystemBuilderArgs {
-                                handle: self.handle(),
-                                llm_service: llm_service.clone(),
-                                provider_registry: provider_registry.clone(),
-                                api_keys: resolved_api_keys.clone(),
-                                config_storage: config_storage.clone(),
-                                session_store,
-                                user_preferences_storage: user_preferences_storage.clone(),
-                                paths: jinn_domain::AppPaths::default(),
-                            },
-                        ).build();
+                        let (core, services, actor_host, plugins) =
+                            actor_wiring::ActorSystemBuilder::new(
+                                actor_wiring::ActorSystemBuilderArgs {
+                                    handle: self.handle(),
+                                    llm_service: llm_service.clone(),
+                                    provider_registry: provider_registry.clone(),
+                                    api_keys: resolved_api_keys.clone(),
+                                    config_storage: config_storage.clone(),
+                                    session_store,
+                                    user_preferences_storage: user_preferences_storage.clone(),
+                                    paths: jinn_domain::AppPaths::default(),
+                                },
+                            )
+                            .build();
                         let app = jinn_tui::launch(core, services, actor_host, plugins)
                             .change_context(AppError)?;
                         let runner = Runner::Tui(Box::new(app));
                         self.run_and_shutdown(runner, &store_for_shutdown)?;
-
                     }
                 }
             }
@@ -368,7 +367,6 @@ impl Default for App {
         Self::new().expect("failed to create default App")
     }
 }
-
 
 /// Fetches model metadata from models.dev and saves it to the user's cache directory.
 ///
@@ -456,8 +454,8 @@ async fn fetch_models_from_url(
 #[cfg(test)]
 mod tests {
     use jinn_domain::{AppState, State};
-    use std::path::PathBuf;
     use jinn_tui::{load_compaction_prompt, load_theme};
+    use std::path::PathBuf;
 
     use super::*;
 
