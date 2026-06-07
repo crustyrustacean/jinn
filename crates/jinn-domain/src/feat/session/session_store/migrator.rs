@@ -147,7 +147,11 @@ fn run_pending_migrations(conn: &mut SqliteConnection) -> Result<(), Report<Sess
     }
     if current < 16 {
         migrate_v16(conn)?;
-        record_version(conn, 16, "rename_is_workflow_to_is_automated_and_add_persist")?;
+        record_version(
+            conn,
+            16,
+            "rename_is_workflow_to_is_automated_and_add_persist",
+        )?;
     }
     Ok(())
 }

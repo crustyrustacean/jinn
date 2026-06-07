@@ -12,11 +12,13 @@ use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
 use jinn_domain::Command;
-use jinn_domain::common::actor::protocol::dynamic_command::DynamicCommand;
 use jinn_domain::common::actor::message_sink::MessageSink;
-use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
-use jinn_domain::feat::plugin_dispatch::protocol::command::TogglePlugin;
+use jinn_domain::common::actor::protocol::dynamic_command::DynamicCommand;
+use jinn_domain::feat::chat_input::protocol::command::{
+    EnqueueUserMessage, PushChatEntry, SetChatInputText,
+};
 use jinn_domain::feat::plugin_dispatch::DomainNodeContext;
+use jinn_domain::feat::plugin_dispatch::protocol::command::TogglePlugin;
 use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_domain::protocol::SessionId;
 use jinn_plugin::PluginCommand;

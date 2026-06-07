@@ -4,6 +4,7 @@
 //! on line 2: strategy, pinned count, token stats, turn count, and model.
 //! The model shows `({provider})/{model}` when set, or "no model selected" otherwise.
 
+use crate::common::path_display::shorten_path;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
 use crate::feat::provider_infra::NO_PROVIDER_ID;
@@ -18,20 +19,6 @@ use ratatui::widgets::Paragraph;
 /// A display element that shows the active strategy and provider/model in the status bar.
 #[derive(Debug)]
 pub struct StatusBarElement;
-
-/// Shorten a path for display: replace home directory prefix with `~`.
-fn shorten_path(path: &std::path::Path) -> String {
-    if let Some(home) = dirs::home_dir()
-        && let Ok(relative) = path.strip_prefix(&home)
-    {
-        let display = relative.display().to_string();
-        if display.is_empty() {
-            return "~".to_owned();
-        }
-        return format!("~/{display}");
-    }
-    path.display().to_string()
-}
 
 /// Format a token count in human-readable form with one decimal place.
 #[allow(clippy::cast_precision_loss)]

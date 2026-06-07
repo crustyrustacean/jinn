@@ -40,7 +40,6 @@ pub(super) fn render_badges(frame: &mut Frame<'_>, input_area: Rect, ctx: &Rende
     // returns are silently dropped (see `call_hooks_typed`).
     let directives = call_hooks_typed::<BadgeDirective>(plugins, HOOK, &badge_ctx);
 
-
     draw_directives(frame.buffer_mut(), input_area, &directives);
 }
 
