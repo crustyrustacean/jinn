@@ -231,7 +231,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
         // Input scope: typing into the input buffer
         .scope(Scope::Input, |b| {
             b.bind("<enter>", Intent::SubmitMessage, KeyCategory::Input)
-                .bind("<M-s>", Intent::ToggleInputMode, KeyCategory::Input)
+                .bind("<M-q>", Intent::ToggleInputMode, KeyCategory::Input)
+                .bind("<M-s>", Intent::SidebarFocusSessions, KeyCategory::Navigation)
             .bind("<s-enter>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
             .bind("<c-enter>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
             .bind("<esc>", Intent::EnterNormalMode, KeyCategory::General)
