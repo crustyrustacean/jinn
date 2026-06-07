@@ -2,7 +2,7 @@
 //!
 //! Each render frame, the input-area renderer queries every loaded plugin via
 //! the `on_chat_input_badges_render` hook. Plugins return declarative
-//! [`BadgeDirective`]s (slot + text + optional style); Rust owns the slot
+//! [`BadgeDirective`]s (slot + styled segments); Rust owns the slot
 //! layout and a constrained style vocabulary and draws into a consistent
 //! badge location.
 //!
@@ -15,7 +15,9 @@ use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
+use unicode_segmentation::UnicodeSegmentation;
 
+use jinn_domain::feat::theme::Theme;
 use jinn_domain::{BadgeDirective, RenderCtx, call_hooks_typed};
 
 /// Render hook name for chat-input badges.
@@ -46,7 +48,8 @@ pub(super) fn render_badges(frame: &mut Frame<'_>, input_area: Rect, ctx: &Rende
     // returns are silently dropped (see `call_hooks_typed`).
     let directives = call_hooks_typed::<BadgeDirective>(plugins, HOOK, &badge_ctx);
 
-    draw_directives(frame.buffer_mut(), input_area, &directives);
+    let theme = &ctx.state.frontend.theme;
+    draw_directives(frame.buffer_mut(), input_area, &directives, theme);
 }
 
 /// Draws the directives into the badge strip above the input box.
@@ -54,7 +57,16 @@ pub(super) fn render_badges(frame: &mut Frame<'_>, input_area: Rect, ctx: &Rende
 /// v1 layout: a single row immediately above the input box. Each directive
 /// is rendered left-to-right with a one-space separator. Slot order within a
 /// plugin's contribution is preserved; plugin order follows the load order.
-fn draw_directives(buf: &mut Buffer, input_area: Rect, directives: &[BadgeDirective]) {
+///
+/// Phase 4 adaptation: walks styled segments (generic host mechanics only —
+/// the host maps named styles to theme colors, nothing more). Phase 5 will
+/// rewrite the layout to right-align on the input box's bottom border.
+fn draw_directives(
+    buf: &mut Buffer,
+    input_area: Rect,
+    directives: &[BadgeDirective],
+    theme: &Theme,
+) {
     if directives.is_empty() {
         return;
     }
@@ -65,29 +77,54 @@ fn draw_directives(buf: &mut Buffer, input_area: Rect, directives: &[BadgeDirect
     };
 
     let mut x = input_area.x;
+    let max_x = input_area.x + input_area.width;
     for d in directives {
-        let style = style_from_name(d.style.as_deref());
-        for ch in d.text.chars() {
-            if x >= input_area.x + input_area.width {
-                break;
-            }
+        draw_badge(buf, row_y, &mut x, max_x, d, theme);
+        // one-space separator between badges
+        if x < max_x {
             if let Some(cell) = buf.cell_mut((x, row_y)) {
-                cell.set_symbol(&ch.to_string());
-                cell.set_style(style);
+                cell.set_symbol(" ");
             }
             x += 1;
         }
-        // one-space separator between badges
-        if let Some(cell) = buf.cell_mut((x, row_y)) {
-            cell.set_symbol(" ");
+    }
+}
+
+/// Draws one badge's segments left-to-right, advancing `x`.
+///
+/// Single pass over the directive's segments — extracted per the loop-isolation
+/// rule so `draw_directives` reads as a recipe. Stops at `max_x` (right edge).
+fn draw_badge(
+    buf: &mut Buffer,
+    row_y: u16,
+    x: &mut u16,
+    max_x: u16,
+    d: &BadgeDirective,
+    theme: &Theme,
+) {
+    for seg in &d.segments {
+        let style = style_from_name(seg.style.as_deref(), theme);
+        for g in seg.text.graphemes(true) {
+            if *x >= max_x {
+                break;
+            }
+            if let Some(cell) = buf.cell_mut((*x, row_y)) {
+                cell.set_symbol(g);
+                cell.set_style(style);
+            }
+            *x += 1;
         }
-        x += 1;
     }
 }
 
 /// Maps the constrained style vocabulary (strings from Lua) to ratatui styles.
-fn style_from_name(name: Option<&str>) -> Style {
+///
+/// Theme-derived names (`accent_action`, `muted_text`) resolve to the active
+/// theme's colors; flat color names map to fixed ratatui colors.
+fn style_from_name(name: Option<&str>, theme: &Theme) -> Style {
     match name {
+        Some("accent_action") => Style::default().fg(theme.accent_action),
+        Some("muted_text") => Style::default().fg(theme.muted_text),
         Some("yellow") => Style::default().fg(Color::Yellow),
         Some("cyan") => Style::default().fg(Color::Cyan),
         Some("green") => Style::default().fg(Color::Green),
@@ -101,17 +138,22 @@ fn style_from_name(name: Option<&str>) -> Style {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
+    use jinn_domain::BadgeSegment;
 
     fn buffer(w: u16, h: u16) -> Buffer {
         let area = Rect::new(0, 0, w, h);
         Buffer::empty(area)
     }
 
+    fn theme() -> Theme {
+        jinn_domain::feat::theme::default_theme()
+    }
+
     #[test]
     fn empty_directives_draws_nothing() {
         let mut buf = buffer(20, 3);
         let input_area = Rect::new(0, 2, 20, 1);
-        draw_directives(&mut buf, input_area, &[]);
+        draw_directives(&mut buf, input_area, &[], &theme());
         // Row above input (y=1) should remain blank.
         for x in 0..20 {
             let sym = buf.cell((x, 1)).expect("cell").symbol();
@@ -120,22 +162,26 @@ mod tests {
     }
 
     #[test]
-    fn badge_directives_draw_left_to_right_with_separator() {
+    fn badge_directives_draw_segments_left_to_right_with_separator() {
         let mut buf = buffer(20, 3);
         let input_area = Rect::new(0, 2, 20, 1);
         let directives = vec![
             BadgeDirective {
                 slot: "input_badge".to_owned(),
-                text: "E".to_owned(),
-                style: Some("yellow".to_owned()),
+                segments: vec![BadgeSegment {
+                    text: "E".to_owned(),
+                    style: Some("yellow".to_owned()),
+                }],
             },
             BadgeDirective {
                 slot: "input_spinner".to_owned(),
-                text: "✨".to_owned(),
-                style: None,
+                segments: vec![BadgeSegment {
+                    text: "✨".to_owned(),
+                    style: None,
+                }],
             },
         ];
-        draw_directives(&mut buf, input_area, &directives);
+        draw_directives(&mut buf, input_area, &directives, &theme());
         // Row y=1 should contain "E ✨ " starting at x=0.
         assert_eq!(buf.cell((0, 1)).expect("cell").symbol(), "E");
         assert_eq!(buf.cell((1, 1)).expect("cell").symbol(), " ");
@@ -143,12 +189,21 @@ mod tests {
     }
 
     #[test]
-    fn style_from_name_maps_constrained_vocabulary() {
+    fn style_from_name_maps_theme_and_flat_colors() {
+        let t = theme();
         assert_eq!(
-            style_from_name(Some("yellow")),
+            style_from_name(Some("accent_action"), &t),
+            Style::default().fg(t.accent_action)
+        );
+        assert_eq!(
+            style_from_name(Some("muted_text"), &t),
+            Style::default().fg(t.muted_text)
+        );
+        assert_eq!(
+            style_from_name(Some("yellow"), &t),
             Style::default().fg(Color::Yellow)
         );
-        assert_eq!(style_from_name(Some("unknown")), Style::default());
-        assert_eq!(style_from_name(None), Style::default());
+        assert_eq!(style_from_name(Some("unknown"), &t), Style::default());
+        assert_eq!(style_from_name(None, &t), Style::default());
     }
 }
