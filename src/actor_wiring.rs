@@ -414,6 +414,19 @@ pub fn create_core_with_actor_host(
         },
     ));
 
+    // Discovery notifier — posts a transient chat entry when a session's
+    // discovery settles.
+    actors.push(spawn::<
+        jinn_domain::feat::discovery_notifier::DiscoveryNotifierActor,
+    >(
+        "discovery-notifier",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        jinn_domain::feat::discovery_notifier::DiscoveryNotifierActorDeps,
+    ));
+
     // Persona scan actor.
     actors.push(spawn::<
         jinn_domain::feat::persona::persona_scan_actor::PersonaScanActor,
