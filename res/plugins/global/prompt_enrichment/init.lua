@@ -64,10 +64,13 @@ end
 --- Sync hook fired by IntentHandler::handle before the submit intent's commands
 --- are dispatched. When the flag is on, emit the async handoff and block.
 ---
---- Runs on the render-thread Lua state. Cannot call ctx.request here.
+--- Returns `{ action = "block" }` to drop the submit commands, or
+--- `{ action = "pass" }` for normal submit.
+---
+--- Runs on the render-thread Lua state. Cannot call ctx.request.
 ---
 ---@param ctx OnSubmitInterceptCtx
----@return table outcome `{ block = boolean }`
+---@return table outcome `{ action = "block" | "pass" }`
 function M.on_submit_intercept(ctx)
     local d = normalize(ctx.plugin_data)
     if d.enrich_enabled then
@@ -76,9 +79,9 @@ function M.on_submit_intercept(ctx)
             session_id = ctx.session_id,
             text = ctx.input_text,
         })
-        return { block = true }
+        return { action = "block" }
     end
-    return { block = false }
+    return { action = "pass" }
 end
 
 --- Async hook fired via the generic fire_async_hook handoff. Runs an LLM
@@ -146,21 +149,18 @@ function M.on_enrich(ctx)
     end
 end
 
---- Sync hook fired by the chat-input renderer. Returns badge directives for the
---- consistent chat-input badge location.
+--- Sync hook fired by the chat-input renderer. Returns a single badge
+--- directive for the consistent chat-input badge location, or nil when
+--- the enrichment toggle is disarmed (no badge to draw).
 ---
 ---@param ctx OnChatInputBadgesRenderCtx
----@return table directives list of `{ slot, text, style? }`
+---@return table? directive `{ slot, text, style? }` or nil
 function M.on_chat_input_badges_render(ctx)
     local d = normalize(ctx.plugin_data)
-    local out = {}
     if d.enrich_enabled then
-        out[#out + 1] = { slot = "input_badge", text = "E", style = "yellow" }
+        return { slot = "input_badge", text = "E", style = "yellow" }
     end
-    if d.status == "enriching" then
-        out[#out + 1] = { slot = "input_spinner", text = "✨", style = "yellow" }
-    end
-    return out
+    return nil
 end
 
 return M
