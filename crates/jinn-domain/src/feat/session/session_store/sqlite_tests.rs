@@ -794,11 +794,17 @@ async fn non_persistent_session_is_not_written() {
     session.core.persist = false;
 
     // When saving.
-    store.save(&session).await.expect("save should be a no-op, not an error");
+    store
+        .save(&session)
+        .await
+        .expect("save should be a no-op, not an error");
 
     // Then no row exists for this session.
     let loaded = store.load_session(&session_id).await.expect("load query");
-    assert!(loaded.is_none(), "persist=false session must not be written");
+    assert!(
+        loaded.is_none(),
+        "persist=false session must not be written"
+    );
 }
 
 #[rstest::rstest]
@@ -829,8 +835,5 @@ async fn persistent_session_is_written() {
         loaded.core.is_automated,
         "is_automated must survive save/load"
     );
-    assert!(
-        loaded.core.persist,
-        "persist must survive save/load"
-    );
+    assert!(loaded.core.persist, "persist must survive save/load");
 }

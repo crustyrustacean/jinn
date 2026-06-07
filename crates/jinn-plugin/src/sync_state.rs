@@ -271,7 +271,6 @@ impl SyncPlugins {
         })
     }
 
-
     /// Number of loaded plugins.
     pub fn plugin_count(&self) -> usize {
         self.hooks.len()
@@ -291,7 +290,6 @@ impl SyncPlugins {
         }
     }
 
-
     /// Returns keybinds declared by all loaded plugins.
     ///
     /// Reads each plugin module's `keybinds` table and deserializes it into
@@ -303,7 +301,8 @@ impl SyncPlugins {
         self.hooks
             .iter()
             .flat_map(|(plugin_name, hooks)| {
-                self.keybinds_for_plugin(plugin_name, hooks).unwrap_or_default()
+                self.keybinds_for_plugin(plugin_name, hooks)
+                    .unwrap_or_default()
             })
             .collect()
     }
@@ -358,8 +357,8 @@ impl SyncPlugins {
 impl jinn_domain::feat::plugin_dispatch::PluginSyncHooks for SyncPlugins {
     fn call_hooks(&self, hook: &str, ctx: &serde_json::Value) -> Vec<serde_json::Value> {
         self.sync_hooks(hook)
-            .filter_map(|h| {
-                match h.call::<serde_json::Value, serde_json::Value>(ctx) {
+            .filter_map(
+                |h| match h.call::<serde_json::Value, serde_json::Value>(ctx) {
                     Ok(v) => (!v.is_null()).then_some(v),
                     Err(e) => {
                         let report = e.attach(PluginHookSite {
@@ -369,8 +368,8 @@ impl jinn_domain::feat::plugin_dispatch::PluginSyncHooks for SyncPlugins {
                         tracing::error!(hook, error = ?report, "plugin hook failed");
                         None
                     }
-                }
-            })
+                },
+            )
             .collect()
     }
 }
