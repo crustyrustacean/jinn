@@ -614,7 +614,6 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use super::*;
 
     // Note: there is no unit test for `run_and_shutdown` / `dispatch` calling
     // `store.shutdown()`. `Runner::run` is a concrete enum (not a trait), and

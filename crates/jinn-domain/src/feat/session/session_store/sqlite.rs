@@ -1578,7 +1578,7 @@ mod tests {
         let reopened = SqliteSessionStore::new_in(dir.path()).expect("reopen");
         let summaries = reopened.load_summaries().await.expect("load");
         assert!(
-            summaries.iter().any(|s| &s.session_id == &id),
+            summaries.iter().any(|s| s.session_id == id),
             "sessions.db alone must contain all data after shutdown checkpoint"
         );
     }
