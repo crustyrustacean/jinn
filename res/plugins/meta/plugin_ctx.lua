@@ -120,6 +120,8 @@
 ---@field session_id string The session whose provider+model to inherit.
 ---@field system string The system prompt.
 ---@field prompt string The user prompt (e.g. the draft to enrich).
-
+---@field persist boolean|nil If true, the one-shot session is written to the
+---  SQLite store; defaults to false (transient). Set true for reviewable
+---  runs (e.g. a judge/eval).
 ---@class LlmOneshotResponse
 ---@field text string The model's response text.
