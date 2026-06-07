@@ -297,6 +297,29 @@ fn render_shows_pinned_entries() {
 }
 
 #[rstest::rstest]
+fn consecutive_pinned_entries_are_adjacent_with_no_blank_between() {
+    // Given a PinsSection and state with 3 pinned entries.
+    let mut section = PinsSection;
+    let state = state_with_pinned(3);
+
+    // When rendering.
+    let rows = render_rows(&mut section, &state, 60, 20);
+
+    // Then the first and second entries sit on consecutive rows (no blank between).
+    let row_of_entry0 = rows
+        .iter()
+        .position(|row| row.contains("entry 0"))
+        .expect("first entry should be rendered");
+    let row_of_entry1 = row_of_entry0 + 1;
+    assert!(
+        rows[row_of_entry1].contains("entry 1"),
+        "second entry should be on the row immediately after the first; \n
+        got row {row_of_entry1} = {:?}",
+        rows[row_of_entry1]
+    );
+}
+
+#[rstest::rstest]
 fn render_selected_entry_has_yellow_marker_when_sidebar_focused() {
     let mut section = PinsSection;
     let mut state = state_with_pinned(2);
@@ -615,8 +638,8 @@ fn pins_skill_result_shows_summary_label_without_raw_xml() {
 
     // Then the summary label shows the icon and name, with no raw XML.
     assert!(
-        rendered.contains('\u{1F9E9}'),
-        "skill pin should show the puzzle icon: {rendered}"
+        rendered.contains('\u{2756}'),
+        "skill pin should show the skill icon: {rendered}"
     );
     assert!(
         rendered.contains("phased-task-loop"),
@@ -642,7 +665,7 @@ fn pins_skill_result_malformed_content_uses_fallback_label() {
 
     // Then the fallback label shows the icon and (skill), with no panic.
     assert!(
-        rendered.contains('\u{1F9E9}'),
+        rendered.contains('\u{2756}'),
         "malformed skill pin should still show the icon: {rendered}"
     );
     assert!(
