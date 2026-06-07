@@ -75,13 +75,20 @@ renderer) and round-trips through JSON into the sync Lua state.
 
 | Fire site                                  | Hook fired                     | Scope    | Ctx source                          |
 | ------------------------------------------ | ------------------------------ | -------- | ----------------------------------- |
-| `IntentHandler::handle` (after match)      | `on_submit_intercept`          | Global   | `IntentHandler::handle`             |
+| `IntentHandler::handle` (after a **submit-family** intent resolves) | `on_submit_intercept` | Global | `IntentHandler::handle` — fired only for `Intent::SubmitMessage`; other intents pass through unintercepted |
 | Chat-input renderer (`chat_tab.rs`)        | `on_chat_input_badges_render`  | Global   | input-area render call site         |
 
-`on_submit_intercept` lets a plugin block or replace an intent's resolved
-commands (`{ block = true }`, `{ block = false }`, or a replacement list).
-`on_chat_input_badges_render` lets a plugin return badge directives
-(`{ slot, text, style? }`) drawn in the consistent chat-input badge location.
+`on_submit_intercept` lets a plugin block or replace a submit intent's resolved
+commands. The wire shape is `{ action = "block" }` (drop the commands),
+`{ action = "pass" }` (no-op), or `{ action = "replace", commands = {...} }`
+(swap in new commands) — the same tags as the Rust `InterceptOutcome` enum.
+It fires only for `Intent::SubmitMessage`; other intents (insert-char, quit,
+scroll, …) are never intercepted. This is a deliberate scoping choice — the
+original generic-over-all-intents design caused a keystroke flood once a toggle
+was armed.
+`on_chat_input_badges_render` lets a plugin return a **single** badge directive
+(`{ slot, text, style? }`) drawn in the consistent chat-input badge location,
+or `nil` when there is nothing to draw.
 
 ### Plugin-defined async action hooks
 

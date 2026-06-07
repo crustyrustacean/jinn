@@ -46,18 +46,21 @@
 
 ---
 ---@class OnSubmitInterceptCtx : PluginCtx
----Sync hook fired by `IntentHandler::handle` after a submit intent resolves
----but before its commands are dispatched. Plugins can block or replace the
----commands. Return `{ block = true }` to drop the commands, or `{ block = false }`
----for pass-through. Runs on the render-thread (sync) Lua state — cannot call `ctx.request`.
+---Sync hook fired by `IntentHandler::handle` after a **submit-family** intent
+---(`Intent::SubmitMessage`) resolves but before its commands are dispatched.
+---Plugins can block or replace the commands. Return `{ action = "block" }` to
+---drop the commands, or `{ action = "pass" }` for pass-through. (A third
+---outcome, `{ action = "replace", commands = {...} }`, swaps in new commands.)
+---Runs on the render-thread (sync) Lua state — cannot call `ctx.request`.
 ---
 ---@field input_text string The current chat-input draft at submit time.
 
 ---
 ---@class OnChatInputBadgesRenderCtx : PluginCtx
----Sync hook fired by the chat-input renderer each frame. Plugins return a list
----of badge directives (`{ slot, text, style? }`) drawn into the consistent
----chat-input badge location. Runs on the render-thread (sync) Lua state.
+---Sync hook fired by the chat-input renderer each frame. A plugin returns a
+---single badge directive (`{ slot, text, style? }`) drawn into the consistent
+---chat-input badge location, or `nil` when it has nothing to draw. Runs on the
+---render-thread (sync) Lua state.
 ---
 ---@field active_session_id string The session currently in focus.
 
