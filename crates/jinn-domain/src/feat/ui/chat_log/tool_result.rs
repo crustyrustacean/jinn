@@ -734,8 +734,8 @@ mod tests {
 
         // And it shows the icon and name, with no raw XML.
         assert!(
-            text.contains('\u{1F9E9}'),
-            "skill result should show the puzzle icon: {text}"
+            text.contains('\u{2756}'),
+            "skill result should show the diamond icon: {text}"
         );
         assert!(
             text.contains("phased-task-loop"),
@@ -769,7 +769,7 @@ mod tests {
         );
         let text = line_text(&lines[0]);
         assert!(
-            text.contains('\u{1F9E9}'),
+            text.contains('\u{2756}'),
             "malformed skill result should still show the icon: {text}"
         );
         assert!(
@@ -817,7 +817,7 @@ mod tests {
             "non-skill result should show raw content, got: {text}"
         );
         assert!(
-            !text.contains('\u{1F9E9}'),
+            !text.contains('\u{2756}'),
             "non-skill result should not show the skill icon: {text}"
         );
     }
