@@ -435,7 +435,11 @@ end }",
         );
 
         let plugins = discover_plugins(dir.path(), Path::new("/nonexistent"));
-        assert_eq!(plugins.len(), 1, "stdlib plugin should be discovered: {plugins:?}");
+        assert_eq!(
+            plugins.len(),
+            1,
+            "stdlib plugin should be discovered: {plugins:?}"
+        );
 
         let lua = Lua::new();
         let hooks = load_all(&lua, &plugins);
@@ -447,7 +451,6 @@ end }",
         let result: String = func.call(()).expect("call");
         assert_eq!(result, "ok");
     }
-
 
     #[test]
     fn load_all_skips_syntax_errors() {
