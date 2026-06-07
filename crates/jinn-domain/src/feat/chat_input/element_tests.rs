@@ -6,6 +6,9 @@ use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
 use crate::feat::chat_input::element::ChatInputBoxElement;
 use crate::feat::theme::default_theme;
+use crate::protocol::ChatEntry;
+use crate::feat::session::queue_item::QueueItem;
+
 use jinn_testutil::setup_term;
 use ratatui::layout::Position;
 
@@ -703,6 +706,47 @@ fn render_steer_badge_shows_buffer_count_when_nonzero() {
     // Separator dot at index 7 within the 11-char badge: x = 2 + 7 = 9.
     let dot_cell = buffer.cell((9, 2)).expect("cell should exist");
     assert_eq!(dot_cell.symbol(), "·");
+}
+
+#[rstest::rstest]
+fn render_queue_badge_shows_queue_count_when_nonzero() {
+    // Given QUEUE mode with 2 queued user messages.
+    let mut element = ChatInputBoxElement;
+    let state = {
+        let mut s = AppState::default();
+        s.active_chat_input_mut().toggle_input_mode(); // Steer -> Queue
+        s.active_session_mut()
+            .enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("first"))));
+        s.active_session_mut()
+            .enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user("second"))));
+        s
+    };
+
+    let (mut terminal, area) = setup_term(40, 3);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            let ctx = RenderCtx::new(&state);
+            element.render(frame, area, &ctx);
+        })
+        .unwrap();
+
+    // Then the badge shows [QUEUE · 2] (11 chars) in input_mode_queue color,
+    // starting at x=2 (aligned with the cursor column).
+    let buffer = terminal.backend().buffer().clone();
+    let expected_color = Some(default_theme().input_mode_queue);
+    let bracket_cell = buffer.cell((2, 2)).expect("cell should exist");
+    assert_eq!(bracket_cell.symbol(), "[");
+    assert_eq!(bracket_cell.style().fg, expected_color);
+    let close_bracket_cell = buffer.cell((12, 2)).expect("cell should exist");
+    assert_eq!(close_bracket_cell.symbol(), "]");
+    assert_eq!(close_bracket_cell.style().fg, expected_color);
+    // Separator dot at index 7 within the 11-char badge: x = 2 + 7 = 9.
+    let dot_cell = buffer.cell((9, 2)).expect("cell should exist");
+    assert_eq!(dot_cell.symbol(), "·");
+    let count_cell = buffer.cell((11, 2)).expect("cell should exist");
+    assert_eq!(count_cell.symbol(), "2");
 }
 
 #[rstest::rstest]
