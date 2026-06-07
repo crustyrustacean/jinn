@@ -12,7 +12,7 @@ pub mod skill_entry;
 pub mod skills_scan_actor;
 
 pub use scan::scan_skills;
-pub use skill::Skill;
+pub use skill::{Skill, SkillSource};
 pub use skill_entry::SkillEntry;
 pub use skills_scan_actor::{ScanSkills, SkillsLoaded};
 

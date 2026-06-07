@@ -71,6 +71,13 @@ impl AppPaths {
         }
     }
 
+    /// Sets the home directory for tests (bounds the project walk).
+    #[cfg(test)]
+    pub fn set_home_dir_for_test(&mut self, home: PathBuf) {
+        self.home_dir = home;
+    }
+
+
     // -- Derived paths -------------------------------------------------------
 
     /// Session database parent directory (`~/.local/share/jinn`).
@@ -91,6 +98,12 @@ impl AppPaths {
     #[must_use]
     pub fn skills_dir(&self) -> PathBuf {
         self.home_dir.join(".agents").join("skills")
+    }
+
+    /// User home directory (`~/`). Bounds the project walk (exclusive of home).
+    #[must_use]
+    pub fn home_dir(&self) -> &Path {
+        &self.home_dir
     }
 
     /// Personas directory (`~/.config/jinn/personas`).

@@ -301,13 +301,14 @@ impl SessionPersistenceActor {
             | Command::ProceedWithShutdown(..)
             | Command::CancelStream(..)
             | Command::RefreshModels
-            | Command::RescanPromptTemplates
+            | Command::RescanPromptTemplates(..)
             | Command::ExecuteToolBatch(..)
             | Command::RegisterTools(..)
             | Command::ProviderSwitch(..)
             | Command::LoadProviderPickerEntries(..)
             | Command::CancelToolBatch(..)
-            | Command::ScanSkills
+            | Command::ScanSkills(..)
+            | Command::ScanContextFiles(..)
             | Command::RescanPersonas(..)
             | Command::UpdatePreferences(..)
             | Command::LoadCompactionModelPickerEntries(..)

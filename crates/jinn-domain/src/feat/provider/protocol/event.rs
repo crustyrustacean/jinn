@@ -118,6 +118,8 @@ pub struct ModelCacheLoaded {
 #[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
 #[event_msg("provider")]
 pub struct PromptTemplatesLoaded {
+    /// The session whose cwd drove the scan.
+    pub session_id: crate::SessionId,
     /// The loaded prompt templates.
     pub templates: Vec<PromptTemplate>,
     /// Error message if scanning failed.

@@ -104,7 +104,8 @@ impl ProviderActor {
             | Command::CancelStream(..)
             | Command::SendToLlmProvider(..)
             | Command::RefreshModels
-            | Command::RescanPromptTemplates
+            | Command::RescanPromptTemplates(..)
+            | Command::ScanContextFiles(..)
             | Command::RegisterTools(..)
             | Command::ExecuteToolBatch(..)
             | Command::ExecuteTool(..)
@@ -112,7 +113,7 @@ impl ProviderActor {
             | Command::ProceedWithShutdown(..)
             | Command::SessionLoadRequested(..)
             | Command::LoadSessionPickerEntries(..)
-            | Command::ScanSkills
+            | Command::ScanSkills(..)
             | Command::RescanPersonas(..)
             | Command::LoadPersonaPickerEntries(..)
             | Command::UpdatePreferences(..)

@@ -97,10 +97,10 @@ pub enum Event {
     ToolExecutionOutput(ToolExecutionOutput),
     /// Tools were registered by an actor.
     ToolsRegistered(ToolsRegistered),
-    /// A session's prompt assembly strategy has been switched.
-    /// A strategy's session state has changed and should be persisted.
     /// Agent skills have been scanned and loaded.
     SkillsLoaded(SkillsLoaded),
+    /// Project context files (AGENTS.md/CLAUDE.md) have been scanned and loaded.
+    ContextFilesLoaded(crate::feat::context::protocol::event::ContextFilesLoaded),
     /// Personas have been scanned and loaded from disk.
     PersonasLoaded(crate::feat::context::protocol::event::PersonasLoaded),
     /// A chat entry was pinned or unpinned.
@@ -181,6 +181,9 @@ impl Event {
             Self::ToolExecutionOutput(..) => Some(ToolExecutionOutput::TYPE_NAME),
             Self::ToolsRegistered(..) => Some(ToolsRegistered::TYPE_NAME),
             Self::SkillsLoaded(..) => Some(SkillsLoaded::TYPE_NAME),
+            Self::ContextFilesLoaded(..) => {
+                Some(crate::feat::context::protocol::event::ContextFilesLoaded::TYPE_NAME)
+            }
             Self::PersonasLoaded(..) => {
                 Some(crate::feat::context::protocol::event::PersonasLoaded::TYPE_NAME)
             }
@@ -317,8 +320,16 @@ mod tests {
         Event::ModeChanged(ModeChanged { from: Mode::Normal, to: Mode::Input }),
         ModeChanged::TYPE_NAME
     )]
+    #[case::context_files_loaded(
+        Event::ContextFilesLoaded(crate::feat::context::protocol::event::ContextFilesLoaded {
+            session_id: SessionId::new(),
+            files: vec![],
+            error: None,
+        }),
+        crate::feat::context::protocol::event::ContextFilesLoaded::TYPE_NAME
+    )]
     #[case::prompt_templates_loaded(
-        Event::PromptTemplatesLoaded(PromptTemplatesLoaded { templates: vec![], error: None }),
+        Event::PromptTemplatesLoaded(PromptTemplatesLoaded { session_id: SessionId::new(), templates: vec![], error: None }),
         PromptTemplatesLoaded::TYPE_NAME
     )]
     #[case::context_override_changed(

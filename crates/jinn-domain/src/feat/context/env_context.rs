@@ -61,7 +61,7 @@ pub fn build_env_context(
 }
 
 /// A loaded project context file (e.g., AGENTS.md).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ContextFile {
     /// The file path (for display in the prompt).
     pub path: PathBuf,

@@ -283,3 +283,99 @@ fn fuzzy_search_never_returns_underscore_prefixed_templates() {
     // This confirms the real protection is at scan time, not search time.
     assert_eq!(results.len(), 1);
 }
+
+#[rstest::rstest]
+fn load_from_dirs_ordered_project_adds_net_new_template() {
+    // Given a user dir with one template and a project dir with a different one.
+    let user_dir = TempDir::new().expect("user dir");
+    write_template(
+        user_dir.path(),
+        "hello.md",
+        "+++\nname = \"hello\"\ndescription = \"User hello\"\n+++\nBody hello",
+    );
+    let system_dir = TempDir::new().expect("system dir");
+    let project_dir = TempDir::new().expect("project dir");
+    write_template(
+        project_dir.path(),
+        "extra.md",
+        "+++\nname = \"extra\"\ndescription = \"Project extra\"\n+++\nBody extra",
+    );
+
+    // When loading with the project dir.
+    let store = PromptTemplateStore::load_from_dirs_ordered(
+        user_dir.path(),
+        system_dir.path(),
+        &[project_dir.path().to_path_buf()],
+    )
+    .expect("load");
+
+    // Then both templates are present.
+    assert_eq!(store.len(), 2);
+    assert!(store.find_by_name("hello").is_some());
+    assert!(store.find_by_name("extra").is_some());
+}
+
+#[rstest::rstest]
+fn load_from_dirs_ordered_project_overrides_user() {
+    // Given a user template and a project template with the same name.
+    let user_dir = TempDir::new().expect("user dir");
+    write_template(
+        user_dir.path(),
+        "shared.md",
+        "+++\nname = \"shared\"\ndescription = \"User version\"\n+++\nUser body",
+    );
+    let system_dir = TempDir::new().expect("system dir");
+    let project_dir = TempDir::new().expect("project dir");
+    write_template(
+        project_dir.path(),
+        "shared.md",
+        "+++\nname = \"shared\"\ndescription = \"Project version\"\n+++\nProject body",
+    );
+
+    // When loading with the project dir as the highest-priority layer.
+    let store = PromptTemplateStore::load_from_dirs_ordered(
+        user_dir.path(),
+        system_dir.path(),
+        &[project_dir.path().to_path_buf()],
+    )
+    .expect("load");
+
+    // Then the project version overrides the user version.
+    assert_eq!(store.len(), 1);
+    let tmpl = store.find_by_name("shared").expect("shared exists");
+    assert_eq!(tmpl.description, "Project version");
+    assert_eq!(tmpl.body, "Project body");
+}
+
+#[rstest::rstest]
+fn load_from_dirs_ordered_most_local_ancestor_wins() {
+    // Given two project ancestors each with a template of the same name.
+    let user_dir = TempDir::new().expect("user dir");
+    let system_dir = TempDir::new().expect("system dir");
+    let ancestor = TempDir::new().expect("ancestor dir");
+    write_template(
+        ancestor.path(),
+        "dup.md",
+        "+++\nname = \"dup\"\ndescription = \"Ancestor version\"\n+++\nAncestor body",
+    );
+    let local = TempDir::new().expect("local dir");
+    write_template(
+        local.path(),
+        "dup.md",
+        "+++\nname = \"dup\"\ndescription = \"Local version\"\n+++\nLocal body",
+    );
+
+    // When loading with ancestor first (least-local), local last (most-local).
+    let store = PromptTemplateStore::load_from_dirs_ordered(
+        user_dir.path(),
+        system_dir.path(),
+        &[ancestor.path().to_path_buf(), local.path().to_path_buf()],
+    )
+    .expect("load");
+
+    // Then the most-local (last) entry wins.
+    assert_eq!(store.len(), 1);
+    let tmpl = store.find_by_name("dup").expect("dup exists");
+    assert_eq!(tmpl.description, "Local version");
+    assert_eq!(tmpl.body, "Local body");
+}

@@ -60,6 +60,7 @@ mod tests {
                 body: "## Web coder body".to_owned(),
                 file_path: PathBuf::from("/tmp/skills/web-coder/SKILL.md"),
                 base_dir: PathBuf::from("/tmp/skills/web-coder"),
+                source: crate::feat::skills::SkillSource::Global,
             },
             Skill {
                 name: "phased-task-loop".to_owned(),
@@ -67,6 +68,7 @@ mod tests {
                 body: "## Task loop body".to_owned(),
                 file_path: PathBuf::from("/tmp/skills/phased-task-loop/SKILL.md"),
                 base_dir: PathBuf::from("/tmp/skills/phased-task-loop"),
+                source: crate::feat::skills::SkillSource::Global,
             },
         ]
     }
