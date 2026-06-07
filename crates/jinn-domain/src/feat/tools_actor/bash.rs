@@ -407,16 +407,23 @@ fn spawn_shell_command(
     command: &str,
     cwd: &std::path::Path,
 ) -> std::io::Result<KillOnDrop> {
-    tokio::process::Command::new(shell)
-        .arg("-c")
+    let mut cmd = tokio::process::Command::new(shell);
+    cmd.arg("-c")
         .arg(command)
         .current_dir(cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .process_group(0)
-        .spawn()
-        .map(KillOnDrop::new)
+        .stderr(Stdio::piped());
+
+    // Place the child in its own process group on Unix so that
+    // `kill_process_tree` can atomically signal the whole group with
+    // `kill(-pgid)`. Windows has no process-group signalling analogue
+    // (`Command::process_group` is Unix-only); its tree kill is enumerative
+    // via `kill_tree`.
+    #[cfg(unix)]
+    cmd.process_group(0);
+
+    cmd.spawn().map(KillOnDrop::new)
 }
 
 /// Executes the `bash` built-in tool with streaming output.
@@ -842,7 +849,7 @@ mod tests {
         // Given a cmd command that launches a long-running background child.
         // `ping -n 60` waits ~59s — a reliable Windows-native delay.
         let guard = {
-            let mut child = tokio::process::Command::new("cmd")
+            let child = tokio::process::Command::new("cmd")
                 .arg("/c")
                 .arg("ping 127.0.0.1 -n 60 > nul")
                 .stdin(Stdio::null())
