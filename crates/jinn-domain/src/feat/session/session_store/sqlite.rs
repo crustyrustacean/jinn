@@ -361,7 +361,8 @@ struct SessionRow {
     archived: bool,
     lifecycle_script_state: String,
     metadata: Option<String>,
-    is_workflow: bool,
+    is_automated: bool,
+    persist: bool,
 }
 
 /// Insert model for the `sessions` table.
@@ -382,7 +383,8 @@ struct NewSessionRow {
     archived: bool,
     lifecycle_script_state: String,
     metadata: Option<String>,
-    is_workflow: bool,
+    is_automated: bool,
+    persist: bool,
 }
 
 /// Reading model for the `entries` table.
@@ -582,7 +584,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     ephemeral: _ephemeral, // runtime-only state, not persisted
                     session_state,
                     lifecycle_script_state,
-                    is_workflow,
+                    is_workflow, // Phase 1: column is now is_automated; field renamed in Phase 2
                     workflow_overrides: _workflow_overrides, // runtime-only, not persisted
                     has_interacted: _has_interacted, // deserialized from DB, restored by handle_session_load_completed
                     task_list: _task_list, // included in metadata blob via PersistableCore
@@ -619,8 +621,10 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                 .change_context(SessionStoreError)
                 .attach("failed to serialize metadata")?
                 .into(),
-            is_workflow: *is_workflow,
+            is_automated: *is_workflow, // SessionCore field renamed in Phase 2
+            persist: true, // SessionCore.persist added in Phase 3; legacy default for migrated rows
         })
+
     }
 }
 
@@ -653,7 +657,8 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
             archived,
             lifecycle_script_state,
             metadata,
-            is_workflow,
+            is_automated,
+            persist: _persist, // SessionCore.persist added in Phase 3
         } = ctx.row;
 
         // When a metadata JSON blob exists (v8+), deserialize it as the
@@ -709,8 +714,9 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
             }
         };
 
-        // Single source of truth: is_workflow column → core.is_workflow.
-        core.is_workflow = is_workflow;
+        // Single source of truth: is_automated column → core.is_workflow
+        // (field renamed to is_automated in Phase 2).
+        core.is_workflow = is_automated;
 
         // Single source of truth: archived column → session_state.
         core.session_state = if archived {
@@ -765,7 +771,8 @@ fn save_blocking(
                 sessions::archived.eq(excluded(sessions::archived)),
                 sessions::lifecycle_script_state.eq(excluded(sessions::lifecycle_script_state)),
                 sessions::metadata.eq(excluded(sessions::metadata)),
-                sessions::is_workflow.eq(excluded(sessions::is_workflow)),
+                sessions::is_automated.eq(excluded(sessions::is_automated)),
+                sessions::persist.eq(excluded(sessions::persist)),
             ))
             .execute(txn)?;
 
@@ -1090,7 +1097,8 @@ fn fork_blocking(
                 archived: false,
                 lifecycle_script_state: source_meta.lifecycle_script_state,
                 metadata: fork_metadata(source_meta.metadata.as_ref(), &source_str, &new_id_str),
-                is_workflow: source_meta.is_workflow,
+                is_automated: source_meta.is_automated,
+                persist: source_meta.persist,
             })
             .execute(txn)?;
 

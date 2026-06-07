@@ -93,6 +93,10 @@ pub fn run_migrations(conn: &mut SqliteConnection) -> Result<(), Report<SessionS
         migrate_v15(conn)?;
         record_version(conn, 15, "drop_strategy_state_column")?;
     }
+    if current < 16 {
+        migrate_v16(conn)?;
+        record_version(conn, 16, "rename_is_workflow_to_is_automated_and_add_persist")?;
+    }
     Ok(())
 }
 
@@ -502,6 +506,57 @@ fn migrate_v15(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErr
     Ok(())
 }
 
+fn migrate_v16(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    sql_query(
+        "CREATE TABLE sessions_new (\
+         id TEXT PRIMARY KEY,\
+         title TEXT,\
+         updated_at TEXT NOT NULL,\
+         profile TEXT NOT NULL DEFAULT '{}',\
+         blobs TEXT NOT NULL DEFAULT '{}',\
+         parent_session TEXT DEFAULT NULL,\
+         cwd TEXT NOT NULL DEFAULT '.',\
+         created_at TEXT NOT NULL DEFAULT '',\
+         archived BOOLEAN NOT NULL DEFAULT FALSE,\
+         lifecycle_name TEXT DEFAULT NULL,\
+         lifecycle_args TEXT NOT NULL DEFAULT '[]',\
+         lifecycle_script_state TEXT NOT NULL DEFAULT 'nothing_ran',\
+         metadata TEXT,\
+         is_automated BOOLEAN NOT NULL DEFAULT FALSE,\
+         persist BOOLEAN NOT NULL DEFAULT TRUE,\
+         judge_meta TEXT)",
+    )
+    .execute(conn)
+    .change_context(SessionStoreError)
+    .attach("v16: create sessions_new with is_automated + persist")?;
+
+    sql_query(
+        "INSERT INTO sessions_new (\
+         id, title, updated_at, profile, blobs, parent_session, cwd, created_at,\
+         archived, lifecycle_name, lifecycle_args, lifecycle_script_state, metadata,\
+         is_automated, persist, judge_meta) \
+         SELECT \
+         id, title, updated_at, profile, blobs, parent_session, cwd, created_at,\
+         archived, lifecycle_name, lifecycle_args, lifecycle_script_state, metadata,\
+         is_workflow, TRUE, judge_meta FROM sessions",
+    )
+    .execute(conn)
+    .change_context(SessionStoreError)
+    .attach("v16: copy sessions (is_workflow→is_automated, persist=TRUE)")?;
+
+    sql_query("DROP TABLE sessions")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("v16: drop old sessions table")?;
+
+    sql_query("ALTER TABLE sessions_new RENAME TO sessions")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("v16: rename sessions_new to sessions")?;
+
+    Ok(())
+}
+
 fn migrate_v12(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query(
         "ALTER TABLE session_history ADD COLUMN context_override TEXT NOT NULL DEFAULT 'default'",
@@ -556,7 +611,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 16);
+        assert_eq!(rows.len(), 17);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -610,7 +665,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 16);
+        assert_eq!(rows[0].count, 17);
     }
 
     /// Applies migrations up to (and including) `target` version.
@@ -681,6 +736,10 @@ mod tests {
             migrate_v14(conn).expect("v14");
             record_version(conn, 14, "add_context_history").expect("record v14");
         }
+        if target >= 15 {
+            migrate_v15(conn).expect("v15");
+            record_version(conn, 15, "drop_strategy_state_column").expect("record v15");
+        }
     }
 
     /// Verifies that each migration guard uses `<` not `<=`.
@@ -702,7 +761,7 @@ mod tests {
             count: i64,
         }
 
-        for target_version in 0..=14_i32 {
+        for target_version in 0..=16_i32 {
             let (_dir, mut conn) = make_conn();
 
             // Build the database at exactly `target_version`.
@@ -713,13 +772,13 @@ mod tests {
                 panic!("re-run at target_version={target_version} should succeed: {e:?}")
             });
 
-            // Verify no duplicate rows: exactly 15 migration rows total.
+            // Verify no duplicate rows: exactly 17 migration rows total.
             let rows: Vec<CountRow> = sql_query("SELECT COUNT(*) AS count FROM _migrations")
                 .load(&mut conn)
                 .expect("query count");
             assert_eq!(
-                rows[0].count, 16,
-                "at target_version={target_version}: expected 16 migration rows, no duplicates"
+                rows[0].count, 17,
+                "at target_version={target_version}: expected 17 migration rows, no duplicates"
             );
         }
     }
@@ -886,5 +945,141 @@ mod tests {
             rows.iter().any(|r| r.id == "keep-me"),
             "session 'keep-me' must survive the v15 table rebuild"
         );
+    }
+
+    #[test]
+    fn migrate_v16_renames_is_workflow_to_is_automated_and_adds_persist() {
+        #[derive(QueryableByName)]
+        struct ColumnRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            name: String,
+        }
+
+        #[derive(QueryableByName)]
+        struct SessionFlagRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            id: String,
+            #[diesel(sql_type = diesel::sql_types::Bool)]
+            is_automated: bool,
+            #[diesel(sql_type = diesel::sql_types::Bool)]
+            persist: bool,
+        }
+
+        // Given a database built to v15 (is_workflow column present) with two sessions:
+        // one workflow and one normal.
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 15);
+        sql_query(
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, lifecycle_script_state, is_workflow) \n
+             VALUES ('wf', 'Workflow', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', '{}', '{}', 'nothing_ran', TRUE)",
+        )
+        .execute(&mut conn)
+        .expect("insert workflow session");
+        sql_query(
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, lifecycle_script_state, is_workflow) \n
+             VALUES ('norm', 'Normal', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', '{}', '{}', 'nothing_ran', FALSE)",
+        )
+        .execute(&mut conn)
+        .expect("insert normal session");
+
+        // When running migration v16.
+        migrate_v16(&mut conn).expect("migrate v16");
+
+        // Then the sessions table has is_automated + persist, not is_workflow.
+        let cols: Vec<ColumnRow> = sql_query("PRAGMA table_info(sessions)")
+            .load(&mut conn)
+            .expect("query table_info");
+        let names: Vec<_> = cols.iter().map(|c| c.name.clone()).collect::<Vec<_>>();
+        assert!(
+            names.iter().any(|n| n == "is_automated"),
+            "is_automated column should exist; found: {:?}",
+            names
+        );
+        assert!(
+            names.iter().any(|n| n == "persist"),
+            "persist column should exist; found: {:?}",
+            names
+        );
+        assert!(
+            !names.iter().any(|n| n == "is_workflow"),
+            "is_workflow column should be gone; found: {:?}",
+            names
+        );
+
+        // And the values carried over: wf→is_automated=TRUE, norm→is_automated=FALSE, persist=TRUE for both.
+        let rows: Vec<SessionFlagRow> =
+            sql_query("SELECT id, is_automated, persist FROM sessions ORDER BY id")
+                .load(&mut conn)
+                .expect("query sessions");
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].id, "norm");
+        assert!(!rows[0].is_automated, "norm should not be automated");
+        assert!(rows[0].persist, "norm persist should default to TRUE");
+        assert_eq!(rows[1].id, "wf");
+        assert!(rows[1].is_automated, "wf should be automated (carried from is_workflow)");
+        assert!(rows[1].persist, "wf persist should default to TRUE");
+    }
+
+    #[test]
+    fn migrate_v16_preserves_session_data() {
+        // Given a v15 database with a fully-populated session row.
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 15);
+        sql_query(
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \n
+             parent_session, lifecycle_name, lifecycle_args, archived, lifecycle_script_state, \n
+             metadata, is_workflow) \n
+             VALUES ('full', 'Full Session', '2024-02-02T00:00:00Z', '2024-02-01T00:00:00Z', '/home', \n
+             '{\"k\":\"v\"}', '{\"b\":1}', 'parent-1', 'judge', '[\"arg\"]', TRUE, \n
+             'ran_once', '{\"m\":1}', FALSE)",
+        )
+        .execute(&mut conn)
+        .expect("insert full session");
+
+        // When running migration v16.
+        migrate_v16(&mut conn).expect("migrate v16");
+
+        // Then every non-renamed column round-trips intact.
+        #[derive(QueryableByName)]
+        struct FullRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            id: String,
+            #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
+            title: Option<String>,
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            updated_at: String,
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            created_at: String,
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            cwd: String,
+            #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
+            parent_session: Option<String>,
+            #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
+            lifecycle_name: Option<String>,
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            lifecycle_args: String,
+            #[diesel(sql_type = diesel::sql_types::Bool)]
+            archived: bool,
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            lifecycle_script_state: String,
+        }
+        let rows: Vec<FullRow> = sql_query(
+            "SELECT id, title, updated_at, created_at, cwd, parent_session, lifecycle_name, \n
+             lifecycle_args, archived, lifecycle_script_state FROM sessions WHERE id = 'full'",
+        )
+        .load(&mut conn)
+        .expect("query full session");
+        assert_eq!(rows.len(), 1, "full session row should survive migration");
+        let row = &rows[0];
+        assert_eq!(row.id, "full");
+        assert_eq!(row.title.as_deref(), Some("Full Session"));
+        assert_eq!(row.updated_at, "2024-02-02T00:00:00Z");
+        assert_eq!(row.created_at, "2024-02-01T00:00:00Z");
+        assert_eq!(row.cwd, "/home");
+        assert_eq!(row.parent_session.as_deref(), Some("parent-1"));
+        assert_eq!(row.lifecycle_name.as_deref(), Some("judge"));
+        assert_eq!(row.lifecycle_args, "[\"arg\"]");
+        assert!(row.archived, "archived should round-trip");
+        assert_eq!(row.lifecycle_script_state, "ran_once");
     }
 }
