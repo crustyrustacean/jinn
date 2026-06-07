@@ -395,7 +395,6 @@ fn build_entry_list(
             Span::styled(format!(" {badge_text} "), Style::default().fg(badge_color)),
             Span::styled(format!("{prefix}{content}"), style),
         ]));
-
     }
 
     lines

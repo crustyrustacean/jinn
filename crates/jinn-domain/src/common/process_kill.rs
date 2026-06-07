@@ -154,9 +154,7 @@ mod tests {
             .process_group(0)
             .spawn()
             .expect("spawn should succeed");
-        let pid = child
-            .id()
-            .expect("child has a pid before being awaited");
+        let pid = child.id().expect("child has a pid before being awaited");
         // Reap the leader so the group no longer exists.
         let mut child = child;
         let _ = child.wait().await;
@@ -186,9 +184,7 @@ mod tests {
             .process_group(0)
             .spawn()
             .expect("spawn should succeed");
-        let pid = child
-            .id()
-            .expect("child has a pid before it exits");
+        let pid = child.id().expect("child has a pid before it exits");
         // The shell exits once it has launched the grandchild.
         // Give it a moment to do so.
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;

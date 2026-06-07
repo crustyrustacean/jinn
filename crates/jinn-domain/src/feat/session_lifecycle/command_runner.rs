@@ -136,7 +136,6 @@ pub async fn run_teardown_command(
     Ok(())
 }
 
-
 /// Handle used to cancel a running lifecycle shell process from outside its
 /// reader task.
 ///
@@ -187,8 +186,11 @@ pub type SpawnTeardownResult = Result<
 /// this task (see its docs). The reader task awaits exit, reads stdout/stderr,
 /// and produces the canonicalized CWD path.
 ///
-/// # Errors
+/// # Panics
 ///
+/// Panics if the spawned child has no PID immediately after spawn (should never happen for a process group child).
+///
+/// # Errors
 /// Returns an error under any of these circumstances:
 /// - spawning command fails
 /// - joining fails
@@ -219,9 +221,7 @@ pub fn spawn_setup_command(command: &str, shell: &str) -> SpawnSetupResult {
     // On Unix the child was spawned with `process_group(0)`, so its pid is also
     // its process-group id. The cancel path signals the whole group via
     // `kill_process_group_by_pid(pid)`, which needs no Child handle.
-    let pid = child
-        .id()
-        .expect("child has a pid immediately after spawn");
+    let pid = child.id().expect("child has a pid immediately after spawn");
 
     // Take pipes before moving the child.
     let stdout_pipe = child.stdout.take();
@@ -300,6 +300,10 @@ pub fn spawn_setup_command(command: &str, shell: &str) -> SpawnSetupResult {
 ///
 /// Same pattern as [`spawn_setup_command`] but only checks the exit code.
 ///
+/// # Panics
+///
+/// Panics if the spawned child has no PID immediately after spawn (should never happen for a process group child).
+///
 /// # Errors
 ///
 /// Returns an error if the shell command fails to spawn or canonicalize the working directory.
@@ -325,9 +329,7 @@ pub fn spawn_teardown_command(command: &str, shell: &str) -> SpawnTeardownResult
 
     // Capture the process-group id BEFORE moving the child into the reader task
     // (see spawn_setup_command for the rationale).
-    let pid = child
-        .id()
-        .expect("child has a pid immediately after spawn");
+    let pid = child.id().expect("child has a pid immediately after spawn");
 
     // Take pipes before moving the child.
     let stdout_pipe = child.stdout.take();
@@ -649,5 +651,54 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn aborting_reader_task_yields_cancelled_or_failed_outcome() {
+        // Given a setup command that sleeps indefinitely.
+        let (handle, join_handle) = spawn_setup_command("sleep 30", "/bin/sh").expect("spawn");
 
+        // When killing the process group then aborting the inner reader task.
+        crate::common::process_kill::kill_process_group_by_pid(handle.pid);
+        handle.abort_handle.abort();
+
+        // Then the join resolves to a failure outcome — either the inner task
+        // observed the SIGKILL and returned CommandFailed (reaped before abort),
+        // or the abort won and produced a JoinError. Either way: not success.
+        let outcome = join_handle.await;
+        let failed = !matches!(outcome, Ok(Ok(_)));
+        // Outcome is timing-dependent (Edge Case #7): either the inner task
+        // observed the SIGKILL and returned CommandFailed, or the abort won
+        // and produced a JoinError. Both are valid "cancelled" outcomes.
+        assert!(failed, "cancel must produce a non-success outcome");
+    }
+
+    #[test]
+    fn cancel_handle_kills_and_aborts_without_panic() {
+        // Given a setup command that sleeps, spawned on a multi-thread runtime
+        // so the cancel runs on a WORKER thread (the original bug: blocking_lock
+        // on a tokio worker thread panicked with SIGABRT).
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("multi-thread runtime");
+
+        // When running the cancel sequence from inside a spawned task (i.e., on a
+        // tokio worker thread). The spawn itself happens in runtime context so the
+        // internally-spawned reader task can register with the reactor. If the cancel
+        // panicked like the old code, the join below would surface it as a panic payload.
+        let handle_cl = rt.handle().clone();
+        rt.block_on(async move {
+            let (handle, _join_handle) = spawn_setup_command("sleep 30", "/bin/sh").expect("spawn");
+
+            // Cancel from a runtime worker thread, exactly as the session actor
+            // does. The whole point of this test is that this does NOT panic.
+            let cancel = handle_cl.spawn(async move {
+                crate::common::process_kill::kill_process_group_by_pid(handle.pid);
+                handle.abort_handle.abort();
+            });
+            cancel.await.expect("cancel task must not panic");
+        });
+        rt.shutdown_background();
+    }
 }
