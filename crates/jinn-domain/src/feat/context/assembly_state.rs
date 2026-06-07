@@ -29,4 +29,3 @@ pub struct ContextAssemblyState {
     /// OWNER: populated once at startup by the app init code.
     pub compaction_prompt: String,
 }
-

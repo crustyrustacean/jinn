@@ -136,7 +136,6 @@ where
             preview_cache,
         } = self;
 
-
         let block = {
             let mut b = Block::default()
                 .borders(Borders::ALL)
@@ -164,7 +163,6 @@ where
             footer: footer.as_ref(),
             colors: &colors,
             preview_scroll,
-
         };
 
         if popup_area.width >= VERTICAL_SPLIT_MIN_WIDTH {
@@ -190,9 +188,7 @@ struct RenderCtx<'a, T: PickerItem + PreviewContent> {
     colors: &'a SelectionColors,
     /// Scroll offset for the preview pane.
     preview_scroll: usize,
-
 }
-
 
 impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
     /// Renders the list and preview stacked vertically (narrow terminals).
@@ -299,12 +295,7 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
 
     /// Renders the preview pane for the currently selected item, consulting
     /// the optional `cache` to avoid re-rendering unchanged content.
-    fn render_preview(
-        &self,
-        frame: &mut Frame<'_>,
-        area: Rect,
-        cache: Option<&dyn PreviewCache>,
-    ) {
+    fn render_preview(&self, frame: &mut Frame<'_>, area: Rect, cache: Option<&dyn PreviewCache>) {
         let width = area.width as usize;
         let max_visible = area.height as usize;
 
@@ -313,7 +304,6 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
         } else {
             Vec::new()
         };
-
 
         let visible: Vec<Line<'static>> = lines
             .iter()

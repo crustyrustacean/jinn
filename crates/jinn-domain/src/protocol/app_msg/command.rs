@@ -36,7 +36,7 @@ use crate::feat::session::protocol::session_load_requested::SessionLoadRequested
 use crate::feat::session::protocol::submit_history_mutations::SubmitHistoryMutations;
 use crate::feat::session_lifecycle::protocol::command::{
     CancelLifecycleCommand, FinishSessionSetup, FinishSessionTeardown, PersistSession,
-    RunSessionSetup, RunSessionTeardown,
+    RunSessionSetup, RunSessionTeardown, SetSessionCwd,
 };
 use crate::feat::skills::skills_scan_actor::ScanSkills;
 use crate::feat::tools_actor::protocol::command::{
@@ -127,6 +127,9 @@ pub enum Command {
     ArchiveSession(crate::feat::session::protocol::archive_session::ArchiveSession),
     /// Persist a session's full state to SQLite immediately.
     PersistSession(PersistSession),
+    /// Set a session's working directory (routes cwd mutation through the actor
+    /// system so discovery scans re-fire via `SessionCwdChanged`).
+    SetSessionCwd(SetSessionCwd),
     /// Submit a batch of history mutations for deferred application.
     SubmitHistoryMutations(SubmitHistoryMutations),
     /// Finish an async teardown shell command (result from spawned task).
@@ -193,6 +196,7 @@ impl Command {
                 Some(crate::feat::session::protocol::archive_session::ArchiveSession::NAME)
             }
             Self::PersistSession(..) => Some(PersistSession::NAME),
+            Self::SetSessionCwd(..) => Some(SetSessionCwd::NAME),
             Self::SubmitHistoryMutations(..) => Some(SubmitHistoryMutations::NAME),
             Self::FinishSessionTeardown(..) => Some(FinishSessionTeardown::NAME),
             Self::FinishSessionSetup(..) => Some(FinishSessionSetup::NAME),
@@ -320,6 +324,9 @@ impl std::fmt::Display for Command {
             }
             Command::PersistSession(payload) => {
                 write!(f, "persist session {}", payload.session_id)
+            }
+            Command::SetSessionCwd(payload) => {
+                write!(f, "set session cwd for {}", payload.session_id)
             }
             Command::FinishSessionTeardown(payload) => {
                 write!(f, "finish session teardown for {}", payload.session_id)

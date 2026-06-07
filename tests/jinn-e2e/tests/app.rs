@@ -463,14 +463,20 @@ fn given_system_entry(world: &mut AppWorld, text: String) {
 #[cucumber::given(expr = "a prompt template {string} with body {string}")]
 fn given_prompt_template(world: &mut AppWorld, name: String, body: String) {
     let mut state = world.app.core.state.write();
-    let mut templates = state.active_session_mut().discovered_prompt_templates().templates().to_vec();
+    let mut templates = state
+        .active_session_mut()
+        .discovered_prompt_templates()
+        .templates()
+        .to_vec();
 
     templates.push(jinn_domain::PromptTemplate {
         name,
         description: String::new(),
         body,
     });
-    state.active_session_mut().set_discovered_prompt_templates(jinn_domain::PromptTemplateStore::from_vec(templates));
+    state
+        .active_session_mut()
+        .set_discovered_prompt_templates(jinn_domain::PromptTemplateStore::from_vec(templates));
 }
 
 /// Pins the last entry in the active session with the given position.

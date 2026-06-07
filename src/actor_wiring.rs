@@ -399,6 +399,34 @@ pub fn create_core_with_actor_host(
         },
     ));
 
+    // Discovery coordinator — coalesces the three resource-loaded events
+    // per session and emits `SessionDiscoverySettled`.
+    actors.push(spawn::<
+        jinn_domain::feat::discovery_coordinator::DiscoveryCoordinatorActor,
+    >(
+        "discovery-coordinator",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        jinn_domain::feat::discovery_coordinator::DiscoveryCoordinatorActorDeps {
+            state: state.clone(),
+        },
+    ));
+
+    // Discovery notifier — posts a transient chat entry when a session's
+    // discovery settles.
+    actors.push(spawn::<
+        jinn_domain::feat::discovery_notifier::DiscoveryNotifierActor,
+    >(
+        "discovery-notifier",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        jinn_domain::feat::discovery_notifier::DiscoveryNotifierActorDeps,
+    ));
+
     // Persona scan actor.
     actors.push(spawn::<
         jinn_domain::feat::persona::persona_scan_actor::PersonaScanActor,
@@ -904,29 +932,6 @@ pub fn create_core_with_actor_host(
         state: state.clone(),
         sender: sender.clone(),
     };
-
-    // Trigger initial skills scan for the active session.
-    let default_session_id = state.read().session.active_session_id().clone();
-    let _ = sink.send_command(jinn_domain::Command::ScanSkills(
-        jinn_domain::feat::skills::ScanSkills {
-            session_id: default_session_id.clone(),
-        },
-    ));
-
-    // Trigger initial prompt-template and context-file scans for the active session.
-    // These run on the async scan actors off the startup thread; each reads the
-    // session's cwd and walks the bounded ancestor chain (exclusive $HOME or
-    // inclusive VCS root, whichever comes first).
-    let _ = sink.send_command(jinn_domain::Command::RescanPromptTemplates(
-        jinn_domain::feat::provider::protocol::command::RescanPromptTemplates {
-            session_id: default_session_id.clone(),
-        },
-    ));
-    let _ = sink.send_command(jinn_domain::Command::ScanContextFiles(
-        jinn_domain::feat::context::protocol::command::ScanContextFiles {
-            session_id: default_session_id,
-        },
-    ));
 
     // Trigger initial persona scan.
     let _ = sink.send_command(jinn_domain::Command::RescanPersonas(

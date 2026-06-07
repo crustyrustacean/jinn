@@ -310,24 +310,17 @@ fn handle_suspend_action(
                             return Ok(());
                         }
                     };
-                    app.core
-                        .state
-                        .write()
-                        .active_session_mut()
-                        .set_cwd(canonical);
-
-                    // Trigger async re-scan of skills/prompts/context-files for the
-                    // now-updated cwd. Each scan actor reads the session's cwd and
-                    // walks the bounded ancestor chain off-thread.
-                    let session_id =
-                        app.core.state.read().active_session().session_id().clone();
-                    for command in
-                        jinn_domain::feat::context::env_context::scan_commands_for_session(
-                            &session_id,
-                        )
-                    {
-                        app.core.submit_command(command);
-                    }
+                    // Submit a single SetSessionCwd command so the session
+                    // actor applies the cwd and broadcasts SessionCwdChanged;
+                    // the event-driven scan actors then re-discover
+                    // skills/prompts/context-files for the new cwd.
+                    let session_id = app.core.state.read().active_session().session_id().clone();
+                    app.core.submit_command(jinn_domain::Command::SetSessionCwd(
+                        jinn_domain::feat::session_lifecycle::protocol::command::SetSessionCwd {
+                            session_id,
+                            cwd: canonical,
+                        },
+                    ));
 
                     tracing::info!(
                         cwd = %app.core.state.read().active_session().cwd().display(),

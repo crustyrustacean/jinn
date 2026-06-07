@@ -95,9 +95,7 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
                 .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned());
 
             crate::feat::session::chat_session::ChatSessionState::new_with_profile(
-                crate::feat::session::profile::SessionProfile::from_config(
-                    model,
-                ),
+                crate::feat::session::profile::SessionProfile::from_config(model),
             )
         };
         state.session.remove_and_replace(&closing_id, new_session);
