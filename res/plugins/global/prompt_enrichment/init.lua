@@ -116,13 +116,24 @@ end
 --- directive for the consistent chat-input badge location, drawn as a
 --- persistent hotkey legend.
 ---
---- Note: Phase 1 returns a flat directive. Phase 6 reshapes this to styled
---- segments with mode-aware coloring of the hotkey letter.
+--- The `E` is the bound key. It is colored with the hotkey accent only while
+--- the user is in Input mode — the only mode in which <M-e> is actionable.
+--- Outside Input mode it dims to the muted text color alongside the brackets.
+--- This mode→style decision lives in the plugin; the host never applies
+--- mode-aware styling to plugin content.
 ---
 ---@param ctx OnChatInputBadgesRenderCtx
----@return table? directive `{ slot, text, style? }` or nil
+---@return table? directive `{ slot, segments = { { text, style } } }` or nil
 function M.on_chat_input_badges_render(ctx)
-    return { slot = "input_badge", text = "[Enrich]", style = "yellow" }
+    local e_style = (ctx.mode == "input") and "accent_action" or "muted_text"
+    return {
+        slot = "input_badge",
+        segments = {
+            { text = "[",      style = "muted_text" },
+            { text = "E",      style = e_style },
+            { text = "nrich]", style = "muted_text" },
+        },
+    }
 end
 
 return M
