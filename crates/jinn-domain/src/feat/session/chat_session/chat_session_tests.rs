@@ -3350,7 +3350,6 @@ fn cancel_stream_and_drain_uses_display_not_expanded() {
     assert_eq!(text, "short");
 }
 
-
 // --- steering drain on cancel ---
 
 #[rstest::rstest]
@@ -3414,18 +3413,14 @@ fn cancel_stream_and_drain_flattens_steering_and_queue() {
     // Given a streaming session with two steering fragments and two queued messages.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session
-        .steering_buffer_mut()
-        .push_fragment("s1".to_owned());
-    session
-        .steering_buffer_mut()
-        .push_fragment("s2".to_owned());
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(Box::new(
-        ChatEntry::user("m1"),
-    )));
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(Box::new(
-        ChatEntry::user("m2"),
-    )));
+    session.steering_buffer_mut().push_fragment("s1".to_owned());
+    session.steering_buffer_mut().push_fragment("s2".to_owned());
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        Box::new(ChatEntry::user("m1")),
+    ));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        Box::new(ChatEntry::user("m2")),
+    ));
 
     // When cancelling and draining.
     session.cancel_stream_and_drain();
@@ -3440,7 +3435,9 @@ fn cancel_stream_and_drain_both_empty_leaves_input_unchanged() {
     // Given a streaming session with a pre-filled input box and empty buffers.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.chat_input_mut().replace_all("pre-existing".to_owned());
+    session
+        .chat_input_mut()
+        .replace_all("pre-existing".to_owned());
     assert_eq!(session.queue_len(), 0);
     assert!(session.steering_buffer().is_empty());
 
@@ -3457,9 +3454,9 @@ fn cancel_stream_and_drain_single_queue_message_no_separator() {
     // Given a streaming session with one queued user message.
     let mut session = ChatSessionState::new();
     session.begin_streaming();
-    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(Box::new(
-        ChatEntry::user("keep this"),
-    )));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
+        Box::new(ChatEntry::user("keep this")),
+    ));
 
     // When cancelling and draining.
     session.cancel_stream_and_drain();
