@@ -1047,9 +1047,7 @@ impl SessionPersistenceActor {
                 .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned());
 
             ChatSessionState::new_with_profile(
-                crate::feat::session::profile::SessionProfile::from_config(
-                    model,
-                ),
+                crate::feat::session::profile::SessionProfile::from_config(model),
             )
         };
         state.session.remove_and_replace(session_id, fresh_session);
@@ -1084,12 +1082,10 @@ impl SessionPersistenceActor {
                 session.set_cwd(payload.cwd.clone());
             }
         }
-        if let Err(e) =
-            ctx.send_event(Event::SessionCwdChanged(SessionCwdChanged {
-                session_id: payload.session_id.clone(),
-                cwd: payload.cwd.clone(),
-            }))
-        {
+        if let Err(e) = ctx.send_event(Event::SessionCwdChanged(SessionCwdChanged {
+            session_id: payload.session_id.clone(),
+            cwd: payload.cwd.clone(),
+        })) {
             tracing::warn!(err = ?e, "session-actor failed to emit SessionCwdChanged");
         }
     }

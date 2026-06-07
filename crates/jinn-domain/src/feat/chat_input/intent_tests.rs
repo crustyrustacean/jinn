@@ -1693,7 +1693,8 @@ fn hash_autocomplete_populates_matches_from_template_store() {
                 description: "A test template".to_owned(),
                 body: "template body".to_owned(),
             },
-        ]));
+        ]),
+    );
 
     // When inserting '#' at position 0.
     let _ = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);

@@ -753,10 +753,20 @@ mod tests {
         let ctx = render_context(5, false);
 
         // When converting to lines.
-        let lines = to_lines("skill", "not a skill xml", ToolResultStatus::Success, None, &ctx);
+        let lines = to_lines(
+            "skill",
+            "not a skill xml",
+            ToolResultStatus::Success,
+            None,
+            &ctx,
+        );
 
         // Then there is one line showing the fallback label, with no panic.
-        assert_eq!(lines.len(), 1, "malformed skill should still render one line");
+        assert_eq!(
+            lines.len(),
+            1,
+            "malformed skill should still render one line"
+        );
         let text = line_text(&lines[0]);
         assert!(
             text.contains('\u{1F9E9}'),
@@ -792,7 +802,13 @@ mod tests {
         let ctx = render_context(5, false);
 
         // When converting to lines.
-        let lines = to_lines("bash", "command output", ToolResultStatus::Success, None, &ctx);
+        let lines = to_lines(
+            "bash",
+            "command output",
+            ToolResultStatus::Success,
+            None,
+            &ctx,
+        );
 
         // Then it renders content (the non-skill path), not the skill label.
         let text = line_text(&lines[0]);

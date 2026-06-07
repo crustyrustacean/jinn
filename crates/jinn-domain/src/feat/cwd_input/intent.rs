@@ -4,7 +4,7 @@
 
 use crate::common::app_state::AppState;
 use crate::common::focus::FocusScope;
-use crate::feat::cwd_input::resolve::{resolve_cwd_input, CwdResolution};
+use crate::feat::cwd_input::resolve::{CwdResolution, resolve_cwd_input};
 use crate::feat::cwd_input::state::CwdInputState;
 use crate::feat::session_lifecycle::protocol::command::SetSessionCwd;
 use crate::protocol::{Command, IntentResult};
@@ -157,7 +157,7 @@ mod tests {
         let expected = std::fs::canonicalize(target).unwrap();
         let cwd = match result.commands.first().unwrap() {
             Command::SetSessionCwd(p) => &p.cwd,
-            other => panic!("expected SetSessionCwd, got {:?}", other),
+            other => panic!("expected SetSessionCwd, got {other:?}"),
         };
         assert_eq!(cwd, &expected);
     }

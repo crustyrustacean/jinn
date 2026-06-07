@@ -3,7 +3,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-
 /// Where a [`Skill`] was discovered from.
 ///
 /// Used to badge entries in the skill picker (global vs project-scoped)
@@ -20,7 +19,6 @@ pub enum SkillSource {
         dir: PathBuf,
     },
 }
-
 
 /// A discovered agent skill.
 ///

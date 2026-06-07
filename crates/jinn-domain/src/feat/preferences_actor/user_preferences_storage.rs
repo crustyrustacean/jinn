@@ -233,8 +233,8 @@ mod tests {
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::preferences_actor::RequestRetryConfig;
     use crate::feat::preferences_actor::user_preferences::{
-        AutoPruneConfig, BashConfig, CompactionConfig,
-        CwdSelectorConfig, MinimapConfig, OpenrouterWebSearchConfig, WebFetchConfig,
+        AutoPruneConfig, BashConfig, CompactionConfig, CwdSelectorConfig, MinimapConfig,
+        OpenrouterWebSearchConfig, WebFetchConfig,
     };
 
     #[rstest::rstest]

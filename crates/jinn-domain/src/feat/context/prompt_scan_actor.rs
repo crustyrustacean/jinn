@@ -14,7 +14,7 @@
 //!   the session's cwd, writes the merged result into that session's ephemeral
 //!   discovered set, and emits [`PromptTemplatesLoaded`] events.
 
-use crate::common::actor::scan_actor::{scan_cwd_for_session, NoDirectMsg};
+use crate::common::actor::scan_actor::{NoDirectMsg, scan_cwd_for_session};
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope};
 use crate::common::services::Services;
 use crate::common::state::State;
@@ -124,8 +124,7 @@ impl PromptScanActor {
         // Resolve the session's cwd and home once, up front. The cwd is
         // captured by clone so the blocking scan can move it across the
         // thread boundary without holding the state lock.
-        let Some((cwd, home, user_dir, system_dir)) = self.resolve_scan_inputs(session_id)
-        else {
+        let Some((cwd, home, user_dir, system_dir)) = self.resolve_scan_inputs(session_id) else {
             tracing::warn!(%session_id, "RescanPromptTemplates: session not found, skipping");
             return;
         };
@@ -206,7 +205,9 @@ mod tests {
     use crate::common::app_paths::AppPaths;
     use crate::common::app_state::AppState;
     use crate::common::state::State;
-    use crate::feat::provider::protocol::{command::RescanPromptTemplates, event::PromptTemplatesLoaded};
+    use crate::feat::provider::protocol::{
+        command::RescanPromptTemplates, event::PromptTemplatesLoaded,
+    };
     use crate::protocol::{Command, Event};
 
     use super::*;
@@ -233,7 +234,10 @@ mod tests {
     ) {
         {
             let mut guard = state.write();
-            guard.session.active_session_mut().set_cwd(cwd.to_path_buf());
+            guard
+                .session
+                .active_session_mut()
+                .set_cwd(cwd.to_path_buf());
         }
         let session_id = state.read().session.active_session_id().clone();
         let sink = Arc::new(RecordingSink::new());
@@ -278,17 +282,17 @@ mod tests {
 
         // Then the project prompt is in the session's discovered store.
         let guard = state.read();
-        let session = guard
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = guard.session.get(&session_id).expect("session exists");
         let names: Vec<&str> = session
             .discovered_prompt_templates()
             .templates()
             .iter()
             .map(|t| t.name.as_str())
             .collect();
-        assert!(names.contains(&"code"), "project prompt discovered: {names:?}");
+        assert!(
+            names.contains(&"code"),
+            "project prompt discovered: {names:?}"
+        );
 
         // And the emitted event is tagged with the same session id.
         let events = sink.events();
@@ -330,10 +334,7 @@ mod tests {
 
         // Then the ancestor prompt is discovered from the nested cwd.
         let guard = state.read();
-        let session = guard
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = guard.session.get(&session_id).expect("session exists");
         let names: Vec<&str> = session
             .discovered_prompt_templates()
             .templates()

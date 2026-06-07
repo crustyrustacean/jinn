@@ -57,7 +57,9 @@ fn resolve_skill_path(ctx: &ToolContext, name: &str) -> Result<PathBuf, String> 
         return Err(format!("cannot resolve skill '{name}': no state available"));
     };
     let Some(session_id) = ctx.session_id.as_ref() else {
-        return Err(format!("cannot resolve skill '{name}': no session in context"));
+        return Err(format!(
+            "cannot resolve skill '{name}': no session in context"
+        ));
     };
     let guard = state.read();
     let Some(session) = guard.session.get(session_id) else {
@@ -74,7 +76,6 @@ fn resolve_skill_path(ctx: &ToolContext, name: &str) -> Result<PathBuf, String> 
             )
         })
 }
-
 
 /// Executes the `skill` built-in tool.
 ///
@@ -99,8 +100,11 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             if let Some(session) = guard.session.get(session_id)
                 && !session.is_skill_enabled(&name)
             {
-                return failure_result(&call,
-                    format!("skill '{name}' is disabled for this session. Use <leader>sk to re-enable it."),
+                return failure_result(
+                    &call,
+                    format!(
+                        "skill '{name}' is disabled for this session. Use <leader>sk to re-enable it."
+                    ),
                 );
             }
         }
@@ -111,8 +115,11 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             if let Some(session) = guard.session.get(session_id)
                 && session.loaded_skills().contains(&name)
             {
-                return failure_result(&call,
-                    format!("skill '{name}' is already loaded; its content is in context as a pinned tool result"),
+                return failure_result(
+                    &call,
+                    format!(
+                        "skill '{name}' is already loaded; its content is in context as a pinned tool result"
+                    ),
                 );
             }
         }
@@ -130,10 +137,12 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
         let content = match tokio::fs::read_to_string(&skill_path).await {
             Ok(c) => c,
             Err(e) => {
-                return failure_result(&call, format!("failed to read skill '{}': {e}", skill_path.display()));
+                return failure_result(
+                    &call,
+                    format!("failed to read skill '{}': {e}", skill_path.display()),
+                );
             }
         };
-
 
         let body = strip_frontmatter(&content);
         let location = skill_path.to_string_lossy().to_string();

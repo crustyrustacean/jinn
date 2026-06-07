@@ -48,7 +48,6 @@ pub struct SessionCwdChanged {
     pub cwd: PathBuf,
 }
 
-
 /// Teardown command finished (success or failure).
 ///
 /// Emitted by the session-persistence actor after running a lifecycle teardown command.

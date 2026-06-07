@@ -16,7 +16,7 @@
 //!   per walked dir, writes the result into that session's ephemeral
 //!   discovered set, and emits [`ContextFilesLoaded`] events.
 
-use crate::common::actor::scan_actor::{scan_cwd_for_session, NoDirectMsg};
+use crate::common::actor::scan_actor::{NoDirectMsg, scan_cwd_for_session};
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope};
 use crate::common::services::Services;
 use crate::common::state::State;
@@ -125,8 +125,7 @@ impl ContextFilesScanActor {
         // Resolve the session's cwd and home once, up front. The cwd is
         // captured by clone so the blocking scan can move it across the
         // thread boundary without holding the state lock.
-        let Some((cwd, home)) = self.resolve_scan_inputs(session_id)
-        else {
+        let Some((cwd, home)) = self.resolve_scan_inputs(session_id) else {
             tracing::warn!(%session_id, "ScanContextFiles: session not found, skipping");
             return;
         };
@@ -183,10 +182,7 @@ impl ContextFilesScanActor {
 /// Uses [`project_context_files`] to resolve candidate paths in bounded walk
 /// order (least-local → cwd), then reads each file's contents. Files that
 /// vanish between resolution and read are skipped silently.
-fn read_context_files(
-    cwd: &std::path::Path,
-    home: &std::path::Path,
-) -> Vec<ContextFile> {
+fn read_context_files(cwd: &std::path::Path, home: &std::path::Path) -> Vec<ContextFile> {
     project_context_files(cwd, home)
         .into_iter()
         .filter_map(|path| read_one_context_file(&path))
@@ -245,11 +241,17 @@ mod tests {
         let session_id = state.read().session.active_session_id().clone();
 
         let sink = Arc::new(RecordingSink::new());
-        let mut ctx =
-            ActorContext::new("context-files-scan-test", sink.clone() as Arc<dyn MessageSink>);
+        let mut ctx = ActorContext::new(
+            "context-files-scan-test",
+            sink.clone() as Arc<dyn MessageSink>,
+        );
         // Set the home directory to a parent of `dir` so the project walk (which
         // is exclusive of `$HOME`) still visits the session's cwd and its ancestors.
-        let home = dir.path().parent().expect("temp dir has a parent").to_path_buf();
+        let home = dir
+            .path()
+            .parent()
+            .expect("temp dir has a parent")
+            .to_path_buf();
         let services = crate::common::services::test_services::TestServices::builder()
             .paths({
                 let mut paths = AppPaths::new_in(dir.path());
@@ -288,12 +290,12 @@ mod tests {
 
         // Then the file is written to the session's ephemeral discovered set.
         let guard = state.read();
-        let session = guard
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = guard.session.get(&session_id).expect("session exists");
         assert_eq!(session.discovered_context_files().len(), 1);
-        assert_eq!(session.discovered_context_files()[0].content, "# Project rules");
+        assert_eq!(
+            session.discovered_context_files()[0].content,
+            "# Project rules"
+        );
     }
 
     #[rstest::rstest]
@@ -364,16 +366,15 @@ mod tests {
         // Point the session cwd at the project dir, and home at the parent.
         {
             let mut guard = state.write();
-            guard
-                .session
-                .active_session_mut()
-                .set_cwd(project.clone());
+            guard.session.active_session_mut().set_cwd(project.clone());
         }
         let session_id = state.read().session.active_session_id().clone();
 
         let sink = Arc::new(RecordingSink::new());
-        let mut ctx =
-            ActorContext::new("context-files-scan-test", sink.clone() as Arc<dyn MessageSink>);
+        let mut ctx = ActorContext::new(
+            "context-files-scan-test",
+            sink.clone() as Arc<dyn MessageSink>,
+        );
         // Build services whose home_dir() resolves to our temp home.
         let mut paths = AppPaths::new_in(dir.path());
         paths.set_home_dir_for_test(home.path().to_path_buf());
@@ -420,8 +421,10 @@ mod tests {
         let session_id = state.read().session.active_session_id().clone();
 
         let sink = Arc::new(RecordingSink::new());
-        let mut ctx =
-            ActorContext::new("context-files-scan-test", sink.clone() as Arc<dyn MessageSink>);
+        let mut ctx = ActorContext::new(
+            "context-files-scan-test",
+            sink.clone() as Arc<dyn MessageSink>,
+        );
         let mut paths = AppPaths::new_in(dir.path());
         paths.set_home_dir_for_test(home.path().to_path_buf());
         let services = crate::common::services::test_services::TestServices::builder()

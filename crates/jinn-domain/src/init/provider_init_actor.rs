@@ -152,9 +152,8 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::feat::preferences_actor::user_preferences::{
-        AutoPruneConfig, BashConfig, CompactionConfig,
-        CwdSelectorConfig, MinimapConfig, OpenrouterWebSearchConfig, RequestRetryConfig,
-        WebFetchConfig,
+        AutoPruneConfig, BashConfig, CompactionConfig, CwdSelectorConfig, MinimapConfig,
+        OpenrouterWebSearchConfig, RequestRetryConfig, WebFetchConfig,
     };
     use crate::feat::provider_infra::ProviderEntry;
     use crate::init::EnvironmentLoaded;
