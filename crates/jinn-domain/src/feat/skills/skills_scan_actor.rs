@@ -531,6 +531,97 @@ mod tests {
         assert!(loaded.error.is_none());
     }
 
+    #[tokio::test]
+    async fn scan_skills_replacing_cwd_clears_previous_discovered_skills() {
+        // Given a session whose cwd has a project skill, scanned once so the
+        // discovered set contains it.
+        let home = tempfile::tempdir().expect("create home dir");
+        let dir_with_skill = home.path().join("populated");
+        std::fs::create_dir_all(&dir_with_skill).expect("create populated dir");
+        let skill_dir = dir_with_skill.join(".agents").join("skills").join("alpha");
+        std::fs::create_dir_all(&skill_dir).expect("create project skill dir");
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: alpha\ndescription: alpha skill\n---\n\n# A",
+        )
+        .expect("write project SKILL.md");
+
+        let empty_dir = home.path().join("empty");
+        std::fs::create_dir_all(&empty_dir).expect("create empty dir");
+
+        let paths_root = tempfile::tempdir().expect("create temp dir for AppPaths");
+        let state = State::new(AppState::default());
+        let session_id = state.read().session.active_session_id().clone();
+        {
+            let mut guard = state.write();
+            guard
+                .session
+                .active_session_mut()
+                .set_cwd(dir_with_skill.clone());
+        }
+
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
+        let mut paths = AppPaths::new_in(paths_root.path());
+        paths.set_home_dir_for_test(home.path().to_path_buf());
+        let services = crate::common::services::test_services::TestServices::builder()
+            .paths(paths)
+            .build();
+        let deps = SkillsScanActorDeps {
+            services,
+            state: state.clone(),
+        };
+        let mut actor = SkillsScanActor::activate(deps, &mut ctx);
+
+        // First scan: discovers `alpha`.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::ScanSkills(crate::feat::skills::ScanSkills {
+                    session_id: session_id.clone(),
+                })),
+                &ctx,
+            )
+            .await;
+        {
+            let guard = state.read();
+            let session = guard
+                .session
+                .get(&session_id)
+                .expect("session exists after first scan");
+            let skills = session.discovered_skills();
+            assert_eq!(skills.len(), 1, "populated cwd yields one skill");
+            assert_eq!(skills[0].name, "alpha");
+        }
+
+        // When the cwd changes to an empty dir and a second scan runs.
+        {
+            let mut guard = state.write();
+            guard
+                .session
+                .active_session_mut()
+                .set_cwd(empty_dir.clone());
+        }
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::ScanSkills(crate::feat::skills::ScanSkills {
+                    session_id: session_id.clone(),
+                })),
+                &ctx,
+            )
+            .await;
+
+        // Then the discovered set is empty — no stale `alpha` carryover.
+        let guard = state.read();
+        let session = guard
+            .session
+            .get(&session_id)
+            .expect("session exists after second scan");
+        assert!(
+            session.discovered_skills().is_empty(),
+            "empty cwd must clear previously discovered skills"
+        );
+    }
+
     #[rstest::rstest]
     #[tokio::test]
     async fn scan_skills_nonexistent_dir_emits_empty_loaded() {
