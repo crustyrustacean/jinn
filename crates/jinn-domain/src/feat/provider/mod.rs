@@ -30,7 +30,6 @@ mod entries_to_messages_tests;
 
 pub use indicator::StreamingIndicatorElement;
 
-
 use crate::common::AppUiRegistry;
 
 use crate::PickerEntry;

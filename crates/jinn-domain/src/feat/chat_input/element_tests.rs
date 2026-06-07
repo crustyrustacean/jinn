@@ -5,9 +5,9 @@ use crate::common::app_state::FocusScope;
 use crate::common::render_ctx::RenderCtx;
 use crate::common::ui_element::UiElement;
 use crate::feat::chat_input::element::ChatInputBoxElement;
+use crate::feat::session::queue_item::QueueItem;
 use crate::feat::theme::default_theme;
 use crate::protocol::ChatEntry;
-use crate::feat::session::queue_item::QueueItem;
 
 use jinn_testutil::setup_term;
 use ratatui::layout::Position;
