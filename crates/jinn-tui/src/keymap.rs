@@ -489,8 +489,7 @@ mod tests {
                 )
             })
             .unwrap_or_else(|| panic!(
-                "<M-e> (Alt+e) not bound in Input scope. bindings = {:?}",
-                input_bindings
+                "<M-e> (Alt+e) not bound in Input scope. bindings = {input_bindings:?}",
             ));
 
         assert_eq!(

@@ -234,10 +234,9 @@ async fn run_hooks_fire(
     hook: &str,
     ctx_json: &serde_json::Value,
 ) -> Result<(), Report<PluginError>> {
-    tracing::info!(%hook, global_count = state.global_hooks.len(), "PLUGTRACE: run_hooks_fire entered");
-    // Globals first.
+
     for (plugin_name, plugin_hooks) in &state.global_hooks {
-        tracing::info!(%plugin_name, %hook, "PLUGTRACE: firing global hook");
+
         run_single_hook(
             &state.global_lua,
             plugin_hooks,
@@ -409,8 +408,8 @@ async fn run_single_hook(
             return Err(
                 Report::new(PluginError)
                     .attach(PluginHookSite {
-                        plugin: plugin_name.to_string(),
-                        hook: hook.to_string(),
+                        plugin: plugin_name.to_owned(),
+                        hook: hook.to_owned(),
                     })
                     .attach(e.to_string()),
             );
