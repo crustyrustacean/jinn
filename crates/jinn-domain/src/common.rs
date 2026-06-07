@@ -55,18 +55,18 @@ mod tests {
     }
 
     #[test]
-    fn provider_register_adds_two_elements() {
+    fn provider_register_adds_streaming_indicator() {
         // Given an empty registry.
         let mut registry = AppUiRegistry::new();
 
         // When registering provider UI elements.
         crate::feat::provider::register(&mut registry);
 
-        // Then exactly 2 elements were added.
+        // Then exactly 1 element was added (the streaming indicator).
         assert_eq!(
             registry.iter_mut().count(),
-            2,
-            "provider::register should add 2 elements"
+            1,
+            "provider::register should add the streaming indicator"
         );
     }
 

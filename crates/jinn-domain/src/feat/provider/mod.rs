@@ -2,7 +2,7 @@
 //!
 //! Provides [`ProviderState`] for tracking the active provider, model cache,
 //! and provider picker state. Also contains the provider actor, discover actor,
-//! and UI elements (streaming indicator, queue display).
+//! and UI elements (streaming indicator).
 
 pub mod discover_actor;
 pub mod entries;
@@ -13,7 +13,7 @@ pub mod loader;
 pub mod picker_entry;
 pub mod protocol;
 pub mod provider_actor;
-pub mod queue_element;
+
 pub mod render;
 
 #[cfg(test)]
@@ -29,7 +29,7 @@ mod entries_tests;
 mod entries_to_messages_tests;
 
 pub use indicator::StreamingIndicatorElement;
-pub use queue_element::QueueDisplayElement;
+
 
 use crate::common::AppUiRegistry;
 
@@ -63,5 +63,4 @@ impl Default for ProviderState {
 /// Register provider UI elements.
 pub fn register(registry: &mut AppUiRegistry) {
     registry.register(Box::new(StreamingIndicatorElement::new()));
-    registry.register(Box::new(QueueDisplayElement));
 }
