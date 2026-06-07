@@ -86,7 +86,7 @@ pub(in crate::feat::session::session_actor) fn format_lifecycle_error(
             }
             parts.join("\n\n")
         }
-        LifecycleCommandError::NoOutput => "Command produced no output".to_owned(),
+
         LifecycleCommandError::InvalidPath { path } => {
             format!(
                 "Path does not exist or cannot be resolved: {}",
@@ -201,7 +201,7 @@ impl SessionPersistenceActor {
         let _handle = tokio::spawn(async move {
             let result = handle.await;
             let (cwd, error) = match result {
-                Ok(Ok(path)) => (Some(path), None as Option<String>),
+                Ok(Ok(cwd)) => (cwd, None as Option<String>),
                 Ok(Err(report)) => {
                     let error_msg =
                         if let Some(cmd_err) = report.downcast_ref::<crate::feat::session_lifecycle::command_runner::LifecycleCommandError>() {
@@ -280,7 +280,6 @@ impl SessionPersistenceActor {
             }
             (_, Some(error_msg)) => {
                 // Error.
-                let is_no_output = error_msg.contains("Command produced no output");
                 let default_cwd = {
                     let mut state = self.state.write();
                     let default = state.session.default_cwd().clone();
@@ -290,11 +289,7 @@ impl SessionPersistenceActor {
                     default
                 };
 
-                let entry = if is_no_output {
-                    no_output_info(&default_cwd)
-                } else {
-                    ChatEntry::error(error_msg)
-                };
+                let entry = ChatEntry::error(error_msg);
 
                 if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
                     session_id: payload.session_id.clone(),
@@ -314,12 +309,15 @@ impl SessionPersistenceActor {
                 }
             }
             (None, None) => {
-                // No CWD and no error - treat as no output.
+                // Success without a CWD - side-effect-only setup (no stdout output).
+                // Keep the default CWD, advance lifecycle so teardown-on-close fires,
+                // and surface an informational note so the user knows no path was returned.
                 let default_cwd = {
                     let mut state = self.state.write();
                     let default = state.session.default_cwd().clone();
                     if let Some(session) = state.session.get_mut(&payload.session_id) {
                         session.set_cwd(default.clone());
+                        session.advance_lifecycle_after_setup();
                     }
                     default
                 };
@@ -2589,5 +2587,40 @@ mod tests {
                 .map(ChatSessionState::phase),
             Some(crate::feat::session::phase_machine::PhaseKind::Idle)
         );
+    }
+
+    #[tokio::test]
+    async fn setup_with_no_output_advances_to_setup_ran() {
+        // Given an active session with default CWD and lifecycle in NothingRan.
+        let mut actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = actor.state.read().session.active_session_id().clone();
+
+        // When a side-effect-only setup command finishes (exit 0, no stdout).
+        let finish = crate::feat::session_lifecycle::protocol::command::FinishSessionSetup {
+            session_id: session_id.clone(),
+            cwd: None,
+            error: None,
+        };
+        actor.handle_finish_session_setup(&finish, &ctx).await;
+
+        // Then the session advanced to SetupRan so teardown-on-close will fire.
+        assert_eq!(
+            actor
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .map(ChatSessionState::lifecycle_script_state),
+            Some(crate::feat::session::chat_session::LifecycleScriptState::SetupRan)
+        );
+
+        // And exactly one chat entry was pushed (the no-output informational note).
+        let push_count = sink
+            .commands()
+            .iter()
+            .filter(|c| matches!(c, crate::protocol::Command::PushChatEntry(..)))
+            .count();
+        assert_eq!(push_count, 1);
     }
 }

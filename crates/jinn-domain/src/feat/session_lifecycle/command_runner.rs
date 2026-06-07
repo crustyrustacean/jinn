@@ -26,9 +26,7 @@ pub enum LifecycleCommandError {
         /// Captured stderr output.
         stderr: String,
     },
-    /// The command succeeded but produced no output (empty stdout).
-    #[error("command produced no output")]
-    NoOutput,
+
     /// The path returned by the command could not be resolved on the filesystem.
     #[error("path does not exist or cannot be resolved: {path}")]
     InvalidPath {
@@ -75,49 +73,55 @@ async fn run_command(
     Ok((output, stdout, stderr))
 }
 
-/// Runs a setup command and returns the resulting directory path.
+/// Runs a setup command and returns the resulting directory path, if any.
 ///
 /// Spawns the command via the provided shell.
 /// Captures stdout and stderr. On success, returns the last non-empty line of
 /// stdout (trimmed), canonicalized and verified as an existing directory.
 ///
+/// A command that exits 0 but prints no usable stdout line is treated as a
+/// successful side-effect-only setup and returns `Ok(None)`; the caller keeps
+/// the default CWD.
+///
 /// # Errors
 ///
 /// Returns [`LifecycleCommandError::CommandFailed`] if the process exits non-zero.
-/// Returns [`LifecycleCommandError::NoOutput`] if stdout is empty.
 /// Returns [`LifecycleCommandError::InvalidPath`] if the path cannot be resolved.
 /// Returns [`LifecycleCommandError::NotADirectory`] if the path is not a directory.
 /// Returns [`LifecycleCommandError::ExecutionFailed`] if the process cannot be spawned.
 pub async fn run_setup_command(
     command: &str,
     shell: &str,
-) -> Result<PathBuf, Report<LifecycleCommandError>> {
+) -> Result<Option<PathBuf>, Report<LifecycleCommandError>> {
     use error_stack::ResultExt as _;
 
     let (_output, stdout, _stderr) = run_command(command, shell).await?;
 
-    let last_line = stdout
-        .lines()
-        .map(str::trim)
-        .rfind(|line| !line.is_empty())
-        .ok_or_else(|| Report::new(LifecycleCommandError::NoOutput))?;
+    let last_line = stdout.lines().map(str::trim).rfind(|line| !line.is_empty());
 
-    let raw_path = PathBuf::from(last_line);
+    let canonical = match last_line {
+        Some(last_line) => {
+            let raw_path = PathBuf::from(last_line);
 
-    let canonical = tokio::fs::canonicalize(&raw_path)
-        .await
-        .change_context(LifecycleCommandError::InvalidPath {
-            path: raw_path.clone(),
-        })
-        .attach("setup command output is not a valid path")?;
+            let canonical = tokio::fs::canonicalize(&raw_path)
+                .await
+                .change_context(LifecycleCommandError::InvalidPath {
+                    path: raw_path.clone(),
+                })
+                .attach("setup command output is not a valid path")?;
 
-    if !canonical.is_dir() {
-        return Err(Report::new(LifecycleCommandError::NotADirectory {
-            path: canonical,
-        }));
-    }
+            if !canonical.is_dir() {
+                return Err(Report::new(LifecycleCommandError::NotADirectory {
+                    path: canonical,
+                }));
+            }
 
-    Ok(canonical)
+            canonical
+        }
+        None => return Ok(None),
+    };
+
+    Ok(Some(canonical))
 }
 
 /// Runs a teardown command. Only checks the exit code - output is ignored.
@@ -166,7 +170,7 @@ pub struct LifecycleCancelHandle {
 pub type SpawnSetupResult = Result<
     (
         LifecycleCancelHandle,
-        tokio::task::JoinHandle<Result<PathBuf, Report<LifecycleCommandError>>>,
+        tokio::task::JoinHandle<Result<Option<PathBuf>, Report<LifecycleCommandError>>>,
     ),
     Report<LifecycleCommandError>,
 >;
@@ -268,28 +272,34 @@ pub fn spawn_setup_command(command: &str, shell: &str) -> SpawnSetupResult {
             }));
         }
 
-        let last_line = stdout
-            .lines()
-            .map(str::trim)
-            .rfind(|line| !line.is_empty())
-            .ok_or_else(|| Report::new(LifecycleCommandError::NoOutput))?;
+        // A successful command may print no CWD (side-effect-only setups,
+        // e.g. `sleep 3` to warm a cache). Treat that as success-without-cwd;
+        // the caller advances lifecycle and keeps the default CWD.
+        let last_line = stdout.lines().map(str::trim).rfind(|line| !line.is_empty());
 
-        let raw_path = PathBuf::from(last_line);
+        let canonical = match last_line {
+            Some(last_line) => {
+                let raw_path = PathBuf::from(last_line);
 
-        let canonical = tokio::fs::canonicalize(&raw_path)
-            .await
-            .change_context(LifecycleCommandError::InvalidPath {
-                path: raw_path.clone(),
-            })
-            .attach("setup command output is not a valid path")?;
+                let canonical = tokio::fs::canonicalize(&raw_path)
+                    .await
+                    .change_context(LifecycleCommandError::InvalidPath {
+                        path: raw_path.clone(),
+                    })
+                    .attach("setup command output is not a valid path")?;
 
-        if !canonical.is_dir() {
-            return Err(Report::new(LifecycleCommandError::NotADirectory {
-                path: canonical,
-            }));
-        }
+                if !canonical.is_dir() {
+                    return Err(Report::new(LifecycleCommandError::NotADirectory {
+                        path: canonical,
+                    }));
+                }
 
-        Ok(canonical)
+                canonical
+            }
+            None => return Ok(None),
+        };
+
+        Ok(Some(canonical))
     });
 
     let abort_handle = handle.abort_handle();
@@ -401,7 +411,7 @@ mod tests {
 
         // Then the result is the canonicalized directory path.
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.unwrap(), Some(expected));
     }
 
     #[rstest::rstest]
@@ -418,7 +428,7 @@ mod tests {
 
         // Then the result is the canonicalized last non-empty line.
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.unwrap(), Some(expected));
     }
 
     #[rstest::rstest]
@@ -434,7 +444,7 @@ mod tests {
 
         // Then the result is trimmed and canonicalized.
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.unwrap(), Some(expected));
     }
 
     #[rstest::rstest]
@@ -482,19 +492,14 @@ mod tests {
         }
     }
 
-    #[rstest::rstest]
     #[tokio::test]
-    async fn setup_returns_error_on_empty_stdout() {
-        // Given a setup command that succeeds with no output.
+    async fn setup_returns_none_on_empty_stdout() {
+        // Given a setup command that succeeds with no output (side-effect-only).
         let result = run_setup_command("true", "/bin/sh").await;
 
-        // Then the result is a NoOutput error.
-        assert!(result.is_err());
-        let report = result.unwrap_err();
-        let err = report
-            .downcast_ref::<LifecycleCommandError>()
-            .expect("downcast");
-        assert!(matches!(err, LifecycleCommandError::NoOutput));
+        // Then the result is Ok(None): success, but no CWD path to apply.
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
     }
 
     #[rstest::rstest]
@@ -519,7 +524,7 @@ mod tests {
             "expected Ok, got Err: {:?}",
             result.unwrap_err()
         );
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.unwrap(), Some(expected));
     }
 
     #[rstest::rstest]
@@ -581,7 +586,7 @@ mod tests {
 
         // Then the result is the canonicalized current working directory.
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.unwrap(), Some(expected));
     }
 
     // --- Teardown command tests ---
