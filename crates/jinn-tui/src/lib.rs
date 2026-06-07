@@ -8,6 +8,7 @@ pub mod app_state;
 pub mod config;
 pub mod convert;
 pub mod keymap;
+pub mod launch;
 pub mod msg;
 pub mod render;
 pub mod run;
@@ -23,6 +24,10 @@ pub use jinn_domain::Services;
 pub use jinn_domain::{ActorHost, ActorHostService};
 pub use jinn_domain::{AppCore, AppMsg};
 pub use keymap::KeyCategory;
+pub use launch::{
+    LaunchError, launch,
+    load_compaction_prompt, load_prompt_templates, load_theme,
+};
 pub use msg::handler::MsgHandler;
 pub use run::{TuiRunError, run};
 pub use scope::Scope;

@@ -137,11 +137,23 @@ impl TuiApp {
                             "key event received"
                         );
 
+
+                        let is_alt_e = matches!((&protocol_key.key, protocol_key.modifiers.alt), (jinn_domain::Key::Char('e'), true));
                         let intent_opt = self.which_key.handle_key(protocol_key);
+                        if is_alt_e {
+                            tracing::info!(
+                                resolved_intent = ?intent_opt,
+                                "PLUGTRACE: Alt+e handled by which-key"
+                            );
+                        }
 
                         let Some(intent) = intent_opt else {
                             return;
                         };
+
+                        if matches!(&intent, Intent::TriggerPlugin { .. }) {
+                            tracing::info!(intent = ?intent, "PLUGTRACE: TriggerPlugin intent dispatched to route_intent");
+                        }
 
                         self.route_intent(intent);
                     }
@@ -253,10 +265,9 @@ impl TuiApp {
         // via the generic plugin::fire_async command path. The toggle hook itself writes
         // plugin_data (visible to both VMs); we just kick off the async fire here.
         if let Intent::TriggerPlugin {
-            plugin_name: _,
             action,
-            description: _,
             session_id,
+            ..
         } = intent.clone()
         {
             let sid = session_id.or_else(|| {
@@ -267,6 +278,7 @@ impl TuiApp {
                 "session_id": sid,
                 "text": "",
             });
+            tracing::info!("PLUGTRACE: TriggerPlugin arm sending plugin::fire_async command");
             let _ = self.core.sender().send(AppMsg::Command {
                 command: jinn_domain::protocol::Command::Dynamic(
                     jinn_domain::protocol::DynamicCommand {

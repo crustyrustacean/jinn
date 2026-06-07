@@ -232,8 +232,10 @@ async fn run_hooks_fire(
     hook: &str,
     ctx_json: &serde_json::Value,
 ) -> Result<(), Report<PluginError>> {
+    tracing::info!(%hook, global_count = state.global_hooks.len(), "PLUGTRACE: run_hooks_fire entered");
     // Globals first.
     for (plugin_name, plugin_hooks) in &state.global_hooks {
+        tracing::info!(%plugin_name, %hook, "PLUGTRACE: firing global hook");
         run_single_hook(
             &state.global_lua,
             plugin_hooks,
@@ -395,11 +397,23 @@ async fn run_single_hook(
     .map_err(|e| Report::new(PluginError).attach(e.to_string()))
     .attach("build ctx")?;
 
-    let result: mlua::Value = func
+    tracing::info!(plugin = %plugin_name, %hook, "PLUGTRACE: invoking async hook");
+    let result: mlua::Value = match func
         .call_async::<mlua::Value>(ctx_table)
         .await
-        .map_err(|e| Report::new(PluginError).attach(e.to_string()))
-        .attach(format!("hook '{plugin_name}.{hook}'"))?;
+    {
+        Ok(v) => {
+            tracing::info!(plugin = %plugin_name, %hook, "PLUGTRACE: async hook returned ok");
+            v
+        }
+        Err(e) => {
+            tracing::error!(plugin = %plugin_name, %hook, error = %e, "PLUGTRACE: async hook ERRORED");
+            return Err(Report::new(PluginError).attach(e.to_string()))
+                .attach(format!("hook '{plugin_name}.{hook}'"));
+        }
+    };
+
+
 
     match result {
         mlua::Value::Nil => Ok(None),

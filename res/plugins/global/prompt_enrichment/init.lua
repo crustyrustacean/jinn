@@ -19,7 +19,7 @@ Return ONLY the rewritten prompt, with no preamble or explanation.]]
 --- `action` names the async hook to fire; `description` feeds the which-key help popup.
 M.keybinds = {
     {
-        scope = "input",
+        scope = "Input",
         keys = "<M-e>",
         action = "on_toggle_enrich",
         description = "toggle prompt enrichment",
