@@ -507,6 +507,10 @@ struct PersistableCore {
     /// OWNER: plugin-dispatch-actor (attach/detach/toggle).
     #[serde(default)]
     attached_plugins: Vec<crate::feat::attached_plugin::AttachedPlugin>,
+    /// Whether this session should be persisted to disk.
+    /// Defaults to true for blobs written by older versions.
+    #[serde(default = "crate::feat::session::chat_session::default_persist")]
+    persist: bool,
 }
 
 impl From<&SessionCore> for PersistableCore {
@@ -526,6 +530,7 @@ impl From<&SessionCore> for PersistableCore {
             lifecycle_script_state: core.lifecycle_script_state,
             task_list: core.task_list.clone(),
             attached_plugins: core.attached_plugins.clone(),
+            persist: core.persist,
         }
     }
 }
@@ -554,6 +559,7 @@ impl From<PersistableCore> for SessionCore {
             has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
             task_list: core.task_list,
             attached_plugins: core.attached_plugins,
+            persist: core.persist,
         }
     }
 }
@@ -585,6 +591,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     session_state,
                     lifecycle_script_state,
                     is_automated,
+                    persist,
                     assembly_overrides: _assembly_overrides, // runtime-only, not persisted
                     has_interacted: _has_interacted, // deserialized from DB, restored by handle_session_load_completed
                     task_list: _task_list, // included in metadata blob via PersistableCore
@@ -621,8 +628,8 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                 .change_context(SessionStoreError)
                 .attach("failed to serialize metadata")?
                 .into(),
-            is_automated: *is_automated, // SessionCore field renamed in Phase 2
-            persist: true, // SessionCore.persist added in Phase 3; legacy default for migrated rows
+            is_automated: *is_automated,
+            persist: *persist,
         })
 
     }
@@ -658,7 +665,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
             lifecycle_script_state,
             metadata,
             is_automated,
-            persist: _persist, // SessionCore.persist added in Phase 3
+            persist: _persist, // column value used by PersistableCore round-trip
         } = ctx.row;
 
         // When a metadata JSON blob exists (v8+), deserialize it as the
@@ -706,6 +713,8 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 lifecycle_script_state: serde_json::from_str(&lifecycle_script_state)
                     .unwrap_or_default(),
                 is_automated: false,
+                persist: true, // default; PersistableCore overlay sets the real value
+
 
                 assembly_overrides: None, // runtime-only, set later if needed
                 has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
@@ -748,6 +757,10 @@ fn save_blocking(
     conn: &mut SqliteConnection,
     session: &ChatSessionState,
 ) -> Result<(), Report<SessionStoreError>> {
+    // Non-persistent sessions (e.g. plugin one-shots) never touch the store.
+    if !session.core.persist {
+        return Ok(());
+    }
     let row = NewSessionRow::try_from(session)?;
     let session_id_str = row.id.clone();
 
