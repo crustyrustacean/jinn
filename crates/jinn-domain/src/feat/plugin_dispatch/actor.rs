@@ -168,7 +168,7 @@ impl PluginDispatchActor {
             Command::DetachPlugin(cmd) => self.handle_detach(cmd, ctx).await,
             Command::TogglePlugin(cmd) => self.handle_toggle(cmd, ctx).await,
             Command::Dynamic(ref d) if d.name == "plugin::fire_async" => {
-                self.handle_fire_async_hook(&d.payload, ctx).await;
+                self.handle_fire_async_hook(&d.payload, ctx);
             }
             _ => {}
         }
@@ -390,6 +390,37 @@ impl PluginDispatchActor {
         self.fire_for_session(&session_id, hook, &ctx_json).await;
     }
 
+    /// Fire a hook for a session on a background task, so the actor loop is not
+    /// blocked while the hook runs.
+    ///
+    /// The registry id is resolved synchronously (cheap lookup) before spawning, so the
+    /// spawned task captures only cheap clones: the `PluginFireService`, the resolved
+    /// `SessionRegistryId` (Copy), the hook name, and the ctx JSON.
+    ///
+    /// Needed because a fired hook may `ctx.request(...)` something whose resolution
+    /// depends on an event routed back to this actor (e.g. `on_enrich` → `llm_oneshot` →
+    /// `SessionPhaseChanged(Idle)`). Awaiting the fire inline would block the mailbox
+    /// and deadlock until the 30s `AsyncPluginHandle` timeout.
+    fn spawn_fire_for_session(&self, session_id: &SessionId, hook: &str, ctx_json: &Value) {
+        let plugins = self.services.plugins.clone();
+        let registry_id = self.registry.get(session_id).copied();
+        let hook = hook.to_owned();
+        let ctx_json = ctx_json.clone();
+        tokio::spawn(async move {
+            let result = match registry_id {
+                Some(rid) => {
+                    plugins
+                        .fire_async_for_session_json(rid, &hook, &ctx_json)
+                        .await
+                }
+                None => plugins.fire_async_json(&hook, &ctx_json).await,
+            };
+            if let Err(e) = result {
+                tracing::error!(hook = %hook, err = ?e, "plugin hook failed");
+            }
+        });
+    }
+
     /// Fire a hook for a session: global + session-scoped if the session has a
     /// registry, global-only otherwise.
     async fn fire_for_session(&self, session_id: &SessionId, hook: &str, ctx_json: &Value) {
@@ -430,7 +461,7 @@ impl PluginDispatchActor {
     /// arbitrary hook name to the plugin-async VM for the session.
     ///
     /// Payload: `{ hook: String, session_id: String, text: Option<String> }`.
-    async fn handle_fire_async_hook(&self, payload: &Value, _ctx: &ActorContext) {
+    fn handle_fire_async_hook(&self, payload: &Value, _ctx: &ActorContext) {
         #[derive(serde::Deserialize)]
         struct FireAsyncPayload {
             hook: String,
@@ -455,7 +486,7 @@ impl PluginDispatchActor {
             ctx_json["text"] = serde_json::Value::String(text);
         }
 
-        self.fire_for_session(&payload.session_id, &payload.hook, &ctx_json).await;
+        self.spawn_fire_for_session(&payload.session_id, &payload.hook, &ctx_json);
     }
 }
 
