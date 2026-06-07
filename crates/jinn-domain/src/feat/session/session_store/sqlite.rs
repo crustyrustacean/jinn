@@ -1004,24 +1004,61 @@ fn load_session_blocking(
 }
 
 /// Deletes a session and all its associated data.
+/// Deletes a session and reaps entries that became orphaned by this delete.
+///
+/// Cleanup is **scoped to this session's own former entries**: the session's
+/// `entry_id`s are captured before the FK cascade removes its junction rows,
+/// then only those candidates that no remaining session references are deleted.
+/// A global orphan sweep is deliberately avoided — a transiently-empty global
+/// `session_history` state can never cause mass reaping of other sessions' data.
 fn delete_blocking(
     conn: &mut SqliteConnection,
     session_id: &SessionId,
 ) -> Result<(), Report<SessionStoreError>> {
-    use crate::schema::sessions;
-
     let session_id_str = session_id.to_string();
 
-    diesel::delete(sessions::table.filter(sessions::id.eq(&session_id_str)))
-        .execute(conn)
-        .change_context(SessionStoreError)
-        .attach("failed to delete session")?;
+    conn.transaction::<_, diesel::result::Error, _>(|txn| {
+        use crate::schema::{entries, session_history, sessions};
 
-    // Clean up orphaned entries.
-    diesel::sql_query("DELETE FROM entries WHERE id NOT IN (SELECT entry_id FROM session_history)")
-        .execute(conn)
-        .change_context(SessionStoreError)
-        .attach("failed to clean orphaned entries after delete")?;
+        // Capture this session's entry references before the FK cascade
+        // removes them. These are the only candidates for reaping.
+        let candidates: Vec<String> = session_history::table
+            .filter(session_history::session_id.eq(&session_id_str))
+            .select(session_history::entry_id)
+            .distinct()
+            .load(txn)?;
+
+        // Delete the session. With FK=ON this cascades to remove this session's
+        // session_history and token_ledger rows.
+        diesel::delete(sessions::table.filter(sessions::id.eq(&session_id_str)))
+            .execute(txn)?;
+
+        if candidates.is_empty() {
+            return Ok(());
+        }
+
+        // After the cascade, session_history holds only OTHER sessions'
+        // references. Reap a candidate only if no remaining session claims it.
+        let still_referenced: Vec<String> = session_history::table
+            .filter(session_history::entry_id.eq_any(&candidates))
+            .select(session_history::entry_id)
+            .distinct()
+            .load(txn)?;
+        let orphaned: Vec<String> = candidates
+            .iter()
+            .filter(|id| !still_referenced.contains(id))
+            .cloned()
+            .collect();
+
+        if !orphaned.is_empty() {
+            diesel::delete(entries::table.filter(entries::id.eq_any(&orphaned)))
+                .execute(txn)?;
+        }
+
+        Ok(())
+    })
+    .change_context(SessionStoreError)
+    .attach("failed to delete session")?;
 
     Ok(())
 }
@@ -1620,5 +1657,107 @@ mod tests {
             .get_result(&mut conn)
             .expect("count");
         assert_eq!(survivor, 1, "orphan entry must survive a save on another session");
+    }
+
+    /// Standalone connection with migrations applied and FK on, for raw
+    /// seeding and assertion in the orphan-scoping tests.
+    fn migrated_conn() -> (tempfile::TempDir, SqliteConnection) {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let db_path = dir.path().join("sessions.db");
+        let url = db_path.to_string_lossy().to_string();
+        let mut conn = SqliteConnection::establish(&url).expect("establish");
+        sql_query("PRAGMA foreign_keys=ON").execute(&mut conn).expect("fk on");
+        migrator::run_migrations(&mut conn).expect("migrations");
+        (dir, conn)
+    }
+
+    #[tokio::test]
+    async fn delete_reaps_entries_unique_to_deleted_session() {
+        use crate::schema::entries;
+
+        // Given a session with an entry that no other session references.
+        let (_dir, mut conn) = migrated_conn();
+        let session = make_session();
+        let id = session.session_id().clone();
+        save_blocking(&mut conn, &session).expect("save");
+
+        // When deleting the session.
+        delete_blocking(&mut conn, &id).expect("delete");
+
+        // Then the unique entry is reaped (cleanup still works, not regressed
+        // to never-reap).
+        let surviving: i64 = entries::table
+            .count()
+            .get_result(&mut conn)
+            .expect("count");
+        assert_eq!(surviving, 0, "unique entry should be reaped on delete");
+    }
+
+    #[tokio::test]
+    async fn delete_preserves_entries_shared_with_other_session() {
+        use crate::schema::{entries, session_history};
+
+        // Given a source session, forked so two sessions share the same entry
+        // via their session_history junction rows.
+        let (_dir, mut conn) = migrated_conn();
+        let session = make_session();
+        let source_id = session.session_id().clone();
+        save_blocking(&mut conn, &session).expect("save source");
+        let fork_id = fork_blocking(&mut conn, &source_id, 0).expect("fork");
+
+        // The shared entry id is the one both sessions reference.
+        let shared_entry: String = session_history::table
+            .filter(session_history::session_id.eq(fork_id.to_string()))
+            .select(session_history::entry_id)
+            .first::<String>(&mut conn)
+            .expect("load shared entry id");
+
+        // When deleting the fork.
+        delete_blocking(&mut conn, &fork_id).expect("delete fork");
+
+        // Then the shared entry survives because the source session still
+        // references it (the scoping filter held it back).
+        let survivor: i64 = entries::table
+            .filter(entries::id.eq(&shared_entry))
+            .count()
+            .get_result(&mut conn)
+            .expect("count");
+        assert_eq!(
+            survivor, 1,
+            "shared entry must survive deletion of one referencing session"
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_does_not_reap_unrelated_orphan_entries() {
+        use crate::schema::entries;
+
+        // Given a store with one normal session and a pre-existing orphan entry
+        // (no session_history row references it) belonging to no session.
+        let (_dir, mut conn) = migrated_conn();
+        let session = make_session();
+        let id = session.session_id().clone();
+        save_blocking(&mut conn, &session).expect("save");
+        sql_query(
+            "INSERT INTO entries (id, timestamp, kind) \
+             VALUES ('orphan-x', '2024-01-01T00:00:00Z', '\"User\"')",
+        )
+        .execute(&mut conn)
+        .expect("seed orphan");
+
+        // When deleting the unrelated session.
+        delete_blocking(&mut conn, &id).expect("delete");
+
+        // Then the unrelated orphan entry survives — a delete of session A
+        // never reaps entries that were never A's.
+        let survivor: i64 = entries::table
+            .filter(entries::id.eq("orphan-x"))
+            .count()
+            .get_result(&mut conn)
+            .expect("count");
+        assert_eq!(
+            survivor, 1,
+            "unrelated orphan entry must survive deletion of a different session"
+        );
     }
 }
