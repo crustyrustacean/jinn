@@ -362,7 +362,8 @@ struct SessionRow {
     archived: bool,
     lifecycle_script_state: String,
     metadata: Option<String>,
-    is_workflow: bool,
+    is_automated: bool,
+    persist: bool,
 }
 
 /// Insert model for the `sessions` table.
@@ -383,7 +384,8 @@ struct NewSessionRow {
     archived: bool,
     lifecycle_script_state: String,
     metadata: Option<String>,
-    is_workflow: bool,
+    is_automated: bool,
+    persist: bool,
 }
 
 /// Reading model for the `entries` table.
@@ -506,6 +508,10 @@ struct PersistableCore {
     /// OWNER: plugin-dispatch-actor (attach/detach/toggle).
     #[serde(default)]
     attached_plugins: Vec<crate::feat::attached_plugin::AttachedPlugin>,
+    /// Whether this session should be persisted to disk.
+    /// Defaults to true for blobs written by older versions.
+    #[serde(default = "crate::feat::session::chat_session::default_persist")]
+    persist: bool,
 }
 
 impl From<&SessionCore> for PersistableCore {
@@ -525,6 +531,7 @@ impl From<&SessionCore> for PersistableCore {
             lifecycle_script_state: core.lifecycle_script_state,
             task_list: core.task_list.clone(),
             attached_plugins: core.attached_plugins.clone(),
+            persist: core.persist,
         }
     }
 }
@@ -548,11 +555,12 @@ impl From<PersistableCore> for SessionCore {
             session_state: SessionState::Loaded, // overridden by TryFrom<SessionLoadContext> from archived column
             lifecycle_script_state: core.lifecycle_script_state,
             ephemeral: SessionCoreEphemeral::default(),
-            is_workflow: false,       // set from DB column after deserialization
-            workflow_overrides: None, // runtime-only, never persisted
+            is_automated: false,       // set from DB column after deserialization
+            assembly_overrides: None, // runtime-only, never persisted
             has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
             task_list: core.task_list,
             attached_plugins: core.attached_plugins,
+            persist: core.persist,
         }
     }
 }
@@ -583,8 +591,9 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     ephemeral: _ephemeral, // runtime-only state, not persisted
                     session_state,
                     lifecycle_script_state,
-                    is_workflow,
-                    workflow_overrides: _workflow_overrides, // runtime-only, not persisted
+                    is_automated,
+                    persist,
+                    assembly_overrides: _assembly_overrides, // runtime-only, not persisted
                     has_interacted: _has_interacted, // deserialized from DB, restored by handle_session_load_completed
                     task_list: _task_list, // included in metadata blob via PersistableCore
                     attached_plugins: _attached_plugins, // included in metadata blob via PersistableCore
@@ -620,8 +629,10 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                 .change_context(SessionStoreError)
                 .attach("failed to serialize metadata")?
                 .into(),
-            is_workflow: *is_workflow,
+            is_automated: *is_automated,
+            persist: *persist,
         })
+
     }
 }
 
@@ -654,7 +665,8 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
             archived,
             lifecycle_script_state,
             metadata,
-            is_workflow,
+            is_automated,
+            persist: _persist, // column value used by PersistableCore round-trip
         } = ctx.row;
 
         // When a metadata JSON blob exists (v8+), deserialize it as the
@@ -701,17 +713,20 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 session_state: SessionState::Loaded,
                 lifecycle_script_state: serde_json::from_str(&lifecycle_script_state)
                     .unwrap_or_default(),
-                is_workflow: false,
+                is_automated: false,
+                persist: true, // default; PersistableCore overlay sets the real value
 
-                workflow_overrides: None, // runtime-only, set later if needed
+
+                assembly_overrides: None, // runtime-only, set later if needed
                 has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
                 task_list: crate::feat::todo_list::TaskList::default(), // no metadata blob available for legacy sessions
                 attached_plugins: Vec::default(),
             }
         };
 
-        // Single source of truth: is_workflow column → core.is_workflow.
-        core.is_workflow = is_workflow;
+        // Single source of truth: is_automated column → core.is_automated
+        // (field renamed to is_automated in Phase 2).
+        core.is_automated = is_automated;
 
         // Single source of truth: archived column → session_state.
         core.session_state = if archived {
@@ -745,6 +760,10 @@ fn save_blocking(
     conn: &mut SqliteConnection,
     session: &ChatSessionState,
 ) -> Result<(), Report<SessionStoreError>> {
+    // Non-persistent sessions (e.g. plugin one-shots) never touch the store.
+    if !session.core.persist {
+        return Ok(());
+    }
     let row = NewSessionRow::try_from(session)?;
     let session_id_str = row.id.clone();
 
@@ -767,7 +786,8 @@ fn save_blocking(
                 sessions::archived.eq(excluded(sessions::archived)),
                 sessions::lifecycle_script_state.eq(excluded(sessions::lifecycle_script_state)),
                 sessions::metadata.eq(excluded(sessions::metadata)),
-                sessions::is_workflow.eq(excluded(sessions::is_workflow)),
+                sessions::is_automated.eq(excluded(sessions::is_automated)),
+                sessions::persist.eq(excluded(sessions::persist)),
             ))
             .execute(txn)?;
 
@@ -1121,7 +1141,8 @@ fn fork_blocking(
                 archived: false,
                 lifecycle_script_state: source_meta.lifecycle_script_state,
                 metadata: fork_metadata(source_meta.metadata.as_ref(), &source_str, &new_id_str),
-                is_workflow: source_meta.is_workflow,
+                is_automated: source_meta.is_automated,
+                persist: source_meta.persist,
             })
             .execute(txn)?;
 

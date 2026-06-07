@@ -944,7 +944,7 @@ fn session_new_with_lifecycle_opens_picker_from_normal_mode() {
     // When handling the intent via IntentHandler.
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SessionNewWithLifecycle,
-        &mut state,
+        &mut state, None,
     );
 
     // Then the picker scope is pushed with SessionLifecycle kind.
@@ -966,7 +966,7 @@ fn session_new_with_lifecycle_opens_picker_from_sidebar_sessions() {
     // When handling the intent via IntentHandler.
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SessionNewWithLifecycle,
-        &mut state,
+        &mut state, None,
     );
 
     // Then the picker scope is pushed with SessionLifecycle kind.
@@ -1014,7 +1014,7 @@ fn teardown_only_emits_run_session_teardown() {
     // When handling SidebarSessionTeardown via IntentHandler.
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SidebarSessionTeardown,
-        &mut state,
+        &mut state, None,
     );
 
     // Then a RunSessionTeardown command is emitted with the rendered teardown command.
@@ -1059,7 +1059,7 @@ fn teardown_only_is_noop_without_lifecycle_teardown() {
     // When handling SidebarSessionTeardown via IntentHandler.
     let result = crate::feat::intent::IntentHandler::handle(
         &crate::Intent::SidebarSessionTeardown,
-        &mut state,
+        &mut state, None,
     );
 
     // Then no commands are emitted (no teardown command to run).
@@ -2174,4 +2174,37 @@ fn close_on_workflow_entry_is_rejected() {
 
     // Then validation rejects it.
     assert!(result.is_err());
+}
+
+// --- Automated sessions excluded from sorted_open_sessions ---
+
+#[test]
+fn sorted_open_sessions_excludes_automated_sessions() {
+    // Given a normal session and an automated (is_automated) session.
+    let mut state = AppState::default();
+
+    let mut normal = ChatSessionState::new();
+    normal.set_title("normal session".to_owned());
+    let normal_id = normal.session_id().clone();
+    state.session.insert(normal);
+
+    let mut automated = ChatSessionState::new();
+    automated.set_title("automated session".to_owned());
+    automated.core.is_automated = true;
+    let automated_id = automated.session_id().clone();
+    state.session.insert(automated);
+
+    // When collecting sorted sessions.
+    let sessions = sorted_open_sessions(&state);
+
+    // Then only the normal session appears; the automated session is excluded.
+
+    assert!(
+        sessions.iter().any(|e| e.id == normal_id),
+        "normal session should appear in the sidebar"
+    );
+    assert!(
+        !sessions.iter().any(|e| e.id == automated_id),
+        "automated session must be hidden from the sidebar"
+    );
 }

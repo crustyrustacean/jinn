@@ -46,7 +46,7 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     }
 
     let state = app.core.state.read();
-    let ctx = RenderCtx::new(&state);
+    let ctx = RenderCtx::new(&state).with_plugins(&app.plugins);
 
     let max_input_height = area.height / 2;
     let layout = AppLayout::new(

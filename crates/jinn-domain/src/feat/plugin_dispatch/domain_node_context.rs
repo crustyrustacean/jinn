@@ -11,12 +11,14 @@ use error_stack::Report;
 use parking_lot::Mutex;
 use tokio::sync::oneshot;
 use wherror::Error;
+use crate::feat::provider::protocol::command::CancelStream;
 
 use crate::common::services::Services;
 use crate::common::state::State;
 use crate::feat::chat_input::protocol::command::EnqueueUserMessage;
 use crate::feat::context::assemble::AssemblyOverrides;
 use crate::feat::session::chat_entry::ChatEntry;
+use crate::feat::session::chat_session::ChatSessionState;
 use crate::feat::session::chat_session::SessionCoreEphemeral;
 use crate::protocol::{Command, SessionId};
 
@@ -30,6 +32,7 @@ pub struct DomainContextError;
 /// Provides:
 /// - `send_command` - emit domain commands through the actor channel
 /// - `send_llm_request_cloned` - clone a session and send an LLM request
+#[derive(Clone, Debug)]
 pub struct DomainNodeContext {
     /// Shared services for accessing the actor bus.
     services: Services,
@@ -74,7 +77,7 @@ impl DomainNodeContext {
 
     /// Send an LLM request using a cloned session and wait for the full response.
     ///
-    /// Clones an existing session, giving the clone a new ID, `is_workflow = true`,
+    /// Clones an existing session, giving the clone a new ID, `is_automated = true`,
     /// and `parent_session = Some(source)`. The clone inherits full history, profile,
     /// and tools from the source.
     ///
@@ -101,7 +104,7 @@ impl DomainNodeContext {
         // 2. Build overrides
         let overrides = AssemblyOverrides {
             system_prompt,
-            tool_definitions: None,
+            tool_definitions: Some(vec![]),
             skip_skills: true,
             skip_context_files: true,
         };
@@ -110,9 +113,9 @@ impl DomainNodeContext {
         session.core.session_id = SessionId::new();
 
         // 4. Mark as workflow, reset ephemeral
-        session.core.is_workflow = true;
+        session.core.is_automated = true;
         session.core.ephemeral = SessionCoreEphemeral::default();
-        session.core.workflow_overrides = Some(overrides);
+        session.core.assembly_overrides = Some(overrides);
         session.core.parent_session = Some(source_session_id.clone());
 
         // 5. Resolve model
@@ -121,11 +124,11 @@ impl DomainNodeContext {
 
         let session_id = session.session_id().clone();
 
-        // 6. Insert into app state
+        // 6. Insert into app state. Do NOT set_active — the cloned one-shot
+        //    must stay invisible; the user's active chat view is unchanged.
         {
             let mut state = self.state.write();
             state.session.insert(session);
-            state.session.set_active(session_id.clone());
         }
 
         // 7. Create oneshot, enqueue, await
@@ -144,7 +147,113 @@ impl DomainNodeContext {
             Report::new(DomainContextError).attach("cloned workflow LLM request cancelled")
         })
     }
+
+    /// Send a history-less one-shot LLM request, inheriting only the source session's
+    /// provider+model. Unlike [`send_llm_request_cloned`], this builds a FRESH minimal
+    /// session (default `SessionCore`, empty history) — no inherited chat history, profile
+    /// skills, or tools. Used by plugin enrichment (`ctx.request("llm_oneshot", ...)`).
+    ///
+    /// The completion is resolved by the plugin-dispatch actor when this workflow session
+    /// transitions to `Idle` (see `SessionPhaseChanged` handler).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the source session is not found or the oneshot is cancelled.
+    pub async fn send_llm_request_oneshot(
+        &self,
+        source_session_id: &SessionId,
+        user_prompt: String,
+        system_prompt: Option<String>,
+        persist: bool,
+        disable_tool_loop: bool,
+        timeout_ms: u64,
+    ) -> Result<String, Report<DomainContextError>> {
+        // 1. Read source session ONLY for provider+model (no history clone).
+        let provider_model = {
+            let guard = self.state.read();
+            let s = guard.session.get(source_session_id).ok_or_else(|| {
+                Report::new(DomainContextError).attach("source session not found")
+            })?;
+            s.core.profile.model.clone()
+        };
+
+        // 2. Build a FRESH minimal session (default SessionCore, empty history).
+        let mut session = ChatSessionState::default();
+
+        // 3. History-less overrides: custom system prompt, no skills/context files.
+        //    Tools branch on `disable_tool_loop`: an empty vec forces no tools and
+        //    pairs with `set_tool_loop_disabled` (step 4a); `None` lets assembly
+        //    inherit the full global catalog, same as a normal session.
+        let tool_definitions = if disable_tool_loop {
+            Some(Vec::new())
+        } else {
+            None
+        };
+        let overrides = AssemblyOverrides {
+            system_prompt,
+            tool_definitions,
+            skip_skills: true,
+            skip_context_files: true,
+        };
+
+        // 4. New session ID; mark automated; inherit provider+model; record parent;
+        //    honor the caller's persistence intent.
+        session.core.session_id = SessionId::new();
+        session.core.is_automated = true;
+        session.core.persist = persist;
+        session.core.ephemeral = SessionCoreEphemeral::default();
+        session.core.assembly_overrides = Some(overrides);
+        session.core.parent_session = Some(source_session_id.clone());
+        session.set_model(provider_model);
+
+        // 4a. When the caller disables the tool loop, set the machine flag so a
+        //     model that hallucinates a tool-call-shaped turn transitions to
+        //     `Idle` after the (empty) batch instead of looping `Sending ↔ Streaming`.
+        if disable_tool_loop {
+            session.set_tool_loop_disabled();
+        }
+
+
+        let session_id = session.session_id().clone();
+
+        // 5. Insert into app state. Do NOT set_active — the one-shot must
+        //    stay invisible; the user's active chat view is unchanged.
+        {
+            let mut state = self.state.write();
+            state.session.insert(session);
+        }
+
+        // 6. Create oneshot, enqueue, await.
+        let (tx, rx) = oneshot::channel();
+        self.pending.lock().insert(session_id.clone(), tx);
+
+        let entry = ChatEntry::user(&user_prompt);
+        self.services
+            .actor_channel
+            .send_command(Command::EnqueueUserMessage(EnqueueUserMessage {
+                session_id: session_id.clone(),
+                entry,
+            }));
+
+        // 7. Await with a bounded timeout. On expiry: hard-cancel the underlying
+        //    session (no zombie stream burning provider tokens) and drop the pending
+        //    entry so a later Idle transition can't resolve a dead receiver.
+        match tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), rx).await {
+            Ok(Ok(response)) => Ok(response),
+            Ok(Err(_)) => Err(Report::new(DomainContextError)
+                .attach("one-shot LLM request cancelled")),
+            Err(_) => {
+                self.pending.lock().remove(&session_id);
+                self.services.actor_channel.send_command(
+                    Command::CancelStream(CancelStream { session_id: session_id.clone() }),
+                );
+                Err(Report::new(DomainContextError)
+                    .attach(format!("one-shot LLM request timed out after {timeout_ms}ms")))
+            }
+        }
+    }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -154,6 +263,9 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::common::services::test_services::TestServices;
     use crate::common::state::State;
+    use crate::protocol::AppMsg;
+    use crate::feat::session::chat_entry::ChatEntry;
+
 
     fn make_ctx() -> DomainNodeContext {
         let services = TestServices::builder().build();
@@ -203,4 +315,381 @@ mod tests {
         let ctx = make_ctx();
         ctx.resolve_completed(&SessionId::new(), "response".to_owned());
     }
+
+    // ── send_llm_request_oneshot ──────────────────────────────────────────
+    //
+    // Verifies the history-less one-shot path:
+    //   - reads ONLY provider+model from the source session (no history clone)
+    //   - builds a fresh session with a NEW id, is_automated=true
+    //   - inherits the source's model on the new session
+    //   - emits exactly one Command::EnqueueUserMessage for the new session
+    //   - awaits a oneshot; resolve_completed fulfills it with the text
+
+    fn make_ctx_with_channel() -> (DomainNodeContext, kanal::Receiver<AppMsg>) {
+        let (tx, rx) = kanal::unbounded::<AppMsg>();
+        let services = TestServices::builder().actor_channel_sender(tx).build();
+        let state = State::new(AppState::default());
+        (DomainNodeContext::new(services, state), rx)
+    }
+
+    fn seed_source_session(ctx: &DomainNodeContext, model: &str) -> SessionId {
+        use crate::feat::session::profile::SessionProfile;
+        let mut session = ChatSessionState::new_with_profile(SessionProfile {
+            model: model.to_owned(),
+            ..SessionProfile::default()
+        });
+        let id = SessionId::new();
+        session.core.session_id = id.clone();
+        // Give the source session some history; the one-shot must NOT inherit it.
+        session.push_entry(ChatEntry::user("old user message from history"));
+        session.push_entry(ChatEntry::assistant("old assistant message from history"));
+        ctx.state.write().session.insert(session);
+        id
+    }
+
+    #[tokio::test]
+    async fn oneshot_inherits_provider_model_and_emits_enqueue() {
+        use std::future::Future as _;
+
+        let (ctx, rx) = make_ctx_with_channel();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+
+        // Build the one-shot future but don't await it: poll once to drive it
+        // up to its first await point (it emits the EnqueueUserMessage command
+        // synchronously, then parks on the oneshot).
+        let fut = ctx.send_llm_request_oneshot(
+            &source_id,
+            "rewrite me".to_owned(),
+            Some("be concise".to_owned()),
+            false,
+            true,
+            30_000,
+        );
+        futures::pin_mut!(fut);
+        let waker = futures::task::noop_waker();
+        let mut poll_cx = std::task::Context::from_waker(&waker);
+
+        assert!(matches!(
+            fut.as_mut().poll(&mut poll_cx),
+            std::task::Poll::Pending,
+        ), "future must park on the oneshot after emitting the command");
+
+        // Exactly one command should be emitted: an EnqueueUserMessage for the
+        // NEW (workflow) session — not the source session.
+        let msg = rx.recv().expect("expected one AppMsg");
+        let new_session_id = match msg {
+            AppMsg::Command { command: Command::EnqueueUserMessage(e), .. } => e.session_id,
+            other => panic!("expected EnqueueUserMessage, got {other:?}"),
+        };
+        assert_ne!(
+            new_session_id, source_id,
+            "one-shot must create a fresh session, not reuse the source"
+        );
+
+        // The new workflow session inherits the source's provider+model, has no
+        // history, is marked is_automated, and records the source as parent.
+        let guard = ctx.state.read();
+        let new = guard.session.get(&new_session_id).expect("new session inserted");
+        assert_eq!(new.core.profile.model, "ollama/llama3");
+        assert!(new.core.is_automated);
+        assert_eq!(new.core.parent_session.as_ref(), Some(&source_id));
+        assert_eq!(
+            new.core.assembly_overrides.as_ref().map(|o| &o.system_prompt),
+            Some(&Some("be concise".to_owned())),
+            "system prompt override must be carried through",
+        );
+        assert_eq!(
+            new.core.assembly_overrides.as_ref().map(|o| o.tool_definitions.as_deref()),
+            Some(Some(&[][..])),
+            "tool definitions override must be empty (None would inherit the full tool catalog)",
+        );
+        drop(guard);
+
+        // The pending oneshot exists for the new session.
+        assert!(ctx.has_pending(&new_session_id));
+
+        // Resolve the oneshot — polling again should yield the text.
+        ctx.resolve_completed(&new_session_id, "rewritten!".to_owned());
+        match fut.as_mut().poll(&mut poll_cx) {
+            std::task::Poll::Ready(Ok(text)) => assert_eq!(text, "rewritten!"),
+            other => panic!("expected Ready(Ok), got {other:?}"),
+        }
+    }
+
+    #[rstest::rstest]
+    fn oneshot_fails_when_source_session_missing() {
+        use std::future::Future as _;
+
+        // No #[tokio::test] needed: the error returns before the first .await.
+        let (ctx, _rx) = make_ctx_with_channel();
+        let missing_id = SessionId::new();
+        let fut = ctx.send_llm_request_oneshot(
+            &missing_id,
+            "x".to_owned(),
+            None,
+            false,
+            true,
+            30_000,
+        );
+        // Pin and poll once to drive to the error before any await point.
+        futures::pin_mut!(fut);
+        let waker = futures::task::noop_waker();
+        let mut cx = std::task::Context::from_waker(&waker);
+
+        match fut.poll(&mut cx) {
+            std::task::Poll::Ready(Err(e)) => {
+                let s = format!("{e:?}");
+                assert!(s.contains("source session not found"), "got: {s}");
+            }
+            other => panic!("expected immediate error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn oneshot_does_not_change_active_session() {
+        // Given a source session set as the active view.
+        let (ctx, _rx) = make_ctx_with_channel();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+        ctx.state
+            .write()
+            .session
+            .set_active(source_id.clone());
+
+        // When the one-shot runs (parking on its response channel).
+        let fut = ctx.send_llm_request_oneshot(&source_id, "rewrite me".to_owned(), None, false, true, 30_000);
+        futures::pin_mut!(fut);
+        let waker = futures::task::noop_waker();
+        let mut poll_cx = std::task::Context::from_waker(&waker);
+        assert!(matches!(
+            fut.as_mut().poll(&mut poll_cx),
+            std::task::Poll::Pending,
+        ));
+
+        // Then the active session is still the source — the one-shot must
+        // never steal the visible chat view.
+        assert_eq!(
+            ctx.state.read().session.active_session_id(),
+            &source_id,
+            "one-shot must not call set_active; the user's chat view is unchanged",
+        );
+    }
+
+    #[tokio::test]
+    async fn oneshot_request_default_persist_is_false() {
+        // Given a source session and a one-shot call with persist=false (default).
+        let (ctx, _rx) = make_ctx_with_channel();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+
+        let fut = ctx.send_llm_request_oneshot(
+            &source_id,
+            "rewrite me".to_owned(),
+            None,
+            false,
+            true,
+            30_000,
+        );
+        futures::pin_mut!(fut);
+        let waker = futures::task::noop_waker();
+        let mut poll_cx = std::task::Context::from_waker(&waker);
+        let _ = fut.as_mut().poll(&mut poll_cx);
+
+        // Find the new session by scanning for the automated one with this parent.
+        let guard = ctx.state.read();
+        let new = guard
+            .session
+            .sessions()
+            .values()
+            .find(|s| s.core.is_automated && s.core.parent_session.as_ref() == Some(&source_id))
+            .expect("one-shot session created");
+        assert!(
+            !new.core.persist,
+            "persist=false request must produce a non-persistent session"
+        );
+    }
+
+    #[tokio::test]
+    async fn oneshot_request_persist_true_round_trips() {
+        // Given a source session and a one-shot call with persist=true.
+        let (ctx, _rx) = make_ctx_with_channel();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+
+        let fut = ctx.send_llm_request_oneshot(
+            &source_id,
+            "rewrite me".to_owned(),
+            None,
+            true,
+            true,
+            30_000,
+        );
+        futures::pin_mut!(fut);
+        let waker = futures::task::noop_waker();
+        let mut poll_cx = std::task::Context::from_waker(&waker);
+        let _ = fut.as_mut().poll(&mut poll_cx);
+
+        let guard = ctx.state.read();
+        let new = guard
+            .session
+            .sessions()
+            .values()
+            .find(|s| s.core.is_automated && s.core.parent_session.as_ref() == Some(&source_id))
+            .expect("one-shot session created");
+        assert!(
+            new.core.persist,
+            "persist=true request must produce a persistent session"
+        );
+    }
+
+    // ── disable_tool_loop knob ─────────────────────────────────────────
+
+    #[tokio::test]
+    async fn disable_tool_loop_true_sets_flag_and_empty_tools() {
+        // Given a source session.
+        let (ctx, _rx) = make_ctx_with_channel();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+
+        // When the one-shot runs with disable_tool_loop=true.
+        let fut = ctx.send_llm_request_oneshot(
+            &source_id,
+            "rewrite me".to_owned(),
+            None,
+            false,
+            true,
+            30_000,
+        );
+        futures::pin_mut!(fut);
+        let waker = futures::task::noop_waker();
+        let mut poll_cx = std::task::Context::from_waker(&waker);
+        let _ = fut.as_mut().poll(&mut poll_cx);
+
+        // Then the new session has tool_loop_disabled set and an empty tool override.
+        let guard = ctx.state.read();
+        let new = guard
+            .session
+            .sessions()
+            .values()
+            .find(|s| s.core.is_automated && s.core.parent_session.as_ref() == Some(&source_id))
+            .expect("one-shot session created");
+        assert!(
+            new.is_tool_loop_disabled(),
+            "disable_tool_loop=true must set the machine flag"
+        );
+        assert_eq!(
+            new.core.assembly_overrides.as_ref().map(|o| o.tool_definitions.as_deref()),
+            Some(Some(&[][..])),
+            "disable_tool_loop=true must declare an empty tool set, not None"
+        );
+    }
+
+    #[tokio::test]
+    async fn disable_tool_loop_false_inherits_full_catalog() {
+        // Given a source session.
+        let (ctx, _rx) = make_ctx_with_channel();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+
+        // When the one-shot runs with disable_tool_loop=false.
+        let fut = ctx.send_llm_request_oneshot(
+            &source_id,
+            "rewrite me".to_owned(),
+            None,
+            false,
+            false,
+            30_000,
+        );
+        futures::pin_mut!(fut);
+        let waker = futures::task::noop_waker();
+        let mut poll_cx = std::task::Context::from_waker(&waker);
+        let _ = fut.as_mut().poll(&mut poll_cx);
+
+        // Then the new session does NOT set the flag and the tool override is None
+        // (assembly will pull the full global catalog).
+        let guard = ctx.state.read();
+        let new = guard
+            .session
+            .sessions()
+            .values()
+            .find(|s| s.core.is_automated && s.core.parent_session.as_ref() == Some(&source_id))
+            .expect("one-shot session created");
+        assert!(
+            !new.is_tool_loop_disabled(),
+            "disable_tool_loop=false must leave the machine flag cleared"
+        );
+        assert_eq!(
+            new.core.assembly_overrides.as_ref().map(|o| &o.tool_definitions),
+            Some(&None),
+            "disable_tool_loop=false must leave tool override as None (inherit catalog)"
+        );
+    }
+
+    // ── timeout_ms knob ──────────────────────���────────────────────────
+    //
+    // The timeout uses tokio::time::timeout with the test runtime's auto-advance.
+    // We never call resolve_completed, so the receiver never resolves; the
+    // timeout must fire, hard-cancel the session, and return an error.
+
+    #[tokio::test]
+    async fn oneshot_timeout_cancels_session() {
+        // Given a one-shot with a tiny timeout and no resolver.
+        let (ctx, rx) = make_ctx_with_channel();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+
+        let result = ctx
+            .send_llm_request_oneshot(
+                &source_id,
+                "rewrite me".to_owned(),
+                None,
+                false,
+                true,
+                1,
+            )
+            .await;
+
+        // Then the future returns an error (timeout).
+        assert!(result.is_err(), "timeout must surface as an error");
+        let msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            msg.contains("timed out"),
+            "error must mention the timeout, got: {msg}"
+        );
+
+        // And a CancelStream command was emitted for the one-shot session.
+        let mut saw_cancel = false;
+        while let Ok(Some(app_msg)) = rx.try_recv() {
+            if let AppMsg::Command { command: Command::CancelStream(_), .. } = app_msg {
+                saw_cancel = true;
+            }
+        }
+        assert!(
+            saw_cancel,
+            "timeout must hard-cancel the underlying session via CancelStream"
+        );
+    }
+
+    #[tokio::test]
+    async fn oneshot_timeout_removes_pending() {
+        // Given a one-shot with a tiny timeout and no resolver.
+        let (ctx, _rx) = make_ctx_with_channel();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+
+        // When the one-shot times out.
+        let _ = ctx
+            .send_llm_request_oneshot(
+                &source_id,
+                "rewrite me".to_owned(),
+                None,
+                false,
+                true,
+                1,
+            )
+            .await;
+
+        // Then the pending entry is cleaned up (no leak).
+        let still_pending = ctx.state.read().session.sessions().values().any(|s| {
+            s.core.is_automated && s.core.parent_session.as_ref() == Some(&source_id) && ctx.has_pending(&s.core.session_id)
+        });
+        assert!(
+            !still_pending,
+            "timeout must remove the pending oneshot entry for the cancelled session"
+        );
+    }
 }
+

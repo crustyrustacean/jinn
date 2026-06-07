@@ -263,6 +263,22 @@ pub enum Intent {
         /// Where to search from.
         root: CwdRoot,
     },
+
+    // --- Plugin ---
+    /// Trigger a plugin-declared action via a registered keybind.
+    ///
+    /// The `description` is rendered by ratatui-which-key via the `Display` impl.
+    /// `session_id` is `None` for global plugins (resolved to the active session at fire time).
+    TriggerPlugin {
+        /// Name of the plugin that declared the keybind.
+        plugin_name: String,
+        /// Action name the plugin registered for this keybind.
+        action: String,
+        /// Human-readable description shown in which-key help.
+        description: String,
+        /// Optional per-session scope; `None` means active session at fire time.
+        session_id: Option<SessionId>,
+    },
 }
 
 impl std::fmt::Display for Intent {
@@ -370,6 +386,7 @@ impl std::fmt::Display for Intent {
             Intent::CwdInputLeave => write!(f, "cwd input leave"),
 
             Intent::ChangeCwd { root } => write!(f, "change cwd ({root})"),
+            Intent::TriggerPlugin { description, .. } => write!(f, "{description}"),
         }
     }
 }
@@ -408,5 +425,21 @@ impl IntentResult {
     #[must_use]
     pub fn with_commands_and_events(commands: Vec<Command>, events: Vec<Event>) -> Self {
         Self { commands, events }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trigger_plugin_display_returns_description() {
+        let intent = Intent::TriggerPlugin {
+            plugin_name: "prompt_enrichment".into(),
+            action: "on_toggle_enrich".into(),
+            description: "toggle prompt enrichment".into(),
+            session_id: None,
+        };
+        assert_eq!(intent.to_string(), "toggle prompt enrichment");
     }
 }

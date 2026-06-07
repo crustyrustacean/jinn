@@ -34,7 +34,7 @@ fn build_system_with_capture(dir: &Path) -> (SyncPlugins, Arc<Mutex<Vec<PluginCo
         Arc::new(move |cmd| {
             captured_clone.lock().expect("lock").push(cmd);
         }),
-        Arc::new(|_, _| serde_json::Value::Null),
+        Arc::new(|_, _| Box::pin(async { serde_json::Value::Null })),
     );
     std::mem::forget(rt);
     (sync, captured)

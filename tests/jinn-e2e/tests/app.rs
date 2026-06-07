@@ -1,7 +1,7 @@
 //! Cucumber `World` wrapping a full application with production actor wiring.
 //!
 //! The [`AppWorld`] creates a complete application using the same
-//! `actor_wiring::create_core_with_actor_host` function that production uses,
+//! `actor_wiring::ActorSystemBuilder` that production uses,
 //! but with fake services so no real backends are hit. All 16 actors spawn,
 //! init sequences run, and the system-ready signal fires.
 //!
@@ -146,19 +146,18 @@ impl AppWorld {
 
             // Call production wiring - spawns all 16 actors.
             let (core, services, actor_host, _sync_plugins) =
-                actor_wiring::create_core_with_actor_host(
-                    &handle,
-                    llm_service,
-                    provider_registry,
-                    resolved_api_keys,
-                    config_storage,
-                    session_store,
-                    user_preferences_storage,
-                    None,
-                    None,
-                    None,
-                    paths,
-                );
+                actor_wiring::ActorSystemBuilder::new(
+                    actor_wiring::ActorSystemBuilderArgs {
+                        handle: handle.clone(),
+                        llm_service,
+                        provider_registry,
+                        api_keys: resolved_api_keys,
+                        config_storage,
+                        session_store,
+                        user_preferences_storage,
+                        paths,
+                    },
+                ).build();
 
             // Intentionally leaked: each AppWorld restart gets a completely fresh tokio runtime.
             // Leaking avoids subtle issues where a reused runtime retains closed channels,
@@ -578,19 +577,18 @@ fn when_restart_app(world: &mut AppWorld) {
             jinn_domain::SqliteSessionStore::new_in(&paths.sessions_dir()).expect("store"),
         ));
 
-        let (core, services, actor_host, _sync_plugins) = actor_wiring::create_core_with_actor_host(
-            &handle,
-            llm_service,
-            provider_registry,
-            resolved_api_keys,
-            config_storage,
-            session_store,
-            user_preferences_storage,
-            None,
-            None,
-            None,
-            paths,
-        );
+        let (core, services, actor_host, _sync_plugins) = actor_wiring::ActorSystemBuilder::new(
+            actor_wiring::ActorSystemBuilderArgs {
+                handle: handle.clone(),
+                llm_service,
+                provider_registry,
+                api_keys: resolved_api_keys,
+                config_storage,
+                session_store,
+                user_preferences_storage,
+                paths,
+            },
+        ).build();
 
         // Intentionally leaked: each AppWorld restart gets a completely fresh tokio runtime.
         let _ = Box::leak(Box::new(rt));

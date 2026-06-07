@@ -33,13 +33,13 @@ impl SessionPersistenceActor {
         payload: &EnqueueUserMessage,
         ctx: &ActorContext,
     ) {
-        tracing::info!(session = %payload.session_id, "DIAG handle_enqueue_user_message: ENTERED");
-        let (action, workflow_overrides) = {
+
+        let (action, assembly_overrides) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
-            let workflow_overrides: Option<crate::feat::context::assemble::AssemblyOverrides> =
-                if session.is_workflow() {
-                    session.core.workflow_overrides.clone()
+            let assembly_overrides: Option<crate::feat::context::assemble::AssemblyOverrides> =
+                if session.is_automated() {
+                    session.core.assembly_overrides.clone()
                 } else {
                     None
                 };
@@ -57,7 +57,7 @@ impl SessionPersistenceActor {
                     }
                     session.push_entry(payload.entry.clone());
                     session.begin_sending();
-                    (EnqueueAction::DispatchDirectly, workflow_overrides)
+                    (EnqueueAction::DispatchDirectly, assembly_overrides)
                 }
                 PhaseKind::Sending | PhaseKind::Streaming => {
                     session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(
@@ -93,7 +93,7 @@ impl SessionPersistenceActor {
                         &guard,
                         &payload.session_id,
                         &self.counter,
-                        workflow_overrides.as_ref(),
+                        assembly_overrides.as_ref(),
                     )
                 };
 
@@ -323,7 +323,7 @@ impl SessionPersistenceActor {
         payload: &PushChatEntry,
         ctx: &ActorContext,
     ) {
-        tracing::info!(session = %payload.session_id, "DIAG handle_push_chat_entry: ENTERED");
+
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);

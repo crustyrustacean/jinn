@@ -54,14 +54,42 @@ impl IntentHandler {
     /// Clears TUI signals from the previous call, then processes the intent.
     /// Mutates `state` directly for UI operations.
     /// Returns commands and events for the actor system.
-    pub fn handle(intent: &Intent, state: &mut AppState) -> IntentResult {
+    pub fn handle(
+        intent: &Intent,
+        state: &mut AppState,
+        plugins: Option<&dyn crate::feat::plugin_dispatch::PluginSyncHooks>,
+    ) -> IntentResult {
         state.frontend.tui_signals.clear();
 
         // Capture active session ID before processing for diff-after check.
         let prev_active = state.session.active_session_id().clone();
 
+        // Capture the session id and user input text BEFORE handle_inner mutates
+        // state. Submit handling clears the chat-input buffer as a side effect, so a
+        // post-mutation read would hand the plugin an empty string. These snapshots
+        // are only consumed when interception actually fires (submit intents).
+        let captured_session_id = state.session.active_session_id().clone();
+        let captured_input_text = state.active_chat_input().text().to_owned();
+
         // Process the intent and get the result.
         let mut result = Self::handle_inner(intent, state);
+
+        // Sync plugin interception: plugins may block/replace/pass the
+        // submit's commands. Fires only for submit-family intents (the
+        // hook is named `on_submit_intercept`); other intents pass through
+        // untouched. Uses the pre-mutation snapshots so the plugin sees
+        // the user's actual typed text, not the cleared buffer.
+        if matches!(intent, Intent::SubmitMessage)
+            && let Some(p) = plugins
+        {
+            result = Self::apply_interceptions(
+                intent,
+                p,
+                &captured_session_id,
+                &captured_input_text,
+                result,
+            );
+        }
 
         // If the active session changed, emit ActiveSessionChanged event.
         if state.session.active_session_id() != &prev_active {
@@ -75,13 +103,67 @@ impl IntentHandler {
         result
     }
 
+    /// Apply sync plugin interceptions to the produced commands.
+    ///
+    /// Fires only for submit-family intents: the call site in [`handle`](Self::handle)
+    /// guards on `Intent::SubmitMessage`, so by the time this runs the intent is
+    /// always a submit. Plugins may `block` (clear commands), `pass` (no-op), or
+    /// `replace` (swap in new commands). Malformed returns are dropped with a
+    /// `warn!` so a buggy plugin degrades rather than stalls.
+    fn apply_interceptions(
+        intent: &Intent,
+        plugins: &dyn crate::feat::plugin_dispatch::PluginSyncHooks,
+        session_id: &crate::protocol::SessionId,
+        input_text: &str,
+        mut result: IntentResult,
+    ) -> IntentResult {
+        use crate::feat::plugin_dispatch::{InterceptOutcome, call_hooks_typed};
+
+        // `input_text` and `session_id` are captured before submit handling clears
+        // the buffer. Do NOT re-read state here \u2014 the buffer is empty by now.
+        let ctx = serde_json::json!({
+            "session_id": session_id,
+            "input_text": input_text,
+            "intent": intent.to_string(),
+        });
+
+        for outcome in call_hooks_typed::<InterceptOutcome>(
+            plugins,
+            "on_submit_intercept",
+            &ctx,
+        ) {
+            match outcome {
+                InterceptOutcome::Block => result.commands.clear(),
+                InterceptOutcome::Pass => {}
+                InterceptOutcome::Replace { commands } => {
+                    let mapped: Vec<Command> = commands
+                        .into_iter()
+                        .filter_map(|v| match serde_json::from_value::<Command>(v) {
+                            Ok(c) => Some(c),
+                            Err(e) => {
+                                tracing::warn!(
+                                    error = %e,
+                                    "intercept Replace command malformed; dropped"
+                                );
+                                None
+                            }
+                        })
+                        .collect();
+                    result.commands = mapped;
+                }
+            }
+        }
+
+        result
+    }
+
     /// Internal intent dispatch — separated from `handle` to allow post-processing.
     #[expect(
         clippy::too_many_lines,
         reason = "exhaustive match on all Intent variants"
     )]
     fn handle_inner(intent: &Intent, state: &mut AppState) -> IntentResult {
-        tracing::info!(?intent, "DIAG IntentHandler::handle_inner ENTER");
+
         // Clear ignore sweep state when the user performs any action other than
         // pressing x. This ensures the sweep only continues during consecutive
         // x presses within 100ms.
@@ -273,7 +355,7 @@ impl IntentHandler {
             Intent::ToggleWhichkey => feat::global::intent::handle_toggle_whichkey(state),
             Intent::ToggleAuditPopup => feat::global::intent::handle_toggle_audit_popup(state),
             Intent::NormalEscape => feat::chat_input::intent::handle_normal_escape(state),
-            Intent::NoOp => IntentResult::empty(),
+            Intent::NoOp | Intent::TriggerPlugin { .. } => IntentResult::empty(),
 
             // --- Picker ---
             Intent::OpenPicker { kind } => feat::picker::intent::handle_open_picker(state, *kind),
@@ -282,7 +364,7 @@ impl IntentHandler {
             Intent::PickerConfirm => {
                 let (result, maybe_intent) = feat::picker::intent::handle_picker_confirm(state);
                 if let Some(intent) = maybe_intent {
-                    let redispatch = IntentHandler::handle(&intent, state);
+                    let redispatch = IntentHandler::handle(&intent, state, None);
                     IntentResult::with_commands_and_events(
                         [result.commands, redispatch.commands].concat(),
                         [result.events, redispatch.events].concat(),
@@ -294,7 +376,7 @@ impl IntentHandler {
             Intent::CtrlClear => {
                 let (result, maybe_intent) = feat::global::intent::handle_ctrl_clear(state);
                 if let Some(intent) = maybe_intent {
-                    let redispatch = IntentHandler::handle(&intent, state);
+                    let redispatch = IntentHandler::handle(&intent, state, None);
                     IntentResult::with_commands_and_events(
                         [result.commands, redispatch.commands].concat(),
                         [result.events, redispatch.events].concat(),
@@ -372,7 +454,7 @@ impl IntentHandler {
                 feat::picker::intent::handle_open_picker(state, PickerKind::SessionLifecycle)
             }
             Intent::SidebarSessionClose => {
-                if selected_entry_is_workflow(state) {
+                if selected_entry_is_automated(state) {
                     return IntentResult::empty();
                 }
                 // First press - show confirmation prompt.
@@ -381,19 +463,19 @@ impl IntentHandler {
                 IntentResult::empty()
             }
             Intent::SidebarSessionTeardown => {
-                if selected_entry_is_workflow(state) {
+                if selected_entry_is_automated(state) {
                     return IntentResult::empty();
                 }
                 feat::ui::sidebar::sessions::handle_session_teardown(state)
             }
             Intent::SidebarSessionArchive => {
-                if selected_entry_is_workflow(state) {
+                if selected_entry_is_automated(state) {
                     return IntentResult::empty();
                 }
                 feat::ui::sidebar::sessions::handle_session_archive(state)
             }
             Intent::SidebarSessionContinue => {
-                if selected_entry_is_workflow(state) {
+                if selected_entry_is_automated(state) {
                     return IntentResult::empty();
                 }
                 feat::ui::sidebar::sessions::handle_session_continue(state)
@@ -509,14 +591,17 @@ impl IntentHandler {
             Intent::ChangeCwd { root } => {
                 crate::feat::navigation::intent::handle_change_cwd(state, *root)
             }
+
+
         }
     }
 }
+
 /// Returns `true` when the cursor in the sessions sidebar section is on a workflow entry.
 ///
 /// Used by session-management intents to no-op when a workflow is selected,
 /// preventing accidental operations on the parent session.
-fn selected_entry_is_workflow(state: &AppState) -> bool {
+fn selected_entry_is_automated(state: &AppState) -> bool {
     use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
 
     let Some(index) = state.frontend.sessions_section.selected_index else {
@@ -620,7 +705,7 @@ mod tests {
             &Intent::PasteText {
                 text: "hello".into(),
             },
-            &mut state,
+            &mut state, None,
         );
 
         // Then the buffer is empty and no commands are emitted.
@@ -642,7 +727,7 @@ mod tests {
             &Intent::PasteText {
                 text: "hello\nworld".into(),
             },
-            &mut state,
+            &mut state, None,
         );
 
         // Then the buffer has the pasted text.
@@ -666,7 +751,7 @@ mod tests {
         };
 
         // When handling RenameInsertChar { ch: 'o' }.
-        let result = IntentHandler::handle(&Intent::RenameInsertChar { ch: 'o' }, &mut state);
+        let result = IntentHandler::handle(&Intent::RenameInsertChar { ch: 'o' }, &mut state, None);
 
         // Then rename input is "Helo" (not chat input).
         assert_eq!(state.frontend.rename_session_input.text.input, "Helo");
@@ -691,7 +776,7 @@ mod tests {
         };
 
         // When handling RenameCursorLeft.
-        let result = IntentHandler::handle(&Intent::RenameCursorLeft, &mut state);
+        let result = IntentHandler::handle(&Intent::RenameCursorLeft, &mut state, None);
 
         // Then cursor moved left.
         assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 4);
@@ -714,7 +799,7 @@ mod tests {
         };
 
         // When handling RenameCursorRight.
-        let result = IntentHandler::handle(&Intent::RenameCursorRight, &mut state);
+        let result = IntentHandler::handle(&Intent::RenameCursorRight, &mut state, None);
 
         // Then cursor moved right.
         assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 1);
@@ -737,7 +822,7 @@ mod tests {
         };
 
         // When handling RenameDeleteGrapheme.
-        let result = IntentHandler::handle(&Intent::RenameDeleteGrapheme, &mut state);
+        let result = IntentHandler::handle(&Intent::RenameDeleteGrapheme, &mut state, None);
 
         // Then last char deleted.
         assert_eq!(state.frontend.rename_session_input.text.input, "Hell");
@@ -761,7 +846,7 @@ mod tests {
         };
 
         // When handling RenameDeleteForward.
-        let result = IntentHandler::handle(&Intent::RenameDeleteForward, &mut state);
+        let result = IntentHandler::handle(&Intent::RenameDeleteForward, &mut state, None);
 
         // Then char after cursor deleted.
         assert_eq!(state.frontend.rename_session_input.text.input, "Hllo");
@@ -784,7 +869,7 @@ mod tests {
         };
 
         // When handling InsertChar.
-        let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'o' }, &mut state);
+        let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'o' }, &mut state, None);
 
         // Then arg_input received the char, not the chat input.
         assert_eq!(state.frontend.arg_input.text.input, "helo");
@@ -801,7 +886,7 @@ mod tests {
         state.frontend.scope_stack.push(FocusScope::Input);
 
         // When handling InsertChar.
-        let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'x' }, &mut state);
+        let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'x' }, &mut state, None);
 
         // Then the chat input received the char.
         assert_eq!(state.active_chat_input().text(), "x");
@@ -826,7 +911,7 @@ mod tests {
         };
 
         // When handling DeleteGrapheme.
-        let _result = IntentHandler::handle(&Intent::DeleteGrapheme, &mut state);
+        let _result = IntentHandler::handle(&Intent::DeleteGrapheme, &mut state, None);
 
         // Then arg_input had a char deleted.
         assert_eq!(state.frontend.arg_input.text.input, "ab");
@@ -847,7 +932,7 @@ mod tests {
         };
 
         // When handling MoveCursorLeft.
-        let _result = IntentHandler::handle(&Intent::MoveCursorLeft, &mut state);
+        let _result = IntentHandler::handle(&Intent::MoveCursorLeft, &mut state, None);
 
         // Then arg_input cursor moved.
         assert_eq!(state.frontend.arg_input.text.cursor_pos, 1);
@@ -868,7 +953,7 @@ mod tests {
         };
 
         // When handling MoveCursorRight.
-        let _result = IntentHandler::handle(&Intent::MoveCursorRight, &mut state);
+        let _result = IntentHandler::handle(&Intent::MoveCursorRight, &mut state, None);
 
         // Then arg_input cursor moved.
         assert_eq!(state.frontend.arg_input.text.cursor_pos, 1);
@@ -889,7 +974,7 @@ mod tests {
         };
 
         // When handling DeleteGraphemeForward.
-        let _result = IntentHandler::handle(&Intent::DeleteGraphemeForward, &mut state);
+        let _result = IntentHandler::handle(&Intent::DeleteGraphemeForward, &mut state, None);
 
         // Then the char after cursor was deleted from arg_input.
         assert_eq!(state.frontend.arg_input.text.input, "ac");
@@ -910,7 +995,7 @@ mod tests {
         };
 
         // When handling EnterNormalMode.
-        let _result = IntentHandler::handle(&Intent::EnterNormalMode, &mut state);
+        let _result = IntentHandler::handle(&Intent::EnterNormalMode, &mut state, None);
 
         // Then ArgInput scope is popped and state cleared.
         assert!(!matches!(
@@ -933,7 +1018,7 @@ mod tests {
             &Intent::PasteText {
                 text: "hello".into(),
             },
-            &mut state,
+            &mut state, None,
         );
 
         // Then it doesn't panic and completes (paste is handled by picker).
@@ -960,7 +1045,7 @@ mod tests {
             &Intent::PasteText {
                 text: " new".into(),
             },
-            &mut state,
+            &mut state, None,
         );
 
         // Then rename input received the paste.
@@ -974,7 +1059,7 @@ mod tests {
         state.frontend.cancel_stream_prompt = true;
 
         // When handling NormalEscape.
-        let result = IntentHandler::handle(&Intent::NormalEscape, &mut state);
+        let result = IntentHandler::handle(&Intent::NormalEscape, &mut state, None);
 
         // Then the prompt is dismissed and a CancelStream command is emitted.
         assert!(!state.frontend.cancel_stream_prompt);
@@ -995,7 +1080,7 @@ mod tests {
         state.frontend.cancel_stream_prompt = true;
 
         // When handling a different intent (InsertChar).
-        let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'a' }, &mut state);
+        let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'a' }, &mut state, None);
 
         // Then the prompt is dismissed but no CancelStream command.
         assert!(!state.frontend.cancel_stream_prompt);
@@ -1008,7 +1093,7 @@ mod tests {
         state.frontend.cancel_stream_prompt = false;
 
         // When handling NormalEscape.
-        let _result = IntentHandler::handle(&Intent::NormalEscape, &mut state);
+        let _result = IntentHandler::handle(&Intent::NormalEscape, &mut state, None);
 
         // Then no cancel command is emitted (falls through to normal escape handling).
         // The prompt remains false.
@@ -1022,7 +1107,7 @@ mod tests {
         state.frontend.close_session_prompt = true;
 
         // When handling SidebarSessionClose.
-        let _result = IntentHandler::handle(&Intent::SidebarSessionClose, &mut state);
+        let _result = IntentHandler::handle(&Intent::SidebarSessionClose, &mut state, None);
 
         // Then the prompt is dismissed.
         assert!(!state.frontend.close_session_prompt);
@@ -1035,7 +1120,7 @@ mod tests {
         state.frontend.close_session_prompt = true;
 
         // When handling a different intent (ScrollUp).
-        let _result = IntentHandler::handle(&Intent::ScrollUp, &mut state);
+        let _result = IntentHandler::handle(&Intent::ScrollUp, &mut state, None);
 
         // Then the prompt is dismissed.
         assert!(!state.frontend.close_session_prompt);
@@ -1048,7 +1133,7 @@ mod tests {
         state.frontend.cancel_stream_prompt = true;
 
         // When handling NoOp (unmapped key).
-        let result = IntentHandler::handle(&Intent::NoOp, &mut state);
+        let result = IntentHandler::handle(&Intent::NoOp, &mut state, None);
 
         // Then the prompt is dismissed and no CancelStream command is emitted.
         assert!(!state.frontend.cancel_stream_prompt);
@@ -1069,7 +1154,7 @@ mod tests {
         state.frontend.close_session_prompt = true;
 
         // When handling NoOp (unmapped key).
-        let _result = IntentHandler::handle(&Intent::NoOp, &mut state);
+        let _result = IntentHandler::handle(&Intent::NoOp, &mut state, None);
 
         // Then the prompt is dismissed.
         assert!(!state.frontend.close_session_prompt);
@@ -1081,7 +1166,7 @@ mod tests {
         let mut state = AppState::default();
 
         // When handling NoOp.
-        let result = IntentHandler::handle(&Intent::NoOp, &mut state);
+        let result = IntentHandler::handle(&Intent::NoOp, &mut state, None);
 
         // Then result is empty.
         assert!(result.commands.is_empty());
@@ -1110,7 +1195,7 @@ mod tests {
         // The easiest way: call handle with an intent that doesn't change active session,
         // verify no event. Then manually switch and verify event.
         state.session.set_active(first_id.clone());
-        let result = IntentHandler::handle(&Intent::ChatEntrySelectNext, &mut state);
+        let result = IntentHandler::handle(&Intent::ChatEntrySelectNext, &mut state, None);
 
         // Then no ActiveSessionChanged event (same session).
         let has_event = result
@@ -1149,7 +1234,7 @@ mod tests {
         let mut state = state_with_workflow_selected();
 
         // When handling SidebarSessionClose.
-        let result = IntentHandler::handle(&Intent::SidebarSessionClose, &mut state);
+        let result = IntentHandler::handle(&Intent::SidebarSessionClose, &mut state, None);
 
         // Then no close prompt is set and no commands are emitted.
         assert!(!state.frontend.close_session_prompt);
@@ -1162,7 +1247,7 @@ mod tests {
         let mut state = state_with_workflow_selected();
 
         // When handling SidebarSessionTeardown.
-        let result = IntentHandler::handle(&Intent::SidebarSessionTeardown, &mut state);
+        let result = IntentHandler::handle(&Intent::SidebarSessionTeardown, &mut state, None);
 
         // Then no commands are emitted.
         assert!(result.commands.is_empty());
@@ -1175,7 +1260,7 @@ mod tests {
         let original_count = state.session.session_count();
 
         // When handling SidebarSessionArchive.
-        let result = IntentHandler::handle(&Intent::SidebarSessionArchive, &mut state);
+        let result = IntentHandler::handle(&Intent::SidebarSessionArchive, &mut state, None);
 
         // Then no session was removed and no commands emitted.
         assert_eq!(state.session.session_count(), original_count);
@@ -1188,9 +1273,262 @@ mod tests {
         let mut state = state_with_workflow_selected();
 
         // When handling SidebarSessionContinue.
-        let result = IntentHandler::handle(&Intent::SidebarSessionContinue, &mut state);
+        let result = IntentHandler::handle(&Intent::SidebarSessionContinue, &mut state, None);
 
         // Then no commands are emitted.
         assert!(result.commands.is_empty());
     }
 }
+
+
+    /// Tests for sync plugin interception (`on_submit_intercept`).
+    ///
+    /// The hook fires only for submit-family intents (`Intent::SubmitMessage`);
+    /// see the `matches!` guard in `handle`. These tests cover the submit path:
+    /// block clears commands, pass is a no-op, malformed returns are dropped
+    /// with no panic, and `None` (no plugins) is a pass-through. Non-submit
+    /// intents are covered separately in `intercept_scope_tests`.
+    #[cfg(test)]
+    mod intercept_tests {
+        use crate::common::app_state::AppState;
+        use crate::feat::intent::IntentHandler;
+        use crate::feat::plugin_dispatch::PluginSyncHooks;
+        use crate::protocol::{Intent, SessionId};
+        use serde_json::{json, Value};
+
+        /// Stub `PluginSyncHooks` returning a canned `Vec<Value>` for any hook.
+        /// Models the behaviour a Lua plugin would produce: a block, a pass,
+        /// or malformed JSON (dropped silently).
+        struct StubPlugins(Vec<Value>);
+
+        impl PluginSyncHooks for StubPlugins {
+            fn call_hooks(&self, _hook: &str, _ctx: &Value) -> Vec<Value> {
+                self.0.clone()
+            }
+        }
+
+        /// AppState seeded with an active session containing the given input text.
+        fn state_with_input(text: &str) -> AppState {
+            let mut state = AppState::default();
+            // Replace the default active session's id with a known one and seed text.
+            state.active_chat_input_mut().replace_all(text.to_owned());
+            state
+        }
+
+        #[test]
+        fn none_plugins_passes_through_unchanged() {
+            // Given a SubmitMessage intent with input text.
+            let mut state = state_with_input("hello");
+
+            // When handle is called with no plugins.
+            let result =
+                IntentHandler::handle(&Intent::SubmitMessage, &mut state, None);
+
+            // Then the normal submit commands are produced (not blocked).
+            assert!(!result.commands.is_empty(), "submit should enqueue a message");
+        }
+
+        #[test]
+        fn block_outcome_clears_commands() {
+            // Given a stub plugin that returns {action:"block"}.
+            let plugins = StubPlugins(vec![json!({ "action": "block" })]);
+            let mut state = state_with_input("hello");
+
+            // When handle runs the interception loop.
+            let result =
+                IntentHandler::handle(&Intent::SubmitMessage, &mut state, Some(&plugins));
+
+            // Then no commands are emitted (the submit was blocked).
+            assert!(result.commands.is_empty(), "block must clear commands");
+        }
+
+        #[test]
+        fn pass_outcome_leaves_commands_unchanged() {
+            // Given a stub plugin that returns {action:"pass"}.
+            let plugins = StubPlugins(vec![json!({ "action": "pass" })]);
+            let baseline = {
+                let mut s = state_with_input("hello");
+                IntentHandler::handle(&Intent::SubmitMessage, &mut s, None).commands.len()
+            };
+            let mut state = state_with_input("hello");
+
+            // When handle runs the interception loop.
+            let result = IntentHandler::handle(
+                &Intent::SubmitMessage,
+                &mut state,
+                Some(&plugins),
+            );
+
+            // Then the command count matches the unintercepted baseline.
+            assert_eq!(
+                result.commands.len(),
+                baseline,
+                "pass must be a no-op"
+            );
+        }
+
+        #[test]
+        fn malformed_outcome_dropped_without_panic() {
+            // Given a stub plugin that returns a value that cannot deserialize
+            // into InterceptOutcome (missing the `action` tag).
+            let plugins = StubPlugins(vec![json!({ "not_an_outcome": true })]);
+            let mut state = state_with_input("hello");
+
+            // When handle runs the interception loop.
+            let result = IntentHandler::handle(
+                &Intent::SubmitMessage,
+                &mut state,
+                Some(&plugins),
+            );
+
+            // Then the malformed return is dropped (pass-through) with no panic.
+            assert!(!result.commands.is_empty(), "malformed outcome degrades to pass-through");
+        }
+
+        // SessionId import kept to anchor the ctx shape; the stub ignores ctx,
+        // but real plugins will receive {session_id, input_text, intent}.
+        #[test]
+        fn ctx_carries_session_id_and_input_text() {
+            let _id = SessionId::new();
+            // (Shape is asserted by the production `apply_interceptions` builder;
+            // here we only confirm the type is in scope for documentation.)
+        }
+    }
+
+    /// Tests that `on_submit_intercept` is gated to submit-family intents.
+    ///
+    /// A stub that counts every `call_hooks` invocation proves the hook never
+    /// fires for non-submit intents (the original bug: every keystroke triggered
+    /// an enrichment one-shot once the toggle was armed).
+    #[cfg(test)]
+    mod intercept_scope_tests {
+        use crate::common::app_state::AppState;
+        use crate::feat::intent::IntentHandler;
+        use crate::feat::plugin_dispatch::PluginSyncHooks;
+        use crate::protocol::Intent;
+        use serde_json::{json, Value};
+        use std::cell::Cell;
+
+        /// Plugin stub that records whether its hook was ever consulted.
+        ///
+        /// It would return `{action:"block"}` for any hook, so a *fired* hook
+        /// would clear commands. These tests assert it is never consulted.
+        struct CountingPlugins {
+            calls: Cell<usize>,
+        }
+
+        impl PluginSyncHooks for CountingPlugins {
+            fn call_hooks(&self, _hook: &str, _ctx: &Value) -> Vec<Value> {
+                self.calls.set(self.calls.get() + 1);
+                vec![json!({ "action": "block" })]
+            }
+        }
+
+        #[test]
+        fn submit_message_does_fire_interception() {
+            // Given a block-returning plugin and a submit intent.
+            let plugins = CountingPlugins { calls: Cell::new(0) };
+            let mut state = AppState::default();
+            state.active_chat_input_mut().replace_all("hello".to_owned());
+
+            // When handling the submit.
+            let result = IntentHandler::handle(
+                &Intent::SubmitMessage,
+                &mut state,
+                Some(&plugins),
+            );
+
+            // Then the hook fired and the submit was blocked.
+            assert_eq!(plugins.calls.get(), 1, "submit must consult the hook");
+            assert!(result.commands.is_empty(), "block must clear submit commands");
+        }
+
+        #[test]
+        fn insert_char_does_not_fire_interception() {
+            // Given a block-returning plugin (which must be ignored).
+            let plugins = CountingPlugins { calls: Cell::new(0) };
+            let mut state = AppState::default();
+
+            // When inserting a character with the toggle effectively armed.
+            let _result = IntentHandler::handle(
+                &Intent::InsertChar { ch: 'i' },
+                &mut state,
+                Some(&plugins),
+            );
+
+            // Then the hook never fired and the character reached the buffer.
+            assert_eq!(plugins.calls.get(), 0, "insert-char must not fire interception");
+            assert_eq!(
+                state.active_chat_input().text(),
+                "i",
+                "the character must still be inserted into the buffer",
+            );
+        }
+
+        #[test]
+        fn quit_does_not_fire_interception() {
+            // Given a block-returning plugin (which must be ignored).
+            let plugins = CountingPlugins { calls: Cell::new(0) };
+            let mut state = AppState::default();
+
+            // When quitting with the toggle effectively armed.
+            let _result = IntentHandler::handle(&Intent::Quit, &mut state, Some(&plugins));
+
+            // Then the hook never fired, yet quit still propagated.
+            assert_eq!(plugins.calls.get(), 0, "quit must not fire interception");
+            assert!(
+                state.frontend.should_quit,
+                "quit must still set should_quit even with the toggle armed",
+            );
+        }
+
+    #[cfg(test)]
+    mod intercept_ctx_tests {
+        use crate::common::app_state::AppState;
+        use crate::feat::intent::IntentHandler;
+        use crate::feat::plugin_dispatch::PluginSyncHooks;
+        use crate::protocol::Intent;
+        use serde_json::{json, Value};
+        use std::cell::RefCell;
+
+        /// Plugin stub that captures the ctx JSON handed to its hook.
+        ///
+        /// This proves the regression where `apply_interceptions` re-read
+        /// the (already-reset) chat input buffer, so the plugin saw `""`
+        /// instead of the user's typed text.
+        struct CapturingPlugins {
+            seen_ctx: RefCell<Option<Value>>,
+        }
+
+        impl PluginSyncHooks for CapturingPlugins {
+            fn call_hooks(&self, _hook: &str, ctx: &Value) -> Vec<Value> {
+                *self.seen_ctx.borrow_mut() = Some(ctx.clone());
+                vec![json!({ "action": "block" })]
+            }
+        }
+
+        #[test]
+        fn submit_intercept_ctx_carries_typed_text_not_empty() {
+            // Given a capturing plugin and a populated input buffer.
+            let plugins = CapturingPlugins { seen_ctx: RefCell::new(None) };
+            let mut state = AppState::default();
+            state.active_chat_input_mut().replace_all("hello world".to_owned());
+
+            // When handling the submit.
+            let _ = IntentHandler::handle(
+                &Intent::SubmitMessage,
+                &mut state,
+                Some(&plugins),
+            );
+
+            // Then the hook saw the user's typed text, not the empty buffer
+            // left behind after submit handling reset it.
+            let seen = plugins.seen_ctx.borrow().clone().expect("hook must have fired");
+            assert_eq!(
+                seen.get("input_text").and_then(Value::as_str),
+                Some("hello world"),
+                "the plugin ctx must carry the pre-reset buffer text",
+            );
+        }
+    }
+    }

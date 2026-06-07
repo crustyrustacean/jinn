@@ -1754,7 +1754,7 @@ fn ctrl_clear_input_empties_chat_input_via_handler() {
     assert_eq!(state.active_chat_input().cursor_pos(), 2);
 
     // When handling CtrlClear via the IntentHandler.
-    let result = IntentHandler::handle(&Intent::CtrlClear, &mut state);
+    let result = IntentHandler::handle(&Intent::CtrlClear, &mut state, None);
 
     // Then the chat input is cleared and scope remains Input.
     assert!(state.active_chat_input().is_empty(), "input buffer cleared");
@@ -1783,7 +1783,7 @@ fn ctrl_clear_input_empty_is_noop_via_handler() {
     assert!(state.active_chat_input().is_empty());
 
     // When handling CtrlClear via the IntentHandler.
-    let result = IntentHandler::handle(&Intent::CtrlClear, &mut state);
+    let result = IntentHandler::handle(&Intent::CtrlClear, &mut state, None);
 
     // Then nothing changes: no scope change, no commands, buffer still empty.
     assert!(state.active_chat_input().is_empty(), "buffer still empty");

@@ -1,0 +1,184 @@
+//! Single bootstrap point for [`TuiApp`] construction.
+//!
+//! Both the real launch path (the binary's `Commands::Tui` / `Commands::Bench`
+//! arms) and the test builder ([`crate::TuiAppBuilder`]) delegate to
+//! [`launch`], so keymap setup — including [`crate::keymap::bind_plugin_keybinds`]
+//! — happens in exactly one place. This is what prevents the test/prod
+//! divergence that previously left plugin keybinds unbound in production.
+
+use std::path::Path;
+use std::sync::Arc;
+
+use error_stack::{Report, ResultExt};
+use jinn_domain::common::system_resource::load_system_resource;
+use jinn_domain::feat::ui::sidebar::sidebar::Sidebar;
+use jinn_domain::feat::ui::sidebar::register_sections;
+use jinn_domain::{ActorHostService, AppCore, AppUiRegistry, State};
+use wherror::Error;
+
+use crate::app::WhichKeyInstance;
+use crate::config::TuiConfig;
+use crate::keymap;
+use crate::scope::Scope;
+use crate::selection::{SelectableRects, SelectionState};
+use crate::suspend::Suspend;
+use crate::{AppStatus, MsgHandler, TuiApp};
+
+/// Error returned by [`launch`] when TUI bootstrap fails.
+///
+/// The only currently-fatal bootstrap step is loading the compaction prompt:
+/// the application cannot run without it. Theme and prompt-template failures
+/// degrade to defaults and are logged at `warn`.
+#[derive(Debug, Error)]
+#[error(debug)]
+pub struct LaunchError;
+
+/// Construct a fully-bootstrapped [`TuiApp`] from the supplied core, services,
+/// actor host, and plugins.
+///
+/// Owns the full TUI bootstrap sequence:
+/// 1. Load prompt templates, the compaction prompt, and the theme into `core.state`.
+/// 2. Read `JINN_MOUSE_SELECTION` to resolve mouse-selection behavior.
+/// 3. Build the keymap via [`keymap::init`] and bind every declared plugin
+///    keybind via [`keymap::bind_plugin_keybinds`] — this is the single site
+///    that does so, shared by production and tests.
+/// 4. Register all UI elements and sidebar sections.
+/// 5. Assemble and return the [`TuiApp`].
+///
+/// # Errors
+///
+/// Returns `Err` if the compaction prompt cannot be loaded (the application
+/// cannot run without it).
+pub fn launch(
+    core: AppCore,
+    services: jinn_domain::Services,
+    actor_host: ActorHostService,
+    plugins: jinn_plugin::SyncPlugins,
+) -> Result<TuiApp, Report<LaunchError>> {
+    let paths = &services.paths;
+    load_compaction_prompt(&core.state, &paths.prompts_dir(), &paths.system_prompts_dir())?;
+    load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
+
+    // Resolve mouse-selection config from environment.
+    let mouse_selection =
+        !matches!(std::env::var("JINN_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
+    let tui_config = TuiConfig::new(mouse_selection);
+
+    let mut ui_registry = AppUiRegistry::new();
+    jinn_domain::register_all_ui_elements(&mut ui_registry);
+
+    // The single keymap-bootstrap site: base keymap, then every plugin keybind.
+    // Production and tests reach this via the same path.
+    let mut keymap = keymap::init();
+    keymap::bind_plugin_keybinds(&mut keymap, &plugins);
+    let which_key = WhichKeyInstance::new(keymap, Scope::Normal);
+
+    Ok(TuiApp {
+        core,
+        services,
+        actor_host,
+        plugins,
+        ui_registry,
+        events: MsgHandler::new(),
+        which_key,
+        suspend: Suspend::new(),
+        event_thread: None,
+        status: AppStatus::Starting,
+        selection: SelectionState::Idle,
+        selectable_rects: SelectableRects::default(),
+        pending_clipboard: false,
+        config: tui_config,
+        sidebar: {
+            let mut s = Sidebar::new();
+            register_sections(&mut s);
+            s
+        },
+    })
+}
+
+
+
+/// Loads the compaction system prompt from user or system prompts directory.
+///
+/// Searches the user prompts directory first, then the system prompts directory.
+///
+/// # Errors
+///
+/// Returns an error if the compaction prompt is missing from both directories
+/// or cannot be read. This is a fatal error - the application cannot run without it.
+pub fn load_compaction_prompt(
+    state: &State,
+    user_dir: &Path,
+    system_dir: &Path,
+) -> Result<(), Report<LaunchError>> {
+    let prompt =
+        load_system_resource("_compaction.md", user_dir, system_dir).change_context(LaunchError)?;
+    tracing::info!("loaded compaction prompt");
+    state.write().context.compaction_prompt = prompt;
+    Ok(())
+}
+
+/// Loads the theme from user preferences into application state.
+///
+/// Searches the user themes directory first, then the system themes directory.
+/// If the preferred theme cannot be loaded, falls back to the default theme.
+/// Failures are logged but not fatal.
+pub fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
+    let theme_name = {
+        let guard = state.read();
+        guard.frontend.preferences.theme_name.clone()
+    };
+    match jinn_domain::feat::theme::resolve_theme(theme_name.as_deref(), user_dir, system_dir) {
+        Ok(theme) => {
+            tracing::info!(theme = ?theme_name, "loaded theme");
+            state.write().frontend.theme = theme;
+        }
+        Err(e) => {
+            tracing::warn!(err = ?e, "failed to load theme, using default");
+        }
+    }
+}
+
+/// Test variant of [`launch`] that skips the fatal bootstrap steps (prompt
+/// template loading, compaction prompt, theme) and uses a fake actor host.
+///
+/// This is what [`crate::TuiAppBuilder`] delegates to so that tests still go
+/// through the single keymap-bootstrap site ([`keymap::bind_plugin_keybinds`])
+/// without requiring real on-disk prompt/theme files.
+pub(crate) fn launch_for_test(
+    core: AppCore,
+    services: jinn_domain::Services,
+    plugins: jinn_plugin::SyncPlugins,
+) -> TuiApp {
+    let fake_host = ActorHostService::new(Arc::new(jinn_domain::FakeActorHost::new()));
+    let mut ui_registry = AppUiRegistry::new();
+    jinn_domain::register_all_ui_elements(&mut ui_registry);
+
+    let initial_scope =
+        crate::app::scope_for_focus(core.state.read().frontend.scope_stack.current());
+
+    let mut keymap = keymap::init();
+    keymap::bind_plugin_keybinds(&mut keymap, &plugins);
+
+    TuiApp {
+        core,
+        services,
+        plugins,
+        actor_host: fake_host,
+        ui_registry,
+        events: MsgHandler::new(),
+        which_key: WhichKeyInstance::new(keymap, initial_scope),
+        suspend: Suspend::new(),
+        event_thread: None,
+        status: AppStatus::Starting,
+        selection: SelectionState::Idle,
+        selectable_rects: SelectableRects::default(),
+        pending_clipboard: false,
+        config: TuiConfig::default(),
+        sidebar: {
+            let mut s = Sidebar::new();
+            register_sections(&mut s);
+            s
+        },
+    }
+}
