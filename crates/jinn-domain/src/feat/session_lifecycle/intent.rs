@@ -16,7 +16,7 @@ use crate::feat::session_lifecycle::command_template::{CommandTemplate, parse_qu
 use crate::feat::session_lifecycle::protocol::command::{PersistSession, RunSessionSetup};
 use crate::feat::session_lifecycle::protocol::event::SessionCreated;
 use crate::protocol::app_msg::Event;
-use crate::protocol::{Command, IntentResult, PromptStrategyId, SessionId};
+use crate::protocol::{Command, IntentResult, SessionId};
 
 /// Errors that can occur when validating arg input.
 #[derive(Debug, Error)]
@@ -91,24 +91,16 @@ pub fn handle_session_lifecycle_setup(
         .last_model
         .clone()
         .unwrap_or_else(|| NO_PROVIDER_ID.to_owned());
-    let strategy = state
-        .frontend
-        .preferences
-        .last_strategy
-        .as_deref()
-        .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
+
     let persona_name = state
         .context
         .active_persona
         .as_ref()
         .map_or_else(|| "coding-assistant".to_owned(), |p| p.name.clone());
-    let sliding_window_size = state.frontend.preferences.context_sliding_window.size;
 
     let mut new_session = ChatSessionState::new_with_profile(SessionProfile::new(
         model,
-        strategy,
         persona_name,
-        sliding_window_size,
         std::collections::HashSet::new(),
         std::collections::HashSet::new(),
     ));
