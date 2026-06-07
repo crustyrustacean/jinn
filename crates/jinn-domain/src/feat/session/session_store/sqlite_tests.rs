@@ -754,3 +754,74 @@ async fn fork_inherits_lifecycle_script_state() {
         crate::feat::session::chat_session::LifecycleScriptState::SetupRan
     );
 }
+
+#[rstest::rstest]
+#[tokio::test]
+async fn is_automated_round_trips_through_save_and_load() {
+    // Given a persisted automated session.
+    let (_dir, store) = make_store();
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("Automated".to_owned());
+    session.core.is_automated = true;
+    session.core.persist = true;
+
+    // When saving and loading.
+    store.save(&session).await.expect("save");
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load")
+        .expect("should exist");
+
+    // Then both flags are preserved.
+    assert!(loaded.is_automated(), "is_automated should round-trip");
+    assert!(loaded.core.persist, "persist should round-trip");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn non_persistent_session_is_not_written() {
+    // Given a transient (persist=false) session.
+    let (_dir, store) = make_store();
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("Transient".to_owned());
+    session.push_entry(ChatEntry::user("hello"));
+    session.core.is_automated = true;
+    session.core.persist = false;
+
+    // When saving.
+    store.save(&session).await.expect("save should be a no-op, not an error");
+
+    // Then no row exists for this session.
+    let loaded = store.load_session(&session_id).await.expect("load query");
+    assert!(loaded.is_none(), "persist=false session must not be written");
+}
+
+#[rstest::rstest]
+#[tokio::test]
+async fn persistent_session_is_written() {
+    // Given a persistent (persist=true) session.
+    let (_dir, store) = make_store();
+    let session_id = SessionId::new();
+    let mut session = ChatSessionState::new();
+    session.set_session_id(session_id.clone());
+    session.set_title("Persistent".to_owned());
+    session.push_entry(ChatEntry::user("hello"));
+    session.core.is_automated = true;
+    session.core.persist = true;
+
+    // When saving.
+    store.save(&session).await.expect("save");
+
+    // Then the row exists.
+    let loaded = store
+        .load_session(&session_id)
+        .await
+        .expect("load query")
+        .expect("should exist");
+    assert_eq!(loaded.session_id(), &session_id);
+}
