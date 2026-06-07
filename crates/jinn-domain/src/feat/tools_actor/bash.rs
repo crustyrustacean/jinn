@@ -5,15 +5,12 @@
 //! and flushed every 500ms (or when the buffer exceeds 4KB) to reduce
 //! event volume and prevent dropped keystrokes from terminal overload.
 
-// This module requires Unix process group support.
-#[cfg(not(unix))]
-compile_error!("the bash tool requires a Unix-like OS (process group support)");
-
 use std::fmt::Write as _;
 use std::process::Stdio;
 use std::time::Duration;
 
 use crate::common::actor::message_sink::MessageSink;
+use crate::common::process_kill::kill_process_tree;
 use crate::feat::preferences_actor::user_preferences::BashConfig;
 use crate::feat::tools_actor::protocol::event::{ToolExecutionOutput, ToolExecutionStarted};
 use crate::feat::tools_actor::tool_types::{ToolCall, ToolContext, ToolDefinition, ToolResult};
@@ -31,12 +28,10 @@ use super::BoxedToolFuture;
 /// descendant processes (e.g., `find /` spawned by bash) are also
 /// terminated. Without this, aborting the future only drops the
 /// handle - the OS processes continue running as orphans.
-#[cfg(unix)]
 struct KillOnDrop {
     child: tokio::process::Child,
 }
 
-#[cfg(unix)]
 impl KillOnDrop {
     /// Wraps a spawned child process in the kill-on-drop guard.
     fn new(child: tokio::process::Child) -> Self {
@@ -44,26 +39,16 @@ impl KillOnDrop {
     }
 }
 
-#[cfg(unix)]
 impl Drop for KillOnDrop {
     fn drop(&mut self) {
-        // Kill the direct child process (belt-and-suspenders).
-        let _ = self.child.start_kill();
-
-        // Kill the entire process group so descendants are also terminated.
-        if let Some(pid) = self.child.id() {
-            let pgid = pid as libc::pid_t;
-            if pgid > 0 {
-                // SAFETY: `libc::kill` is safe when the PID argument is a valid
-                // process ID. We verified `pgid > 0`. The negative argument
-                // instructs the kernel to signal the entire process group.
-                let _ = unsafe { libc::kill(-pgid, libc::SIGKILL) };
-            }
-        }
+        // Delegate to the cross-platform tree-kill helper. On Unix this sends
+        // SIGKILL to the child's entire process group (race-free); on Windows it
+        // enumerates and terminates the process tree via `kill_tree`. See
+        // `common::process_kill` for the per-platform guarantees and trade-offs.
+        kill_process_tree(&mut self.child);
     }
 }
 
-#[cfg(unix)]
 impl std::ops::Deref for KillOnDrop {
     type Target = tokio::process::Child;
     fn deref(&self) -> &Self::Target {
@@ -71,7 +56,6 @@ impl std::ops::Deref for KillOnDrop {
     }
 }
 
-#[cfg(unix)]
 impl std::ops::DerefMut for KillOnDrop {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.child
@@ -796,6 +780,7 @@ mod tests {
     ///
     /// Spawns a bash command that starts a background sleep child, then
     /// drops the guard. Both processes should be killed.
+    #[cfg(unix)]
     #[rstest::rstest]
     #[tokio::test]
     async fn kill_on_drop_terminates_process_group() {
@@ -839,6 +824,55 @@ mod tests {
         assert!(
             stdout.trim().is_empty(),
             "expected no 'sleep 60' processes, but found: {stdout}"
+        );
+    }
+
+    /// Windows mirror of `kill_on_drop_terminates_process_group`.
+    ///
+    /// Cannot run in the Linux dev environment — included so CI on Windows
+    /// validates the `kill_tree`-based `Drop` path. Uses `ping` as a Windows-native
+    /// long-running command (the classic `cmd` sleep substitute) and verifies
+    /// termination via `tasklist`.
+    #[cfg(windows)]
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn kill_on_drop_terminates_process_tree_windows() {
+        use std::process::Stdio;
+
+        // Given a cmd command that launches a long-running background child.
+        // `ping -n 60` waits ~59s — a reliable Windows-native delay.
+        let guard = {
+            let mut child = tokio::process::Command::new("cmd")
+                .arg("/c")
+                .arg("ping 127.0.0.1 -n 60 > nul")
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("spawn should succeed");
+            assert!(child.id().unwrap_or(0) > 0, "child PID should be positive");
+            KillOnDrop::new(child)
+        };
+
+        // Give the process a moment to start.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        // When dropping the guard (simulating task abort).
+        drop(guard);
+
+        // Then give kill_tree a moment to enumerate and terminate the tree.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        // Verify no `ping` processes survived via tasklist.
+        let output = tokio::process::Command::new("tasklist")
+            .args(["/FI", "IMAGENAME eq ping.exe", "/NH"])
+            .output()
+            .await
+            .expect("tasklist should run");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.trim().is_empty() || stdout.contains("INFO: No tasks"),
+            "expected no 'ping' processes, but found: {stdout}"
         );
     }
 
