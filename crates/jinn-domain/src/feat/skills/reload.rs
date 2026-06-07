@@ -77,7 +77,9 @@ mod tests {
     fn reload_updates_picker_items_from_context_skills() {
         // Given state with skills in the active session's discovered_skills but empty picker.
         let mut state = AppState::default();
-        state.active_session_mut().set_discovered_skills(make_skills());
+        state
+            .active_session_mut()
+            .set_discovered_skills(make_skills());
         assert!(state.frontend.skill_picker().items().is_empty());
 
         // When reloading.
@@ -96,7 +98,9 @@ mod tests {
     fn reload_marks_disabled_skills_as_not_enabled() {
         // Given state with a disabled skill.
         let mut state = AppState::default();
-        state.active_session_mut().set_discovered_skills(make_skills());
+        state
+            .active_session_mut()
+            .set_discovered_skills(make_skills());
         let mut disabled = std::collections::HashSet::new();
         disabled.insert("web-coder".to_owned());
         state.active_session_mut().set_disabled_skills(disabled);
@@ -122,7 +126,9 @@ mod tests {
     fn reload_preserves_filter_text() {
         // Given state with skills and a filter already set on the picker.
         let mut state = AppState::default();
-        state.active_session_mut().set_discovered_skills(make_skills());
+        state
+            .active_session_mut()
+            .set_discovered_skills(make_skills());
         state.frontend.scope_stack.push(FocusScope::Picker {
             kind: PickerKind::Skill,
         });
@@ -141,11 +147,14 @@ mod tests {
     fn reload_preserves_skill_preview_cache() {
         // Given a cache populated with a rendered skill preview.
         let mut state = AppState::default();
-        state.active_session_mut().set_discovered_skills(make_skills());
-        state.frontend.caches
-            .skill_preview_cache
-            .write()
-            .insert("web-coder".to_owned(), 80, vec![ratatui::text::Line::raw("rendered")]);
+        state
+            .active_session_mut()
+            .set_discovered_skills(make_skills());
+        state.frontend.caches.skill_preview_cache.write().insert(
+            "web-coder".to_owned(),
+            80,
+            vec![ratatui::text::Line::raw("rendered")],
+        );
         assert_eq!(state.frontend.caches.skill_preview_cache.read().len(), 1);
 
         // When reloading (e.g. the picker is reopened). The bodies haven't changed,

@@ -329,7 +329,6 @@ const _: fn() = || {
     }
 };
 
-
 impl TreeSitterHighlighter {
     pub fn new() -> Self {
         Self {
@@ -402,15 +401,15 @@ mod tests {
             .add_modifier(Modifier::ITALIC)
     }
 
-
-
-
     // Test 1: Kotlin renders (regression) — the original crash.
     #[test]
     fn kotlin_renders_without_panic() {
         let hl = TreeSitterHighlighter::new();
         let segs = hl.highlight("kotlin", "fun main() {}");
-        assert!(!segs.is_empty(), "Kotlin should produce highlighted segments");
+        assert!(
+            !segs.is_empty(),
+            "Kotlin should produce highlighted segments"
+        );
     }
 
     // Test 2: Kotlin block comment recognized via corrected node name.
@@ -418,9 +417,7 @@ mod tests {
     fn kotlin_block_comment_styled() {
         let hl = TreeSitterHighlighter::new();
         let segs = hl.highlight("kotlin", "/* x */");
-        let has_comment = segs
-            .iter()
-            .any(|s| s.style == comment_style());
+        let has_comment = segs.iter().any(|s| s.style == comment_style());
         assert!(
             has_comment,
             "At least one segment should carry the comment style"
@@ -443,7 +440,10 @@ mod tests {
     fn unknown_language_returns_empty() {
         let hl = TreeSitterHighlighter::new();
         let segs = hl.highlight("brainfuck", "+[->]+");
-        assert!(segs.is_empty(), "Unknown language must yield empty segments");
+        assert!(
+            segs.is_empty(),
+            "Unknown language must yield empty segments"
+        );
     }
 
     // Test 5: Valid language with empty code returns empty segments.
@@ -477,5 +477,4 @@ mod tests {
         let _ = hl.highlight("rust", "fn b() {}");
         // If we got here, the second lock() did not panic.
     }
-
 }

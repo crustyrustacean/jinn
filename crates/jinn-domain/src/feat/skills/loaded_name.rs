@@ -25,11 +25,7 @@ pub fn parse_loaded_skill_name(content: &str) -> Option<&str> {
     let rest = content.strip_prefix(SKILL_CONTENT_PREFIX)?;
     let end = rest.find('"')?;
     let name = &rest[..end];
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
+    if name.is_empty() { None } else { Some(name) }
 }
 
 /// The single-cell diamond icon shown before a loaded skill name in the UI.
@@ -83,8 +79,7 @@ mod tests {
     #[rstest::rstest]
     fn content_with_body_and_location_returns_name_only() {
         // Given a skill content with a long body and location path.
-        let content =
-            "<skill name=\"rust-programming\" location=\"/home/u/.agents/skills/.../SKILL.md\">\n\
+        let content = "<skill name=\"rust-programming\" location=\"/home/u/.agents/skills/.../SKILL.md\">\n\
              lots\nof\nbody\n</skill>";
 
         // When parsing.
@@ -162,7 +157,10 @@ mod tests {
         let label = loaded_skill_summary_label(content);
 
         // Then it contains the icon and the skill name.
-        assert!(label.contains('\u{2756}'), "label should contain the skill icon: {label}");
+        assert!(
+            label.contains('\u{2756}'),
+            "label should contain the skill icon: {label}"
+        );
         assert!(
             label.contains("phased-task-loop"),
             "label should contain the skill name: {label}"
@@ -178,7 +176,13 @@ mod tests {
         let label = loaded_skill_summary_label(content);
 
         // Then it contains the icon and the (skill) fallback.
-        assert!(label.contains('\u{2756}'), "label should contain the skill icon: {label}");
-        assert!(label.contains("(skill)"), "label should contain the fallback: {label}");
+        assert!(
+            label.contains('\u{2756}'),
+            "label should contain the skill icon: {label}"
+        );
+        assert!(
+            label.contains("(skill)"),
+            "label should contain the fallback: {label}"
+        );
     }
 }

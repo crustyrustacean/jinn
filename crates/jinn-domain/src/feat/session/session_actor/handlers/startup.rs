@@ -39,24 +39,13 @@ impl SessionPersistenceActor {
             {
                 session.set_model(model.clone());
             }
-
         }
 
         tracing::info!("DIAG on_environment_loaded model/strategy applied");
 
-
-        // Trigger the initial discovery scan for the active session: skills,
-        // prompts, and project context files (AGENTS.md/CLAUDE.md). Each runs on
-        // its scan actor off-thread, reading the session's cwd and walking the
-        // bounded ancestor chain. Discovered state is ephemeral per-session.
-        let active_session_id = self.state.read().session.active_session_id().clone();
-        for command in
-            crate::feat::context::env_context::scan_commands_for_session(&active_session_id)
-        {
-            if let Err(e) = ctx.send_command(command) {
-                tracing::warn!(err = ?e, "session-actor failed to emit startup scan command");
-            }
-        }
+        // Note: no scan commands are emitted here. The three scan actors
+        // (skills, prompts, context-files) subscribe to this `EnvironmentLoaded`
+        // event directly and self-trigger their per-session scans.
 
         tracing::info!("DIAG on_environment_loaded loading unarchived sessions");
 
@@ -167,11 +156,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn on_environment_loaded_emits_scans_for_active_session() {
+    async fn on_environment_loaded_emits_no_scan_commands() {
         // Given an actor with a default welcome session.
         let (actor, _store) = test_actor_with_store(vec![]);
         let (sink, ctx) = test_context();
-        let active_id = actor.state.read().session.active_session_id().clone();
 
         // When handling EnvironmentLoaded.
         actor
@@ -185,10 +173,11 @@ mod tests {
             )
             .await;
 
-        // Then three re-scan commands were emitted, all tagged with the active
-        // session's id so the scan actors hydrate discovered state from its cwd.
-        let commands = sink.commands();
-        let scan_commands: Vec<_> = commands
+        // Then no scan commands are emitted. The three scan actors
+        // (skills, prompts, context-files) subscribe to this `EnvironmentLoaded`
+        // event directly and self-trigger their per-session scans.
+        let scan_commands = sink
+            .commands()
             .iter()
             .filter(|c| {
                 matches!(
@@ -198,18 +187,11 @@ mod tests {
                         | crate::protocol::Command::ScanContextFiles(_)
                 )
             })
-            .collect();
+            .count();
         assert_eq!(
-            scan_commands.len(),
-            3,
-            "expected skills+prompts+context scans on startup"
+            scan_commands, 0,
+            "scan actors self-trigger off EnvironmentLoaded; startup should not emit scan commands"
         );
-        assert!(scan_commands.iter().all(|c| match c {
-            crate::protocol::Command::ScanSkills(c) => c.session_id == active_id,
-            crate::protocol::Command::RescanPromptTemplates(c) => c.session_id == active_id,
-            crate::protocol::Command::ScanContextFiles(c) => c.session_id == active_id,
-            _ => false,
-        }));
     }
 
     #[tokio::test]

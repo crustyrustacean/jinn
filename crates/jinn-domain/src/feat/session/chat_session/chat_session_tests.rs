@@ -13,8 +13,7 @@ use crate::feat::ui::chat_log::visual_item::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
 };
 use crate::protocol::{
-    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition,
-    SessionId,
+    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, SessionId,
 };
 use std::path::PathBuf;
 
@@ -752,7 +751,6 @@ fn cancel_streaming_clears_tool_call_indices() {
 }
 
 // --- Strategy switching tests ---
-
 
 // --- Pinning tests ---
 
@@ -4546,7 +4544,6 @@ fn touch_updates_timestamp() {
     // Then updated_at is newer than before.
     assert!(*session.updated_at() > before);
 }
-
 
 #[rstest::rstest]
 fn blobs_returns_data() {

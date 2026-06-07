@@ -223,7 +223,7 @@ fn migrate_v0(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErro
          profile TEXT NOT NULL DEFAULT '{}',\
          blobs TEXT NOT NULL DEFAULT '{}',\
          parent_session TEXT DEFAULT NULL,\
-         strategy_state TEXT NOT NULL DEFAULT '{}')"
+         strategy_state TEXT NOT NULL DEFAULT '{}')",
     )
     .execute(conn)
     .change_context(SessionStoreError)
@@ -974,11 +974,13 @@ mod tests {
         // Then the session_history junction row survived the rebuild.
         // Before the FK-safe fix, DROP TABLE sessions cascaded ON DELETE CASCADE
         // into session_history and wiped every junction row.
-        let rows: Vec<CountRow> =
-            sql_query("SELECT COUNT(*) AS count FROM session_history")
-                .load(&mut conn)
-                .expect("count session_history");
-        assert_eq!(rows[0].count, 1, "session_history junction row must survive v15 rebuild");
+        let rows: Vec<CountRow> = sql_query("SELECT COUNT(*) AS count FROM session_history")
+            .load(&mut conn)
+            .expect("count session_history");
+        assert_eq!(
+            rows[0].count, 1,
+            "session_history junction row must survive v15 rebuild"
+        );
     }
 
     #[test]
@@ -1004,11 +1006,13 @@ mod tests {
         // Then the token_ledger row survived the rebuild.
         // token_ledger also has ON DELETE CASCADE on sessions, so the same
         // DROP TABLE cascade would have wiped it before the fix.
-        let rows: Vec<CountRow> =
-            sql_query("SELECT COUNT(*) AS count FROM token_ledger")
-                .load(&mut conn)
-                .expect("count token_ledger");
-        assert_eq!(rows[0].count, 1, "token_ledger row must survive v15 rebuild");
+        let rows: Vec<CountRow> = sql_query("SELECT COUNT(*) AS count FROM token_ledger")
+            .load(&mut conn)
+            .expect("count token_ledger");
+        assert_eq!(
+            rows[0].count, 1,
+            "token_ledger row must survive v15 rebuild"
+        );
     }
 
     /// Seeds a v14 database with one session, one entry, one session_history
@@ -1073,16 +1077,14 @@ mod tests {
         run_migrations(&mut conn).expect("run_migrations");
 
         // Then both child tables retain their row.
-        let history: Vec<CountRow> =
-            sql_query("SELECT COUNT(*) AS count FROM session_history")
-                .load(&mut conn)
-                .expect("count session_history");
+        let history: Vec<CountRow> = sql_query("SELECT COUNT(*) AS count FROM session_history")
+            .load(&mut conn)
+            .expect("count session_history");
         assert_eq!(history[0].count, 1, "session_history row preserved");
 
-        let ledger: Vec<CountRow> =
-            sql_query("SELECT COUNT(*) AS count FROM token_ledger")
-                .load(&mut conn)
-                .expect("count token_ledger");
+        let ledger: Vec<CountRow> = sql_query("SELECT COUNT(*) AS count FROM token_ledger")
+            .load(&mut conn)
+            .expect("count token_ledger");
         assert_eq!(ledger[0].count, 1, "token_ledger row preserved");
 
         // And foreign_key_check reports no violations on the final state.
@@ -1092,7 +1094,10 @@ mod tests {
         assert!(
             violations.is_empty(),
             "foreign_key_check must be clean after migrations; found: {:?}",
-            violations.iter().map(|v| v.table.as_str()).collect::<Vec<_>>()
+            violations
+                .iter()
+                .map(|v| v.table.as_str())
+                .collect::<Vec<_>>()
         );
     }
 }

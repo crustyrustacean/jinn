@@ -111,6 +111,7 @@ impl Actor for SessionPersistenceActor {
         ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::FinishSessionTeardown>();
         ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::FinishSessionSetup>();
         ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand>();
+        ctx.subscribe_command::<crate::feat::session_lifecycle::protocol::command::SetSessionCwd>();
 
         ctx.subscribe_command::<PersistSession>();
         ctx.subscribe_command::<CloseSession>();
@@ -287,6 +288,9 @@ impl SessionPersistenceActor {
             }
             Command::CancelLifecycleCommand(payload) => {
                 self.handle_cancel_lifecycle_command(payload, ctx);
+            }
+            Command::SetSessionCwd(payload) => {
+                self.handle_set_session_cwd(payload, ctx);
             }
 
             Command::MarkSessionInteracted(payload) => {

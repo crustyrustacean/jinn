@@ -34,6 +34,20 @@ pub struct SessionCreated {
     pub session_id: SessionId,
 }
 
+/// A session's working directory changed.
+///
+/// Emitted by the session-persistence actor when it applies a `SetSessionCwd`
+/// command. The discovery scan actors subscribe to this to re-scan skills,
+/// prompts, and context files for the session's new cwd.
+#[derive(Debug, Clone, Serialize, Deserialize, EventMsg)]
+#[event_msg("session_lifecycle")]
+pub struct SessionCwdChanged {
+    /// The session whose cwd changed.
+    pub session_id: SessionId,
+    /// The new working directory.
+    pub cwd: PathBuf,
+}
+
 /// Teardown command finished (success or failure).
 ///
 /// Emitted by the session-persistence actor after running a lifecycle teardown command.
