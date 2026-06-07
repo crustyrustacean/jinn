@@ -183,20 +183,20 @@ fn submit_message_with_hash_autocomplete_clears_buffer() {
 // ─── Input mode & routing (steering) ──────────────────────────────────
 
 #[rstest::rstest]
-fn toggle_input_mode_flips_queue_to_steer() {
-    // Given default state (mode = Queue).
+fn toggle_input_mode_flips_steer_to_queue() {
+    // Given default state (mode = Steer).
     let mut state = AppState::default();
     assert_eq!(
         state.active_chat_input().input_mode(),
-        InputMode::Queue,
-        "default mode is Queue"
+        InputMode::Steer,
+        "default mode is Steer"
     );
 
     // When toggling.
     crate::feat::chat_input::intent::handle_toggle_input_mode(&mut state);
 
-    // Then mode is Steer.
-    assert_eq!(state.active_chat_input().input_mode(), InputMode::Steer);
+    // Then mode is Queue.
+    assert_eq!(state.active_chat_input().input_mode(), InputMode::Queue);
     // And no commands emitted.
     assert!(state.active_chat_input().is_empty());
 }
