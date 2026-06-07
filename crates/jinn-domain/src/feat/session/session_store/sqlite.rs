@@ -329,7 +329,7 @@ impl SessionStore for SqliteSessionStore {
                 .get()
                 .change_context(SessionStoreError)
                 .attach("failed to acquire connection from pool")?;
-            shutdown_blocking(&mut conn);
+            shutdown_blocking(&mut conn)?;
             Ok(())
         })
         .await
@@ -1203,18 +1203,78 @@ fn load_unarchived_summaries_blocking(
     Ok(summaries)
 }
 
-/// Non-destructive no-op called during shutdown.
+/// Result row of `PRAGMA wal_checkpoint(TRUNCATE)`.
 ///
-/// Previously this deleted "empty" unarchived sessions (no `session_history`
-/// rows) and orphaned entries. That heuristic was a data-destruction hazard:
-/// with `PRAGMA foreign_keys=ON` the session delete cascaded through
-/// `token_ledger`, and it fired against any transiently-empty junction table
-/// state (e.g. after a migration). The migration framework now runs with
-/// foreign keys disabled, and orphan reaping lives only in `delete`/`fork`
-/// where the removing session is known, so this hook no longer needs to delete
-/// anything. Retained as a no-op to preserve the shutdown plumbing for any
-/// future non-destructive flush work.
-fn shutdown_blocking(_conn: &mut SqliteConnection) {}
+/// Columns: `busy` (1 if the checkpoint could not complete because a reader
+/// held a snapshot), `log` (frames in the WAL), `checkpointed` (frames folded
+/// into the main db). Mapped by name via `QueryableByName`.
+#[derive(QueryableByName)]
+struct CheckpointResult {
+    #[diesel(sql_type = diesel::sql_types::Integer)]
+    busy: i32,
+    #[diesel(sql_type = diesel::sql_types::Integer)]
+    log: i32,
+    #[diesel(sql_type = diesel::sql_types::Integer)]
+    checkpointed: i32,
+}
+
+/// Non-destructive flush called during shutdown.
+///
+/// Folds committed WAL frames into `sessions.db` via
+/// `PRAGMA wal_checkpoint(TRUNCATE)`, then truncates the `-wal` file to
+/// zero bytes. This leaves `sessions.db` self-contained on a clean quit, so a
+/// user (or sync tool) copying only `sessions.db` gets a complete, current
+/// database instead of one missing whatever the auto-checkpoint had not yet
+/// folded in.
+///
+/// This is operational hygiene only — WAL already guarantees committed data
+/// survives a crash (the next launch replays any un-folded frames). It does
+/// **not** prune sessions or entries. The earlier destructive heuristic that
+/// reaped "empty" unarchived sessions here was a data-destruction hazard and
+/// was removed; orphan reaping now lives only in `delete`/`fork` where the
+/// removed session is known.
+///
+/// # Errors
+///
+/// Returns [`SessionStoreError`] if the checkpoint query fails. A `busy=1`
+/// result (a reader held a snapshot mid-checkpoint) is **not** an error: the
+/// call logs a warning and returns `Ok`, leaving some frames un-folded.
+fn shutdown_blocking(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    let result: CheckpointResult = sql_query("PRAGMA wal_checkpoint(TRUNCATE)")
+        .get_result(conn)
+        .change_context(SessionStoreError)
+        .attach("failed to run wal_checkpoint(TRUNCATE) during shutdown")?;
+
+    classify_checkpoint_result(&result);
+    Ok(())
+}
+
+/// Classifies a `wal_checkpoint` result row as fatal or non-fatal.
+///
+/// Extracted from [`shutdown_blocking`] as a pure function so the `busy=1`
+/// graceful-degradation path is unit-testable without a database. A busy
+/// result (a reader held a snapshot mid-checkpoint) logs a warning and returns
+/// `Ok` — the un-folded frames survive in the WAL and fold on the next open.
+/// A clean result logs at info level.
+///
+/// This function never fails: the only fallible step in shutdown is the
+/// checkpoint query itself, which stays in [`shutdown_blocking`]. This pure
+/// classifier just chooses the log level based on the result row.
+fn classify_checkpoint_result(result: &CheckpointResult) {
+    if result.busy == 1 {
+        tracing::warn!(
+            log_frames = result.log,
+            checkpointed_frames = result.checkpointed,
+            "wal_checkpoint was busy; some WAL frames remain un-folded (non-fatal)"
+        );
+    } else {
+        tracing::info!(
+            log_frames = result.log,
+            checkpointed_frames = result.checkpointed,
+            "folded WAL into sessions.db during shutdown"
+        );
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -1477,6 +1537,91 @@ mod tests {
             ids.contains(&&empty_id),
             "empty session should survive shutdown (no destructive cleanup)"
         );
+    }
+
+    #[tokio::test]
+    async fn shutdown_truncates_wal_file() {
+        // Given a store that has written a session whose frames sit in the WAL
+        // (a small write stays well under the ~4MB autocheckpoint threshold).
+        let dir = tempfile::tempdir().expect("temp dir");
+        let wal_path = dir.path().join("sessions.db-wal");
+        let store = SqliteSessionStore::new_in(dir.path()).expect("new_in");
+        store.save(&make_session()).await.expect("save");
+
+        // The WAL sidecar exists and holds the uncheckpointed frames.
+        assert!(
+            wal_path.exists() && wal_path.metadata().unwrap().len() > 0,
+            "WAL should hold frames before shutdown"
+        );
+
+        // When shutting down the store with its pool still alive.
+        store.shutdown().await.expect("shutdown");
+
+        // Then the WAL has been truncated to zero bytes. With the pool still
+        // open this can only happen via an explicit TRUNCATE checkpoint.
+        assert_eq!(
+            wal_path.metadata().unwrap().len(),
+            0,
+            "WAL should be truncated to 0 bytes after shutdown checkpoint"
+        );
+    }
+
+    #[tokio::test]
+    async fn shutdown_makes_db_self_contained_for_backup() {
+        // Given a store that has saved a session and then shut down.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let store = SqliteSessionStore::new_in(dir.path()).expect("new_in");
+        let session = make_session();
+        let id = session.session_id().clone();
+        store.save(&session).await.expect("save");
+        store.shutdown().await.expect("shutdown");
+        // Drop the store, closing every pooled connection.
+        drop(store);
+
+        // When the WAL sidecars are removed, simulating a backup that copied
+        // only sessions.db.
+        let _ = std::fs::remove_file(dir.path().join("sessions.db-wal"));
+        let _ = std::fs::remove_file(dir.path().join("sessions.db-shm"));
+
+        // Then sessions.db alone opens cleanly and contains the saved session.
+        let reopened = SqliteSessionStore::new_in(dir.path()).expect("reopen");
+        let summaries = reopened.load_summaries().await.expect("load");
+        assert!(
+            summaries.iter().any(|s| s.session_id == id),
+            "sessions.db alone must contain all data after shutdown checkpoint"
+        );
+    }
+
+    #[test]
+    fn busy_checkpoint_result_does_not_panic() {
+        // Given a checkpoint result that reports busy (a reader held a snapshot).
+        let busy = CheckpointResult {
+            busy: 1,
+            log: 7,
+            checkpointed: 3,
+        };
+
+        // When classifying it.
+        //
+        // Then it completes without panicking — un-folded frames survive
+        // in the WAL and fold on the next open, so this is graceful
+        // degradation, not data loss.
+        classify_checkpoint_result(&busy);
+    }
+
+    #[test]
+    fn clean_checkpoint_result_does_not_panic() {
+        // Given a checkpoint result that fully folded the WAL.
+        let clean = CheckpointResult {
+            busy: 0,
+            log: 7,
+            checkpointed: 7,
+        };
+
+        // When classifying it.
+        //
+        // Then it completes without panicking.
+        classify_checkpoint_result(&clean);
     }
 
     #[tokio::test]
