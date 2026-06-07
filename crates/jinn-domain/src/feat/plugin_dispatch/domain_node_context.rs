@@ -76,7 +76,7 @@ impl DomainNodeContext {
 
     /// Send an LLM request using a cloned session and wait for the full response.
     ///
-    /// Clones an existing session, giving the clone a new ID, `is_workflow = true`,
+    /// Clones an existing session, giving the clone a new ID, `is_automated = true`,
     /// and `parent_session = Some(source)`. The clone inherits full history, profile,
     /// and tools from the source.
     ///
@@ -112,9 +112,9 @@ impl DomainNodeContext {
         session.core.session_id = SessionId::new();
 
         // 4. Mark as workflow, reset ephemeral
-        session.core.is_workflow = true;
+        session.core.is_automated = true;
         session.core.ephemeral = SessionCoreEphemeral::default();
-        session.core.workflow_overrides = Some(overrides);
+        session.core.assembly_overrides = Some(overrides);
         session.core.parent_session = Some(source_session_id.clone());
 
         // 5. Resolve model
@@ -186,9 +186,9 @@ impl DomainNodeContext {
 
         // 4. New session ID; mark as workflow; inherit provider+model; record parent.
         session.core.session_id = SessionId::new();
-        session.core.is_workflow = true;
+        session.core.is_automated = true;
         session.core.ephemeral = SessionCoreEphemeral::default();
-        session.core.workflow_overrides = Some(overrides);
+        session.core.assembly_overrides = Some(overrides);
         session.core.parent_session = Some(source_session_id.clone());
         session.set_model(provider_model);
 
@@ -284,7 +284,7 @@ mod tests {
     //
     // Verifies the history-less one-shot path:
     //   - reads ONLY provider+model from the source session (no history clone)
-    //   - builds a fresh session with a NEW id, is_workflow=true
+    //   - builds a fresh session with a NEW id, is_automated=true
     //   - inherits the source's model on the new session
     //   - emits exactly one Command::EnqueueUserMessage for the new session
     //   - awaits a oneshot; resolve_completed fulfills it with the text
@@ -348,19 +348,19 @@ mod tests {
         );
 
         // The new workflow session inherits the source's provider+model, has no
-        // history, is marked is_workflow, and records the source as parent.
+        // history, is marked is_automated, and records the source as parent.
         let guard = ctx.state.read();
         let new = guard.session.get(&new_session_id).expect("new session inserted");
         assert_eq!(new.core.profile.model, "ollama/llama3");
-        assert!(new.core.is_workflow);
+        assert!(new.core.is_automated);
         assert_eq!(new.core.parent_session.as_ref(), Some(&source_id));
         assert_eq!(
-            new.core.workflow_overrides.as_ref().map(|o| &o.system_prompt),
+            new.core.assembly_overrides.as_ref().map(|o| &o.system_prompt),
             Some(&Some("be concise".to_owned())),
             "system prompt override must be carried through",
         );
         assert_eq!(
-            new.core.workflow_overrides.as_ref().map(|o| o.tool_definitions.as_deref()),
+            new.core.assembly_overrides.as_ref().map(|o| o.tool_definitions.as_deref()),
             Some(Some(&[][..])),
             "tool definitions override must be empty (None would inherit the full tool catalog)",
         );

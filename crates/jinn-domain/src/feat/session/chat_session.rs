@@ -196,21 +196,23 @@ pub struct SessionCore {
     /// OWNER: session-actor (advances only after script success).
     #[serde(default)]
     pub(crate) lifecycle_script_state: LifecycleScriptState,
-    /// Whether this session was created by a workflow node.
-    /// OWNER: workflow-actor (set on creation).
+    /// Whether this session is program-initiated (plugin, subagent, judge, etc.),
+    /// not a normal user conversation. When true, the session uses its
+    /// `assembly_overrides` instead of global defaults and is hidden from the sidebar.
+    /// OWNER: session-actor / plugin-dispatch-actor (set on creation).
     #[serde(default)]
-    pub(crate) is_workflow: bool,
+    pub(crate) is_automated: bool,
 
     /// Whether the user has meaningfully interacted with this session.
     /// Sessions with `has_interacted = false` are not persisted to disk.
     /// OWNER: session-actor (set via MarkSessionInteracted command).
     #[serde(default)]
     pub(crate) has_interacted: bool,
-    /// Prompt overrides for workflow sessions. When set, these replace global
+    /// Assembly overrides for automated sessions. When set, these replace global
     /// defaults in `assemble_prompt`. Runtime-only - not persisted.
-    /// OWNER: workflow-actor (set before first message).
+    /// OWNER: session-actor / plugin-dispatch-actor (set before first message).
     #[serde(skip)]
-    pub(crate) workflow_overrides: Option<crate::feat::context::assemble::AssemblyOverrides>,
+    pub(crate) assembly_overrides: Option<crate::feat::context::assemble::AssemblyOverrides>,
     /// Phased task list for agent session planning.
     /// OWNER: tools-actor (mutated by task list tools).
     #[serde(default)]
@@ -242,9 +244,9 @@ impl Default for SessionCore {
             lifecycle_args: Vec::new(),
             session_state: SessionState::Loaded,
             lifecycle_script_state: LifecycleScriptState::NothingRan,
-            is_workflow: false,
+            is_automated: false,
 
-            workflow_overrides: None,
+            assembly_overrides: None,
             task_list: crate::feat::todo_list::TaskList::default(),
             attached_plugins: Vec::new(),
             has_interacted: false,
@@ -649,10 +651,10 @@ impl ChatSessionState {
         self.core.history.is_empty()
     }
 
-    /// Whether this session was created by a workflow node.
+    /// Whether this session is program-initiated (automated), not a normal user conversation.
     #[must_use]
-    pub fn is_workflow(&self) -> bool {
-        self.core.is_workflow
+    pub fn is_automated(&self) -> bool {
+        self.core.is_automated
     }
 
     /// Mark this session as having been meaningfully interacted with by the user.
