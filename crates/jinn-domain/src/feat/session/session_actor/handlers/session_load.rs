@@ -97,6 +97,15 @@ impl SessionPersistenceActor {
             ));
         }
 
+        // Hydrate ephemeral discovered state (skills/prompts/AGENTS.md) for the
+        // loaded session. These run on the async scan actors off this thread;
+        // each reads the session's cwd and walks the bounded ancestor chain.
+        for command in
+            crate::feat::context::env_context::scan_commands_for_session(&session_id)
+        {
+            let _ = ctx.send_command(command);
+        }
+
         // Persist the restored session.
         self.save_active_session(&session_id).await;
     }
@@ -254,5 +263,45 @@ mod tests {
             loaded.is_persistable(),
             "loaded session should be persistable"
         );
+    }
+
+    #[tokio::test]
+    async fn handle_session_load_completed_emits_scan_commands_for_loaded_session() {
+        // Given a session loaded from disk.
+        let mut session = ChatSessionState::new();
+        let session_id = session.session_id().clone();
+        session.push_entry(ChatEntry::user("hello"));
+
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+
+        let payload = SessionLoadCompleted { session };
+
+        // When handling SessionLoadCompleted.
+        actor.handle_session_load_completed(&payload, &ctx).await;
+
+        // Then three re-scan commands were emitted, all tagged with the loaded
+        // session's id so ephemeral discovered state hydrates from the right cwd.
+        let commands = sink.commands();
+        let scan_commands: Vec<_> = commands
+            .iter()
+            .filter(|c| {
+                matches!(
+                    c,
+                    crate::protocol::Command::ScanSkills(_)
+                        | crate::protocol::Command::RescanPromptTemplates(_)
+                        | crate::protocol::Command::ScanContextFiles(_)
+                )
+            })
+            .collect();
+        assert_eq!(scan_commands.len(), 3, "expected skills+prompts+context scans");
+        assert!(scan_commands
+            .iter()
+            .all(|c| match c {
+                crate::protocol::Command::ScanSkills(c) => c.session_id == session_id,
+                crate::protocol::Command::RescanPromptTemplates(c) => c.session_id == session_id,
+                crate::protocol::Command::ScanContextFiles(c) => c.session_id == session_id,
+                _ => false,
+            }));
     }
 }

@@ -65,9 +65,9 @@ impl SessionPersistenceActor {
 
         {
             let mut state = self.state.write();
-            state
-                .active_session_mut()
-                .push_entry(ChatEntry::transient(content));
+            if let Some(session) = state.try_session_mut(&event.session_id) {
+                session.push_entry(ChatEntry::transient(content));
+            }
         }
     }
 

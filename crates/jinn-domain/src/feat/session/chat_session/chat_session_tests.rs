@@ -4561,6 +4561,66 @@ fn steering_buffer_not_persisted_across_serialization() {
     );
 }
 
+#[rstest::rstest]
+fn discovered_skills_default_empty() {
+    // Given a freshly constructed session.
+    let session = ChatSessionState::new();
+
+    // Then the discovered skill/prompt/context sets are all empty.
+    assert!(session.discovered_skills().is_empty());
+    assert!(session.discovered_prompt_templates().is_empty());
+    assert!(session.discovered_context_files().is_empty());
+}
+
+#[rstest::rstest]
+fn discovered_sets_are_independent_between_sessions() {
+    // Given two sessions with different discovered skills.
+    let mut a = ChatSessionState::new();
+    let mut b = ChatSessionState::new();
+    a.set_discovered_skills(vec![crate::feat::skills::Skill {
+        name: "session-a-only".into(),
+        description: String::new(),
+        body: String::new(),
+        file_path: PathBuf::new(),
+        base_dir: PathBuf::new(),
+        source: crate::feat::skills::SkillSource::Global,
+    }]);
+    b.set_discovered_skills(vec![crate::feat::skills::Skill {
+        name: "session-b-only".into(),
+        description: String::new(),
+        body: String::new(),
+        file_path: PathBuf::new(),
+        base_dir: PathBuf::new(),
+        source: crate::feat::skills::SkillSource::Global,
+    }]);
+
+    // Then session A sees only its skill, B sees only its own — no clobbering.
+    assert_eq!(a.discovered_skills().len(), 1);
+    assert_eq!(a.discovered_skills()[0].name, "session-a-only");
+    assert_eq!(b.discovered_skills().len(), 1);
+    assert_eq!(b.discovered_skills()[0].name, "session-b-only");
+}
+
+#[rstest::rstest]
+fn discovered_context_files_round_trip_empty_after_serialization() {
+    // Given a session with discovered context files populated in ephemeral state.
+    let mut session = ChatSessionState::new();
+    session.set_discovered_context_files(vec![crate::feat::context::env_context::ContextFile {
+        path: PathBuf::from("/nonexistent/AGENTS.md"),
+        content: "should not persist".into(),
+    }]);
+
+    // When serialized then deserialized (ephemeral fields are not persisted).
+    let json = serde_json::to_string(&session).expect("serialize");
+    let restored: ChatSessionState = serde_json::from_str(&json).expect("deserialize");
+
+    // Then the discovered context files are empty after round-trip (transient).
+    assert!(
+        restored.discovered_context_files().is_empty(),
+        "discovered context files must not be persisted"
+    );
+}
+
 /// Helper: build a pinned skill-shaped ToolResult entry and add it.
 fn push_pinned_tool_result(
     session: &mut super::ChatSessionState,

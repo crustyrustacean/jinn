@@ -9,6 +9,7 @@
 use crate::common::app_state::AppState;
 use crate::common::app_state::FocusScope;
 use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
+use crate::feat::skills::ScanSkills;
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
 use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch};
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
@@ -694,7 +695,9 @@ pub fn handle_refresh_skills(state: &mut AppState) -> IntentResult {
         .active_session_mut()
         .push_entry(ChatEntry::transient("Refreshing skills..."));
 
-    IntentResult::with_commands(vec![Command::ScanSkills])
+    let session_id = state.active_session().session_id().clone();
+
+    IntentResult::with_commands(vec![Command::ScanSkills(ScanSkills { session_id })])
 }
 
 #[cfg(test)]
@@ -935,13 +938,14 @@ mod tests {
             .session
             .set_active(state.session.active_session_id().clone());
 
-        state.context.skills = vec![
+        state.active_session_mut().set_discovered_skills(vec![
             Skill {
                 name: "phased-task-loop".to_owned(),
                 description: "Structured phased implementation workflow".to_owned(),
                 body: String::new(),
                 file_path: PathBuf::from("/tmp/skills/phased-task-loop/SKILL.md"),
                 base_dir: PathBuf::from("/tmp/skills/phased-task-loop"),
+                source: crate::feat::skills::SkillSource::Global,
             },
             Skill {
                 name: "web-coder".to_owned(),
@@ -949,8 +953,9 @@ mod tests {
                 body: String::new(),
                 file_path: PathBuf::from("/tmp/skills/web-coder/SKILL.md"),
                 base_dir: PathBuf::from("/tmp/skills/web-coder"),
+                source: crate::feat::skills::SkillSource::Global,
             },
-        ];
+        ]);
 
         state
     }
@@ -1231,7 +1236,7 @@ mod tests {
             result
                 .commands
                 .iter()
-                .any(|c| matches!(c, Command::ScanSkills))
+                .any(|c| matches!(c, Command::ScanSkills(..)))
         );
     }
 
