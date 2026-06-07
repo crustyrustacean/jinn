@@ -26,8 +26,7 @@ use crate::feat::session::steering_buffer::SteeringBuffer;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{
-    ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition,
-    SessionId,
+    ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, SessionId,
 };
 
 /// Error returned when a streaming operation fails.
@@ -139,7 +138,8 @@ pub struct SessionCoreEphemeral {
     /// Discovered prompt templates for this session (merged global + project).
     /// OWNER: PromptScanActor.
     #[serde(skip)]
-    pub(crate) discovered_prompt_templates: crate::feat::context::prompt_template::PromptTemplateStore,
+    pub(crate) discovered_prompt_templates:
+        crate::feat::context::prompt_template::PromptTemplateStore,
 
     /// Discovered AGENTS.md/CLAUDE.md context files for this session, ordered
     /// root-first (root ancestor first, cwd last) for prompt assembly.
@@ -444,7 +444,6 @@ impl ChatSessionState {
             ui: SessionUi::default(),
         }
     }
-
 
     /// Create a new session with a specific profile (model + strategy).
     #[must_use]
@@ -1312,8 +1311,6 @@ impl ChatSessionState {
     ) -> std::collections::VecDeque<crate::feat::session::queue_item::QueueItem> {
         self.core.ephemeral.message_queue.drain()
     }
-
-
 
     /// Read-only access to the session profile.
     pub fn profile(&self) -> &SessionProfile {
@@ -2341,7 +2338,9 @@ impl ChatSessionState {
     }
 
     /// Returns the prompt templates discovered for this session's cwd tree.
-    pub fn discovered_prompt_templates(&self) -> &crate::feat::context::prompt_template::PromptTemplateStore {
+    pub fn discovered_prompt_templates(
+        &self,
+    ) -> &crate::feat::context::prompt_template::PromptTemplateStore {
         &self.core.ephemeral.discovered_prompt_templates
     }
 
@@ -2356,12 +2355,18 @@ impl ChatSessionState {
     }
 
     /// Replaces the discovered prompt-template store for this session.
-    pub fn set_discovered_prompt_templates(&mut self, store: crate::feat::context::prompt_template::PromptTemplateStore) {
+    pub fn set_discovered_prompt_templates(
+        &mut self,
+        store: crate::feat::context::prompt_template::PromptTemplateStore,
+    ) {
         self.core.ephemeral.discovered_prompt_templates = store;
     }
 
     /// Replaces the discovered context files for this session.
-    pub fn set_discovered_context_files(&mut self, files: Vec<crate::feat::context::env_context::ContextFile>) {
+    pub fn set_discovered_context_files(
+        &mut self,
+        files: Vec<crate::feat::context::env_context::ContextFile>,
+    ) {
         self.core.ephemeral.discovered_context_files = files;
     }
 
@@ -2421,7 +2426,6 @@ impl ChatSessionState {
     pub fn touch(&mut self) {
         self.core.updated_at = Timestamp::now();
     }
-
 
     /// Generic blob storage for future subsystems.
     pub fn blobs(&self) -> &HashMap<String, JsonValue> {

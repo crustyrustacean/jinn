@@ -314,8 +314,7 @@ fn handle_suspend_action(
                     // actor applies the cwd and broadcasts SessionCwdChanged;
                     // the event-driven scan actors then re-discover
                     // skills/prompts/context-files for the new cwd.
-                    let session_id =
-                        app.core.state.read().active_session().session_id().clone();
+                    let session_id = app.core.state.read().active_session().session_id().clone();
                     app.core.submit_command(jinn_domain::Command::SetSessionCwd(
                         jinn_domain::feat::session_lifecycle::protocol::command::SetSessionCwd {
                             session_id,

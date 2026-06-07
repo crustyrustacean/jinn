@@ -21,7 +21,8 @@ fn hash_trigger_valid_after_space() {
                 description: "desc".to_owned(),
                 body: "body".to_owned(),
             },
-        ]));
+        ]),
+    );
 
     // When typing "hello #" - the '#' is preceded by a space.
     let _ = crate::feat::chat_input::intent::handle_insert_char('h', &mut state);
@@ -51,7 +52,8 @@ fn hash_trigger_valid_after_newline() {
                 description: "desc".to_owned(),
                 body: "body".to_owned(),
             },
-        ]));
+        ]),
+    );
 
     // When typing "\n#" - the '#' is preceded by newline.
     let _ = crate::feat::chat_input::intent::handle_insert_char('\n', &mut state);
@@ -79,7 +81,8 @@ fn hash_trigger_invalid_after_letter() {
                 description: "desc".to_owned(),
                 body: "body".to_owned(),
             },
-        ]));
+        ]),
+    );
 
     // When typing "abc#" - the '#' is preceded by 'c' (not space or newline).
     let _ = crate::feat::chat_input::intent::handle_insert_char('a', &mut state);
@@ -140,7 +143,8 @@ fn delete_grapheme_deactivates_when_cursor_at_token_start_plus_one() {
                 description: "desc".to_owned(),
                 body: "body".to_owned(),
             },
-        ]));
+        ]),
+    );
 
     let _ = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
     let _ = crate::feat::chat_input::intent::handle_insert_char('t', &mut state);
@@ -187,7 +191,8 @@ fn delete_forward_deactivates_when_cursor_at_token_start() {
                 description: "desc".to_owned(),
                 body: "body".to_owned(),
             },
-        ]));
+        ]),
+    );
 
     let _ = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
     let _ = crate::feat::chat_input::intent::handle_insert_char('t', &mut state);
@@ -224,7 +229,8 @@ fn cursor_move_left_deactivates_when_cursor_before_token() {
                 description: "desc".to_owned(),
                 body: "body".to_owned(),
             },
-        ]));
+        ]),
+    );
 
     // Type "a #test" - space before '#', 'a' before that.
     let _ = crate::feat::chat_input::intent::handle_insert_char('a', &mut state);
@@ -279,7 +285,8 @@ fn reactivating_hash_autocomplete_within_token() {
                 description: "desc".to_owned(),
                 body: "body".to_owned(),
             },
-        ]));
+        ]),
+    );
 
     // Type "#test".
     let _ = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
@@ -372,7 +379,8 @@ fn enter_normal_mode_dismisses_active_autocomplete_without_scope_change() {
                 description: "desc".to_owned(),
                 body: "body".to_owned(),
             },
-        ]));
+        ]),
+    );
 
     let _ = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);
     assert!(state.active_chat_input().autocomplete().is_some());

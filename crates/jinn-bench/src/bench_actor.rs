@@ -65,7 +65,6 @@ pub struct BenchActor {
     plan: Option<BenchPlan>,
     /// Index into `plan.pairs` for the next pair to start.
     current_pair_index: usize,
-
 }
 
 /// Dependencies for [`BenchActor`].
@@ -76,7 +75,6 @@ pub struct BenchActorDeps {
     pub csv_path: Option<PathBuf>,
     /// The execution plan. If `None`, the actor is passive.
     pub plan: Option<BenchPlan>,
-
 }
 
 impl Actor for BenchActor {
@@ -112,7 +110,6 @@ impl Actor for BenchActor {
             task_lookup,
             plan,
             current_pair_index: 0,
-
         };
 
         // If we have a plan, start the first pair immediately.
@@ -165,7 +162,6 @@ impl BenchActor {
             .get(self.current_pair_index)
             .expect("index checked above");
         self.current_pair_index += 1;
-
 
         let session_id = {
             let mut state = self.state.write();

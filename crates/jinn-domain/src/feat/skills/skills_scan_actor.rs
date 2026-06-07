@@ -16,7 +16,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::common::actor::scan_actor::{scan_cwd_for_session, NoDirectMsg};
+use crate::common::actor::scan_actor::{NoDirectMsg, scan_cwd_for_session};
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope};
 use crate::common::services::Services;
 use crate::common::state::State;
@@ -123,8 +123,7 @@ impl SkillsScanActor {
         // Resolve the session's cwd and home once, up front. The cwd is
         // captured by clone so the blocking scan can move it across the
         // thread boundary without holding the state lock.
-        let Some((cwd, home, global_skills_dir)) = self.resolve_scan_inputs(session_id)
-        else {
+        let Some((cwd, home, global_skills_dir)) = self.resolve_scan_inputs(session_id) else {
             tracing::warn!(%session_id, "ScanSkills: session not found, skipping");
             return;
         };
@@ -243,17 +242,24 @@ mod tests {
         None
     }
 
-
     /// Builds an actor whose active session has its cwd set to `dir`.
     /// Returns the session id so tests can emit `ScanSkills { session_id }`.
     fn create_actor(
         dir: &tempfile::TempDir,
         state: State,
-    ) -> (SkillsScanActor, Arc<RecordingSink>, ActorContext, crate::SessionId) {
+    ) -> (
+        SkillsScanActor,
+        Arc<RecordingSink>,
+        ActorContext,
+        crate::SessionId,
+    ) {
         // Set the active session's cwd so the actor resolves `dir`.
         {
             let mut guard = state.write();
-            guard.session.active_session_mut().set_cwd(dir.path().to_path_buf());
+            guard
+                .session
+                .active_session_mut()
+                .set_cwd(dir.path().to_path_buf());
         }
         let session_id = state.read().session.active_session_id().clone();
 
@@ -309,13 +315,9 @@ mod tests {
 
         // Then skills are written to the session's ephemeral discovered set.
         let guard = state.read();
-        let session = guard
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = guard.session.get(&session_id).expect("session exists");
         assert_eq!(session.discovered_skills().len(), 1);
         assert_eq!(session.discovered_skills()[0].name, "test-skill");
-
     }
 
     #[rstest::rstest]
@@ -327,7 +329,9 @@ mod tests {
         let (actor, _sink, ctx, session_id) = create_actor(&dir, state.clone());
 
         // When processing SessionCreated for that session.
-        let event = Event::SessionCreated(SessionCreated { session_id: session_id.clone() });
+        let event = Event::SessionCreated(SessionCreated {
+            session_id: session_id.clone(),
+        });
         actor.handle_event(&event, &ctx).await;
 
         // Then the skill is written to the session's discovered set.
@@ -350,12 +354,17 @@ mod tests {
             .paths(AppPaths::new_in(dir.path()))
             .build();
         let actor = SkillsScanActor::activate(
-            SkillsScanActorDeps { services, state: state.clone() },
+            SkillsScanActorDeps {
+                services,
+                state: state.clone(),
+            },
             &mut ctx,
         );
 
         // When processing SessionCreated for the sentinel-cwd session.
-        let event = Event::SessionCreated(SessionCreated { session_id: session_id.clone() });
+        let event = Event::SessionCreated(SessionCreated {
+            session_id: session_id.clone(),
+        });
         actor.handle_event(&event, &ctx).await;
 
         // Then no scan runs: the discovered set stays empty.
@@ -440,23 +449,33 @@ mod tests {
         let state = State::new(AppState::default());
         {
             let guard = state.write();
-            guard.frontend.caches
-                .skill_preview_cache
-                .write()
-                .insert("stale-skill".to_owned(), 80, vec![ratatui::text::Line::raw("stale")]);
+            guard.frontend.caches.skill_preview_cache.write().insert(
+                "stale-skill".to_owned(),
+                80,
+                vec![ratatui::text::Line::raw("stale")],
+            );
         }
         let (mut actor, _sink, ctx, session_id) = create_actor(&dir, state.clone());
 
         // When processing a ScanSkills command (rescan).
         actor
-            .handle(ActorEnvelope::Command(Command::ScanSkills(crate::feat::skills::ScanSkills {
-                session_id,
-            })), &ctx)
+            .handle(
+                ActorEnvelope::Command(Command::ScanSkills(crate::feat::skills::ScanSkills {
+                    session_id,
+                })),
+                &ctx,
+            )
             .await;
 
         // Then the cache is cleared so rescanned bodies are re-rendered fresh.
         assert!(
-            state.read().frontend.caches.skill_preview_cache.read().is_empty(),
+            state
+                .read()
+                .frontend
+                .caches
+                .skill_preview_cache
+                .read()
+                .is_empty(),
             "rescan must clear the skill preview cache"
         );
     }
@@ -580,14 +599,15 @@ mod tests {
 
         // Then exactly one `shared` skill exists and it is the PROJECT one.
         let guard = state.read();
-        let session = guard
-            .session
-            .get(&session_id)
-            .expect("session exists");
+        let session = guard.session.get(&session_id).expect("session exists");
         let skills = session.discovered_skills();
         assert_eq!(skills.len(), 1, "dedup to one `shared`");
         assert_eq!(skills[0].name, "shared");
-        assert!(skills[0].body.contains("PROJECT body"), "project wins: {body}", body = skills[0].body);
+        assert!(
+            skills[0].body.contains("PROJECT body"),
+            "project wins: {body}",
+            body = skills[0].body
+        );
     }
 
     #[rstest::rstest]
@@ -601,7 +621,8 @@ mod tests {
         let subdir = repo.join("subdir");
         std::fs::create_dir_all(&subdir).expect("create nested dirs");
         let ancestor_skill = repo.join(".agents/skills/ancestor/SKILL.md");
-        std::fs::create_dir_all(ancestor_skill.parent().unwrap()).expect("create ancestor skill dir");
+        std::fs::create_dir_all(ancestor_skill.parent().unwrap())
+            .expect("create ancestor skill dir");
         std::fs::write(
             &ancestor_skill,
             "---\nname: ancestor\ndescription: ancestor skill\n---\n\n# ancestor body",
@@ -617,14 +638,16 @@ mod tests {
         let session_id = state.read().session.active_session_id().clone();
 
         let sink = Arc::new(RecordingSink::new());
-        let mut ctx =
-            ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
+        let mut ctx = ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
         let mut paths = AppPaths::new_in(dir.path());
         paths.set_home_dir_for_test(home.path().to_path_buf());
         let services = crate::common::services::test_services::TestServices::builder()
             .paths(paths)
             .build();
-        let deps = SkillsScanActorDeps { services, state: state.clone() };
+        let deps = SkillsScanActorDeps {
+            services,
+            state: state.clone(),
+        };
         let mut actor = SkillsScanActor::activate(deps, &mut ctx);
 
         // When scanning from the nested cwd.
@@ -642,7 +665,12 @@ mod tests {
         let guard = state.read();
         let session = guard.session.get(&session_id).expect("session exists");
         let skills = session.discovered_skills();
-        assert_eq!(skills.len(), 1, "expected only the ancestor skill, got {len}", len = skills.len());
+        assert_eq!(
+            skills.len(),
+            1,
+            "expected only the ancestor skill, got {len}",
+            len = skills.len()
+        );
         assert_eq!(skills[0].name, "ancestor");
     }
 
@@ -657,7 +685,12 @@ mod tests {
         std::fs::create_dir_all(&dir_b).expect("create dir b");
         // dir_a has skill `alpha`, dir_b has skill `beta`.
         for (base, name, body) in [("a", "alpha", "# A"), ("b", "beta", "# B")] {
-            let skill_dir = home.path().join(base).join(".agents").join("skills").join(name);
+            let skill_dir = home
+                .path()
+                .join(base)
+                .join(".agents")
+                .join("skills")
+                .join(name);
             std::fs::create_dir_all(&skill_dir).expect("create skill dir");
             std::fs::write(
                 skill_dir.join("SKILL.md"),
@@ -683,14 +716,16 @@ mod tests {
         }
 
         let sink = Arc::new(RecordingSink::new());
-        let mut ctx =
-            ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
+        let mut ctx = ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
         let mut paths = AppPaths::new_in(paths_root.path());
         paths.set_home_dir_for_test(home.path().to_path_buf());
         let services = crate::common::services::test_services::TestServices::builder()
             .paths(paths)
             .build();
-        let deps = SkillsScanActorDeps { services, state: state.clone() };
+        let deps = SkillsScanActorDeps {
+            services,
+            state: state.clone(),
+        };
         let mut actor = SkillsScanActor::activate(deps, &mut ctx);
 
         // Scan session A, then session B.
@@ -707,8 +742,16 @@ mod tests {
 
         // Then each session sees only its own skill.
         let guard = state.read();
-        let skills_a = guard.session.get(&session_a).expect("session a").discovered_skills();
-        let skills_b = guard.session.get(&session_b).expect("session b").discovered_skills();
+        let skills_a = guard
+            .session
+            .get(&session_a)
+            .expect("session a")
+            .discovered_skills();
+        let skills_b = guard
+            .session
+            .get(&session_b)
+            .expect("session b")
+            .discovered_skills();
         assert_eq!(skills_a.len(), 1, "session A should see only alpha");
         assert_eq!(skills_a[0].name, "alpha");
         assert_eq!(skills_b.len(), 1, "session B should see only beta");

@@ -27,7 +27,6 @@ pub trait PreviewCache {
     /// `PreviewCache` covariant over its lifetime, allowing reborrowing from a
     /// transient borrow without variance or lifetime conflicts.
     fn insert(&self, key: String, width: usize, lines: Vec<Line<'static>>);
-
 }
 
 /// Trait for picker items that can provide preview content.
