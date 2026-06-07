@@ -964,31 +964,43 @@ impl ChatSessionState {
         // All streaming indices cleaned up by StreamingPhase drop on cancel()
     }
 
-    /// Cancel streaming and drain queued messages back to the input buffer.
+    /// Cancel streaming and drain steering fragments plus queued messages back
+    /// into the input buffer.
     ///
-    /// Used when the user interrupts or switches to Normal mode during an
-    /// active stream. The display text from drained `UserMessage` entries is
-    /// joined with newlines and replaces whatever was in the input box.
-    /// `ToolContinuation` items are silently discarded.
+    /// Used when the user interrupts via ESC-confirm during an active stream.
+    /// Steering fragments (drained first) and the display text of each queued
+    /// `UserMessage` are joined with `"\n\n---\n\n"` and replace whatever was
+    /// in the input box. `ToolContinuation` items are silently discarded.
+    /// If nothing was drained, the input box is left untouched.
     pub fn cancel_stream_and_drain(&mut self) {
         self.cancel_streaming();
-        let drained = self.drain_queue();
-        let display_texts: Vec<&str> = drained
-            .iter()
-            .filter_map(|item| match item {
+        let drained_text = self.drain_cancel_chunks().join("\n\n---\n\n");
+        if !drained_text.is_empty() {
+            self.chat_input_mut().replace_all(drained_text);
+        }
+    }
+
+    /// Collects the text chunks drained out of the steering buffer and turn
+    /// queue, in cancel-recovery order.
+    ///
+    /// Steering fragments come first, followed by the display text of each
+    /// queued `UserMessage`. `ToolContinuation` items are discarded. The
+    /// caller applies whatever separator it wants.
+    fn drain_cancel_chunks(&mut self) -> Vec<String> {
+        let steering = self.steering_buffer_mut().drain_fragments();
+        let queue = self.drain_queue();
+        steering
+            .into_iter()
+            .chain(queue.into_iter().filter_map(|item| match item {
                 crate::feat::session::queue_item::QueueItem::UserMessage(entry) => {
                     match &entry.kind {
-                        ChatEntryKind::User { display, .. } => Some(display.as_str()),
+                        ChatEntryKind::User { display, .. } => Some(display.clone()),
                         _ => None,
                     }
                 }
                 crate::feat::session::queue_item::QueueItem::ToolContinuation => None,
-            })
-            .collect();
-        let drained_text = display_texts.join("\n");
-        if !drained_text.is_empty() {
-            self.chat_input_mut().replace_all(drained_text);
-        }
+            }))
+            .collect()
     }
 
     /// Returns the current session lifecycle phase.
