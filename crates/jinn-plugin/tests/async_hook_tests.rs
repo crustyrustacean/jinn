@@ -8,6 +8,7 @@
     reason = "test code"
 )]
 
+use jinn_domain::feat::plugin_system::SessionPluginRegistry;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -35,7 +36,7 @@ fn build_system(dir: &Path) -> TestSystem {
     // Leak the runtime — it lives for the test duration.
     // Can't drop a Runtime inside a #[tokio::test] async context.
     let rt = Box::leak(Box::new(tokio::runtime::Runtime::new().expect("runtime")));
-    let (_, async_handle, _) = PluginSystem::new(
+    let (_, async_handle, _) = PluginSystem::build(
         dir,
         Path::new("/nonexistent"),
         rt.handle().clone(),

@@ -15,6 +15,10 @@ pub use sender::MsgSender;
 /// Merges crossterm terminal events, periodic tick messages,
 /// and commands (from key handling or actors) into a single stream
 /// consumed by the main event loop.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Command variant is channel-sent only, never bulk-stored; boxing would add a heap allocation per message for no benefit"
+)]
 #[derive(Debug)]
 pub enum Msg {
     /// Periodic tick for render refresh.

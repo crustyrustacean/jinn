@@ -17,7 +17,7 @@ impl PluginSyncCall for PluginSyncHandle {
         hook: &str,
         ctx: &Value,
     ) -> Result<Vec<Value>, Report<PluginSyncCallError>> {
-        self.call_hooks_json(hook, ctx)
+        self.call_hooks_json_impl(hook, ctx)
             .map_err(|report| report.change_context(PluginSyncCallError))
     }
 
@@ -27,7 +27,7 @@ impl PluginSyncCall for PluginSyncHandle {
         hook: &str,
         ctx: &Value,
     ) -> Result<Vec<Value>, Report<PluginSyncCallError>> {
-        self.call_hooks_for_session_json(session, hook, ctx)
+        self.call_hooks_for_session_json_impl(session, hook, ctx)
             .map_err(|report| report.change_context(PluginSyncCallError))
     }
 
