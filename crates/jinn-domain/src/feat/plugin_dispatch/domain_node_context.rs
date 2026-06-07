@@ -11,6 +11,7 @@ use error_stack::Report;
 use parking_lot::Mutex;
 use tokio::sync::oneshot;
 use wherror::Error;
+use crate::feat::provider::protocol::command::CancelStream;
 
 use crate::common::services::Services;
 use crate::common::state::State;
@@ -164,6 +165,8 @@ impl DomainNodeContext {
         user_prompt: String,
         system_prompt: Option<String>,
         persist: bool,
+        disable_tool_loop: bool,
+        timeout_ms: u64,
     ) -> Result<String, Report<DomainContextError>> {
         // 1. Read source session ONLY for provider+model (no history clone).
         let provider_model = {
@@ -177,10 +180,18 @@ impl DomainNodeContext {
         // 2. Build a FRESH minimal session (default SessionCore, empty history).
         let mut session = ChatSessionState::default();
 
-        // 3. History-less overrides: custom system prompt, no tools/skills/context files.
+        // 3. History-less overrides: custom system prompt, no skills/context files.
+        //    Tools branch on `disable_tool_loop`: an empty vec forces no tools and
+        //    pairs with `set_tool_loop_disabled` (step 4a); `None` lets assembly
+        //    inherit the full global catalog, same as a normal session.
+        let tool_definitions = if disable_tool_loop {
+            Some(Vec::new())
+        } else {
+            None
+        };
         let overrides = AssemblyOverrides {
             system_prompt,
-            tool_definitions: Some(vec![]),
+            tool_definitions,
             skip_skills: true,
             skip_context_files: true,
         };
@@ -194,6 +205,14 @@ impl DomainNodeContext {
         session.core.assembly_overrides = Some(overrides);
         session.core.parent_session = Some(source_session_id.clone());
         session.set_model(provider_model);
+
+        // 4a. When the caller disables the tool loop, set the machine flag so a
+        //     model that hallucinates a tool-call-shaped turn transitions to
+        //     `Idle` after the (empty) batch instead of looping `Sending ↔ Streaming`.
+        if disable_tool_loop {
+            session.set_tool_loop_disabled();
+        }
+
 
         let session_id = session.session_id().clone();
 
@@ -216,8 +235,22 @@ impl DomainNodeContext {
                 entry,
             }));
 
-        rx.await
-            .map_err(|_| Report::new(DomainContextError).attach("one-shot LLM request cancelled"))
+        // 7. Await with a bounded timeout. On expiry: hard-cancel the underlying
+        //    session (no zombie stream burning provider tokens) and drop the pending
+        //    entry so a later Idle transition can't resolve a dead receiver.
+        match tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), rx).await {
+            Ok(Ok(response)) => Ok(response),
+            Ok(Err(_)) => Err(Report::new(DomainContextError)
+                .attach("one-shot LLM request cancelled")),
+            Err(_) => {
+                self.pending.lock().remove(&session_id);
+                self.services.actor_channel.send_command(
+                    Command::CancelStream(CancelStream { session_id: session_id.clone() }),
+                );
+                Err(Report::new(DomainContextError)
+                    .attach(format!("one-shot LLM request timed out after {timeout_ms}ms")))
+            }
+        }
     }
 }
 
@@ -329,6 +362,8 @@ mod tests {
             "rewrite me".to_owned(),
             Some("be concise".to_owned()),
             false,
+            true,
+            30_000,
         );
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
@@ -393,6 +428,8 @@ mod tests {
             "x".to_owned(),
             None,
             false,
+            true,
+            30_000,
         );
         // Pin and poll once to drive to the error before any await point.
         futures::pin_mut!(fut);
@@ -419,7 +456,7 @@ mod tests {
             .set_active(source_id.clone());
 
         // When the one-shot runs (parking on its response channel).
-        let fut = ctx.send_llm_request_oneshot(&source_id, "rewrite me".to_owned(), None, false);
+        let fut = ctx.send_llm_request_oneshot(&source_id, "rewrite me".to_owned(), None, false, true, 30_000);
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
         let mut poll_cx = std::task::Context::from_waker(&waker);
@@ -448,6 +485,8 @@ mod tests {
             "rewrite me".to_owned(),
             None,
             false,
+            true,
+            30_000,
         );
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
@@ -479,6 +518,8 @@ mod tests {
             "rewrite me".to_owned(),
             None,
             true,
+            true,
+            30_000,
         );
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
@@ -495,6 +536,159 @@ mod tests {
         assert!(
             new.core.persist,
             "persist=true request must produce a persistent session"
+        );
+    }
+
+    // ── disable_tool_loop knob ─────────────────────────────────────────
+
+    #[tokio::test]
+    async fn disable_tool_loop_true_sets_flag_and_empty_tools() {
+        // Given a source session.
+        let (ctx, _rx) = make_ctx_with_channel();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+
+        // When the one-shot runs with disable_tool_loop=true.
+        let fut = ctx.send_llm_request_oneshot(
+            &source_id,
+            "rewrite me".to_owned(),
+            None,
+            false,
+            true,
+            30_000,
+        );
+        futures::pin_mut!(fut);
+        let waker = futures::task::noop_waker();
+        let mut poll_cx = std::task::Context::from_waker(&waker);
+        let _ = fut.as_mut().poll(&mut poll_cx);
+
+        // Then the new session has tool_loop_disabled set and an empty tool override.
+        let guard = ctx.state.read();
+        let new = guard
+            .session
+            .sessions()
+            .values()
+            .find(|s| s.core.is_automated && s.core.parent_session.as_ref() == Some(&source_id))
+            .expect("one-shot session created");
+        assert!(
+            new.is_tool_loop_disabled(),
+            "disable_tool_loop=true must set the machine flag"
+        );
+        assert_eq!(
+            new.core.assembly_overrides.as_ref().map(|o| o.tool_definitions.as_deref()),
+            Some(Some(&[][..])),
+            "disable_tool_loop=true must declare an empty tool set, not None"
+        );
+    }
+
+    #[tokio::test]
+    async fn disable_tool_loop_false_inherits_full_catalog() {
+        // Given a source session.
+        let (ctx, _rx) = make_ctx_with_channel();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+
+        // When the one-shot runs with disable_tool_loop=false.
+        let fut = ctx.send_llm_request_oneshot(
+            &source_id,
+            "rewrite me".to_owned(),
+            None,
+            false,
+            false,
+            30_000,
+        );
+        futures::pin_mut!(fut);
+        let waker = futures::task::noop_waker();
+        let mut poll_cx = std::task::Context::from_waker(&waker);
+        let _ = fut.as_mut().poll(&mut poll_cx);
+
+        // Then the new session does NOT set the flag and the tool override is None
+        // (assembly will pull the full global catalog).
+        let guard = ctx.state.read();
+        let new = guard
+            .session
+            .sessions()
+            .values()
+            .find(|s| s.core.is_automated && s.core.parent_session.as_ref() == Some(&source_id))
+            .expect("one-shot session created");
+        assert!(
+            !new.is_tool_loop_disabled(),
+            "disable_tool_loop=false must leave the machine flag cleared"
+        );
+        assert_eq!(
+            new.core.assembly_overrides.as_ref().map(|o| &o.tool_definitions),
+            Some(&None),
+            "disable_tool_loop=false must leave tool override as None (inherit catalog)"
+        );
+    }
+
+    // ── timeout_ms knob ──────────────────────���────────────────────────
+    //
+    // The timeout uses tokio::time::timeout with the test runtime's auto-advance.
+    // We never call resolve_completed, so the receiver never resolves; the
+    // timeout must fire, hard-cancel the session, and return an error.
+
+    #[tokio::test]
+    async fn oneshot_timeout_cancels_session() {
+        // Given a one-shot with a tiny timeout and no resolver.
+        let (ctx, rx) = make_ctx_with_channel();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+
+        let result = ctx
+            .send_llm_request_oneshot(
+                &source_id,
+                "rewrite me".to_owned(),
+                None,
+                false,
+                true,
+                1,
+            )
+            .await;
+
+        // Then the future returns an error (timeout).
+        assert!(result.is_err(), "timeout must surface as an error");
+        let msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            msg.contains("timed out"),
+            "error must mention the timeout, got: {msg}"
+        );
+
+        // And a CancelStream command was emitted for the one-shot session.
+        let mut saw_cancel = false;
+        while let Ok(Some(app_msg)) = rx.try_recv() {
+            if let AppMsg::Command { command: Command::CancelStream(_), .. } = app_msg {
+                saw_cancel = true;
+            }
+        }
+        assert!(
+            saw_cancel,
+            "timeout must hard-cancel the underlying session via CancelStream"
+        );
+    }
+
+    #[tokio::test]
+    async fn oneshot_timeout_removes_pending() {
+        // Given a one-shot with a tiny timeout and no resolver.
+        let (ctx, _rx) = make_ctx_with_channel();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+
+        // When the one-shot times out.
+        let _ = ctx
+            .send_llm_request_oneshot(
+                &source_id,
+                "rewrite me".to_owned(),
+                None,
+                false,
+                true,
+                1,
+            )
+            .await;
+
+        // Then the pending entry is cleaned up (no leak).
+        let still_pending = ctx.state.read().session.sessions().values().any(|s| {
+            s.core.is_automated && s.core.parent_session.as_ref() == Some(&source_id) && ctx.has_pending(&s.core.session_id)
+        });
+        assert!(
+            !still_pending,
+            "timeout must remove the pending oneshot entry for the cancelled session"
         );
     }
 }
