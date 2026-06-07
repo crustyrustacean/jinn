@@ -59,6 +59,14 @@ impl SteeringBuffer {
         let text = std::mem::take(&mut self.fragments).join("\n\n");
         Some(ChatEntry::user_expanded(text.clone(), text))
     }
+
+    /// Drain all buffered fragments, returning them in submission order.
+    ///
+    /// Unlike [`Self::drain_into_entry`], this returns the raw fragments without
+    /// joining, so callers can apply their own separator. Clears the buffer.
+    pub fn drain_fragments(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.fragments)
+    }
 }
 
 #[cfg(test)]
@@ -180,5 +188,65 @@ mod tests {
             ContextOverride::Default,
             "drained steering entry must use default context override"
         );
+    }
+
+    // --- drain_fragments ---
+
+    #[test]
+    fn drain_fragments_empty_returns_empty_vec() {
+        // Given an empty buffer.
+        let mut buf = SteeringBuffer::new();
+
+        // When draining fragments.
+        let fragments = buf.drain_fragments();
+
+        // Then an empty vec is returned.
+        assert!(fragments.is_empty());
+    }
+
+    #[test]
+    fn drain_fragments_returns_fragments_in_order() {
+        // Given a buffer with three fragments.
+        let mut buf = SteeringBuffer::new();
+        buf.push_fragment("a");
+        buf.push_fragment("b");
+        buf.push_fragment("c");
+
+        // When draining fragments.
+        let fragments = buf.drain_fragments();
+
+        // Then fragments are returned in submission order.
+        assert_eq!(fragments, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn drain_fragments_clears_buffer() {
+        // Given a buffer with two fragments.
+        let mut buf = SteeringBuffer::new();
+        buf.push_fragment("a");
+        buf.push_fragment("b");
+
+        // When draining fragments.
+        let _ = buf.drain_fragments();
+
+        // Then the buffer is empty.
+        assert!(buf.is_empty());
+        assert_eq!(buf.len(), 0);
+    }
+
+    #[test]
+    fn drain_fragments_after_drain_into_entry_starts_fresh() {
+        // Given a buffer drained via drain_into_entry then refilled.
+        let mut buf = SteeringBuffer::new();
+        buf.push_fragment("first");
+        let _ = buf.drain_into_entry();
+        buf.push_fragment("second");
+        buf.push_fragment("third");
+
+        // When draining fragments.
+        let fragments = buf.drain_fragments();
+
+        // Then only the newly pushed fragments are returned.
+        assert_eq!(fragments, vec!["second", "third"]);
     }
 }

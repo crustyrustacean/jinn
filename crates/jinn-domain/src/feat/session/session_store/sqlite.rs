@@ -760,7 +760,6 @@ fn save_blocking(
                 sessions::title.eq(excluded(sessions::title)),
                 sessions::updated_at.eq(excluded(sessions::updated_at)),
                 sessions::profile.eq(excluded(sessions::profile)),
-
                 sessions::blobs.eq(excluded(sessions::blobs)),
                 sessions::cwd.eq(excluded(sessions::cwd)),
                 sessions::lifecycle_name.eq(excluded(sessions::lifecycle_name)),
@@ -841,9 +840,6 @@ fn save_blocking(
                 })
                 .execute(txn)?;
         }
-
-
-
 
         Ok(())
     })
@@ -1030,8 +1026,7 @@ fn delete_blocking(
 
         // Delete the session. With FK=ON this cascades to remove this session's
         // session_history and token_ledger rows.
-        diesel::delete(sessions::table.filter(sessions::id.eq(&session_id_str)))
-            .execute(txn)?;
+        diesel::delete(sessions::table.filter(sessions::id.eq(&session_id_str))).execute(txn)?;
 
         if candidates.is_empty() {
             return Ok(());
@@ -1051,8 +1046,7 @@ fn delete_blocking(
             .collect();
 
         if !orphaned.is_empty() {
-            diesel::delete(entries::table.filter(entries::id.eq_any(&orphaned)))
-                .execute(txn)?;
+            diesel::delete(entries::table.filter(entries::id.eq_any(&orphaned))).execute(txn)?;
         }
 
         Ok(())
@@ -1778,9 +1772,10 @@ mod tests {
         let dir = tempfile::tempdir().expect("temp dir");
         let db_path = dir.path().join("sessions.db");
         let database_url = db_path.to_string_lossy().to_string();
-        let mut conn = SqliteConnection::establish(&database_url)
-            .expect("establish");
-        sql_query("PRAGMA foreign_keys=ON").execute(&mut conn).expect("fk on");
+        let mut conn = SqliteConnection::establish(&database_url).expect("establish");
+        sql_query("PRAGMA foreign_keys=ON")
+            .execute(&mut conn)
+            .expect("fk on");
         migrator::run_migrations(&mut conn).expect("migrations");
         sql_query(
             "INSERT INTO entries (id, timestamp, kind) \
@@ -1801,7 +1796,10 @@ mod tests {
             .count()
             .get_result(&mut conn)
             .expect("count");
-        assert_eq!(survivor, 1, "orphan entry must survive a save on another session");
+        assert_eq!(
+            survivor, 1,
+            "orphan entry must survive a save on another session"
+        );
     }
 
     /// Standalone connection with migrations applied and FK on, for raw
@@ -1811,7 +1809,9 @@ mod tests {
         let db_path = dir.path().join("sessions.db");
         let url = db_path.to_string_lossy().to_string();
         let mut conn = SqliteConnection::establish(&url).expect("establish");
-        sql_query("PRAGMA foreign_keys=ON").execute(&mut conn).expect("fk on");
+        sql_query("PRAGMA foreign_keys=ON")
+            .execute(&mut conn)
+            .expect("fk on");
         migrator::run_migrations(&mut conn).expect("migrations");
         (dir, conn)
     }
@@ -1831,10 +1831,7 @@ mod tests {
 
         // Then the unique entry is reaped (cleanup still works, not regressed
         // to never-reap).
-        let surviving: i64 = entries::table
-            .count()
-            .get_result(&mut conn)
-            .expect("count");
+        let surviving: i64 = entries::table.count().get_result(&mut conn).expect("count");
         assert_eq!(surviving, 0, "unique entry should be reaped on delete");
     }
 

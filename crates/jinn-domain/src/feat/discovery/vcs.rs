@@ -63,7 +63,8 @@ mod tests {
     fn detects_fossil_checkout_marker() {
         // Given a directory containing a .fslckout marker (Fossil checkout).
         let dir = tempfile::tempdir().expect("temp dir");
-        std::fs::write(dir.path().join(".fslckout"), b"fossil checkout db").expect("create .fslckout");
+        std::fs::write(dir.path().join(".fslckout"), b"fossil checkout db")
+            .expect("create .fslckout");
 
         // Then is_vcs_root reports true.
         assert!(is_vcs_root(dir.path()));

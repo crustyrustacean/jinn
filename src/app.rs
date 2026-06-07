@@ -634,9 +634,6 @@ mod tests {
     //  2. The checkpoint itself is proven by `shutdown_truncates_wal_file` and
     //     `shutdown_makes_db_self_contained_for_backup` in the session store tests.
 
-
-
-
     #[rstest::rstest]
     fn load_compaction_prompt_populates_state() {
         // Given a user dir with a compaction prompt file.

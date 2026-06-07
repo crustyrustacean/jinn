@@ -591,7 +591,9 @@ fn state_with_pinned_tool_result(name: &str, content: &str) -> AppState {
     let entry = ChatEntry::tool_result("call-1", name, content, ToolResultStatus::Success);
     let entry_id = entry.id.clone();
     state.active_session_mut().push_entry(entry);
-    state.active_session_mut().pin_entry(&entry_id, PinPosition::Top);
+    state
+        .active_session_mut()
+        .pin_entry(&entry_id, PinPosition::Top);
     state
 }
 
