@@ -182,6 +182,7 @@ pub struct ThemeFile {
     #[serde(default)]
     pub selection_bg: Option<ThemeColor>,
 
+    /// Accent color used for hotkeys.
     #[serde(default)]
     pub accent_action: Option<ThemeColor>,
     #[serde(default)]
