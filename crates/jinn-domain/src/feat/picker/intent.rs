@@ -501,8 +501,7 @@ fn confirm_session_lifecycle(state: &mut AppState) -> IntentResult {
         state.frontend.arg_input = crate::common::app_state::ArgInputState {
             lifecycle_name,
             template_display,
-            input: String::new(),
-            cursor_pos: 0,
+            text: crate::common::line_input::LineInput::new(),
         };
         state
             .frontend

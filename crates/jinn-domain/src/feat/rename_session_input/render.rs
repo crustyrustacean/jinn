@@ -69,14 +69,14 @@ pub fn render_rename_session_input(frame: &mut Frame<'_>, area: Rect, ctx: &Rend
 
     // Input line: "> {input}" - the ">" uses focus_accent for consistency.
     let prefix = Span::styled("> ", Style::default().fg(theme.focus_accent));
-    let input_span = Span::raw(&input_state.input);
+    let input_span = Span::raw(&input_state.text.input);
     let input_line = Line::from(vec![prefix, input_span]);
     let input_para = Paragraph::new(input_line);
     frame.render_widget(input_para, Rect::new(inner.x, inner.y, inner.width, 1));
 
     // Compute cursor x position: "> " (2) + grapheme count up to cursor_pos.
     let prefix_len = 2u16;
-    let grapheme_count = input_state.input[..input_state.cursor_pos]
+    let grapheme_count = input_state.text.input[..input_state.text.cursor_pos]
         .graphemes(true)
         .count();
     let cursor_x = (prefix_len + grapheme_count as u16).min(inner.width.saturating_sub(1));
@@ -99,8 +99,7 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "My Session".to_owned(),
-            cursor_pos: 10,
+            text: crate::common::line_input::LineInput { input: "My Session".to_owned(), cursor_pos: 10 },
         };
         let (mut terminal, area) = setup_term(80, 24);
 
@@ -143,8 +142,7 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Hello World".to_owned(),
-            cursor_pos: 11,
+            text: crate::common::line_input::LineInput { input: "Hello World".to_owned(), cursor_pos: 11 },
         };
         let (mut terminal, area) = setup_term(80, 24);
 
@@ -181,8 +179,7 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Test".to_owned(),
-            cursor_pos: 4,
+            text: crate::common::line_input::LineInput { input: "Test".to_owned(), cursor_pos: 4 },
         };
         let (mut terminal, area) = setup_term(80, 24);
 
