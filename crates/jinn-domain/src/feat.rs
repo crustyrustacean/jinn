@@ -6,6 +6,7 @@ pub mod chat_entry_selection;
 pub mod chat_input;
 pub mod compaction_worker;
 pub mod context;
+pub mod cwd_input;
 pub mod global;
 pub mod history_worker;
 pub mod intent;
