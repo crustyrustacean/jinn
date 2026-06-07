@@ -60,7 +60,6 @@ impl UiElement for StreamingIndicatorElement {
         let state = ctx.state;
         let session = state.active_session();
         let phase = session.phase();
-        let queue_len = session.queue_len();
 
         let is_busy = session.is_busy();
         let is_phase_busy = matches!(phase, PhaseKind::Sending | PhaseKind::Streaming);
@@ -70,21 +69,13 @@ impl UiElement for StreamingIndicatorElement {
         }
 
         let label = if is_busy {
-            if queue_len > 0 {
-                format!(" Working... ({queue_len} queued)")
-            } else {
-                " Working...".to_owned()
-            }
+            " Working..."
         } else {
-            if queue_len > 0 {
-                format!(" Streaming... ({queue_len} queued)")
-            } else {
-                " Streaming...".to_owned()
-            }
+            " Streaming..."
         };
 
         let throbber = Throbber::default()
-            .label(&label)
+            .label(&*label)
             .style(Style::default().fg(state.frontend.theme.streaming))
             .throbber_style(Style::default().fg(state.frontend.theme.streaming))
             .throbber_set(throbber_widgets_tui::ASCII)
