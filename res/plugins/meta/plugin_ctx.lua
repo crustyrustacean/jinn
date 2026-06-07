@@ -123,5 +123,14 @@
 ---@field persist boolean|nil If true, the one-shot session is written to the
 ---  SQLite store; defaults to false (transient). Set true for reviewable
 ---  runs (e.g. a judge/eval).
+---@field disable_tool_loop boolean|nil If true, the one-shot session runs with no
+---  declared tools and tool_loop_disabled set, so the model cannot enter a
+---  tool loop. If false (default), the one-shot inherits the full tool
+---  catalog the session would normally see.
+---@field timeout_ms number|nil Hard upper bound on the await, in milliseconds.
+---  Defaults to 30000. On expiry, the one-shot session is hard-cancelled
+---  (no background token burn) and the request returns an error to the hook.
+---  SQLite store; defaults to false (transient). Set true for reviewable
+---  runs (e.g. a judge/eval).
 ---@class LlmOneshotResponse
 ---@field text string The model's response text.

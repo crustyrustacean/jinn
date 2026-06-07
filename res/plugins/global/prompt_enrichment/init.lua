@@ -113,6 +113,8 @@ function M.on_enrich(ctx)
             system = ENRICH_PROMPT,
             prompt = ctx.text,
             persist = false, -- one-shot enrichment is transient; never write to the store
+            disable_tool_loop = true, -- enrichment is a pure text rewrite; never run tool loops
+            timeout_ms = 30000, -- bound a genuinely stuck model; hard-cancels the one-shot session
         })
 
         -- Re-read plugin_data in case it changed during the await (re-trigger).

@@ -254,6 +254,16 @@ pub async fn handle_plugin_request(
                 prompt: String,
                 #[serde(default)]
                 persist: Option<bool>,
+                // Whether the one-shot session is immune to tool-call loops.
+                // true  -> empty tool definitions + tool_loop_disabled set
+                // false -> inherit the full global tool catalog (default)
+                #[serde(default)]
+                disable_tool_loop: Option<bool>,
+                // Hard timeout for the one-shot in milliseconds.
+                // On expiry the underlying session is hard-cancelled (CancelStream)
+                // and the await returns an error. Defaults to 30000.
+                #[serde(default)]
+                timeout_ms: Option<u64>,
             }
             match serde_json::from_value::<LlmOneshotPayload>(data.clone()) {
                 Ok(p) => match domain_ctx
@@ -262,8 +272,8 @@ pub async fn handle_plugin_request(
                         p.prompt,
                         p.system,
                         p.persist.unwrap_or(false),
-                        true,
-                        30_000,
+                        p.disable_tool_loop.unwrap_or(false),
+                        p.timeout_ms.unwrap_or(30_000),
                     )
                     .await
                 {
