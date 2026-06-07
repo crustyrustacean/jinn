@@ -3277,9 +3277,9 @@ fn cancel_stream_and_drain_puts_user_display_text_in_input() {
     // When cancelling and draining.
     session.cancel_stream_and_drain();
 
-    // Then the input buffer contains the drained display texts joined by newline.
+    // Then the input buffer contains the drained display texts joined by the cancel separator.
     let text = session.chat_input().text().to_owned();
-    assert_eq!(text, "hello world\nsecond message");
+    assert_eq!(text, "hello world\n\n---\n\nsecond message");
 }
 
 #[rstest::rstest]
