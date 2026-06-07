@@ -51,21 +51,26 @@ impl UiElement for ChatInputBoxElement {
 
         let text_style = Style::default();
 
-        let (mode_label, mode_color) = {
+        let (mode_label, mode_color, buffer_count) = {
             let mode = state.active_chat_input().input_mode();
-            (
-                mode.label(),
-                match mode {
-                    crate::feat::chat_input::state::chat_input_box::InputMode::Queue => {
-                        theme.input_mode_queue
-                    }
-                    crate::feat::chat_input::state::chat_input_box::InputMode::Steer => {
-                        theme.input_mode_steer
-                    }
-                },
-            )
+            let count = match mode {
+                crate::feat::chat_input::state::chat_input_box::InputMode::Queue => {
+                    state.active_session().queue_len()
+                }
+                crate::feat::chat_input::state::chat_input_box::InputMode::Steer => {
+                    state.active_session().steering_buffer().len()
+                }
+            };
+            let color = match mode {
+                crate::feat::chat_input::state::chat_input_box::InputMode::Queue => {
+                    theme.input_mode_queue
+                }
+                crate::feat::chat_input::state::chat_input_box::InputMode::Steer => {
+                    theme.input_mode_steer
+                }
+            };
+            (mode.label(), color, count)
         };
-        let buffer_count = state.active_session().steering_buffer().len();
         let badge_text = if buffer_count > 0 {
             format!("[{mode_label} · {buffer_count}]")
         } else {

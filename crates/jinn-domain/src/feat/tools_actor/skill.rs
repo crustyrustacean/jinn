@@ -3,6 +3,8 @@
 //! subsequent turn (the entry is pinned with `PinPosition::Relative`, which
 //! survives compaction).
 
+use std::path::PathBuf;
+
 use crate::feat::skills::frontmatter::strip_frontmatter;
 use crate::feat::tools_actor::tool_types::{
     ToolCall, ToolContext, ToolDefinition, ToolResult, ToolResultPinPosition,
@@ -32,6 +34,49 @@ pub fn definition() -> ToolDefinition {
     }
 }
 
+/// Builds a failure `ToolResult` for the given call with a human-facing message.
+fn failure_result(call: &ToolCall, message: impl Into<String>) -> ToolResult {
+    ToolResult {
+        tool_call_id: call.id.clone(),
+        name: call.name.clone(),
+        content: message.into(),
+        success: false,
+        full_content: None,
+        truncation: None,
+        pin_position: None,
+    }
+}
+
+/// Resolves a skill's path from the session's discovered set.
+///
+/// Returns `Err` with a user-facing message if state/session is unavailable or
+/// the skill was not discovered for this session. This avoids re-deriving the
+/// path from the global skills dir, which would break for project-local skills.
+fn resolve_skill_path(ctx: &ToolContext, name: &str) -> Result<PathBuf, String> {
+    let Some(state) = ctx.state.as_ref() else {
+        return Err(format!("cannot resolve skill '{name}': no state available"));
+    };
+    let Some(session_id) = ctx.session_id.as_ref() else {
+        return Err(format!(
+            "cannot resolve skill '{name}': no session in context"
+        ));
+    };
+    let guard = state.read();
+    let Some(session) = guard.session.get(session_id) else {
+        return Err(format!("cannot resolve skill '{name}': session not found"));
+    };
+    session
+        .discovered_skills()
+        .iter()
+        .find(|s| s.name == name)
+        .map(|s| s.file_path.clone())
+        .ok_or_else(|| {
+            format!(
+                "skill '{name}' was not discovered for this session. It may have been removed or never scanned."
+            )
+        })
+}
+
 /// Executes the `skill` built-in tool.
 ///
 /// Reads the skill's SKILL.md file, strips YAML frontmatter, and returns the
@@ -42,29 +87,11 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
     Box::pin(async move {
         let name = match parse_args(&call.arguments) {
             Ok(n) => n,
-            Err(e) => {
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: format!("failed to parse arguments: {e}"),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                };
-            }
+            Err(e) => return failure_result(&call, format!("failed to parse arguments: {e}")),
         };
 
         if name.is_empty() {
-            return ToolResult {
-                tool_call_id: call.id,
-                name: call.name,
-                content: "skill name must not be empty".to_owned(),
-                success: false,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            };
+            return failure_result(&call, "skill name must not be empty");
         }
 
         // Reject disabled skills.
@@ -73,17 +100,12 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             if let Some(session) = guard.session.get(session_id)
                 && !session.is_skill_enabled(&name)
             {
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: format!(
+                return failure_result(
+                    &call,
+                    format!(
                         "skill '{name}' is disabled for this session. Use <leader>sk to re-enable it."
                     ),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                };
+                );
             }
         }
 
@@ -93,34 +115,32 @@ pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
             if let Some(session) = guard.session.get(session_id)
                 && session.loaded_skills().contains(&name)
             {
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: format!(
+                return failure_result(
+                    &call,
+                    format!(
                         "skill '{name}' is already loaded; its content is in context as a pinned tool result"
                     ),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                };
+                );
             }
         }
 
-        let skill_path = ctx.app_paths.skills_dir().join(&name).join("SKILL.md");
+        // Resolve the skill's path from the session's discovered set rather than
+        // re-deriving it from the global dir. This makes project-local skills loadable
+        // and fails clearly if the skill was not discovered for this session.
+        let skill_path = match resolve_skill_path(&ctx, &name) {
+            Ok(p) => p,
+            Err(msg) => {
+                return failure_result(&call, msg);
+            }
+        };
 
         let content = match tokio::fs::read_to_string(&skill_path).await {
             Ok(c) => c,
             Err(e) => {
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: format!("failed to read skill '{}': {e}", skill_path.display()),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                };
+                return failure_result(
+                    &call,
+                    format!("failed to read skill '{}': {e}", skill_path.display()),
+                );
             }
         };
 
@@ -201,20 +221,119 @@ mod tests {
     #[rstest::rstest]
     #[tokio::test]
     async fn execute_returns_error_for_nonexistent_skill() {
-        // Given a call for a nonexistent skill.
+        use crate::common::app_state::AppState;
+        use crate::common::state::State;
+        use crate::protocol::SessionId;
+
+        // Given a call for a skill that was never discovered for this session.
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        {
+            let mut guard = state.write();
+            guard.session_mut_or_create(&session_id);
+        }
+        let ctx = ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            timeout: None,
+            bash_default_timeout: None,
+            state: Some(state),
+            session_id: Some(session_id),
+            app_paths: crate::common::app_paths::AppPaths::default(),
+            sink: None,
+            shell: "/bin/sh".to_owned(),
+            max_output_lines: None,
+            max_output_bytes: None,
+        };
         let result = execute(
             ToolCall {
                 id: "call_1".to_owned(),
                 name: "skill".to_owned(),
                 arguments: serde_json::json!({"name": "nonexistent-skill-xyz"}).to_string(),
             },
-            test_ctx(),
+            ctx,
         )
         .await;
 
-        // Then the result indicates failure.
+        // Then the result indicates failure with a clear not-discovered message.
         assert!(!result.success);
-        assert!(result.content.contains("failed to read skill"));
+        assert!(
+            result.content.contains("was not discovered"),
+            "should mention not-discovered, got: {}",
+            &result.content
+        );
+    }
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn execute_loads_project_local_skill_from_discovered_file_path() {
+        use crate::common::app_state::AppState;
+        use crate::common::state::State;
+        use crate::feat::skills::{Skill, SkillSource};
+        use crate::protocol::SessionId;
+
+        // Given a project-local skill whose file_path is NOT under the global
+        // skills dir. Pre-fix, execute() would re-derive the path from the global
+        // dir and fail. Post-fix, it resolves from the session's discovered set.
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let skill_dir = tmp.path().join(".agents/skills/proj-skill");
+        std::fs::create_dir_all(&skill_dir).expect("create skill dir");
+        let skill_file = skill_dir.join("SKILL.md");
+        std::fs::write(
+            &skill_file,
+            "---\nname: proj-skill\ndescription: a project skill\n---\nproject body\n",
+        )
+        .expect("write skill");
+
+        let state = State::new(AppState::default());
+        let session_id = SessionId::new();
+        {
+            let mut guard = state.write();
+            let session = guard.session_mut_or_create(&session_id);
+            session.set_discovered_skills(vec![Skill {
+                name: "proj-skill".to_owned(),
+                description: "a project skill".to_owned(),
+                body: String::new(),
+                file_path: skill_file.clone(),
+                base_dir: skill_dir.clone(),
+                source: SkillSource::Project {
+                    dir: tmp.path().to_path_buf(),
+                },
+            }]);
+        }
+
+        let call = ToolCall {
+            id: "call_1".to_owned(),
+            name: "skill".to_owned(),
+            arguments: serde_json::json!({"name": "proj-skill"}).to_string(),
+        };
+
+        let ctx = ToolContext {
+            cwd: PathBuf::from("/tmp"),
+            timeout: None,
+            bash_default_timeout: None,
+            state: Some(state),
+            session_id: Some(session_id),
+            app_paths: crate::common::app_paths::AppPaths::default(),
+            sink: None,
+            shell: "/bin/sh".to_owned(),
+            max_output_lines: None,
+            max_output_bytes: None,
+        };
+
+        // When executing.
+        let result = execute(call, ctx).await;
+
+        // Then the project-local skill loads successfully, reading from the
+        // discovered file_path (outside the global dir).
+        assert!(
+            result.success,
+            "project-local skill should load, got: {}",
+            &result.content
+        );
+        assert!(
+            result.content.contains("project body"),
+            "tool result should contain the project skill body, got: {}",
+            &result.content[..result.content.len().min(120)]
+        );
     }
 
     #[rstest::rstest]

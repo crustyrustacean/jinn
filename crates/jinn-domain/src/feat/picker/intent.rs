@@ -8,11 +8,12 @@
 
 use crate::common::app_state::AppState;
 use crate::common::app_state::FocusScope;
-use crate::feat::context::protocol::command::LoadPersonaPickerEntries;
+use crate::feat::context::protocol::command::{LoadPersonaPickerEntries, ScanContextFiles};
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
-use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch};
+use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch, RescanPromptTemplates};
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
+use crate::feat::skills::ScanSkills;
 use crate::feat::tools_actor::tool_entry::ToolEntry;
 
 use crate::feat::ui::picker_states::PickerExt;
@@ -680,11 +681,14 @@ pub fn handle_skill_toggle(state: &mut AppState) -> IntentResult {
     IntentResult::empty()
 }
 
-/// Refreshes the skill list by rescanning the skills directory.
+/// Refreshes discovered project resources (skills, prompts, AGENTS.md) by
+/// rescanning the session's cwd. Issues all three scan commands so the
+/// discovery coordinator receives a complete set of `*Loaded` events and
+/// settles cleanly (rather than arming the 3000ms safety-net timer on a
+/// partial trigger). The scan actors handle the actual I/O and reload picker
+/// entries.
 ///
-/// Validates that the skill picker is currently active, pushes a transient
-/// \"Refreshing skills...\" message, and returns a \`ScanSkills\` command.
-/// The \`SkillsScanActor\` handles the actual scan and reloads the picker entries.
+/// No-op unless the skill picker is the active scope.
 pub fn handle_refresh_skills(state: &mut AppState) -> IntentResult {
     if state.frontend.scope_stack.picker_kind() != Some(&PickerKind::Skill) {
         return IntentResult::empty();
@@ -692,9 +696,15 @@ pub fn handle_refresh_skills(state: &mut AppState) -> IntentResult {
 
     state
         .active_session_mut()
-        .push_entry(ChatEntry::transient("Refreshing skills..."));
+        .push_entry(ChatEntry::transient("Refreshing project resources..."));
 
-    IntentResult::with_commands(vec![Command::ScanSkills])
+    let session_id = state.active_session().session_id().clone();
+
+    IntentResult::with_commands(vec![
+        Command::ScanSkills(ScanSkills { session_id: session_id.clone() }),
+        Command::RescanPromptTemplates(RescanPromptTemplates { session_id: session_id.clone() }),
+        Command::ScanContextFiles(ScanContextFiles { session_id }),
+    ])
 }
 
 #[cfg(test)]
@@ -935,13 +945,14 @@ mod tests {
             .session
             .set_active(state.session.active_session_id().clone());
 
-        state.context.skills = vec![
+        state.active_session_mut().set_discovered_skills(vec![
             Skill {
                 name: "phased-task-loop".to_owned(),
                 description: "Structured phased implementation workflow".to_owned(),
                 body: String::new(),
                 file_path: PathBuf::from("/tmp/skills/phased-task-loop/SKILL.md"),
                 base_dir: PathBuf::from("/tmp/skills/phased-task-loop"),
+                source: crate::feat::skills::SkillSource::Global,
             },
             Skill {
                 name: "web-coder".to_owned(),
@@ -949,8 +960,9 @@ mod tests {
                 body: String::new(),
                 file_path: PathBuf::from("/tmp/skills/web-coder/SKILL.md"),
                 base_dir: PathBuf::from("/tmp/skills/web-coder"),
+                source: crate::feat::skills::SkillSource::Global,
             },
-        ];
+        ]);
 
         state
     }
@@ -1215,7 +1227,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn refresh_skills_returns_scan_skills_command() {
+    fn refresh_skills_returns_scan_commands_for_all_resources() {
         // Given state with skills and the skill picker active.
         let mut state = setup_state_with_skills();
         load_skill_picker_entries(&mut state);
@@ -1226,14 +1238,30 @@ mod tests {
         // When handling RefreshSkills.
         let result = handle_refresh_skills(&mut state);
 
-        // Then a ScanSkills command is returned.
+        // Then all three scan commands are returned so discovery settles cleanly.
         assert!(
             result
                 .commands
                 .iter()
-                .any(|c| matches!(c, Command::ScanSkills))
+                .any(|c| matches!(c, Command::ScanSkills(..))),
+            "expected ScanSkills command"
+        );
+        assert!(
+            result
+                .commands
+                .iter()
+                .any(|c| matches!(c, Command::RescanPromptTemplates(..))),
+            "expected RescanPromptTemplates command"
+        );
+        assert!(
+            result
+                .commands
+                .iter()
+                .any(|c| matches!(c, Command::ScanContextFiles(..))),
+            "expected ScanContextFiles command"
         );
     }
+
 
     #[rstest::rstest]
     fn refresh_skills_noop_when_skill_picker_not_active() {

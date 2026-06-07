@@ -97,6 +97,10 @@ impl SessionPersistenceActor {
             ));
         }
 
+        // Note: no scan commands are emitted here. The three scan actors
+        // (skills, prompts, context-files) subscribe to the `SessionLoadCompleted`
+        // event emitted below and self-trigger their per-session scans.
+
         // Persist the restored session.
         self.save_active_session(&session_id).await;
     }
@@ -253,6 +257,41 @@ mod tests {
         assert!(
             loaded.is_persistable(),
             "loaded session should be persistable"
+        );
+    }
+
+    #[tokio::test]
+    async fn handle_session_load_completed_emits_no_scan_commands() {
+        // Given a session loaded from disk.
+        let mut session = ChatSessionState::new();
+        session.push_entry(ChatEntry::user("hello"));
+
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+
+        let payload = SessionLoadCompleted { session };
+
+        // When handling SessionLoadCompleted.
+        actor.handle_session_load_completed(&payload, &ctx).await;
+
+        // Then no scan commands are emitted. The three scan actors
+        // (skills, prompts, context-files) subscribe to `SessionLoadCompleted`
+        // themselves and self-trigger their per-session scans.
+        let scan_commands = sink
+            .commands()
+            .iter()
+            .filter(|c| {
+                matches!(
+                    c,
+                    crate::protocol::Command::ScanSkills(_)
+                        | crate::protocol::Command::RescanPromptTemplates(_)
+                        | crate::protocol::Command::ScanContextFiles(_)
+                )
+            })
+            .count();
+        assert_eq!(
+            scan_commands, 0,
+            "scan actors self-trigger off SessionLoadCompleted; load handler should not emit scan commands"
         );
     }
 }

@@ -85,6 +85,7 @@ mod tests {
             body: String::new(),
             file_path: PathBuf::from(format!("/home/user/.agents/skills/{name}/SKILL.md")),
             base_dir: PathBuf::from(format!("/home/user/.agents/skills/{name}")),
+            source: crate::feat::skills::SkillSource::Global,
         }
     }
 
@@ -140,6 +141,7 @@ mod tests {
             body: String::new(),
             file_path: PathBuf::from("/path/to/SKILL.md"),
             base_dir: PathBuf::from("/path/to"),
+            source: crate::feat::skills::SkillSource::Global,
         }];
 
         // When formatting.

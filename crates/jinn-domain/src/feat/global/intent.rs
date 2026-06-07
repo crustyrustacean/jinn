@@ -408,7 +408,10 @@ mod tests {
         use crate::common::app_state::ArgInputState;
         let mut state = AppState::default();
         state.frontend.arg_input = ArgInputState {
-            text: crate::common::line_input::LineInput { input: "some arg".to_owned(), cursor_pos: 8 },
+            text: crate::common::line_input::LineInput {
+                input: "some arg".to_owned(),
+                cursor_pos: 8,
+            },
             lifecycle_name: "abc".to_owned(),
             template_display: String::new(),
         };
@@ -432,7 +435,10 @@ mod tests {
         let lifecycle = "abc".to_owned();
         let mut state = AppState::default();
         state.frontend.arg_input = ArgInputState {
-            text: crate::common::line_input::LineInput { input: String::new(), cursor_pos: 0 },
+            text: crate::common::line_input::LineInput {
+                input: String::new(),
+                cursor_pos: 0,
+            },
             lifecycle_name: lifecycle.clone(),
             template_display: String::new(),
         };
@@ -455,7 +461,10 @@ mod tests {
         use crate::common::app_state::RenameSessionInputState;
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "New Name".to_owned(), cursor_pos: 8 },
+            text: crate::common::line_input::LineInput {
+                input: "New Name".to_owned(),
+                cursor_pos: 8,
+            },
         };
         state
             .frontend
@@ -540,7 +549,10 @@ mod tests {
         use crate::common::app_state::RenameSessionInputState;
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "My Session".to_owned(), cursor_pos: 10 },
+            text: crate::common::line_input::LineInput {
+                input: "My Session".to_owned(),
+                cursor_pos: 10,
+            },
         };
         state
             .frontend

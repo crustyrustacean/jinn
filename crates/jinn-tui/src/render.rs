@@ -116,13 +116,11 @@ pub fn render(app: &mut TuiApp, frame: &mut Frame<'_>) {
     }
 
     // CWD input popup overlay (+ selectable rect).
-    if matches!(
-        state.frontend.scope_stack.current(),
-        FocusScope::CwdInput
-    ) {
+    if matches!(state.frontend.scope_stack.current(), FocusScope::CwdInput) {
         jinn_domain::feat::cwd_input::render::render_cwd_input(frame, area, &ctx);
-        rects
-            .push(jinn_domain::feat::cwd_input::render::cwd_input_popup_rect(area));
+        rects.push(jinn_domain::feat::cwd_input::render::cwd_input_popup_rect(
+            area,
+        ));
     }
 
     // Release the state read lock before post-render steps.

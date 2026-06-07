@@ -1,30 +1,53 @@
-//! Prompt template scan actor - scans and reloads prompt templates on command.
+//! Prompt template scan actor - scans and reloads prompt templates.
 //!
-//! Subscribes to [`RescanPromptTemplates`] commands, scans user and system
-//! prompts directories, and emits [`PromptTemplatesLoaded`] events with the results.
+//! Two trigger paths:
+//! - **Event-driven** (automatic): subscribes to session lifecycle events
+//!   ([`EnvironmentLoaded`], [`SessionCreated`], [`SessionSetupCompleted`],
+//!   [`SessionLoadCompleted`], [`SessionCwdChanged`]). Each event resolves a
+//!   session id, applies the `"."`-sentinel gate via
+//!   [`scan_cwd_for_session`](crate::common::actor::scan_actor::scan_cwd_for_session),
+//!   and scans when the cwd is settled.
+//! - **Command-driven** (manual reload): subscribes to
+//!   [`RescanPromptTemplates`] commands.
+//!
+//! On either trigger, scans system, user, and project prompts directories for
+//!   the session's cwd, writes the merged result into that session's ephemeral
+//!   discovered set, and emits [`PromptTemplatesLoaded`] events.
 
-use crate::common::actor::scan_actor::NoDirectMsg;
+use crate::common::actor::scan_actor::{NoDirectMsg, scan_cwd_for_session};
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope};
 use crate::common::services::Services;
+use crate::common::state::State;
 use crate::feat::context::prompt_template::PromptTemplateStore;
+use crate::feat::discovery::project_prompts_dirs;
 use crate::feat::provider::protocol::command::RescanPromptTemplates;
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
+use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
+use crate::feat::session_lifecycle::protocol::event::{
+    SessionCreated, SessionCwdChanged, SessionSetupCompleted,
+};
+use crate::init::env_init_actor::EnvironmentLoaded;
 use crate::protocol::{Command, Event};
 
 /// Dependencies for [`PromptScanActor`].
 pub struct PromptScanActorDeps {
     /// Runtime services.
     pub services: Services,
+    /// Shared application state.
+    pub state: State,
 }
 
 /// Scans and reloads prompt templates on `RescanPromptTemplates`.
 ///
-/// On command, scans both system and user prompt directories recursively,
-/// parses all `*.md` files, and emits `PromptTemplatesLoaded` with the
-/// merged results. User templates override system templates.
+/// On command, reads the session's cwd from shared state, scans system, user,
+/// and project prompts directories (project templates override system/user on a
+/// most-local-wins basis), writes the merged store into that session's
+/// ephemeral discovered set, and emits `PromptTemplatesLoaded`.
 pub struct PromptScanActor {
     /// Runtime services.
     services: Services,
+    /// Shared application state.
+    state: State,
 }
 
 impl Actor for PromptScanActor {
@@ -34,14 +57,28 @@ impl Actor for PromptScanActor {
     fn activate(deps: Self::Deps, ctx: &mut ActorContext) -> Self {
         ctx.set_description("Scans and reloads prompt templates");
         ctx.subscribe_command::<RescanPromptTemplates>();
+        // Event-driven triggers: scan automatically when a session's cwd
+        // becomes the active discovery target.
+        ctx.subscribe_event::<EnvironmentLoaded>();
+        ctx.subscribe_event::<SessionCreated>();
+        ctx.subscribe_event::<SessionSetupCompleted>();
+        ctx.subscribe_event::<SessionLoadCompleted>();
+        ctx.subscribe_event::<SessionCwdChanged>();
         Self {
             services: deps.services,
+            state: deps.state,
         }
     }
 
     async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
-        if let ActorEnvelope::Command(command) = msg {
-            self.handle_command(&command, ctx).await;
+        match msg {
+            ActorEnvelope::Command(command) => {
+                self.handle_command(&command, ctx).await;
+            }
+            ActorEnvelope::Event(event) => {
+                self.handle_event(&event, ctx).await;
+            }
+            _ => {}
         }
     }
 }
@@ -49,23 +86,69 @@ impl Actor for PromptScanActor {
 impl PromptScanActor {
     /// Dispatches incoming commands.
     async fn handle_command(&mut self, command: &Command, ctx: &ActorContext) {
-        if matches!(command, Command::RescanPromptTemplates) {
-            self.run_scan(ctx).await;
+        if let Command::RescanPromptTemplates(payload) = command {
+            self.run_scan(&payload.session_id, ctx).await;
         }
     }
 
-    /// Runs the blocking scan and emits the result.
-    async fn run_scan(&self, ctx: &ActorContext) {
-        let paths = self.services.paths.clone();
+    /// Dispatches incoming lifecycle events to a session-targeted scan.
+    ///
+    /// Extracts the relevant session id, applies the `"."`-sentinel gate via
+    /// [`scan_cwd_for_session`], and scans when the cwd is settled. The gate
+    /// defers lifecycle-setup sessions to `SessionSetupCompleted`.
+    async fn handle_event(&self, event: &Event, ctx: &ActorContext) {
+        let Some(session_id) = self.session_id_for_event(event) else {
+            return;
+        };
+        if scan_cwd_for_session(&self.state, &session_id).is_some() {
+            self.run_scan(&session_id, ctx).await;
+        }
+    }
+
+    /// Resolves the session id a discovery trigger event targets, if any.
+    fn session_id_for_event(&self, event: &Event) -> Option<crate::SessionId> {
+        match event {
+            Event::EnvironmentLoaded(_) => {
+                Some(self.state.read().session.active_session_id().clone())
+            }
+            Event::SessionCreated(payload) => Some(payload.session_id.clone()),
+            Event::SessionSetupCompleted(payload) => Some(payload.session_id.clone()),
+            Event::SessionLoadCompleted(payload) => Some(payload.session_id().clone()),
+            Event::SessionCwdChanged(payload) => Some(payload.session_id.clone()),
+            _ => None,
+        }
+    }
+
+    /// Runs the blocking scan for a session's cwd and emits the result.
+    async fn run_scan(&self, session_id: &crate::SessionId, ctx: &ActorContext) {
+        // Resolve the session's cwd and home once, up front. The cwd is
+        // captured by clone so the blocking scan can move it across the
+        // thread boundary without holding the state lock.
+        let Some((cwd, home, user_dir, system_dir)) = self.resolve_scan_inputs(session_id) else {
+            tracing::warn!(%session_id, "RescanPromptTemplates: session not found, skipping");
+            return;
+        };
+
+        let project_dirs = project_prompts_dirs(&cwd, &home);
+
         let result = tokio::task::spawn_blocking(move || {
-            PromptTemplateStore::load_from_dirs(&paths.prompts_dir(), &paths.system_prompts_dir())
+            PromptTemplateStore::load_from_dirs_ordered(&user_dir, &system_dir, &project_dirs)
         })
         .await;
 
         match result {
             Ok(Ok(store)) => {
                 tracing::info!(count = store.len(), "rescanned prompt templates");
+
+                {
+                    let mut guard = self.state.write();
+                    if let Some(session) = guard.try_session_mut(session_id) {
+                        session.set_discovered_prompt_templates(store.clone());
+                    }
+                }
+
                 let _ = ctx.send_event(Event::PromptTemplatesLoaded(PromptTemplatesLoaded {
+                    session_id: session_id.clone(),
                     templates: store.templates().to_vec(),
                     error: None,
                 }));
@@ -73,6 +156,7 @@ impl PromptScanActor {
             Ok(Err(e)) => {
                 tracing::warn!("failed to rescan prompt templates: {e:?}");
                 let _ = ctx.send_event(Event::PromptTemplatesLoaded(PromptTemplatesLoaded {
+                    session_id: session_id.clone(),
                     templates: vec![],
                     error: Some(format!("{e:?}")),
                 }));
@@ -80,10 +164,340 @@ impl PromptScanActor {
             Err(join_error) => {
                 tracing::error!("rescan task panicked: {join_error}");
                 let _ = ctx.send_event(Event::PromptTemplatesLoaded(PromptTemplatesLoaded {
+                    session_id: session_id.clone(),
                     templates: vec![],
                     error: Some(format!("rescan task failed: {join_error}")),
                 }));
             }
         }
+    }
+
+    /// Reads the session's cwd and the prompt dirs for the scan.
+    ///
+    /// Returns `None` if the session is not present in state (it may have been
+    /// closed concurrently). All values are cheap clones that can move into a
+    /// `spawn_blocking` closure.
+    fn resolve_scan_inputs(
+        &self,
+        session_id: &crate::SessionId,
+    ) -> Option<(
+        std::path::PathBuf,
+        std::path::PathBuf,
+        std::path::PathBuf,
+        std::path::PathBuf,
+    )> {
+        let guard = self.state.read();
+        let session = guard.try_session(session_id)?;
+        let cwd = session.cwd().to_path_buf();
+        let home = self.services.paths.home_dir().to_path_buf();
+        let user_dir = self.services.paths.prompts_dir();
+        let system_dir = self.services.paths.system_prompts_dir();
+        Some((cwd, home, user_dir, system_dir))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    use std::sync::Arc;
+
+    use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
+    use crate::common::app_paths::AppPaths;
+    use crate::common::app_state::AppState;
+    use crate::common::state::State;
+    use crate::feat::provider::protocol::{
+        command::RescanPromptTemplates, event::PromptTemplatesLoaded,
+    };
+    use crate::protocol::{Command, Event};
+
+    use super::*;
+
+    fn find_loaded(events: &[Event]) -> Option<&PromptTemplatesLoaded> {
+        for evt in events {
+            if let Event::PromptTemplatesLoaded(p) = evt {
+                return Some(p);
+            }
+        }
+        None
+    }
+
+    /// Build an actor whose active session has its cwd set to `dir`.
+    fn create_actor(
+        cwd: &std::path::Path,
+        home: &tempfile::TempDir,
+        state: State,
+    ) -> (
+        PromptScanActor,
+        Arc<RecordingSink>,
+        ActorContext,
+        crate::SessionId,
+    ) {
+        {
+            let mut guard = state.write();
+            guard
+                .session
+                .active_session_mut()
+                .set_cwd(cwd.to_path_buf());
+        }
+        let session_id = state.read().session.active_session_id().clone();
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = ActorContext::new("prompt-scan-test", sink.clone() as Arc<dyn MessageSink>);
+        let mut paths = AppPaths::new_in(home.path());
+        paths.set_home_dir_for_test(home.path().to_path_buf());
+        let services = crate::common::services::test_services::TestServices::builder()
+            .paths(paths)
+            .build();
+        let deps = PromptScanActorDeps { services, state };
+        let actor = PromptScanActor::activate(deps, &mut ctx);
+        (actor, sink, ctx, session_id)
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn scan_prompts_writes_to_session_and_emits_session_tagged_event() {
+        // Given a project prompt in a cwd that is a descendant of home.
+        // (The walk is bounded by $HOME exclusive, so cwd must be inside home.)
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let cwd = dir.path().join("work");
+        let prompts_dir = cwd.join(".agents/prompts");
+        std::fs::create_dir_all(&prompts_dir).expect("create prompts dir");
+        std::fs::write(
+            prompts_dir.join("code.md"),
+            "+++\nname = \"code\"\ndescription = \"\"\n+++\nYou are a coder.",
+        )
+        .expect("write prompt");
+
+        let state = State::new(AppState::default());
+        let (mut actor, sink, ctx, session_id) = create_actor(&cwd, &dir, state.clone());
+
+        // When scanning.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::RescanPromptTemplates(RescanPromptTemplates {
+                    session_id: session_id.clone(),
+                })),
+                &ctx,
+            )
+            .await;
+
+        // Then the project prompt is in the session's discovered store.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session exists");
+        let names: Vec<&str> = session
+            .discovered_prompt_templates()
+            .templates()
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
+        assert!(
+            names.contains(&"code"),
+            "project prompt discovered: {names:?}"
+        );
+
+        // And the emitted event is tagged with the same session id.
+        let events = sink.events();
+        let loaded = find_loaded(&events).expect("should have PromptTemplatesLoaded");
+        assert_eq!(loaded.session_id, session_id);
+        assert!(loaded.error.is_none());
+    }
+
+    #[tokio::test]
+
+    async fn scan_prompts_discovers_ancestor_template_from_nested_cwd() {
+        // Given a prompt at home/repo/.agents/prompts but cwd is home/repo/subdir.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let repo = dir.path().join("repo");
+        let subdir = repo.join("subdir");
+        std::fs::create_dir_all(&subdir).expect("create nested dirs");
+        let ancestor_prompts = repo.join(".agents/prompts");
+        std::fs::create_dir_all(&ancestor_prompts).expect("create ancestor prompts dir");
+        std::fs::write(
+            ancestor_prompts.join("ancestor.md"),
+            "+++\nname = \"ancestor\"\ndescription = \"\"\n+++\nYou are an ancestor prompt.",
+        )
+        .expect("write ancestor prompt");
+
+        // And the session cwd is the nested subdir, home bounds the walk so the
+        // ancestor repo layer is in scope.
+        let state = State::new(AppState::default());
+        let (mut actor, _sink, ctx, session_id) = create_actor(&subdir, &dir, state.clone());
+
+        // When scanning.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::RescanPromptTemplates(RescanPromptTemplates {
+                    session_id: session_id.clone(),
+                })),
+                &ctx,
+            )
+            .await;
+
+        // Then the ancestor prompt is discovered from the nested cwd.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session exists");
+        let names: Vec<&str> = session
+            .discovered_prompt_templates()
+            .templates()
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
+        assert!(
+            names.contains(&"ancestor"),
+            "ancestor prompt discovered from nested cwd: {names:?}"
+        );
+    }
+    use crate::feat::session_lifecycle::protocol::event::{
+        SessionCreated, SessionCwdChanged, SessionSetupCompleted,
+    };
+
+    use crate::init::env_init_actor::EnvironmentLoaded;
+
+    /// Writes a project prompt `name.md` under `cwd/.agents/prompts`.
+    fn write_project_prompt(cwd: &std::path::Path, name: &str) {
+        let dir = cwd.join(".agents").join("prompts");
+        std::fs::create_dir_all(&dir).expect("create prompts dir");
+        std::fs::write(
+            dir.join(format!("{name}.md")),
+            format!("+++\nname = \"{name}\"\ndescription = \"\"\n+++\nYou are {name}."),
+        )
+        .expect("write prompt");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_created_event_scans_prompts() {
+        // Given an actor whose active session cwd contains a project prompt.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let cwd = dir.path().join("work");
+        std::fs::create_dir_all(&cwd).expect("create work dir");
+        write_project_prompt(&cwd, "code");
+        let state = State::new(AppState::default());
+        let (actor, _sink, ctx, session_id) = create_actor(&cwd, &dir, state.clone());
+
+        // When processing SessionCreated for that session.
+        let event = Event::SessionCreated(SessionCreated {
+            session_id: session_id.clone(),
+        });
+        actor.handle_event(&event, &ctx).await;
+
+        // Then the prompt is written to the session's discovered set.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session exists");
+        assert_eq!(session.discovered_prompt_templates().templates().len(), 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_created_event_skips_scan_when_cwd_is_sentinel() {
+        // Given an actor whose active session cwd is the pending "." sentinel.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        // Drop a prompt under a sibling dir so a stray scan would find it.
+        let stray = dir.path().join("stray");
+        std::fs::create_dir_all(&stray).expect("create stray dir");
+        write_project_prompt(&stray, "stray");
+        let state = State::new(AppState::default());
+        // Note: deliberately do NOT set a real cwd; default is ".".
+        let session_id = state.read().session.active_session_id().clone();
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = ActorContext::new("prompt-scan-test", sink.clone() as Arc<dyn MessageSink>);
+        let mut paths = AppPaths::new_in(dir.path());
+        paths.set_home_dir_for_test(dir.path().to_path_buf());
+        let services = crate::common::services::test_services::TestServices::builder()
+            .paths(paths)
+            .build();
+        let actor = PromptScanActor::activate(
+            PromptScanActorDeps {
+                services,
+                state: state.clone(),
+            },
+            &mut ctx,
+        );
+
+        // When processing SessionCreated for the sentinel-cwd session.
+        let event = Event::SessionCreated(SessionCreated {
+            session_id: session_id.clone(),
+        });
+        actor.handle_event(&event, &ctx).await;
+
+        // Then no scan runs: the discovered set stays empty.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session exists");
+        assert!(session.discovered_prompt_templates().templates().is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_setup_completed_event_scans_prompts() {
+        // Given an actor whose active session cwd contains a project prompt.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let cwd = dir.path().join("work");
+        std::fs::create_dir_all(&cwd).expect("create work dir");
+        write_project_prompt(&cwd, "code");
+        let state = State::new(AppState::default());
+        let (actor, _sink, ctx, session_id) = create_actor(&cwd, &dir, state.clone());
+
+        // When processing SessionSetupCompleted.
+        let event = Event::SessionSetupCompleted(SessionSetupCompleted {
+            session_id: session_id.clone(),
+            cwd: cwd.clone(),
+            error: None,
+        });
+        actor.handle_event(&event, &ctx).await;
+
+        // Then the prompt is written to the session's discovered set.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session exists");
+        assert_eq!(session.discovered_prompt_templates().templates().len(), 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_cwd_changed_event_scans_prompts() {
+        // Given an actor whose active session cwd contains a project prompt.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let cwd = dir.path().join("work");
+        std::fs::create_dir_all(&cwd).expect("create work dir");
+        write_project_prompt(&cwd, "code");
+        let state = State::new(AppState::default());
+        let (actor, _sink, ctx, session_id) = create_actor(&cwd, &dir, state.clone());
+
+        // When processing SessionCwdChanged.
+        let event = Event::SessionCwdChanged(SessionCwdChanged {
+            session_id: session_id.clone(),
+            cwd: cwd.clone(),
+        });
+        actor.handle_event(&event, &ctx).await;
+
+        // Then the prompt is written to the session's discovered set.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session exists");
+        assert_eq!(session.discovered_prompt_templates().templates().len(), 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn environment_loaded_event_scans_active_session_prompts() {
+        // Given an actor whose active session cwd contains a project prompt.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let cwd = dir.path().join("work");
+        std::fs::create_dir_all(&cwd).expect("create work dir");
+        write_project_prompt(&cwd, "code");
+        let state = State::new(AppState::default());
+        let (actor, _sink, ctx, session_id) = create_actor(&cwd, &dir, state.clone());
+
+        // When processing EnvironmentLoaded.
+        let event = Event::EnvironmentLoaded(EnvironmentLoaded {
+            config: crate::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+            },
+        });
+        actor.handle_event(&event, &ctx).await;
+
+        // Then the active session's prompt is discovered.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session exists");
+        assert_eq!(session.discovered_prompt_templates().templates().len(), 1);
     }
 }

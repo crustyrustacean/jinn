@@ -456,6 +456,22 @@ impl ActorSystemBuilder {
         &shutdown_tracker,
         jinn_domain::feat::context::prompt_scan_actor::PromptScanActorDeps {
             services: services.clone(),
+            state: state.clone(),
+        },
+    ));
+
+    // Context-files scan actor.
+    actors.push(spawn::<
+        jinn_domain::feat::context::context_files_scan_actor::ContextFilesScanActor,
+    >(
+        "context-files-scan",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        jinn_domain::feat::context::context_files_scan_actor::ContextFilesScanActorDeps {
+            services: services.clone(),
+            state: state.clone(),
         },
     ));
 
@@ -472,6 +488,34 @@ impl ActorSystemBuilder {
             services: services.clone(),
             state: state.clone(),
         },
+    ));
+
+    // Discovery coordinator — coalesces the three resource-loaded events
+    // per session and emits `SessionDiscoverySettled`.
+    actors.push(spawn::<
+        jinn_domain::feat::discovery_coordinator::DiscoveryCoordinatorActor,
+    >(
+        "discovery-coordinator",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        jinn_domain::feat::discovery_coordinator::DiscoveryCoordinatorActorDeps {
+            state: state.clone(),
+        },
+    ));
+
+    // Discovery notifier — posts a transient chat entry when a session's
+    // discovery settles.
+    actors.push(spawn::<
+        jinn_domain::feat::discovery_notifier::DiscoveryNotifierActor,
+    >(
+        "discovery-notifier",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        jinn_domain::feat::discovery_notifier::DiscoveryNotifierActorDeps,
     ));
 
     // Persona scan actor.
@@ -980,9 +1024,6 @@ impl ActorSystemBuilder {
         state: state.clone(),
         sender: sender.clone(),
     };
-
-    // Trigger initial skills scan.
-    let _ = sink.send_command(jinn_domain::Command::ScanSkills);
 
     // Trigger initial persona scan.
     let _ = sink.send_command(jinn_domain::Command::RescanPersonas(

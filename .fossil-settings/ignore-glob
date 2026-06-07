@@ -18,3 +18,4 @@ pkg
 bench-results.csv
 mutants.out
 *.txt
+*.db
