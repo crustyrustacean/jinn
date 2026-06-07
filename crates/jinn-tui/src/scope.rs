@@ -49,6 +49,8 @@ pub enum Scope {
     TokenBudgetInput,
     /// Rename session input mode - editing a session title.
     RenameSessionInput,
+    /// CWD input mode - typing a directory path.
+    CwdInput,
 
     /// Sidebar resize mode - adjusting sidebar width.
     SidebarResize,
@@ -78,6 +80,7 @@ impl std::fmt::Display for Scope {
             Self::TokenBudgetInput => write!(f, "TokenBudgetInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
+            Self::CwdInput => write!(f, "CwdInput"),
         }
     }
 }
@@ -107,6 +110,7 @@ impl std::str::FromStr for Scope {
             "ArgInput" => Ok(Self::ArgInput),
             "TokenBudgetInput" => Ok(Self::TokenBudgetInput),
             "RenameSessionInput" => Ok(Self::RenameSessionInput),
+            "CwdInput" => Ok(Self::CwdInput),
             "SidebarResize" => Ok(Self::SidebarResize),
 
             _ => Err(()),
