@@ -1,7 +1,7 @@
 //! Cucumber `World` wrapping a headless application.
 //!
 //! The [`HeadlessWorld`] creates a complete application using the same
-//! `actor_wiring::create_core_with_actor_host` function that production uses,
+//! `actor_wiring::ActorSystemBuilder` that production uses,
 //! but with fake services and a temp directory so no real backends are hit.
 //! The resulting core is wrapped in a [`HeadlessApp`] instead of a `TuiApp`.
 
@@ -101,19 +101,18 @@ impl HeadlessWorld {
 
             // Call production wiring - spawns all 16 actors.
             let (core, _services, actor_host, _sync_plugins) =
-                actor_wiring::create_core_with_actor_host(
-                    &handle,
-                    llm_service,
-                    provider_registry,
-                    resolved_api_keys,
-                    config_storage,
-                    session_store,
-                    user_preferences_storage,
-                    None,
-                    None,
-                    None,
-                    paths,
-                );
+                actor_wiring::ActorSystemBuilder::new(
+                    actor_wiring::ActorSystemBuilderArgs {
+                        handle: handle.clone(),
+                        llm_service,
+                        provider_registry,
+                        api_keys: resolved_api_keys,
+                        config_storage,
+                        session_store,
+                        user_preferences_storage,
+                        paths,
+                    },
+                ).build();
 
             // Intentionally leaked: each world gets a fresh tokio runtime.
             let _ = Box::leak(Box::new(rt));
