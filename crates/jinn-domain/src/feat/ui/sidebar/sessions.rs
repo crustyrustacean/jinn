@@ -25,7 +25,7 @@ use std::time::Duration;
 // Re-exports - preserve the public API for external consumers.
 // ---------------------------------------------------------------------------
 
-pub use activate::handle_session_activate;
+pub use activate::{handle_session_activate, handle_session_activate_insert};
 pub use archive::handle_session_archive;
 pub use close::{
     SessionCloseError, handle_session_close, handle_session_close_with_lifecycle,
