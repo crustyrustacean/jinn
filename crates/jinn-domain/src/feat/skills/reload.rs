@@ -1,24 +1,23 @@
 //! Skill picker reload logic.
 //!
-//! Rebuilds the skill picker entries from the current skills in `AppState.context.skills`,
-//! preserving the active session's disabled-skills set and the picker's filter text.
-
+//! Rebuilds the skill picker entries from the active session's `discovered_skills`,
+//! preserving the session's disabled-skills set and the picker's filter text.
 use crate::common::app_state::AppState;
 use crate::feat::skills::skill_entry::SkillEntry;
 use crate::feat::ui::picker_states::PickerExt;
 
-/// Reloads skill picker entries from the current skills in AppState.
+/// Reloads skill picker entries from the active session's discovered skills.
 ///
-/// Reads `state.context.skills` and the active session's `disabled_skills` set.
-/// Builds sorted `SkillEntry` items and calls `set_items` on the skill picker,
-/// which preserves the current filter text and clamps selection.
+/// Reads the active session's `discovered_skills` (cwd-scoped, hydrated by the
+/// skills scan actor) rather than the app-global `state.context.skills`, so two
+/// sessions with different cwds show the right set. Each entry carries the
+/// discovered skill's `source` for a global/project badge.
 pub fn reload_skill_picker_entries(state: &mut AppState) {
     let disabled = state.active_session().disabled_skills();
     let theme = state.frontend.theme.clone();
+    let discovered = state.active_session().discovered_skills().to_vec();
 
-    let mut entries: Vec<SkillEntry> = state
-        .context
-        .skills
+    let mut entries: Vec<SkillEntry> = discovered
         .iter()
         .map(|skill| {
             let name = skill.name.clone();
@@ -29,6 +28,7 @@ pub fn reload_skill_picker_entries(state: &mut AppState) {
                 description,
                 body: skill.body.clone(),
                 enabled: !disabled.contains(&skill.name),
+                source: skill.source.clone(),
                 theme: theme.clone(),
             }
         })
@@ -45,7 +45,7 @@ mod tests {
 
     use crate::common::app_state::AppState;
     use crate::common::app_state::FocusScope;
-    use crate::feat::skills::skill::Skill;
+    use crate::feat::skills::skill::{Skill, SkillSource};
     use crate::feat::ui::picker_states::PickerExt;
     use crate::protocol::PickerKind;
     use std::path::PathBuf;
@@ -74,26 +74,28 @@ mod tests {
     }
     #[rstest::rstest]
     fn reload_updates_picker_items_from_context_skills() {
-        // Given state with skills in context.skills but empty picker.
+        // Given state with skills in the active session's discovered_skills but empty picker.
         let mut state = AppState::default();
-        state.context.skills = make_skills();
+        state.active_session_mut().set_discovered_skills(make_skills());
         assert!(state.frontend.skill_picker().items().is_empty());
 
         // When reloading.
         reload_skill_picker_entries(&mut state);
 
-        // Then the picker has entries matching context.skills, sorted alphabetically.
+        // Then the picker has entries matching discovered_skills, sorted alphabetically,
+        // each tagged with its source (default Global from make_skills).
         let items = state.frontend.skill_picker().items();
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].name, "phased-task-loop");
         assert_eq!(items[1].name, "web-coder");
+        assert!(items.iter().all(|e| e.source == SkillSource::Global));
     }
 
     #[rstest::rstest]
     fn reload_marks_disabled_skills_as_not_enabled() {
         // Given state with a disabled skill.
         let mut state = AppState::default();
-        state.context.skills = make_skills();
+        state.active_session_mut().set_discovered_skills(make_skills());
         let mut disabled = std::collections::HashSet::new();
         disabled.insert("web-coder".to_owned());
         state.active_session_mut().set_disabled_skills(disabled);
@@ -119,7 +121,7 @@ mod tests {
     fn reload_preserves_filter_text() {
         // Given state with skills and a filter already set on the picker.
         let mut state = AppState::default();
-        state.context.skills = make_skills();
+        state.active_session_mut().set_discovered_skills(make_skills());
         state.frontend.scope_stack.push(FocusScope::Picker {
             kind: PickerKind::Skill,
         });

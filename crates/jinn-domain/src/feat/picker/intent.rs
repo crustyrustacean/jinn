@@ -938,7 +938,7 @@ mod tests {
             .session
             .set_active(state.session.active_session_id().clone());
 
-        state.context.skills = vec![
+        state.active_session_mut().set_discovered_skills(vec![
             Skill {
                 name: "phased-task-loop".to_owned(),
                 description: "Structured phased implementation workflow".to_owned(),
@@ -955,7 +955,7 @@ mod tests {
                 base_dir: PathBuf::from("/tmp/skills/web-coder"),
                 source: crate::feat::skills::SkillSource::Global,
             },
-        ];
+        ]);
 
         state
     }

@@ -8,9 +8,10 @@ use std::path::PathBuf;
 ///
 /// Used to badge entries in the skill picker (global vs project-scoped)
 /// and to resolve provenance when a project skill overrides a global one.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SkillSource {
     /// Discovered from the user-global skills dir (`~/.agents/skills`).
+    #[default]
     Global,
     /// Discovered from a project-local `.agents/skills` dir.
     Project {
@@ -20,11 +21,6 @@ pub enum SkillSource {
     },
 }
 
-impl Default for SkillSource {
-    fn default() -> Self {
-        Self::Global
-    }
-}
 
 /// A discovered agent skill.
 ///
