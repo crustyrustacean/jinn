@@ -824,4 +824,13 @@ async fn persistent_session_is_written() {
         .expect("load query")
         .expect("should exist");
     assert_eq!(loaded.session_id(), &session_id);
+    // And the automated + persist flags round-trip through SQLite.
+    assert!(
+        loaded.core.is_automated,
+        "is_automated must survive save/load"
+    );
+    assert!(
+        loaded.core.persist,
+        "persist must survive save/load"
+    );
 }
