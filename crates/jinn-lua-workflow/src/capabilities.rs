@@ -193,7 +193,10 @@ pub fn make_gather(lua: &Lua) -> Result<Function, Report<LuaError>> {
 ///
 /// This is a helper for `gather` — it wraps each function call in an
 /// async block that can be joined concurrently.
-#[expect(clippy::needless_pass_by_value, reason = "Function must be owned by the future")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Function must be owned by the future"
+)]
 fn call_fn_async(
     func: Function,
 ) -> impl std::future::Future<Output = Result<mlua::Value, mlua::Error>> {

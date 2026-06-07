@@ -111,7 +111,12 @@ pub fn handle_ctrl_clear(state: &mut AppState) -> (IntentResult, Option<Intent>)
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::items_after_statements,
+        reason = "test code"
+    )]
     use super::*;
     use crate::common::focus::FocusScope;
     use crate::feat::session::phase_machine::PhaseKind;

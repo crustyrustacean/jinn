@@ -260,4 +260,27 @@ mod tests {
         assert_eq!(diagram.nodes.len(), 3);
         assert_eq!(diagram.edges.len(), 3);
     }
+
+    #[test]
+    fn compute_layout_handles_cycle() {
+        // Degenerate cyclic diagram: a node with a self-loop. compute_layout must
+        // not panic even if a layer were to reference a node id absent from
+        // `diagram.nodes` (defensive hardening of the .find() sites).
+        let diagram = MermaidDiagram {
+            direction: Direction::TopDown,
+            nodes: vec![MermaidNode {
+                id: "A".to_string(),
+                label: "A".to_string(),
+                shape: NodeShape::Rect,
+            }],
+            edges: vec![MermaidEdge {
+                source: "A".to_string(),
+                target: "A".to_string(),
+                label: None,
+                edge_type: EdgeType::Arrow,
+            }],
+        };
+        let layout = layout::compute_layout(&diagram, 80, None);
+        assert!(layout.nodes.len() <= diagram.nodes.len());
+    }
 }

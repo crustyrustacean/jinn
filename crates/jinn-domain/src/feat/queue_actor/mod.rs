@@ -298,7 +298,9 @@ mod tests {
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
-            session.enqueue(QueueItem::UserMessage(ChatEntry::user("queued message")));
+            session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
+                "queued message",
+            ))));
             state.session.active_session_id().clone()
         };
 
@@ -337,7 +339,9 @@ mod tests {
         let session_id = {
             let mut state = actor.state.write();
             let session = state.active_session_mut();
-            session.enqueue(QueueItem::UserMessage(ChatEntry::user("queued message")));
+            session.enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
+                "queued message",
+            ))));
             session.begin_sending();
             state.session.active_session_id().clone()
         };
@@ -604,7 +608,9 @@ mod tests {
             let mut state = actor.state.write();
             state
                 .active_session_mut()
-                .enqueue(QueueItem::UserMessage(ChatEntry::user("via handle")));
+                .enqueue(QueueItem::UserMessage(Box::new(ChatEntry::user(
+                    "via handle",
+                ))));
             state.session.active_session_id().clone()
         };
 

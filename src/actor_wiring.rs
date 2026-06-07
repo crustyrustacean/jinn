@@ -201,7 +201,7 @@ impl ActorSystemBuilder {
         }
     });
 
-    let (sync_plugins, async_plugins, plugin_sync_handle) = jinn_plugin::PluginSystem::new(
+    let (sync_plugins, async_plugins, plugin_sync_handle) = jinn_plugin::PluginSystem::build(
         &paths.plugins_dir(),
         &paths.system_plugins_dir(),
         handle.clone(),

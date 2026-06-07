@@ -34,7 +34,6 @@ pub fn serialize_entries_for_compaction(entries: &[ChatEntry]) -> String {
             | ChatEntryKind::Error(_)
             | ChatEntryKind::Thinking(_)
             | ChatEntryKind::Transient(_)
-
             | ChatEntryKind::Compaction { .. }
             | ChatEntryKind::ToolCall { .. }
             | ChatEntryKind::ToolResult { .. } => {}

@@ -339,7 +339,6 @@ mod tests {
         sink.commands.lock().expect("lock").clone()
     }
 
-
     #[test]
     fn push_chat_entry_dispatches_system_entry() {
         let sink = test_sink();

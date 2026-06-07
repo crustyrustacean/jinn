@@ -27,7 +27,7 @@ fn build_system_with_capture(dir: &Path) -> (SyncPlugins, Arc<Mutex<Vec<PluginCo
     let captured_clone = captured.clone();
 
     let rt = tokio::runtime::Runtime::new().expect("runtime");
-    let (sync, _, _) = PluginSystem::new(
+    let (sync, _, _) = PluginSystem::build(
         dir,
         Path::new("/nonexistent"),
         rt.handle().clone(),

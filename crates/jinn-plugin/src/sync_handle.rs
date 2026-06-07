@@ -22,7 +22,17 @@ use crate::session_registry::SessionRegistryId;
 pub struct PluginSyncHandle {
     /// Sync channel sender sharing the same channel as `AsyncPluginHandle`.
     /// Derived via `clone_sync()` so the async sender stays valid.
-    pub(crate) tx: kanal::Sender<PluginJob>,
+    tx: kanal::Sender<PluginJob>,
+}
+
+impl PluginSyncHandle {
+    /// Construct a sync plugin handle from its sync channel sender.
+    ///
+    /// Called by [`crate::PluginSystem::build`] with a `clone_sync()`
+    /// sender so the async handle's sender remains valid.
+    pub(crate) fn new(tx: kanal::Sender<PluginJob>) -> Self {
+        Self { tx }
+    }
 }
 
 impl PluginSyncHandle {
@@ -72,7 +82,7 @@ impl PluginSyncHandle {
     /// # Errors
     ///
     /// Returns an error if the plugin thread is dead or a hook errors.
-    pub fn call_hooks_json(
+    pub fn call_hooks_json_impl(
         &self,
         hook: &str,
         ctx_json: &serde_json::Value,
@@ -114,7 +124,7 @@ impl PluginSyncHandle {
     /// # Errors
     ///
     /// Returns an error if the plugin thread is dead or a hook errors.
-    pub fn call_hooks_for_session_json(
+    pub fn call_hooks_for_session_json_impl(
         &self,
         session: SessionRegistryId,
         hook: &str,
