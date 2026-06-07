@@ -454,7 +454,7 @@ impl IntentHandler {
                 feat::picker::intent::handle_open_picker(state, PickerKind::SessionLifecycle)
             }
             Intent::SidebarSessionClose => {
-                if selected_entry_is_workflow(state) {
+                if selected_entry_is_automated(state) {
                     return IntentResult::empty();
                 }
                 // First press - show confirmation prompt.
@@ -463,19 +463,19 @@ impl IntentHandler {
                 IntentResult::empty()
             }
             Intent::SidebarSessionTeardown => {
-                if selected_entry_is_workflow(state) {
+                if selected_entry_is_automated(state) {
                     return IntentResult::empty();
                 }
                 feat::ui::sidebar::sessions::handle_session_teardown(state)
             }
             Intent::SidebarSessionArchive => {
-                if selected_entry_is_workflow(state) {
+                if selected_entry_is_automated(state) {
                     return IntentResult::empty();
                 }
                 feat::ui::sidebar::sessions::handle_session_archive(state)
             }
             Intent::SidebarSessionContinue => {
-                if selected_entry_is_workflow(state) {
+                if selected_entry_is_automated(state) {
                     return IntentResult::empty();
                 }
                 feat::ui::sidebar::sessions::handle_session_continue(state)
@@ -610,7 +610,7 @@ impl IntentHandler {
 ///
 /// Used by session-management intents to no-op when a workflow is selected,
 /// preventing accidental operations on the parent session.
-fn selected_entry_is_workflow(state: &AppState) -> bool {
+fn selected_entry_is_automated(state: &AppState) -> bool {
     use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
 
     let Some(index) = state.frontend.sessions_section.selected_index else {

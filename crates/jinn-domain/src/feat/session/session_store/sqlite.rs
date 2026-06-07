@@ -549,8 +549,8 @@ impl From<PersistableCore> for SessionCore {
             session_state: SessionState::Loaded, // overridden by TryFrom<SessionLoadContext> from archived column
             lifecycle_script_state: core.lifecycle_script_state,
             ephemeral: SessionCoreEphemeral::default(),
-            is_workflow: false,       // set from DB column after deserialization
-            workflow_overrides: None, // runtime-only, never persisted
+            is_automated: false,       // set from DB column after deserialization
+            assembly_overrides: None, // runtime-only, never persisted
             has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
             task_list: core.task_list,
             attached_plugins: core.attached_plugins,
@@ -584,8 +584,8 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     ephemeral: _ephemeral, // runtime-only state, not persisted
                     session_state,
                     lifecycle_script_state,
-                    is_workflow, // Phase 1: column is now is_automated; field renamed in Phase 2
-                    workflow_overrides: _workflow_overrides, // runtime-only, not persisted
+                    is_automated,
+                    assembly_overrides: _assembly_overrides, // runtime-only, not persisted
                     has_interacted: _has_interacted, // deserialized from DB, restored by handle_session_load_completed
                     task_list: _task_list, // included in metadata blob via PersistableCore
                     attached_plugins: _attached_plugins, // included in metadata blob via PersistableCore
@@ -621,7 +621,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                 .change_context(SessionStoreError)
                 .attach("failed to serialize metadata")?
                 .into(),
-            is_automated: *is_workflow, // SessionCore field renamed in Phase 2
+            is_automated: *is_automated, // SessionCore field renamed in Phase 2
             persist: true, // SessionCore.persist added in Phase 3; legacy default for migrated rows
         })
 
@@ -705,18 +705,18 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 session_state: SessionState::Loaded,
                 lifecycle_script_state: serde_json::from_str(&lifecycle_script_state)
                     .unwrap_or_default(),
-                is_workflow: false,
+                is_automated: false,
 
-                workflow_overrides: None, // runtime-only, set later if needed
+                assembly_overrides: None, // runtime-only, set later if needed
                 has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
                 task_list: crate::feat::todo_list::TaskList::default(), // no metadata blob available for legacy sessions
                 attached_plugins: Vec::default(),
             }
         };
 
-        // Single source of truth: is_automated column → core.is_workflow
+        // Single source of truth: is_automated column → core.is_automated
         // (field renamed to is_automated in Phase 2).
-        core.is_workflow = is_automated;
+        core.is_automated = is_automated;
 
         // Single source of truth: archived column → session_state.
         core.session_state = if archived {

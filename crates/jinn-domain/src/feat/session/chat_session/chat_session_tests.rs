@@ -4508,19 +4508,19 @@ fn enqueue_front_puts_item_at_front_of_queue() {
 }
 
 #[rstest::rstest]
-fn is_workflow_returns_real_value() {
-    // Given a session that is not a workflow.
+fn is_automated_returns_real_value() {
+    // Given a session that is not automated.
     let session = ChatSessionState::new();
 
-    // Then is_workflow returns false.
-    assert!(!session.is_workflow());
+    // Then is_automated returns false.
+    assert!(!session.is_automated());
 
-    // Given a session marked as workflow.
+    // Given a session marked as automated.
     let mut wf_session = ChatSessionState::new();
-    wf_session.core.is_workflow = true;
+    wf_session.core.is_automated = true;
 
-    // Then is_workflow returns true (not hardcoded false).
-    assert!(wf_session.is_workflow());
+    // Then is_automated returns true (not hardcoded false).
+    assert!(wf_session.is_automated());
 }
 
 // --- Steering buffer persistence tests ---

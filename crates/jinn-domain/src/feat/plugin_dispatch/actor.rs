@@ -11,7 +11,7 @@
 //! 3. Tracks in-flight plugin runs per (session, plugin) so that
 //!    `PluginRunState` transitions correctly.
 //!
-//! Unlike the old workflow actor, this one:
+//! Unlike the old automated-session actor, this one:
 //! - Has no trigger enum. The plugin decides what to subscribe to by defining
 //!   hook functions.
 //! - Has no merge strategies. Plugins self-orchestrate
@@ -91,7 +91,7 @@ pub struct PluginDispatchActor {
     /// The session ID active at startup (for `on_app_started` ctx).
     startup_session_id: String,
     /// Domain LLM context shared with plugin `ctx.request("llm_oneshot")`.
-    /// Resolves pending one-shot oneshots when a workflow session completes.
+    /// Resolves pending one-shot oneshots when an automated session completes.
     domain_ctx: Arc<DomainNodeContext>,
 }
 
@@ -370,8 +370,8 @@ impl PluginDispatchActor {
 
     async fn fire_on_phase_changed(&self, session_id: SessionId, new_phase: PhaseKind) {
         // Workflow session completed: resolve any pending plugin LLM one-shot oneshot.
-        // A workflow session is one spawned by DomainNodeContext::send_llm_request_oneshot;
-        // it has is_workflow=true and a pending sender in domain_ctx. Extract the last
+        // Automated sessions are spawned by DomainNodeContext::send_llm_request_oneshot;
+        // it has is_automated=true and a pending sender in domain_ctx. Extract the last
         // assistant entry text and resolve the awaiting coroutine.
         if new_phase == PhaseKind::Idle && self.domain_ctx.has_pending(&session_id) {
             let response = self.extract_last_assistant_text(&session_id);
@@ -408,7 +408,7 @@ impl PluginDispatchActor {
     }
 
     /// Extract the text of the last assistant entry for a session.
-    /// Used to resolve a pending plugin LLM one-shot oneshot when a workflow
+    /// Used to resolve a pending plugin LLM one-shot oneshot when an automated
     /// session completes. Returns an empty string if no assistant entry exists.
     fn extract_last_assistant_text(&self, session_id: &SessionId) -> String {
         let guard = self.state.read();
