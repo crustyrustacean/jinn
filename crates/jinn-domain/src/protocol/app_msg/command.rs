@@ -21,7 +21,7 @@ use crate::feat::chat_input::protocol::command::{
     EnqueueResumeTurn, EnqueueUserMessage, PushChatEntry, SetChatInputText, SubmitSteeringMessage,
 };
 use crate::feat::context::protocol::command::{
-    LoadPersonaPickerEntries, PinChatEntry, RescanPersonas, UnpinChatEntry,
+    LoadPersonaPickerEntries, PinChatEntry, RescanPersonas, ScanContextFiles, UnpinChatEntry,
 };
 use crate::feat::preferences_actor::protocol::command::UpdatePreferences;
 use crate::feat::provider::protocol::command::{
@@ -79,8 +79,8 @@ pub enum Command {
     SendToLlmProvider(SendToLlmProvider),
     /// Refresh the model list from all providers.
     RefreshModels,
-    /// Rescan the prompt templates directory.
-    RescanPromptTemplates,
+    /// Rescan the prompt templates for a session's cwd.
+    RescanPromptTemplates(RescanPromptTemplates),
     /// Register tools that an actor can execute.
     RegisterTools(RegisterTools),
     /// Request execution of a batch of tool calls.
@@ -103,8 +103,10 @@ pub enum Command {
     LoadSessionPickerEntries(LoadSessionPickerEntries),
     /// Request to load a full session from disk by byte offset.
     SessionLoadRequested(SessionLoadRequested),
-    /// Scan the agent skills directory and reload skills.
-    ScanSkills,
+    /// Scan agent skills for a session's cwd.
+    ScanSkills(ScanSkills),
+    /// Scan project context files (AGENTS.md/CLAUDE.md) for a session's cwd.
+    ScanContextFiles(ScanContextFiles),
     /// Rescan the personas directory and reload persona files.
     RescanPersonas(RescanPersonas),
     /// Load entries for the persona picker.
@@ -164,7 +166,7 @@ impl Command {
 
             Self::SendToLlmProvider(..) => Some(SendToLlmProvider::NAME),
             Self::RefreshModels => Some(RefreshModels::NAME),
-            Self::RescanPromptTemplates => Some(RescanPromptTemplates::NAME),
+            Self::RescanPromptTemplates(..) => Some(RescanPromptTemplates::NAME),
             Self::RegisterTools(..) => Some(RegisterTools::NAME),
             Self::ExecuteToolBatch(..) => Some(ExecuteToolBatch::NAME),
             Self::ExecuteTool(..) => Some(ExecuteTool::NAME),
@@ -177,7 +179,8 @@ impl Command {
             ),
             Self::LoadSessionPickerEntries(..) => Some(LoadSessionPickerEntries::NAME),
             Self::SessionLoadRequested(..) => Some(SessionLoadRequested::NAME),
-            Self::ScanSkills => Some(ScanSkills::NAME),
+            Self::ScanSkills(..) => Some(ScanSkills::NAME),
+            Self::ScanContextFiles(..) => Some(ScanContextFiles::NAME),
             Self::RescanPersonas(..) => Some(RescanPersonas::NAME),
             Self::LoadPersonaPickerEntries(..) => Some(LoadPersonaPickerEntries::NAME),
             Self::UpdatePreferences(..) => Some(UpdatePreferences::NAME),
@@ -247,7 +250,7 @@ impl std::fmt::Display for Command {
 
             Command::SendToLlmProvider(..) => write!(f, "send to LLM provider"),
             Command::RefreshModels => write!(f, "refresh models"),
-            Command::RescanPromptTemplates => write!(f, "rescan prompt templates"),
+            Command::RescanPromptTemplates(..) => write!(f, "rescan prompt templates"),
             Command::RegisterTools(payload) => {
                 write!(
                     f,
@@ -288,7 +291,8 @@ impl std::fmt::Display for Command {
             }
             Command::LoadSessionPickerEntries(..) => write!(f, "load session picker entries"),
             Command::SessionLoadRequested(..) => write!(f, "session load requested"),
-            Command::ScanSkills => write!(f, "scan skills"),
+            Command::ScanSkills(..) => write!(f, "scan skills"),
+            Command::ScanContextFiles(..) => write!(f, "scan context files"),
             Command::RescanPersonas(..) => write!(f, "rescan personas"),
             Command::LoadPersonaPickerEntries(..) => {
                 write!(f, "load persona picker entries")

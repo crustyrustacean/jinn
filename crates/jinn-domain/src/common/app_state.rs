@@ -140,6 +140,24 @@ impl AppState {
         self.session.get_unchecked_mut(id)
     }
 
+    /// Fallible read-only access to a session by ID.
+    ///
+    /// Returns `None` if the session does not exist. Use this from paths
+    /// where the session may have been closed concurrently (e.g. scan actors
+    /// that received a command for an ID that is no longer present).
+    #[must_use]
+    pub fn try_session(&self, id: &SessionId) -> Option<&ChatSessionState> {
+        self.session.get(id)
+    }
+
+    /// Fallible mutable access to a session by ID.
+    ///
+    /// Returns `None` if the session does not exist.
+    #[must_use]
+    pub fn try_session_mut(&mut self, id: &SessionId) -> Option<&mut ChatSessionState> {
+        self.session.get_mut(id)
+    }
+
     /// Returns mutable access to a session by ID, creating it if missing.
     ///
     /// Used by streaming handlers that receive tokens from actors

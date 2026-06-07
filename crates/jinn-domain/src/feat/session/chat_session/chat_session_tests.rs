@@ -4659,14 +4659,18 @@ fn discovered_sets_are_independent_between_sessions() {
         description: String::new(),
         body: String::new(),
         file_path: PathBuf::new(),
+
         base_dir: PathBuf::new(),
+        source: crate::feat::skills::SkillSource::Global,
     }]);
     b.set_discovered_skills(vec![crate::feat::skills::Skill {
         name: "session-b-only".into(),
         description: String::new(),
         body: String::new(),
         file_path: PathBuf::new(),
+
         base_dir: PathBuf::new(),
+        source: crate::feat::skills::SkillSource::Global,
     }]);
 
     // Then session A sees only its skill, B sees only its own — no clobbering.
