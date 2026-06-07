@@ -22,6 +22,3 @@ Feature: Session Lifecycle
     Given a fresh app
     Then the token ledger should have 0 records
 
-  Scenario: Default strategy is passthrough
-    Given a fresh app
-    Then the session strategy should be passthrough

@@ -44,7 +44,7 @@ use jinn_domain::ToolDefinition;
 use jinn_domain::ToolResult;
 use jinn_domain::UnpinChatEntry;
 use jinn_domain::UserPreferencesStorageService;
-use jinn_domain::feat::context::protocol::strategy_id::PromptStrategyId;
+
 use jinn_plugin::SyncPlugins;
 use jinn_tui::AppStatus;
 use jinn_tui::MsgHandler;
@@ -444,19 +444,6 @@ fn given_session_is_sending(world: &mut AppWorld) {
         .write()
         .active_session_mut()
         .begin_sending();
-}
-
-/// Sets the active session's prompt strategy.
-#[cucumber::given(expr = "the active session strategy is {word}")]
-fn given_session_strategy(world: &mut AppWorld, strategy: String) {
-    let strategy_id = PromptStrategyId::new(&strategy);
-    world
-        .app
-        .core
-        .state
-        .write()
-        .active_session_mut()
-        .switch_strategy(strategy_id);
 }
 
 /// Adds a system entry to the active session's history.
@@ -1034,17 +1021,6 @@ fn then_llm_call_message_count(world: &mut AppWorld, call_index: u64, message_co
         message_count as usize,
         "expected {message_count} messages in LLM call {call_index}, got {}",
         call.len()
-    );
-}
-
-/// Asserts the active session's prompt strategy matches the expected value.
-#[cucumber::then(expr = "the session strategy should be {word}")]
-fn then_session_strategy(world: &mut AppWorld, strategy: String) {
-    let expected = PromptStrategyId::new(&strategy);
-    let actual = world.state().active_session().active_strategy().clone();
-    assert_eq!(
-        actual, expected,
-        "expected strategy {expected}, got {actual}"
     );
 }
 

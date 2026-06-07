@@ -716,30 +716,6 @@ impl Default for CompactionConfig {
     }
 }
 
-/// Default sliding window size.
-const DEFAULT_SLIDING_WINDOW_SIZE: usize = 5;
-
-/// Sliding window configuration.
-///
-/// Serialized as `[context_sliding_window]` in `jinn.toml`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ContextSlidingWindowConfig {
-    /// The default window size for new sessions using the sliding-window strategy.
-    #[serde(default = "default_sliding_window_size")]
-    pub size: usize,
-}
-
-fn default_sliding_window_size() -> usize {
-    DEFAULT_SLIDING_WINDOW_SIZE
-}
-
-impl Default for ContextSlidingWindowConfig {
-    fn default() -> Self {
-        Self {
-            size: DEFAULT_SLIDING_WINDOW_SIZE,
-        }
-    }
-}
 
 /// Web fetch backend selection.
 ///
@@ -956,10 +932,6 @@ pub struct UserPreferences {
     /// Compaction configuration.
     #[serde(default)]
     pub compaction: CompactionConfig,
-    /// Sliding window configuration for the sliding-window context strategy.
-    /// New sessions inherit `size` as their default.
-    #[serde(default)]
-    pub context_sliding_window: ContextSlidingWindowConfig,
     /// Retry configuration for LLM provider requests.
     #[serde(default)]
     pub request_retry: RequestRetryConfig,
@@ -1342,7 +1314,6 @@ mod tests {
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
-            context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
@@ -1417,7 +1388,6 @@ last_strategy = "sliding_window""#,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
-            context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
@@ -1451,7 +1421,6 @@ last_strategy = "sliding_window""#,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
-            context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
@@ -1499,7 +1468,6 @@ last_strategy = "sliding_window""#,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
-            context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
@@ -1547,7 +1515,6 @@ last_strategy = "sliding_window""#,
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
-            context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),
@@ -1928,7 +1895,6 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
             max_tool_output_lines: None,
             max_tool_output_bytes: None,
             compaction: CompactionConfig::default(),
-            context_sliding_window: ContextSlidingWindowConfig::default(),
             request_retry: RequestRetryConfig::default(),
             web_fetch: WebFetchConfig::default(),
             openrouter_web_search: OpenrouterWebSearchConfig::default(),

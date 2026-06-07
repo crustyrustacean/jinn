@@ -27,6 +27,8 @@ pub enum FocusScope {
     ArgInput,
     /// Rename session input popup - editing a session title.
     RenameSessionInput,
+    /// Cwd input popup - typing a directory path to change session cwd.
+    CwdInput,
 
     /// Sidebar resize mode - adjusting sidebar width with h/l keys.
     SidebarResize,
@@ -43,7 +45,7 @@ impl FocusScope {
             | Self::SidebarSessions
             | Self::SidebarTaskList
             | Self::SidebarResize => Mode::Normal,
-            Self::Input | Self::ArgInput | Self::RenameSessionInput => Mode::Input,
+            Self::Input | Self::ArgInput | Self::RenameSessionInput | Self::CwdInput => Mode::Input,
             Self::Picker { .. } => Mode::Picker,
         }
     }
@@ -61,6 +63,7 @@ impl std::fmt::Display for FocusScope {
             Self::Picker { kind } => write!(f, "Picker({kind})"),
             Self::ArgInput => write!(f, "ArgInput"),
             Self::RenameSessionInput => write!(f, "RenameSessionInput"),
+            Self::CwdInput => write!(f, "CwdInput"),
             Self::SidebarResize => write!(f, "SidebarResize"),
         }
     }

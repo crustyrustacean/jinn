@@ -218,6 +218,57 @@ impl IntentHandler {
                 crate::protocol::IntentResult::empty()
             }
 
+            // --- Cwd Input text-edit guards (mirror ArgInput) ---
+            Intent::InsertChar { ch }
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::CwdInput
+                ) =>
+            {
+                feat::cwd_input::intent::handle_insert_char(state, *ch)
+            }
+            Intent::DeleteGrapheme
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::CwdInput
+                ) =>
+            {
+                feat::cwd_input::intent::handle_delete(state)
+            }
+            Intent::DeleteGraphemeForward
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::CwdInput
+                ) =>
+            {
+                feat::cwd_input::intent::handle_delete_forward(state)
+            }
+            Intent::MoveCursorLeft
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::CwdInput
+                ) =>
+            {
+                feat::cwd_input::intent::handle_cursor_left(state)
+            }
+            Intent::MoveCursorRight
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::CwdInput
+                ) =>
+            {
+                feat::cwd_input::intent::handle_cursor_right(state)
+            }
+            Intent::EnterNormalMode
+                if matches!(
+                    state.frontend.scope_stack.current(),
+                    crate::common::app_state::FocusScope::CwdInput
+                ) =>
+            {
+                // ESC cancels cwd input - pop scope, clear state.
+                feat::cwd_input::intent::handle_cwd_input_leave(state)
+            }
+
             // --- Chat Input ---
             Intent::InsertChar { ch } => feat::chat_input::intent::handle_insert_char(*ch, state),
             Intent::DeleteGrapheme => feat::chat_input::intent::handle_delete_grapheme(state),
@@ -257,6 +308,9 @@ impl IntentHandler {
                 }
                 crate::common::app_state::FocusScope::RenameSessionInput => {
                     feat::rename_session_input::intent::handle_paste(state, text)
+                }
+                crate::common::app_state::FocusScope::CwdInput => {
+                    feat::cwd_input::intent::handle_paste(state, text)
                 }
                 _ => IntentResult::empty(),
             },
@@ -510,6 +564,17 @@ impl IntentHandler {
                 feat::rename_session_input::intent::handle_delete_forward(state)
             }
 
+            // --- CWD Input (type a path) ---
+            Intent::OpenCwdInput => {
+                feat::cwd_input::intent::handle_cwd_input_enter(state)
+            }
+            Intent::CwdInputConfirm => {
+                feat::cwd_input::intent::handle_cwd_input_confirm(state)
+            }
+            Intent::CwdInputLeave => {
+                feat::cwd_input::intent::handle_cwd_input_leave(state)
+            }
+
             // --- CWD Selection ---
             Intent::ChangeCwd { root } => {
                 crate::feat::navigation::intent::handle_change_cwd(state, *root)
@@ -670,16 +735,15 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Hel".to_owned(),
-            cursor_pos: 3,
+            text: crate::common::line_input::LineInput { input: "Hel".to_owned(), cursor_pos: 3 },
         };
 
         // When handling RenameInsertChar { ch: 'o' }.
         let result = IntentHandler::handle(&Intent::RenameInsertChar { ch: 'o' }, &mut state, None);
 
         // Then rename input is "Helo" (not chat input).
-        assert_eq!(state.frontend.rename_session_input.input, "Helo");
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 4);
+        assert_eq!(state.frontend.rename_session_input.text.input, "Helo");
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 4);
         assert!(state.active_chat_input().is_empty());
         assert!(result.commands.is_empty());
     }
@@ -693,15 +757,14 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Hello".to_owned(),
-            cursor_pos: 5,
+            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 5 },
         };
 
         // When handling RenameCursorLeft.
         let result = IntentHandler::handle(&Intent::RenameCursorLeft, &mut state, None);
 
         // Then cursor moved left.
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 4);
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 4);
         assert!(result.commands.is_empty());
     }
 
@@ -714,15 +777,14 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Hi".to_owned(),
-            cursor_pos: 0,
+            text: crate::common::line_input::LineInput { input: "Hi".to_owned(), cursor_pos: 0 },
         };
 
         // When handling RenameCursorRight.
         let result = IntentHandler::handle(&Intent::RenameCursorRight, &mut state, None);
 
         // Then cursor moved right.
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 1);
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 1);
         assert!(result.commands.is_empty());
     }
 
@@ -735,16 +797,15 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Hello".to_owned(),
-            cursor_pos: 5,
+            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 5 },
         };
 
         // When handling RenameDeleteGrapheme.
         let result = IntentHandler::handle(&Intent::RenameDeleteGrapheme, &mut state, None);
 
         // Then last char deleted.
-        assert_eq!(state.frontend.rename_session_input.input, "Hell");
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 4);
+        assert_eq!(state.frontend.rename_session_input.text.input, "Hell");
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 4);
         assert!(result.commands.is_empty());
     }
 
@@ -757,16 +818,15 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Hello".to_owned(),
-            cursor_pos: 1,
+            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 1 },
         };
 
         // When handling RenameDeleteForward.
         let result = IntentHandler::handle(&Intent::RenameDeleteForward, &mut state, None);
 
         // Then char after cursor deleted.
-        assert_eq!(state.frontend.rename_session_input.input, "Hllo");
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 1);
+        assert_eq!(state.frontend.rename_session_input.text.input, "Hllo");
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 1);
         assert!(result.commands.is_empty());
     }
 
@@ -778,15 +838,14 @@ mod tests {
         state.frontend.arg_input = crate::common::app_state::ArgInputState {
             lifecycle_name: "test".to_owned(),
             template_display: "<arg>".to_owned(),
-            input: "hel".to_owned(),
-            cursor_pos: 3,
+            text: crate::common::line_input::LineInput { input: "hel".to_owned(), cursor_pos: 3 },
         };
 
         // When handling InsertChar.
         let _result = IntentHandler::handle(&Intent::InsertChar { ch: 'o' }, &mut state, None);
 
         // Then arg_input received the char, not the chat input.
-        assert_eq!(state.frontend.arg_input.input, "helo");
+        assert_eq!(state.frontend.arg_input.text.input, "helo");
         assert!(
             state.active_chat_input().is_empty(),
             "chat input should be empty"
@@ -805,7 +864,7 @@ mod tests {
         // Then the chat input received the char.
         assert_eq!(state.active_chat_input().text(), "x");
         assert!(
-            state.frontend.arg_input.input.is_empty(),
+            state.frontend.arg_input.text.input.is_empty(),
             "arg input should be empty"
         );
     }
@@ -818,15 +877,14 @@ mod tests {
         state.frontend.arg_input = crate::common::app_state::ArgInputState {
             lifecycle_name: "test".to_owned(),
             template_display: "<arg>".to_owned(),
-            input: "abc".to_owned(),
-            cursor_pos: 3,
+            text: crate::common::line_input::LineInput { input: "abc".to_owned(), cursor_pos: 3 },
         };
 
         // When handling DeleteGrapheme.
         let _result = IntentHandler::handle(&Intent::DeleteGrapheme, &mut state, None);
 
         // Then arg_input had a char deleted.
-        assert_eq!(state.frontend.arg_input.input, "ab");
+        assert_eq!(state.frontend.arg_input.text.input, "ab");
     }
 
     #[test]
@@ -837,15 +895,14 @@ mod tests {
         state.frontend.arg_input = crate::common::app_state::ArgInputState {
             lifecycle_name: "test".to_owned(),
             template_display: "<arg>".to_owned(),
-            input: "ab".to_owned(),
-            cursor_pos: 2,
+            text: crate::common::line_input::LineInput { input: "ab".to_owned(), cursor_pos: 2 },
         };
 
         // When handling MoveCursorLeft.
         let _result = IntentHandler::handle(&Intent::MoveCursorLeft, &mut state, None);
 
         // Then arg_input cursor moved.
-        assert_eq!(state.frontend.arg_input.cursor_pos, 1);
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 1);
     }
 
     #[test]
@@ -856,15 +913,14 @@ mod tests {
         state.frontend.arg_input = crate::common::app_state::ArgInputState {
             lifecycle_name: "test".to_owned(),
             template_display: "<arg>".to_owned(),
-            input: "ab".to_owned(),
-            cursor_pos: 0,
+            text: crate::common::line_input::LineInput { input: "ab".to_owned(), cursor_pos: 0 },
         };
 
         // When handling MoveCursorRight.
         let _result = IntentHandler::handle(&Intent::MoveCursorRight, &mut state, None);
 
         // Then arg_input cursor moved.
-        assert_eq!(state.frontend.arg_input.cursor_pos, 1);
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 1);
     }
 
     #[test]
@@ -875,15 +931,14 @@ mod tests {
         state.frontend.arg_input = crate::common::app_state::ArgInputState {
             lifecycle_name: "test".to_owned(),
             template_display: "<arg>".to_owned(),
-            input: "abc".to_owned(),
-            cursor_pos: 1,
+            text: crate::common::line_input::LineInput { input: "abc".to_owned(), cursor_pos: 1 },
         };
 
         // When handling DeleteGraphemeForward.
         let _result = IntentHandler::handle(&Intent::DeleteGraphemeForward, &mut state, None);
 
         // Then the char after cursor was deleted from arg_input.
-        assert_eq!(state.frontend.arg_input.input, "ac");
+        assert_eq!(state.frontend.arg_input.text.input, "ac");
     }
 
     #[test]
@@ -894,8 +949,7 @@ mod tests {
         state.frontend.arg_input = crate::common::app_state::ArgInputState {
             lifecycle_name: "test".to_owned(),
             template_display: "<arg>".to_owned(),
-            input: "partial".to_owned(),
-            cursor_pos: 7,
+            text: crate::common::line_input::LineInput { input: "partial".to_owned(), cursor_pos: 7 },
         };
 
         // When handling EnterNormalMode.
@@ -906,7 +960,7 @@ mod tests {
             state.frontend.scope_stack.current(),
             FocusScope::ArgInput
         ));
-        assert!(state.frontend.arg_input.input.is_empty());
+        assert!(state.frontend.arg_input.text.input.is_empty());
     }
 
     #[test]
@@ -938,8 +992,7 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "old".to_owned(),
-            cursor_pos: 3,
+            text: crate::common::line_input::LineInput { input: "old".to_owned(), cursor_pos: 3 },
         };
 
         // When handling PasteText.
@@ -951,7 +1004,7 @@ mod tests {
         );
 
         // Then rename input received the paste.
-        assert_eq!(state.frontend.rename_session_input.input, "old new");
+        assert_eq!(state.frontend.rename_session_input.text.input, "old new");
     }
 
     #[test]

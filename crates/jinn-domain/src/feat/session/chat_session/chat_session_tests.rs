@@ -5,16 +5,15 @@
     reason = "test code"
 )]
 
-use crate::feat::context::strategy::compaction_data::CompactionSessionData;
-use crate::feat::context::strategy::types::StrategyState;
 use crate::feat::session::profile::SessionProfile;
+
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::feat::ui::chat_log::visual_item::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
 };
 use crate::protocol::{
-    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId,
+    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition,
     SessionId,
 };
 use std::path::PathBuf;
@@ -754,53 +753,6 @@ fn cancel_streaming_clears_tool_call_indices() {
 
 // --- Strategy switching tests ---
 
-#[rstest::rstest]
-fn default_strategy_is_passthrough() {
-    // Given a new session.
-    let session = ChatSessionState::new();
-
-    // Then the default strategy is passthrough.
-    assert_eq!(session.active_strategy(), &PromptStrategyId::passthrough());
-}
-
-#[rstest::rstest]
-fn switch_strategy_updates_active_strategy() {
-    // Given a new session.
-    let mut session = ChatSessionState::new();
-
-    // When switching to sliding_window.
-    session.switch_strategy(PromptStrategyId::sliding_window());
-
-    // Then the active strategy is updated.
-    assert_eq!(
-        session.active_strategy(),
-        &PromptStrategyId::sliding_window()
-    );
-}
-
-#[rstest::rstest]
-fn new_with_strategy_sets_active_strategy() {
-    // Given a strategy ID.
-    let strategy = PromptStrategyId::sliding_window();
-
-    // When creating a session with that strategy.
-    let session = ChatSessionState::new_with_strategy(strategy.clone());
-
-    // Then the active strategy is set to the given strategy.
-    assert_eq!(session.active_strategy(), &strategy);
-}
-
-#[rstest::rstest]
-fn new_with_strategy_creates_empty_history() {
-    // Given any strategy.
-    let strategy = PromptStrategyId::compaction();
-
-    // When creating a session with that strategy.
-    let session = ChatSessionState::new_with_strategy(strategy);
-
-    // Then the history is empty.
-    assert!(session.history().is_empty());
-}
 
 // --- Pinning tests ---
 
@@ -4459,35 +4411,6 @@ fn touch_updates_timestamp() {
     assert!(*session.updated_at() > before);
 }
 
-#[rstest::rstest]
-fn strategy_state_returns_data() {
-    // Given a session with a strategy state entry.
-    let mut session = ChatSessionState::new();
-    let key = PromptStrategyId::passthrough();
-    let val = StrategyState::Compaction(CompactionSessionData::default());
-    session
-        .strategy_state_mut()
-        .insert(key.clone(), val.clone());
-
-    // Then the immutable accessor returns the same data.
-    assert!(session.strategy_state().contains_key(&key));
-}
-
-#[rstest::rstest]
-fn strategy_state_mut_allows_modification() {
-    // Given a session.
-    let mut session = ChatSessionState::new();
-
-    // When inserting via mutable accessor.
-    let key = PromptStrategyId::passthrough();
-    session.strategy_state_mut().insert(
-        key.clone(),
-        StrategyState::Compaction(CompactionSessionData::default()),
-    );
-
-    // Then the immutable accessor sees the change.
-    assert_eq!(session.strategy_state().len(), 1);
-}
 
 #[rstest::rstest]
 fn blobs_returns_data() {
@@ -4635,5 +4558,68 @@ fn steering_buffer_not_persisted_across_serialization() {
     assert!(
         restored.ui.steering_buffer.is_empty(),
         "deserialized steering buffer must be empty"
+    );
+}
+
+/// Helper: build a pinned skill-shaped ToolResult entry and add it.
+fn push_pinned_tool_result(
+    session: &mut super::ChatSessionState,
+    call_id: &str,
+    tool_name: &str,
+    content: &str,
+    status: ToolResultStatus,
+) {
+    let mut entry = ChatEntry::tool_result(call_id, tool_name, content, status);
+    entry.pin_position = Some(PinPosition::Relative);
+    session.push_entry(entry);
+}
+
+#[rstest::rstest]
+fn loaded_skills_returns_only_valid_pinned_skill_names() {
+    // Given a session with: one pinned valid skill, one pinned non-skill tool
+    // result, one unpinned skill, and one pinned malformed skill.
+    let mut session = super::ChatSessionState::default();
+
+    push_pinned_tool_result(
+        &mut session,
+        "call-valid",
+        "skill",
+        "<skill name=\"phased-task-loop\" location=\"/x\">body</skill>",
+        ToolResultStatus::Success,
+    );
+    push_pinned_tool_result(
+        &mut session,
+        "call-non-skill",
+        "read",
+        "file contents",
+        ToolResultStatus::Success,
+    );
+
+    // Unpinned skill: should be ignored.
+    let mut unpinned = ChatEntry::tool_result(
+        "call-unpinned",
+        "skill",
+        "<skill name=\"web-coder\" location=\"/x\">body</skill>",
+        ToolResultStatus::Success,
+    );
+    unpinned.pin_position = None;
+    session.push_entry(unpinned);
+
+    push_pinned_tool_result(
+        &mut session,
+        "call-malformed",
+        "skill",
+        "not a skill xml",
+        ToolResultStatus::Success,
+    );
+
+    // When computing loaded skills.
+    let loaded = super::ChatSessionState::loaded_skills(&session);
+
+    // Then only the one valid pinned skill name is returned.
+    assert_eq!(
+        loaded,
+        std::collections::HashSet::from(["phased-task-loop".to_owned()]),
+        "loaded_skills() should return exactly the one valid pinned skill name"
     );
 }
