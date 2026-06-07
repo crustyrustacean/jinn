@@ -4,6 +4,8 @@
 
 use crate::common::app_state::AppState;
 use crate::common::focus::FocusScope;
+use crate::common::line_input::LineInput;
+use crate::common::path_display::shorten_path;
 use crate::feat::cwd_input::resolve::{CwdResolution, resolve_cwd_input};
 use crate::feat::cwd_input::state::CwdInputState;
 use crate::feat::session_lifecycle::protocol::command::SetSessionCwd;
@@ -11,9 +13,17 @@ use crate::protocol::{Command, IntentResult};
 
 /// Opens the cwd input popup.
 ///
-/// Pushes `FocusScope::CwdInput` and seeds an empty [`CwdInputState`].
+/// Pushes `FocusScope::CwdInput` and seeds the input with the active session's
+/// current cwd, tilde-compressed, with the cursor at the end so the user can
+/// immediately append a subdirectory or edit the path. The resolver expands
+/// `~` back on confirm, so the seeded value round-trips correctly.
 pub fn handle_cwd_input_enter(state: &mut AppState) -> IntentResult {
-    state.frontend.cwd_input = CwdInputState::default();
+    // Compute the display string from the active session cwd before the mutable
+    // frontend write so there is no shared borrow held across the assignment.
+    let mut text = LineInput::new();
+    text.set(shorten_path(state.active_session().cwd()));
+
+    state.frontend.cwd_input = CwdInputState { text };
     state.frontend.scope_stack.push(FocusScope::CwdInput);
     IntentResult::empty()
 }
