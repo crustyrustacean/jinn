@@ -65,12 +65,12 @@ pub struct SessionPersistenceActor {
         crate::feat::session_lifecycle::builtin::BuiltinRegistry,
     /// Shell captured at startup for running lifecycle commands.
     pub(in crate::feat::session::session_actor) shell: String,
-    /// Shared child handle for the currently running lifecycle shell process.
-    /// `None` when no lifecycle command is in flight.
-    /// Wrapped in Arc<Mutex> so the spawned reader task and cancel handler
-    /// can both access it.
+    /// Handle for cancelling a currently running lifecycle shell process.
+    /// `None` when no lifecycle command is in flight. Carries the process-group
+    /// PID (for kill) and the inner reader task's `AbortHandle` (so aborting it
+    /// surfaces the existing "... was cancelled" branch in the outer wrapper).
     pub(in crate::feat::session::session_actor) lifecycle_child:
-        Option<crate::feat::session_lifecycle::command_runner::SharedChild>,
+        Option<crate::feat::session_lifecycle::command_runner::LifecycleCancelHandle>,
 }
 
 pub struct SessionPersistenceActorDeps {

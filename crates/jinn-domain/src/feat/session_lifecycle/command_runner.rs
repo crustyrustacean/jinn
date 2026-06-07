@@ -9,7 +9,9 @@ use std::path::PathBuf;
 use error_stack::Report;
 use wherror::Error;
 
-use crate::common::process_kill::kill_process_tree;
+// Note: kill_process_tree(&mut Child) is NOT imported here — the cancel path
+// uses the PID-based kill_process_group_by_pid (called from the actor's cancel
+// handler), and this module no longer holds the Child past spawn.
 
 /// Errors that can occur when running a lifecycle command.
 #[derive(Debug, Error)]
@@ -134,13 +136,37 @@ pub async fn run_teardown_command(
     Ok(())
 }
 
-/// Shared child handle that can be killed from outside the spawned task.
-pub type SharedChild = std::sync::Arc<tokio::sync::Mutex<Option<tokio::process::Child>>>;
+
+/// Handle used to cancel a running lifecycle shell process from outside its
+/// reader task.
+///
+/// Carries:
+/// - `pid`: the process-group leader's id. On Unix the child is spawned with
+///   `process_group(0)`, so its pid _is_ the process-group id. The cancel
+///   path signals the whole group via `kill_process_group_by_pid(pid)`, which
+///   reaches the leader _and_ any backgrounded descendants (grandchildren)
+///   in a single syscall — without touching the reader task's owned `Child`.
+/// - `abort_handle`: the abort handle of the **inner reader task**. Aborting
+///   it makes the outer wrapper task (in `lifecycle.rs`) observe a `JoinError`
+///   and take its `Err(_)` arm, which emits the "cancelled" finish command. The
+///   finish handler then owns all cleanup (busy, cwd, chat entry, phase).
+///
+/// This is lock-free and await-free: the cancel handler can run on a tokio
+///   worker thread without panicking (the previous `SharedChild` +
+///   `blocking_lock` design crashed and would also have deadlocked, since the
+///   reader task held the lock across `child.wait().await`).
+#[derive(Debug)]
+pub struct LifecycleCancelHandle {
+    /// Process-group id of the running lifecycle command (also its pid).
+    pub pid: u32,
+    /// Abort handle for the inner reader task.
+    pub abort_handle: tokio::task::AbortHandle,
+}
 
 /// Result type returned by [`spawn_setup_command`].
 pub type SpawnSetupResult = Result<
     (
-        SharedChild,
+        LifecycleCancelHandle,
         tokio::task::JoinHandle<Result<PathBuf, Report<LifecycleCommandError>>>,
     ),
     Report<LifecycleCommandError>,
@@ -149,30 +175,17 @@ pub type SpawnSetupResult = Result<
 /// Result type returned by [`spawn_teardown_command`].
 pub type SpawnTeardownResult = Result<
     (
-        SharedChild,
+        LifecycleCancelHandle,
         tokio::task::JoinHandle<Result<(), Report<LifecycleCommandError>>>,
     ),
     Report<LifecycleCommandError>,
 >;
 
-/// Kill the process tree inside a [`SharedChild`], if it is still present.
+/// Spawns a setup command and returns a cancel handle and a joinable reader task.
 ///
-/// Terminates the child _and its entire descendant tree_ (e.g. backgrounded
-/// `make build &` or `npm dev &` jobs spawned by the lifecycle command) via the
-/// cross-platform [`kill_process_tree`] helper.
-pub fn kill_shared_child(child_arc: &SharedChild) {
-    // blocking_lock is OK here because this is called from a synchronous handler.
-    let mut guard = child_arc.blocking_lock();
-    if let Some(mut child) = guard.take() {
-        kill_process_tree(&mut child);
-    }
-}
-
-/// Spawns a setup command and returns a shared child handle and a joinable task.
-///
-/// The [`SharedChild`] can be used to kill the process via [`kill_shared_child`].
-/// The reader task awaits exit, reads stdout/stderr, and produces the
-/// canonicalized CWD path.
+/// The [`LifecycleCancelHandle`] can be used to cancel the command from outside
+/// this task (see its docs). The reader task awaits exit, reads stdout/stderr,
+/// and produces the canonicalized CWD path.
 ///
 /// # Errors
 ///
@@ -202,12 +215,17 @@ pub fn spawn_setup_command(command: &str, shell: &str) -> SpawnSetupResult {
             .attach("failed to spawn lifecycle command")?
     };
 
-    // Take pipes before wrapping child.
+    // Capture the process-group id BEFORE moving the child into the reader task.
+    // On Unix the child was spawned with `process_group(0)`, so its pid is also
+    // its process-group id. The cancel path signals the whole group via
+    // `kill_process_group_by_pid(pid)`, which needs no Child handle.
+    let pid = child
+        .id()
+        .expect("child has a pid immediately after spawn");
+
+    // Take pipes before moving the child.
     let stdout_pipe = child.stdout.take();
     let stderr_pipe = child.stderr.take();
-
-    let child_arc = std::sync::Arc::new(tokio::sync::Mutex::new(Some(child)));
-    let child_arc_clone = child_arc.clone();
 
     let handle = tokio::spawn(async move {
         use tokio::io::AsyncReadExt;
@@ -230,22 +248,14 @@ pub fn spawn_setup_command(command: &str, shell: &str) -> SpawnSetupResult {
             Vec::new()
         };
 
-        // Wait for exit.
-        let status = {
-            let mut guard = child_arc_clone.lock().await;
-            let Some(child) = guard.as_mut() else {
-                return Err(Report::new(LifecycleCommandError::ExecutionFailed)
-                    .attach("child was killed before wait"));
-            };
-            let status = child
-                .wait()
-                .await
-                .change_context(LifecycleCommandError::ExecutionFailed)
-                .attach("failed to wait for lifecycle command")?;
-            // Child has exited, clear it.
-            *guard = None;
-            status
-        };
+        // Wait for exit. The reader owns the Child by value (no lock). When the
+        // cancel path SIGKILLs the process group, wait() resolves with a
+        // signal-killed status naturally.
+        let status = child
+            .wait()
+            .await
+            .change_context(LifecycleCommandError::ExecutionFailed)
+            .attach("failed to wait for lifecycle command")?;
 
         let stdout = String::from_utf8_lossy(&stdout_bytes).to_string();
         let stderr = String::from_utf8_lossy(&stderr_bytes).to_string();
@@ -282,7 +292,8 @@ pub fn spawn_setup_command(command: &str, shell: &str) -> SpawnSetupResult {
         Ok(canonical)
     });
 
-    Ok((child_arc, handle))
+    let abort_handle = handle.abort_handle();
+    Ok((LifecycleCancelHandle { pid, abort_handle }, handle))
 }
 
 /// Spawns a teardown command and returns a shared child handle and a joinable task.
@@ -312,12 +323,15 @@ pub fn spawn_teardown_command(command: &str, shell: &str) -> SpawnTeardownResult
             .attach("failed to spawn lifecycle command")?
     };
 
-    // Take pipes before wrapping child.
+    // Capture the process-group id BEFORE moving the child into the reader task
+    // (see spawn_setup_command for the rationale).
+    let pid = child
+        .id()
+        .expect("child has a pid immediately after spawn");
+
+    // Take pipes before moving the child.
     let stdout_pipe = child.stdout.take();
     let stderr_pipe = child.stderr.take();
-
-    let child_arc = std::sync::Arc::new(tokio::sync::Mutex::new(Some(child)));
-    let child_arc_clone = child_arc.clone();
 
     let handle = tokio::spawn(async move {
         use tokio::io::AsyncReadExt;
@@ -340,21 +354,13 @@ pub fn spawn_teardown_command(command: &str, shell: &str) -> SpawnTeardownResult
             Vec::new()
         };
 
-        // Wait for exit.
-        let status = {
-            let mut guard = child_arc_clone.lock().await;
-            let Some(child) = guard.as_mut() else {
-                return Err(Report::new(LifecycleCommandError::ExecutionFailed)
-                    .attach("child was killed before wait"));
-            };
-            let status = child
-                .wait()
-                .await
-                .change_context(LifecycleCommandError::ExecutionFailed)
-                .attach("failed to wait for lifecycle command")?;
-            *guard = None;
-            status
-        };
+        // Wait for exit (reader owns the Child by value; no lock). When the
+        // cancel path SIGKILLs the process group, wait() resolves naturally.
+        let status = child
+            .wait()
+            .await
+            .change_context(LifecycleCommandError::ExecutionFailed)
+            .attach("failed to wait for lifecycle command")?;
 
         if !status.success() {
             let stdout = String::from_utf8_lossy(&stdout_bytes).to_string();
@@ -369,7 +375,8 @@ pub fn spawn_teardown_command(command: &str, shell: &str) -> SpawnTeardownResult
         Ok(())
     });
 
-    Ok((child_arc, handle))
+    let abort_handle = handle.abort_handle();
+    Ok((LifecycleCancelHandle { pid, abort_handle }, handle))
 }
 
 #[cfg(test)]
@@ -642,59 +649,5 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    // --- Process-tree kill tests ---
 
-    /// Regression test: `kill_shared_child` must terminate not just the direct
-    /// child (the shell) but also backgrounded grandchildren, via the process-group
-    /// signal. Before the refactor, `kill_shared_child` called only `start_kill()`,
-    /// which orphans grandchildren on every platform.
-    #[cfg(unix)]
-    #[rstest::rstest]
-    #[tokio::test]
-    async fn kill_shared_child_terminates_grandchildren() {
-        use std::process::Stdio;
-
-        // Given a shell child that backgrounds a long-running `sleep` (the
-        // grandchild) and itself exits, so only the grandchild would survive
-        // a naive single-process kill.
-        let mut cmd = tokio::process::Command::new("/bin/sh");
-        cmd.arg("-c")
-            .arg("sleep 65 &")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .process_group(0);
-        let child = cmd.spawn().expect("spawn should succeed");
-        let shared: SharedChild = std::sync::Arc::new(tokio::sync::Mutex::new(Some(child)));
-
-        // Give the shell a moment to launch the backgrounded grandchild.
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-
-        // When killing the shared child's tree. `kill_shared_child` uses a
-        // blocking lock and is documented as called from a synchronous
-        // handler — mirror that context via `spawn_blocking` so the test does
-        // not block the async runtime thread.
-        {
-            let shared = shared.clone();
-            tokio::task::spawn_blocking(move || kill_shared_child(&shared))
-                .await
-                .expect("kill task should complete");
-        }
-
-        // Then give the kernel a moment to reap the grandchild.
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-
-        // Verify no 'sleep 60' grandchild survived.
-        let output = tokio::process::Command::new("pgrep")
-            .arg("-f")
-            .arg("sleep 65")
-            .output()
-            .await
-            .expect("pgrep should run");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            stdout.trim().is_empty(),
-            "expected no 'sleep 65' grandchildren, but found: {stdout}"
-        );
-    }
 }

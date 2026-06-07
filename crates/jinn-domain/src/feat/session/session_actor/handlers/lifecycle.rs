@@ -170,7 +170,7 @@ impl SessionPersistenceActor {
     fn spawn_shell_setup(&mut self, payload: &RunSessionSetup, ctx: &ActorContext) {
         use crate::feat::session_lifecycle::command_runner::spawn_setup_command;
 
-        let (child_arc, handle) = match spawn_setup_command(&payload.command, &self.shell) {
+        let (cancel_handle, handle) = match spawn_setup_command(&payload.command, &self.shell) {
             Ok(pair) => pair,
             Err(e) => {
                 // Failed to even start the command.
@@ -225,7 +225,7 @@ impl SessionPersistenceActor {
             ));
         });
 
-        self.lifecycle_child = Some(child_arc);
+        self.lifecycle_child = Some(cancel_handle);
     }
 
     /// Handle `FinishSessionSetup` - completion of an async setup shell command.
@@ -510,8 +510,9 @@ impl SessionPersistenceActor {
                     );
 
                 match spawn_result {
-                    Ok((child_arc, join_handle)) => {
-                        self.lifecycle_child = Some(child_arc);
+                    Ok((cancel_handle, join_handle)) => {
+                        self.lifecycle_child = Some(cancel_handle);
+
                         let _handle = tokio::spawn(async move {
                             let result = join_handle.await;
                             let error = match result {
@@ -715,8 +716,8 @@ impl SessionPersistenceActor {
                             );
 
                         match spawn_result {
-                            Ok((child_arc, join_handle)) => {
-                                self.lifecycle_child = Some(child_arc);
+                            Ok((cancel_handle, join_handle)) => {
+                                self.lifecycle_child = Some(cancel_handle);
                                 let _handle = tokio::spawn(async move {
                                     let result = join_handle.await;
                                     let error = match result {
@@ -928,44 +929,34 @@ impl SessionPersistenceActor {
         }
     }
 
-    /// Handle `CancelLifecycleCommand` - kill a running lifecycle process.
+    /// Handle `CancelLifecycleCommand` - terminate a running lifecycle process.
     ///
-    /// Kills the child process (if any), cancels busy state,
-    /// and pushes a system entry.
+    /// Per Option B, the cancel handler does only the kill + abort. All cleanup
+    /// (busy decrement, chat entry, phase transition, cwd) is owned by the
+    /// `FinishSessionSetup` / `FinishSessionTeardown` handlers, which fire when
+    /// the aborted reader task's wrapper observes the resulting `JoinError` and
+    /// takes its existing "... was cancelled" branch.
+    ///
+    /// This function is lock-free and await-free: it signals the process group by
+    /// PID and aborts the reader task handle. Both are safe to call from a runtime
+    /// worker thread, which is why this replaced the old `blocking_lock` path that
+    /// panicked on `Cannot block the current thread from within a runtime`.
     pub(in crate::feat::session::session_actor) fn handle_cancel_lifecycle_command(
         &mut self,
-        payload: &crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand,
-        ctx: &ActorContext,
+        _payload: &crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand,
+        _ctx: &ActorContext,
     ) {
-        // Kill the child process if one is running.
-        if let Some(child_arc) = self.lifecycle_child.take() {
-            crate::feat::session_lifecycle::command_runner::kill_shared_child(&child_arc);
+        if let Some(handle) = self.lifecycle_child.take() {
+            // Kill the process group by PID (instant SIGKILL; reaches
+            // backgrounded descendants via the group signal).
+            crate::common::process_kill::kill_process_group_by_pid(handle.pid);
+            // Abort the INNER reader task. Its outer wrapper (spawned in
+            // `handle_setup_lifecycle_command` / the teardown equivalents)
+            // observes the resulting `JoinError` on its `handle.await` and takes
+            // the `Err(_) => "... was cancelled"` arm, which sends
+            // `FinishSessionSetup` / `FinishSessionTeardown` for cleanup.
+            handle.abort_handle.abort();
         }
-
-        // Cancel busy state.
-        let old_phase = {
-            let mut state = self.state.write();
-            let Some(session) = state.session.get_mut(&payload.session_id) else {
-                return;
-            };
-            let old_phase = session.phase();
-            session.cancel_busy();
-            old_phase
-        };
-
-        // Push cancellation entry.
-        let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
-            session_id: payload.session_id.clone(),
-            entry: ChatEntry::system("Lifecycle command cancelled."),
-        }));
-
-        // Emit phase change.
-        super::super::helpers::emit_phase_changed(
-            ctx,
-            &payload.session_id,
-            old_phase,
-            crate::feat::session::phase_machine::PhaseKind::Idle,
-        );
     }
 
     /// ArchiveSession: archive without running teardown.
