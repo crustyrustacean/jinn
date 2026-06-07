@@ -233,7 +233,7 @@ mod tests {
             .iter()
             .map(|t| t.name.as_str())
             .collect();
-        assert!(names.iter().any(|n| *n == "code"), "project prompt discovered: {names:?}");
+        assert!(names.contains(&"code"), "project prompt discovered: {names:?}");
 
         // And the emitted event is tagged with the same session id.
         let events = sink.events();
@@ -286,7 +286,7 @@ mod tests {
             .map(|t| t.name.as_str())
             .collect();
         assert!(
-            names.iter().any(|n| *n == "ancestor"),
+            names.contains(&"ancestor"),
             "ancestor prompt discovered from nested cwd: {names:?}"
         );
     }
