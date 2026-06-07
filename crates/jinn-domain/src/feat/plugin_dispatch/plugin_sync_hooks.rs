@@ -121,8 +121,14 @@ mod tests {
         assert_eq!(
             got,
             vec![
-                Pair { a: 1, b: "x".to_owned() },
-                Pair { a: 2, b: "y".to_owned() },
+                Pair {
+                    a: 1,
+                    b: "x".to_owned()
+                },
+                Pair {
+                    a: 2,
+                    b: "y".to_owned()
+                },
             ]
         );
     }
@@ -140,8 +146,14 @@ mod tests {
         assert_eq!(
             got,
             vec![
-                Pair { a: 1, b: "ok".to_owned() },
-                Pair { a: 3, b: "z".to_owned() },
+                Pair {
+                    a: 1,
+                    b: "ok".to_owned()
+                },
+                Pair {
+                    a: 3,
+                    b: "z".to_owned()
+                },
             ]
         );
     }

@@ -101,18 +101,17 @@ impl HeadlessWorld {
 
             // Call production wiring - spawns all 16 actors.
             let (core, _services, actor_host, _sync_plugins) =
-                actor_wiring::ActorSystemBuilder::new(
-                    actor_wiring::ActorSystemBuilderArgs {
-                        handle: handle.clone(),
-                        llm_service,
-                        provider_registry,
-                        api_keys: resolved_api_keys,
-                        config_storage,
-                        session_store,
-                        user_preferences_storage,
-                        paths,
-                    },
-                ).build();
+                actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
+                    handle: handle.clone(),
+                    llm_service,
+                    provider_registry,
+                    api_keys: resolved_api_keys,
+                    config_storage,
+                    session_store,
+                    user_preferences_storage,
+                    paths,
+                })
+                .build();
 
             // Intentionally leaked: each world gets a fresh tokio runtime.
             let _ = Box::leak(Box::new(rt));

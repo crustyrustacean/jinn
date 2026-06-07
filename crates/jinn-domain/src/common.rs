@@ -12,6 +12,7 @@ pub mod default_config_check;
 pub mod focus;
 pub mod frontmatter;
 pub mod line_input;
+pub mod path_display;
 pub mod process_kill;
 pub mod render_ctx;
 pub mod services;

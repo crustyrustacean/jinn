@@ -11,8 +11,8 @@ use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
 use jinn_domain::common::system_resource::load_system_resource;
-use jinn_domain::feat::ui::sidebar::sidebar::Sidebar;
 use jinn_domain::feat::ui::sidebar::register_sections;
+use jinn_domain::feat::ui::sidebar::sidebar::Sidebar;
 use jinn_domain::{ActorHostService, AppCore, AppUiRegistry, State};
 use wherror::Error;
 
@@ -56,12 +56,15 @@ pub fn launch(
     plugins: jinn_plugin::SyncPlugins,
 ) -> Result<TuiApp, Report<LaunchError>> {
     let paths = &services.paths;
-    load_compaction_prompt(&core.state, &paths.prompts_dir(), &paths.system_prompts_dir())?;
+    load_compaction_prompt(
+        &core.state,
+        &paths.prompts_dir(),
+        &paths.system_prompts_dir(),
+    )?;
     load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
     // Resolve mouse-selection config from environment.
-    let mouse_selection =
-        !matches!(std::env::var("JINN_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
+    let mouse_selection = !matches!(std::env::var("JINN_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
     let tui_config = TuiConfig::new(mouse_selection);
 
     let mut ui_registry = AppUiRegistry::new();
@@ -95,8 +98,6 @@ pub fn launch(
         },
     })
 }
-
-
 
 /// Loads the compaction system prompt from user or system prompts directory.
 ///

@@ -43,11 +43,13 @@ use crate::sync_state::PluginHooks;
 /// boxed future so the handler may itself `.await` async work (e.g. an LLM
 /// one-shot) before resolving the awaiting Lua coroutine.
 pub type RequestHandler = std::sync::Arc<
-    dyn Fn(&str, &serde_json::Value) -> std::pin::Pin<
-        std::boxed::Box<
-            dyn std::future::Future<Output = serde_json::Value> + Send,
-        >,
-    > + Send + Sync,
+    dyn Fn(
+            &str,
+            &serde_json::Value,
+        ) -> std::pin::Pin<
+            std::boxed::Box<dyn std::future::Future<Output = serde_json::Value> + Send>,
+        > + Send
+        + Sync,
 >;
 
 /// Per-session Lua state + loaded hooks.
@@ -234,9 +236,7 @@ async fn run_hooks_fire(
     hook: &str,
     ctx_json: &serde_json::Value,
 ) -> Result<(), Report<PluginError>> {
-
     for (plugin_name, plugin_hooks) in &state.global_hooks {
-
         run_single_hook(
             &state.global_lua,
             plugin_hooks,
@@ -399,24 +399,17 @@ async fn run_single_hook(
     .attach("build ctx")?;
 
     tracing::info!(plugin = %plugin_name, %hook, "invoking async hook");
-    let result: mlua::Value = match func
-        .call_async::<mlua::Value>(ctx_table)
-        .await
-    {
+    let result: mlua::Value = match func.call_async::<mlua::Value>(ctx_table).await {
         Ok(v) => v,
         Err(e) => {
-            return Err(
-                Report::new(PluginError)
-                    .attach(PluginHookSite {
-                        plugin: plugin_name.to_owned(),
-                        hook: hook.to_owned(),
-                    })
-                    .attach(e.to_string()),
-            );
+            return Err(Report::new(PluginError)
+                .attach(PluginHookSite {
+                    plugin: plugin_name.to_owned(),
+                    hook: hook.to_owned(),
+                })
+                .attach(e.to_string()));
         }
     };
-
-
 
     match result {
         mlua::Value::Nil => Ok(None),

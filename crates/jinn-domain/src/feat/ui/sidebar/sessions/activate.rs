@@ -47,6 +47,49 @@ pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
     }
 }
 
+/// Activates the session under the cursor and enters Insert mode.
+///
+/// Called when the user presses `i` in the sessions section. Like
+/// [`handle_session_activate`] but lands in Input mode instead of Normal,
+/// so the user can immediately start typing. The scope stack ends up
+/// `[Normal, Input]` — Normal as the base so that ESC (`clear_overlays`)
+/// correctly returns to Normal, with Input on top as the active mode.
+/// - For session entries: activates the session, swaps to Normal as the
+///   base, then pushes Input.
+/// - For plugin entries: a no-op, identical to [`handle_session_activate`].
+pub fn handle_session_activate_insert(state: &mut AppState) -> IntentResult {
+    use crate::common::app_state::FocusScope;
+    use crate::feat::ui::sidebar::section_trait::SidebarSectionId;
+    use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
+
+    if !matches!(
+        state.frontend.scope_stack.sidebar_section(),
+        Some(SidebarSectionId::Sessions)
+    ) {
+        return IntentResult::empty();
+    }
+    let Some(index) = state.frontend.sessions_section.selected_index else {
+        return IntentResult::empty();
+    };
+    let sessions = sorted_open_sessions(state);
+    let Some(entry) = sessions.get(index) else {
+        return IntentResult::empty();
+    };
+
+    match entry.kind {
+        SessionEntryKind::Session => {
+            state.session.set_active(entry.id.clone());
+            state.frontend.scope_stack.swap_base(FocusScope::Normal);
+            state.frontend.scope_stack.push(FocusScope::Input);
+            IntentResult::empty()
+        }
+        SessionEntryKind::Plugin { .. } => {
+            // Workflow entries are informational only; activating them is a no-op.
+            IntentResult::empty()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
@@ -114,5 +157,91 @@ mod tests {
 
         // Then no commands emitted.
         assert!(result.commands.is_empty());
+    }
+    #[rstest::rstest]
+    fn activate_insert_switches_active_session() {
+        // Given a sessions sidebar with cursor on a non-active session.
+        let (mut state, expected_id) = state_with_two_sessions_cursor_on_second();
+
+        // When activating into insert mode.
+        handle_session_activate_insert(&mut state);
+
+        // Then the active session is now the one under the cursor.
+        assert_eq!(state.session.active_session_id(), &expected_id);
+    }
+
+    #[rstest::rstest]
+    fn activate_insert_pushes_input_with_normal_base() {
+        // Given a sessions sidebar with cursor on a session.
+        let (mut state, _expected_id) = state_with_two_sessions_cursor_on_second();
+
+        // When activating into insert mode.
+        handle_session_activate_insert(&mut state);
+
+        // Then the top of the stack is Input (insert mode).
+        assert_eq!(state.frontend.scope_stack.current(), &FocusScope::Input);
+        // And the base is Normal so ESC can return there via clear_overlays.
+        assert_eq!(
+            state.frontend.scope_stack.parent(),
+            Some(&FocusScope::Normal)
+        );
+    }
+
+    #[rstest::rstest]
+    fn activate_insert_outside_sessions_section_is_noop() {
+        // Given Normal scope (not sessions sidebar).
+        let mut state = AppState::default();
+        let initial_scope = state.frontend.scope_stack.current().clone();
+
+        // When activating into insert mode.
+        handle_session_activate_insert(&mut state);
+
+        // Then the scope is unchanged.
+        assert_eq!(state.frontend.scope_stack.current(), &initial_scope);
+    }
+
+    #[rstest::rstest]
+    fn activate_insert_with_no_selected_index_is_noop() {
+        // Given sessions sidebar but no selected index.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+        let initial_scope = state.frontend.scope_stack.current().clone();
+
+        // When activating into insert mode.
+        handle_session_activate_insert(&mut state);
+
+        // Then the scope is unchanged.
+        assert_eq!(state.frontend.scope_stack.current(), &initial_scope);
+    }
+
+    #[rstest::rstest]
+    fn activate_insert_on_plugin_entry_is_noop() {
+        // Given a sessions sidebar with a plugin entry under the cursor.
+        use crate::feat::attached_plugin::AttachedPlugin;
+        use crate::feat::ui::sidebar::sessions::state::SessionEntryKind;
+
+        let mut state = AppState::default();
+        let root_id = state.session.active_session_id().clone();
+        let root_session = state.session.get_mut(&root_id).expect("active session");
+        root_session
+            .core
+            .attached_plugins
+            .push(AttachedPlugin::new("consensus"));
+
+        // Place the cursor on the plugin entry.
+        let sessions = sorted_open_sessions(&state);
+        let plugin_idx = sessions
+            .iter()
+            .position(|e| matches!(e.kind, SessionEntryKind::Plugin { .. }))
+            .expect("plugin entry present");
+        state.frontend.sessions_section.selected_index = Some(plugin_idx);
+        state.frontend.scope_stack.push(FocusScope::SidebarSessions);
+        let initial_scope = state.frontend.scope_stack.current().clone();
+
+        // When activating into insert mode.
+        handle_session_activate_insert(&mut state);
+
+        // Then the scope is unchanged.
+        assert_eq!(state.frontend.scope_stack.current(), &initial_scope);
     }
 }

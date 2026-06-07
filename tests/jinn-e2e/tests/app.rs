@@ -146,18 +146,17 @@ impl AppWorld {
 
             // Call production wiring - spawns all 16 actors.
             let (core, services, actor_host, _sync_plugins) =
-                actor_wiring::ActorSystemBuilder::new(
-                    actor_wiring::ActorSystemBuilderArgs {
-                        handle: handle.clone(),
-                        llm_service,
-                        provider_registry,
-                        api_keys: resolved_api_keys,
-                        config_storage,
-                        session_store,
-                        user_preferences_storage,
-                        paths,
-                    },
-                ).build();
+                actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
+                    handle: handle.clone(),
+                    llm_service,
+                    provider_registry,
+                    api_keys: resolved_api_keys,
+                    config_storage,
+                    session_store,
+                    user_preferences_storage,
+                    paths,
+                })
+                .build();
 
             // Intentionally leaked: each AppWorld restart gets a completely fresh tokio runtime.
             // Leaking avoids subtle issues where a reused runtime retains closed channels,
@@ -577,8 +576,8 @@ fn when_restart_app(world: &mut AppWorld) {
             jinn_domain::SqliteSessionStore::new_in(&paths.sessions_dir()).expect("store"),
         ));
 
-        let (core, services, actor_host, _sync_plugins) = actor_wiring::ActorSystemBuilder::new(
-            actor_wiring::ActorSystemBuilderArgs {
+        let (core, services, actor_host, _sync_plugins) =
+            actor_wiring::ActorSystemBuilder::new(actor_wiring::ActorSystemBuilderArgs {
                 handle: handle.clone(),
                 llm_service,
                 provider_registry,
@@ -587,8 +586,8 @@ fn when_restart_app(world: &mut AppWorld) {
                 session_store,
                 user_preferences_storage,
                 paths,
-            },
-        ).build();
+            })
+            .build();
 
         // Intentionally leaked: each AppWorld restart gets a completely fresh tokio runtime.
         let _ = Box::leak(Box::new(rt));
