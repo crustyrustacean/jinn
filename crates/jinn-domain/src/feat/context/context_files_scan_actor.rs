@@ -451,4 +451,141 @@ mod tests {
         );
         assert_eq!(loaded.files[0].content, "ancestor file");
     }
+    use crate::feat::session_lifecycle::protocol::event::{
+        SessionCreated, SessionCwdChanged, SessionSetupCompleted,
+    };
+    use crate::init::env_init_actor::EnvironmentLoaded;
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_created_event_scans_context_files() {
+        // Given an actor whose session cwd has an AGENTS.md.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        std::fs::write(dir.path().join("AGENTS.md"), "# Project rules").expect("write");
+        let state = State::new(AppState::default());
+        let (actor, _sink, ctx, session_id) = create_actor(&dir, state.clone());
+
+        // When processing SessionCreated for that session.
+        let event = Event::SessionCreated(SessionCreated {
+            session_id: session_id.clone(),
+        });
+        actor.handle_event(&event, &ctx).await;
+
+        // Then the file is written to the session's discovered set.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session exists");
+        assert_eq!(session.discovered_context_files().len(), 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_created_event_skips_scan_when_cwd_is_sentinel() {
+        // Given an actor whose active session cwd is the pending "." sentinel.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        // Drop an AGENTS.md under a sibling dir so a stray scan would find it.
+        let stray = dir.path().join("stray");
+        std::fs::create_dir_all(&stray).expect("create stray dir");
+        std::fs::write(stray.join("AGENTS.md"), "# stray").expect("write");
+        let state = State::new(AppState::default());
+        // Note: deliberately do NOT set a real cwd; default is ".".
+        let session_id = state.read().session.active_session_id().clone();
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = ActorContext::new(
+            "context-files-scan-test",
+            sink.clone() as Arc<dyn MessageSink>,
+        );
+        let mut paths = AppPaths::new_in(dir.path());
+        paths.set_home_dir_for_test(dir.path().to_path_buf());
+        let services = crate::common::services::test_services::TestServices::builder()
+            .paths(paths)
+            .build();
+        let actor = ContextFilesScanActor::activate(
+            ContextFilesScanActorDeps {
+                services,
+                state: state.clone(),
+            },
+            &mut ctx,
+        );
+
+        // When processing SessionCreated for the sentinel-cwd session.
+        let event = Event::SessionCreated(SessionCreated {
+            session_id: session_id.clone(),
+        });
+        actor.handle_event(&event, &ctx).await;
+
+        // Then no scan runs: the discovered set stays empty.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session exists");
+        assert!(session.discovered_context_files().is_empty());
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_setup_completed_event_scans_context_files() {
+        // Given an actor whose session cwd has an AGENTS.md.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        std::fs::write(dir.path().join("AGENTS.md"), "# Project rules").expect("write");
+        let state = State::new(AppState::default());
+        let (actor, _sink, ctx, session_id) = create_actor(&dir, state.clone());
+
+        // When processing SessionSetupCompleted.
+        let event = Event::SessionSetupCompleted(SessionSetupCompleted {
+            session_id: session_id.clone(),
+            cwd: dir.path().to_path_buf(),
+            error: None,
+        });
+        actor.handle_event(&event, &ctx).await;
+
+        // Then the file is written to the session's discovered set.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session exists");
+        assert_eq!(session.discovered_context_files().len(), 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn session_cwd_changed_event_scans_context_files() {
+        // Given an actor whose session cwd has an AGENTS.md.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        std::fs::write(dir.path().join("AGENTS.md"), "# Project rules").expect("write");
+        let state = State::new(AppState::default());
+        let (actor, _sink, ctx, session_id) = create_actor(&dir, state.clone());
+
+        // When processing SessionCwdChanged.
+        let event = Event::SessionCwdChanged(SessionCwdChanged {
+            session_id: session_id.clone(),
+            cwd: dir.path().to_path_buf(),
+        });
+        actor.handle_event(&event, &ctx).await;
+
+        // Then the file is written to the session's discovered set.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session exists");
+        assert_eq!(session.discovered_context_files().len(), 1);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn environment_loaded_event_scans_active_session_context_files() {
+        // Given an actor whose session cwd has an AGENTS.md.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        std::fs::write(dir.path().join("AGENTS.md"), "# Project rules").expect("write");
+        let state = State::new(AppState::default());
+        let (actor, _sink, ctx, session_id) = create_actor(&dir, state.clone());
+
+        // When processing EnvironmentLoaded.
+        let event = Event::EnvironmentLoaded(EnvironmentLoaded {
+            config: crate::ProvidersConfig {
+                providers: vec![],
+                aliases: vec![],
+                default_provider: None,
+            },
+        });
+        actor.handle_event(&event, &ctx).await;
+
+        // Then the active session's AGENTS.md is discovered.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session exists");
+        assert_eq!(session.discovered_context_files().len(), 1);
+    }
 }
