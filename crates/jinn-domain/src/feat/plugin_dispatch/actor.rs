@@ -396,20 +396,15 @@ impl PluginDispatchActor {
     async fn fire_for_session(&self, session_id: &SessionId, hook: &str, ctx_json: &Value) {
         let result = match self.registry.get(session_id) {
             Some(registry_id) => {
-                tracing::info!(%hook, %session_id, "PLUGTRACE: fire_for_session registry HIT — firing global+session");
                 self.services
                     .plugins
                     .fire_async_for_session_json(*registry_id, hook, ctx_json)
                     .await
             }
-            None => {
-                tracing::info!(%hook, %session_id, "PLUGTRACE: fire_for_session registry MISS — firing global-only");
-                self.services.plugins.fire_async_json(hook, ctx_json).await
-            }
+            None => self.services.plugins.fire_async_json(hook, ctx_json).await,
         };
-        match &result {
-            Ok(()) => tracing::info!(%hook, "PLUGTRACE: fire returned Ok"),
-            Err(e) => tracing::warn!(err = %e, %hook, "PLUGTRACE: fire returned Err"),
+        if let Err(e) = &result {
+            tracing::error!(hook = %hook, err = ?e, "plugin hook failed");
         }
     }
 
