@@ -5,16 +5,15 @@
     reason = "test code"
 )]
 
-use crate::feat::context::strategy::compaction_data::CompactionSessionData;
-use crate::feat::context::strategy::types::StrategyState;
 use crate::feat::session::profile::SessionProfile;
+
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::session::tool_result_status::ToolResultStatus;
 use crate::feat::ui::chat_log::visual_item::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
 };
 use crate::protocol::{
-    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, PromptStrategyId,
+    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition,
     SessionId,
 };
 use std::path::PathBuf;
@@ -754,53 +753,6 @@ fn cancel_streaming_clears_tool_call_indices() {
 
 // --- Strategy switching tests ---
 
-#[rstest::rstest]
-fn default_strategy_is_passthrough() {
-    // Given a new session.
-    let session = ChatSessionState::new();
-
-    // Then the default strategy is passthrough.
-    assert_eq!(session.active_strategy(), &PromptStrategyId::passthrough());
-}
-
-#[rstest::rstest]
-fn switch_strategy_updates_active_strategy() {
-    // Given a new session.
-    let mut session = ChatSessionState::new();
-
-    // When switching to sliding_window.
-    session.switch_strategy(PromptStrategyId::sliding_window());
-
-    // Then the active strategy is updated.
-    assert_eq!(
-        session.active_strategy(),
-        &PromptStrategyId::sliding_window()
-    );
-}
-
-#[rstest::rstest]
-fn new_with_strategy_sets_active_strategy() {
-    // Given a strategy ID.
-    let strategy = PromptStrategyId::sliding_window();
-
-    // When creating a session with that strategy.
-    let session = ChatSessionState::new_with_strategy(strategy.clone());
-
-    // Then the active strategy is set to the given strategy.
-    assert_eq!(session.active_strategy(), &strategy);
-}
-
-#[rstest::rstest]
-fn new_with_strategy_creates_empty_history() {
-    // Given any strategy.
-    let strategy = PromptStrategyId::compaction();
-
-    // When creating a session with that strategy.
-    let session = ChatSessionState::new_with_strategy(strategy);
-
-    // Then the history is empty.
-    assert!(session.history().is_empty());
-}
 
 // --- Pinning tests ---
 
@@ -4459,35 +4411,6 @@ fn touch_updates_timestamp() {
     assert!(*session.updated_at() > before);
 }
 
-#[rstest::rstest]
-fn strategy_state_returns_data() {
-    // Given a session with a strategy state entry.
-    let mut session = ChatSessionState::new();
-    let key = PromptStrategyId::passthrough();
-    let val = StrategyState::Compaction(CompactionSessionData::default());
-    session
-        .strategy_state_mut()
-        .insert(key.clone(), val.clone());
-
-    // Then the immutable accessor returns the same data.
-    assert!(session.strategy_state().contains_key(&key));
-}
-
-#[rstest::rstest]
-fn strategy_state_mut_allows_modification() {
-    // Given a session.
-    let mut session = ChatSessionState::new();
-
-    // When inserting via mutable accessor.
-    let key = PromptStrategyId::passthrough();
-    session.strategy_state_mut().insert(
-        key.clone(),
-        StrategyState::Compaction(CompactionSessionData::default()),
-    );
-
-    // Then the immutable accessor sees the change.
-    assert_eq!(session.strategy_state().len(), 1);
-}
 
 #[rstest::rstest]
 fn blobs_returns_data() {

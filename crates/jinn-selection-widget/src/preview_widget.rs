@@ -11,7 +11,7 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-use crate::preview_content::PreviewContent;
+use crate::preview_content::{PreviewCache, PreviewContent};
 use crate::{PickerItem, SelectionColors, SelectionState, compute_popup_rect};
 
 /// Popup width threshold for vertical (side-by-side) split.
@@ -54,6 +54,10 @@ where
     title_style: Option<Style>,
     /// Preview pane scroll offset.
     preview_scroll: usize,
+    /// Optional preview-line cache. When set, the preview pane uses
+    /// [`PreviewContent::preview_lines_cached`] to skip re-rendering lines
+    /// already stored under the selected item's cache key.
+    preview_cache: Option<&'a dyn PreviewCache>,
 }
 
 impl<'a, T> PreviewSelectionWidget<'a, T>
@@ -69,6 +73,7 @@ where
             colors: SelectionColors::default(),
             title_style: None,
             preview_scroll: 0,
+            preview_cache: None,
         }
     }
 
@@ -107,6 +112,14 @@ where
         self
     }
 
+    /// Supplies a preview-line cache so the preview pane reuses already-rendered
+    /// lines instead of re-rendering every frame.
+    #[must_use]
+    pub fn preview_cache(mut self, cache: &'a dyn PreviewCache) -> Self {
+        self.preview_cache = Some(cache);
+        self
+    }
+
     /// Renders the preview selection popup within the given frame area.
     pub fn render(self, frame: &mut Frame<'_>, area: Rect) {
         let popup_area = compute_popup_rect(area);
@@ -120,7 +133,9 @@ where
             colors,
             title_style,
             preview_scroll,
+            preview_cache,
         } = self;
+
 
         let block = {
             let mut b = Block::default()
@@ -144,17 +159,18 @@ where
             Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(inner);
 
         // Build a temporary struct holding the remaining fields for the split renderers.
-        let borrowed = RenderCtx {
+        let borrowed = RenderCtx::<T> {
             state,
             footer: footer.as_ref(),
             colors: &colors,
             preview_scroll,
+
         };
 
         if popup_area.width >= VERTICAL_SPLIT_MIN_WIDTH {
-            borrowed.render_vertical_split(frame, content_area);
+            borrowed.render_vertical_split(frame, content_area, preview_cache);
         } else {
-            borrowed.render_horizontal_split(frame, content_area);
+            borrowed.render_horizontal_split(frame, content_area, preview_cache);
         }
 
         borrowed.render_footer(frame, footer_area);
@@ -174,11 +190,18 @@ struct RenderCtx<'a, T: PickerItem + PreviewContent> {
     colors: &'a SelectionColors,
     /// Scroll offset for the preview pane.
     preview_scroll: usize,
+
 }
 
+
 impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
-    /// Render with a vertical split layout (side-by-side list and preview).
-    fn render_vertical_split(&self, frame: &mut Frame<'_>, inner: Rect) {
+    /// Renders the list and preview stacked vertically (narrow terminals).
+    fn render_vertical_split(
+        &self,
+        frame: &mut Frame<'_>,
+        inner: Rect,
+        cache: Option<&dyn PreviewCache>,
+    ) {
         let [list_area, preview_area] = Layout::horizontal([
             Constraint::Percentage(LIST_FRACTION),
             Constraint::Percentage(100 - LIST_FRACTION),
@@ -199,11 +222,16 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
             Paragraph::new(sep_lines).style(Style::default().fg(self.colors.separator));
         frame.render_widget(sep_paragraph, sep_area);
 
-        self.render_preview(frame, preview_body);
+        self.render_preview(frame, preview_body, cache);
     }
 
-    /// Render with a horizontal split layout (stacked list and preview).
-    fn render_horizontal_split(&self, frame: &mut Frame<'_>, inner: Rect) {
+    /// Renders the list and preview stacked vertically (narrow terminals).
+    fn render_horizontal_split(
+        &self,
+        frame: &mut Frame<'_>,
+        inner: Rect,
+        cache: Option<&dyn PreviewCache>,
+    ) {
         let list_height = HORIZONTAL_LIST_ROWS + 2;
         let [list_area, sep_area, preview_area] = Layout::vertical([
             Constraint::Length(list_height),
@@ -221,7 +249,7 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
             Paragraph::new(separator).style(Style::default().fg(self.colors.separator));
         frame.render_widget(sep_paragraph, sep_area);
 
-        self.render_preview(frame, preview_area);
+        self.render_preview(frame, preview_area, cache);
     }
 
     /// Render the filter input and result list.
@@ -269,16 +297,23 @@ impl<T: PickerItem + PreviewContent> RenderCtx<'_, T> {
         frame.render_widget(Paragraph::new(result_lines), area);
     }
 
-    /// Render the preview pane for the selected item.
-    fn render_preview(&self, frame: &mut Frame<'_>, area: Rect) {
+    /// Renders the preview pane for the currently selected item, consulting
+    /// the optional `cache` to avoid re-rendering unchanged content.
+    fn render_preview(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        cache: Option<&dyn PreviewCache>,
+    ) {
         let width = area.width as usize;
         let max_visible = area.height as usize;
 
         let lines = if let Some(item) = self.state.selected_item() {
-            item.preview_lines(width)
+            item.preview_lines_cached(width, cache)
         } else {
             Vec::new()
         };
+
 
         let visible: Vec<Line<'static>> = lines
             .iter()
