@@ -84,7 +84,7 @@ pub struct Theme {
     pub selection_bg: Color,
 
     // Provider picker
-    /// Accent action color (e.g., "CTRL+R to refresh").
+    /// Accent color used for hotkeys.
     pub accent_action: Color,
     /// Fresh data age color.
     pub age_fresh: Color,
