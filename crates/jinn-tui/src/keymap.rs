@@ -191,7 +191,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("t", Intent::PinsPinTop, KeyCategory::Context)
             .bind("b", Intent::PinsPinBottom, KeyCategory::Context)
             .bind("r", Intent::PinsPinRelative, KeyCategory::Context)
-            .bind("m", Intent::PinsPinCycle, KeyCategory::Context);
+            .bind("m", Intent::PinsPinCycle, KeyCategory::Context)
+            // Leave sidebar to Normal at the pin's position (same as <c-h>/<esc>).
+            .bind("<enter>", Intent::SidebarLeave, KeyCategory::General);
         })
         // Sidebar - Sessions section
         .scope(Scope::SidebarSessions, |b| {
@@ -207,8 +209,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("a", Intent::SidebarSessionArchive, KeyCategory::General)
             .bind("c", Intent::SidebarSessionContinue, KeyCategory::General)
 
-            // i activates session and enters insert mode (same as enter)
-            .bind("i", Intent::SidebarConfirm, KeyCategory::Input)
+            // i activates session and enters insert mode
+            .bind("i", Intent::SidebarConfirmInsert, KeyCategory::Input)
             // Unmapped character keys produce NoOp to dismiss confirmation prompts
             .catch_all(|key: KeyEvent| {
                 if let Key::Char(_) = key.key {
