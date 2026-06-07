@@ -80,12 +80,18 @@ impl App {
         runner: crate::runner::Runner,
         store: &jinn_domain::SessionStoreService,
     ) -> Result<(), Report<AppError>> {
-        runner.run().change_context(AppError)?;
+        // Run the runner, but don't short-circuit shutdown on its error.
+        // The WAL checkpoint is non-destructive and must run whenever the actor
+        // system started, so that a clean quit leaves sessions.db self-contained
+        // even if the runner itself failed. Surface the runner error as the
+        // final result; a shutdown error takes precedence (it indicates storage
+        // trouble the caller should see).
+        let run_result = runner.run().change_context(AppError);
         self.runtime
             .block_on(store.shutdown())
             .change_context(AppError)
             .attach("session store shutdown (WAL checkpoint) failed")?;
-        Ok(())
+        run_result
     }
 
     /// Dispatches the CLI command to the appropriate runner.

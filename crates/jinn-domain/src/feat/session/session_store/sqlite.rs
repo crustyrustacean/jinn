@@ -1251,6 +1251,22 @@ fn shutdown_blocking(conn: &mut SqliteConnection) -> Result<(), Report<SessionSt
         .change_context(SessionStoreError)
         .attach("failed to run wal_checkpoint(TRUNCATE) during shutdown")?;
 
+    classify_checkpoint_result(&result);
+    Ok(())
+}
+
+/// Classifies a `wal_checkpoint` result row as fatal or non-fatal.
+///
+/// Extracted from [`shutdown_blocking`] as a pure function so the `busy=1`
+/// graceful-degradation path is unit-testable without a database. A busy
+/// result (a reader held a snapshot mid-checkpoint) logs a warning and returns
+/// `Ok` — the un-folded frames survive in the WAL and fold on the next open.
+/// A clean result logs at info level.
+///
+/// This function never fails: the only fallible step in shutdown is the
+/// checkpoint query itself, which stays in [`shutdown_blocking`]. This pure
+/// classifier just chooses the log level based on the result row.
+fn classify_checkpoint_result(result: &CheckpointResult) {
     if result.busy == 1 {
         tracing::warn!(
             log_frames = result.log,
@@ -1264,7 +1280,6 @@ fn shutdown_blocking(conn: &mut SqliteConnection) -> Result<(), Report<SessionSt
             "folded WAL into sessions.db during shutdown"
         );
     }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -1581,6 +1596,38 @@ mod tests {
             summaries.iter().any(|s| s.session_id == id),
             "sessions.db alone must contain all data after shutdown checkpoint"
         );
+    }
+
+    #[test]
+    fn busy_checkpoint_result_does_not_panic() {
+        // Given a checkpoint result that reports busy (a reader held a snapshot).
+        let busy = CheckpointResult {
+            busy: 1,
+            log: 7,
+            checkpointed: 3,
+        };
+
+        // When classifying it.
+        //
+        // Then it completes without panicking — un-folded frames survive
+        // in the WAL and fold on the next open, so this is graceful
+        // degradation, not data loss.
+        classify_checkpoint_result(&busy);
+    }
+
+    #[test]
+    fn clean_checkpoint_result_does_not_panic() {
+        // Given a checkpoint result that fully folded the WAL.
+        let clean = CheckpointResult {
+            busy: 0,
+            log: 7,
+            checkpointed: 7,
+        };
+
+        // When classifying it.
+        //
+        // Then it completes without panicking.
+        classify_checkpoint_result(&clean);
     }
 
     #[tokio::test]
