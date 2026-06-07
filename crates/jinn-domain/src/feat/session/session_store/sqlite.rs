@@ -1531,6 +1531,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shutdown_truncates_wal_file() {
+        // Given a store that has written a session whose frames sit in the WAL
+        // (a small write stays well under the ~4MB autocheckpoint threshold).
+        let dir = tempfile::tempdir().expect("temp dir");
+        let wal_path = dir.path().join("sessions.db-wal");
+        let store = SqliteSessionStore::new_in(dir.path()).expect("new_in");
+        store.save(&make_session()).await.expect("save");
+
+        // The WAL sidecar exists and holds the uncheckpointed frames.
+        assert!(
+            wal_path.exists() && wal_path.metadata().unwrap().len() > 0,
+            "WAL should hold frames before shutdown"
+        );
+
+        // When shutting down the store with its pool still alive.
+        store.shutdown().await.expect("shutdown");
+
+        // Then the WAL has been truncated to zero bytes. With the pool still
+        // open this can only happen via an explicit TRUNCATE checkpoint.
+        assert_eq!(
+            wal_path.metadata().unwrap().len(),
+            0,
+            "WAL should be truncated to 0 bytes after shutdown checkpoint"
+        );
+    }
+
+    #[tokio::test]
+    async fn shutdown_makes_db_self_contained_for_backup() {
+        // Given a store that has saved a session and then shut down.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let store = SqliteSessionStore::new_in(dir.path()).expect("new_in");
+        let session = make_session();
+        let id = session.session_id().clone();
+        store.save(&session).await.expect("save");
+        store.shutdown().await.expect("shutdown");
+        // Drop the store, closing every pooled connection.
+        drop(store);
+
+        // When the WAL sidecars are removed, simulating a backup that copied
+        // only sessions.db.
+        let _ = std::fs::remove_file(dir.path().join("sessions.db-wal"));
+        let _ = std::fs::remove_file(dir.path().join("sessions.db-shm"));
+
+        // Then sessions.db alone opens cleanly and contains the saved session.
+        let reopened = SqliteSessionStore::new_in(dir.path()).expect("reopen");
+        let summaries = reopened.load_summaries().await.expect("load");
+        assert!(
+            summaries.iter().any(|s| &s.session_id == &id),
+            "sessions.db alone must contain all data after shutdown checkpoint"
+        );
+    }
+
+    #[tokio::test]
     async fn steering_buffer_is_not_persisted_across_save_and_load() {
         // Given a session with two steering fragments in its buffer.
         let store = fresh_store();
