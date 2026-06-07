@@ -243,7 +243,6 @@ fn content_height_matches_entry_count() {
 
     // Then it returns header(1) + header-gap(1) + entries(3) + trailing gap(1) = 6.
     assert_eq!(height, 6);
-
 }
 
 // --- Rendering tests ---

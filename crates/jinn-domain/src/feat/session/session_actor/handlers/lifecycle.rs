@@ -86,7 +86,7 @@ pub(in crate::feat::session::session_actor) fn format_lifecycle_error(
             }
             parts.join("\n\n")
         }
-        LifecycleCommandError::NoOutput => "Command produced no output".to_owned(),
+
         LifecycleCommandError::InvalidPath { path } => {
             format!(
                 "Path does not exist or cannot be resolved: {}",
@@ -170,7 +170,7 @@ impl SessionPersistenceActor {
     fn spawn_shell_setup(&mut self, payload: &RunSessionSetup, ctx: &ActorContext) {
         use crate::feat::session_lifecycle::command_runner::spawn_setup_command;
 
-        let (child_arc, handle) = match spawn_setup_command(&payload.command, &self.shell) {
+        let (cancel_handle, handle) = match spawn_setup_command(&payload.command, &self.shell) {
             Ok(pair) => pair,
             Err(e) => {
                 // Failed to even start the command.
@@ -201,7 +201,7 @@ impl SessionPersistenceActor {
         let _handle = tokio::spawn(async move {
             let result = handle.await;
             let (cwd, error) = match result {
-                Ok(Ok(path)) => (Some(path), None as Option<String>),
+                Ok(Ok(cwd)) => (cwd, None as Option<String>),
                 Ok(Err(report)) => {
                     let error_msg =
                         if let Some(cmd_err) = report.downcast_ref::<crate::feat::session_lifecycle::command_runner::LifecycleCommandError>() {
@@ -225,7 +225,7 @@ impl SessionPersistenceActor {
             ));
         });
 
-        self.lifecycle_child = Some(child_arc);
+        self.lifecycle_child = Some(cancel_handle);
     }
 
     /// Handle `FinishSessionSetup` - completion of an async setup shell command.
@@ -280,7 +280,6 @@ impl SessionPersistenceActor {
             }
             (_, Some(error_msg)) => {
                 // Error.
-                let is_no_output = error_msg.contains("Command produced no output");
                 let default_cwd = {
                     let mut state = self.state.write();
                     let default = state.session.default_cwd().clone();
@@ -290,11 +289,7 @@ impl SessionPersistenceActor {
                     default
                 };
 
-                let entry = if is_no_output {
-                    no_output_info(&default_cwd)
-                } else {
-                    ChatEntry::error(error_msg)
-                };
+                let entry = ChatEntry::error(error_msg);
 
                 if let Err(e) = ctx.send_command(Command::PushChatEntry(PushChatEntry {
                     session_id: payload.session_id.clone(),
@@ -314,12 +309,15 @@ impl SessionPersistenceActor {
                 }
             }
             (None, None) => {
-                // No CWD and no error - treat as no output.
+                // Success without a CWD - side-effect-only setup (no stdout output).
+                // Keep the default CWD, advance lifecycle so teardown-on-close fires,
+                // and surface an informational note so the user knows no path was returned.
                 let default_cwd = {
                     let mut state = self.state.write();
                     let default = state.session.default_cwd().clone();
                     if let Some(session) = state.session.get_mut(&payload.session_id) {
                         session.set_cwd(default.clone());
+                        session.advance_lifecycle_after_setup();
                     }
                     default
                 };
@@ -510,8 +508,9 @@ impl SessionPersistenceActor {
                     );
 
                 match spawn_result {
-                    Ok((child_arc, join_handle)) => {
-                        self.lifecycle_child = Some(child_arc);
+                    Ok((cancel_handle, join_handle)) => {
+                        self.lifecycle_child = Some(cancel_handle);
+
                         let _handle = tokio::spawn(async move {
                             let result = join_handle.await;
                             let error = match result {
@@ -715,8 +714,8 @@ impl SessionPersistenceActor {
                             );
 
                         match spawn_result {
-                            Ok((child_arc, join_handle)) => {
-                                self.lifecycle_child = Some(child_arc);
+                            Ok((cancel_handle, join_handle)) => {
+                                self.lifecycle_child = Some(cancel_handle);
                                 let _handle = tokio::spawn(async move {
                                     let result = join_handle.await;
                                     let error = match result {
@@ -928,44 +927,34 @@ impl SessionPersistenceActor {
         }
     }
 
-    /// Handle `CancelLifecycleCommand` - kill a running lifecycle process.
+    /// Handle `CancelLifecycleCommand` - terminate a running lifecycle process.
     ///
-    /// Kills the child process (if any), cancels busy state,
-    /// and pushes a system entry.
+    /// Per Option B, the cancel handler does only the kill + abort. All cleanup
+    /// (busy decrement, chat entry, phase transition, cwd) is owned by the
+    /// `FinishSessionSetup` / `FinishSessionTeardown` handlers, which fire when
+    /// the aborted reader task's wrapper observes the resulting `JoinError` and
+    /// takes its existing "... was cancelled" branch.
+    ///
+    /// This function is lock-free and await-free: it signals the process group by
+    /// PID and aborts the reader task handle. Both are safe to call from a runtime
+    /// worker thread, which is why this replaced the old `blocking_lock` path that
+    /// panicked on `Cannot block the current thread from within a runtime`.
     pub(in crate::feat::session::session_actor) fn handle_cancel_lifecycle_command(
         &mut self,
-        payload: &crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand,
-        ctx: &ActorContext,
+        _payload: &crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand,
+        _ctx: &ActorContext,
     ) {
-        // Kill the child process if one is running.
-        if let Some(child_arc) = self.lifecycle_child.take() {
-            crate::feat::session_lifecycle::command_runner::kill_shared_child(&child_arc);
+        if let Some(handle) = self.lifecycle_child.take() {
+            // Kill the process group by PID (instant SIGKILL; reaches
+            // backgrounded descendants via the group signal).
+            crate::common::process_kill::kill_process_group_by_pid(handle.pid);
+            // Abort the INNER reader task. Its outer wrapper (spawned in
+            // `handle_setup_lifecycle_command` / the teardown equivalents)
+            // observes the resulting `JoinError` on its `handle.await` and takes
+            // the `Err(_) => "... was cancelled"` arm, which sends
+            // `FinishSessionSetup` / `FinishSessionTeardown` for cleanup.
+            handle.abort_handle.abort();
         }
-
-        // Cancel busy state.
-        let old_phase = {
-            let mut state = self.state.write();
-            let Some(session) = state.session.get_mut(&payload.session_id) else {
-                return;
-            };
-            let old_phase = session.phase();
-            session.cancel_busy();
-            old_phase
-        };
-
-        // Push cancellation entry.
-        let _ = ctx.send_command(Command::PushChatEntry(PushChatEntry {
-            session_id: payload.session_id.clone(),
-            entry: ChatEntry::system("Lifecycle command cancelled."),
-        }));
-
-        // Emit phase change.
-        super::super::helpers::emit_phase_changed(
-            ctx,
-            &payload.session_id,
-            old_phase,
-            crate::feat::session::phase_machine::PhaseKind::Idle,
-        );
     }
 
     /// ArchiveSession: archive without running teardown.
@@ -2482,5 +2471,156 @@ mod tests {
         assert_eq!(cwd_changed.len(), 1);
         assert_eq!(cwd_changed[0].session_id, session_id);
         assert_eq!(cwd_changed[0].cwd, new_cwd);
+    }
+
+    #[rstest::rstest]
+    fn cancel_with_no_lifecycle_in_flight_is_noop() {
+        // Given an actor with no lifecycle child running.
+        let mut actor = test_actor();
+        let (sink, ctx) = test_context();
+        let payload = crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand {
+            session_id: crate::protocol::SessionId::new(),
+        };
+
+        // When handling cancel with no lifecycle in flight.
+        actor.handle_cancel_lifecycle_command(&payload, &ctx);
+
+        // Then no events or commands were emitted (clean no-op).
+        assert!(sink.events().is_empty());
+        assert!(sink.commands().is_empty());
+    }
+
+    #[tokio::test]
+    async fn finish_handler_owns_cleanup_after_cancel() {
+        // Given an active session that has started a long-running setup command.
+        let mut actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = actor.state.read().session.active_session_id().clone();
+
+        actor
+            .handle_run_session_setup(
+                &crate::feat::session_lifecycle::protocol::command::RunSessionSetup {
+                    session_id: session_id.clone(),
+                    command: "sleep 30".to_owned(),
+                    args: vec![],
+                    lifecycle_command: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Sanity: the actor is busy and holds a cancel handle.
+        assert!(actor.lifecycle_child.is_some());
+        assert_eq!(
+            actor
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .map(ChatSessionState::busy_count),
+            Some(1)
+        );
+
+        // When the lifecycle command is cancelled (kill + abort).
+        actor.handle_cancel_lifecycle_command(
+            &crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand {
+                session_id: session_id.clone(),
+            },
+            &ctx,
+        );
+
+        // The cancel handler does not own cleanup; busy is still set.
+        assert!(actor.lifecycle_child.is_none());
+        assert_eq!(
+            actor
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .map(ChatSessionState::busy_count),
+            Some(1)
+        );
+
+        // Then the aborted reader task emits exactly one FinishSessionSetup.
+        let finish = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                for cmd in sink.take_commands() {
+                    if let crate::protocol::Command::FinishSessionSetup(f) = cmd {
+                        return f;
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("FinishSessionSetup must be emitted after cancel");
+
+        // And driving the finish handler performs all cleanup.
+        actor.handle_finish_session_setup(&finish, &ctx).await;
+
+        // Then exactly one chat entry was pushed across the whole flow.
+        let push_count = sink
+            .commands()
+            .iter()
+            .filter(|c| matches!(c, crate::protocol::Command::PushChatEntry(..)))
+            .count();
+        assert_eq!(push_count, 1);
+
+        // And busy has returned to zero.
+        assert_eq!(
+            actor
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .map(ChatSessionState::busy_count),
+            Some(0)
+        );
+
+        // And the phase is Idle (lifecycle setup never drove the phase machine).
+        assert_eq!(
+            actor
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .map(ChatSessionState::phase),
+            Some(crate::feat::session::phase_machine::PhaseKind::Idle)
+        );
+    }
+
+    #[tokio::test]
+    async fn setup_with_no_output_advances_to_setup_ran() {
+        // Given an active session with default CWD and lifecycle in NothingRan.
+        let mut actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = actor.state.read().session.active_session_id().clone();
+
+        // When a side-effect-only setup command finishes (exit 0, no stdout).
+        let finish = crate::feat::session_lifecycle::protocol::command::FinishSessionSetup {
+            session_id: session_id.clone(),
+            cwd: None,
+            error: None,
+        };
+        actor.handle_finish_session_setup(&finish, &ctx).await;
+
+        // Then the session advanced to SetupRan so teardown-on-close will fire.
+        assert_eq!(
+            actor
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .map(ChatSessionState::lifecycle_script_state),
+            Some(crate::feat::session::chat_session::LifecycleScriptState::SetupRan)
+        );
+
+        // And exactly one chat entry was pushed (the no-output informational note).
+        let push_count = sink
+            .commands()
+            .iter()
+            .filter(|c| matches!(c, crate::protocol::Command::PushChatEntry(..)))
+            .count();
+        assert_eq!(push_count, 1);
     }
 }

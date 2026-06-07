@@ -10,7 +10,9 @@ use crate::common::app_state::AppState;
 use crate::common::app_state::FocusScope;
 use crate::feat::context::protocol::command::{LoadPersonaPickerEntries, ScanContextFiles};
 use crate::feat::preferences_actor::protocol::command::{PreferenceUpdate, UpdatePreferences};
-use crate::feat::provider::protocol::command::{LoadProviderPickerEntries, ProviderSwitch, RescanPromptTemplates};
+use crate::feat::provider::protocol::command::{
+    LoadProviderPickerEntries, ProviderSwitch, RescanPromptTemplates,
+};
 use crate::feat::session::protocol::load_session_picker_entries::LoadSessionPickerEntries;
 use crate::feat::session::protocol::session_load_requested::SessionLoadRequested;
 use crate::feat::skills::ScanSkills;
@@ -701,8 +703,12 @@ pub fn handle_refresh_skills(state: &mut AppState) -> IntentResult {
     let session_id = state.active_session().session_id().clone();
 
     IntentResult::with_commands(vec![
-        Command::ScanSkills(ScanSkills { session_id: session_id.clone() }),
-        Command::RescanPromptTemplates(RescanPromptTemplates { session_id: session_id.clone() }),
+        Command::ScanSkills(ScanSkills {
+            session_id: session_id.clone(),
+        }),
+        Command::RescanPromptTemplates(RescanPromptTemplates {
+            session_id: session_id.clone(),
+        }),
         Command::ScanContextFiles(ScanContextFiles { session_id }),
     ])
 }
@@ -1261,7 +1267,6 @@ mod tests {
             "expected ScanContextFiles command"
         );
     }
-
 
     #[rstest::rstest]
     fn refresh_skills_noop_when_skill_picker_not_active() {
