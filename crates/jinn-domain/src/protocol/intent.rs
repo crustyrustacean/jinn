@@ -162,6 +162,8 @@ pub enum Intent {
     SidebarSectionPrev,
     /// Activate the selected session (switch to it).
     SidebarConfirm,
+    /// Activate the selected session and enter Insert mode.
+    SidebarConfirmInsert,
     /// Unpin the selected pinned entry.
     PinsUnpin,
     /// Set the selected pinned entry's position to TOP.
@@ -342,6 +344,7 @@ impl std::fmt::Display for Intent {
             Intent::SidebarSectionNext => write!(f, "sidebar section next"),
             Intent::SidebarSectionPrev => write!(f, "sidebar section prev"),
             Intent::SidebarConfirm => write!(f, "sidebar confirm"),
+            Intent::SidebarConfirmInsert => write!(f, "sidebar confirm (insert)"),
             Intent::PinsUnpin => write!(f, "pins unpin"),
             Intent::PinsPinTop => write!(f, "pins pin top"),
             Intent::PinsPinBottom => write!(f, "pins pin bottom"),
