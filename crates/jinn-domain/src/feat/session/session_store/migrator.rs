@@ -19,13 +19,65 @@ use super::SessionStoreError;
 
 /// Runs all pending database migrations.
 ///
+/// Migrations run with `PRAGMA foreign_keys=OFF`. This is essential: DDL such as
+/// `DROP TABLE sessions` (used by table-rebuild migrations like `migrate_v15`)
+/// performs an implicit `DELETE` of all rows, which would otherwise fire the
+/// application-level `ON DELETE CASCADE` and wipe every `session_history` and
+/// `token_ledger` row. After the migrations complete (or fail), FK is re-enabled
+/// and `PRAGMA foreign_key_check` verifies referential integrity.
+///
 /// Bootstraps the `_migrations` tracking table, reads the current version,
 /// and runs any migrations that haven't been applied yet.
 ///
 /// # Errors
 ///
-/// Returns an error if any migration fails.
+/// Returns an error if any migration fails, if the FK pragma cannot be
+/// toggled, or if `foreign_key_check` reports integrity violations after
+/// the migration run.
 pub fn run_migrations(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    // Disable FK for the migration run. The pragma is per-connection and a
+    // no-op inside an active transaction, so it must be set here (outside any
+    // transaction) rather than inside `run_pending_migrations`.
+    sql_query("PRAGMA foreign_keys=OFF")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("failed to disable foreign_keys for migration")?;
+
+    let migrate_result = run_pending_migrations(conn);
+
+    // Always re-enable FK and verify integrity, even if a migration failed,
+    // so the connection is left in its normal (FK-on) state regardless of
+    // outcome.
+    sql_query("PRAGMA foreign_keys=ON")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("failed to re-enable foreign_keys after migration")?;
+
+    // `foreign_key_check` returns one row per FK violation (empty = clean).
+    let violations: Vec<FkCheckRow> = sql_query("PRAGMA foreign_key_check")
+        .load(conn)
+        .change_context(SessionStoreError)
+        .attach("failed to run foreign_key_check after migration")?;
+    if !violations.is_empty() {
+        let tables: Vec<&str> = violations.iter().map(|v| v.table.as_str()).collect();
+        return Err(Report::new(SessionStoreError)
+            .attach("foreign_key_check reported violations after migration")
+            .attach(format!("violating tables: {}", tables.join(", "))));
+    }
+
+    migrate_result
+}
+
+/// Runs all pending migrations in order.
+///
+/// Called by [`run_migrations`] with foreign keys disabled. Bootstraps the
+/// tracking table, reads the current version, and runs every unapplied
+/// migration sequentially.
+///
+/// # Errors
+///
+/// Returns an error if any migration or version recording fails.
+fn run_pending_migrations(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     bootstrap_tracking_table(conn)?;
     let current = current_version(conn)?;
 
@@ -121,6 +173,16 @@ fn bootstrap_tracking_table(conn: &mut SqliteConnection) -> Result<(), Report<Se
 struct VersionRow {
     #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Integer>)]
     version: Option<i32>,
+}
+
+/// Row returned by `PRAGMA foreign_key_check` (any row = a violation).
+///
+/// Only `table` is bound; the runner only needs to detect whether *any*
+/// row exists. `foreign_key_check` columns: `table`, `rowid`, `parent`, `fkid`.
+#[derive(QueryableByName)]
+struct FkCheckRow {
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    table: String,
 }
 
 /// Reads the highest migration version from the tracking table.
