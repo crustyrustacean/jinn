@@ -4582,7 +4582,6 @@ fn discovered_sets_are_independent_between_sessions() {
         description: String::new(),
         body: String::new(),
         file_path: PathBuf::new(),
-
         base_dir: PathBuf::new(),
         source: crate::feat::skills::SkillSource::Global,
     }]);
@@ -4591,7 +4590,6 @@ fn discovered_sets_are_independent_between_sessions() {
         description: String::new(),
         body: String::new(),
         file_path: PathBuf::new(),
-
         base_dir: PathBuf::new(),
         source: crate::feat::skills::SkillSource::Global,
     }]);
@@ -4620,5 +4618,68 @@ fn discovered_context_files_round_trip_empty_after_serialization() {
     assert!(
         restored.discovered_context_files().is_empty(),
         "discovered context files must not be persisted"
+    );
+}
+
+/// Helper: build a pinned skill-shaped ToolResult entry and add it.
+fn push_pinned_tool_result(
+    session: &mut super::ChatSessionState,
+    call_id: &str,
+    tool_name: &str,
+    content: &str,
+    status: ToolResultStatus,
+) {
+    let mut entry = ChatEntry::tool_result(call_id, tool_name, content, status);
+    entry.pin_position = Some(PinPosition::Relative);
+    session.push_entry(entry);
+}
+
+#[rstest::rstest]
+fn loaded_skills_returns_only_valid_pinned_skill_names() {
+    // Given a session with: one pinned valid skill, one pinned non-skill tool
+    // result, one unpinned skill, and one pinned malformed skill.
+    let mut session = super::ChatSessionState::default();
+
+    push_pinned_tool_result(
+        &mut session,
+        "call-valid",
+        "skill",
+        "<skill name=\"phased-task-loop\" location=\"/x\">body</skill>",
+        ToolResultStatus::Success,
+    );
+    push_pinned_tool_result(
+        &mut session,
+        "call-non-skill",
+        "read",
+        "file contents",
+        ToolResultStatus::Success,
+    );
+
+    // Unpinned skill: should be ignored.
+    let mut unpinned = ChatEntry::tool_result(
+        "call-unpinned",
+        "skill",
+        "<skill name=\"web-coder\" location=\"/x\">body</skill>",
+        ToolResultStatus::Success,
+    );
+    unpinned.pin_position = None;
+    session.push_entry(unpinned);
+
+    push_pinned_tool_result(
+        &mut session,
+        "call-malformed",
+        "skill",
+        "not a skill xml",
+        ToolResultStatus::Success,
+    );
+
+    // When computing loaded skills.
+    let loaded = super::ChatSessionState::loaded_skills(&session);
+
+    // Then only the one valid pinned skill name is returned.
+    assert_eq!(
+        loaded,
+        std::collections::HashSet::from(["phased-task-loop".to_owned()]),
+        "loaded_skills() should return exactly the one valid pinned skill name"
     );
 }
