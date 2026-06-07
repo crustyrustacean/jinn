@@ -162,7 +162,7 @@ mod tests {
         let label = loaded_skill_summary_label(content);
 
         // Then it contains the icon and the skill name.
-        assert!(label.contains('\u{1F9E9}'), "label should contain the skill icon: {label}");
+        assert!(label.contains('\u{2756}'), "label should contain the skill icon: {label}");
         assert!(
             label.contains("phased-task-loop"),
             "label should contain the skill name: {label}"
@@ -178,7 +178,7 @@ mod tests {
         let label = loaded_skill_summary_label(content);
 
         // Then it contains the icon and the (skill) fallback.
-        assert!(label.contains('\u{1F9E9}'), "label should contain the skill icon: {label}");
+        assert!(label.contains('\u{2756}'), "label should contain the skill icon: {label}");
         assert!(label.contains("(skill)"), "label should contain the fallback: {label}");
     }
 }
