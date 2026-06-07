@@ -19,3 +19,5 @@ bench-results.csv
 mutants.out
 *.txt
 *.db
+*.db-shm
+*.db-wal
