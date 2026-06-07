@@ -25,8 +25,7 @@ use serde_json::Value as JsonValue;
 use tokio::task::spawn_blocking;
 
 use crate::common::app_info::APP_NAME;
-use crate::feat::context::protocol::strategy_id::PromptStrategyId;
-use crate::feat::context::strategy::types::StrategyState;
+
 use crate::feat::session::SessionUi;
 use crate::feat::session::chat_entry::{ChatEntry, ChatEntryKind};
 use crate::feat::session::chat_history::ChatHistory;
@@ -352,7 +351,7 @@ struct SessionRow {
     title: Option<String>,
     updated_at: String,
     profile: String,
-    strategy_state: String,
+
     blobs: String,
     parent_session: Option<String>,
     cwd: String,
@@ -374,7 +373,7 @@ struct NewSessionRow {
     updated_at: String,
     created_at: String,
     profile: String,
-    strategy_state: String,
+
     blobs: String,
     parent_session: Option<String>,
     cwd: String,
@@ -493,7 +492,7 @@ struct PersistableCore {
     profile: SessionProfile,
     cwd: std::path::PathBuf,
     parent_session: Option<SessionId>,
-    strategy_state: HashMap<PromptStrategyId, StrategyState>,
+
     blobs: HashMap<String, JsonValue>,
     lifecycle_name: Option<String>,
     lifecycle_args: Vec<String>,
@@ -518,7 +517,7 @@ impl From<&SessionCore> for PersistableCore {
             profile: core.profile.clone(),
             cwd: core.cwd.clone(),
             parent_session: core.parent_session.clone(),
-            strategy_state: core.strategy_state.clone(),
+
             blobs: core.blobs.clone(),
             lifecycle_name: core.lifecycle_name.clone(),
             lifecycle_args: core.lifecycle_args.clone(),
@@ -541,7 +540,7 @@ impl From<PersistableCore> for SessionCore {
             cwd: core.cwd,
             token_ledger: vec![],
             parent_session: core.parent_session,
-            strategy_state: core.strategy_state,
+
             blobs: core.blobs,
             lifecycle_name: core.lifecycle_name,
             lifecycle_args: core.lifecycle_args,
@@ -576,7 +575,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
                     cwd,
                     token_ledger: _ledger, // persisted via token_ledger table below
                     parent_session,
-                    strategy_state,
+
                     blobs,
                     lifecycle_name,
                     lifecycle_args,
@@ -600,9 +599,7 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
             profile: serde_json::to_string(profile)
                 .change_context(SessionStoreError)
                 .attach("failed to serialize profile")?,
-            strategy_state: serde_json::to_string(strategy_state)
-                .change_context(SessionStoreError)
-                .attach("failed to serialize strategy_state")?,
+
             blobs: serde_json::to_string(blobs)
                 .change_context(SessionStoreError)
                 .attach("failed to serialize blobs")?,
@@ -647,7 +644,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
             updated_at,
             created_at,
             profile,
-            strategy_state,
+
             blobs,
             parent_session,
             cwd,
@@ -672,9 +669,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
             let profile = serde_json::from_str(&profile)
                 .change_context(SessionStoreError)
                 .attach("failed to deserialize profile")?;
-            let strategy_state = serde_json::from_str(&strategy_state)
-                .change_context(SessionStoreError)
-                .attach("failed to deserialize strategy_state")?;
+
             let blobs = serde_json::from_str(&blobs)
                 .change_context(SessionStoreError)
                 .attach("failed to deserialize blobs")?;
@@ -697,7 +692,7 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                 cwd: std::path::PathBuf::from(cwd),
                 token_ledger: vec![],
                 parent_session: parent_session.map(SessionId::from),
-                strategy_state,
+
                 blobs,
                 lifecycle_name,
                 lifecycle_args: serde_json::from_str(&lifecycle_args).unwrap_or_default(),
@@ -762,7 +757,7 @@ fn save_blocking(
                 sessions::title.eq(excluded(sessions::title)),
                 sessions::updated_at.eq(excluded(sessions::updated_at)),
                 sessions::profile.eq(excluded(sessions::profile)),
-                sessions::strategy_state.eq(excluded(sessions::strategy_state)),
+
                 sessions::blobs.eq(excluded(sessions::blobs)),
                 sessions::cwd.eq(excluded(sessions::cwd)),
                 sessions::lifecycle_name.eq(excluded(sessions::lifecycle_name)),
@@ -1086,7 +1081,7 @@ fn fork_blocking(
                 updated_at: now.clone(),
                 created_at: now, // fresh created_at - it's a new session
                 profile: source_meta.profile,
-                strategy_state: source_meta.strategy_state,
+
                 blobs: source_meta.blobs,
                 parent_session: Some(source_str.clone()),
                 cwd: source_meta.cwd,

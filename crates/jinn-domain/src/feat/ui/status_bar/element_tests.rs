@@ -92,28 +92,7 @@ fn render_shows_provider_with_slash_in_model() {
     assert!(row.contains("(openrouter)/anthropic/claude-sonnet-4"));
 }
 
-#[rstest::rstest]
-fn render_shows_non_default_strategy() {
-    let mut element = StatusBarElement;
-    let mut state = AppState::default();
-    state
-        .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
-    state
-        .active_session_mut()
-        .switch_strategy(crate::protocol::PromptStrategyId::sliding_window());
-    let (mut terminal, area) = setup_term(50, 2);
-    terminal
-        .draw(|frame| {
-            let ctx = RenderCtx::new(&state);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
-    let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 1, 50);
-    assert!(row.starts_with("\u{2191}"));
-    assert!(row.contains("(ollama)/llama3"));
-}
+
 
 // --- Token display tests ---
 
@@ -614,59 +593,6 @@ fn render_shows_used_over_unknown_when_no_context_length() {
     assert!(row.contains("15.0k/???"), "expected 15.0k/???, got: {row}");
 }
 
-// --- Token budget display tests ---
-
-#[rstest::rstest]
-fn render_shows_token_budget_when_token_budget_strategy_active() {
-    // Given a session with the token_budget strategy.
-    let mut element = StatusBarElement;
-    let mut state = AppState::default();
-    state
-        .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
-    state
-        .active_session_mut()
-        .switch_strategy(crate::protocol::PromptStrategyId::token_budget());
-    let (mut terminal, area) = setup_term(100, 2);
-    terminal
-        .draw(|frame| {
-            let ctx = RenderCtx::new(&state);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
-    let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 1, 100);
-    // Then the token_budget strategy is active but the budget display was removed.
-    // Verify the row still starts with token info and shows the model.
-    assert!(
-        row.starts_with("\u{2191}"),
-        "expected row to start with token up-arrow, got: {row}"
-    );
-}
-
-#[rstest::rstest]
-fn render_hides_token_budget_for_passthrough_strategy() {
-    // Given a session with the passthrough strategy (default).
-    let mut element = StatusBarElement;
-    let mut state = AppState::default();
-    state
-        .active_session_mut()
-        .set_model("ollama/llama3".to_owned());
-    let (mut terminal, area) = setup_term(100, 2);
-    terminal
-        .draw(|frame| {
-            let ctx = RenderCtx::new(&state);
-            element.render(frame, area, &ctx);
-        })
-        .unwrap();
-    let buffer = terminal.backend().buffer().clone();
-    let row = buffer_row(&buffer, 1, 100);
-    // Then the status bar does NOT show "Token Budget:".
-    assert!(
-        !row.contains("Token Budget:"),
-        "expected no budget display for passthrough strategy, got: {row}"
-    );
-}
 
 // --- Cost display tests ---
 

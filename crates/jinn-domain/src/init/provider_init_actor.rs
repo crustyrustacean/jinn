@@ -152,7 +152,7 @@ mod tests {
     use crate::common::state::State;
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::feat::preferences_actor::user_preferences::{
-        AutoPruneConfig, BashConfig, CompactionConfig, ContextSlidingWindowConfig,
+        AutoPruneConfig, BashConfig, CompactionConfig,
         CwdSelectorConfig, MinimapConfig, OpenrouterWebSearchConfig, RequestRetryConfig,
         WebFetchConfig,
     };
@@ -203,7 +203,7 @@ mod tests {
                 max_tool_output_lines: None,
                 max_tool_output_bytes: None,
                 compaction: CompactionConfig::default(),
-                context_sliding_window: ContextSlidingWindowConfig::default(),
+
                 request_retry: RequestRetryConfig::default(),
                 web_fetch: WebFetchConfig::default(),
                 openrouter_web_search: OpenrouterWebSearchConfig::default(),
@@ -428,7 +428,7 @@ mod tests {
                 max_tool_output_lines: None,
                 max_tool_output_bytes: None,
                 compaction: CompactionConfig::default(),
-                context_sliding_window: ContextSlidingWindowConfig::default(),
+
                 request_retry: RequestRetryConfig::default(),
                 web_fetch: WebFetchConfig::default(),
                 openrouter_web_search: OpenrouterWebSearchConfig::default(),

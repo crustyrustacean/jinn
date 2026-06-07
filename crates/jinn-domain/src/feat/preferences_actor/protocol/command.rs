@@ -22,8 +22,7 @@ pub enum PreferenceUpdate {
     SetPersona(Option<String>),
     /// Set the sidebar width preference.
     SetSidebarWidth(Option<u16>),
-    /// Set the default sliding window size for the sliding-window strategy.
-    SetSlidingWindowSize(usize),
+
     /// Set the compaction model (provider/model for summarization).
     /// `None` means fall back to the session model.
     SetCompactionModel(Option<String>),
@@ -38,7 +37,7 @@ impl PreferenceUpdate {
             Self::SetTheme(v) => prefs.theme_name.clone_from(v),
             Self::SetPersona(v) => prefs.persona_name.clone_from(v),
             Self::SetSidebarWidth(v) => prefs.sidebar_width.clone_from(v),
-            Self::SetSlidingWindowSize(v) => prefs.context_sliding_window.size = *v,
+
             Self::SetCompactionModel(v) => prefs.compaction.model.clone_from(v),
         }
     }
