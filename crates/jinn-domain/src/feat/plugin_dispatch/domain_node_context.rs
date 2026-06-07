@@ -103,7 +103,7 @@ impl DomainNodeContext {
         // 2. Build overrides
         let overrides = AssemblyOverrides {
             system_prompt,
-            tool_definitions: None,
+            tool_definitions: Some(vec![]),
             skip_skills: true,
             skip_context_files: true,
         };
@@ -179,7 +179,7 @@ impl DomainNodeContext {
         // 3. History-less overrides: custom system prompt, no tools/skills/context files.
         let overrides = AssemblyOverrides {
             system_prompt,
-            tool_definitions: None,
+            tool_definitions: Some(vec![]),
             skip_skills: true,
             skip_context_files: true,
         };
@@ -358,6 +358,11 @@ mod tests {
             new.core.workflow_overrides.as_ref().map(|o| &o.system_prompt),
             Some(&Some("be concise".to_owned())),
             "system prompt override must be carried through",
+        );
+        assert_eq!(
+            new.core.workflow_overrides.as_ref().map(|o| o.tool_definitions.as_deref()),
+            Some(Some(&[][..])),
+            "tool definitions override must be empty (None would inherit the full tool catalog)",
         );
         drop(guard);
 
