@@ -422,7 +422,6 @@ pub fn bind_plugin_keybinds(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
@@ -447,8 +446,8 @@ mod tests {
     ///       requires the PascalCase `"Input"` (matching `Scope::Display`).
     #[test]
     fn bind_plugin_keybinds_loads_prompt_enrichment_binding() {
-        use std::path::Path;
         use jinn_plugin::PluginSystem;
+        use std::path::Path;
 
         // Locate the dev plugin tree (crate-relative).
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -458,7 +457,9 @@ mod tests {
             .expect("workspace root")
             .join("res/plugins");
         assert!(
-            res_plugins.join("global/prompt_enrichment/init.lua").exists(),
+            res_plugins
+                .join("global/prompt_enrichment/init.lua")
+                .exists(),
             "prompt_enrichment plugin missing at {}",
             res_plugins.display()
         );
@@ -488,9 +489,9 @@ mod tests {
                     KeyEvent { key: Key::Char('e'), modifiers } if modifiers.alt
                 )
             })
-            .unwrap_or_else(|| panic!(
-                "<M-e> (Alt+e) not bound in Input scope. bindings = {input_bindings:?}",
-            ));
+            .unwrap_or_else(|| {
+                panic!("<M-e> (Alt+e) not bound in Input scope. bindings = {input_bindings:?}",)
+            });
 
         assert_eq!(
             me.category,
@@ -498,8 +499,7 @@ mod tests {
             "plugin keybinds must group under KeyCategory::Plugin"
         );
         assert_eq!(
-            me.description,
-            "toggle prompt enrichment",
+            me.description, "toggle prompt enrichment",
             "which-key help derives its text from this description"
         );
     }
@@ -511,10 +511,10 @@ mod tests {
     /// the keymap tree (pointing to a scope-resolution or navigate() bug).
     #[test]
     fn handle_key_alt_e_in_input_scope_fires_trigger_plugin() {
-        use std::path::Path;
+        use crate::app::WhichKeyInstance;
         use jinn_domain::{Key, KeyEvent, Modifiers};
         use jinn_plugin::PluginSystem;
-        use crate::app::WhichKeyInstance;
+        use std::path::Path;
 
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
         let res_plugins = manifest_dir
@@ -539,7 +539,11 @@ mod tests {
         let mut wk = WhichKeyInstance::new(keymap, Scope::Input);
         let alt_e = KeyEvent {
             key: Key::Char('e'),
-            modifiers: Modifiers { ctrl: false, alt: true, shift: false },
+            modifiers: Modifiers {
+                ctrl: false,
+                alt: true,
+                shift: false,
+            },
         };
         let intent = wk.handle_key(alt_e);
 
@@ -552,4 +556,3 @@ mod tests {
         );
     }
 }
-
