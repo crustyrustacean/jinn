@@ -71,10 +71,10 @@ impl IntentHandler {
         // submit's commands. Fires only for submit-family intents (the
         // hook is named `on_submit_intercept`); other intents pass through
         // untouched.
-        if matches!(intent, Intent::SubmitMessage) {
-            if let Some(p) = plugins {
-                result = Self::apply_interceptions(intent, state, p, result);
-            }
+        if matches!(intent, Intent::SubmitMessage)
+            && let Some(p) = plugins
+        {
+            result = Self::apply_interceptions(intent, state, p, result);
         }
 
         // If the active session changed, emit ActiveSessionChanged event.
