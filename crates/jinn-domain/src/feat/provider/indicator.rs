@@ -75,7 +75,7 @@ impl UiElement for StreamingIndicatorElement {
         };
 
         let throbber = Throbber::default()
-            .label(&*label)
+            .label(label)
             .style(Style::default().fg(state.frontend.theme.streaming))
             .throbber_style(Style::default().fg(state.frontend.theme.streaming))
             .throbber_set(throbber_widgets_tui::ASCII)
