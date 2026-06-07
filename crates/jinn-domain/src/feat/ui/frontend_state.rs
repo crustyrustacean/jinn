@@ -31,6 +31,8 @@ pub struct FrontendCaches {
     /// Cached token counts per chat entry (tiktoken-based).
     /// Populated by the token count actor, read by the minimap render pipeline.
     pub entry_token_cache: RwLock<crate::feat::session::entry_token_cache::EntryTokenCache>,
+    /// Cached rendered lines for skill-preview popups.
+    pub skill_preview_cache: RwLock<crate::feat::skills::skill_preview_cache::SkillPreviewCache>,
     /// Cached rendered lines for session preview popups.
     pub session_preview_cache:
         RwLock<crate::feat::ui::sidebar::sessions::preview::SessionPreviewCache>,
@@ -41,6 +43,7 @@ impl FrontendCaches {
     pub fn invalidate_all(&self) {
         self.entry_line_cache.write().clear();
         self.session_preview_cache.write().clear();
+        self.skill_preview_cache.read().clear();
     }
 }
 

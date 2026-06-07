@@ -9,11 +9,13 @@ pub mod reload;
 pub mod scan;
 mod skill;
 pub mod skill_entry;
+pub mod skill_preview_cache;
 pub mod skills_scan_actor;
 
 pub use scan::scan_skills;
 pub use skill::Skill;
 pub use skill_entry::SkillEntry;
+pub use skill_preview_cache::SkillPreviewCache;
 pub use skills_scan_actor::{ScanSkills, SkillsLoaded};
 
 use std::path::PathBuf;
