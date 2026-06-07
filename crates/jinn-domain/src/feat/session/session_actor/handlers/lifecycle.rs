@@ -2474,4 +2474,120 @@ mod tests {
         assert_eq!(cwd_changed[0].session_id, session_id);
         assert_eq!(cwd_changed[0].cwd, new_cwd);
     }
+
+    #[rstest::rstest]
+    fn cancel_with_no_lifecycle_in_flight_is_noop() {
+        // Given an actor with no lifecycle child running.
+        let mut actor = test_actor();
+        let (sink, ctx) = test_context();
+        let payload = crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand {
+            session_id: crate::protocol::SessionId::new(),
+        };
+
+        // When handling cancel with no lifecycle in flight.
+        actor.handle_cancel_lifecycle_command(&payload, &ctx);
+
+        // Then no events or commands were emitted (clean no-op).
+        assert!(sink.events().is_empty());
+        assert!(sink.commands().is_empty());
+    }
+
+    #[tokio::test]
+    async fn finish_handler_owns_cleanup_after_cancel() {
+        // Given an active session that has started a long-running setup command.
+        let mut actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = actor.state.read().session.active_session_id().clone();
+
+        actor
+            .handle_run_session_setup(
+                &crate::feat::session_lifecycle::protocol::command::RunSessionSetup {
+                    session_id: session_id.clone(),
+                    command: "sleep 30".to_owned(),
+                    args: vec![],
+                    lifecycle_command: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Sanity: the actor is busy and holds a cancel handle.
+        assert!(actor.lifecycle_child.is_some());
+        assert_eq!(
+            actor
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .map(ChatSessionState::busy_count),
+            Some(1)
+        );
+
+        // When the lifecycle command is cancelled (kill + abort).
+        actor.handle_cancel_lifecycle_command(
+            &crate::feat::session_lifecycle::protocol::command::CancelLifecycleCommand {
+                session_id: session_id.clone(),
+            },
+            &ctx,
+        );
+
+        // The cancel handler does not own cleanup; busy is still set.
+        assert!(actor.lifecycle_child.is_none());
+        assert_eq!(
+            actor
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .map(ChatSessionState::busy_count),
+            Some(1)
+        );
+
+        // Then the aborted reader task emits exactly one FinishSessionSetup.
+        let finish = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                for cmd in sink.take_commands() {
+                    if let crate::protocol::Command::FinishSessionSetup(f) = cmd {
+                        return f;
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("FinishSessionSetup must be emitted after cancel");
+
+        // And driving the finish handler performs all cleanup.
+        actor.handle_finish_session_setup(&finish, &ctx).await;
+
+        // Then exactly one chat entry was pushed across the whole flow.
+        let push_count = sink
+            .commands()
+            .iter()
+            .filter(|c| matches!(c, crate::protocol::Command::PushChatEntry(..)))
+            .count();
+        assert_eq!(push_count, 1);
+
+        // And busy has returned to zero.
+        assert_eq!(
+            actor
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .map(ChatSessionState::busy_count),
+            Some(0)
+        );
+
+        // And the phase is Idle (lifecycle setup never drove the phase machine).
+        assert_eq!(
+            actor
+                .state
+                .read()
+                .session
+                .get(&session_id)
+                .map(ChatSessionState::phase),
+            Some(crate::feat::session::phase_machine::PhaseKind::Idle)
+        );
+    }
 }
