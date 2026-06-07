@@ -670,7 +670,6 @@ fn render_steer_badge_shows_buffer_count_when_nonzero() {
     let mut element = ChatInputBoxElement;
     let state = {
         let mut s = AppState::default();
-        s.active_chat_input_mut().toggle_input_mode();
         s.active_session_mut()
             .steering_buffer_mut()
             .push_fragment("first".to_owned());
