@@ -400,8 +400,8 @@ impl IntentHandler {
             }
 
             Intent::SidebarConfirm => {
-                feat::ui::sidebar::sessions::handle_session_activate(state);
-                IntentResult::empty()
+                feat::ui::sidebar::sessions::handle_session_activate(state)
+
             }
 
             // --- Chat Entry Selection ---
