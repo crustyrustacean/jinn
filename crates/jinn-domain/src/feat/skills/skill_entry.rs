@@ -1,6 +1,7 @@
 //! Skill picker entry type and rendering.
 
 use crate::feat::theme::Theme;
+use crate::feat::skills::SkillSource;
 use crate::feat::ui::chat_log::markdown::render_markdown;
 use jinn_selection_widget::PickerItem;
 use jinn_selection_widget::PreviewContent;
@@ -23,6 +24,8 @@ pub struct SkillEntry {
     pub body: String,
     /// Whether the skill is currently enabled for this session.
     pub enabled: bool,
+    /// Where this skill was discovered from (global vs project).
+    pub source: SkillSource,
     /// Theme for styling.
     pub theme: Theme,
 }
@@ -49,7 +52,11 @@ impl PickerItem for SkillEntry {
 
         let marker_span = Span::styled(marker.to_owned(), Style::default().fg(marker_color));
         let name_span = Span::styled(self.name.clone(), style);
-        Line::from(vec![marker_span, name_span])
+        let mut spans = vec![marker_span, name_span];
+        if let Some(badge) = self.project_badge_span() {
+            spans.push(badge);
+        }
+        Line::from(spans)
     }
 
     fn render_row_with_highlight(
@@ -86,8 +93,27 @@ impl PickerItem for SkillEntry {
 
         let mut spans = vec![marker_span];
         spans.extend(name_spans);
+        if let Some(badge) = self.project_badge_span() {
+            spans.push(badge);
+        }
         Line::from(spans)
+}
+}
+
+impl SkillEntry {
+    /// Badge span indicating project-scoped provenance, if applicable.
+    ///
+    /// Appended to the row after the skill name. Global skills render no badge.
+    fn project_badge_span(&self) -> Option<Span<'static>> {
+        match &self.source {
+            SkillSource::Project { .. } => Some(Span::styled(
+                " (project)".to_owned(),
+                Style::default().fg(self.theme.muted_text),
+            )),
+            SkillSource::Global => None,
+        }
     }
+
 }
 
 impl PreviewContent for SkillEntry {
@@ -143,12 +169,22 @@ mod tests {
     use crate::feat::theme::default_theme;
 
     fn make_entry(name: &str, description: &str, enabled: bool) -> SkillEntry {
+        make_entry_with_source(name, description, enabled, SkillSource::Global)
+    }
+
+    fn make_entry_with_source(
+        name: &str,
+        description: &str,
+        enabled: bool,
+        source: SkillSource,
+    ) -> SkillEntry {
         SkillEntry {
             name: name.to_owned(),
             description: description.to_owned(),
             search_text: format!("{name} {description}"),
             body: String::new(),
             enabled,
+            source,
             theme: default_theme(),
         }
     }

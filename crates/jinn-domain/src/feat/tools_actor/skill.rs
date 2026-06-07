@@ -34,113 +34,18 @@ pub fn definition() -> ToolDefinition {
     }
 }
 
-/// Executes the `skill` built-in tool.
-///
-/// Reads the skill's SKILL.md file, strips YAML frontmatter, and returns the
-/// skill body wrapped in a `<skill>` XML element as the ToolResult content.
-/// The ToolResult is pinned with `PinPosition::Relative` so it persists at its
-/// original position in history through compaction.
-pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
-    Box::pin(async move {
-        let name = match parse_args(&call.arguments) {
-            Ok(n) => n,
-            Err(e) => {
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: format!("failed to parse arguments: {e}"),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                };
-            }
-        };
-
-        if name.is_empty() {
-            return ToolResult {
-                tool_call_id: call.id,
-                name: call.name,
-                content: "skill name must not be empty".to_owned(),
-                success: false,
-                full_content: None,
-                truncation: None,
-                pin_position: None,
-            };
-        }
-
-        // Reject disabled skills.
-        if let (Some(state), Some(session_id)) = (ctx.state.as_ref(), &ctx.session_id) {
-            let guard = state.read();
-            if let Some(session) = guard.session.get(session_id)
-                && !session.is_skill_enabled(&name)
-            {
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: format!(
-                        "skill '{name}' is disabled for this session. Use <leader>sk to re-enable it."
-                    ),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                };
-            }
-        }
-
-        // Idempotency: refuse to re-load if a pinned ToolResult for this skill already exists.
-        if let (Some(state), Some(session_id)) = (ctx.state.as_ref(), &ctx.session_id) {
-            let guard = state.read();
-            if let Some(session) = guard.session.get(session_id)
-                && session.loaded_skills().contains(&name)
-            {
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: format!(
-                        "skill '{name}' is already loaded; its content is in context as a pinned tool result"
-                    ),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                };
-            }
-        }
-
-        // Resolve the skill's path from the session's discovered set rather than
-        // re-deriving it from the global dir. This makes project-local skills loadable
-        // and fails clearly if the skill was not discovered for this session.
-        let skill_path = match resolve_skill_path(&ctx, &name) {
-            Ok(p) => p,
-            Err(msg) => {
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: msg,
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                };
-            }
-        };
-
-        let content = match tokio::fs::read_to_string(&skill_path).await {
-            Ok(c) => c,
-            Err(e) => {
-                return ToolResult {
-                    tool_call_id: call.id,
-                    name: call.name,
-                    content: format!("failed to read skill '{}': {e}", skill_path.display()),
-                    success: false,
-                    full_content: None,
-                    truncation: None,
-                    pin_position: None,
-                };
-            }
-        };
+/// Builds a failure `ToolResult` for the given call with a human-facing message.
+fn failure_result(call: &ToolCall, message: impl Into<String>) -> ToolResult {
+    ToolResult {
+        tool_call_id: call.id.clone(),
+        name: call.name.clone(),
+        content: message.into(),
+        success: false,
+        full_content: None,
+        truncation: None,
+        pin_position: None,
+    }
+}
 
 /// Resolves a skill's path from the session's discovered set.
 ///
@@ -169,6 +74,66 @@ fn resolve_skill_path(ctx: &ToolContext, name: &str) -> Result<PathBuf, String> 
             )
         })
 }
+
+
+/// Executes the `skill` built-in tool.
+///
+/// Reads the skill's SKILL.md file, strips YAML frontmatter, and returns the
+/// skill body wrapped in a `<skill>` XML element as the ToolResult content.
+/// The ToolResult is pinned with `PinPosition::Relative` so it persists at its
+/// original position in history through compaction.
+pub fn execute(call: ToolCall, ctx: ToolContext) -> BoxedToolFuture {
+    Box::pin(async move {
+        let name = match parse_args(&call.arguments) {
+            Ok(n) => n,
+            Err(e) => return failure_result(&call, format!("failed to parse arguments: {e}")),
+        };
+
+        if name.is_empty() {
+            return failure_result(&call, "skill name must not be empty");
+        }
+
+        // Reject disabled skills.
+        if let (Some(state), Some(session_id)) = (ctx.state.as_ref(), &ctx.session_id) {
+            let guard = state.read();
+            if let Some(session) = guard.session.get(session_id)
+                && !session.is_skill_enabled(&name)
+            {
+                return failure_result(&call,
+                    format!("skill '{name}' is disabled for this session. Use <leader>sk to re-enable it."),
+                );
+            }
+        }
+
+        // Idempotency: refuse to re-load if a pinned ToolResult for this skill already exists.
+        if let (Some(state), Some(session_id)) = (ctx.state.as_ref(), &ctx.session_id) {
+            let guard = state.read();
+            if let Some(session) = guard.session.get(session_id)
+                && session.loaded_skills().contains(&name)
+            {
+                return failure_result(&call,
+                    format!("skill '{name}' is already loaded; its content is in context as a pinned tool result"),
+                );
+            }
+        }
+
+        // Resolve the skill's path from the session's discovered set rather than
+        // re-deriving it from the global dir. This makes project-local skills loadable
+        // and fails clearly if the skill was not discovered for this session.
+        let skill_path = match resolve_skill_path(&ctx, &name) {
+            Ok(p) => p,
+            Err(msg) => {
+                return failure_result(&call, msg);
+            }
+        };
+
+        let content = match tokio::fs::read_to_string(&skill_path).await {
+            Ok(c) => c,
+            Err(e) => {
+                return failure_result(&call, format!("failed to read skill '{}': {e}", skill_path.display()));
+            }
+        };
+
 
         let body = strip_frontmatter(&content);
         let location = skill_path.to_string_lossy().to_string();
