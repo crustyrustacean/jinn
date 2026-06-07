@@ -33,7 +33,6 @@ impl SessionPersistenceActor {
         payload: &EnqueueUserMessage,
         ctx: &ActorContext,
     ) {
-
         let (action, assembly_overrides) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
@@ -323,7 +322,6 @@ impl SessionPersistenceActor {
         payload: &PushChatEntry,
         ctx: &ActorContext,
     ) {
-
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);

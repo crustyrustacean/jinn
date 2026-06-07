@@ -61,4 +61,3 @@ impl TuiAppBuilder {
         crate::launch::launch_for_test(core, services, plugins)
     }
 }
-
