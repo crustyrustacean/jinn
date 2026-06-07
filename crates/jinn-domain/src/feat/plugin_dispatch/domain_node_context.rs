@@ -123,11 +123,11 @@ impl DomainNodeContext {
 
         let session_id = session.session_id().clone();
 
-        // 6. Insert into app state
+        // 6. Insert into app state. Do NOT set_active — the cloned one-shot
+        //    must stay invisible; the user's active chat view is unchanged.
         {
             let mut state = self.state.write();
             state.session.insert(session);
-            state.session.set_active(session_id.clone());
         }
 
         // 7. Create oneshot, enqueue, await
@@ -194,11 +194,11 @@ impl DomainNodeContext {
 
         let session_id = session.session_id().clone();
 
-        // 5. Insert into app state.
+        // 5. Insert into app state. Do NOT set_active — the one-shot must
+        //    stay invisible; the user's active chat view is unchanged.
         {
             let mut state = self.state.write();
             state.session.insert(session);
-            state.session.set_active(session_id.clone());
         }
 
         // 6. Create oneshot, enqueue, await.
@@ -401,5 +401,34 @@ mod tests {
             }
             other => panic!("expected immediate error, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn oneshot_does_not_change_active_session() {
+        // Given a source session set as the active view.
+        let (ctx, _rx) = make_ctx_with_channel();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+        ctx.state
+            .write()
+            .session
+            .set_active(source_id.clone());
+
+        // When the one-shot runs (parking on its response channel).
+        let fut = ctx.send_llm_request_oneshot(&source_id, "rewrite me".to_owned(), None);
+        futures::pin_mut!(fut);
+        let waker = futures::task::noop_waker();
+        let mut poll_cx = std::task::Context::from_waker(&waker);
+        assert!(matches!(
+            fut.as_mut().poll(&mut poll_cx),
+            std::task::Poll::Pending,
+        ));
+
+        // Then the active session is still the source — the one-shot must
+        // never steal the visible chat view.
+        assert_eq!(
+            ctx.state.read().session.active_session_id(),
+            &source_id,
+            "one-shot must not call set_active; the user's chat view is unchanged",
+        );
     }
 }
