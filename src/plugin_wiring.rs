@@ -257,7 +257,14 @@ pub async fn handle_plugin_request(
             }
             match serde_json::from_value::<LlmOneshotPayload>(data.clone()) {
                 Ok(p) => match domain_ctx
-                    .send_llm_request_oneshot(&p.session_id, p.prompt, p.system, p.persist.unwrap_or(false))
+                    .send_llm_request_oneshot(
+                        &p.session_id,
+                        p.prompt,
+                        p.system,
+                        p.persist.unwrap_or(false),
+                        true,
+                        30_000,
+                    )
                     .await
                 {
                     Ok(text) => serde_json::json!({ "text": text }),
