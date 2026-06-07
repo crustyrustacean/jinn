@@ -145,10 +145,7 @@ mod tests {
         handle_cwd_input_enter(&mut state);
 
         // Then the seeded input is the tilde-compressed form.
-        assert_eq!(
-            state.frontend.cwd_input.text.input,
-            "~/projects/my-app"
-        );
+        assert_eq!(state.frontend.cwd_input.text.input, "~/projects/my-app");
     }
 
     #[rstest::rstest]
@@ -179,10 +176,7 @@ mod tests {
         handle_cwd_input_enter(&mut state);
 
         // Then the seeded input is the raw absolute path (no tilde compression).
-        assert_eq!(
-            state.frontend.cwd_input.text.input,
-            "/tmp/some-project"
-        );
+        assert_eq!(state.frontend.cwd_input.text.input, "/tmp/some-project");
     }
 
     #[rstest::rstest]
