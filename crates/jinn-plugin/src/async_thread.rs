@@ -27,6 +27,8 @@ use error_stack::{Report, ResultExt};
 use mlua::Lua;
 use tokio::runtime::Runtime;
 
+use jinn_domain::feat::plugin_dispatch::PluginHookSite;
+
 use crate::async_handle::{PluginError, PluginJob};
 use crate::bindings;
 use crate::command::PluginCommand;
@@ -397,19 +399,21 @@ async fn run_single_hook(
     .map_err(|e| Report::new(PluginError).attach(e.to_string()))
     .attach("build ctx")?;
 
-    tracing::info!(plugin = %plugin_name, %hook, "PLUGTRACE: invoking async hook");
+    tracing::info!(plugin = %plugin_name, %hook, "invoking async hook");
     let result: mlua::Value = match func
         .call_async::<mlua::Value>(ctx_table)
         .await
     {
-        Ok(v) => {
-            tracing::info!(plugin = %plugin_name, %hook, "PLUGTRACE: async hook returned ok");
-            v
-        }
+        Ok(v) => v,
         Err(e) => {
-            tracing::error!(plugin = %plugin_name, %hook, error = %e, "PLUGTRACE: async hook ERRORED");
-            return Err(Report::new(PluginError).attach(e.to_string()))
-                .attach(format!("hook '{plugin_name}.{hook}'"));
+            return Err(
+                Report::new(PluginError)
+                    .attach(PluginHookSite {
+                        plugin: plugin_name.to_string(),
+                        hook: hook.to_string(),
+                    })
+                    .attach(e.to_string()),
+            );
         }
     };
 
