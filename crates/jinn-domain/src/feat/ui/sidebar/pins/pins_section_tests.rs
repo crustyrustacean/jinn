@@ -241,8 +241,9 @@ fn content_height_matches_entry_count() {
     // When asking for content height.
     let height = section.content_height(&{ RenderCtx::new(&state) });
 
-    // Then it returns header(1) + blank(1) + (entry(1) + blank(1)) * 3 - last blank(1) + trailing gap(1) = 8.
-    assert_eq!(height, 8);
+    // Then it returns header(1) + header-gap(1) + entries(3) + trailing gap(1) = 6.
+    assert_eq!(height, 6);
+
 }
 
 // --- Rendering tests ---
