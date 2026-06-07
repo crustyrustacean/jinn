@@ -135,7 +135,7 @@ impl Actor for PluginDispatchActor {
 
     async fn handle(&mut self, msg: ActorEnvelope<NoDirectMsg>, ctx: &ActorContext) {
         match msg {
-            ActorEnvelope::Event(event) => self.handle_event(event).await,
+            ActorEnvelope::Event(event) => self.handle_event(event),
             ActorEnvelope::Command(command) => self.handle_command(command, ctx).await,
             ActorEnvelope::System(_) => {}
         }
@@ -145,17 +145,20 @@ impl Actor for PluginDispatchActor {
 impl PluginDispatchActor {
     // ─── Event dispatch ────────────────────────────────────────────────────
 
-    async fn handle_event(&self, event: Event) {
+    fn handle_event(&self, event: Event) {
         match event {
-            Event::AllActorsSpawned(_) => self.fire_on_app_started().await,
+            Event::AllActorsSpawned(_) => self.fire_on_app_started(),
             Event::SessionCreated(SessionCreated { session_id }) => {
-                self.fire_on_session_created(session_id).await;
+                self.fire_on_session_created(&session_id);
             }
             Event::SessionPhaseChanged(SessionPhaseChanged {
                 session_id,
                 old_phase: _,
                 new_phase,
-            }) => self.fire_on_phase_changed(session_id, new_phase).await,
+            }) => {
+                let hook_session = session_id.clone();
+                self.fire_on_phase_changed(&hook_session, new_phase);
+            }
             _ => {}
         }
     }
@@ -346,36 +349,32 @@ impl PluginDispatchActor {
 
     // ─── Lifecycle hook firings ────────────────────────────────────────────
 
-    async fn fire_on_app_started(&self) {
+    fn fire_on_app_started(&self) {
+        // Spawn off the actor loop so a slow / blocking hook can't stall
+        // mailbox processing. The startup session id is unlikely to be in the
+        // registry, so `spawn_fire_for_session` falls back to the global fire.
+        let session_id = SessionId::from(self.startup_session_id.clone());
         let ctx_json = serde_json::json!({
             "session_id": self.startup_session_id,
         });
-        if let Err(e) = self
-            .services
-            .plugins
-            .fire_async_json("on_app_started", &ctx_json)
-            .await
-        {
-            tracing::warn!(err = %e, "on_app_started hook failed");
-        }
+        self.spawn_fire_for_session(&session_id, "on_app_started", &ctx_json);
     }
 
-    async fn fire_on_session_created(&self, session_id: SessionId) {
+    fn fire_on_session_created(&self, session_id: &SessionId) {
         let ctx_json = serde_json::json!({
             "session_id": session_id.to_string(),
         });
-        self.fire_for_session(&session_id, "on_session_created", &ctx_json)
-            .await;
+        self.spawn_fire_for_session(session_id, "on_session_created", &ctx_json);
     }
 
-    async fn fire_on_phase_changed(&self, session_id: SessionId, new_phase: PhaseKind) {
+    fn fire_on_phase_changed(&self, session_id: &SessionId, new_phase: PhaseKind) {
         // Workflow session completed: resolve any pending plugin LLM one-shot oneshot.
         // Automated sessions are spawned by DomainNodeContext::send_llm_request_oneshot;
         // it has is_automated=true and a pending sender in domain_ctx. Extract the last
         // assistant entry text and resolve the awaiting coroutine.
-        if new_phase == PhaseKind::Idle && self.domain_ctx.has_pending(&session_id) {
-            let response = self.extract_last_assistant_text(&session_id);
-            self.domain_ctx.resolve_completed(&session_id, response);
+        if new_phase == PhaseKind::Idle && self.domain_ctx.has_pending(session_id) {
+            let response = self.extract_last_assistant_text(session_id);
+            self.domain_ctx.resolve_completed(session_id, response);
 
         }
 
@@ -387,7 +386,7 @@ impl PluginDispatchActor {
         let ctx_json = serde_json::json!({
             "session_id": session_id.to_string(),
         });
-        self.fire_for_session(&session_id, hook, &ctx_json).await;
+        self.spawn_fire_for_session(session_id, hook, &ctx_json);
     }
 
     /// Fire a hook for a session on a background task, so the actor loop is not
@@ -419,23 +418,6 @@ impl PluginDispatchActor {
                 tracing::error!(hook = %hook, err = ?e, "plugin hook failed");
             }
         });
-    }
-
-    /// Fire a hook for a session: global + session-scoped if the session has a
-    /// registry, global-only otherwise.
-    async fn fire_for_session(&self, session_id: &SessionId, hook: &str, ctx_json: &Value) {
-        let result = match self.registry.get(session_id) {
-            Some(registry_id) => {
-                self.services
-                    .plugins
-                    .fire_async_for_session_json(*registry_id, hook, ctx_json)
-                    .await
-            }
-            None => self.services.plugins.fire_async_json(hook, ctx_json).await,
-        };
-        if let Err(e) = &result {
-            tracing::error!(hook = %hook, err = ?e, "plugin hook failed");
-        }
     }
 
     /// Extract the text of the last assistant entry for a session.
@@ -508,6 +490,14 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::feat::attached_plugin::PluginRunState;
     use crate::feat::session::chat_session::ChatSessionState;
+    use crate::feat::plugin_dispatch::plugin_fire::{PluginFire, PluginFireError, PluginFireService};
+    use crate::feat::plugin_system::SessionRegistryId;
+    use error_stack::Report;
+
+    use crate::feat::session::chat_entry::ChatEntry;
+    use tokio::sync::oneshot;
+
+    use tokio::sync::Notify;
     use std::sync::Arc;
 
     fn make_actor() -> (
@@ -768,5 +758,243 @@ mod tests {
             )
             .await;
         assert!(sink.take_events().is_empty());
+    }
+
+    // ── fakes for lifecycle decoupling tests ─────────────────────────────
+
+    /// A [`PluginFire`] that blocks every fire on a [`Notify`] until released.
+    ///
+    /// Used to prove that `handle_event` returns immediately even when a
+    /// lifecycle fire is parked — i.e. the fire was spawned off the actor loop.
+    #[derive(Debug, Clone)]
+    struct BlockingPluginFire {
+        gate: Arc<Notify>,
+    }
+
+    impl BlockingPluginFire {
+        fn new(gate: Arc<Notify>) -> Self {
+            Self { gate }
+        }
+    }
+
+
+
+    #[async_trait::async_trait]
+    impl PluginFire for BlockingPluginFire {
+        async fn fire_async_json(
+            &self,
+            _hook: &str,
+            _ctx: &Value,
+        ) -> Result<(), Report<PluginFireError>> {
+            self.gate.notified().await;
+
+            Ok(())
+        }
+
+        async fn fire_async_for_session_json(
+            &self,
+            _session: SessionRegistryId,
+            _hook: &str,
+            _ctx: &Value,
+        ) -> Result<(), Report<PluginFireError>> {
+            self.gate.notified().await;
+
+            Ok(())
+        }
+
+        async fn fire_async_collect_json(
+            &self,
+            _hook: &str,
+            _ctx: &Value,
+        ) -> Result<Vec<Value>, Report<PluginFireError>> {
+
+            self.gate.notified().await;
+            Ok(vec![])
+        }
+
+        async fn fire_async_collect_for_session_json(
+            &self,
+            _session: SessionRegistryId,
+            _hook: &str,
+            _ctx: &Value,
+        ) -> Result<Vec<Value>, Report<PluginFireError>> {
+
+            self.gate.notified().await;
+            Ok(vec![])
+        }
+
+        fn name(&self) -> &'static str {
+            "BlockingPluginFire"
+        }
+    }
+
+    /// Build an actor whose `services.plugins` is a custom [`PluginFire`] backend.
+    fn make_actor_with_plugin_fire(
+        backend: Arc<dyn PluginFire>,
+    ) -> (PluginDispatchActor, ActorContext) {
+        use crate::common::session_map::SessionMap;
+        let mut services = Services::new();
+        services.plugins = PluginFireService::new(backend);
+        let session = ChatSessionState::default();
+        let session_id = session.session_id().clone();
+        let app_state = AppState {
+            session: SessionMap::new(session, std::path::PathBuf::from("/tmp")),
+            ..Default::default()
+        };
+        let state = State::new(app_state);
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = ActorContext::new("plugin-dispatch-test", sink);
+        let actor = PluginDispatchActor::activate(
+            PluginDispatchActorDeps {
+                services,
+                state,
+                startup_session_id: session_id.to_string(),
+                domain_ctx: Arc::new(DomainNodeContext::new(
+                    Services::new(),
+                    State::new(AppState::default()),
+                )),
+            },
+            &mut ctx,
+        );
+        (actor, ctx)
+    }
+
+    #[tokio::test]
+    async fn session_created_fire_does_not_block_actor_loop() {
+        // Given an actor whose lifecycle fire blocks until released.
+        let gate = Arc::new(Notify::new());
+        let fire = BlockingPluginFire::new(gate.clone());
+        let (actor, _ctx) = make_actor_with_plugin_fire(Arc::new(fire.clone()) as Arc<dyn PluginFire>);
+
+        // When firing on_session_created. With the spawn fix this returns
+        // immediately even though the fire parks on the gate; with the old
+        // inline-await code it would block here until the gate is released.
+        actor.handle_event(Event::SessionCreated(SessionCreated {
+            session_id: SessionId::new(),
+        }));
+
+        // Then a second event is also handled within the gate window,
+        // proving the actor loop is free, not serialised behind the fire.
+        // (With the inline-await version this second call would hang until
+        // the gate is released, breaking the 500ms timeout.)
+        let second = tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            async {
+                // Give the spawned fire time to park on the gate.
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                actor.handle_event(Event::SessionCreated(SessionCreated {
+                    session_id: SessionId::new(),
+                }));
+            },
+        )
+        .await;
+        assert!(second.is_ok(), "second event handled while a lifecycle fire is parked");
+
+        // Cleanup: release the gate so spawned tasks complete (no leaked tasks).
+        gate.notify_waiters();
+    }
+
+    #[tokio::test]
+    async fn phase_changed_fire_does_not_block_actor_loop() {
+        // Given an actor whose lifecycle fire blocks until released.
+        let gate = Arc::new(Notify::new());
+        let fire = BlockingPluginFire::new(gate.clone());
+        let (actor, _ctx) = make_actor_with_plugin_fire(Arc::new(fire.clone()) as Arc<dyn PluginFire>);
+
+        // When firing on_turn_end (Idle phase → on_turn_end hook). With the
+        // spawn fix this returns immediately; the inline-await version would block.
+        actor.handle_event(Event::SessionPhaseChanged(SessionPhaseChanged {
+            session_id: SessionId::new(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        }));
+
+        // Then a second phase change is handled within the gate window,
+        // proving the actor loop is free.
+        let second = tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            async {
+                // Give the spawned fire time to park on the gate.
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                actor.handle_event(Event::SessionPhaseChanged(SessionPhaseChanged {
+                    session_id: SessionId::new(),
+                    old_phase: PhaseKind::Idle,
+                    new_phase: PhaseKind::Sending,
+                }));
+            },
+        )
+        .await;
+        assert!(second.is_ok(), "second phase change handled while a lifecycle fire is parked");
+
+        // Cleanup: release the gate so spawned tasks complete.
+        gate.notify_waiters();
+    }
+
+    #[tokio::test]
+    async fn phase_changed_idle_resolves_pending_oneshot_before_spawned_fire() {
+        // Given an actor with a blocking fire, a session holding an assistant
+        // entry, and a pending one-shot registered for that session.
+        use crate::common::session_map::SessionMap;
+
+        let gate = Arc::new(Notify::new());
+        let fire = BlockingPluginFire::new(gate.clone());
+
+        let mut services = Services::new();
+        services.plugins = PluginFireService::new(Arc::new(fire) as Arc<dyn PluginFire>);
+
+        let session = ChatSessionState::default();
+        let session_id = session.session_id().clone();
+
+        let mut app_state = AppState {
+            session: SessionMap::new(session, std::path::PathBuf::from("/tmp")),
+            ..Default::default()
+        };
+        {
+            if let Some(s) = app_state.session.get_mut(&session_id) {
+                s.push_entry(ChatEntry::assistant("enriched text"));
+            }
+        }
+
+        let state = State::new(app_state);
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx = ActorContext::new("plugin-dispatch-test", sink);
+
+        let domain_ctx = Arc::new(DomainNodeContext::new(
+            Services::new(),
+            State::new(AppState::default()),
+        ));
+        let (tx, rx) = oneshot::channel::<String>();
+        domain_ctx.insert_pending(session_id.clone(), tx);
+
+        let actor = PluginDispatchActor::activate(
+            PluginDispatchActorDeps {
+                services,
+                state,
+                startup_session_id: session_id.to_string(),
+                domain_ctx: domain_ctx.clone(),
+            },
+            &mut ctx,
+        );
+
+        // When firing on_phase_changed(Idle) with a pending one-shot. The gate is
+        // NOT released, so the spawned fire parks. If resolve_completed were
+        // inside the spawned fire (or awaited the fire), rx would never resolve.
+        actor.handle_event(Event::SessionPhaseChanged(SessionPhaseChanged {
+            session_id: session_id.clone(),
+            old_phase: PhaseKind::Streaming,
+            new_phase: PhaseKind::Idle,
+        }));
+
+        // Then the pending one-shot resolves synchronously, within the gate window.
+        let resolved = tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            rx,
+        )
+        .await
+        .expect("resolve_completed fired synchronously, not gated behind the spawned fire");
+        assert_eq!(resolved.as_deref(), Ok("enriched text"));
+
+        // Cleanup: release the gate so the parked fire completes.
+        gate.notify_waiters();
     }
 }
