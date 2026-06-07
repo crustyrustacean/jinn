@@ -15,7 +15,8 @@ use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
-use unicode_segmentation::UnicodeSegmentation;
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Paragraph, Widget};
 
 use jinn_domain::feat::theme::Theme;
 use jinn_domain::{BadgeDirective, RenderCtx, call_hooks_typed};
@@ -24,10 +25,9 @@ use jinn_domain::{BadgeDirective, RenderCtx, call_hooks_typed};
 const HOOK: &str = "on_chat_input_badges_render";
 
 /// Renders chat-input badges from plugins into the input-area badge slots.
-///
-/// `input_area` is the chat input box rect. Badges draw into a small strip
-/// immediately to the left of (or above) the input box, in a consistent
-/// location across all plugins contributing directives.
+/// `input_area` is the chat input box rect. Badges render right-aligned on the
+/// input box's bottom border line (same row as the `[QUEUE]`/`[STEER]` mode
+/// badge), overlaying the `─` glyphs.
 pub(super) fn render_badges(frame: &mut Frame<'_>, input_area: Rect, ctx: &RenderCtx) {
     // No plugins → nothing to do (skip building the ctx entirely).
     let Some(plugins) = ctx.plugins else {
@@ -52,15 +52,12 @@ pub(super) fn render_badges(frame: &mut Frame<'_>, input_area: Rect, ctx: &Rende
     draw_directives(frame.buffer_mut(), input_area, &directives, theme);
 }
 
-/// Draws the directives into the badge strip above the input box.
+/// Draws the directives right-aligned on the input box's bottom border row.
 ///
-/// v1 layout: a single row immediately above the input box. Each directive
-/// is rendered left-to-right with a one-space separator. Slot order within a
-/// plugin's contribution is preserved; plugin order follows the load order.
-///
-/// Phase 4 adaptation: walks styled segments (generic host mechanics only —
-/// the host maps named styles to theme colors, nothing more). Phase 5 will
-/// rewrite the layout to right-align on the input box's bottom border.
+/// Each directive contributes one `Line` of styled segments; directives are
+/// concatenated left-to-right with a one-space separator. The combined line is
+/// right-aligned within `input_area`, drawn on the border row so it overlays
+/// the `─` glyphs — matching the `[QUEUE]`/`[STEER]` mode-badge precedent.
 fn draw_directives(
     buf: &mut Buffer,
     input_area: Rect,
@@ -71,49 +68,40 @@ fn draw_directives(
         return;
     }
 
-    // The badge row sits one line above the input box (clamped to the frame).
-    let Some(row_y) = input_area.y.checked_sub(1) else {
+    let Some(line) = build_badge_line(directives, theme) else {
         return;
     };
-
-    let mut x = input_area.x;
-    let max_x = input_area.x + input_area.width;
-    for d in directives {
-        draw_badge(buf, row_y, &mut x, max_x, d, theme);
-        // one-space separator between badges
-        if x < max_x {
-            if let Some(cell) = buf.cell_mut((x, row_y)) {
-                cell.set_symbol(" ");
-            }
-            x += 1;
-        }
+    let width = u16::try_from(line.width()).unwrap_or(input_area.width);
+    if width == 0 {
+        return;
     }
+
+    // Bottom border row; rightmost cell at the input area's right edge.
+    let row_y = input_area.bottom().saturating_sub(1);
+    let right = input_area.right().saturating_sub(1);
+    let start_x = right.saturating_sub(width.saturating_sub(1)).max(input_area.x);
+    let area = Rect { x: start_x, y: row_y, width, height: 1 };
+    Paragraph::new(line).render(area, buf);
 }
 
-/// Draws one badge's segments left-to-right, advancing `x`.
+/// Builds a single styled line from all directives' segments.
 ///
-/// Single pass over the directive's segments — extracted per the loop-isolation
-/// rule so `draw_directives` reads as a recipe. Stops at `max_x` (right edge).
-fn draw_badge(
-    buf: &mut Buffer,
-    row_y: u16,
-    x: &mut u16,
-    max_x: u16,
-    d: &BadgeDirective,
-    theme: &Theme,
-) {
-    for seg in &d.segments {
-        let style = style_from_name(seg.style.as_deref(), theme);
-        for g in seg.text.graphemes(true) {
-            if *x >= max_x {
-                break;
-            }
-            if let Some(cell) = buf.cell_mut((*x, row_y)) {
-                cell.set_symbol(g);
-                cell.set_style(style);
-            }
-            *x += 1;
+/// Directives are joined with a one-space separator. Returns `None` if the
+/// segments produce no spans.
+fn build_badge_line(directives: &[BadgeDirective], theme: &Theme) -> Option<Line<'static>> {
+    let mut spans: Vec<Span> = Vec::new();
+    for (i, d) in directives.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::raw(" "));
         }
+        spans.extend(d.segments.iter().map(|seg| {
+            Span::styled(seg.text.clone(), style_from_name(seg.style.as_deref(), theme))
+        }));
+    }
+    if spans.is_empty() {
+        None
+    } else {
+        Some(Line::from(spans))
     }
 }
 
@@ -150,11 +138,12 @@ mod tests {
     }
 
     #[test]
-    fn empty_directives_draws_nothing() {
-        let mut buf = buffer(20, 3);
-        let input_area = Rect::new(0, 2, 20, 1);
+    fn empty_directives_draws_nothing_on_border_row() {
+        // Input occupies a single row at y=1; its bottom border row is also y=1.
+        let mut buf = buffer(20, 2);
+        let input_area = Rect::new(0, 1, 20, 1);
         draw_directives(&mut buf, input_area, &[], &theme());
-        // Row above input (y=1) should remain blank.
+        // Then the border row (y=1) stays blank.
         for x in 0..20 {
             let sym = buf.cell((x, 1)).expect("cell").symbol();
             assert!(sym.is_empty() || sym == " ", "x={x} got {sym:?}");
@@ -162,30 +151,76 @@ mod tests {
     }
 
     #[test]
-    fn badge_directives_draw_segments_left_to_right_with_separator() {
-        let mut buf = buffer(20, 3);
-        let input_area = Rect::new(0, 2, 20, 1);
+    fn single_badge_is_right_aligned_on_border_row() {
+        // Given a 20-wide input area whose bottom border row is y=1.
+        let mut buf = buffer(20, 2);
+        let input_area = Rect::new(0, 1, 20, 1);
+        let directives = vec![BadgeDirective {
+            slot: "input_badge".to_owned(),
+            segments: vec![BadgeSegment { text: "Hi".to_owned(), style: None }],
+        }];
+        // When drawing.
+        draw_directives(&mut buf, input_area, &directives, &theme());
+        // Then "Hi" (width 2) sits at the right edge: x=18..19 on row y=1.
+        assert_eq!(buf.cell((18, 1)).expect("cell").symbol(), "H");
+        assert_eq!(buf.cell((19, 1)).expect("cell").symbol(), "i");
+        // And nothing is drawn at the left of the border row.
+        assert_eq!(buf.cell((0, 1)).expect("cell").symbol(), " ");
+    }
+
+    #[test]
+    fn multiple_directives_join_with_one_space_separator() {
+        // Given two single-segment badges "A" and "B".
+        let mut buf = buffer(20, 2);
+        let input_area = Rect::new(0, 1, 20, 1);
         let directives = vec![
             BadgeDirective {
                 slot: "input_badge".to_owned(),
-                segments: vec![BadgeSegment {
-                    text: "E".to_owned(),
-                    style: Some("yellow".to_owned()),
-                }],
+                segments: vec![BadgeSegment { text: "A".to_owned(), style: None }],
             },
             BadgeDirective {
                 slot: "input_spinner".to_owned(),
-                segments: vec![BadgeSegment {
-                    text: "✨".to_owned(),
-                    style: None,
-                }],
+                segments: vec![BadgeSegment { text: "B".to_owned(), style: None }],
             },
         ];
+        // When drawing.
         draw_directives(&mut buf, input_area, &directives, &theme());
-        // Row y=1 should contain "E ✨ " starting at x=0.
-        assert_eq!(buf.cell((0, 1)).expect("cell").symbol(), "E");
-        assert_eq!(buf.cell((1, 1)).expect("cell").symbol(), " ");
-        assert_eq!(buf.cell((2, 1)).expect("cell").symbol(), "✨");
+        // Then the joined "A B" (width 3) is right-aligned: A=17, space=18, B=19.
+        assert_eq!(buf.cell((17, 1)).expect("cell").symbol(), "A");
+        assert_eq!(buf.cell((18, 1)).expect("cell").symbol(), " ");
+        assert_eq!(buf.cell((19, 1)).expect("cell").symbol(), "B");
+    }
+
+    #[test]
+    fn segments_render_with_per_span_styles() {
+        // Given one badge whose two segments carry different style names.
+        let mut buf = buffer(20, 2);
+        let input_area = Rect::new(0, 1, 20, 1);
+        let directives = vec![BadgeDirective {
+            slot: "input_badge".to_owned(),
+            segments: vec![
+                BadgeSegment { text: "[".to_owned(), style: Some("muted_text".to_owned()) },
+                BadgeSegment { text: "E".to_owned(), style: Some("accent_action".to_owned()) },
+                BadgeSegment { text: "]".to_owned(), style: Some("muted_text".to_owned()) },
+            ],
+        }];
+        let t = theme();
+        // When drawing.
+        draw_directives(&mut buf, input_area, &directives, &t);
+        // Then each segment's cell carries its resolved style.
+        // "[E]" (width 3) right-aligned: [=17, E=18, ]=19.
+        assert_eq!(
+            buf.cell((17, 1)).expect("cell").style().fg,
+            Some(t.muted_text)
+        );
+        assert_eq!(
+            buf.cell((18, 1)).expect("cell").style().fg,
+            Some(t.accent_action)
+        );
+        assert_eq!(
+            buf.cell((19, 1)).expect("cell").style().fg,
+            Some(t.muted_text)
+        );
     }
 
     #[test]
