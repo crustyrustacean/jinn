@@ -48,6 +48,8 @@ mod tests {
     use crate::feat::skills::skill::{Skill, SkillSource};
     use crate::feat::ui::picker_states::PickerExt;
     use crate::protocol::PickerKind;
+
+    use jinn_selection_widget::PreviewCache;
     use std::path::PathBuf;
 
     use super::*;
@@ -134,5 +136,24 @@ mod tests {
 
         // Then the filter text is preserved.
         assert_eq!(state.frontend.skill_picker().filter(), "web");
+    }
+
+    #[rstest::rstest]
+    fn reload_preserves_skill_preview_cache() {
+        // Given a cache populated with a rendered skill preview.
+        let mut state = AppState::default();
+        state.context.skills = make_skills();
+        state.frontend.caches
+            .skill_preview_cache
+            .write()
+            .insert("web-coder".to_owned(), 80, vec![ratatui::text::Line::raw("rendered")]);
+        assert_eq!(state.frontend.caches.skill_preview_cache.read().len(), 1);
+
+        // When reloading (e.g. the picker is reopened). The bodies haven't changed,
+        // so the cache must survive to avoid re-rendering already-viewed skills.
+        reload_skill_picker_entries(&mut state);
+
+        // Then the cache is preserved.
+        assert_eq!(state.frontend.caches.skill_preview_cache.read().len(), 1);
     }
 }
