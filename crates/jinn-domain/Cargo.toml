@@ -57,6 +57,14 @@ rstest = { workspace = true }
 jinn-testutil = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 
+[target.'cfg(windows)'.dependencies]
+# kill_tree provides Toolhelp32-based process-tree termination on Windows.
+# Used by `common::process_kill` as the Windows counterpart to Unix's
+# process-group kill. Only the default `blocking` feature is needed;
+# the `tokio` feature is intentionally NOT enabled because kill-on-drop
+# runs synchronously from a `Drop` impl (no async runtime context).
+kill_tree = "0.2"
+
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 result_large_err = "allow"
