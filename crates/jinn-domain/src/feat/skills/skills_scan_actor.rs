@@ -26,7 +26,8 @@ pub struct SkillsScanActorDeps {
 /// Scans and loads agent skills on `ScanSkills`.
 ///
 /// On command, scans the skills directory for `*/SKILL.md` files,
-/// writes results to `AppState.context.skills`, and emits `SkillsLoaded`.
+/// writes results to the active session's ephemeral discovered state, and emits
+/// `SkillsLoaded`.
 pub struct SkillsScanActor {
     /// Runtime services.
     services: Services,

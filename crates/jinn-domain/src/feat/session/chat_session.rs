@@ -2353,17 +2353,17 @@ impl ChatSessionState {
     }
 
     /// Replaces the discovered skills set for this session (scan-actor write path).
-    pub(crate) fn set_discovered_skills(&mut self, skills: Vec<crate::feat::skills::Skill>) {
+    pub fn set_discovered_skills(&mut self, skills: Vec<crate::feat::skills::Skill>) {
         self.core.ephemeral.discovered_skills = skills;
     }
 
     /// Replaces the discovered prompt-template store for this session.
-    pub(crate) fn set_discovered_prompt_templates(&mut self, store: crate::feat::context::prompt_template::PromptTemplateStore) {
+    pub fn set_discovered_prompt_templates(&mut self, store: crate::feat::context::prompt_template::PromptTemplateStore) {
         self.core.ephemeral.discovered_prompt_templates = store;
     }
 
     /// Replaces the discovered context files for this session.
-    pub(crate) fn set_discovered_context_files(&mut self, files: Vec<crate::feat::context::env_context::ContextFile>) {
+    pub fn set_discovered_context_files(&mut self, files: Vec<crate::feat::context::env_context::ContextFile>) {
         self.core.ephemeral.discovered_context_files = files;
     }
 

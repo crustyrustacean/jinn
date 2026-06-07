@@ -180,11 +180,7 @@ impl App {
                         jinn_domain::AppPaths::default(),
                     );
                 let paths = &services.paths;
-                load_prompt_templates(
-                    &core.state,
-                    &paths.prompts_dir(),
-                    &paths.system_prompts_dir(),
-                );
+
                 load_compaction_prompt(
                     &core.state,
                     &paths.prompts_dir(),
@@ -243,11 +239,7 @@ impl App {
                         None,
                         jinn_domain::AppPaths::default(),
                     );
-                load_prompt_templates(
-                    &core.state,
-                    &_services.paths.prompts_dir(),
-                    &_services.paths.system_prompts_dir(),
-                );
+
                 load_compaction_prompt(
                     &core.state,
                     &_services.paths.prompts_dir(),
@@ -329,11 +321,7 @@ impl App {
                                 jinn_domain::AppPaths::default(),
                             );
                         let paths = &services.paths;
-                        load_prompt_templates(
-                            &core.state,
-                            &paths.prompts_dir(),
-                            &paths.system_prompts_dir(),
-                        );
+
                         load_compaction_prompt(
                             &core.state,
                             &paths.prompts_dir(),
@@ -403,11 +391,7 @@ impl App {
                                 jinn_domain::AppPaths::default(),
                             );
                         let paths = &services.paths;
-                        load_prompt_templates(
-                            &core.state,
-                            &paths.prompts_dir(),
-                            &paths.system_prompts_dir(),
-                        );
+
                         load_compaction_prompt(
                             &core.state,
                             &paths.prompts_dir(),
@@ -462,20 +446,6 @@ impl Default for App {
     fn default() -> Self {
         Self::new().expect("failed to create default App")
     }
-}
-
-/// Loads prompt templates from both user and system directories into the application state.
-///
-/// Called once after core creation. Failures are logged but not fatal -
-/// an empty store is used when both directories are missing or unreadable.
-fn load_prompt_templates(state: &State, user_dir: &Path, system_dir: &Path) {
-    let store = jinn_domain::PromptTemplateStore::load_from_dirs(user_dir, system_dir)
-        .unwrap_or_else(|e| {
-            tracing::warn!("failed to load prompt templates: {e:?}");
-            jinn_domain::PromptTemplateStore::new()
-        });
-    tracing::info!(count = store.len(), "loaded prompt templates");
-    state.write().context.prompt_templates = store;
 }
 
 /// Loads the compaction system prompt from user or system prompts directory.
@@ -616,49 +586,7 @@ mod tests {
 
     use super::*;
 
-    #[rstest::rstest]
-    fn load_prompt_templates_sets_count() {
-        // Given a temp directory with a template file.
-        let dir = tempfile::tempdir().expect("temp dir");
-        let template_content =
-            "+++\nname = \"test\"\ndescription = \"Test template\"\n+++\nTest body.";
-        std::fs::write(dir.path().join("test.md"), template_content).expect("write template");
 
-        let state = State::new(AppState::default());
-
-        // When loading prompt templates from the temp directory (user dir only).
-        let empty = PathBuf::from("/nonexistent");
-        load_prompt_templates(&state, dir.path(), &empty);
-
-        // Then the template count is correct.
-        let state = state.read();
-        assert_eq!(state.context.prompt_templates.len(), 1);
-    }
-
-    #[rstest::rstest]
-    fn load_prompt_templates_contains_template() {
-        // Given a temp directory with a template file.
-        let dir = tempfile::tempdir().expect("temp dir");
-        let template_content =
-            "+++\nname = \"test\"\ndescription = \"Test template\"\n+++\nTest body.";
-        std::fs::write(dir.path().join("test.md"), template_content).expect("write template");
-
-        let state = State::new(AppState::default());
-
-        // When loading prompt templates from the temp directory (user dir only).
-        let empty = PathBuf::from("/nonexistent");
-        load_prompt_templates(&state, dir.path(), &empty);
-
-        // Then the template is findable by name.
-        let state = state.read();
-        assert!(
-            state
-                .context
-                .prompt_templates
-                .find_by_name("test")
-                .is_some()
-        );
-    }
 
     #[rstest::rstest]
     fn load_compaction_prompt_populates_state() {

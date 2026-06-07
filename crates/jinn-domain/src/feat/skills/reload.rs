@@ -9,9 +9,8 @@ use crate::feat::ui::picker_states::PickerExt;
 /// Reloads skill picker entries from the active session's discovered skills.
 ///
 /// Reads the active session's `discovered_skills` (cwd-scoped, hydrated by the
-/// skills scan actor) rather than the app-global `state.context.skills`, so two
-/// sessions with different cwds show the right set. Each entry carries the
-/// discovered skill's `source` for a global/project badge.
+/// skills scan actor), so two sessions with different cwds show the right set.
+/// Each entry carries the discovered skill's `source` for a global/project badge.
 pub fn reload_skill_picker_entries(state: &mut AppState) {
     let disabled = state.active_session().disabled_skills();
     let theme = state.frontend.theme.clone();
@@ -142,7 +141,7 @@ mod tests {
     fn reload_preserves_skill_preview_cache() {
         // Given a cache populated with a rendered skill preview.
         let mut state = AppState::default();
-        state.context.skills = make_skills();
+        state.active_session_mut().set_discovered_skills(make_skills());
         state.frontend.caches
             .skill_preview_cache
             .write()
