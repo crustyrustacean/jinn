@@ -4,6 +4,8 @@
 
 use crate::common::app_state::AppState;
 use crate::common::focus::FocusScope;
+use crate::common::line_input::LineInput;
+use crate::common::path_display::shorten_path;
 use crate::feat::cwd_input::resolve::{CwdResolution, resolve_cwd_input};
 use crate::feat::cwd_input::state::CwdInputState;
 use crate::feat::session_lifecycle::protocol::command::SetSessionCwd;
@@ -11,9 +13,17 @@ use crate::protocol::{Command, IntentResult};
 
 /// Opens the cwd input popup.
 ///
-/// Pushes `FocusScope::CwdInput` and seeds an empty [`CwdInputState`].
+/// Pushes `FocusScope::CwdInput` and seeds the input with the active session's
+/// current cwd, tilde-compressed, with the cursor at the end so the user can
+/// immediately append a subdirectory or edit the path. The resolver expands
+/// `~` back on confirm, so the seeded value round-trips correctly.
 pub fn handle_cwd_input_enter(state: &mut AppState) -> IntentResult {
-    state.frontend.cwd_input = CwdInputState::default();
+    // Compute the display string from the active session cwd before the mutable
+    // frontend write so there is no shared borrow held across the assignment.
+    let mut text = LineInput::new();
+    text.set(shorten_path(state.active_session().cwd()));
+
+    state.frontend.cwd_input = CwdInputState { text };
     state.frontend.scope_stack.push(FocusScope::CwdInput);
     IntentResult::empty()
 }
@@ -98,21 +108,75 @@ mod tests {
     use crate::common::app_state::FocusScope;
 
     #[rstest::rstest]
-    fn enter_pushes_cwd_input_scope_and_seeds_default() {
-        // Given default state (no cwd_input scope).
+    fn enter_pushes_cwd_input_scope_and_seeds_cwd() {
+        // Given a state whose active session has a known absolute cwd.
         let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_cwd(std::path::PathBuf::from("/tmp/some-project"));
 
         // When opening the cwd input popup.
         let result = handle_cwd_input_enter(&mut state);
 
-        // Then CwdInput is the current scope and state is seeded default.
+        // Then CwdInput is the current scope and the input is seeded with the
+        // session cwd (tilde-compressed by shorten_path), cursor at the end.
         assert!(matches!(
             state.frontend.scope_stack.current(),
             FocusScope::CwdInput
         ));
-        assert_eq!(state.frontend.cwd_input.text.input, "");
-        assert_eq!(state.frontend.cwd_input.text.cursor_pos, 0);
+        assert_eq!(state.frontend.cwd_input.text.input, "/tmp/some-project");
+        assert_eq!(
+            state.frontend.cwd_input.text.cursor_pos,
+            "/tmp/some-project".len()
+        );
         assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn enter_seeds_tilde_compressed_path_when_cwd_under_home() {
+        // Given a session whose cwd is under $HOME.
+        let mut state = AppState::default();
+        let home = dirs::home_dir().expect("home dir exists");
+        state
+            .active_session_mut()
+            .set_cwd(home.join("projects/my-app"));
+
+        // When opening the cwd input popup.
+        handle_cwd_input_enter(&mut state);
+
+        // Then the seeded input is the tilde-compressed form.
+        assert_eq!(state.frontend.cwd_input.text.input, "~/projects/my-app");
+    }
+
+    #[rstest::rstest]
+    fn enter_leaves_cursor_at_end_of_seeded_text() {
+        // Given a session with a known absolute cwd.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_cwd(std::path::PathBuf::from("/tmp/some-project"));
+
+        // When opening the cwd input popup.
+        handle_cwd_input_enter(&mut state);
+
+        // Then the cursor sits at the end of the seeded text (appending-friendly).
+        let input = &state.frontend.cwd_input.text;
+        assert_eq!(input.cursor_pos, input.input.len());
+    }
+
+    #[rstest::rstest]
+    fn enter_seeds_absolute_path_when_cwd_not_under_home() {
+        // Given a session whose cwd is not under $HOME.
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_cwd(std::path::PathBuf::from("/tmp/some-project"));
+
+        // When opening the cwd input popup.
+        handle_cwd_input_enter(&mut state);
+
+        // Then the seeded input is the raw absolute path (no tilde compression).
+        assert_eq!(state.frontend.cwd_input.text.input, "/tmp/some-project");
     }
 
     #[rstest::rstest]
@@ -132,6 +196,31 @@ mod tests {
         ));
         assert_eq!(state.frontend.cwd_input.text.input, "");
         assert!(result.commands.is_empty());
+    }
+
+    #[rstest::rstest]
+    fn confirm_unchanged_seed_emits_set_session_cwd() {
+        // Given a real tempdir as the session cwd, then opening the popup seeds
+        // the box with that same path (tilde-compressed or not). Simulating an
+        // immediate confirm with no edits.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let target = std::fs::canonicalize(temp.path()).expect("canonicalize");
+        let mut state = AppState::default();
+        state.active_session_mut().set_cwd(target.clone());
+        handle_cwd_input_enter(&mut state); // seeds the box with the cwd
+
+        // When confirming the unchanged seed.
+        let result = handle_cwd_input_confirm(&mut state);
+
+        // Then exactly one SetSessionCwd is emitted for the canonicalized cwd.
+        // The unchanged seed is intentionally NOT special-cased: confirming it
+        // re-applies the cwd and is permitted to re-fire SessionCwdChanged.
+        assert_eq!(result.commands.len(), 1);
+        let cwd = match result.commands.first().unwrap() {
+            Command::SetSessionCwd(p) => &p.cwd,
+            other => panic!("expected SetSessionCwd, got {other:?}"),
+        };
+        assert_eq!(cwd, &target);
     }
 
     #[rstest::rstest]
