@@ -596,9 +596,13 @@ fn render_cursor_mixed_ascii_cjk() {
 
 #[rstest::rstest]
 fn render_queue_badge_in_queue_mode() {
-    // Given a ChatInputBoxElement in default (Queue) mode with empty buffer.
+    // Given a ChatInputBoxElement toggled to Queue mode with empty buffer.
     let mut element = ChatInputBoxElement;
-    let state = AppState::default();
+    let state = {
+        let mut s = AppState::default();
+        s.active_chat_input_mut().toggle_input_mode(); // Steer → Queue
+        s
+    };
 
     let (mut terminal, area) = setup_term(40, 3);
 

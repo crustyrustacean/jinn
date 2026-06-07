@@ -221,8 +221,9 @@ fn toggle_input_mode_is_sticky_across_submissions() {
 
 #[rstest::rstest]
 fn queue_submit_always_enqueues() {
-    // Given Queue mode with text typed, mid-stream.
+    // Given Queue mode (toggled from default Steer) with text typed, mid-stream.
     let mut state = AppState::default();
+    crate::feat::chat_input::intent::handle_toggle_input_mode(&mut state); // Steer → Queue
     state.session.active_session_mut().begin_streaming();
     state.active_chat_input_mut().insert_text("h");
 
