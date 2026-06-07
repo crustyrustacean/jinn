@@ -1388,6 +1388,8 @@ impl ChatSessionState {
     /// ToolResult from the `skill` tool whose content begins with `<skill name="X"`.
     pub fn loaded_skills(&self) -> HashSet<String> {
         use crate::feat::session::chat_entry::ChatEntryKind;
+        use crate::feat::skills::parse_loaded_skill_name;
+
         let mut out = HashSet::new();
         for entry in self.history() {
             if !entry.is_pinned() {
@@ -1404,15 +1406,11 @@ impl ChatSessionState {
             if tool_name != "skill" {
                 continue;
             }
-            // content starts with `<skill name="X"` — extract X.
-            let prefix = "<skill name=\"";
-            let Some(rest) = content.strip_prefix(prefix) else {
+            // Skill bodies are pinned as `<skill name="X" ...>` — extract X.
+            let Some(skill_name) = parse_loaded_skill_name(content) else {
                 continue;
             };
-            let Some(end) = rest.find('\"') else {
-                continue;
-            };
-            out.insert(rest[..end].to_owned());
+            out.insert(skill_name.to_owned());
         }
         out
     }
