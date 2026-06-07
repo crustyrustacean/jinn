@@ -13,8 +13,7 @@ use crate::feat::ui::chat_log::visual_item::{
     DEFAULT_MIN_COLLAPSE_COUNT, PROXIMITY_COUNT, build_visual_items,
 };
 use crate::protocol::{
-    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition,
-    SessionId,
+    ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, SessionId,
 };
 use std::path::PathBuf;
 
@@ -752,7 +751,6 @@ fn cancel_streaming_clears_tool_call_indices() {
 }
 
 // --- Strategy switching tests ---
-
 
 // --- Pinning tests ---
 
@@ -3277,9 +3275,9 @@ fn cancel_stream_and_drain_puts_user_display_text_in_input() {
     // When cancelling and draining.
     session.cancel_stream_and_drain();
 
-    // Then the input buffer contains the drained display texts joined by newline.
+    // Then the input buffer contains the drained display texts joined by the cancel separator.
     let text = session.chat_input().text().to_owned();
-    assert_eq!(text, "hello world\nsecond message");
+    assert_eq!(text, "hello world\n\n---\n\nsecond message");
 }
 
 #[rstest::rstest]
@@ -3352,6 +3350,142 @@ fn cancel_stream_and_drain_uses_display_not_expanded() {
     assert_eq!(text, "short");
 }
 
+
+// --- steering drain on cancel ---
+
+#[rstest::rstest]
+fn cancel_stream_and_drain_puts_steering_in_input() {
+    // Given a streaming session with two steering fragments.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session
+        .steering_buffer_mut()
+        .push_fragment("frag1".to_owned());
+    session
+        .steering_buffer_mut()
+        .push_fragment("frag2".to_owned());
+
+    // When cancelling and draining.
+    session.cancel_stream_and_drain();
+
+    // Then the input buffer contains both fragments joined by the cancel separator.
+    let text = session.chat_input().text().to_owned();
+    assert_eq!(text, "frag1\n\n---\n\nfrag2");
+}
+
+#[rstest::rstest]
+fn cancel_stream_and_drain_single_steering_fragment_no_separator() {
+    // Given a streaming session with one steering fragment.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session
+        .steering_buffer_mut()
+        .push_fragment("frag1".to_owned());
+
+    // When cancelling and draining.
+    session.cancel_stream_and_drain();
+
+    // Then the input buffer contains the fragment with no separator.
+    let text = session.chat_input().text().to_owned();
+    assert_eq!(text, "frag1");
+}
+
+#[rstest::rstest]
+fn cancel_stream_and_drain_clears_steering_buffer() {
+    // Given a streaming session with a steering fragment.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session
+        .steering_buffer_mut()
+        .push_fragment("frag1".to_owned());
+
+    // When cancelling and draining.
+    session.cancel_stream_and_drain();
+
+    // Then the steering buffer is empty.
+    assert!(
+        session.steering_buffer().is_empty(),
+        "steering buffer must be drained on cancel"
+    );
+}
+
+#[rstest::rstest]
+fn cancel_stream_and_drain_flattens_steering_and_queue() {
+    // Given a streaming session with two steering fragments and two queued messages.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session
+        .steering_buffer_mut()
+        .push_fragment("s1".to_owned());
+    session
+        .steering_buffer_mut()
+        .push_fragment("s2".to_owned());
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(Box::new(
+        ChatEntry::user("m1"),
+    )));
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(Box::new(
+        ChatEntry::user("m2"),
+    )));
+
+    // When cancelling and draining.
+    session.cancel_stream_and_drain();
+
+    // Then the input buffer contains all units flattened, steering first, joined by the cancel separator.
+    let text = session.chat_input().text().to_owned();
+    assert_eq!(text, "s1\n\n---\n\ns2\n\n---\n\nm1\n\n---\n\nm2");
+}
+
+#[rstest::rstest]
+fn cancel_stream_and_drain_both_empty_leaves_input_unchanged() {
+    // Given a streaming session with a pre-filled input box and empty buffers.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session.chat_input_mut().replace_all("pre-existing".to_owned());
+    assert_eq!(session.queue_len(), 0);
+    assert!(session.steering_buffer().is_empty());
+
+    // When cancelling and draining.
+    session.cancel_stream_and_drain();
+
+    // Then the input buffer is left unchanged.
+    let text = session.chat_input().text().to_owned();
+    assert_eq!(text, "pre-existing");
+}
+
+#[rstest::rstest]
+fn cancel_stream_and_drain_single_queue_message_no_separator() {
+    // Given a streaming session with one queued user message.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session.enqueue(crate::feat::session::queue_item::QueueItem::UserMessage(Box::new(
+        ChatEntry::user("keep this"),
+    )));
+
+    // When cancelling and draining.
+    session.cancel_stream_and_drain();
+
+    // Then the input buffer contains the single message with no separator.
+    let text = session.chat_input().text().to_owned();
+    assert_eq!(text, "keep this");
+}
+
+#[rstest::rstest]
+fn cancel_stream_and_drain_steering_with_only_tool_continuation() {
+    // Given a streaming session with a steering fragment and a ToolContinuation in the queue.
+    let mut session = ChatSessionState::new();
+    session.begin_streaming();
+    session
+        .steering_buffer_mut()
+        .push_fragment("frag1".to_owned());
+    session.enqueue(crate::feat::session::queue_item::QueueItem::ToolContinuation);
+
+    // When cancelling and draining.
+    session.cancel_stream_and_drain();
+
+    // Then the input buffer contains only the steering fragment (continuation discarded).
+    let text = session.chat_input().text().to_owned();
+    assert_eq!(text, "frag1");
+}
 // ===========================================================================
 // Phase 2: insert_entry_at Index Shifting
 // ===========================================================================
@@ -4410,7 +4544,6 @@ fn touch_updates_timestamp() {
     // Then updated_at is newer than before.
     assert!(*session.updated_at() > before);
 }
-
 
 #[rstest::rstest]
 fn blobs_returns_data() {

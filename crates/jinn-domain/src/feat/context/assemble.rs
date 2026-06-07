@@ -353,7 +353,9 @@ mod tests {
         let (state, session_id) = state_with_history(vec![]);
         {
             let mut guard = state.write();
-            guard.active_session_mut().set_discovered_skills(vec![make_skill("test-skill")]);
+            guard
+                .active_session_mut()
+                .set_discovered_skills(vec![make_skill("test-skill")]);
         }
 
         // When assembling the prompt.
@@ -575,10 +577,12 @@ mod tests {
         let (state, session_id) = state_with_history(vec![]);
         {
             let mut guard = state.write();
-            guard.active_session_mut().set_discovered_context_files(vec![ContextFile {
-                path: std::path::PathBuf::from("/project/AGENTS.md"),
-                content: "Use Rust.".to_owned(),
-            }]);
+            guard
+                .active_session_mut()
+                .set_discovered_context_files(vec![ContextFile {
+                    path: std::path::PathBuf::from("/project/AGENTS.md"),
+                    content: "Use Rust.".to_owned(),
+                }]);
         }
 
         // When assembling the prompt.
@@ -602,11 +606,15 @@ mod tests {
         let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
         {
             let mut guard = state.write();
-            guard.active_session_mut().set_discovered_skills(vec![make_skill("test-skill")]);
-            guard.active_session_mut().set_discovered_context_files(vec![ContextFile {
-                path: std::path::PathBuf::from("/project/AGENTS.md"),
-                content: "Use Rust.".to_owned(),
-            }]);
+            guard
+                .active_session_mut()
+                .set_discovered_skills(vec![make_skill("test-skill")]);
+            guard
+                .active_session_mut()
+                .set_discovered_context_files(vec![ContextFile {
+                    path: std::path::PathBuf::from("/project/AGENTS.md"),
+                    content: "Use Rust.".to_owned(),
+                }]);
         }
 
         // When assembling with system_prompt override.
@@ -666,7 +674,9 @@ mod tests {
         let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
         {
             let mut guard = state.write();
-            guard.active_session_mut().set_discovered_skills(vec![make_skill("test-skill")]);
+            guard
+                .active_session_mut()
+                .set_discovered_skills(vec![make_skill("test-skill")]);
         }
 
         // When assembling with skip_skills.
@@ -692,10 +702,12 @@ mod tests {
         let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
         {
             let mut guard = state.write();
-            guard.active_session_mut().set_discovered_context_files(vec![ContextFile {
-                path: std::path::PathBuf::from("/project/AGENTS.md"),
-                content: "Use Rust.".to_owned(),
-            }]);
+            guard
+                .active_session_mut()
+                .set_discovered_context_files(vec![ContextFile {
+                    path: std::path::PathBuf::from("/project/AGENTS.md"),
+                    content: "Use Rust.".to_owned(),
+                }]);
         }
 
         // When assembling with skip_context_files.
@@ -724,7 +736,9 @@ mod tests {
         let (state, session_id) = state_with_history(vec![ChatEntry::user("hello")]);
         {
             let mut guard = state.write();
-            guard.active_session_mut().set_discovered_skills(vec![make_skill("test-skill")]);
+            guard
+                .active_session_mut()
+                .set_discovered_skills(vec![make_skill("test-skill")]);
             guard
                 .context
                 .tool_definitions

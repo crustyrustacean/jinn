@@ -1,7 +1,7 @@
 //! Activates the session or workflow under the cursor.
 
 use crate::common::app_state::AppState;
-use crate::feat::context::env_context::scan_commands_for_session;
+
 use crate::feat::ui::sidebar::sessions::state::sorted_open_sessions;
 use crate::protocol::IntentResult;
 
@@ -10,9 +10,10 @@ use crate::protocol::IntentResult;
 /// Called when the user presses Enter in the sessions section.
 /// Uses `swap_base` to replace the entire scope stack, effectively
 /// closing the sidebar and switching to the target view.
-/// - For session entries: swaps to Normal (chat view) and emits re-scan
-///   commands for the newly-active session so its cwd-scoped skills,
-///   prompts, and context files hydrate.
+/// - For session entries: swaps to Normal (chat view). No re-scan commands
+///   are emitted: each session's discovered skills/prompts/context-files
+///   are ephemeral and persist across activation changes, and were
+///   hydrated when the session was created/loaded.
 /// - For workflow entries: swaps to Workflow (graph view).
 pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
     use crate::common::app_state::FocusScope;
@@ -37,7 +38,7 @@ pub fn handle_session_activate(state: &mut AppState) -> IntentResult {
         SessionEntryKind::Session => {
             state.session.set_active(entry.id.clone());
             state.frontend.scope_stack.swap_base(FocusScope::Normal);
-            IntentResult::with_commands(scan_commands_for_session(&entry.id))
+            IntentResult::empty()
         }
         SessionEntryKind::Plugin { .. } => {
             // Workflow entries are informational only; activating them is a no-op.
@@ -52,7 +53,6 @@ mod tests {
     use super::*;
     use crate::common::app_state::AppState;
     use crate::common::focus::FocusScope;
-    use crate::protocol::Command;
 
     use crate::protocol::SessionId;
 
@@ -75,17 +75,19 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn activate_session_emits_scans_for_newly_active_session() {
+    fn activate_session_switches_active_session_and_emits_no_commands() {
         // Given a sessions sidebar with cursor on a non-active session.
         let (mut state, expected_id) = state_with_two_sessions_cursor_on_second();
 
         // When activating.
         let result = handle_session_activate(&mut state);
 
-        // Then three re-scan commands were emitted, all tagged with the newly-active
-        // session's id (not the previously-active one).
-        assert_eq!(result.commands.len(), 3);
-        assert!(result.commands.iter().all(|c| command_session_id(c) == &expected_id));
+        // Then the active session is now the one under the cursor.
+        assert_eq!(state.session.active_session_id(), &expected_id);
+        // And no commands are emitted: each session's discovered
+        // skills/prompts/context-files are ephemeral and were hydrated when the
+        // session was created/loaded, so activation needs no re-scan.
+        assert!(result.commands.is_empty());
     }
 
     #[rstest::rstest]
@@ -112,14 +114,5 @@ mod tests {
 
         // Then no commands emitted.
         assert!(result.commands.is_empty());
-    }
-
-    fn command_session_id(command: &Command) -> &SessionId {
-        match command {
-            Command::ScanSkills(c) => &c.session_id,
-            Command::RescanPromptTemplates(c) => &c.session_id,
-            Command::ScanContextFiles(c) => &c.session_id,
-            _ => panic!("expected a scan command, got {command:?}"),
-        }
     }
 }
