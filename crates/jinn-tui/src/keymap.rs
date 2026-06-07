@@ -378,17 +378,14 @@ pub fn bind_plugin_keybinds(
     plugins: &jinn_plugin::SyncPlugins,
 ) {
     for kb in plugins.declared_keybinds() {
-        let scope = match Scope::from_str(&kb.scope) {
-            Ok(s) => s,
-            Err(_) => {
-                tracing::warn!(
-                    plugin = %kb.plugin_name,
-                    keys = %kb.keys,
-                    scope = %kb.scope,
-                    "plugin keybind has unknown scope; skipping"
-                );
-                continue;
-            }
+        let Ok(scope) = Scope::from_str(&kb.scope) else {
+            tracing::warn!(
+                plugin = %kb.plugin_name,
+                keys = %kb.keys,
+                scope = %kb.scope,
+                "plugin keybind has unknown scope; skipping"
+            );
+            continue;
         };
         keymap.bind(
             &kb.keys,
@@ -407,6 +404,7 @@ pub fn bind_plugin_keybinds(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used, clippy::panic, reason = "test code")]
     use super::*;
 
     #[test]
@@ -417,4 +415,121 @@ mod tests {
         bind_plugin_keybinds(&mut keymap, &plugins);
         // No panic, no bindings added => success.
     }
+
+    /// Integration test: load the real `prompt_enrichment` plugin from
+    /// `res/plugins` and assert its `<M-e>` keybind lands in the keymap under
+    /// the correct scope, with the plugin-declared description and the
+    /// `KeyCategory::Plugin` grouping. This is the regression guard for the two
+    /// bugs that blocked the plugin at runtime:
+    ///   (1) `bind_plugin_keybinds` not being called by the real launch path,
+    ///   (2) the plugin declaring `scope = "input"` while `Scope::from_str`
+    ///       requires the PascalCase `"Input"` (matching `Scope::Display`).
+    #[test]
+    fn bind_plugin_keybinds_loads_prompt_enrichment_binding() {
+        use std::path::Path;
+        use jinn_plugin::PluginSystem;
+
+        // Locate the dev plugin tree (crate-relative).
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let res_plugins = manifest_dir
+            .ancestors()
+            .nth(2) // workspace root
+            .expect("workspace root")
+            .join("res/plugins");
+        assert!(
+            res_plugins.join("global/prompt_enrichment/init.lua").exists(),
+            "prompt_enrichment plugin missing at {}",
+            res_plugins.display()
+        );
+
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        let (sync_plugins, _async_handle, _sync_handle) = PluginSystem::build(
+            &res_plugins,
+            Path::new("/nonexistent"),
+            rt.handle().clone(),
+            // command_dispatcher — unused by keybind binding.
+            std::sync::Arc::new(|_cmd| {}),
+            // request_handler — unused by keybind binding.
+            std::sync::Arc::new(|_n, _d| Box::pin(async { serde_json::Value::Null })),
+        );
+        std::mem::forget(rt);
+
+        let mut keymap = init();
+        bind_plugin_keybinds(&mut keymap, &sync_plugins);
+
+        // The <M-e> binding must appear in the Input scope.
+        let input_bindings = keymap.get_bindings_for_scope(Scope::Input);
+        let me = input_bindings
+            .iter()
+            .find(|b| {
+                matches!(
+                    &b.key,
+                    KeyEvent { key: Key::Char('e'), modifiers } if modifiers.alt
+                )
+            })
+            .unwrap_or_else(|| panic!(
+                "<M-e> (Alt+e) not bound in Input scope. bindings = {:?}",
+                input_bindings
+            ));
+
+        assert_eq!(
+            me.category,
+            KeyCategory::Plugin,
+            "plugin keybinds must group under KeyCategory::Plugin"
+        );
+        assert_eq!(
+            me.description,
+            "toggle prompt enrichment",
+            "which-key help derives its text from this description"
+        );
+    }
+
+    /// Decisive runtime-path test: drive the FULL handle_key path with a real
+    /// Alt+e key event in Input scope. This reproduces exactly what
+    /// `Msg::Input(Key(Alt+e))` does at runtime (app.rs:140). If this returns
+    /// None, the binding is unreachable via handle_key even though it exists in
+    /// the keymap tree (pointing to a scope-resolution or navigate() bug).
+    #[test]
+    fn handle_key_alt_e_in_input_scope_fires_trigger_plugin() {
+        use std::path::Path;
+        use jinn_domain::{Key, KeyEvent, Modifiers};
+        use jinn_plugin::PluginSystem;
+        use crate::app::WhichKeyInstance;
+
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let res_plugins = manifest_dir
+            .ancestors()
+            .nth(2)
+            .expect("workspace root")
+            .join("res/plugins");
+
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        let (sync_plugins, _async_handle, _sync_handle) = PluginSystem::build(
+            &res_plugins,
+            Path::new("/nonexistent"),
+            rt.handle().clone(),
+            std::sync::Arc::new(|_cmd| {}),
+            std::sync::Arc::new(|_n, _d| Box::pin(async { serde_json::Value::Null })),
+        );
+        std::mem::forget(rt);
+
+        let mut keymap = init();
+        bind_plugin_keybinds(&mut keymap, &sync_plugins);
+
+        let mut wk = WhichKeyInstance::new(keymap, Scope::Input);
+        let alt_e = KeyEvent {
+            key: Key::Char('e'),
+            modifiers: Modifiers { ctrl: false, alt: true, shift: false },
+        };
+        let intent = wk.handle_key(alt_e);
+
+        let intent = intent.expect(
+            "Alt+e in Input scope must fire an intent; got None (binding exists in tree per prior test, so this is a scope/navigate bug)",
+        );
+        assert!(
+            matches!(intent, Intent::TriggerPlugin { .. }),
+            "Alt+e must resolve to Intent::TriggerPlugin, got {intent:?}",
+        );
+    }
 }
+

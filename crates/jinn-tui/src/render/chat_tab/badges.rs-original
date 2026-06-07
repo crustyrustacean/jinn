@@ -39,7 +39,6 @@ pub(super) fn render_badges(frame: &mut Frame<'_>, input_area: Rect, ctx: &Rende
     // Typed loop: each plugin contributes zero or more directives. Malformed
     // returns are silently dropped (see `call_hooks_typed`).
     let directives = call_hooks_typed::<BadgeDirective>(plugins, HOOK, &badge_ctx);
-    tracing::info!(count = directives.len(), "PLUGTRACE: on_chat_input_badges_render returned directives");
 
     draw_directives(frame.buffer_mut(), input_area, &directives);
 }
@@ -96,6 +95,19 @@ fn style_from_name(name: Option<&str>) -> Style {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
+    use jinn_domain::PluginSyncHooks;
+    use serde_json::Value;
+
+    /// Stub backend returning a fixed list of JSON values.
+    struct Stub {
+        values: Vec<Value>,
+    }
+
+    impl PluginSyncHooks for Stub {
+        fn call_hooks(&self, _hook: &str, _ctx: &Value) -> Vec<Value> {
+            self.values.clone()
+        }
+    }
 
     fn buffer(w: u16, h: u16) -> Buffer {
         let area = Rect::new(0, 0, w, h);
@@ -145,5 +157,30 @@ mod tests {
         );
         assert_eq!(style_from_name(Some("unknown")), Style::default());
         assert_eq!(style_from_name(None), Style::default());
+    }
+
+    #[test]
+    fn render_badges_collects_directives_from_hooks_and_draws_them() {
+        // Exercises the same production extraction path used by render_badges:
+        //   call_hooks_typed::<BadgeDirective>(plugins, HOOK, ctx)
+        // followed by draw_directives. A Stub backend stands in for a real
+        // plugin returning two badge directives.
+        let stub = Stub {
+            values: vec![
+                serde_json::json!({ "slot": "input_badge", "text": "E", "style": "yellow" }),
+                serde_json::json!({ "slot": "input_spinner", "text": "*", "style": null }),
+            ],
+        };
+        let badge_ctx = serde_json::json!({ "active_session_id": "<stub>" });
+        let directives =
+            jinn_domain::call_hooks_typed::<BadgeDirective>(&stub, HOOK, &badge_ctx);
+        let mut buf = buffer(20, 3);
+        let input_area = Rect::new(0, 2, 20, 1);
+        draw_directives(&mut buf, input_area, &directives);
+        // The badge row (y=1) should contain "E *" — proving the typed loop
+        // extracted both directives and draw_directives laid them out.
+        assert_eq!(buf.cell((0, 1)).expect("cell").symbol(), "E");
+        assert_eq!(buf.cell((1, 1)).expect("cell").symbol(), " ");
+        assert_eq!(buf.cell((2, 1)).expect("cell").symbol(), "*");
     }
 }

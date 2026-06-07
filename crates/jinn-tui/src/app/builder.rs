@@ -1,15 +1,8 @@
 //! Builder for constructing a [`TuiApp`] with sensible defaults for tests.
 
-use jinn_domain::ActorHostService;
 use jinn_domain::AppCore;
-use jinn_domain::AppUiRegistry;
-use jinn_domain::feat::ui::sidebar::sidebar::Sidebar;
 
-use super::{TuiApp, WhichKeyInstance};
-use crate::config::TuiConfig;
-use crate::selection::{SelectableRects, SelectionState};
-use crate::suspend::Suspend;
-use crate::{AppStatus, MsgHandler};
+use super::TuiApp;
 
 /// Builder for constructing a [`TuiApp`] with sensible defaults for tests.
 ///
@@ -49,6 +42,11 @@ impl TuiAppBuilder {
     }
 
     /// Build the `TuiApp` with the configured overrides.
+    ///
+    /// Delegates to [`crate::launch::launch_for_test`] so that the test path and
+    /// the real launch path ([`crate::launch::launch`]) share a single keymap
+    /// bootstrap site. This is what prevents the test/prod divergence that
+    /// previously left plugin keybinds unbound in production.
     pub fn build(self) -> TuiApp {
         let services = self.services.unwrap_or_default();
         let state = self.state.unwrap_or_default();
@@ -58,43 +56,9 @@ impl TuiAppBuilder {
             state: jinn_domain::State::new(state),
             sender,
         };
-        let fake_host =
-            ActorHostService::new(std::sync::Arc::new(jinn_domain::FakeActorHost::new()));
-        let mut ui_registry = AppUiRegistry::new();
-        jinn_domain::register_all_ui_elements(&mut ui_registry);
-        jinn_domain::feat::ui::status_bar::register(&mut ui_registry);
-        jinn_domain::feat::ui::chat_log::register(&mut ui_registry);
-        jinn_domain::feat::provider::register(&mut ui_registry);
-        jinn_domain::feat::chat_input::register(&mut ui_registry);
-
-        let initial_scope =
-            crate::app::scope_for_focus(core.state.read().frontend.scope_stack.current());
-
-
         let plugins = self.plugins.unwrap_or_else(jinn_plugin::SyncPlugins::empty);
-        let mut keymap = crate::keymap::init();
-        crate::keymap::bind_plugin_keybinds(&mut keymap, &plugins);
 
-        TuiApp {
-            core,
-            services,
-            plugins,
-            actor_host: fake_host,
-            ui_registry,
-            events: MsgHandler::new(),
-            which_key: WhichKeyInstance::new(keymap, initial_scope),
-            suspend: Suspend::new(),
-            event_thread: None,
-            status: AppStatus::Starting,
-            selection: SelectionState::Idle,
-            selectable_rects: SelectableRects::default(),
-            pending_clipboard: false,
-            config: TuiConfig::default(),
-            sidebar: {
-                let mut s = Sidebar::new();
-                jinn_domain::feat::ui::sidebar::register_sections(&mut s);
-                s
-            },
-        }
+        crate::launch::launch_for_test(core, services, plugins)
     }
 }
+
