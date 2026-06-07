@@ -361,6 +361,51 @@ fn alt_s_in_input_scope_focuses_sidebar_sessions() {
 }
 
 #[test]
+fn sessions_i_resolves_to_sidebar_confirm_insert() {
+    // Given the keymap rooted at the Sessions sidebar.
+    let mut wk = keymap_at(Scope::SidebarSessions);
+
+    // When pressing `i`.
+    let intent = wk.handle_key(key("i"));
+
+    // Then it resolves to SidebarConfirmInsert (activate + insert).
+    assert_eq!(
+        intent.map(|i| i.to_string()).as_deref(),
+        Some("sidebar confirm (insert)")
+    );
+}
+
+#[test]
+fn sessions_enter_still_resolves_to_sidebar_confirm() {
+    // Given the keymap rooted at the Sessions sidebar.
+    let mut wk = keymap_at(Scope::SidebarSessions);
+
+    // When pressing `<enter>`.
+    let intent = wk.handle_key(key("enter"));
+
+    // Then it still resolves to SidebarConfirm (activate + normal).
+    assert_eq!(
+        intent.map(|i| i.to_string()).as_deref(),
+        Some("sidebar confirm")
+    );
+}
+
+#[test]
+fn pins_enter_resolves_to_sidebar_leave() {
+    // Given the keymap rooted at the Pins sidebar.
+    let mut wk = keymap_at(Scope::SidebarPins);
+
+    // When pressing `<enter>`.
+    let intent = wk.handle_key(key("enter"));
+
+    // Then it resolves to SidebarLeave (leave to Normal at the pin's position).
+    assert_eq!(
+        intent.map(|i| i.to_string()).as_deref(),
+        Some("sidebar leave")
+    );
+}
+
+#[test]
 fn alt_s_in_normal_scope_focuses_sidebar_sessions() {
     // Given the keymap rooted at Normal scope.
     let mut wk = keymap_at(Scope::Normal);

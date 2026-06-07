@@ -482,6 +482,9 @@ impl IntentHandler {
             }
 
             Intent::SidebarConfirm => feat::ui::sidebar::sessions::handle_session_activate(state),
+            Intent::SidebarConfirmInsert => {
+                feat::ui::sidebar::sessions::handle_session_activate_insert(state)
+            }
 
             // --- Chat Entry Selection ---
             Intent::ChatEntrySelectNext => {
