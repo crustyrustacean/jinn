@@ -64,12 +64,15 @@ pub fn scan_skills(dir: &Path) -> Vec<Skill> {
 /// with most-local-wins precedence.
 ///
 /// `project_dirs` are ordered least-local → most-local (i.e. from the root
-/// of the bounded walk down to the cwd). Each may contain a
-/// `<dir>/.agents/skills/` directory. Later entries in `project_dirs`
-/// override earlier ones, and all project skills override the global ones.
+/// of the bounded walk down to the cwd). Each entry is an already-suffixed
+/// `<root>/.agents/skills` directory (as returned by
+/// [`project_skills_dirs`](crate::feat::discovery::project_skills_dirs));
+/// it is scanned directly. Later entries in `project_dirs` override earlier
+/// ones, and all project skills override the global ones.
 ///
 /// Each project skill is tagged with [`SkillSource::Project { dir }`] where
-/// `dir` is the walked ancestor (not the `.agents/skills` subdirectory).
+/// `dir` is the walked ancestor (the project root, not the
+/// `.agents/skills` subdirectory).
 pub fn scan_skills_merged(global: &Path, project_dirs: &[std::path::PathBuf]) -> Vec<Skill> {
     let mut by_name: std::collections::HashMap<String, Skill> = std::collections::HashMap::new();
 
@@ -78,10 +81,16 @@ pub fn scan_skills_merged(global: &Path, project_dirs: &[std::path::PathBuf]) ->
     }
 
     for dir in project_dirs {
-        let local = dir.join(".agents").join("skills");
-        for skill in scan_skills(&local) {
+        // Each `dir` is already the `<root>/.agents/skills` directory (as
+        // returned by [`project_skills_dirs`]); scan it directly rather than
+        // re-appending the suffix.
+        let project_root = dir
+            .ancestors()
+            .nth(2)
+            .map_or_else(|| dir.clone(), std::path::Path::to_path_buf);
+        for skill in scan_skills(dir) {
             let tagged = Skill {
-                source: SkillSource::Project { dir: dir.clone() },
+                source: SkillSource::Project { dir: project_root.clone() },
                 ..skill
             };
             by_name.insert(tagged.name.clone(), tagged);
@@ -316,7 +325,10 @@ mod tests {
         .expect("write SKILL.md");
 
         // When merging with the project dir.
-        let skills = scan_skills_merged(global.path(), &[project.path().to_path_buf()]);
+        let skills = scan_skills_merged(
+            global.path(),
+            &[project.path().join(".agents").join("skills")],
+        );
 
         // Then the project skill overrides the global one.
         assert_eq!(skills.len(), 1);
@@ -351,7 +363,10 @@ mod tests {
         // When merging with ancestor first (least-local), local last (most-local).
         let skills = scan_skills_merged(
             Path::new("/nonexistent/global"),
-            &[ancestor.path().to_path_buf(), local.path().to_path_buf()],
+            &[
+                ancestor.path().join(".agents").join("skills"),
+                local.path().join(".agents").join("skills"),
+            ],
         );
 
         // Then the most-local (last) entry wins and is tagged with its dir.

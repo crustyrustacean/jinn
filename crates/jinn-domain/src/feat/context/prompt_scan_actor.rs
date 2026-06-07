@@ -241,4 +241,53 @@ mod tests {
         assert_eq!(loaded.session_id, session_id);
         assert!(loaded.error.is_none());
     }
+
+    #[tokio::test]
+
+    async fn scan_prompts_discovers_ancestor_template_from_nested_cwd() {
+        // Given a prompt at home/repo/.agents/prompts but cwd is home/repo/subdir.
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let repo = dir.path().join("repo");
+        let subdir = repo.join("subdir");
+        std::fs::create_dir_all(&subdir).expect("create nested dirs");
+        let ancestor_prompts = repo.join(".agents/prompts");
+        std::fs::create_dir_all(&ancestor_prompts).expect("create ancestor prompts dir");
+        std::fs::write(
+            ancestor_prompts.join("ancestor.md"),
+            "+++\nname = \"ancestor\"\ndescription = \"\"\n+++\nYou are an ancestor prompt.",
+        )
+        .expect("write ancestor prompt");
+
+        // And the session cwd is the nested subdir, home bounds the walk so the
+        // ancestor repo layer is in scope.
+        let state = State::new(AppState::default());
+        let (mut actor, _sink, ctx, session_id) = create_actor(&subdir, &dir, state.clone());
+
+        // When scanning.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::RescanPromptTemplates(RescanPromptTemplates {
+                    session_id: session_id.clone(),
+                })),
+                &ctx,
+            )
+            .await;
+
+        // Then the ancestor prompt is discovered from the nested cwd.
+        let guard = state.read();
+        let session = guard
+            .session
+            .get(&session_id)
+            .expect("session exists");
+        let names: Vec<&str> = session
+            .discovered_prompt_templates()
+            .templates()
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
+        assert!(
+            names.iter().any(|n| *n == "ancestor"),
+            "ancestor prompt discovered from nested cwd: {names:?}"
+        );
+    }
 }

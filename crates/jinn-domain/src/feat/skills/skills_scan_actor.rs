@@ -404,4 +404,129 @@ mod tests {
         assert_eq!(skills[0].name, "shared");
         assert!(skills[0].body.contains("PROJECT body"), "project wins: {body}", body = skills[0].body);
     }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn scan_skills_discovers_ancestor_project_skill_from_nested_cwd() {
+        // Given a tree home/repo/.agents/skills/ancestor and a session whose
+        // cwd is home/repo/subdir (a descendant), with home set to home.
+        // No VCS marker anywhere, so the walk is bounded by exclusive $HOME.
+        let home = tempfile::tempdir().expect("create home dir");
+        let repo = home.path().join("repo");
+        let subdir = repo.join("subdir");
+        std::fs::create_dir_all(&subdir).expect("create nested dirs");
+        let ancestor_skill = repo.join(".agents/skills/ancestor/SKILL.md");
+        std::fs::create_dir_all(ancestor_skill.parent().unwrap()).expect("create ancestor skill dir");
+        std::fs::write(
+            &ancestor_skill,
+            "---\nname: ancestor\ndescription: ancestor skill\n---\n\n# ancestor body",
+        )
+        .expect("write ancestor skill");
+
+        let dir = tempfile::tempdir().expect("create temp dir for AppPaths");
+        let state = State::new(AppState::default());
+        {
+            let mut guard = state.write();
+            guard.session.active_session_mut().set_cwd(subdir.clone());
+        }
+        let session_id = state.read().session.active_session_id().clone();
+
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx =
+            ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
+        let mut paths = AppPaths::new_in(dir.path());
+        paths.set_home_dir_for_test(home.path().to_path_buf());
+        let services = crate::common::services::test_services::TestServices::builder()
+            .paths(paths)
+            .build();
+        let deps = SkillsScanActorDeps { services, state: state.clone() };
+        let mut actor = SkillsScanActor::activate(deps, &mut ctx);
+
+        // When scanning from the nested cwd.
+        actor
+            .handle(
+                ActorEnvelope::Command(Command::ScanSkills(crate::feat::skills::ScanSkills {
+                    session_id: session_id.clone(),
+                })),
+                &ctx,
+            )
+            .await;
+
+        // Then the ancestor skill (one level up from cwd, within the bounded
+        // walk) is discovered.
+        let guard = state.read();
+        let session = guard.session.get(&session_id).expect("session exists");
+        let skills = session.discovered_skills();
+        assert_eq!(skills.len(), 1, "expected only the ancestor skill, got {len}", len = skills.len());
+        assert_eq!(skills[0].name, "ancestor");
+    }
+
+    #[tokio::test]
+    async fn scan_skills_routes_discovery_per_session_cwd() {
+        // Two sessions with two different cwds, each with a distinct project skill.
+        // Scanning each by its own session_id must populate that session only.
+        let home = tempfile::tempdir().expect("create home dir");
+        let dir_a = home.path().join("a");
+        let dir_b = home.path().join("b");
+        std::fs::create_dir_all(&dir_a).expect("create dir a");
+        std::fs::create_dir_all(&dir_b).expect("create dir b");
+        // dir_a has skill `alpha`, dir_b has skill `beta`.
+        for (base, name, body) in [("a", "alpha", "# A"), ("b", "beta", "# B")] {
+            let skill_dir = home.path().join(base).join(".agents").join("skills").join(name);
+            std::fs::create_dir_all(&skill_dir).expect("create skill dir");
+            std::fs::write(
+                skill_dir.join("SKILL.md"),
+                format!("---\nname: {name}\ndescription: {name} skill\n---\n\n{body}"),
+            )
+            .expect("write SKILL.md");
+        }
+
+        let paths_root = tempfile::tempdir().expect("create temp dir for AppPaths");
+        let state = State::new(AppState::default());
+        // Session A: cwd = dir_a.
+        let session_a = state.read().session.active_session_id().clone();
+        {
+            let mut guard = state.write();
+            guard.session.active_session_mut().set_cwd(dir_a.clone());
+        }
+        // Session B: create + set cwd = dir_b.
+        let session_b = crate::SessionId::new();
+        {
+            let mut guard = state.write();
+            let s = guard.session.get_or_create(&session_b);
+            s.set_cwd(dir_b.clone());
+        }
+
+        let sink = Arc::new(RecordingSink::new());
+        let mut ctx =
+            ActorContext::new("skills-scan-test", sink.clone() as Arc<dyn MessageSink>);
+        let mut paths = AppPaths::new_in(paths_root.path());
+        paths.set_home_dir_for_test(home.path().to_path_buf());
+        let services = crate::common::services::test_services::TestServices::builder()
+            .paths(paths)
+            .build();
+        let deps = SkillsScanActorDeps { services, state: state.clone() };
+        let mut actor = SkillsScanActor::activate(deps, &mut ctx);
+
+        // Scan session A, then session B.
+        for id in [&session_a, &session_b] {
+            actor
+                .handle(
+                    ActorEnvelope::Command(Command::ScanSkills(crate::feat::skills::ScanSkills {
+                        session_id: id.clone(),
+                    })),
+                    &ctx,
+                )
+                .await;
+        }
+
+        // Then each session sees only its own skill.
+        let guard = state.read();
+        let skills_a = guard.session.get(&session_a).expect("session a").discovered_skills();
+        let skills_b = guard.session.get(&session_b).expect("session b").discovered_skills();
+        assert_eq!(skills_a.len(), 1, "session A should see only alpha");
+        assert_eq!(skills_a[0].name, "alpha");
+        assert_eq!(skills_b.len(), 1, "session B should see only beta");
+        assert_eq!(skills_b[0].name, "beta");
+    }
 }

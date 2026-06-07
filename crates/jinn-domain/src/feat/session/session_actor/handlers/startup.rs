@@ -45,9 +45,18 @@ impl SessionPersistenceActor {
         tracing::info!("DIAG on_environment_loaded model/strategy applied");
 
 
-        // Project context files (AGENTS.md/CLAUDE.md) are loaded on the
-        // ContextFilesScanActor via the ScanContextFiles command emitted from
-        // actor_wiring at startup. No inline disk I/O here.
+        // Trigger the initial discovery scan for the active session: skills,
+        // prompts, and project context files (AGENTS.md/CLAUDE.md). Each runs on
+        // its scan actor off-thread, reading the session's cwd and walking the
+        // bounded ancestor chain. Discovered state is ephemeral per-session.
+        let active_session_id = self.state.read().session.active_session_id().clone();
+        for command in
+            crate::feat::context::env_context::scan_commands_for_session(&active_session_id)
+        {
+            if let Err(e) = ctx.send_command(command) {
+                tracing::warn!(err = ?e, "session-actor failed to emit startup scan command");
+            }
+        }
 
         tracing::info!("DIAG on_environment_loaded loading unarchived sessions");
 
@@ -155,6 +164,52 @@ mod tests {
         // Then the active session is still the default.
         let state = actor.state.read();
         assert_eq!(*state.session.active_session_id(), default_id);
+    }
+
+    #[tokio::test]
+    async fn on_environment_loaded_emits_scans_for_active_session() {
+        // Given an actor with a default welcome session.
+        let (actor, _store) = test_actor_with_store(vec![]);
+        let (sink, ctx) = test_context();
+        let active_id = actor.state.read().session.active_session_id().clone();
+
+        // When handling EnvironmentLoaded.
+        actor
+            .on_environment_loaded(
+                &crate::feat::provider_infra::ProvidersConfig {
+                    providers: vec![],
+                    aliases: vec![],
+                    default_provider: None,
+                },
+                &ctx,
+            )
+            .await;
+
+        // Then three re-scan commands were emitted, all tagged with the active
+        // session's id so the scan actors hydrate discovered state from its cwd.
+        let commands = sink.commands();
+        let scan_commands: Vec<_> = commands
+            .iter()
+            .filter(|c| {
+                matches!(
+                    c,
+                    crate::protocol::Command::ScanSkills(_)
+                        | crate::protocol::Command::RescanPromptTemplates(_)
+                        | crate::protocol::Command::ScanContextFiles(_)
+                )
+            })
+            .collect();
+        assert_eq!(
+            scan_commands.len(),
+            3,
+            "expected skills+prompts+context scans on startup"
+        );
+        assert!(scan_commands.iter().all(|c| match c {
+            crate::protocol::Command::ScanSkills(c) => c.session_id == active_id,
+            crate::protocol::Command::RescanPromptTemplates(c) => c.session_id == active_id,
+            crate::protocol::Command::ScanContextFiles(c) => c.session_id == active_id,
+            _ => false,
+        }));
     }
 
     #[tokio::test]
