@@ -399,6 +399,21 @@ pub fn create_core_with_actor_host(
         },
     ));
 
+    // Discovery coordinator — coalesces the three resource-loaded events
+    // per session and emits `SessionDiscoverySettled`.
+    actors.push(spawn::<
+        jinn_domain::feat::discovery_coordinator::DiscoveryCoordinatorActor,
+    >(
+        "discovery-coordinator",
+        &sink,
+        handle,
+        &counter,
+        &shutdown_tracker,
+        jinn_domain::feat::discovery_coordinator::DiscoveryCoordinatorActorDeps {
+            state: state.clone(),
+        },
+    ));
+
     // Persona scan actor.
     actors.push(spawn::<
         jinn_domain::feat::persona::persona_scan_actor::PersonaScanActor,
