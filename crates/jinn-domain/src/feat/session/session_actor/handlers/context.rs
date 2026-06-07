@@ -9,7 +9,7 @@
 //! mutations of `AppState`, not part of prompt assembly.
 
 use crate::common::actor::ActorContext;
-use crate::feat::context::prompt_template::PromptTemplateStore;
+
 use crate::feat::context::protocol::command::{
     LoadPersonaPickerEntries, PinChatEntry, UnpinChatEntry,
 };
@@ -68,26 +68,23 @@ impl SessionPersistenceActor {
         }
     }
 
-    /// Mirrors loaded prompt templates into the global prompt-template store.
+    /// No-op receiver for [`PromptTemplatesLoaded`].
+    #[allow(clippy::unused_self)]
     ///
-    /// The [`PromptScanActor`] already writes each session's discovered set
-    /// into that session's ephemeral state directly. This handler is a
-    /// transitional bridge: it mirrors the result into the global store so
-    /// legacy readers (e.g. chat-input autocomplete) see the active session's
-    /// templates until Phase 7 decommissions the global field. Only events for
-    /// the currently active session are mirrored, so a background session's
-    /// scan cannot clobber the active session's global store (the
-    /// multi-session bug this work fixes).
+    /// The [`PromptScanActor`] writes each session's discovered prompt set
+    /// directly into that session's ephemeral state before emitting the event,
+    /// so there is no global mirror to update. The handler exists only to keep
+    /// the event dispatch arm explicit (and to make future per-session-side
+    /// reactions easy to add).
     pub(in crate::feat::session::session_actor) fn on_prompt_templates_loaded(
         &self,
         event: &PromptTemplatesLoaded,
     ) {
-        let mut state = self.state.write();
-        let is_active = state.session.active_session_id() == &event.session_id;
-        if is_active {
-            state.context.prompt_templates =
-                PromptTemplateStore::from_vec(event.templates.clone());
-        }
+        tracing::trace!(
+            session_id = %event.session_id,
+            count = event.templates.len(),
+            "prompt templates loaded for session (no global mirror)",
+        );
     }
 
     /// Stores loaded personas in state and selects the active persona.
@@ -473,34 +470,7 @@ mod tests {
 
     // --- on_prompt_templates_loaded ---
 
-    #[rstest::rstest]
-    fn on_prompt_templates_loaded_caches_templates() {
-        // Given a session actor.
-        let (actor, state) = create_actor();
-        let session_id = state.read().session.active_session_id().clone();
-        let templates = vec![
-            crate::feat::context::protocol::prompt_template::PromptTemplate {
-                name: "test-template".to_owned(),
-                description: "A test".to_owned(),
-                body: "Hello {{name}}".to_owned(),
-            },
-        ];
 
-        // When loading prompt templates.
-        actor.on_prompt_templates_loaded(&PromptTemplatesLoaded {
-            session_id: session_id.clone(),
-            templates: templates.clone(),
-            error: None,
-        });
-
-        // Then the templates are stored in state.
-        let guard = state.read();
-        assert_eq!(guard.context.prompt_templates.len(), 1);
-        assert_eq!(
-            guard.context.prompt_templates.templates()[0].name,
-            "test-template"
-        );
-    }
 
     // --- handle_load_persona_picker_entries ---
 
