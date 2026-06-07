@@ -32,7 +32,7 @@ use crate::feat::provider::protocol::event::{
 };
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session_lifecycle::protocol::event::{
-    SessionCreated, SessionSetupCompleted, SessionTeardownFinished,
+    SessionCreated, SessionCwdChanged, SessionSetupCompleted, SessionTeardownFinished,
 };
 use crate::feat::skills::skills_scan_actor::SkillsLoaded;
 use crate::feat::tools_actor::protocol::event::{
@@ -115,6 +115,8 @@ pub enum Event {
     ActiveSessionChanged(crate::protocol::system::ActiveSessionChanged),
     /// A new chat session was created.
     SessionCreated(SessionCreated),
+    /// A session's working directory changed.
+    SessionCwdChanged(SessionCwdChanged),
     /// A lifecycle setup command completed.
     SessionSetupCompleted(SessionSetupCompleted),
     /// A lifecycle teardown command finished.
@@ -199,6 +201,7 @@ impl Event {
                 Some(crate::protocol::system::ActiveSessionChanged::TYPE_NAME)
             }
             Self::SessionCreated(..) => Some(SessionCreated::TYPE_NAME),
+            Self::SessionCwdChanged(..) => Some(SessionCwdChanged::TYPE_NAME),
             Self::SessionSetupCompleted(..) => Some(SessionSetupCompleted::TYPE_NAME),
             Self::SessionTeardownFinished(..) => Some(SessionTeardownFinished::TYPE_NAME),
             Self::SessionClosed(..) => {

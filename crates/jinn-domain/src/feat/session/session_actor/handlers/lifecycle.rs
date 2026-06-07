@@ -16,10 +16,10 @@ use crate::feat::session::protocol::session_closed::SessionClosed;
 use crate::feat::session_lifecycle::command_runner::LifecycleCommandError;
 
 use crate::feat::session_lifecycle::protocol::command::{
-    PersistSession, RunSessionSetup, RunSessionTeardown,
+    PersistSession, RunSessionSetup, RunSessionTeardown, SetSessionCwd,
 };
 use crate::feat::session_lifecycle::protocol::event::{
-    SessionSetupCompleted, SessionTeardownFinished,
+    SessionCwdChanged, SessionSetupCompleted, SessionTeardownFinished,
 };
 use crate::protocol::{ChatEntry, Command, Event};
 
@@ -1066,6 +1066,32 @@ impl SessionPersistenceActor {
         payload: &PersistSession,
     ) {
         self.save_active_session(&payload.session_id).await;
+    }
+
+    /// Handle `SetSessionCwd` - set a session's cwd and broadcast the change.
+    ///
+    /// Writes the cwd onto the session in state, then emits `SessionCwdChanged`
+    /// so subscribed discovery scan actors re-scan skills, prompts, and context
+    /// files for the new cwd.
+    pub(in crate::feat::session::session_actor) fn handle_set_session_cwd(
+        &self,
+        payload: &SetSessionCwd,
+        ctx: &ActorContext,
+    ) {
+        {
+            let mut state = self.state.write();
+            if let Some(session) = state.session.get_mut(&payload.session_id) {
+                session.set_cwd(payload.cwd.clone());
+            }
+        }
+        if let Err(e) =
+            ctx.send_event(Event::SessionCwdChanged(SessionCwdChanged {
+                session_id: payload.session_id.clone(),
+                cwd: payload.cwd.clone(),
+            }))
+        {
+            tracing::warn!(err = ?e, "session-actor failed to emit SessionCwdChanged");
+        }
     }
 }
 
@@ -2393,5 +2419,72 @@ mod tests {
             saved.lifecycle_script_state(),
             LifecycleScriptState::TeardownRan
         );
+    }
+
+    #[tokio::test]
+    async fn set_session_cwd_writes_cwd_onto_session() {
+        // Given a session actor with one session.
+        use crate::feat::session_lifecycle::protocol::command::SetSessionCwd;
+        use std::path::PathBuf;
+
+        let actor = test_actor();
+        let (_sink, ctx) = test_context();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session_id().clone()
+        };
+        let new_cwd = PathBuf::from("/tmp/new-project");
+
+        // When handling SetSessionCwd.
+        actor.handle_set_session_cwd(
+            &SetSessionCwd {
+                session_id: session_id.clone(),
+                cwd: new_cwd.clone(),
+            },
+            &ctx,
+        );
+
+        // Then the session's cwd is updated.
+        let state = actor.state.read();
+        let session = state.session.get(&session_id).expect("session exists");
+        assert_eq!(session.cwd(), &new_cwd);
+    }
+
+    #[tokio::test]
+    async fn set_session_cwd_emits_session_cwd_changed_event() {
+        // Given a session actor with one session.
+        use crate::feat::session_lifecycle::protocol::command::SetSessionCwd;
+        use crate::feat::session_lifecycle::protocol::event::SessionCwdChanged;
+        use std::path::PathBuf;
+
+        let actor = test_actor();
+        let (sink, ctx) = test_context();
+        let session_id = {
+            let state = actor.state.read();
+            state.session.active_session_id().clone()
+        };
+        let new_cwd = PathBuf::from("/tmp/other-project");
+
+        // When handling SetSessionCwd.
+        actor.handle_set_session_cwd(
+            &SetSessionCwd {
+                session_id: session_id.clone(),
+                cwd: new_cwd.clone(),
+            },
+            &ctx,
+        );
+
+        // Then a SessionCwdChanged event is emitted for the session with the new cwd.
+        let cwd_changed = sink
+            .events()
+            .into_iter()
+            .filter_map(|e| match e {
+                crate::protocol::Event::SessionCwdChanged(inner) => Some(inner),
+                _ => None,
+            })
+            .collect::<Vec<SessionCwdChanged>>();
+        assert_eq!(cwd_changed.len(), 1);
+        assert_eq!(cwd_changed[0].session_id, session_id);
+        assert_eq!(cwd_changed[0].cwd, new_cwd);
     }
 }
