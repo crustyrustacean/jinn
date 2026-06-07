@@ -25,6 +25,7 @@ use crate::common::actor::protocol::event::{
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 // Re-export infrastructure types only. Domain structs are imported from their modules.
 pub use crate::common::actor::event_msg::EventMsg;
+use crate::feat::discovery_coordinator::SessionDiscoverySettled;
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 use crate::feat::provider::protocol::event::{
     ModelCacheLoaded, ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted,
@@ -34,7 +35,6 @@ use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted
 use crate::feat::session_lifecycle::protocol::event::{
     SessionCreated, SessionCwdChanged, SessionSetupCompleted, SessionTeardownFinished,
 };
-use crate::feat::discovery_coordinator::SessionDiscoverySettled;
 use crate::feat::skills::skills_scan_actor::SkillsLoaded;
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,

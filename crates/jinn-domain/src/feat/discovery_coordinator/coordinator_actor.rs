@@ -19,6 +19,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+use crate::SessionId;
 use crate::common::actor::{Actor, ActorContext, ActorEnvelope, ActorRef};
 use crate::common::state::State;
 use crate::feat::context::protocol::event::ContextFilesLoaded;
@@ -28,7 +29,6 @@ use crate::feat::discovery_coordinator::session_discovery_settled::{
 use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
 use crate::feat::skills::skills_scan_actor::SkillsLoaded;
 use crate::protocol::Event;
-use crate::SessionId;
 
 /// Safety-net window. If not all three resource events arrive within this duration,
 /// the coordinator settles anyway with a `delayed` reason.
@@ -116,18 +116,9 @@ impl PendingSlot {
             prompt_count: self.prompts.as_ref().map_or(0, |s| s.counts().0),
             context_file_count: self.context.as_ref().map_or(0, |s| s.counts().0),
 
-            skill_error: self
-                .skills
-                .as_ref()
-                .and_then(|s| s.counts().1.clone()),
-            prompt_error: self
-                .prompts
-                .as_ref()
-                .and_then(|s| s.counts().1.clone()),
-            context_error: self
-                .context
-                .as_ref()
-                .and_then(|s| s.counts().1.clone()),
+            skill_error: self.skills.as_ref().and_then(|s| s.counts().1.clone()),
+            prompt_error: self.prompts.as_ref().and_then(|s| s.counts().1.clone()),
+            context_error: self.context.as_ref().and_then(|s| s.counts().1.clone()),
         }
     }
 
@@ -219,7 +210,7 @@ impl DiscoveryCoordinatorActor {
     /// Extracts a resource contribution from a `*Loaded` event and routes it into
     /// the mailbox as a `Record` so latch mutation is single-threaded.
     fn on_loaded_event(&self, event: &Event) {
-        let Some((session_id, snapshot)) = self.snapshot_for_event(event) else {
+        let Some((session_id, snapshot)) = Self::snapshot_for_event(event) else {
             return;
         };
         let _ = self.self_ref.send(DiscoveryDirectMsg::Record {
@@ -229,7 +220,7 @@ impl DiscoveryCoordinatorActor {
     }
 
     /// Maps a `*Loaded` event to `(session_id, ResourceSnapshot)`, if recognized.
-    fn snapshot_for_event(&self, event: &Event) -> Option<(SessionId, ResourceSnapshot)> {
+    fn snapshot_for_event(event: &Event) -> Option<(SessionId, ResourceSnapshot)> {
         match event {
             Event::SkillsLoaded(SkillsLoaded {
                 session_id,
@@ -282,7 +273,7 @@ impl DiscoveryCoordinatorActor {
             // All three arrived: settle immediately, no delay.
             let snapshot = slot.to_snapshot();
             self.pending.remove(&session_id);
-            self.emit_settled(session_id, snapshot, None, ctx);
+            Self::emit_settled(session_id, snapshot, None, ctx);
             return;
         }
 
@@ -295,12 +286,7 @@ impl DiscoveryCoordinatorActor {
     }
 
     /// Safety-net handler: settle if the slot is still pending and unchanged.
-    fn on_check_timeout(
-        &mut self,
-        session_id: SessionId,
-        started_at: Instant,
-        ctx: &ActorContext,
-    ) {
+    fn on_check_timeout(&mut self, session_id: SessionId, started_at: Instant, ctx: &ActorContext) {
         let Some(slot) = self.pending.get(&session_id) else {
             return;
         };
@@ -311,12 +297,11 @@ impl DiscoveryCoordinatorActor {
         let snapshot = slot.to_snapshot();
         let reason = format!("discovery delayed by {}", missing.join(", "));
         self.pending.remove(&session_id);
-        self.emit_settled(session_id, snapshot, Some(reason), ctx);
+        Self::emit_settled(session_id, snapshot, Some(reason), ctx);
     }
 
     /// Emits the coalesced settled event for a session.
     fn emit_settled(
-        &self,
         session_id: SessionId,
         snapshot: DiscoverySnapshot,
         delayed: Option<String>,
@@ -348,6 +333,7 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
+    use crate::SessionId;
     use crate::common::actor::{Actor, ActorContext, ActorEnvelope, MessageSink, RecordingSink};
     use crate::common::app_state::AppState;
     use crate::common::state::State;
@@ -355,10 +341,9 @@ mod tests {
     use crate::feat::context::protocol::event::ContextFilesLoaded;
     use crate::feat::context::protocol::prompt_template::PromptTemplate;
     use crate::feat::provider::protocol::event::PromptTemplatesLoaded;
-    use crate::feat::skills::{Skill, SkillSource};
     use crate::feat::skills::skills_scan_actor::SkillsLoaded;
+    use crate::feat::skills::{Skill, SkillSource};
     use crate::protocol::Event;
-    use crate::SessionId;
 
     /// Constructs the coordinator via `activate`, giving it a self-ref wired to
     /// a recording mailbox. Returns the actor, the sink (bus events), and a
@@ -439,7 +424,9 @@ mod tests {
     fn prompts_loaded(id: &SessionId, n: usize) -> Event {
         Event::PromptTemplatesLoaded(PromptTemplatesLoaded {
             session_id: id.clone(),
-            templates: (0..n).map(|i| prompt_named(&format!("prompt-{i}"))).collect(),
+            templates: (0..n)
+                .map(|i| prompt_named(&format!("prompt-{i}")))
+                .collect(),
             error: None,
         })
     }
@@ -461,7 +448,9 @@ mod tests {
             .count()
     }
 
-    fn first_settled(sink: &RecordingSink) -> crate::feat::discovery_coordinator::SessionDiscoverySettled {
+    fn first_settled(
+        sink: &RecordingSink,
+    ) -> crate::feat::discovery_coordinator::SessionDiscoverySettled {
         sink.events()
             .into_iter()
             .find_map(|e| match e {
@@ -470,8 +459,6 @@ mod tests {
             })
             .expect("at least one settled event")
     }
-
-
 
     #[tokio::test]
     async fn one_resource_does_not_emit_settled() {
@@ -577,11 +564,17 @@ mod tests {
 
         // When two sessions each receive all three events.
         for id in [SessionId::new(), SessionId::new()] {
-            actor.handle(ActorEnvelope::Event(skills_loaded(&id, 1)), &ctx).await;
+            actor
+                .handle(ActorEnvelope::Event(skills_loaded(&id, 1)), &ctx)
+                .await;
             drain(&mut actor, &rx, &ctx).await;
-            actor.handle(ActorEnvelope::Event(prompts_loaded(&id, 1)), &ctx).await;
+            actor
+                .handle(ActorEnvelope::Event(prompts_loaded(&id, 1)), &ctx)
+                .await;
             drain(&mut actor, &rx, &ctx).await;
-            actor.handle(ActorEnvelope::Event(context_loaded(&id, 1)), &ctx).await;
+            actor
+                .handle(ActorEnvelope::Event(context_loaded(&id, 1)), &ctx)
+                .await;
             drain(&mut actor, &rx, &ctx).await;
         }
 
@@ -594,14 +587,22 @@ mod tests {
         // Given a coordinator with one settled trigger.
         let (mut actor, sink, rx, ctx) = build();
         let id = SessionId::new();
-        for ev in [skills_loaded(&id, 1), prompts_loaded(&id, 1), context_loaded(&id, 1)] {
+        for ev in [
+            skills_loaded(&id, 1),
+            prompts_loaded(&id, 1),
+            context_loaded(&id, 1),
+        ] {
             actor.handle(ActorEnvelope::Event(ev), &ctx).await;
             drain(&mut actor, &rx, &ctx).await;
         }
         assert_eq!(settled_count(&sink), 1);
 
         // When a second trigger fires all three again.
-        for ev in [skills_loaded(&id, 4), prompts_loaded(&id, 5), context_loaded(&id, 6)] {
+        for ev in [
+            skills_loaded(&id, 4),
+            prompts_loaded(&id, 5),
+            context_loaded(&id, 6),
+        ] {
             actor.handle(ActorEnvelope::Event(ev), &ctx).await;
             drain(&mut actor, &rx, &ctx).await;
         }
@@ -631,9 +632,13 @@ mod tests {
 
         // When only skills + prompts arrive (context missing).
         let id = SessionId::new();
-        actor.handle(ActorEnvelope::Event(skills_loaded(&id, 1)), &ctx).await;
+        actor
+            .handle(ActorEnvelope::Event(skills_loaded(&id, 1)), &ctx)
+            .await;
         drain(&mut actor, &rx, &ctx).await;
-        actor.handle(ActorEnvelope::Event(prompts_loaded(&id, 1)), &ctx).await;
+        actor
+            .handle(ActorEnvelope::Event(prompts_loaded(&id, 1)), &ctx)
+            .await;
         drain(&mut actor, &rx, &ctx).await;
         assert_eq!(settled_count(&sink), 0);
 
@@ -647,6 +652,43 @@ mod tests {
         assert!(
             reason.contains("context"),
             "reason should name the missing resource: {reason}"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn all_three_just_under_timeout_settles_without_delay() {
+        // Given a coordinator.
+        let (mut actor, sink, rx, ctx) = build();
+
+        // When all three arrive just under the 3000ms safety-net window.
+        let id = SessionId::new();
+        actor
+            .handle(ActorEnvelope::Event(skills_loaded(&id, 1)), &ctx)
+            .await;
+        drain(&mut actor, &rx, &ctx).await;
+        actor
+            .handle(ActorEnvelope::Event(prompts_loaded(&id, 1)), &ctx)
+            .await;
+        drain(&mut actor, &rx, &ctx).await;
+        actor
+            .handle(ActorEnvelope::Event(context_loaded(&id, 1)), &ctx)
+            .await;
+        drain(&mut actor, &rx, &ctx).await;
+
+        // Then settled fires exactly once with no delay.
+        assert_eq!(settled_count(&sink), 1);
+        assert!(
+            first_settled(&sink).delayed.is_none(),
+            "settled under the window must not be delayed"
+        );
+
+        // And advancing past 3000ms does not double-fire (stale-guard no-ops).
+        tokio::time::advance(std::time::Duration::from_millis(3100)).await;
+        drain(&mut actor, &rx, &ctx).await;
+        assert_eq!(
+            settled_count(&sink),
+            1,
+            "timer must not re-emit after settle"
         );
     }
 }

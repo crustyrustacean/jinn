@@ -32,7 +32,7 @@ impl Actor for DiscoveryNotifierActor {
         match msg {
             ActorEnvelope::Event(event) => {
                 if let Event::SessionDiscoverySettled(ref event) = event {
-                    self.on_settled(event, ctx);
+                    Self::on_settled(event, ctx);
                 }
             }
             ActorEnvelope::Command(_) | ActorEnvelope::System(_) => {}
@@ -42,7 +42,7 @@ impl Actor for DiscoveryNotifierActor {
 
 impl DiscoveryNotifierActor {
     /// Render the settled snapshot to a transient `PushChatEntry` command.
-    fn on_settled(&self, event: &SessionDiscoverySettled, ctx: &ActorContext) {
+    fn on_settled(event: &SessionDiscoverySettled, ctx: &ActorContext) {
         let summary = build_summary(event);
         let push = Command::PushChatEntry(PushChatEntry {
             session_id: event.session_id.clone(),
@@ -94,7 +94,6 @@ fn build_summary(event: &SessionDiscoverySettled) -> String {
     if let Some(err) = &snapshot.context_error {
         notes.push(format!("context-files scan error: {err}"));
     }
-
 
     if !notes.is_empty() {
         out.push('\n');
