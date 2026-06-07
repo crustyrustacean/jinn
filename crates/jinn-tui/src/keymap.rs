@@ -132,6 +132,8 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .describe_group_with_category("gc", "context", KeyCategory::Context)
             .bind("<leader>sl", Intent::OpenPicker { kind: PickerKind::SessionLifecycle }, KeyCategory::General)
             .bind("<leader>sc", Intent::OpenPicker { kind: PickerKind::CompactionModel }, KeyCategory::Model)
+            .describe_group_with_category("<leader>c", "change", KeyCategory::General)
+            .bind("<leader>cd", Intent::OpenCwdInput, KeyCategory::General)
             .bind("gg", Intent::ScrollToTop, KeyCategory::Navigation)
             .bind("G", Intent::ScrollToBottom, KeyCategory::Navigation)
             .bind("gmr", Intent::RefreshModels, KeyCategory::Model)
@@ -350,6 +352,25 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
                 None
             }
         });
+    });
+
+    // CwdInput scope - typing a directory path (mirrors ArgInput).
+    keymap.scope(Scope::CwdInput, |b| {
+        b.bind("<esc>", Intent::CwdInputLeave, KeyCategory::General)
+            .bind("<enter>", Intent::CwdInputConfirm, KeyCategory::Input)
+            .bind("<left>", Intent::MoveCursorLeft, KeyCategory::Input)
+            .bind("<right>", Intent::MoveCursorRight, KeyCategory::Input)
+            .bind("<backspace>", Intent::DeleteGrapheme, KeyCategory::Input)
+            .bind("<delete>", Intent::DeleteGraphemeForward, KeyCategory::Input)
+            .bind("<c-j>", Intent::InsertChar { ch: '\n' }, KeyCategory::Input)
+            .bind("<c-c>", Intent::CtrlClear, KeyCategory::General)
+            .catch_all(|key: KeyEvent| {
+                if let Key::Char(c) = key.key {
+                    Some(Intent::InsertChar { ch: c })
+                } else {
+                    None
+                }
+            });
     });
 
 

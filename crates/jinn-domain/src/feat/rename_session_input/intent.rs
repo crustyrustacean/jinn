@@ -1,6 +1,5 @@
 //! Rename session input intent handlers - enter, confirm, leave, and text editing.
 
-use unicode_segmentation::UnicodeSegmentation;
 
 use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
 use crate::feat::session_lifecycle::protocol::command::PersistSession;
@@ -30,8 +29,7 @@ pub fn handle_rename_session_enter(state: &mut AppState) -> IntentResult {
     let cursor_pos = title.len();
 
     state.frontend.rename_session_input = RenameSessionInputState {
-        input: title,
-        cursor_pos,
+        text: crate::common::line_input::LineInput { input: title, cursor_pos },
     };
     state
         .frontend
@@ -46,7 +44,7 @@ pub fn handle_rename_session_enter(state: &mut AppState) -> IntentResult {
 /// updates the session title in memory, pops the scope, and clears the input state.
 pub fn handle_rename_session_confirm(state: &mut AppState) -> IntentResult {
     let rename_input = &state.frontend.rename_session_input;
-    let text = rename_input.input.trim().to_owned();
+    let text = rename_input.text.input.trim().to_owned();
 
     // Validate: non-empty.
     if text.is_empty() {
@@ -86,80 +84,37 @@ pub fn handle_rename_session_leave(state: &mut AppState) -> IntentResult {
 
 /// Inserts a character at the cursor position.
 pub fn handle_insert_char(state: &mut AppState, ch: char) -> IntentResult {
-    let input = &mut state.frontend.rename_session_input;
-    input.input.insert(input.cursor_pos, ch);
-    input.cursor_pos += ch.len_utf8();
+    state.frontend.rename_session_input.text.insert_char(ch);
     IntentResult::empty()
 }
 
 /// Deletes the grapheme before the cursor.
 pub fn handle_delete(state: &mut AppState) -> IntentResult {
-    let input = &mut state.frontend.rename_session_input;
-    if input.cursor_pos > 0 {
-        let prev = input.input[..input.cursor_pos]
-            .grapheme_indices(true)
-            .next_back()
-            .map(|(i, _)| i);
-        if let Some(prev_idx) = prev {
-            input.input.drain(prev_idx..input.cursor_pos);
-            input.cursor_pos = prev_idx;
-        }
-    }
+    state.frontend.rename_session_input.text.delete();
     IntentResult::empty()
 }
 
 /// Deletes the grapheme at/after the cursor (forward delete).
 pub fn handle_delete_forward(state: &mut AppState) -> IntentResult {
-    let input = &mut state.frontend.rename_session_input;
-    if input.cursor_pos < input.input.len() {
-        let next_end = input.input[input.cursor_pos..]
-            .grapheme_indices(true)
-            .nth(1)
-            .map_or(input.input.len(), |(i, _)| input.cursor_pos + i);
-        input.input.drain(input.cursor_pos..next_end);
-    }
+    state.frontend.rename_session_input.text.delete_forward();
     IntentResult::empty()
 }
 
 /// Moves the cursor one grapheme left.
 pub fn handle_cursor_left(state: &mut AppState) -> IntentResult {
-    let input = &mut state.frontend.rename_session_input;
-    if input.cursor_pos > 0 {
-        let prev = input.input[..input.cursor_pos]
-            .grapheme_indices(true)
-            .next_back()
-            .map(|(i, _)| i);
-        if let Some(prev_idx) = prev {
-            input.cursor_pos = prev_idx;
-        }
-    }
+    state.frontend.rename_session_input.text.cursor_left();
     IntentResult::empty()
 }
 
 /// Moves the cursor one grapheme right.
 pub fn handle_cursor_right(state: &mut AppState) -> IntentResult {
-    let input = &mut state.frontend.rename_session_input;
-    if input.cursor_pos < input.input.len() {
-        let next = input.input[input.cursor_pos..]
-            .grapheme_indices(true)
-            .nth(1)
-            .map(|(i, _)| input.cursor_pos + i);
-        match next {
-            Some(next_idx) => input.cursor_pos = next_idx,
-            None => input.cursor_pos = input.input.len(),
-        }
-    }
+    state.frontend.rename_session_input.text.cursor_right();
     IntentResult::empty()
 }
 
 /// Handles `PasteText` - bulk inserts pasted text at the cursor.
 pub fn handle_paste(state: &mut AppState, text: &str) -> IntentResult {
-    if text.is_empty() {
-        return IntentResult::empty();
-    }
-    let input = &mut state.frontend.rename_session_input;
-    input.input.insert_str(input.cursor_pos, text);
-    input.cursor_pos += text.len();
+    state.frontend.rename_session_input.text.paste(text);
     IntentResult::empty()
 }
 
@@ -220,8 +175,8 @@ mod tests {
         let _result = handle_rename_session_enter(&mut state);
 
         // Then the input is seeded with the session title.
-        assert_eq!(state.frontend.rename_session_input.input, "My Session");
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 10);
+        assert_eq!(state.frontend.rename_session_input.text.input, "My Session");
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 10);
     }
 
     #[rstest::rstest]
@@ -253,8 +208,7 @@ mod tests {
             .push(FocusScope::RenameSessionInput);
         state.frontend.sessions_section.selected_index = Some(0);
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "New Title".to_owned(),
-            cursor_pos: 9,
+            text: crate::common::line_input::LineInput { input: "New Title".to_owned(), cursor_pos: 9 },
         };
 
         // When handling RenameSessionConfirm.
@@ -268,7 +222,7 @@ mod tests {
             FocusScope::SidebarSessions
         ));
         // And input state is cleared.
-        assert!(state.frontend.rename_session_input.input.is_empty());
+        assert!(state.frontend.rename_session_input.text.input.is_empty());
         // And a PersistSession command is emitted.
         assert!(
             result
@@ -289,8 +243,7 @@ mod tests {
             .push(FocusScope::RenameSessionInput);
         state.frontend.sessions_section.selected_index = Some(0);
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: String::new(),
-            cursor_pos: 0,
+            text: crate::common::line_input::LineInput { input: String::new(), cursor_pos: 0 },
         };
 
         // When handling RenameSessionConfirm.
@@ -325,8 +278,7 @@ mod tests {
             .push(FocusScope::RenameSessionInput);
         state.frontend.sessions_section.selected_index = Some(0);
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Fresh Title".to_owned(),
-            cursor_pos: 11,
+            text: crate::common::line_input::LineInput { input: "Fresh Title".to_owned(), cursor_pos: 11 },
         };
 
         // When handling RenameSessionConfirm.
@@ -365,8 +317,7 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Changed".to_owned(),
-            cursor_pos: 7,
+            text: crate::common::line_input::LineInput { input: "Changed".to_owned(), cursor_pos: 7 },
         };
 
         // When handling RenameSessionLeave.
@@ -378,7 +329,7 @@ mod tests {
             FocusScope::SidebarSessions
         ));
         // And input state is cleared.
-        assert!(state.frontend.rename_session_input.input.is_empty());
+        assert!(state.frontend.rename_session_input.text.input.is_empty());
         // And session title is unchanged.
         assert_eq!(state.session_mut(&session_id).title(), Some("Original"));
         // And no commands are emitted.
@@ -390,16 +341,15 @@ mod tests {
         // Given state with input "Hello".
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Hello".to_owned(),
-            cursor_pos: 5,
+            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 5 },
         };
 
         // When inserting '!'.
         let _result = handle_insert_char(&mut state, '!');
 
         // Then the input is "Hello!".
-        assert_eq!(state.frontend.rename_session_input.input, "Hello!");
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 6);
+        assert_eq!(state.frontend.rename_session_input.text.input, "Hello!");
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 6);
     }
 
     #[rstest::rstest]
@@ -407,16 +357,15 @@ mod tests {
         // Given state with input "Hello" and cursor at end.
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Hello".to_owned(),
-            cursor_pos: 5,
+            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 5 },
         };
 
         // When deleting.
         let _result = handle_delete(&mut state);
 
         // Then input is "Hell" and cursor moved back.
-        assert_eq!(state.frontend.rename_session_input.input, "Hell");
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 4);
+        assert_eq!(state.frontend.rename_session_input.text.input, "Hell");
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 4);
     }
 
     #[rstest::rstest]
@@ -424,16 +373,15 @@ mod tests {
         // Given state with input "Hello" and cursor at position 1.
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Hello".to_owned(),
-            cursor_pos: 1,
+            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 1 },
         };
 
         // When forward deleting.
         let _result = handle_delete_forward(&mut state);
 
         // Then input is "Hllo" and cursor stays at 1.
-        assert_eq!(state.frontend.rename_session_input.input, "Hllo");
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 1);
+        assert_eq!(state.frontend.rename_session_input.text.input, "Hllo");
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 1);
     }
 
     #[rstest::rstest]
@@ -441,15 +389,14 @@ mod tests {
         // Given state with input "Hi" and cursor at end.
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Hi".to_owned(),
-            cursor_pos: 2,
+            text: crate::common::line_input::LineInput { input: "Hi".to_owned(), cursor_pos: 2 },
         };
 
         // When moving cursor left.
         let _result = handle_cursor_left(&mut state);
 
         // Then cursor moved to 1.
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 1);
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 1);
     }
 
     #[rstest::rstest]
@@ -457,15 +404,14 @@ mod tests {
         // Given state with input "Hi" and cursor at start.
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Hi".to_owned(),
-            cursor_pos: 0,
+            text: crate::common::line_input::LineInput { input: "Hi".to_owned(), cursor_pos: 0 },
         };
 
         // When moving cursor right.
         let _result = handle_cursor_right(&mut state);
 
         // Then cursor moved to 1.
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 1);
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 1);
     }
 
     #[rstest::rstest]
@@ -473,16 +419,15 @@ mod tests {
         // Given state with cursor at position 0 (boundary: > vs >=).
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Hello".to_owned(),
-            cursor_pos: 0,
+            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 0 },
         };
 
         // When deleting at position 0.
         let _result = handle_delete(&mut state);
 
         // Then nothing is deleted and cursor stays at 0.
-        assert_eq!(state.frontend.rename_session_input.input, "Hello");
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 0);
+        assert_eq!(state.frontend.rename_session_input.text.input, "Hello");
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 0);
     }
 
     #[rstest::rstest]
@@ -490,16 +435,15 @@ mod tests {
         // Given state with cursor at end (boundary: < vs <=).
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Hello".to_owned(),
-            cursor_pos: 5,
+            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 5 },
         };
 
         // When forward deleting at end.
         let _result = handle_delete_forward(&mut state);
 
         // Then nothing is deleted.
-        assert_eq!(state.frontend.rename_session_input.input, "Hello");
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 5);
+        assert_eq!(state.frontend.rename_session_input.text.input, "Hello");
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 5);
     }
 
     #[rstest::rstest]
@@ -507,15 +451,14 @@ mod tests {
         // Given state with cursor at position 0 (boundary: > vs >=).
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Hello".to_owned(),
-            cursor_pos: 0,
+            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 0 },
         };
 
         // When moving cursor left at position 0.
         let _result = handle_cursor_left(&mut state);
 
         // Then cursor stays at 0.
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 0);
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 0);
     }
 
     #[rstest::rstest]
@@ -523,15 +466,14 @@ mod tests {
         // Given state with cursor at end (boundary: < vs <=).
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Hello".to_owned(),
-            cursor_pos: 5,
+            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 5 },
         };
 
         // When moving cursor right at end.
         let _result = handle_cursor_right(&mut state);
 
         // Then cursor stays at end.
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 5);
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 5);
     }
 
     #[rstest::rstest]
@@ -539,16 +481,15 @@ mod tests {
         // Given state with cursor in the middle.
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Hello".to_owned(),
-            cursor_pos: 2,
+            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 2 },
         };
 
         // When pasting "XY".
         let _result = handle_paste(&mut state, "XY");
 
         // Then text is inserted and cursor advances by text.len().
-        assert_eq!(state.frontend.rename_session_input.input, "HeXYllo");
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 4);
+        assert_eq!(state.frontend.rename_session_input.text.input, "HeXYllo");
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 4);
     }
 
     #[rstest::rstest]
@@ -556,15 +497,14 @@ mod tests {
         // Given state.
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            input: "Hello".to_owned(),
-            cursor_pos: 2,
+            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 2 },
         };
 
         // When pasting empty text.
         let _result = handle_paste(&mut state, "");
 
         // Then nothing changes.
-        assert_eq!(state.frontend.rename_session_input.input, "Hello");
-        assert_eq!(state.frontend.rename_session_input.cursor_pos, 2);
+        assert_eq!(state.frontend.rename_session_input.text.input, "Hello");
+        assert_eq!(state.frontend.rename_session_input.text.cursor_pos, 2);
     }
 }
