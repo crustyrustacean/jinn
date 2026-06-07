@@ -55,10 +55,10 @@ pub fn validate_arg_input(state: &AppState) -> Result<(), ArgInputError> {
             crate::feat::session_lifecycle::builtin::LifecycleCommand::Builtin(_) => 0,
         });
 
-    let arg_count = if arg_state.input.trim().is_empty() {
+    let arg_count = if arg_state.text.input.trim().is_empty() {
         0
     } else {
-        parse_quoted_args(&arg_state.input).len()
+        parse_quoted_args(&arg_state.text.input).len()
     };
 
     if arg_count < param_count {
@@ -193,10 +193,10 @@ pub fn handle_arg_input_confirm(state: &mut AppState) -> IntentResult {
 
     let arg_state = &state.frontend.arg_input;
     let lifecycle_name = arg_state.lifecycle_name.clone();
-    let args: Vec<String> = if arg_state.input.trim().is_empty() {
+    let args: Vec<String> = if arg_state.text.input.trim().is_empty() {
         vec![]
     } else {
-        parse_quoted_args(&arg_state.input)
+        parse_quoted_args(&arg_state.text.input)
     };
 
     // Pop ArgInput scope.
@@ -209,86 +209,40 @@ pub fn handle_arg_input_confirm(state: &mut AppState) -> IntentResult {
 
 /// Handle character insertion in the arg input popup.
 pub fn handle_arg_input_insert_char(state: &mut AppState, ch: char) -> IntentResult {
-    let arg = &mut state.frontend.arg_input;
-    arg.input.insert(arg.cursor_pos, ch);
-    arg.cursor_pos += ch.len_utf8();
+    state.frontend.arg_input.text.insert_char(ch);
     IntentResult::empty()
 }
 
 /// Handle grapheme deletion in the arg input popup.
 pub fn handle_arg_input_delete(state: &mut AppState) -> IntentResult {
-    use unicode_segmentation::UnicodeSegmentation;
-    let arg = &mut state.frontend.arg_input;
-    if arg.cursor_pos > 0 {
-        let prev = arg.input[..arg.cursor_pos]
-            .grapheme_indices(true)
-            .next_back()
-            .map(|(i, _)| i);
-        if let Some(prev_idx) = prev {
-            arg.input.drain(prev_idx..arg.cursor_pos);
-            arg.cursor_pos = prev_idx;
-        }
-    }
+    state.frontend.arg_input.text.delete();
     IntentResult::empty()
 }
 
 /// Handle forward delete in the arg input popup (deletes the grapheme at/after cursor).
 pub fn handle_arg_input_delete_forward(state: &mut AppState) -> IntentResult {
-    use unicode_segmentation::UnicodeSegmentation;
-    let arg = &mut state.frontend.arg_input;
-    if arg.cursor_pos < arg.input.len() {
-        let next_end = arg.input[arg.cursor_pos..]
-            .grapheme_indices(true)
-            .nth(1)
-            .map_or(arg.input.len(), |(i, _)| arg.cursor_pos + i);
-        arg.input.drain(arg.cursor_pos..next_end);
-    }
+    state.frontend.arg_input.text.delete_forward();
     IntentResult::empty()
 }
 
 /// Handle cursor left in the arg input popup.
 pub fn handle_arg_input_cursor_left(state: &mut AppState) -> IntentResult {
-    use unicode_segmentation::UnicodeSegmentation;
-    let arg = &mut state.frontend.arg_input;
-    if arg.cursor_pos > 0 {
-        let prev = arg.input[..arg.cursor_pos]
-            .grapheme_indices(true)
-            .next_back()
-            .map(|(i, _)| i);
-        if let Some(prev_idx) = prev {
-            arg.cursor_pos = prev_idx;
-        }
-    }
+    state.frontend.arg_input.text.cursor_left();
     IntentResult::empty()
 }
 
 /// Handle cursor right in the arg input popup.
 pub fn handle_arg_input_cursor_right(state: &mut AppState) -> IntentResult {
-    use unicode_segmentation::UnicodeSegmentation;
-    let arg = &mut state.frontend.arg_input;
-    if arg.cursor_pos < arg.input.len() {
-        let next = arg.input[arg.cursor_pos..]
-            .grapheme_indices(true)
-            .nth(1)
-            .map(|(i, _)| arg.cursor_pos + i);
-        match next {
-            Some(next_idx) => arg.cursor_pos = next_idx,
-            None => arg.cursor_pos = arg.input.len(),
-        }
-    }
+    state.frontend.arg_input.text.cursor_right();
     IntentResult::empty()
 }
 
 /// Handles `PasteText` in arg input scope - bulk inserts pasted text at the cursor.
 pub fn handle_arg_input_paste(state: &mut AppState, text: &str) -> IntentResult {
-    if text.is_empty() {
-        return IntentResult::empty();
-    }
-    let arg = &mut state.frontend.arg_input;
-    arg.input.insert_str(arg.cursor_pos, text);
-    arg.cursor_pos += text.len();
+    state.frontend.arg_input.text.paste(text);
     IntentResult::empty()
 }
+
 
 /// Look up a lifecycle by name in the user preferences.
 fn find_lifecycle<'a>(state: &'a AppState, name: &str) -> Option<&'a SessionLifecycle> {
@@ -549,8 +503,8 @@ mod tests {
         // Given an arg input state with text.
         let mut state = AppState::default();
         state.frontend.arg_input.lifecycle_name = "fossil branch".to_owned();
-        state.frontend.arg_input.input = "my-branch target-dir".to_owned();
-        state.frontend.arg_input.cursor_pos = state.frontend.arg_input.input.len();
+        state.frontend.arg_input.text.input = "my-branch target-dir".to_owned();
+        state.frontend.arg_input.text.cursor_pos = state.frontend.arg_input.text.input.len();
         state
             .frontend
             .preferences
@@ -597,7 +551,7 @@ mod tests {
         // Given an arg input state with empty input for a template that expects $1.
         let mut state = AppState::default();
         state.frontend.arg_input.lifecycle_name = "test".to_owned();
-        state.frontend.arg_input.input = String::new();
+        state.frontend.arg_input.text.input = String::new();
         state
             .frontend
             .preferences
@@ -628,120 +582,120 @@ mod tests {
     #[rstest::rstest]
     fn arg_input_insert_char_appends_to_input() {
         let mut state = AppState::default();
-        state.frontend.arg_input.input = String::new();
-        state.frontend.arg_input.cursor_pos = 0;
+        state.frontend.arg_input.text.input = String::new();
+        state.frontend.arg_input.text.cursor_pos = 0;
 
         let _result = handle_arg_input_insert_char(&mut state, 'a');
 
-        assert_eq!(state.frontend.arg_input.input, "a");
-        assert_eq!(state.frontend.arg_input.cursor_pos, 1);
+        assert_eq!(state.frontend.arg_input.text.input, "a");
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 1);
     }
 
     #[rstest::rstest]
     fn arg_input_delete_removes_last_grapheme() {
         let mut state = AppState::default();
-        state.frontend.arg_input.input = "abc".to_owned();
-        state.frontend.arg_input.cursor_pos = 3;
+        state.frontend.arg_input.text.input = "abc".to_owned();
+        state.frontend.arg_input.text.cursor_pos = 3;
 
         let _result = handle_arg_input_delete(&mut state);
 
-        assert_eq!(state.frontend.arg_input.input, "ab");
-        assert_eq!(state.frontend.arg_input.cursor_pos, 2);
+        assert_eq!(state.frontend.arg_input.text.input, "ab");
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 2);
     }
 
     #[rstest::rstest]
     fn arg_input_cursor_left_moves_cursor() {
         let mut state = AppState::default();
-        state.frontend.arg_input.input = "abc".to_owned();
-        state.frontend.arg_input.cursor_pos = 3;
+        state.frontend.arg_input.text.input = "abc".to_owned();
+        state.frontend.arg_input.text.cursor_pos = 3;
 
         let _result = handle_arg_input_cursor_left(&mut state);
 
-        assert_eq!(state.frontend.arg_input.cursor_pos, 2);
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 2);
     }
 
     #[rstest::rstest]
     fn arg_input_cursor_right_moves_cursor() {
         let mut state = AppState::default();
-        state.frontend.arg_input.input = "abc".to_owned();
-        state.frontend.arg_input.cursor_pos = 0;
+        state.frontend.arg_input.text.input = "abc".to_owned();
+        state.frontend.arg_input.text.cursor_pos = 0;
 
         let _result = handle_arg_input_cursor_right(&mut state);
 
-        assert_eq!(state.frontend.arg_input.cursor_pos, 1);
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 1);
     }
 
     #[rstest::rstest]
     fn arg_input_cursor_right_reaches_end_of_input() {
         // Given cursor one grapheme before end.
         let mut state = AppState::default();
-        state.frontend.arg_input.input = "ab".to_owned();
-        state.frontend.arg_input.cursor_pos = 1;
+        state.frontend.arg_input.text.input = "ab".to_owned();
+        state.frontend.arg_input.text.cursor_pos = 1;
 
         // When moving right.
         let _result = handle_arg_input_cursor_right(&mut state);
 
         // Then cursor advances to end (input.len()).
-        assert_eq!(state.frontend.arg_input.cursor_pos, 2);
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 2);
     }
 
     #[rstest::rstest]
     fn arg_input_cursor_right_at_end_stays() {
         // Given cursor already at end.
         let mut state = AppState::default();
-        state.frontend.arg_input.input = "abc".to_owned();
-        state.frontend.arg_input.cursor_pos = 3;
+        state.frontend.arg_input.text.input = "abc".to_owned();
+        state.frontend.arg_input.text.cursor_pos = 3;
 
         // When moving right.
         let _result = handle_arg_input_cursor_right(&mut state);
 
         // Then cursor stays at end.
-        assert_eq!(state.frontend.arg_input.cursor_pos, 3);
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 3);
     }
 
     #[rstest::rstest]
     fn arg_input_delete_forward_removes_char_after_cursor() {
         // Given input "abc" with cursor at position 1 (after 'a').
         let mut state = AppState::default();
-        state.frontend.arg_input.input = "abc".to_owned();
-        state.frontend.arg_input.cursor_pos = 1;
+        state.frontend.arg_input.text.input = "abc".to_owned();
+        state.frontend.arg_input.text.cursor_pos = 1;
 
         // When forward deleting.
         let _result = handle_arg_input_delete_forward(&mut state);
 
         // Then 'b' is removed, cursor stays at 1.
-        assert_eq!(state.frontend.arg_input.input, "ac");
-        assert_eq!(state.frontend.arg_input.cursor_pos, 1);
+        assert_eq!(state.frontend.arg_input.text.input, "ac");
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 1);
     }
 
     #[rstest::rstest]
     fn arg_input_delete_forward_at_end_does_nothing() {
         // Given input "abc" with cursor at end.
         let mut state = AppState::default();
-        state.frontend.arg_input.input = "abc".to_owned();
-        state.frontend.arg_input.cursor_pos = 3;
+        state.frontend.arg_input.text.input = "abc".to_owned();
+        state.frontend.arg_input.text.cursor_pos = 3;
 
         // When forward deleting.
         let _result = handle_arg_input_delete_forward(&mut state);
 
         // Then input is unchanged.
-        assert_eq!(state.frontend.arg_input.input, "abc");
-        assert_eq!(state.frontend.arg_input.cursor_pos, 3);
+        assert_eq!(state.frontend.arg_input.text.input, "abc");
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 3);
     }
 
     #[rstest::rstest]
     fn arg_input_delete_forward_at_start_removes_first_char() {
         // Given input "abc" with cursor at start.
         let mut state = AppState::default();
-        state.frontend.arg_input.input = "abc".to_owned();
-        state.frontend.arg_input.cursor_pos = 0;
+        state.frontend.arg_input.text.input = "abc".to_owned();
+        state.frontend.arg_input.text.cursor_pos = 0;
 
         // When forward deleting.
         let _result = handle_arg_input_delete_forward(&mut state);
 
         // Then 'a' is removed.
-        assert_eq!(state.frontend.arg_input.input, "bc");
-        assert_eq!(state.frontend.arg_input.cursor_pos, 0);
+        assert_eq!(state.frontend.arg_input.text.input, "bc");
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 0);
     }
 
     // --- Arg input validation ---
@@ -751,7 +705,7 @@ mod tests {
         // Given a state with a $1 $2 lifecycle and two args provided.
         let mut state = AppState::default();
         state.frontend.arg_input.lifecycle_name = "test".to_owned();
-        state.frontend.arg_input.input = "foo bar".to_owned();
+        state.frontend.arg_input.text.input = "foo bar".to_owned();
         state
             .frontend
             .preferences
@@ -779,7 +733,7 @@ mod tests {
         // Given a state with a $1 $2 lifecycle and only one arg.
         let mut state = AppState::default();
         state.frontend.arg_input.lifecycle_name = "test".to_owned();
-        state.frontend.arg_input.input = "foo".to_owned();
+        state.frontend.arg_input.text.input = "foo".to_owned();
         state
             .frontend
             .preferences
@@ -813,7 +767,7 @@ mod tests {
         // Given a state with a lifecycle that has no params.
         let mut state = AppState::default();
         state.frontend.arg_input.lifecycle_name = "blank".to_owned();
-        state.frontend.arg_input.input = String::new();
+        state.frontend.arg_input.text.input = String::new();
 
         // When validating.
         let result = validate_arg_input(&state);
@@ -827,7 +781,7 @@ mod tests {
         // Given a state with a $@ lifecycle and any args.
         let mut state = AppState::default();
         state.frontend.arg_input.lifecycle_name = "test".to_owned();
-        state.frontend.arg_input.input = "anything".to_owned();
+        state.frontend.arg_input.text.input = "anything".to_owned();
         state
             .frontend
             .preferences
@@ -855,7 +809,7 @@ mod tests {
         // Given a state with a <branch> <target> lifecycle and only one arg.
         let mut state = AppState::default();
         state.frontend.arg_input.lifecycle_name = "test".to_owned();
-        state.frontend.arg_input.input = "my-branch".to_owned();
+        state.frontend.arg_input.text.input = "my-branch".to_owned();
         state
             .frontend
             .preferences
@@ -883,8 +837,8 @@ mod tests {
         // Given a state with a $1 $2 lifecycle and both args provided.
         let mut state = AppState::default();
         state.frontend.arg_input.lifecycle_name = "test".to_owned();
-        state.frontend.arg_input.input = "foo bar".to_owned();
-        state.frontend.arg_input.cursor_pos = 7;
+        state.frontend.arg_input.text.input = "foo bar".to_owned();
+        state.frontend.arg_input.text.cursor_pos = 7;
         state
             .frontend
             .preferences
@@ -926,8 +880,8 @@ mod tests {
         // Given an arg input state with quoted text.
         let mut state = AppState::default();
         state.frontend.arg_input.lifecycle_name = "fossil branch".to_owned();
-        state.frontend.arg_input.input = r#""my branch" target"#.to_owned();
-        state.frontend.arg_input.cursor_pos = state.frontend.arg_input.input.len();
+        state.frontend.arg_input.text.input = r#""my branch" target"#.to_owned();
+        state.frontend.arg_input.text.cursor_pos = state.frontend.arg_input.text.input.len();
         state
             .frontend
             .preferences
@@ -1047,117 +1001,117 @@ mod tests {
     fn arg_input_delete_multi_byte_grapheme_at_boundary() {
         // Given input with a multi-byte emoji at the start and cursor at end.
         let mut state = AppState::default();
-        state.frontend.arg_input.input = "ab\u{1F600}".to_owned(); // "ab😀"
-        state.frontend.arg_input.cursor_pos = state.frontend.arg_input.input.len();
+        state.frontend.arg_input.text.input = "ab\u{1F600}".to_owned(); // "ab😀"
+        state.frontend.arg_input.text.cursor_pos = state.frontend.arg_input.text.input.len();
 
         // When deleting backward.
         let _result = handle_arg_input_delete(&mut state);
 
         // Then the emoji (4 bytes) is removed and cursor moves back by 4.
-        assert_eq!(state.frontend.arg_input.input, "ab");
-        assert_eq!(state.frontend.arg_input.cursor_pos, 2);
+        assert_eq!(state.frontend.arg_input.text.input, "ab");
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 2);
     }
 
     #[rstest::rstest]
     fn arg_input_delete_at_position_zero_does_nothing() {
         // Given input with cursor at position 0.
         let mut state = AppState::default();
-        state.frontend.arg_input.input = "abc".to_owned();
-        state.frontend.arg_input.cursor_pos = 0;
+        state.frontend.arg_input.text.input = "abc".to_owned();
+        state.frontend.arg_input.text.cursor_pos = 0;
 
         // When deleting backward.
         let _result = handle_arg_input_delete(&mut state);
 
         // Then nothing changes.
-        assert_eq!(state.frontend.arg_input.input, "abc");
-        assert_eq!(state.frontend.arg_input.cursor_pos, 0);
+        assert_eq!(state.frontend.arg_input.text.input, "abc");
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 0);
     }
 
     #[rstest::rstest]
     fn arg_input_delete_forward_multi_byte_grapheme() {
         // Given input with a multi-byte emoji after cursor.
         let mut state = AppState::default();
-        state.frontend.arg_input.input = "\u{1F600}bc".to_owned(); // "😀bc"
-        state.frontend.arg_input.cursor_pos = 0;
+        state.frontend.arg_input.text.input = "\u{1F600}bc".to_owned(); // "😀bc"
+        state.frontend.arg_input.text.cursor_pos = 0;
 
         // When forward deleting.
         let _result = handle_arg_input_delete_forward(&mut state);
 
         // Then the emoji (4 bytes) is removed.
-        assert_eq!(state.frontend.arg_input.input, "bc");
-        assert_eq!(state.frontend.arg_input.cursor_pos, 0);
+        assert_eq!(state.frontend.arg_input.text.input, "bc");
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 0);
     }
 
     #[rstest::rstest]
     fn arg_input_cursor_left_multi_byte_grapheme() {
         // Given input with a multi-byte emoji at the end and cursor at end.
         let mut state = AppState::default();
-        state.frontend.arg_input.input = "a\u{1F600}".to_owned(); // "a😀"
-        state.frontend.arg_input.cursor_pos = state.frontend.arg_input.input.len(); // 5
+        state.frontend.arg_input.text.input = "a\u{1F600}".to_owned(); // "a😀"
+        state.frontend.arg_input.text.cursor_pos = state.frontend.arg_input.text.input.len(); // 5
 
         // When moving left.
         let _result = handle_arg_input_cursor_left(&mut state);
 
         // Then cursor moves to the start of the emoji (position 1).
-        assert_eq!(state.frontend.arg_input.cursor_pos, 1);
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 1);
     }
 
     #[rstest::rstest]
     fn arg_input_cursor_right_multi_byte_grapheme() {
         // Given input with a multi-byte emoji at position 1 and cursor at 1.
         let mut state = AppState::default();
-        state.frontend.arg_input.input = "a\u{1F600}b".to_owned(); // "a😀b"
-        state.frontend.arg_input.cursor_pos = 1;
+        state.frontend.arg_input.text.input = "a\u{1F600}b".to_owned(); // "a😀b"
+        state.frontend.arg_input.text.cursor_pos = 1;
 
         // When moving right.
         let _result = handle_arg_input_cursor_right(&mut state);
 
         // Then cursor moves past the emoji (4 bytes) to position 5.
-        assert_eq!(state.frontend.arg_input.cursor_pos, 5);
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 5);
     }
 
     #[rstest::rstest]
     fn arg_input_paste_updates_cursor_position() {
         // Given input with existing text and cursor at position 2.
         let mut state = AppState::default();
-        state.frontend.arg_input.input = "abcd".to_owned();
-        state.frontend.arg_input.cursor_pos = 2;
+        state.frontend.arg_input.text.input = "abcd".to_owned();
+        state.frontend.arg_input.text.cursor_pos = 2;
 
         // When pasting text at cursor.
         let _result = handle_arg_input_paste(&mut state, "XY");
 
         // Then text is inserted at cursor and cursor advances by pasted length.
-        assert_eq!(state.frontend.arg_input.input, "abXYcd");
-        assert_eq!(state.frontend.arg_input.cursor_pos, 4); // 2 + 2
+        assert_eq!(state.frontend.arg_input.text.input, "abXYcd");
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 4); // 2 + 2
     }
 
     #[rstest::rstest]
     fn arg_input_paste_at_end_appends() {
         // Given input with cursor at end.
         let mut state = AppState::default();
-        state.frontend.arg_input.input = "abc".to_owned();
-        state.frontend.arg_input.cursor_pos = 3;
+        state.frontend.arg_input.text.input = "abc".to_owned();
+        state.frontend.arg_input.text.cursor_pos = 3;
 
         // When pasting.
         let _result = handle_arg_input_paste(&mut state, "XYZ");
 
         // Then text is appended.
-        assert_eq!(state.frontend.arg_input.input, "abcXYZ");
-        assert_eq!(state.frontend.arg_input.cursor_pos, 6);
+        assert_eq!(state.frontend.arg_input.text.input, "abcXYZ");
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 6);
     }
 
     #[rstest::rstest]
     fn arg_input_paste_empty_does_nothing() {
         // Given input with cursor at position 2.
         let mut state = AppState::default();
-        state.frontend.arg_input.input = "abcd".to_owned();
-        state.frontend.arg_input.cursor_pos = 2;
+        state.frontend.arg_input.text.input = "abcd".to_owned();
+        state.frontend.arg_input.text.cursor_pos = 2;
 
         // When pasting empty text.
         let _result = handle_arg_input_paste(&mut state, "");
 
         // Then nothing changes.
-        assert_eq!(state.frontend.arg_input.input, "abcd");
-        assert_eq!(state.frontend.arg_input.cursor_pos, 2);
+        assert_eq!(state.frontend.arg_input.text.input, "abcd");
+        assert_eq!(state.frontend.arg_input.text.cursor_pos, 2);
     }
 }

@@ -9,7 +9,6 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
-use unicode_segmentation::UnicodeSegmentation;
 
 /// Horizontal padding fraction for the arg input popup (10% each side).
 const ARG_POPUP_H_PAD_FRAC: f32 = 0.10;
@@ -68,7 +67,7 @@ pub fn arg_input_popup_rect(area: Rect, ctx: &RenderCtx) -> Rect {
         })
         .map_or(1, |cmd| {
             let template = CommandTemplate::parse(cmd);
-            let display_args: Vec<String> = split_preserving_quotes(&arg_state.input);
+            let display_args: Vec<String> = split_preserving_quotes(&arg_state.text.input);
             let lines = template.display_line_segments(&display_args);
             (lines.len() as u16) + 2 // command lines + separator + input
         });
@@ -117,7 +116,7 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
     let theme = &state.frontend.theme;
 
     // Split the user's input into tokens for display (preserving quotes).
-    let display_args: Vec<String> = split_preserving_quotes(&arg_state.input);
+    let display_args: Vec<String> = split_preserving_quotes(&arg_state.text.input);
 
     // Compute content height: command lines + blank + input line.
     let content_rows = match &template {
@@ -211,15 +210,13 @@ pub fn render_arg_input(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
 
     // Last line: the input line with cursor.
     if y_offset < max_y {
-        let input_line = Line::from(Span::raw(format!("> {}", arg_state.input)));
+        let input_line = Line::from(Span::raw(format!("> {}", arg_state.text.input)));
         let input_para = Paragraph::new(input_line);
         frame.render_widget(input_para, Rect::new(inner.x, y_offset, inner.width, 1));
 
         // Compute cursor x position: "> " (2) + grapheme count up to cursor_pos.
         let prefix_len = 2u16; // "> "
-        let grapheme_count = arg_state.input[..arg_state.cursor_pos]
-            .graphemes(true)
-            .count();
+        let grapheme_count = arg_state.text.graphemes_before_cursor();
         let cursor_x = (prefix_len + grapheme_count as u16).min(inner.width.saturating_sub(1));
         frame.set_cursor_position((inner.x.saturating_add(cursor_x), y_offset));
     }
@@ -244,8 +241,12 @@ mod tests {
         state.frontend.arg_input = ArgInputState {
             lifecycle_name: lifecycle_name.to_owned(),
             template_display: String::new(),
-            input: input.to_owned(),
-            cursor_pos,
+            text: {
+                let mut li = crate::common::line_input::LineInput::new();
+                li.input = input.to_owned();
+                li.cursor_pos = cursor_pos;
+                li
+            },
         };
         if let Some(cmd) = setup_cmd {
             state
