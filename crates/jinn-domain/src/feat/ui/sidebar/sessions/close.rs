@@ -85,7 +85,7 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
     // Remove and replace if last session.
     let was_last = state.session.session_count() == 1;
     if was_last {
-        // Last session - create a new one with the last-used model/strategy.
+        // Last session - create a new one with the last-used model.
         let new_session = {
             let model = state
                 .frontend
@@ -93,21 +93,10 @@ pub fn handle_session_close(state: &mut AppState) -> crate::protocol::IntentResu
                 .last_model
                 .clone()
                 .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned());
-            let strategy = state
-                .frontend
-                .preferences
-                .last_strategy
-                .as_deref()
-                .map_or_else(
-                    crate::protocol::PromptStrategyId::passthrough,
-                    crate::protocol::PromptStrategyId::new,
-                );
-            let sliding_window_size = state.frontend.preferences.context_sliding_window.size;
+
             crate::feat::session::chat_session::ChatSessionState::new_with_profile(
                 crate::feat::session::profile::SessionProfile::from_config(
                     model,
-                    strategy,
-                    sliding_window_size,
                 ),
             )
         };

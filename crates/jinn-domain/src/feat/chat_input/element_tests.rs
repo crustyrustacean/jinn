@@ -596,9 +596,13 @@ fn render_cursor_mixed_ascii_cjk() {
 
 #[rstest::rstest]
 fn render_queue_badge_in_queue_mode() {
-    // Given a ChatInputBoxElement in default (Queue) mode with empty buffer.
+    // Given a ChatInputBoxElement toggled to Queue mode with empty buffer.
     let mut element = ChatInputBoxElement;
-    let state = AppState::default();
+    let state = {
+        let mut s = AppState::default();
+        s.active_chat_input_mut().toggle_input_mode(); // Steer → Queue
+        s
+    };
 
     let (mut terminal, area) = setup_term(40, 3);
 
@@ -629,13 +633,9 @@ fn render_queue_badge_in_queue_mode() {
 
 #[rstest::rstest]
 fn render_steer_badge_in_steer_mode() {
-    // Given a ChatInputBoxElement toggled to Steer mode.
+    // Given a ChatInputBoxElement in default (Steer) mode.
     let mut element = ChatInputBoxElement;
-    let state = {
-        let mut s = AppState::default();
-        s.active_chat_input_mut().toggle_input_mode();
-        s
-    };
+    let state = AppState::default();
 
     let (mut terminal, area) = setup_term(40, 3);
 

@@ -37,7 +37,7 @@ pub use mode::Mode;
 // Re-export domain types that are widely used as cross-cutting protocol concerns
 pub use crate::common::actor::actor_name::ActorName;
 pub use crate::feat::context::protocol::prompt_template::PromptTemplate;
-pub use crate::feat::context::protocol::strategy_id::PromptStrategyId;
+
 pub use crate::feat::picker::picker_kind::PickerKind;
 pub use crate::feat::provider::llm_message::LlmMessage;
 pub use crate::feat::session::protocol::session_id::SessionId;

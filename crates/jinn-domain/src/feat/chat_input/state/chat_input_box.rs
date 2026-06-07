@@ -12,7 +12,7 @@ use crate::feat::chat_input::AutocompleteMatch;
 /// Submission mode for the chat input box.
 ///
 /// Controls where `SubmitMessage` sends the text:
-/// - `Queue`: enqueue a normal `UserMessage` on the turn queue (the default).
+/// - `Queue`: enqueue a normal `UserMessage` on the turn queue.
 /// - `Steer`: append a fragment to the in-memory steering buffer for mid-turn
 ///   injection, with a fall-through to `EnqueueUserMessage` when the session
 ///   is `Idle` (no live turn to steer into).
@@ -21,10 +21,10 @@ use crate::feat::chat_input::AutocompleteMatch;
 /// across app restarts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum InputMode {
-    /// Submissions go to the normal turn queue (default).
-    #[default]
+    /// Submissions go to the normal turn queue.
     Queue,
     /// Submissions route to the steering buffer (or fall back to queue when phase is Idle).
+    #[default]
     Steer,
 }
 

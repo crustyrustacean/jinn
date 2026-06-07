@@ -6,7 +6,7 @@
 
 use crate::common::actor::ActorContext;
 use crate::feat::context::env_context::load_project_context_files;
-use crate::protocol::{Command, PromptStrategyId};
+use crate::protocol::Command;
 
 use super::super::SessionPersistenceActor;
 
@@ -39,10 +39,7 @@ impl SessionPersistenceActor {
             {
                 session.set_model(model.clone());
             }
-            if let Some(ref strategy_str) = prefs.last_strategy {
-                let strategy_id = PromptStrategyId::new(strategy_str.clone());
-                session.switch_strategy(strategy_id.clone());
-            }
+
         }
 
         tracing::info!("DIAG on_environment_loaded model/strategy applied");

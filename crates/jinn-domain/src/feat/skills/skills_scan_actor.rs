@@ -75,6 +75,9 @@ impl SkillsScanActor {
                 {
                     let mut guard = self.state.write();
                     guard.context.skills.clone_from(&skills);
+                    // A rescan may discover changed bodies on disk; clear rendered
+                    // previews so stale markdown is never redisplayed.
+                    guard.frontend.caches.skill_preview_cache.write().clear();
                     super::reload::reload_skill_picker_entries(&mut guard);
                 }
 
@@ -125,6 +128,7 @@ mod tests {
     use crate::common::app_state::AppState;
     use crate::common::state::State;
     use crate::protocol::Command;
+    use jinn_selection_widget::PreviewCache;
 
     use super::*;
 
@@ -177,6 +181,34 @@ mod tests {
         let guard = state.read();
         assert_eq!(guard.context.skills.len(), 1);
         assert_eq!(guard.context.skills[0].name, "test-skill");
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn scan_skills_clears_skill_preview_cache() {
+        // Given an actor whose state holds a populated preview cache (from a
+        // previous picker session).
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let state = State::new(AppState::default());
+        {
+            let guard = state.write();
+            guard.frontend.caches
+                .skill_preview_cache
+                .write()
+                .insert("stale-skill".to_owned(), 80, vec![ratatui::text::Line::raw("stale")]);
+        }
+        let (mut actor, _sink, ctx) = create_actor(&dir, state.clone());
+
+        // When processing a ScanSkills command (rescan).
+        actor
+            .handle(ActorEnvelope::Command(Command::ScanSkills), &ctx)
+            .await;
+
+        // Then the cache is cleared so rescanned bodies are re-rendered fresh.
+        assert!(
+            state.read().frontend.caches.skill_preview_cache.read().is_empty(),
+            "rescan must clear the skill preview cache"
+        );
     }
 
     #[rstest::rstest]
