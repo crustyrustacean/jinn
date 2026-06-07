@@ -481,10 +481,7 @@ impl IntentHandler {
                 feat::ui::sidebar::sessions::handle_session_continue(state)
             }
 
-            Intent::SidebarConfirm => {
-                feat::ui::sidebar::sessions::handle_session_activate(state);
-                IntentResult::empty()
-            }
+            Intent::SidebarConfirm => feat::ui::sidebar::sessions::handle_session_activate(state),
 
             // --- Chat Entry Selection ---
             Intent::ChatEntrySelectNext => {
@@ -586,15 +583,9 @@ impl IntentHandler {
             }
 
             // --- CWD Input (type a path) ---
-            Intent::OpenCwdInput => {
-                feat::cwd_input::intent::handle_cwd_input_enter(state)
-            }
-            Intent::CwdInputConfirm => {
-                feat::cwd_input::intent::handle_cwd_input_confirm(state)
-            }
-            Intent::CwdInputLeave => {
-                feat::cwd_input::intent::handle_cwd_input_leave(state)
-            }
+            Intent::OpenCwdInput => feat::cwd_input::intent::handle_cwd_input_enter(state),
+            Intent::CwdInputConfirm => feat::cwd_input::intent::handle_cwd_input_confirm(state),
+            Intent::CwdInputLeave => feat::cwd_input::intent::handle_cwd_input_leave(state),
 
             // --- CWD Selection ---
             Intent::ChangeCwd { root } => {
@@ -753,7 +744,10 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Hel".to_owned(), cursor_pos: 3 },
+            text: crate::common::line_input::LineInput {
+                input: "Hel".to_owned(),
+                cursor_pos: 3,
+            },
         };
 
         // When handling RenameInsertChar { ch: 'o' }.
@@ -775,7 +769,10 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 5 },
+            text: crate::common::line_input::LineInput {
+                input: "Hello".to_owned(),
+                cursor_pos: 5,
+            },
         };
 
         // When handling RenameCursorLeft.
@@ -795,7 +792,10 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Hi".to_owned(), cursor_pos: 0 },
+            text: crate::common::line_input::LineInput {
+                input: "Hi".to_owned(),
+                cursor_pos: 0,
+            },
         };
 
         // When handling RenameCursorRight.
@@ -815,7 +815,10 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 5 },
+            text: crate::common::line_input::LineInput {
+                input: "Hello".to_owned(),
+                cursor_pos: 5,
+            },
         };
 
         // When handling RenameDeleteGrapheme.
@@ -836,7 +839,10 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 1 },
+            text: crate::common::line_input::LineInput {
+                input: "Hello".to_owned(),
+                cursor_pos: 1,
+            },
         };
 
         // When handling RenameDeleteForward.
@@ -856,7 +862,10 @@ mod tests {
         state.frontend.arg_input = crate::common::app_state::ArgInputState {
             lifecycle_name: "test".to_owned(),
             template_display: "<arg>".to_owned(),
-            text: crate::common::line_input::LineInput { input: "hel".to_owned(), cursor_pos: 3 },
+            text: crate::common::line_input::LineInput {
+                input: "hel".to_owned(),
+                cursor_pos: 3,
+            },
         };
 
         // When handling InsertChar.
@@ -895,7 +904,10 @@ mod tests {
         state.frontend.arg_input = crate::common::app_state::ArgInputState {
             lifecycle_name: "test".to_owned(),
             template_display: "<arg>".to_owned(),
-            text: crate::common::line_input::LineInput { input: "abc".to_owned(), cursor_pos: 3 },
+            text: crate::common::line_input::LineInput {
+                input: "abc".to_owned(),
+                cursor_pos: 3,
+            },
         };
 
         // When handling DeleteGrapheme.
@@ -913,7 +925,10 @@ mod tests {
         state.frontend.arg_input = crate::common::app_state::ArgInputState {
             lifecycle_name: "test".to_owned(),
             template_display: "<arg>".to_owned(),
-            text: crate::common::line_input::LineInput { input: "ab".to_owned(), cursor_pos: 2 },
+            text: crate::common::line_input::LineInput {
+                input: "ab".to_owned(),
+                cursor_pos: 2,
+            },
         };
 
         // When handling MoveCursorLeft.
@@ -931,7 +946,10 @@ mod tests {
         state.frontend.arg_input = crate::common::app_state::ArgInputState {
             lifecycle_name: "test".to_owned(),
             template_display: "<arg>".to_owned(),
-            text: crate::common::line_input::LineInput { input: "ab".to_owned(), cursor_pos: 0 },
+            text: crate::common::line_input::LineInput {
+                input: "ab".to_owned(),
+                cursor_pos: 0,
+            },
         };
 
         // When handling MoveCursorRight.
@@ -949,7 +967,10 @@ mod tests {
         state.frontend.arg_input = crate::common::app_state::ArgInputState {
             lifecycle_name: "test".to_owned(),
             template_display: "<arg>".to_owned(),
-            text: crate::common::line_input::LineInput { input: "abc".to_owned(), cursor_pos: 1 },
+            text: crate::common::line_input::LineInput {
+                input: "abc".to_owned(),
+                cursor_pos: 1,
+            },
         };
 
         // When handling DeleteGraphemeForward.
@@ -967,7 +988,10 @@ mod tests {
         state.frontend.arg_input = crate::common::app_state::ArgInputState {
             lifecycle_name: "test".to_owned(),
             template_display: "<arg>".to_owned(),
-            text: crate::common::line_input::LineInput { input: "partial".to_owned(), cursor_pos: 7 },
+            text: crate::common::line_input::LineInput {
+                input: "partial".to_owned(),
+                cursor_pos: 7,
+            },
         };
 
         // When handling EnterNormalMode.
@@ -1010,7 +1034,10 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "old".to_owned(), cursor_pos: 3 },
+            text: crate::common::line_input::LineInput {
+                input: "old".to_owned(),
+                cursor_pos: 3,
+            },
         };
 
         // When handling PasteText.

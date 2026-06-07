@@ -329,7 +329,8 @@ impl SessionStore for SqliteSessionStore {
                 .get()
                 .change_context(SessionStoreError)
                 .attach("failed to acquire connection from pool")?;
-            shutdown_blocking(&mut conn)
+            shutdown_blocking(&mut conn)?;
+            Ok(())
         })
         .await
         .change_context(SessionStoreError)
@@ -751,8 +752,10 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
 /// Saves a complete session in a single transaction.
 ///
 /// Upserts session metadata, replaces all junction rows and token ledger rows,
-/// and inserts any new entries. Orphaned entries (no longer referenced by any
-/// session) are cleaned up at the end.
+/// and inserts any new entries. Orphaned-entry reaping is intentionally not done
+/// here — it belongs in `delete_blocking`/`fork_blocking`, where the removing
+/// session is known. A global cleanup in the save hot-path could wipe every
+/// entry if `session_history` is transiently empty (e.g. mid-migration).
 fn save_blocking(
     conn: &mut SqliteConnection,
     session: &ChatSessionState,
@@ -776,7 +779,6 @@ fn save_blocking(
                 sessions::title.eq(excluded(sessions::title)),
                 sessions::updated_at.eq(excluded(sessions::updated_at)),
                 sessions::profile.eq(excluded(sessions::profile)),
-
                 sessions::blobs.eq(excluded(sessions::blobs)),
                 sessions::cwd.eq(excluded(sessions::cwd)),
                 sessions::lifecycle_name.eq(excluded(sessions::lifecycle_name)),
@@ -858,12 +860,6 @@ fn save_blocking(
                 })
                 .execute(txn)?;
         }
-
-        // Clean up orphaned entries (no longer referenced by any session).
-        diesel::sql_query(
-            "DELETE FROM entries WHERE id NOT IN (SELECT entry_id FROM session_history)",
-        )
-        .execute(txn)?;
 
         Ok(())
     })
@@ -1024,24 +1020,59 @@ fn load_session_blocking(
 }
 
 /// Deletes a session and all its associated data.
+/// Deletes a session and reaps entries that became orphaned by this delete.
+///
+/// Cleanup is **scoped to this session's own former entries**: the session's
+/// `entry_id`s are captured before the FK cascade removes its junction rows,
+/// then only those candidates that no remaining session references are deleted.
+/// A global orphan sweep is deliberately avoided — a transiently-empty global
+/// `session_history` state can never cause mass reaping of other sessions' data.
 fn delete_blocking(
     conn: &mut SqliteConnection,
     session_id: &SessionId,
 ) -> Result<(), Report<SessionStoreError>> {
-    use crate::schema::sessions;
-
     let session_id_str = session_id.to_string();
 
-    diesel::delete(sessions::table.filter(sessions::id.eq(&session_id_str)))
-        .execute(conn)
-        .change_context(SessionStoreError)
-        .attach("failed to delete session")?;
+    conn.transaction::<_, diesel::result::Error, _>(|txn| {
+        use crate::schema::{entries, session_history, sessions};
 
-    // Clean up orphaned entries.
-    diesel::sql_query("DELETE FROM entries WHERE id NOT IN (SELECT entry_id FROM session_history)")
-        .execute(conn)
-        .change_context(SessionStoreError)
-        .attach("failed to clean orphaned entries after delete")?;
+        // Capture this session's entry references before the FK cascade
+        // removes them. These are the only candidates for reaping.
+        let candidates: Vec<String> = session_history::table
+            .filter(session_history::session_id.eq(&session_id_str))
+            .select(session_history::entry_id)
+            .distinct()
+            .load(txn)?;
+
+        // Delete the session. With FK=ON this cascades to remove this session's
+        // session_history and token_ledger rows.
+        diesel::delete(sessions::table.filter(sessions::id.eq(&session_id_str))).execute(txn)?;
+
+        if candidates.is_empty() {
+            return Ok(());
+        }
+
+        // After the cascade, session_history holds only OTHER sessions'
+        // references. Reap a candidate only if no remaining session claims it.
+        let still_referenced: Vec<String> = session_history::table
+            .filter(session_history::entry_id.eq_any(&candidates))
+            .select(session_history::entry_id)
+            .distinct()
+            .load(txn)?;
+        let orphaned: Vec<String> = candidates
+            .iter()
+            .filter(|id| !still_referenced.contains(id))
+            .cloned()
+            .collect();
+
+        if !orphaned.is_empty() {
+            diesel::delete(entries::table.filter(entries::id.eq_any(&orphaned))).execute(txn)?;
+        }
+
+        Ok(())
+    })
+    .change_context(SessionStoreError)
+    .attach("failed to delete session")?;
 
     Ok(())
 }
@@ -1193,34 +1224,77 @@ fn load_unarchived_summaries_blocking(
     Ok(summaries)
 }
 
-/// Deletes empty unarchived sessions and orphaned entries during shutdown.
+/// Result row of `PRAGMA wal_checkpoint(TRUNCATE)`.
 ///
-/// An "empty" session is one with no rows in `session_history`. These can
-/// accumulate when `SaveNewLifecycleSession` persists a session before its
-/// setup command runs, and the app exits before the session gets any entries.
-fn shutdown_blocking(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
-    // Delete unarchived sessions that have no chat history entries.
-    let result = sql_query(
-        "DELETE FROM sessions WHERE archived = 0 AND id NOT IN (SELECT DISTINCT session_id FROM session_history)",
-    )
-    .execute(conn)
-    .change_context(SessionStoreError)
-    .attach("failed to delete empty sessions during shutdown")?;
+/// Columns: `busy` (1 if the checkpoint could not complete because a reader
+/// held a snapshot), `log` (frames in the WAL), `checkpointed` (frames folded
+/// into the main db). Mapped by name via `QueryableByName`.
+#[derive(QueryableByName)]
+struct CheckpointResult {
+    #[diesel(sql_type = diesel::sql_types::Integer)]
+    busy: i32,
+    #[diesel(sql_type = diesel::sql_types::Integer)]
+    log: i32,
+    #[diesel(sql_type = diesel::sql_types::Integer)]
+    checkpointed: i32,
+}
 
-    if result > 0 {
+/// Non-destructive flush called during shutdown.
+///
+/// Folds committed WAL frames into `sessions.db` via
+/// `PRAGMA wal_checkpoint(TRUNCATE)`, then truncates the `-wal` file to
+/// zero bytes. This leaves `sessions.db` self-contained on a clean quit, so a
+/// user (or sync tool) copying only `sessions.db` gets a complete, current
+/// database instead of one missing whatever the auto-checkpoint had not yet
+/// folded in.
+///
+/// This is operational hygiene only — WAL already guarantees committed data
+/// survives a crash (the next launch replays any un-folded frames). It does
+/// **not** prune sessions or entries. The earlier destructive heuristic that
+/// reaped "empty" unarchived sessions here was a data-destruction hazard and
+/// was removed; orphan reaping now lives only in `delete`/`fork` where the
+/// removed session is known.
+///
+/// # Errors
+///
+/// Returns [`SessionStoreError`] if the checkpoint query fails. A `busy=1`
+/// result (a reader held a snapshot mid-checkpoint) is **not** an error: the
+/// call logs a warning and returns `Ok`, leaving some frames un-folded.
+fn shutdown_blocking(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    let result: CheckpointResult = sql_query("PRAGMA wal_checkpoint(TRUNCATE)")
+        .get_result(conn)
+        .change_context(SessionStoreError)
+        .attach("failed to run wal_checkpoint(TRUNCATE) during shutdown")?;
+
+    classify_checkpoint_result(&result);
+    Ok(())
+}
+
+/// Classifies a `wal_checkpoint` result row as fatal or non-fatal.
+///
+/// Extracted from [`shutdown_blocking`] as a pure function so the `busy=1`
+/// graceful-degradation path is unit-testable without a database. A busy
+/// result (a reader held a snapshot mid-checkpoint) logs a warning and returns
+/// `Ok` — the un-folded frames survive in the WAL and fold on the next open.
+/// A clean result logs at info level.
+///
+/// This function never fails: the only fallible step in shutdown is the
+/// checkpoint query itself, which stays in [`shutdown_blocking`]. This pure
+/// classifier just chooses the log level based on the result row.
+fn classify_checkpoint_result(result: &CheckpointResult) {
+    if result.busy == 1 {
+        tracing::warn!(
+            log_frames = result.log,
+            checkpointed_frames = result.checkpointed,
+            "wal_checkpoint was busy; some WAL frames remain un-folded (non-fatal)"
+        );
+    } else {
         tracing::info!(
-            count = result,
-            "deleted empty unarchived sessions during shutdown"
+            log_frames = result.log,
+            checkpointed_frames = result.checkpointed,
+            "folded WAL into sessions.db during shutdown"
         );
     }
-
-    // Clean up orphaned entries (not referenced by any session).
-    sql_query("DELETE FROM entries WHERE id NOT IN (SELECT entry_id FROM session_history)")
-        .execute(conn)
-        .change_context(SessionStoreError)
-        .attach("failed to delete orphaned entries during shutdown")?;
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -1456,30 +1530,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn shutdown_cleans_up_empty_sessions() {
-        // Given a store with an empty session (no history entries).
+    async fn shutdown_preserves_all_sessions() {
+        // Given a store with an empty session (no history entries) and a full one.
         let store = fresh_store();
         let empty_session = ChatSessionState::new();
         let empty_id = empty_session.session_id().clone();
         store.save(&empty_session).await.expect("save empty");
 
-        // Also save a non-empty session that should survive.
         let full_session = make_session();
         let full_id = full_session.session_id().clone();
         store.save(&full_session).await.expect("save full");
 
-        // Verify both are visible before shutdown.
-        let before = store.load_summaries().await.expect("load_summaries");
-        assert_eq!(
-            before.len(),
-            2,
-            "both sessions should be visible before shutdown"
-        );
-
         // When shutting down.
         store.shutdown().await.expect("shutdown");
 
-        // Then only the non-empty session survives.
+        // Then both sessions survive — shutdown is a non-destructive no-op.
         let after = store
             .load_summaries()
             .await
@@ -1490,9 +1555,94 @@ mod tests {
             "non-empty session should survive shutdown"
         );
         assert!(
-            !ids.contains(&&empty_id),
-            "empty session should be cleaned up during shutdown"
+            ids.contains(&&empty_id),
+            "empty session should survive shutdown (no destructive cleanup)"
         );
+    }
+
+    #[tokio::test]
+    async fn shutdown_truncates_wal_file() {
+        // Given a store that has written a session whose frames sit in the WAL
+        // (a small write stays well under the ~4MB autocheckpoint threshold).
+        let dir = tempfile::tempdir().expect("temp dir");
+        let wal_path = dir.path().join("sessions.db-wal");
+        let store = SqliteSessionStore::new_in(dir.path()).expect("new_in");
+        store.save(&make_session()).await.expect("save");
+
+        // The WAL sidecar exists and holds the uncheckpointed frames.
+        assert!(
+            wal_path.exists() && wal_path.metadata().unwrap().len() > 0,
+            "WAL should hold frames before shutdown"
+        );
+
+        // When shutting down the store with its pool still alive.
+        store.shutdown().await.expect("shutdown");
+
+        // Then the WAL has been truncated to zero bytes. With the pool still
+        // open this can only happen via an explicit TRUNCATE checkpoint.
+        assert_eq!(
+            wal_path.metadata().unwrap().len(),
+            0,
+            "WAL should be truncated to 0 bytes after shutdown checkpoint"
+        );
+    }
+
+    #[tokio::test]
+    async fn shutdown_makes_db_self_contained_for_backup() {
+        // Given a store that has saved a session and then shut down.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let store = SqliteSessionStore::new_in(dir.path()).expect("new_in");
+        let session = make_session();
+        let id = session.session_id().clone();
+        store.save(&session).await.expect("save");
+        store.shutdown().await.expect("shutdown");
+        // Drop the store, closing every pooled connection.
+        drop(store);
+
+        // When the WAL sidecars are removed, simulating a backup that copied
+        // only sessions.db.
+        let _ = std::fs::remove_file(dir.path().join("sessions.db-wal"));
+        let _ = std::fs::remove_file(dir.path().join("sessions.db-shm"));
+
+        // Then sessions.db alone opens cleanly and contains the saved session.
+        let reopened = SqliteSessionStore::new_in(dir.path()).expect("reopen");
+        let summaries = reopened.load_summaries().await.expect("load");
+        assert!(
+            summaries.iter().any(|s| s.session_id == id),
+            "sessions.db alone must contain all data after shutdown checkpoint"
+        );
+    }
+
+    #[test]
+    fn busy_checkpoint_result_does_not_panic() {
+        // Given a checkpoint result that reports busy (a reader held a snapshot).
+        let busy = CheckpointResult {
+            busy: 1,
+            log: 7,
+            checkpointed: 3,
+        };
+
+        // When classifying it.
+        //
+        // Then it completes without panicking — un-folded frames survive
+        // in the WAL and fold on the next open, so this is graceful
+        // degradation, not data loss.
+        classify_checkpoint_result(&busy);
+    }
+
+    #[test]
+    fn clean_checkpoint_result_does_not_panic() {
+        // Given a checkpoint result that fully folded the WAL.
+        let clean = CheckpointResult {
+            busy: 0,
+            log: 7,
+            checkpointed: 7,
+        };
+
+        // When classifying it.
+        //
+        // Then it completes without panicking.
+        classify_checkpoint_result(&clean);
     }
 
     #[tokio::test]
@@ -1623,6 +1773,154 @@ mod tests {
         assert!(
             loaded.history()[0].context_history.is_empty(),
             "fresh entry should have no audit events"
+        );
+    }
+
+    // ── Save-path isolation: no global orphan cleanup ───────────────────
+
+    /// Regression for the Phase 2 fix: `save_blocking` previously ended every
+    /// transaction with a global `DELETE FROM entries WHERE id NOT IN
+    /// (SELECT entry_id FROM session_history)`. When `session_history` was
+    /// transiently empty (as after migrate_v15's cascade), the next save wiped
+    /// every entry in the database. This test proves saving one session can no
+    /// longer delete an entry that belongs to no `session_history` row.
+    #[test]
+    fn save_blocking_does_not_delete_orphaned_entries_when_history_is_empty() {
+        use crate::schema::entries;
+
+        // Given a migrated database with FK=ON holding one orphan entry that no
+        // `session_history` row references.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let db_path = dir.path().join("sessions.db");
+        let database_url = db_path.to_string_lossy().to_string();
+        let mut conn = SqliteConnection::establish(&database_url).expect("establish");
+        sql_query("PRAGMA foreign_keys=ON")
+            .execute(&mut conn)
+            .expect("fk on");
+        migrator::run_migrations(&mut conn).expect("migrations");
+        sql_query(
+            "INSERT INTO entries (id, timestamp, kind) \
+             VALUES ('orphan-1', '2024-01-01T00:00:00Z', '\"User\"')",
+        )
+        .execute(&mut conn)
+        .expect("seed orphan entry");
+
+        // And an empty session_history (the post-cascade state).
+        // When saving a fresh session with no entries.
+        let fresh = ChatSessionState::new();
+        save_blocking(&mut conn, &fresh).expect("save");
+
+        // Then the orphan entry survives: `session_history` being empty for
+        // this session did not trigger a global cleanup.
+        let survivor: i64 = entries::table
+            .filter(entries::id.eq("orphan-1"))
+            .count()
+            .get_result(&mut conn)
+            .expect("count");
+        assert_eq!(
+            survivor, 1,
+            "orphan entry must survive a save on another session"
+        );
+    }
+
+    /// Standalone connection with migrations applied and FK on, for raw
+    /// seeding and assertion in the orphan-scoping tests.
+    fn migrated_conn() -> (tempfile::TempDir, SqliteConnection) {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let db_path = dir.path().join("sessions.db");
+        let url = db_path.to_string_lossy().to_string();
+        let mut conn = SqliteConnection::establish(&url).expect("establish");
+        sql_query("PRAGMA foreign_keys=ON")
+            .execute(&mut conn)
+            .expect("fk on");
+        migrator::run_migrations(&mut conn).expect("migrations");
+        (dir, conn)
+    }
+
+    #[tokio::test]
+    async fn delete_reaps_entries_unique_to_deleted_session() {
+        use crate::schema::entries;
+
+        // Given a session with an entry that no other session references.
+        let (_dir, mut conn) = migrated_conn();
+        let session = make_session();
+        let id = session.session_id().clone();
+        save_blocking(&mut conn, &session).expect("save");
+
+        // When deleting the session.
+        delete_blocking(&mut conn, &id).expect("delete");
+
+        // Then the unique entry is reaped (cleanup still works, not regressed
+        // to never-reap).
+        let surviving: i64 = entries::table.count().get_result(&mut conn).expect("count");
+        assert_eq!(surviving, 0, "unique entry should be reaped on delete");
+    }
+
+    #[tokio::test]
+    async fn delete_preserves_entries_shared_with_other_session() {
+        use crate::schema::{entries, session_history};
+
+        // Given a source session, forked so two sessions share the same entry
+        // via their session_history junction rows.
+        let (_dir, mut conn) = migrated_conn();
+        let session = make_session();
+        let source_id = session.session_id().clone();
+        save_blocking(&mut conn, &session).expect("save source");
+        let fork_id = fork_blocking(&mut conn, &source_id, 0).expect("fork");
+
+        // The shared entry id is the one both sessions reference.
+        let shared_entry: String = session_history::table
+            .filter(session_history::session_id.eq(fork_id.to_string()))
+            .select(session_history::entry_id)
+            .first::<String>(&mut conn)
+            .expect("load shared entry id");
+
+        // When deleting the fork.
+        delete_blocking(&mut conn, &fork_id).expect("delete fork");
+
+        // Then the shared entry survives because the source session still
+        // references it (the scoping filter held it back).
+        let survivor: i64 = entries::table
+            .filter(entries::id.eq(&shared_entry))
+            .count()
+            .get_result(&mut conn)
+            .expect("count");
+        assert_eq!(
+            survivor, 1,
+            "shared entry must survive deletion of one referencing session"
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_does_not_reap_unrelated_orphan_entries() {
+        use crate::schema::entries;
+
+        // Given a store with one normal session and a pre-existing orphan entry
+        // (no session_history row references it) belonging to no session.
+        let (_dir, mut conn) = migrated_conn();
+        let session = make_session();
+        let id = session.session_id().clone();
+        save_blocking(&mut conn, &session).expect("save");
+        sql_query(
+            "INSERT INTO entries (id, timestamp, kind) \
+             VALUES ('orphan-x', '2024-01-01T00:00:00Z', '\"User\"')",
+        )
+        .execute(&mut conn)
+        .expect("seed orphan");
+
+        // When deleting the unrelated session.
+        delete_blocking(&mut conn, &id).expect("delete");
+
+        // Then the unrelated orphan entry survives — a delete of session A
+        // never reaps entries that were never A's.
+        let survivor: i64 = entries::table
+            .filter(entries::id.eq("orphan-x"))
+            .count()
+            .get_result(&mut conn)
+            .expect("count");
+        assert_eq!(
+            survivor, 1,
+            "unrelated orphan entry must survive deletion of a different session"
         );
     }
 }

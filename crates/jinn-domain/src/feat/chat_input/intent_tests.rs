@@ -1686,14 +1686,15 @@ fn hash_autocomplete_populates_matches_from_template_store() {
 
     let mut state = AppState::default();
     state.frontend.scope_stack.push(FocusScope::Input);
-    state.context.prompt_templates =
+    state.active_session_mut().set_discovered_prompt_templates(
         crate::feat::context::prompt_template::PromptTemplateStore::from_vec(vec![
             PromptTemplate {
                 name: "my_template".to_owned(),
                 description: "A test template".to_owned(),
                 body: "template body".to_owned(),
             },
-        ]);
+        ]),
+    );
 
     // When inserting '#' at position 0.
     let _ = crate::feat::chat_input::intent::handle_insert_char('#', &mut state);

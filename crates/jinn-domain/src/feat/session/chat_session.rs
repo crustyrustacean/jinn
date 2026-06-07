@@ -26,8 +26,7 @@ use crate::feat::session::steering_buffer::SteeringBuffer;
 use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{
-    ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition,
-    SessionId,
+    ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition, SessionId,
 };
 
 /// Error returned when a streaming operation fails.
@@ -127,6 +126,26 @@ pub struct SessionCoreEphemeral {
     /// stream completion). Not persisted across restarts.
     #[serde(skip)]
     pub(crate) pending_mutations: Vec<Vec<crate::feat::session::history_mutation::HistoryMutation>>,
+
+    /// Discovered resources for THIS session, scoped to its cwd tree.
+    /// Populated by the scan actors (skills / prompts / context-files).
+    /// Ephemeral: not persisted, re-scanned from disk on session load.
+    /// OWNER: scan actors (SkillsScanActor / PromptScanActor / context-files actor).
+    /// See `.plans/project-locals/plan.md` decision D3 — per-session isolation.
+    #[serde(skip)]
+    pub(crate) discovered_skills: Vec<crate::feat::skills::Skill>,
+
+    /// Discovered prompt templates for this session (merged global + project).
+    /// OWNER: PromptScanActor.
+    #[serde(skip)]
+    pub(crate) discovered_prompt_templates:
+        crate::feat::context::prompt_template::PromptTemplateStore,
+
+    /// Discovered AGENTS.md/CLAUDE.md context files for this session, ordered
+    /// root-first (root ancestor first, cwd last) for prompt assembly.
+    /// OWNER: context-files scan actor.
+    #[serde(skip)]
+    pub(crate) discovered_context_files: Vec<crate::feat::context::env_context::ContextFile>,
 }
 
 // Core session state - owned by session-actor and context-actor.
@@ -440,7 +459,6 @@ impl ChatSessionState {
             ui: SessionUi::default(),
         }
     }
-
 
     /// Create a new session with a specific profile (model + strategy).
     #[must_use]
@@ -965,31 +983,43 @@ impl ChatSessionState {
         // All streaming indices cleaned up by StreamingPhase drop on cancel()
     }
 
-    /// Cancel streaming and drain queued messages back to the input buffer.
+    /// Cancel streaming and drain steering fragments plus queued messages back
+    /// into the input buffer.
     ///
-    /// Used when the user interrupts or switches to Normal mode during an
-    /// active stream. The display text from drained `UserMessage` entries is
-    /// joined with newlines and replaces whatever was in the input box.
-    /// `ToolContinuation` items are silently discarded.
+    /// Used when the user interrupts via ESC-confirm during an active stream.
+    /// Steering fragments (drained first) and the display text of each queued
+    /// `UserMessage` are joined with `"\n\n---\n\n"` and replace whatever was
+    /// in the input box. `ToolContinuation` items are silently discarded.
+    /// If nothing was drained, the input box is left untouched.
     pub fn cancel_stream_and_drain(&mut self) {
         self.cancel_streaming();
-        let drained = self.drain_queue();
-        let display_texts: Vec<&str> = drained
-            .iter()
-            .filter_map(|item| match item {
+        let drained_text = self.drain_cancel_chunks().join("\n\n---\n\n");
+        if !drained_text.is_empty() {
+            self.chat_input_mut().replace_all(drained_text);
+        }
+    }
+
+    /// Collects the text chunks drained out of the steering buffer and turn
+    /// queue, in cancel-recovery order.
+    ///
+    /// Steering fragments come first, followed by the display text of each
+    /// queued `UserMessage`. `ToolContinuation` items are discarded. The
+    /// caller applies whatever separator it wants.
+    fn drain_cancel_chunks(&mut self) -> Vec<String> {
+        let steering = self.steering_buffer_mut().drain_fragments();
+        let queue = self.drain_queue();
+        steering
+            .into_iter()
+            .chain(queue.into_iter().filter_map(|item| match item {
                 crate::feat::session::queue_item::QueueItem::UserMessage(entry) => {
                     match &entry.kind {
-                        ChatEntryKind::User { display, .. } => Some(display.as_str()),
+                        ChatEntryKind::User { display, .. } => Some(display.clone()),
                         _ => None,
                     }
                 }
                 crate::feat::session::queue_item::QueueItem::ToolContinuation => None,
-            })
-            .collect();
-        let drained_text = display_texts.join("\n");
-        if !drained_text.is_empty() {
-            self.chat_input_mut().replace_all(drained_text);
-        }
+            }))
+            .collect()
     }
 
     /// Returns the current session lifecycle phase.
@@ -1313,8 +1343,6 @@ impl ChatSessionState {
     ) -> std::collections::VecDeque<crate::feat::session::queue_item::QueueItem> {
         self.core.ephemeral.message_queue.drain()
     }
-
-
 
     /// Read-only access to the session profile.
     pub fn profile(&self) -> &SessionProfile {
@@ -2330,6 +2358,50 @@ impl ChatSessionState {
         self.core.ephemeral.cached_context_size = Some(size);
     }
 
+    // ----- Discovered resources (per-session, cwd-scoped) -----
+    //
+    // These are populated by the scan actors and read by prompt assembly and
+    // the skill tool. They are NOT persisted — see `.plans/project-locals/plan.md`
+    // decision D3 for the per-session isolation rationale.
+
+    /// Returns the skills discovered for this session's cwd tree.
+    pub fn discovered_skills(&self) -> &[crate::feat::skills::Skill] {
+        &self.core.ephemeral.discovered_skills
+    }
+
+    /// Returns the prompt templates discovered for this session's cwd tree.
+    pub fn discovered_prompt_templates(
+        &self,
+    ) -> &crate::feat::context::prompt_template::PromptTemplateStore {
+        &self.core.ephemeral.discovered_prompt_templates
+    }
+
+    /// Returns the context files discovered for this session's cwd tree.
+    pub fn discovered_context_files(&self) -> &[crate::feat::context::env_context::ContextFile] {
+        &self.core.ephemeral.discovered_context_files
+    }
+
+    /// Replaces the discovered skills set for this session (scan-actor write path).
+    pub fn set_discovered_skills(&mut self, skills: Vec<crate::feat::skills::Skill>) {
+        self.core.ephemeral.discovered_skills = skills;
+    }
+
+    /// Replaces the discovered prompt-template store for this session.
+    pub fn set_discovered_prompt_templates(
+        &mut self,
+        store: crate::feat::context::prompt_template::PromptTemplateStore,
+    ) {
+        self.core.ephemeral.discovered_prompt_templates = store;
+    }
+
+    /// Replaces the discovered context files for this session.
+    pub fn set_discovered_context_files(
+        &mut self,
+        files: Vec<crate::feat::context::env_context::ContextFile>,
+    ) {
+        self.core.ephemeral.discovered_context_files = files;
+    }
+
     /// Restore the token ledger from persisted data.
     pub fn restore_token_ledger(&mut self, records: Vec<TokenRecord>) {
         self.core.token_ledger = records;
@@ -2386,7 +2458,6 @@ impl ChatSessionState {
     pub fn touch(&mut self) {
         self.core.updated_at = Timestamp::now();
     }
-
 
     /// Generic blob storage for future subsystems.
     pub fn blobs(&self) -> &HashMap<String, JsonValue> {

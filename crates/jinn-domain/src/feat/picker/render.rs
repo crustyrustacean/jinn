@@ -158,15 +158,16 @@ mod tests {
     fn render_skill_picker_caches_preview_per_skill_and_width() {
         // Given a picker populated with two skills and a selection on the first.
         let mut state = AppState::default();
-        state.context.skills = vec![
-            crate::feat::skills::Skill {
+        state
+            .active_session_mut()
+            .set_discovered_skills(vec![crate::feat::skills::Skill {
                 name: "web-coder".to_owned(),
                 description: "Web coder".to_owned(),
                 body: "## Body text that renders".to_owned(),
                 file_path: std::path::PathBuf::from("/tmp/web-coder/SKILL.md"),
                 base_dir: std::path::PathBuf::from("/tmp/web-coder"),
-            },
-        ];
+                source: crate::feat::skills::SkillSource::Global,
+            }]);
         state.frontend.scope_stack.push(FocusScope::Picker {
             kind: PickerKind::Skill,
         });
@@ -208,13 +209,14 @@ mod tests {
     fn render_skill_picker_switch_and_back_does_not_re_render_cached_skill() {
         // Given a picker with two skills, selection on the first.
         let mut state = AppState::default();
-        state.context.skills = vec![
+        state.active_session_mut().set_discovered_skills(vec![
             crate::feat::skills::Skill {
                 name: "web-coder".to_owned(),
                 description: "Web coder".to_owned(),
                 body: "## Web body".to_owned(),
                 file_path: std::path::PathBuf::from("/tmp/web-coder/SKILL.md"),
                 base_dir: std::path::PathBuf::from("/tmp/web-coder"),
+                source: crate::feat::skills::SkillSource::Global,
             },
             crate::feat::skills::Skill {
                 name: "rust".to_owned(),
@@ -222,8 +224,9 @@ mod tests {
                 body: "## Rust body".to_owned(),
                 file_path: std::path::PathBuf::from("/tmp/rust/SKILL.md"),
                 base_dir: std::path::PathBuf::from("/tmp/rust"),
+                source: crate::feat::skills::SkillSource::Global,
             },
-        ];
+        ]);
         state.frontend.scope_stack.push(FocusScope::Picker {
             kind: PickerKind::Skill,
         });
@@ -275,13 +278,16 @@ mod tests {
     fn render_skill_picker_width_change_creates_new_cache_entry() {
         // Given a picker with one skill.
         let mut state = AppState::default();
-        state.context.skills = vec![crate::feat::skills::Skill {
-            name: "web-coder".to_owned(),
-            description: "Web coder".to_owned(),
-            body: "## Body text".to_owned(),
-            file_path: std::path::PathBuf::from("/tmp/web-coder/SKILL.md"),
-            base_dir: std::path::PathBuf::from("/tmp/web-coder"),
-        }];
+        state
+            .active_session_mut()
+            .set_discovered_skills(vec![crate::feat::skills::Skill {
+                name: "web-coder".to_owned(),
+                description: "Web coder".to_owned(),
+                body: "## Body text".to_owned(),
+                file_path: std::path::PathBuf::from("/tmp/web-coder/SKILL.md"),
+                base_dir: std::path::PathBuf::from("/tmp/web-coder"),
+                source: crate::feat::skills::SkillSource::Global,
+            }]);
         state.frontend.scope_stack.push(FocusScope::Picker {
             kind: PickerKind::Skill,
         });
@@ -314,7 +320,8 @@ mod tests {
             "first render populates exactly one entry"
         );
         assert_eq!(
-            cache.len(), 2,
+            cache.len(),
+            2,
             "width change should create a second width-keyed entry, not overwrite"
         );
         // Then the cache holds two entries: one per width key. The single skill
@@ -322,13 +329,14 @@ mod tests {
         let mut names = cache.skill_names();
         names.sort();
         assert_eq!(
-            cache.len(), 2,
+            cache.len(),
+            2,
             "width change should create a second width-keyed entry, not overwrite"
         );
         assert_eq!(
-            names, vec!["web-coder".to_owned(), "web-coder".to_owned()],
+            names,
+            vec!["web-coder".to_owned(), "web-coder".to_owned()],
             "same skill name appears under two width keys"
         );
     }
 }
-

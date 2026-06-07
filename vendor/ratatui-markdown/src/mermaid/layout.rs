@@ -80,10 +80,7 @@ pub fn compute_layout(
     for layer in &layers {
         let node_count = layer.len();
 
-        let mut node_widths: Vec<usize> = layer
-            .iter()
-            .map(|id| node_width(id, diagram))
-            .collect();
+        let mut node_widths: Vec<usize> = layer.iter().map(|id| node_width(id, diagram)).collect();
 
         let total_w: usize = node_widths.iter().sum::<usize>() + h_spacing * (node_count - 1);
         let scale = if total_w > max_width && max_width > 0 {
@@ -396,9 +393,7 @@ fn truncate_label(label: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mermaid::types::{
-        Direction, MermaidDiagram, MermaidNode, NodeShape,
-    };
+    use crate::mermaid::types::{Direction, MermaidDiagram, MermaidNode, NodeShape};
 
     // AC4: the missing-node fallback in `node_width` must return
     // MIN_NODE_WIDTH rather than panicking. This directly exercises the

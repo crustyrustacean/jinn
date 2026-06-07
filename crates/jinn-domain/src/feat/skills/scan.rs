@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use super::Skill;
 use super::frontmatter::{parse_frontmatter, strip_frontmatter};
+use super::skill::{Skill, SkillSource};
 
 /// Scans a directory for agent skills.
 ///
@@ -52,10 +52,55 @@ pub fn scan_skills(dir: &Path) -> Vec<Skill> {
             body,
             file_path: skill_md,
             base_dir: entry.path(),
+            source: super::skill::SkillSource::default(),
         });
     }
 
     skills
+}
+
+/// Scans the global skills dir plus ordered project dirs, merging by name
+/// with most-local-wins precedence.
+///
+/// `project_dirs` are ordered least-local → most-local (i.e. from the root
+/// of the bounded walk down to the cwd). Each entry is an already-suffixed
+/// `<root>/.agents/skills` directory (as returned by
+/// [`project_skills_dirs`](crate::feat::discovery::project_skills_dirs));
+/// it is scanned directly. Later entries in `project_dirs` override earlier
+/// ones, and all project skills override the global ones.
+///
+/// Each project skill is tagged with [`SkillSource::Project { dir }`] where
+/// `dir` is the walked ancestor (the project root, not the
+/// `.agents/skills` subdirectory).
+pub fn scan_skills_merged(global: &Path, project_dirs: &[std::path::PathBuf]) -> Vec<Skill> {
+    let mut by_name: std::collections::HashMap<String, Skill> = std::collections::HashMap::new();
+
+    for skill in scan_skills(global) {
+        by_name.insert(skill.name.clone(), skill);
+    }
+
+    for dir in project_dirs {
+        // Each `dir` is already the `<root>/.agents/skills` directory (as
+        // returned by [`project_skills_dirs`]); scan it directly rather than
+        // re-appending the suffix.
+        let project_root = dir
+            .ancestors()
+            .nth(2)
+            .map_or_else(|| dir.clone(), std::path::Path::to_path_buf);
+        for skill in scan_skills(dir) {
+            let tagged = Skill {
+                source: SkillSource::Project {
+                    dir: project_root.clone(),
+                },
+                ..skill
+            };
+            by_name.insert(tagged.name.clone(), tagged);
+        }
+    }
+
+    let mut merged: Vec<_> = by_name.into_values().collect();
+    merged.sort_by(|a, b| a.name.cmp(&b.name));
+    merged
 }
 
 #[cfg(test)]
@@ -235,5 +280,106 @@ mod tests {
         // Then one skill is found with an empty body.
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].body, "");
+    }
+
+    #[rstest::rstest]
+    fn scan_skills_merged_global_only() {
+        // Given a global dir with one skill and no project dirs.
+        let global = tempfile::tempdir().expect("create global dir");
+        let skill_dir = global.path().join("g-skill");
+        fs::create_dir_all(&skill_dir).expect("create skill dir");
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: g-skill\ndescription: Global\n---\n\n# G",
+        )
+        .expect("write SKILL.md");
+
+        // When merging with no project dirs.
+        let skills = scan_skills_merged(global.path(), &[]);
+
+        // Then the global skill is present with Global source.
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "g-skill");
+        assert_eq!(skills[0].source, SkillSource::Global);
+        assert_eq!(skills[0].body, "# G");
+    }
+
+    #[rstest::rstest]
+    fn scan_skills_merged_project_overrides_global() {
+        // Given a global skill and a project skill with the same name.
+        let global = tempfile::tempdir().expect("create global dir");
+        let g_skill = global.path().join("shared");
+        fs::create_dir_all(&g_skill).expect("create g skill");
+        fs::write(
+            g_skill.join("SKILL.md"),
+            "---\nname: shared\ndescription: Global version\n---\n\n# Global",
+        )
+        .expect("write SKILL.md");
+
+        let project = tempfile::tempdir().expect("create project dir");
+        let p_skill = project.path().join(".agents").join("skills").join("shared");
+        fs::create_dir_all(&p_skill).expect("create p skill");
+        fs::write(
+            p_skill.join("SKILL.md"),
+            "---\nname: shared\ndescription: Project version\n---\n\n# Project",
+        )
+        .expect("write SKILL.md");
+
+        // When merging with the project dir.
+        let skills = scan_skills_merged(
+            global.path(),
+            &[project.path().join(".agents").join("skills")],
+        );
+
+        // Then the project skill overrides the global one.
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].body, "# Project");
+        assert_eq!(
+            skills[0].source,
+            SkillSource::Project {
+                dir: project.path().to_path_buf()
+            }
+        );
+    }
+
+    #[rstest::rstest]
+    fn scan_skills_merged_most_local_ancestor_wins() {
+        // Given two project ancestors each with a skill of the same name.
+        let ancestor = tempfile::tempdir().expect("create ancestor dir");
+        let a_skill = ancestor.path().join(".agents").join("skills").join("dup");
+        fs::create_dir_all(&a_skill).expect("create a skill");
+        fs::write(
+            a_skill.join("SKILL.md"),
+            "---\nname: dup\ndescription: Ancestor version\n---\n\n# Ancestor",
+        )
+        .expect("write SKILL.md");
+
+        let local = tempfile::tempdir().expect("create local dir");
+        let l_skill = local.path().join(".agents").join("skills").join("dup");
+        fs::create_dir_all(&l_skill).expect("create l skill");
+        fs::write(
+            l_skill.join("SKILL.md"),
+            "---\nname: dup\ndescription: Local version\n---\n\n# Local",
+        )
+        .expect("write SKILL.md");
+
+        // When merging with ancestor first (least-local), local last (most-local).
+        let skills = scan_skills_merged(
+            Path::new("/nonexistent/global"),
+            &[
+                ancestor.path().join(".agents").join("skills"),
+                local.path().join(".agents").join("skills"),
+            ],
+        );
+
+        // Then the most-local (last) entry wins and is tagged with its dir.
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].body, "# Local");
+        assert_eq!(
+            skills[0].source,
+            SkillSource::Project {
+                dir: local.path().to_path_buf()
+            }
+        );
     }
 }

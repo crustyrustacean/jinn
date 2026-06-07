@@ -25,23 +25,21 @@ pub fn parse_loaded_skill_name(content: &str) -> Option<&str> {
     let rest = content.strip_prefix(SKILL_CONTENT_PREFIX)?;
     let end = rest.find('"')?;
     let name = &rest[..end];
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
+    if name.is_empty() { None } else { Some(name) }
 }
 
-/// The puzzle-piece icon shown before a loaded skill name in the UI.
+/// The single-cell diamond icon shown before a loaded skill name in the UI.
 ///
-/// Reused by both the pins sidebar and the chat log so the rendered label
-/// is identical everywhere.
-pub const SKILL_ICON: &str = "\u{1F9E9}"; // 🧩
+/// Uses U+2756 (BLACK DIAMOND MINUS WHITE X) so it occupies exactly one
+/// terminal cell — unlike the earlier double-wide emoji — keeping layout
+/// width math exact. Reused by both the pins sidebar and the chat log so the
+/// rendered label is identical everywhere.
+pub const SKILL_ICON: &str = "\u{2756}"; // ❖
 
 /// Build the single-line summary label for a loaded skill, e.g.
-/// `🧩 phased-task-loop`.
+/// `❖ phased-task-loop`.
 ///
-/// Returns a graceful fallback (`🧩 (skill)`) if the content is malformed
+/// Returns a graceful fallback (`❖ (skill)`) if the content is malformed
 /// or the name cannot be parsed. Both UI renderers call this so they cannot
 /// drift on label format.
 ///
@@ -81,8 +79,7 @@ mod tests {
     #[rstest::rstest]
     fn content_with_body_and_location_returns_name_only() {
         // Given a skill content with a long body and location path.
-        let content =
-            "<skill name=\"rust-programming\" location=\"/home/u/.agents/skills/.../SKILL.md\">\n\
+        let content = "<skill name=\"rust-programming\" location=\"/home/u/.agents/skills/.../SKILL.md\">\n\
              lots\nof\nbody\n</skill>";
 
         // When parsing.
@@ -160,7 +157,10 @@ mod tests {
         let label = loaded_skill_summary_label(content);
 
         // Then it contains the icon and the skill name.
-        assert!(label.contains('\u{1F9E9}'), "label should contain the skill icon: {label}");
+        assert!(
+            label.contains('\u{2756}'),
+            "label should contain the skill icon: {label}"
+        );
         assert!(
             label.contains("phased-task-loop"),
             "label should contain the skill name: {label}"
@@ -176,7 +176,13 @@ mod tests {
         let label = loaded_skill_summary_label(content);
 
         // Then it contains the icon and the (skill) fallback.
-        assert!(label.contains('\u{1F9E9}'), "label should contain the skill icon: {label}");
-        assert!(label.contains("(skill)"), "label should contain the fallback: {label}");
+        assert!(
+            label.contains('\u{2756}'),
+            "label should contain the skill icon: {label}"
+        );
+        assert!(
+            label.contains("(skill)"),
+            "label should contain the fallback: {label}"
+        );
     }
 }

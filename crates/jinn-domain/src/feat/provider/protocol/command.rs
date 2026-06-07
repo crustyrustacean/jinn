@@ -65,10 +65,16 @@ pub struct SendToLlmProvider {
 #[cmd("provider")]
 pub struct RefreshModels;
 
-/// Rescan the prompt templates directory and reload templates.
+/// Rescan prompt templates for a specific session.
+///
+/// The actor reads the session's cwd, scans user/system plus project-local
+/// `.agents/prompts` dirs (most-local wins), and emits `PromptTemplatesLoaded`.
 #[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
 #[cmd("provider")]
-pub struct RescanPromptTemplates;
+pub struct RescanPromptTemplates {
+    /// The session whose cwd drives the scan.
+    pub session_id: crate::SessionId,
+}
 
 /// Load entries for the provider/model picker.
 ///

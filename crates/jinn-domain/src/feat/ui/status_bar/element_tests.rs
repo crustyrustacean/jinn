@@ -92,8 +92,6 @@ fn render_shows_provider_with_slash_in_model() {
     assert!(row.contains("(openrouter)/anthropic/claude-sonnet-4"));
 }
 
-
-
 // --- Token display tests ---
 
 #[rstest::rstest]
@@ -592,7 +590,6 @@ fn render_shows_used_over_unknown_when_no_context_length() {
     // Then the status bar shows the formatted usage with unknown limit.
     assert!(row.contains("15.0k/???"), "expected 15.0k/???, got: {row}");
 }
-
 
 // --- Cost display tests ---
 

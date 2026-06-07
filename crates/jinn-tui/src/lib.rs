@@ -26,7 +26,7 @@ pub use jinn_domain::{AppCore, AppMsg};
 pub use keymap::KeyCategory;
 pub use launch::{
     LaunchError, launch,
-    load_compaction_prompt, load_prompt_templates, load_theme,
+    load_compaction_prompt, load_theme,
 };
 pub use msg::handler::MsgHandler;
 pub use run::{TuiRunError, run};

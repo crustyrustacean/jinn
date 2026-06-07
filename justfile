@@ -201,44 +201,59 @@ fossil-unlock:
         echo "Error: not inside a Fossil checkout" >&2; exit 1
     fi
 
-    # Resolve symlinks
     REPO="$(readlink -f "$REPO")"
+    REPO_DIR="$(dirname "$REPO")"
     CHECKOUT_ROOT="$(pwd)"
+
+    # Build the list of DB files worth checking: the repo, the current checkout,
+    # and any sibling checkouts that live next to the .fossil file (e.g. ./pins).
+    # Locks can live in ANY of these — not just where you're standing.
+    TARGETS=("$REPO")
+    while IFS= read -r -d '' f; do
+        TARGETS+=("$f")
+    done < <(find "$CHECKOUT_ROOT" "$REPO_DIR" -maxdepth 2 -name '.fslckout' -print0 2>/dev/null || true)
+    # Dedupe (preserve order)
+    SEEN=""; FILES=()
+    for t in "${TARGETS[@]}"; do
+        case "$SEEN" in
+            *"|$t|"*) ;;
+            *) SEEN="$SEEN|$t|"; FILES+=("$t") ;;
+        esac
+    done
 
     FOUND=0
 
-    # 1. Hung Fossil processes
+    # 1. Hung Fossil processes holding any target DB
     echo '==> Checking for hung Fossil processes...'
-    PIDS=$(lsof "$REPO" 2>/dev/null | awk 'NR>1 && $1=="fossil" {print $2}' | sort -u) || true
-    if [ -n "$PIDS" ]; then
-        for pid in $PIDS; do
-            CMD=$(ps -p "$pid" -o args= 2>/dev/null || echo "<exited>")
-            echo "  stale PID $pid: $CMD"
-            FOUND=$((FOUND + 1))
-        done
-    else
-        echo "  none found"
+    for db in "${FILES[@]}"; do
+        PIDS=$(lsof "$db" 2>/dev/null | awk 'NR>1 && $1=="fossil" {print $2}' | sort -u) || true
+        if [ -n "$PIDS" ]; then
+            for pid in $PIDS; do
+                CMD=$(ps -p "$pid" -o args= 2>/dev/null || echo "<exited>")
+                echo "  stale PID $pid on $db: $CMD"
+                FOUND=$((FOUND + 1))
+            done
+        fi
+    done
+    if [ "$FOUND" -eq 0 ]; then
+        echo '  none found'
     fi
 
-    # 2. Stale journal / WAL / SHM files
+    # 2. Stale journal / WAL / SHM files next to each target
     echo '==> Checking for stale journal files...'
-    STALE=$(find "$CHECKOUT_ROOT" -maxdepth 3 \
-        \( -name '.fslckout-journal' -o -name '.fslckout-wal' -o -name '.fslckout-shm' \
-        -o -name '*.fossil-journal' -o -name '*.fossil-wal' -o -name '*.fossil-shm' \) \
-        2>/dev/null || true)
-    # Also check the repo file itself
-    for ext in journal wal shm; do
-        f="${REPO}-${ext}"
-        [ -f "$f" ] && STALE="$STALE\n$f"
-    done
-    if [ -n "$STALE" ]; then
-        echo -e "$STALE" | while read -r f; do
-            [ -z "$f" ] && continue
+    JFOUND=0
+    for db in "${FILES[@]}"; do
+        d="$(dirname "$db")"
+        while IFS= read -r -d '' f; do
             echo "  stale: $f"
-            FOUND=$((FOUND + 1))
-        done
-    else
-        echo "  none found"
+            JFOUND=$((JFOUND + 1))
+        done < <(find "$d" -maxdepth 1 \
+            \( -name '.fslckout-journal' -o -name '.fslckout-wal' -o -name '.fslckout-shm' \
+            -o -name '*.fossil-journal' -o -name '*.fossil-wal' -o -name '*.fossil-shm' \) -print0 2>/dev/null || true)
+    done
+    FOUND=$((FOUND + JFOUND))
+    if [ "$JFOUND" -eq 0 ]; then
+        echo '  none found'
     fi
 
     echo ""
@@ -259,53 +274,101 @@ fossil-unlock-fix:
     fi
 
     REPO="$(readlink -f "$REPO")"
+    REPO_DIR="$(dirname "$REPO")"
     CHECKOUT_ROOT="$(pwd)"
 
-    FIXED=0
+    TARGETS=("$REPO")
+    while IFS= read -r -d '' f; do
+        TARGETS+=("$f")
+    done < <(find "$CHECKOUT_ROOT" "$REPO_DIR" -maxdepth 2 -name '.fslckout' -print0 2>/dev/null || true)
+    SEEN=""; FILES=()
+    for t in "${TARGETS[@]}"; do
+        case "$SEEN" in
+            *"|$t|"*) ;;
+            *) SEEN="$SEEN|$t|"; FILES+=("$t") ;;
+        esac
+    done
 
-    # 1. Kill hung Fossil processes
-    PIDS=$(lsof "$REPO" 2>/dev/null | awk 'NR>1 && $1=="fossil" {print $2}' | sort -u) || true
-    if [ -n "$PIDS" ]; then
+    FIXED=0
+    ME="$(whoami)"
+
+    # 1. Kill hung Fossil processes (SIGTERM, escalate to SIGKILL; force stopped procs)
+    echo '==> Killing hung Fossil processes...'
+    KILLED=0
+    for db in "${FILES[@]}"; do
+        PIDS=$(lsof "$db" 2>/dev/null | awk 'NR>1 && $1=="fossil" {print $2}' | sort -u) || true
         for pid in $PIDS; do
             OWNER=$(stat -c '%U' "/proc/$pid" 2>/dev/null || echo "")
-            ME=$(whoami)
             if [ "$OWNER" != "$ME" ]; then
-                echo "  skipping PID $pid (owned by $OWNER, not $ME)"
+                echo "  skipping PID $pid on $db (owned by $OWNER, not $ME)"
+                continue
+            fi
+            if ! kill -0 "$pid" 2>/dev/null; then
+                echo "  PID $pid on $db already gone"
                 continue
             fi
             CMD=$(ps -p "$pid" -o args= 2>/dev/null || echo "<exited>")
-            kill "$pid" && echo "  killed PID $pid ($CMD)" || echo "  failed to kill PID $pid"
-            FIXED=$((FIXED + 1))
+            STATE=$(ps -p "$pid" -o stat= 2>/dev/null | cut -c1 || echo "?")
+            if [ "$STATE" = "T" ]; then
+                # Stopped/traced: SIGTERM can't be delivered. Force.
+                kill -9 "$pid" 2>/dev/null || true
+                echo "  force-killed (SIGKILL, was stopped) PID $pid on $db: $CMD"
+            else
+                kill "$pid" 2>/dev/null || true
+                sleep 2
+                if kill -0 "$pid" 2>/dev/null; then
+                    kill -9 "$pid" 2>/dev/null || true
+                    echo "  force-killed (SIGKILL) PID $pid on $db: $CMD"
+                else
+                    echo "  killed (SIGTERM) PID $pid on $db: $CMD"
+                fi
+            fi
+            KILLED=$((KILLED + 1))
         done
-    else
+    done
+    FIXED=$((FIXED + KILLED))
+    if [ "$KILLED" -eq 0 ]; then
         echo '  no hung processes found'
     fi
 
-    # 2. Remove stale journal / WAL / SHM files
-    STALE=$(find "$CHECKOUT_ROOT" -maxdepth 3 \
-        \( -name '.fslckout-journal' -o -name '.fslckout-wal' -o -name '.fslckout-shm' \
-        -o -name '*.fossil-journal' -o -name '*.fossil-wal' -o -name '*.fossil-shm' \) \
-        2>/dev/null || true)
-    for ext in journal wal shm; do
-        f="${REPO}-${ext}"
-        [ -f "$f" ] && STALE="$STALE\n$f"
-    done
-    if [ -n "$STALE" ]; then
-        echo -e "$STALE" | while read -r f; do
-            [ -z "$f" ] && continue
+    # 2. Remove stale journal / WAL / SHM files next to each target
+    echo '==> Removing stale journal files...'
+    JFIXED=0
+    for db in "${FILES[@]}"; do
+        d="$(dirname "$db")"
+        while IFS= read -r -d '' f; do
             rm -f "$f" && echo "  removed $f" || echo "  failed to remove $f"
-            FIXED=$((FIXED + 1))
-        done
-    else
+            JFIXED=$((JFIXED + 1))
+        done < <(find "$d" -maxdepth 1 \
+            \( -name '.fslckout-journal' -o -name '.fslckout-wal' -o -name '.fslckout-shm' \
+            -o -name '*.fossil-journal' -o -name '*.fossil-wal' -o -name '*.fossil-shm' \) -print0 2>/dev/null || true)
+    done
+    FIXED=$((FIXED + JFIXED))
+    if [ "$JFIXED" -eq 0 ]; then
         echo '  no stale journal files found'
     fi
 
-    # 3. Verify
+    # 3. Verify every known checkout is now writable
     echo ''
-    if fossil status >/dev/null 2>&1; then
+    ALL_OK=1
+    for db in "${FILES[@]}"; do
+        # Only .fslckout dirs are checkout roots; the $REPO file is not.
+        case "$db" in
+            */.fslckout)
+                d="$(dirname "$db")"
+                if (cd "$d" && fossil status >/dev/null 2>&1); then
+                    :
+                else
+                    echo "Warning: $d may still be locked." >&2
+                    ALL_OK=0
+                fi
+                ;;
+        esac
+    done
+    if [ "$ALL_OK" -eq 1 ]; then
         echo "Lock cleared successfully ($FIXED fix(es) applied)."
     else
-        echo 'Warning: database may still be locked. Check for processes manually.' >&2
+        echo 'Warning: one or more checkouts may still be locked. Check processes manually.' >&2
         exit 1
     fi
 

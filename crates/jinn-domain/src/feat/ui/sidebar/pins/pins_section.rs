@@ -145,8 +145,8 @@ impl SidebarSection for PinsSection {
             return 0;
         }
         let count = count as u16;
-        // Header line + blank + (entry line + blank) * count - last blank + trailing gap(1)
-        (2 + count * 2).saturating_sub(1) + 1
+        // Header(1) + header-gap(1) + entries(count) + trailing gap(1).
+        count + 3
     }
 }
 
@@ -396,9 +396,6 @@ fn build_entry_list(
             Span::styled(format!("{prefix}{content}"), style),
         ]));
 
-        if i < pinned.len() - 1 {
-            lines.push(Line::from(""));
-        }
     }
 
     lines

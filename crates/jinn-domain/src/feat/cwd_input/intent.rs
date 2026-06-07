@@ -4,9 +4,10 @@
 
 use crate::common::app_state::AppState;
 use crate::common::focus::FocusScope;
-use crate::feat::cwd_input::resolve::{resolve_cwd_input, CwdResolution};
+use crate::feat::cwd_input::resolve::{CwdResolution, resolve_cwd_input};
 use crate::feat::cwd_input::state::CwdInputState;
-use crate::protocol::IntentResult;
+use crate::feat::session_lifecycle::protocol::command::SetSessionCwd;
+use crate::protocol::{Command, IntentResult};
 
 /// Opens the cwd input popup.
 ///
@@ -18,22 +19,28 @@ pub fn handle_cwd_input_enter(state: &mut AppState) -> IntentResult {
 }
 
 /// Confirms the cwd input.
-//
-// Resolves the typed path against the active session cwd; on success sets the
-// session cwd and rescans context files inline, then pops the scope and clears
-// state. On failure (not a dir / empty) stays open with the inline error shown
-// by the render footer.
+///
+// Resolves the typed path against the active session cwd; on success emits a
+// [`SetSessionCwd`] command so the session actor applies the new cwd and
+// broadcasts `SessionCwdChanged`. The event-driven scan actors pick up the
+// new cwd automatically — no imperative scan commands are needed here.
+// Then pops the scope and clears state. On failure (not a dir / empty) stays
+// open with the inline error shown by the render footer.
 pub fn handle_cwd_input_confirm(state: &mut AppState) -> IntentResult {
     let raw = state.frontend.cwd_input.text.input.trim().to_owned();
     let current_cwd = state.active_session().cwd().to_owned();
     let resolution = resolve_cwd_input(&raw, &current_cwd);
 
     if let CwdResolution::Ok(path) = resolution {
-        state.active_session_mut().set_cwd(path.clone());
-        state.context.context_files =
-            crate::feat::context::env_context::load_project_context_files_sync(&path);
+        let session_id = state.session.active_session_id().clone();
+        let command = Command::SetSessionCwd(SetSessionCwd {
+            session_id,
+            cwd: path,
+        });
+
         state.frontend.scope_stack.pop();
         state.frontend.cwd_input = CwdInputState::default();
+        return IntentResult::with_commands(vec![command]);
     }
 
     IntentResult::empty()
@@ -128,7 +135,7 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn confirm_valid_dir_sets_cwd_rescans_context_pops_and_clears() {
+    fn confirm_valid_dir_returns_set_session_cwd_command() {
         // Given a tempdir and a session whose cwd is the tempdir's parent.
         let temp = tempfile::tempdir().expect("tempdir");
         let target = temp.path(); // target is itself a real dir
@@ -143,19 +150,41 @@ mod tests {
         // When confirming.
         let result = handle_cwd_input_confirm(&mut state);
 
-        // Then the session cwd is now the tempdir (canonicalized).
+        // Then exactly one SetSessionCwd command is returned for the active
+        // session with the canonicalized target cwd. The session actor applies
+        // the cwd asynchronously — the intent no longer mutates it directly.
+        assert_eq!(result.commands.len(), 1);
         let expected = std::fs::canonicalize(target).unwrap();
-        assert_eq!(state.active_session().cwd(), expected);
-        // And context files were rescanned (non-empty vector, even if no
-        // AGENTS.md present the vector is well-formed).
-        let _ = &state.context.context_files;
-        // And scope was popped + state cleared.
+        let cwd = match result.commands.first().unwrap() {
+            Command::SetSessionCwd(p) => &p.cwd,
+            other => panic!("expected SetSessionCwd, got {other:?}"),
+        };
+        assert_eq!(cwd, &expected);
+    }
+
+    #[rstest::rstest]
+    fn confirm_valid_dir_pops_scope_and_clears_state() {
+        // Given a tempdir and a session whose cwd is the tempdir's parent, with
+        // the cwd input scope pushed and some typed text.
+        let temp = tempfile::tempdir().expect("tempdir");
+        let target = temp.path();
+        let mut state = AppState::default();
+        state
+            .active_session_mut()
+            .set_cwd(target.parent().unwrap().to_path_buf());
+        state.frontend.scope_stack.push(FocusScope::CwdInput);
+        state.frontend.cwd_input.text.input =
+            target.file_name().unwrap().to_string_lossy().to_string();
+
+        // When confirming.
+        let _ = handle_cwd_input_confirm(&mut state);
+
+        // Then the scope was popped and the input state was cleared.
         assert!(!matches!(
             state.frontend.scope_stack.current(),
             FocusScope::CwdInput
         ));
         assert_eq!(state.frontend.cwd_input.text.input, "");
-        assert!(result.commands.is_empty());
     }
 
     #[rstest::rstest]

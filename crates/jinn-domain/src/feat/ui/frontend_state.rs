@@ -4,8 +4,8 @@ use parking_lot::RwLock;
 
 use crate::common::focus::{FocusScope, ScopeStack};
 use crate::common::tui_signals::TuiSignals;
-use crate::feat::preferences_actor::UserPreferences;
 use crate::feat::cwd_input::state::CwdInputState;
+use crate::feat::preferences_actor::UserPreferences;
 use crate::feat::rename_session_input::state::RenameSessionInputState;
 
 use crate::feat::session_lifecycle::arg_input_state::ArgInputState;
@@ -187,10 +187,11 @@ mod tests {
     fn invalidate_all_clears_skill_preview_cache() {
         // Given a populated skill preview cache.
         let caches = FrontendCaches::default();
-        caches
-            .skill_preview_cache
-            .write()
-            .insert("web-coder".to_owned(), 80, vec![Line::raw("old-theme")]);
+        caches.skill_preview_cache.write().insert(
+            "web-coder".to_owned(),
+            80,
+            vec![Line::raw("old-theme")],
+        );
         assert_eq!(caches.skill_preview_cache.read().len(), 1);
 
         // When the theme changes and all caches are invalidated.

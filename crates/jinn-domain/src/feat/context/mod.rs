@@ -31,6 +31,7 @@
 
 pub mod assemble;
 pub mod assembly_state;
+pub mod context_files_scan_actor;
 pub mod context_size_actor;
 pub mod env_context;
 

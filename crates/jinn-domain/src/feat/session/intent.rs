@@ -1,5 +1,6 @@
 //! Session management intent handlers - session creation, model refresh, and prompt template rescan.
 
+use crate::RescanPromptTemplates;
 use crate::common::app_state::AppState;
 use crate::protocol::{ChatEntry, Command, IntentResult};
 
@@ -31,7 +32,11 @@ pub fn handle_rescan_prompt_templates(state: &mut AppState) -> IntentResult {
         .active_session_mut()
         .push_entry(ChatEntry::system("Rescanning prompt templates..."));
 
-    IntentResult::with_commands(vec![Command::RescanPromptTemplates])
+    let session_id = state.active_session().session_id().clone();
+
+    IntentResult::with_commands(vec![Command::RescanPromptTemplates(
+        RescanPromptTemplates { session_id },
+    )])
 }
 
 #[cfg(test)]
@@ -159,7 +164,7 @@ mod tests {
             result
                 .commands
                 .iter()
-                .any(|c| matches!(c, Command::RescanPromptTemplates))
+                .any(|c| matches!(c, Command::RescanPromptTemplates(..)))
         );
     }
 }

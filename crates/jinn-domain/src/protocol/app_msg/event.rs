@@ -25,6 +25,7 @@ use crate::common::actor::protocol::event::{
 use crate::feat::chat_input::protocol::event::ChatEntrySubmitted;
 // Re-export infrastructure types only. Domain structs are imported from their modules.
 pub use crate::common::actor::event_msg::EventMsg;
+use crate::feat::discovery_coordinator::SessionDiscoverySettled;
 use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
 use crate::feat::provider::protocol::event::{
     ModelCacheLoaded, ModelsRefreshed, PromptTemplatesLoaded, ProviderSwitched, StreamCompleted,
@@ -32,7 +33,7 @@ use crate::feat::provider::protocol::event::{
 };
 use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted;
 use crate::feat::session_lifecycle::protocol::event::{
-    SessionCreated, SessionSetupCompleted, SessionTeardownFinished,
+    SessionCreated, SessionCwdChanged, SessionSetupCompleted, SessionTeardownFinished,
 };
 use crate::feat::skills::skills_scan_actor::SkillsLoaded;
 use crate::feat::tools_actor::protocol::event::{
@@ -97,10 +98,12 @@ pub enum Event {
     ToolExecutionOutput(ToolExecutionOutput),
     /// Tools were registered by an actor.
     ToolsRegistered(ToolsRegistered),
-    /// A session's prompt assembly strategy has been switched.
-    /// A strategy's session state has changed and should be persisted.
     /// Agent skills have been scanned and loaded.
     SkillsLoaded(SkillsLoaded),
+    /// A session's three resource scans have settled (coalesced by the discovery coordinator).
+    SessionDiscoverySettled(SessionDiscoverySettled),
+    /// Project context files (AGENTS.md/CLAUDE.md) have been scanned and loaded.
+    ContextFilesLoaded(crate::feat::context::protocol::event::ContextFilesLoaded),
     /// Personas have been scanned and loaded from disk.
     PersonasLoaded(crate::feat::context::protocol::event::PersonasLoaded),
     /// A chat entry was pinned or unpinned.
@@ -115,6 +118,8 @@ pub enum Event {
     ActiveSessionChanged(crate::protocol::system::ActiveSessionChanged),
     /// A new chat session was created.
     SessionCreated(SessionCreated),
+    /// A session's working directory changed.
+    SessionCwdChanged(SessionCwdChanged),
     /// A lifecycle setup command completed.
     SessionSetupCompleted(SessionSetupCompleted),
     /// A lifecycle teardown command finished.
@@ -181,6 +186,10 @@ impl Event {
             Self::ToolExecutionOutput(..) => Some(ToolExecutionOutput::TYPE_NAME),
             Self::ToolsRegistered(..) => Some(ToolsRegistered::TYPE_NAME),
             Self::SkillsLoaded(..) => Some(SkillsLoaded::TYPE_NAME),
+            Self::SessionDiscoverySettled(..) => Some(SessionDiscoverySettled::TYPE_NAME),
+            Self::ContextFilesLoaded(..) => {
+                Some(crate::feat::context::protocol::event::ContextFilesLoaded::TYPE_NAME)
+            }
             Self::PersonasLoaded(..) => {
                 Some(crate::feat::context::protocol::event::PersonasLoaded::TYPE_NAME)
             }
@@ -196,6 +205,7 @@ impl Event {
                 Some(crate::protocol::system::ActiveSessionChanged::TYPE_NAME)
             }
             Self::SessionCreated(..) => Some(SessionCreated::TYPE_NAME),
+            Self::SessionCwdChanged(..) => Some(SessionCwdChanged::TYPE_NAME),
             Self::SessionSetupCompleted(..) => Some(SessionSetupCompleted::TYPE_NAME),
             Self::SessionTeardownFinished(..) => Some(SessionTeardownFinished::TYPE_NAME),
             Self::SessionClosed(..) => {
@@ -317,8 +327,16 @@ mod tests {
         Event::ModeChanged(ModeChanged { from: Mode::Normal, to: Mode::Input }),
         ModeChanged::TYPE_NAME
     )]
+    #[case::context_files_loaded(
+        Event::ContextFilesLoaded(crate::feat::context::protocol::event::ContextFilesLoaded {
+            session_id: SessionId::new(),
+            files: vec![],
+            error: None,
+        }),
+        crate::feat::context::protocol::event::ContextFilesLoaded::TYPE_NAME
+    )]
     #[case::prompt_templates_loaded(
-        Event::PromptTemplatesLoaded(PromptTemplatesLoaded { templates: vec![], error: None }),
+        Event::PromptTemplatesLoaded(PromptTemplatesLoaded { session_id: SessionId::new(), templates: vec![], error: None }),
         PromptTemplatesLoaded::TYPE_NAME
     )]
     #[case::context_override_changed(

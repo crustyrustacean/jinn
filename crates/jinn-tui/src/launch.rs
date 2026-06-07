@@ -13,7 +13,7 @@ use error_stack::{Report, ResultExt};
 use jinn_domain::common::system_resource::load_system_resource;
 use jinn_domain::feat::ui::sidebar::sidebar::Sidebar;
 use jinn_domain::feat::ui::sidebar::register_sections;
-use jinn_domain::{ActorHostService, AppCore, AppUiRegistry, PromptTemplateStore, State};
+use jinn_domain::{ActorHostService, AppCore, AppUiRegistry, State};
 use wherror::Error;
 
 use crate::app::WhichKeyInstance;
@@ -56,7 +56,6 @@ pub fn launch(
     plugins: jinn_plugin::SyncPlugins,
 ) -> Result<TuiApp, Report<LaunchError>> {
     let paths = &services.paths;
-    load_prompt_templates(&core.state, &paths.prompts_dir(), &paths.system_prompts_dir());
     load_compaction_prompt(&core.state, &paths.prompts_dir(), &paths.system_prompts_dir())?;
     load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
 
@@ -97,15 +96,7 @@ pub fn launch(
     })
 }
 
-/// Loads prompt templates from both user and system directories into application state.
-pub fn load_prompt_templates(state: &State, user_dir: &Path, system_dir: &Path) {
-    let store = PromptTemplateStore::load_from_dirs(user_dir, system_dir).unwrap_or_else(|e| {
-        tracing::warn!("failed to load prompt templates: {e:?}");
-        PromptTemplateStore::new()
-    });
-    tracing::info!(count = store.len(), "loaded prompt templates");
-    state.write().context.prompt_templates = store;
-}
+
 
 /// Loads the compaction system prompt from user or system prompts directory.
 ///
