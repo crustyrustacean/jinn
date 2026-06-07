@@ -127,6 +127,25 @@ pub struct SessionCoreEphemeral {
     /// stream completion). Not persisted across restarts.
     #[serde(skip)]
     pub(crate) pending_mutations: Vec<Vec<crate::feat::session::history_mutation::HistoryMutation>>,
+
+    /// Discovered resources for THIS session, scoped to its cwd tree.
+    /// Populated by the scan actors (skills / prompts / context-files).
+    /// Ephemeral: not persisted, re-scanned from disk on session load.
+    /// OWNER: scan actors (SkillsScanActor / PromptScanActor / context-files actor).
+    /// See `.plans/project-locals/plan.md` decision D3 — per-session isolation.
+    #[serde(skip)]
+    pub(crate) discovered_skills: Vec<crate::feat::skills::Skill>,
+
+    /// Discovered prompt templates for this session (merged global + project).
+    /// OWNER: PromptScanActor.
+    #[serde(skip)]
+    pub(crate) discovered_prompt_templates: crate::feat::context::prompt_template::PromptTemplateStore,
+
+    /// Discovered AGENTS.md/CLAUDE.md context files for this session, ordered
+    /// root-first (root ancestor first, cwd last) for prompt assembly.
+    /// OWNER: context-files scan actor.
+    #[serde(skip)]
+    pub(crate) discovered_context_files: Vec<crate::feat::context::env_context::ContextFile>,
 }
 
 // Core session state - owned by session-actor and context-actor.
@@ -2337,6 +2356,42 @@ impl ChatSessionState {
     /// Update the cached context size.
     pub fn set_context_size(&mut self, size: u32) {
         self.core.ephemeral.cached_context_size = Some(size);
+    }
+
+    // ----- Discovered resources (per-session, cwd-scoped) -----
+    //
+    // These are populated by the scan actors and read by prompt assembly and
+    // the skill tool. They are NOT persisted — see `.plans/project-locals/plan.md`
+    // decision D3 for the per-session isolation rationale.
+
+    /// Returns the skills discovered for this session's cwd tree.
+    pub fn discovered_skills(&self) -> &[crate::feat::skills::Skill] {
+        &self.core.ephemeral.discovered_skills
+    }
+
+    /// Returns the prompt templates discovered for this session's cwd tree.
+    pub fn discovered_prompt_templates(&self) -> &crate::feat::context::prompt_template::PromptTemplateStore {
+        &self.core.ephemeral.discovered_prompt_templates
+    }
+
+    /// Returns the context files discovered for this session's cwd tree.
+    pub fn discovered_context_files(&self) -> &[crate::feat::context::env_context::ContextFile] {
+        &self.core.ephemeral.discovered_context_files
+    }
+
+    /// Replaces the discovered skills set for this session (scan-actor write path).
+    pub(crate) fn set_discovered_skills(&mut self, skills: Vec<crate::feat::skills::Skill>) {
+        self.core.ephemeral.discovered_skills = skills;
+    }
+
+    /// Replaces the discovered prompt-template store for this session.
+    pub(crate) fn set_discovered_prompt_templates(&mut self, store: crate::feat::context::prompt_template::PromptTemplateStore) {
+        self.core.ephemeral.discovered_prompt_templates = store;
+    }
+
+    /// Replaces the discovered context files for this session.
+    pub(crate) fn set_discovered_context_files(&mut self, files: Vec<crate::feat::context::env_context::ContextFile>) {
+        self.core.ephemeral.discovered_context_files = files;
     }
 
     /// Restore the token ledger from persisted data.
