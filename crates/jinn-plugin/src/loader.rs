@@ -191,6 +191,15 @@ fn load_plugin(lua: &Lua, source: &str) -> Result<RegistryKey, String> {
     // Create isolated environment for this script.
     let env = lua.create_table().map_err(|e| format!("create env: {e}"))?;
 
+    // Expose the standard library via a metatable fallback. Writes still land
+    // in `env` (per-plugin isolation preserved); reads of missing keys fall
+    // through to `_G`, so `type`, `pairs`, `string.*`, etc. resolve.
+    let metatable = lua.create_table().map_err(|e| format!("create mt: {e}"))?;
+    metatable
+        .set("__index", lua.globals())
+        .map_err(|e| format!("set __index: {e}"))?;
+    env.set_metatable(Some(metatable));
+
     // Load and evaluate with isolated _ENV.
     let result: mlua::Table = lua
         .load(source)
@@ -407,6 +416,38 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn load_plugin_exposes_stdlib_via_metatable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        make_plugin(
+            &dir.path().join("global"),
+            "stdlib",
+            "return { on_test = function()
+    if type(42) ~= 'number' then return 'bad type' end
+    local count = 0
+    for _k, _v in pairs({ a = 1, b = 2 }) do count = count + 1 end
+    if count ~= 2 then return 'bad pairs' end
+    local s = string.format('%d-%s', 7, 'x')
+    if s ~= '7-x' then return 'bad string.format' end
+    return 'ok'
+end }",
+        );
+
+        let plugins = discover_plugins(dir.path(), Path::new("/nonexistent"));
+        assert_eq!(plugins.len(), 1, "stdlib plugin should be discovered: {plugins:?}");
+
+        let lua = Lua::new();
+        let hooks = load_all(&lua, &plugins);
+        assert_eq!(hooks.len(), 1, "stdlib plugin should load");
+
+        let (_name, ph) = hooks.iter().next().expect("one hook");
+        let table: mlua::Table = lua.registry_value(ph.table()).expect("get table");
+        let func: mlua::Function = table.get("on_test").expect("get func");
+        let result: String = func.call(()).expect("call");
+        assert_eq!(result, "ok");
+    }
+
 
     #[test]
     fn load_all_skips_syntax_errors() {

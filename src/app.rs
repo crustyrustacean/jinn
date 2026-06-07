@@ -4,7 +4,8 @@
 //! runtime, builds shared [`Services`], and dispatches to the appropriate
 //! [`Runner`] variant (TUI or headless).
 
-use std::path::Path;
+
+
 use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
@@ -20,7 +21,8 @@ use jinn_domain::ProviderRegistry;
 use jinn_domain::ProviderRegistryService;
 use jinn_domain::SessionStoreService;
 use jinn_domain::SqliteSessionStore;
-use jinn_domain::State;
+
+
 use jinn_domain::UserPreferencesStorageService;
 use tokio::runtime::Runtime;
 use wherror::Error;
@@ -196,88 +198,44 @@ impl App {
                 return Ok(());
             }
             Commands::Tui => {
-                let (core, services, actor_host, _plugins) =
-                    actor_wiring::create_core_with_actor_host(
-                        &self.handle(),
-                        llm_service.clone(),
-                        provider_registry.clone(),
-                        resolved_api_keys.clone(),
-                        config_storage.clone(),
-                        session_store.clone(),
-                        user_preferences_storage.clone(),
-                        None,
-                        None,
-                        None,
-                        jinn_domain::AppPaths::default(),
-                    );
-                let paths = &services.paths;
-
-                load_compaction_prompt(
-                    &core.state,
-                    &paths.prompts_dir(),
-                    &paths.system_prompts_dir(),
-                )?;
-                load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
-
-                // Resolve mouse selection config from environment.
-                let mouse_selection = !matches!(std::env::var("JINN_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
-
-                let tui_events = jinn_tui::MsgHandler::new();
-                let tui_config = jinn_tui::config::TuiConfig::new(mouse_selection);
-                let mut ui_registry = jinn_domain::AppUiRegistry::new();
-                jinn_domain::register_all_ui_elements(&mut ui_registry);
-                let which_key = jinn_tui::app::WhichKeyInstance::new(
-                    jinn_tui::keymap::init(),
-                    jinn_tui::Scope::Normal,
-                );
-
-                let runner = Runner::Tui(Box::new(jinn_tui::TuiApp {
-                    core,
-                    services,
-                    actor_host,
-                    plugins: _plugins,
-                    ui_registry,
-
-                    events: tui_events,
-                    which_key,
-                    suspend: jinn_tui::suspend::Suspend::new(),
-                    event_thread: None,
-                    status: jinn_tui::AppStatus::Starting,
-                    selection: jinn_tui::selection::SelectionState::Idle,
-                    selectable_rects: Default::default(),
-                    pending_clipboard: false,
-                    config: tui_config,
-                    sidebar: {
-                        let mut s = jinn_domain::feat::ui::sidebar::Sidebar::new();
-                        jinn_domain::feat::ui::sidebar::register_sections(&mut s);
-                        s
+                let (core, services, actor_host, _plugins) = actor_wiring::ActorSystemBuilder::new(
+                    actor_wiring::ActorSystemBuilderArgs {
+                        handle: self.handle(),
+                        llm_service: llm_service.clone(),
+                        provider_registry: provider_registry.clone(),
+                        api_keys: resolved_api_keys.clone(),
+                        config_storage: config_storage.clone(),
+                        session_store: session_store.clone(),
+                        user_preferences_storage: user_preferences_storage.clone(),
+                        paths: jinn_domain::AppPaths::default(),
                     },
-                }));
+                ).build();
+                let app = jinn_tui::launch(core, services, actor_host, _plugins)
+                    .change_context(AppError)?;
+                let runner = Runner::Tui(Box::new(app));
                 self.run_and_shutdown(runner, &session_store)?;
             }
             Commands::Headless { command, .. } => {
                 let store_for_shutdown = session_store.clone();
-                let (core, _services, actor_host, _plugins) =
-                    actor_wiring::create_core_with_actor_host(
-                        &self.handle(),
-                        llm_service.clone(),
+                let (core, _services, actor_host, _plugins) = actor_wiring::ActorSystemBuilder::new(
+                    actor_wiring::ActorSystemBuilderArgs {
+                        handle: self.handle(),
+                        llm_service: llm_service.clone(),
                         provider_registry,
-                        resolved_api_keys,
+                        api_keys: resolved_api_keys,
                         config_storage,
                         session_store,
-                        user_preferences_storage.clone(),
-                        None,
-                        None,
-                        None,
-                        jinn_domain::AppPaths::default(),
-                    );
+                        user_preferences_storage: user_preferences_storage.clone(),
+                        paths: jinn_domain::AppPaths::default(),
+                    },
+                ).build();
 
-                load_compaction_prompt(
+                jinn_tui::load_compaction_prompt(
                     &core.state,
                     &_services.paths.prompts_dir(),
                     &_services.paths.system_prompts_dir(),
-                )?;
-                load_theme(
+                ).change_context(AppError)?;
+                jinn_tui::load_theme(
                     &core.state,
                     &_services.paths.themes_dir(),
                     &_services.paths.system_themes_dir(),
@@ -340,60 +298,25 @@ impl App {
                                 .change_context(AppError)?,
                         ));
                         let store_for_shutdown = session_store.clone();
-                        let (core, services, actor_host, plugins) =
-                            actor_wiring::create_core_with_actor_host(
-                                &self.handle(),
+                        let (core, services, actor_host, plugins) = actor_wiring::ActorSystemBuilder::new(
+                            actor_wiring::ActorSystemBuilderArgs {
+                                handle: self.handle(),
                                 llm_service,
                                 provider_registry,
-                                resolved_api_keys,
+                                api_keys: resolved_api_keys,
                                 config_storage,
                                 session_store,
-                                user_preferences_storage.clone(),
-                                Some(csv),
-                                Some(plan),
-                                artifact_dir,
-                                jinn_domain::AppPaths::default(),
-                            );
-                        let paths = &services.paths;
-
-                        load_compaction_prompt(
-                            &core.state,
-                            &paths.prompts_dir(),
-                            &paths.system_prompts_dir(),
-                        )?;
-                        load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
-
-                        let mouse_selection = !matches!(std::env::var("JINN_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
-                        let tui_config = jinn_tui::config::TuiConfig::new(mouse_selection);
-                        let mut ui_registry = jinn_domain::AppUiRegistry::new();
-                        jinn_domain::register_all_ui_elements(&mut ui_registry);
-                        let which_key = jinn_tui::app::WhichKeyInstance::new(
-                            jinn_tui::keymap::init(),
-                            jinn_tui::Scope::Normal,
-                        );
-
-                        let runner = Runner::Tui(Box::new(jinn_tui::TuiApp {
-                            core,
-                            services,
-                            plugins,
-                            actor_host,
-                            ui_registry,
-                            events: jinn_tui::MsgHandler::new(),
-                            which_key,
-                            suspend: jinn_tui::suspend::Suspend::new(),
-                            event_thread: None,
-                            status: jinn_tui::AppStatus::Starting,
-                            selection: jinn_tui::selection::SelectionState::Idle,
-                            selectable_rects: Default::default(),
-                            pending_clipboard: false,
-                            config: tui_config,
-                            sidebar: {
-                                let mut s = jinn_domain::feat::ui::sidebar::Sidebar::new();
-                                jinn_domain::feat::ui::sidebar::register_sections(&mut s);
-                                s
-                            },
-                        }));
+                                user_preferences_storage,
+                                paths: jinn_domain::AppPaths::default(),
+                            }
+                        )
+                            .with_bench_actor(csv, plan, artifact_dir)
+                            .build();
+                        let app = jinn_tui::launch(core, services, actor_host, plugins)
+                            .change_context(AppError)?;
+                        let runner = Runner::Tui(Box::new(app));
                         self.run_and_shutdown(runner, &store_for_shutdown)?;
+
                     }
                     BenchCommands::Show { csv } => {
                         jinn_bench::show::show_results(&csv).map_err(|e| {
@@ -411,60 +334,23 @@ impl App {
                                 .change_context(AppError)?,
                         ));
                         let store_for_shutdown = session_store.clone();
-                        let (core, services, actor_host, plugins) =
-                            actor_wiring::create_core_with_actor_host(
-                                &self.handle(),
-                                llm_service.clone(),
-                                provider_registry.clone(),
-                                resolved_api_keys.clone(),
-                                config_storage.clone(),
+                        let (core, services, actor_host, plugins) = actor_wiring::ActorSystemBuilder::new(
+                            actor_wiring::ActorSystemBuilderArgs {
+                                handle: self.handle(),
+                                llm_service: llm_service.clone(),
+                                provider_registry: provider_registry.clone(),
+                                api_keys: resolved_api_keys.clone(),
+                                config_storage: config_storage.clone(),
                                 session_store,
-                                user_preferences_storage.clone(),
-                                None,
-                                None,
-                                None,
-                                jinn_domain::AppPaths::default(),
-                            );
-                        let paths = &services.paths;
-
-                        load_compaction_prompt(
-                            &core.state,
-                            &paths.prompts_dir(),
-                            &paths.system_prompts_dir(),
-                        )?;
-                        load_theme(&core.state, &paths.themes_dir(), &paths.system_themes_dir());
-
-                        let mouse_selection = !matches!(std::env::var("JINN_MOUSE_SELECTION"), Ok(val) if val.eq_ignore_ascii_case("false") || val == "0");
-                        let tui_config = jinn_tui::config::TuiConfig::new(mouse_selection);
-                        let mut ui_registry = jinn_domain::AppUiRegistry::new();
-                        jinn_domain::register_all_ui_elements(&mut ui_registry);
-                        let which_key = jinn_tui::app::WhichKeyInstance::new(
-                            jinn_tui::keymap::init(),
-                            jinn_tui::Scope::Normal,
-                        );
-
-                        let runner = Runner::Tui(Box::new(jinn_tui::TuiApp {
-                            core,
-                            services,
-                            plugins,
-                            actor_host,
-                            ui_registry,
-                            events: jinn_tui::MsgHandler::new(),
-                            which_key,
-                            suspend: jinn_tui::suspend::Suspend::new(),
-                            event_thread: None,
-                            status: jinn_tui::AppStatus::Starting,
-                            selection: jinn_tui::selection::SelectionState::Idle,
-                            selectable_rects: Default::default(),
-                            pending_clipboard: false,
-                            config: tui_config,
-                            sidebar: {
-                                let mut s = jinn_domain::feat::ui::sidebar::Sidebar::new();
-                                jinn_domain::feat::ui::sidebar::register_sections(&mut s);
-                                s
+                                user_preferences_storage: user_preferences_storage.clone(),
+                                paths: jinn_domain::AppPaths::default(),
                             },
-                        }));
+                        ).build();
+                        let app = jinn_tui::launch(core, services, actor_host, plugins)
+                            .change_context(AppError)?;
+                        let runner = Runner::Tui(Box::new(app));
                         self.run_and_shutdown(runner, &store_for_shutdown)?;
+
                     }
                 }
             }
@@ -483,53 +369,6 @@ impl Default for App {
     }
 }
 
-/// Loads the compaction system prompt from user or system prompts directory.
-///
-/// Searches the user prompts directory first (`~/.config/jinn/prompts/_compaction.md`),
-/// then the system prompts directory (`/usr/share/jinn/prompts/_compaction.md`).
-///
-/// # Errors
-///
-/// Returns an error if the compaction prompt is missing from both directories
-/// or cannot be read. This is a fatal error - the application cannot run without it.
-fn load_compaction_prompt(
-    state: &State,
-    user_dir: &Path,
-    system_dir: &Path,
-) -> Result<(), Report<AppError>> {
-    let prompt = jinn_domain::common::system_resource::load_system_resource(
-        "_compaction.md",
-        user_dir,
-        system_dir,
-    )
-    .change_context(AppError)
-    .attach("failed to load compaction prompt")?;
-
-    tracing::info!("loaded compaction prompt");
-    state.write().context.compaction_prompt = prompt;
-    Ok(())
-}
-
-/// Loads the theme from user preferences into the application state.
-///
-/// Searches the user themes directory first, then the system themes directory.
-/// If the preferred theme cannot be loaded, falls back to the default theme.
-/// Failures are logged but not fatal.
-fn load_theme(state: &State, user_dir: &Path, system_dir: &Path) {
-    let theme_name = {
-        let guard = state.read();
-        guard.frontend.preferences.theme_name.clone()
-    };
-    match jinn_domain::feat::theme::resolve_theme(theme_name.as_deref(), user_dir, system_dir) {
-        Ok(theme) => {
-            tracing::info!(theme = ?theme_name, "loaded theme");
-            state.write().frontend.theme = theme;
-        }
-        Err(e) => {
-            tracing::warn!(err = ?e, "failed to load theme, using default");
-        }
-    }
-}
 
 /// Fetches model metadata from models.dev and saves it to the user's cache directory.
 ///
@@ -616,8 +455,9 @@ async fn fetch_models_from_url(
 
 #[cfg(test)]
 mod tests {
-    use jinn_domain::AppState;
+    use jinn_domain::{AppState, State};
     use std::path::PathBuf;
+    use jinn_tui::{load_compaction_prompt, load_theme};
 
     use super::*;
 

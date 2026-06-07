@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use error_stack::{Report, ResultExt};
-use mlua::{Lua, RegistryKey, Value};
+use mlua::{Lua, LuaSerdeExt, RegistryKey, Value};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use wherror::Error;
@@ -17,6 +17,7 @@ use wherror::Error;
 use crate::PluginData;
 use crate::bindings;
 use crate::command::PluginCommand;
+use jinn_domain::feat::plugin_dispatch::PluginHookSite;
 
 /// Stored hook data for a loaded plugin.
 pub struct PluginHooks {
@@ -43,6 +44,50 @@ impl PluginHooks {
     /// Mutable cache of hook names known to exist on this plugin's table.
     pub(crate) fn hook_cache(&self) -> &RefCell<HashSet<String>> {
         &self.hook_cache
+    }
+}
+
+/// A keybind declared by a plugin, deserialized from the plugin module's
+/// `keybinds` table. Consumed by the TUI to register dynamic bindings.
+#[derive(Debug, Clone)]
+pub struct PluginKeybind {
+    /// Name of the plugin that declared this keybind.
+    pub plugin_name: String,
+    /// The key sequence (e.g. `"<M-e>"`).
+    pub keys: String,
+    /// The action name the plugin registered.
+    pub action: String,
+    /// Human-readable description shown in which-key help.
+    pub description: String,
+    /// Target scope (e.g. `"input"`, `"normal"`), parsed by [`Scope::from_str`].
+    pub scope: String,
+}
+
+/// Intermediate serde shape for a single entry of the plugin's `keybinds`
+/// table. Maps the Lua field names to the strongly typed [`PluginKeybind`].
+#[derive(Debug, Clone, serde::Deserialize)]
+struct PluginKeybindRaw {
+    /// The key sequence string (e.g. `"<M-e>"`).
+    keys: String,
+    /// The action hook name to fire on the async VM when the keybind triggers.
+    action: String,
+    /// Human-readable description shown in the which-key help popup.
+    description: String,
+    /// Target keymap scope (e.g. `"input"`, `"normal"`).
+    scope: String,
+}
+
+impl PluginKeybindRaw {
+    /// Convert the raw serde shape into a typed keybind, attaching the
+    /// declaring plugin's name.
+    fn into_keybind(self, plugin_name: String) -> PluginKeybind {
+        PluginKeybind {
+            plugin_name,
+            keys: self.keys,
+            action: self.action,
+            description: self.description,
+            scope: self.scope,
+        }
     }
 }
 
@@ -133,14 +178,27 @@ impl<'a> SyncHook<'a> {
 }
 
 impl SyncHook<'_> {
+    /// The name of the plugin that owns this hook.
+    pub(crate) fn plugin_name(&self) -> &str {
+        &self.plugin_name
+    }
     /// Call this hook with context data and deserialize the return value.
     ///
     /// # Type Parameters
     ///
+    ///
     /// - `T` — the context struct (must be `Serialize`)
     /// - `R` — the expected return type (must be `DeserializeOwned`)
+    ///
     /// # Errors
+    ///
     /// Returns `Err` if serialization, Lua execution, or deserialization fails.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `ctx_data` serializes to a non-object JSON value (e.g. an array
+    /// or scalar). All call sites pass struct-typed contexts, so this is a
+    /// programming-error invariant rather than a recoverable failure.
     pub fn call<T: Serialize, R: DeserializeOwned>(
         &self,
         ctx_data: &T,
@@ -213,6 +271,12 @@ impl SyncPlugins {
         })
     }
 
+
+    /// Number of loaded plugins.
+    pub fn plugin_count(&self) -> usize {
+        self.hooks.len()
+    }
+
     /// Create an empty SyncPlugins with no loaded plugins.
     ///
     /// Used as a default for tests that don't need plugin functionality.
@@ -226,10 +290,88 @@ impl SyncPlugins {
             emit_tx,
         }
     }
-    /// Returns the number of loaded plugins.
+
+
+    /// Returns keybinds declared by all loaded plugins.
+    ///
+    /// Reads each plugin module's `keybinds` table and deserializes it into
+    /// [`PluginKeybind`] records. Plugins that don't declare any keybinds, or
+    /// whose `keybinds` field is missing/malformed, are skipped (malformed
+    /// entries are logged at warn and dropped).
     #[must_use]
-    pub fn plugin_count(&self) -> usize {
-        self.hooks.len()
+    pub fn declared_keybinds(&self) -> Vec<PluginKeybind> {
+        self.hooks
+            .iter()
+            .flat_map(|(plugin_name, hooks)| {
+                self.keybinds_for_plugin(plugin_name, hooks).unwrap_or_default()
+            })
+            .collect()
+    }
+
+    /// Reads a single plugin's `keybinds` table.
+    fn keybinds_for_plugin(
+        &self,
+        plugin_name: &str,
+        hooks: &PluginHooks,
+    ) -> Result<Vec<PluginKeybind>, Report<PluginSyncStateError>> {
+        let table: mlua::Table = self
+            .lua
+            .registry_value(&hooks.table)
+            .map_err(|e| Report::new(PluginSyncStateError).attach(e.to_string()))
+            .attach("failed to read plugin table")?;
+        let val: Value = table.get("keybinds").unwrap_or(Value::Nil);
+        if val == Value::Nil {
+            return Ok(Vec::new());
+        }
+        let arr: mlua::Table = match val {
+            Value::Table(t) => t,
+            other => {
+                tracing::warn!(
+                    plugin = plugin_name,
+                    "plugin `keybinds` is not a table; skipping"
+                );
+                let _ = other;
+                return Ok(Vec::new());
+            }
+        };
+        let mut out = Vec::new();
+        // Deserialize via mlua's serde support (`serialize` feature).
+        for entry_result in arr.clone().sequence_values::<Value>() {
+            let entry = match entry_result {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!(plugin = plugin_name, error = %e, "bad keybind entry; skipped");
+                    continue;
+                }
+            };
+            match self.lua.from_value::<PluginKeybindRaw>(entry) {
+                Ok(raw) => out.push(raw.into_keybind(plugin_name.to_owned())),
+                Err(e) => {
+                    tracing::warn!(plugin = plugin_name, error = %e, "malformed keybind entry; skipped");
+                }
+            }
+        }
+        Ok(out)
+    }
+}
+
+impl jinn_domain::feat::plugin_dispatch::PluginSyncHooks for SyncPlugins {
+    fn call_hooks(&self, hook: &str, ctx: &serde_json::Value) -> Vec<serde_json::Value> {
+        self.sync_hooks(hook)
+            .filter_map(|h| {
+                match h.call::<serde_json::Value, serde_json::Value>(ctx) {
+                    Ok(v) => (!v.is_null()).then_some(v),
+                    Err(e) => {
+                        let report = e.attach(PluginHookSite {
+                            plugin: h.plugin_name().to_owned(),
+                            hook: hook.to_owned(),
+                        });
+                        tracing::error!(hook, error = ?report, "plugin hook failed");
+                        None
+                    }
+                }
+            })
+            .collect()
     }
 }
 

@@ -45,11 +45,15 @@ fn build_system(dir: &Path) -> TestSystem {
         }),
         Arc::new(|name, data| {
             // Default request handler: echo back for "llm", null otherwise.
-            if name == "llm" {
-                json!(format!("response_to: {}", data["prompt"]))
-            } else {
-                json!(null)
-            }
+            let name = name.to_owned();
+            let data = data.clone();
+            Box::pin(async move {
+                if name == "llm" {
+                    json!(format!("response_to: {}", data["prompt"]))
+                } else {
+                    json!(null)
+                }
+            })
         }),
     );
 

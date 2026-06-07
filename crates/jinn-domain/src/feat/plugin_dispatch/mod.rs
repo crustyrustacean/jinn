@@ -3,6 +3,24 @@
 //! Replaces `WorkflowControllerActor`. Listens to lifecycle events and
 //! translates them into plugin hook fires.
 
+use std::fmt;
+
+/// Where a plugin hook failed — attached to plugin-error `Report`s so that
+/// `tracing::error!(error = ?e)` renders the plugin name + hook name in the
+/// chain. error-stack renders `.attach()` (printable) values via `Display`.
+#[derive(Debug)]
+pub struct PluginHookSite {
+    pub plugin: String,
+    pub hook: String,
+}
+
+impl fmt::Display for PluginHookSite {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "plugin hook {}.{}", self.plugin, self.hook)
+    }
+}
+
+pub mod plugin_sync_hooks;
 pub mod actor;
 pub mod domain_node_context;
 pub mod picker_entry;
@@ -15,3 +33,7 @@ pub use domain_node_context::DomainNodeContext;
 pub use picker_entry::PluginPickerEntry;
 pub use plugin_fire::{PluginFire, PluginFireError, PluginFireService};
 pub use plugin_sync::{PluginSyncCall, PluginSyncCallError, PluginSyncCallService};
+pub use plugin_sync_hooks::{
+    BadgeDirective, InterceptOutcome, PluginSyncHooks, call_hooks_typed,
+};
+

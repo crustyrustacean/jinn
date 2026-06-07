@@ -35,8 +35,11 @@ fn build_system(
             captured_clone.lock().expect("lock").push(cmd);
         }),
         Arc::new(|name, _data| {
-            tracing::warn!(name, "no request handler in test");
-            serde_json::Value::Null
+            let name = name.to_owned();
+            Box::pin(async move {
+                tracing::warn!(name, "no request handler in test");
+                serde_json::Value::Null
+            })
         }),
     );
 
@@ -65,7 +68,7 @@ fn plugin_system_constructs_with_nonexistent_dirs() {
         Path::new("/nonexistent/system"),
         rt.handle().clone(),
         Arc::new(|_| {}),
-        Arc::new(|_, _| serde_json::Value::Null),
+        Arc::new(|_, _| Box::pin(async { serde_json::Value::Null })),
     );
     std::mem::forget(rt);
     assert_eq!(sync.plugin_count(), 0);

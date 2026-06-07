@@ -145,6 +145,10 @@ fn run_pending_migrations(conn: &mut SqliteConnection) -> Result<(), Report<Sess
         migrate_v15(conn)?;
         record_version(conn, 15, "drop_strategy_state_column")?;
     }
+    if current < 16 {
+        migrate_v16(conn)?;
+        record_version(conn, 16, "rename_is_workflow_to_is_automated_and_add_persist")?;
+    }
     Ok(())
 }
 
@@ -564,6 +568,57 @@ fn migrate_v15(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErr
     Ok(())
 }
 
+fn migrate_v16(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    sql_query(
+        "CREATE TABLE sessions_new (\
+         id TEXT PRIMARY KEY,\
+         title TEXT,\
+         updated_at TEXT NOT NULL,\
+         profile TEXT NOT NULL DEFAULT '{}',\
+         blobs TEXT NOT NULL DEFAULT '{}',\
+         parent_session TEXT DEFAULT NULL,\
+         cwd TEXT NOT NULL DEFAULT '.',\
+         created_at TEXT NOT NULL DEFAULT '',\
+         archived BOOLEAN NOT NULL DEFAULT FALSE,\
+         lifecycle_name TEXT DEFAULT NULL,\
+         lifecycle_args TEXT NOT NULL DEFAULT '[]',\
+         lifecycle_script_state TEXT NOT NULL DEFAULT 'nothing_ran',\
+         metadata TEXT,\
+         is_automated BOOLEAN NOT NULL DEFAULT FALSE,\
+         persist BOOLEAN NOT NULL DEFAULT TRUE,\
+         judge_meta TEXT)",
+    )
+    .execute(conn)
+    .change_context(SessionStoreError)
+    .attach("v16: create sessions_new with is_automated + persist")?;
+
+    sql_query(
+        "INSERT INTO sessions_new (\
+         id, title, updated_at, profile, blobs, parent_session, cwd, created_at,\
+         archived, lifecycle_name, lifecycle_args, lifecycle_script_state, metadata,\
+         is_automated, persist, judge_meta) \
+         SELECT \
+         id, title, updated_at, profile, blobs, parent_session, cwd, created_at,\
+         archived, lifecycle_name, lifecycle_args, lifecycle_script_state, metadata,\
+         is_workflow, TRUE, judge_meta FROM sessions",
+    )
+    .execute(conn)
+    .change_context(SessionStoreError)
+    .attach("v16: copy sessions (is_workflow→is_automated, persist=TRUE)")?;
+
+    sql_query("DROP TABLE sessions")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("v16: drop old sessions table")?;
+
+    sql_query("ALTER TABLE sessions_new RENAME TO sessions")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("v16: rename sessions_new to sessions")?;
+
+    Ok(())
+}
+
 fn migrate_v12(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query(
         "ALTER TABLE session_history ADD COLUMN context_override TEXT NOT NULL DEFAULT 'default'",
@@ -618,7 +673,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 16);
+        assert_eq!(rows.len(), 17);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -672,7 +727,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 16);
+        assert_eq!(rows[0].count, 17);
     }
 
     /// Applies migrations up to (and including) `target` version.
@@ -743,6 +798,10 @@ mod tests {
             migrate_v14(conn).expect("v14");
             record_version(conn, 14, "add_context_history").expect("record v14");
         }
+        if target >= 15 {
+            migrate_v15(conn).expect("v15");
+            record_version(conn, 15, "drop_strategy_state_column").expect("record v15");
+        }
     }
 
     /// Verifies that each migration guard uses `<` not `<=`.
@@ -764,7 +823,7 @@ mod tests {
             count: i64,
         }
 
-        for target_version in 0..=14_i32 {
+        for target_version in 0..=16_i32 {
             let (_dir, mut conn) = make_conn();
 
             // Build the database at exactly `target_version`.
@@ -775,13 +834,13 @@ mod tests {
                 panic!("re-run at target_version={target_version} should succeed: {e:?}")
             });
 
-            // Verify no duplicate rows: exactly 15 migration rows total.
+            // Verify no duplicate rows: exactly 17 migration rows total.
             let rows: Vec<CountRow> = sql_query("SELECT COUNT(*) AS count FROM _migrations")
                 .load(&mut conn)
                 .expect("query count");
             assert_eq!(
-                rows[0].count, 16,
-                "at target_version={target_version}: expected 16 migration rows, no duplicates"
+                rows[0].count, 17,
+                "at target_version={target_version}: expected 17 migration rows, no duplicates"
             );
         }
     }
@@ -1021,8 +1080,8 @@ mod tests {
     /// Call after `apply_migrations_up_to(conn, 14)`.
     fn seed_session_with_children(conn: &mut SqliteConnection) {
         sql_query(
-            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, strategy_state, blobs, lifecycle_script_state) \
-             VALUES ('s-1', 'T', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, strategy_state, blobs, lifecycle_script_state) \n
+             VALUES ('s-1', 'T', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \n
              '{}', '{}', '{}', 'nothing_ran')",
         )
         .execute(conn)
@@ -1038,7 +1097,7 @@ mod tests {
         .execute(conn)
         .expect("seed junction");
         sql_query(
-            "INSERT INTO token_ledger (session_id, timestamp, tokens_sent, tokens_received) \
+            "INSERT INTO token_ledger (session_id, timestamp, tokens_sent, tokens_received) \n
              VALUES ('s-1', '2024-01-01T00:00:00Z', 10, 20)",
         )
         .execute(conn)
@@ -1058,11 +1117,11 @@ mod tests {
             #[diesel(sql_type = diesel::sql_types::Text)]
             table: String,
             #[diesel(sql_type = diesel::sql_types::Text)]
-            rowid: String,
+            _rowid: String,
             #[diesel(sql_type = diesel::sql_types::Text)]
-            refer: String,
+            _refer: String,
             #[diesel(sql_type = diesel::sql_types::Text)]
-            parent: String,
+            _parent: String,
         }
 
         // Given a v14 database with FK=ON and a full session (junction + ledger).

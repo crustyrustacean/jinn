@@ -137,11 +137,12 @@ impl TuiApp {
                             "key event received"
                         );
 
-                        let intent_opt = self.which_key.handle_key(protocol_key);
 
+                        let intent_opt = self.which_key.handle_key(protocol_key);
                         let Some(intent) = intent_opt else {
                             return;
                         };
+
 
                         self.route_intent(intent);
                     }
@@ -235,7 +236,7 @@ impl TuiApp {
         let (commands, events, signals) = {
             let mut state = self.core.state.write();
 
-            let result = IntentHandler::handle(&intent, &mut state);
+            let result = IntentHandler::handle(&intent, &mut state, Some(&self.plugins));
 
             // Cancel selection when mode changes away from Picker.
             if matches!(intent, Intent::EnterNormalMode | Intent::NormalEscape) {
@@ -248,6 +249,37 @@ impl TuiApp {
             let events = result.events;
             (commands, events, signals)
         };
+
+        // TriggerPlugin: TUI-only intent. Fire the plugin's named action on the async VM
+        // via the generic plugin::fire_async command path. The toggle hook itself writes
+        // plugin_data (visible to both VMs); we just kick off the async fire here.
+        if let Intent::TriggerPlugin {
+            action,
+            session_id,
+            ..
+        } = intent.clone()
+        {
+            let sid = session_id.or_else(|| {
+                Some(self.core.state.read().session.active_session_id().clone())
+            });
+            let payload = serde_json::json!({
+                "hook": action,
+                "session_id": sid,
+                "text": "",
+            });
+
+            let _ = self.core.sender().send(AppMsg::Command {
+                command: jinn_domain::protocol::Command::Dynamic(
+                    jinn_domain::protocol::DynamicCommand {
+                        name: "plugin::fire_async".into(),
+                        payload,
+                    },
+                ),
+                source: None,
+            });
+            return;
+        }
+
 
         // Step 4: Send commands to core channel.
         for cmd in &commands {

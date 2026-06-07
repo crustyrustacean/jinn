@@ -38,7 +38,7 @@ fn build_system(
         Arc::new(move |cmd| {
             captured_clone.lock().expect("lock").push(cmd);
         }),
-        Arc::new(|_, _| serde_json::Value::Null),
+        Arc::new(|_, _| Box::pin(async { serde_json::Value::Null })),
     );
 
     (sync, async_handle, captured)

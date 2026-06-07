@@ -12,9 +12,11 @@ use std::sync::Arc;
 
 use error_stack::{Report, ResultExt};
 use jinn_domain::Command;
+use jinn_domain::common::actor::protocol::dynamic_command::DynamicCommand;
 use jinn_domain::common::actor::message_sink::MessageSink;
-use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry};
+use jinn_domain::feat::chat_input::protocol::command::{EnqueueUserMessage, PushChatEntry, SetChatInputText};
 use jinn_domain::feat::plugin_dispatch::protocol::command::TogglePlugin;
+use jinn_domain::feat::plugin_dispatch::DomainNodeContext;
 use jinn_domain::feat::session::chat_entry::ChatEntry;
 use jinn_domain::protocol::SessionId;
 use jinn_plugin::PluginCommand;
@@ -69,7 +71,23 @@ struct LuaDisablePlugin {
     plugin_name: String,
 }
 
-// ─── Verb → Command conversions ──────────────────���───────────────────
+#[derive(serde::Deserialize)]
+struct LuaFireAsyncHook {
+    /// Name of the async hook to fire on the plugin-async VM.
+    hook: String,
+    session_id: SessionId,
+    /// Optional extra context (e.g. the input text being enriched).
+    #[serde(default)]
+    text: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct LuaSetChatInput {
+    session_id: SessionId,
+    text: String,
+}
+
+// ─── Verb → Command conversions ───────────────────────────────────────
 
 fn push_chat_entry_from_lua(
     _ctx: CmdCtx,
@@ -103,6 +121,36 @@ fn disable_plugin_from_lua(
     Ok(Command::TogglePlugin(TogglePlugin {
         session_id: lua.session_id,
         plugin_name: lua.plugin_name,
+    }))
+}
+
+/// Generic async handoff: routes an arbitrary hook name to the async VM via
+/// the existing `Command::Dynamic` bus path. The payload is routed by the
+/// runtime name `"plugin::fire_async"` to the plugin dispatch actor, which
+/// resolves the session's registry and fires the hook. No new typed
+/// `Command` variant is needed; every future plugin reuses this verb.
+fn fire_async_hook_from_lua(
+    _ctx: CmdCtx,
+    lua: LuaFireAsyncHook,
+) -> Result<Command, Report<PluginWiringError>> {
+    let payload = serde_json::json!({
+        "hook": lua.hook,
+        "session_id": lua.session_id.to_string(),
+        "text": lua.text,
+    });
+    Ok(Command::Dynamic(DynamicCommand {
+        name: "plugin::fire_async".to_owned(),
+        payload,
+    }))
+}
+
+fn set_chat_input_from_lua(
+    _ctx: CmdCtx,
+    lua: LuaSetChatInput,
+) -> Result<Command, Report<PluginWiringError>> {
+    Ok(Command::SetChatInputText(SetChatInputText {
+        session_id: lua.session_id,
+        text: lua.text,
     }))
 }
 
@@ -165,6 +213,8 @@ fn translate_command(cmd: &PluginCommand) -> Result<Command, Report<PluginWiring
             translate::<LuaEnqueueUserMessage>(cmd, enqueue_user_message_from_lua)
         }
         "disable_plugin" => translate::<LuaDisablePlugin>(cmd, disable_plugin_from_lua),
+        "fire_async_hook" => translate::<LuaFireAsyncHook>(cmd, fire_async_hook_from_lua),
+        "set_chat_input" => translate::<LuaSetChatInput>(cmd, set_chat_input_from_lua),
         other => {
             let ctx = CmdCtx {
                 plugin_name: cmd.plugin_name.clone(),
@@ -185,14 +235,63 @@ fn translate_command(cmd: &PluginCommand) -> Result<Command, Report<PluginWiring
 /// Handle a request from an async hook's `ctx.request(name, data)` call.
 ///
 /// Returns a JSON response value. Unknown requests return null.
-#[must_use]
-pub fn handle_plugin_request(name: &str, _data: &serde_json::Value) -> serde_json::Value {
+pub async fn handle_plugin_request(
+    name: &str,
+    data: &serde_json::Value,
+    domain_ctx: &DomainNodeContext,
+) -> serde_json::Value {
     match name {
+        "llm_oneshot" => {
+            // History-less one-shot LLM request: inherits only the source session's
+            // provider+model. Request shape:
+            //   { session_id, system: Option<String>, prompt: String, persist: Option<bool> }
+            // persist defaults to false — one-shots are transient unless the caller
+            // explicitly asks to keep them (e.g. a judge run).
+            #[derive(serde::Deserialize)]
+            struct LlmOneshotPayload {
+                session_id: SessionId,
+                system: Option<String>,
+                prompt: String,
+                #[serde(default)]
+                persist: Option<bool>,
+                // Whether the one-shot session is immune to tool-call loops.
+                // true  -> empty tool definitions + tool_loop_disabled set
+                // false -> inherit the full global tool catalog (default)
+                #[serde(default)]
+                disable_tool_loop: Option<bool>,
+                // Hard timeout for the one-shot in milliseconds.
+                // On expiry the underlying session is hard-cancelled (CancelStream)
+                // and the await returns an error. Defaults to 30000.
+                #[serde(default)]
+                timeout_ms: Option<u64>,
+            }
+            match serde_json::from_value::<LlmOneshotPayload>(data.clone()) {
+                Ok(p) => match domain_ctx
+                    .send_llm_request_oneshot(
+                        &p.session_id,
+                        p.prompt,
+                        p.system,
+                        p.persist.unwrap_or(false),
+                        p.disable_tool_loop.unwrap_or(false),
+                        p.timeout_ms.unwrap_or(30_000),
+                    )
+                    .await
+                {
+                    Ok(text) => serde_json::json!({ "text": text }),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "llm_oneshot request failed");
+                        serde_json::Value::Null
+                    }
+                },
+                Err(e) => {
+                    tracing::warn!(error = %e, "llm_oneshot malformed payload");
+                    serde_json::Value::Null
+                }
+            }
+        }
         "llm" => {
-            // LLM requests are handled by the workflow controller, not here.
-            // For now, return null — the plugin system's request handler
-            // will be wired to the domain LLM service in a future phase.
-            tracing::warn!(name, "llm request handler not yet wired");
+            // Full-context LLM (future use): not wired in this phase.
+            tracing::warn!(name, "full-context llm request handler not yet wired");
             serde_json::Value::Null
         }
         _ => {
@@ -410,5 +509,67 @@ mod tests {
             report_str.contains("test-plugin"),
             "missing plugin_name: {report_str}"
         );
+    }
+
+    #[test]
+    fn fire_async_hook_translates_to_dynamic_command() {
+        let cmd = PluginCommand {
+            plugin_name: "prompt_enrichment".to_owned(),
+            name: "fire_async_hook".to_owned(),
+            data: serde_json::json!({
+                "hook": "on_enrich",
+                "session_id": "s-test-session",
+                "text": "hello world",
+            }),
+        };
+        let result = translate_command(&cmd).expect("should translate");
+        match result {
+            Command::Dynamic(d) => {
+                assert_eq!(d.name, "plugin::fire_async");
+                assert_eq!(d.payload["hook"], "on_enrich");
+                assert_eq!(d.payload["session_id"], "s-test-session");
+                assert_eq!(d.payload["text"], "hello world");
+            }
+            other => panic!("expected Dynamic, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fire_async_hook_works_without_text() {
+        let cmd = PluginCommand {
+            plugin_name: "prompt_enrichment".to_owned(),
+            name: "fire_async_hook".to_owned(),
+            data: serde_json::json!({
+                "hook": "on_toggle",
+                "session_id": "s-test-session",
+            }),
+        };
+        let result = translate_command(&cmd).expect("should translate");
+        let Command::Dynamic(d) = result else {
+            panic!("expected Dynamic");
+        };
+        assert_eq!(d.name, "plugin::fire_async");
+        assert_eq!(d.payload["hook"], "on_toggle");
+        assert!(d.payload.get("text").is_none_or(|v| v.is_null()));
+    }
+
+    #[test]
+    fn set_chat_input_translates_to_set_chat_input_text() {
+        let cmd = PluginCommand {
+            plugin_name: "prompt_enrichment".to_owned(),
+            name: "set_chat_input".to_owned(),
+            data: serde_json::json!({
+                "session_id": "s-test-session",
+                "text": "enriched prompt text",
+            }),
+        };
+        let result = translate_command(&cmd).expect("should translate");
+        match result {
+            Command::SetChatInputText(s) => {
+                assert_eq!(s.session_id.to_string(), "s-test-session");
+                assert_eq!(s.text, "enriched prompt text");
+            }
+            other => panic!("expected SetChatInputText, got {other:?}"),
+        }
     }
 }
