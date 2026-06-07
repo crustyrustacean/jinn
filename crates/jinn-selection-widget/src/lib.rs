@@ -33,7 +33,7 @@ pub use highlight::{
 };
 pub use item::{MatchRanges, PickerItem};
 pub use picker_ops::PickerOps;
-pub use preview_content::PreviewContent;
+pub use preview_content::{PreviewCache, PreviewContent};
 pub use preview_widget::PreviewSelectionWidget;
 pub use state::SelectionState;
 pub use tree_item::TreeItem;

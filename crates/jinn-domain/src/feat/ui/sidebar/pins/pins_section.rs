@@ -9,6 +9,7 @@ use crate::common::app_state::pin_sort_key;
 use crate::common::render_ctx::RenderCtx;
 use crate::feat::context::protocol::command::{PinChatEntry, UnpinChatEntry};
 use crate::feat::session::tool_result_status::ToolResultStatus;
+use crate::feat::skills::loaded_skill_summary_label;
 use crate::feat::theme::Theme;
 use crate::feat::ui::chat_log::shared::strip_ansi;
 use crate::feat::ui::sidebar::section_trait::{
@@ -302,6 +303,11 @@ fn entry_prefix_and_content(kind: &ChatEntryKind) -> (&'static str, String) {
             status,
             ..
         } => {
+            // Loaded skills are pinned as `<skill name="X" ...>` XML.
+            // Show a clean single-line label instead of the raw XML.
+            if *name == "skill" {
+                return ("", truncate_str(&loaded_skill_summary_label(content), 40));
+            }
             let icon = if *status == ToolResultStatus::Success {
                 "\u{2705}"
             } else {

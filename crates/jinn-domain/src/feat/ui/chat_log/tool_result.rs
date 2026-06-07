@@ -21,6 +21,7 @@
 //! ```
 
 use crate::feat::session::tool_result_status::ToolResultStatus;
+use crate::feat::skills::loaded_skill_summary_label;
 use crate::feat::tools_actor::truncation::format_size;
 use jinn_provider::tool_types::TruncationMeta;
 use ratatui::style::Style;
@@ -29,17 +30,40 @@ use ratatui::text::{Line, Span};
 use super::shared::{RenderContext, pad_line_to_width, truncate_to_width};
 
 pub fn to_lines(
-    _name: &str,
+    name: &str,
     content: &str,
-    _status: ToolResultStatus,
+    status: ToolResultStatus,
     truncation: Option<&TruncationMeta>,
     ctx: &RenderContext,
 ) -> Vec<Line<'static>> {
+    // Loaded skills are pinned as `<skill name="X" ...>` XML.
+    // Show a clean single-line summary instead of the raw XML body.
+    if name == "skill" {
+        return skill_summary_lines(content, ctx);
+    }
+    let _ = status;
     if ctx.is_expanded {
         to_lines_expanded(content, truncation, ctx)
     } else {
         to_lines_collapsed(content, truncation, ctx)
     }
+}
+
+/// Render a loaded-skill tool result as a single clean summary line.
+///
+/// Skills are pinned as `<skill name="X" ...>` XML, which is unreadable when
+/// rendered verbatim. This collapses the body to `"<icon> <name>"` (or a
+/// `(skill)` fallback when the name can't be parsed), styled like other content
+/// and padded so the success/failure background spans the row.
+fn skill_summary_lines(content: &str, ctx: &RenderContext) -> Vec<Line<'static>> {
+    let label = loaded_skill_summary_label(content);
+    let style = content_style(ctx);
+    let mut lines = vec![Line::from(Span::styled(
+        truncate_to_width(&label, ctx.content_width as usize),
+        style,
+    ))];
+    pad_lines(&mut lines, ctx);
+    lines
 }
 
 /// Collapsed view: last N lines, truncated to content width, no padding.
@@ -680,6 +704,124 @@ mod tests {
             1,
             "expanded tool result should have 1 line (content only, no padding), got {}",
             lines.len()
+        );
+    }
+
+    // --- Skill summary display tests ---
+
+    /// Collect a line's text from its spans.
+    fn line_text(line: &Line<'_>) -> String {
+        line.spans.iter().map(|s| s.content.clone()).collect()
+    }
+
+    #[rstest::rstest]
+    fn skill_result_shows_summary_label_without_raw_xml() {
+        // Given a pinned skill tool result with well-formed XML content.
+        let ctx = render_context(5, false);
+        let content = "<skill name=\"phased-task-loop\" location=\"/x\">body</skill>";
+
+        // When converting to lines.
+        let lines = to_lines("skill", content, ToolResultStatus::Success, None, &ctx);
+
+        // Then there is exactly one line.
+        assert_eq!(
+            lines.len(),
+            1,
+            "skill result should render as a single summary line, got {} lines",
+            lines.len()
+        );
+        let text = line_text(&lines[0]);
+
+        // And it shows the icon and name, with no raw XML.
+        assert!(
+            text.contains('\u{1F9E9}'),
+            "skill result should show the puzzle icon: {text}"
+        );
+        assert!(
+            text.contains("phased-task-loop"),
+            "skill result should show the skill name: {text}"
+        );
+        assert!(
+            !text.contains("<skill"),
+            "skill result should not show raw XML: {text}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn skill_result_malformed_content_uses_fallback_label() {
+        // Given a pinned skill tool result with malformed content.
+        let ctx = render_context(5, false);
+
+        // When converting to lines.
+        let lines = to_lines("skill", "not a skill xml", ToolResultStatus::Success, None, &ctx);
+
+        // Then there is one line showing the fallback label, with no panic.
+        assert_eq!(lines.len(), 1, "malformed skill should still render one line");
+        let text = line_text(&lines[0]);
+        assert!(
+            text.contains('\u{1F9E9}'),
+            "malformed skill result should still show the icon: {text}"
+        );
+        assert!(
+            text.contains("(skill)"),
+            "malformed skill result should show the fallback label: {text}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn skill_result_in_expanded_context_still_one_line() {
+        // Given a pinned skill tool result in an expanded context.
+        let ctx = render_context(5, true);
+        let content = "<skill name=\"phased-task-loop\" location=\"/x\">body</skill>";
+
+        // When converting to lines.
+        let lines = to_lines("skill", content, ToolResultStatus::Success, None, &ctx);
+
+        // Then the skill branch short-circuits before the expanded/collapsed split,
+        // so the summary is still a single line.
+        assert_eq!(
+            lines.len(),
+            1,
+            "expanded skill result should still render as a single summary line"
+        );
+    }
+
+    #[rstest::rstest]
+    fn non_skill_result_unchanged_by_skill_branch() {
+        // Given a non-skill tool result.
+        let ctx = render_context(5, false);
+
+        // When converting to lines.
+        let lines = to_lines("bash", "command output", ToolResultStatus::Success, None, &ctx);
+
+        // Then it renders content (the non-skill path), not the skill label.
+        let text = line_text(&lines[0]);
+        assert!(
+            text.contains("command output"),
+            "non-skill result should show raw content, got: {text}"
+        );
+        assert!(
+            !text.contains('\u{1F9E9}'),
+            "non-skill result should not show the skill icon: {text}"
+        );
+    }
+
+    #[rstest::rstest]
+    fn skill_result_success_has_background_fill() {
+        // Given a successful skill result.
+        let ctx = render_context_with_status(Some(ToolResultStatus::Success));
+        let content = "<skill name=\"phased-task-loop\" location=\"/x\">body</skill>";
+
+        // When converting to lines.
+        let lines = to_lines("skill", content, ToolResultStatus::Success, None, &ctx);
+
+        // Then pad_lines() filled the row to content_width with a green background,
+        // so the success row visually spans the full width.
+        assert!(
+            lines
+                .iter()
+                .all(|l| l.spans.iter().any(|s| s.style.bg.is_some())),
+            "success skill result should have background fill on every line"
         );
     }
 }
