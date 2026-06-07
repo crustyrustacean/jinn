@@ -736,8 +736,10 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
 /// Saves a complete session in a single transaction.
 ///
 /// Upserts session metadata, replaces all junction rows and token ledger rows,
-/// and inserts any new entries. Orphaned entries (no longer referenced by any
-/// session) are cleaned up at the end.
+/// and inserts any new entries. Orphaned-entry reaping is intentionally not done
+/// here — it belongs in `delete_blocking`/`fork_blocking`, where the removing
+/// session is known. A global cleanup in the save hot-path could wipe every
+/// entry if `session_history` is transiently empty (e.g. mid-migration).
 fn save_blocking(
     conn: &mut SqliteConnection,
     session: &ChatSessionState,
@@ -839,11 +841,6 @@ fn save_blocking(
                 .execute(txn)?;
         }
 
-        // Clean up orphaned entries (no longer referenced by any session).
-        diesel::sql_query(
-            "DELETE FROM entries WHERE id NOT IN (SELECT entry_id FROM session_history)",
-        )
-        .execute(txn)?;
 
         Ok(())
     })
