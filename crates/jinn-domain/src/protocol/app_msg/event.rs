@@ -34,6 +34,7 @@ use crate::feat::session::protocol::session_load_completed::SessionLoadCompleted
 use crate::feat::session_lifecycle::protocol::event::{
     SessionCreated, SessionCwdChanged, SessionSetupCompleted, SessionTeardownFinished,
 };
+use crate::feat::discovery_coordinator::SessionDiscoverySettled;
 use crate::feat::skills::skills_scan_actor::SkillsLoaded;
 use crate::feat::tools_actor::protocol::event::{
     ToolBatchCompleted, ToolCallReceived, ToolCallStreaming, ToolExecutionCompleted,
@@ -99,6 +100,8 @@ pub enum Event {
     ToolsRegistered(ToolsRegistered),
     /// Agent skills have been scanned and loaded.
     SkillsLoaded(SkillsLoaded),
+    /// A session's three resource scans have settled (coalesced by the discovery coordinator).
+    SessionDiscoverySettled(SessionDiscoverySettled),
     /// Project context files (AGENTS.md/CLAUDE.md) have been scanned and loaded.
     ContextFilesLoaded(crate::feat::context::protocol::event::ContextFilesLoaded),
     /// Personas have been scanned and loaded from disk.
@@ -183,6 +186,7 @@ impl Event {
             Self::ToolExecutionOutput(..) => Some(ToolExecutionOutput::TYPE_NAME),
             Self::ToolsRegistered(..) => Some(ToolsRegistered::TYPE_NAME),
             Self::SkillsLoaded(..) => Some(SkillsLoaded::TYPE_NAME),
+            Self::SessionDiscoverySettled(..) => Some(SessionDiscoverySettled::TYPE_NAME),
             Self::ContextFilesLoaded(..) => {
                 Some(crate::feat::context::protocol::event::ContextFilesLoaded::TYPE_NAME)
             }
