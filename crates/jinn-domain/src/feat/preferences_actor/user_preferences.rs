@@ -716,7 +716,6 @@ impl Default for CompactionConfig {
     }
 }
 
-
 /// Web fetch backend selection.
 ///
 /// Determines which fetching strategy is used for the `web-fetch` tool.

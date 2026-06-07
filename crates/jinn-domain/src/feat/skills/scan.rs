@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use super::skill::{Skill, SkillSource};
 use super::frontmatter::{parse_frontmatter, strip_frontmatter};
+use super::skill::{Skill, SkillSource};
 
 /// Scans a directory for agent skills.
 ///
@@ -59,7 +59,6 @@ pub fn scan_skills(dir: &Path) -> Vec<Skill> {
     skills
 }
 
-
 /// Scans the global skills dir plus ordered project dirs, merging by name
 /// with most-local-wins precedence.
 ///
@@ -90,7 +89,9 @@ pub fn scan_skills_merged(global: &Path, project_dirs: &[std::path::PathBuf]) ->
             .map_or_else(|| dir.clone(), std::path::Path::to_path_buf);
         for skill in scan_skills(dir) {
             let tagged = Skill {
-                source: SkillSource::Project { dir: project_root.clone() },
+                source: SkillSource::Project {
+                    dir: project_root.clone(),
+                },
                 ..skill
             };
             by_name.insert(tagged.name.clone(), tagged);
@@ -335,7 +336,9 @@ mod tests {
         assert_eq!(skills[0].body, "# Project");
         assert_eq!(
             skills[0].source,
-            SkillSource::Project { dir: project.path().to_path_buf() }
+            SkillSource::Project {
+                dir: project.path().to_path_buf()
+            }
         );
     }
 
@@ -374,7 +377,9 @@ mod tests {
         assert_eq!(skills[0].body, "# Local");
         assert_eq!(
             skills[0].source,
-            SkillSource::Project { dir: local.path().to_path_buf() }
+            SkillSource::Project {
+                dir: local.path().to_path_buf()
+            }
         );
     }
 }

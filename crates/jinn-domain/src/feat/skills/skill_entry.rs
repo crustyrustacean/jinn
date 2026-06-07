@@ -1,7 +1,7 @@
 //! Skill picker entry type and rendering.
 
-use crate::feat::theme::Theme;
 use crate::feat::skills::SkillSource;
+use crate::feat::theme::Theme;
 use crate::feat::ui::chat_log::markdown::render_markdown;
 use jinn_selection_widget::PickerItem;
 use jinn_selection_widget::PreviewContent;
@@ -97,7 +97,7 @@ impl PickerItem for SkillEntry {
             spans.push(badge);
         }
         Line::from(spans)
-}
+    }
 }
 
 impl SkillEntry {
@@ -113,7 +113,6 @@ impl SkillEntry {
             SkillSource::Global => None,
         }
     }
-
 }
 
 impl PreviewContent for SkillEntry {

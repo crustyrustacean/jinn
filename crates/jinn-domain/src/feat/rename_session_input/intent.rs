@@ -1,6 +1,5 @@
 //! Rename session input intent handlers - enter, confirm, leave, and text editing.
 
-
 use crate::common::app_state::{AppState, FocusScope, RenameSessionInputState};
 use crate::feat::session_lifecycle::protocol::command::PersistSession;
 use crate::feat::ui::sidebar::sessions::sorted_open_sessions;
@@ -29,7 +28,10 @@ pub fn handle_rename_session_enter(state: &mut AppState) -> IntentResult {
     let cursor_pos = title.len();
 
     state.frontend.rename_session_input = RenameSessionInputState {
-        text: crate::common::line_input::LineInput { input: title, cursor_pos },
+        text: crate::common::line_input::LineInput {
+            input: title,
+            cursor_pos,
+        },
     };
     state
         .frontend
@@ -208,7 +210,10 @@ mod tests {
             .push(FocusScope::RenameSessionInput);
         state.frontend.sessions_section.selected_index = Some(0);
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "New Title".to_owned(), cursor_pos: 9 },
+            text: crate::common::line_input::LineInput {
+                input: "New Title".to_owned(),
+                cursor_pos: 9,
+            },
         };
 
         // When handling RenameSessionConfirm.
@@ -243,7 +248,10 @@ mod tests {
             .push(FocusScope::RenameSessionInput);
         state.frontend.sessions_section.selected_index = Some(0);
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: String::new(), cursor_pos: 0 },
+            text: crate::common::line_input::LineInput {
+                input: String::new(),
+                cursor_pos: 0,
+            },
         };
 
         // When handling RenameSessionConfirm.
@@ -278,7 +286,10 @@ mod tests {
             .push(FocusScope::RenameSessionInput);
         state.frontend.sessions_section.selected_index = Some(0);
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Fresh Title".to_owned(), cursor_pos: 11 },
+            text: crate::common::line_input::LineInput {
+                input: "Fresh Title".to_owned(),
+                cursor_pos: 11,
+            },
         };
 
         // When handling RenameSessionConfirm.
@@ -317,7 +328,10 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Changed".to_owned(), cursor_pos: 7 },
+            text: crate::common::line_input::LineInput {
+                input: "Changed".to_owned(),
+                cursor_pos: 7,
+            },
         };
 
         // When handling RenameSessionLeave.
@@ -341,7 +355,10 @@ mod tests {
         // Given state with input "Hello".
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 5 },
+            text: crate::common::line_input::LineInput {
+                input: "Hello".to_owned(),
+                cursor_pos: 5,
+            },
         };
 
         // When inserting '!'.
@@ -357,7 +374,10 @@ mod tests {
         // Given state with input "Hello" and cursor at end.
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 5 },
+            text: crate::common::line_input::LineInput {
+                input: "Hello".to_owned(),
+                cursor_pos: 5,
+            },
         };
 
         // When deleting.
@@ -373,7 +393,10 @@ mod tests {
         // Given state with input "Hello" and cursor at position 1.
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 1 },
+            text: crate::common::line_input::LineInput {
+                input: "Hello".to_owned(),
+                cursor_pos: 1,
+            },
         };
 
         // When forward deleting.
@@ -389,7 +412,10 @@ mod tests {
         // Given state with input "Hi" and cursor at end.
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Hi".to_owned(), cursor_pos: 2 },
+            text: crate::common::line_input::LineInput {
+                input: "Hi".to_owned(),
+                cursor_pos: 2,
+            },
         };
 
         // When moving cursor left.
@@ -404,7 +430,10 @@ mod tests {
         // Given state with input "Hi" and cursor at start.
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Hi".to_owned(), cursor_pos: 0 },
+            text: crate::common::line_input::LineInput {
+                input: "Hi".to_owned(),
+                cursor_pos: 0,
+            },
         };
 
         // When moving cursor right.
@@ -419,7 +448,10 @@ mod tests {
         // Given state with cursor at position 0 (boundary: > vs >=).
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 0 },
+            text: crate::common::line_input::LineInput {
+                input: "Hello".to_owned(),
+                cursor_pos: 0,
+            },
         };
 
         // When deleting at position 0.
@@ -435,7 +467,10 @@ mod tests {
         // Given state with cursor at end (boundary: < vs <=).
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 5 },
+            text: crate::common::line_input::LineInput {
+                input: "Hello".to_owned(),
+                cursor_pos: 5,
+            },
         };
 
         // When forward deleting at end.
@@ -451,7 +486,10 @@ mod tests {
         // Given state with cursor at position 0 (boundary: > vs >=).
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 0 },
+            text: crate::common::line_input::LineInput {
+                input: "Hello".to_owned(),
+                cursor_pos: 0,
+            },
         };
 
         // When moving cursor left at position 0.
@@ -466,7 +504,10 @@ mod tests {
         // Given state with cursor at end (boundary: < vs <=).
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 5 },
+            text: crate::common::line_input::LineInput {
+                input: "Hello".to_owned(),
+                cursor_pos: 5,
+            },
         };
 
         // When moving cursor right at end.
@@ -481,7 +522,10 @@ mod tests {
         // Given state with cursor in the middle.
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 2 },
+            text: crate::common::line_input::LineInput {
+                input: "Hello".to_owned(),
+                cursor_pos: 2,
+            },
         };
 
         // When pasting "XY".
@@ -497,7 +541,10 @@ mod tests {
         // Given state.
         let mut state = AppState::default();
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Hello".to_owned(), cursor_pos: 2 },
+            text: crate::common::line_input::LineInput {
+                input: "Hello".to_owned(),
+                cursor_pos: 2,
+            },
         };
 
         // When pasting empty text.

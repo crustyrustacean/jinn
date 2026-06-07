@@ -68,7 +68,11 @@ impl SkillPreviewCache {
     /// Returns names across all widths; width is intentionally excluded so callers can verify
     /// *which* skills are cached without knowing the rendered width.
     pub fn skill_names(&self) -> Vec<String> {
-        self.entries.lock().keys().map(|(name, _)| name.clone()).collect()
+        self.entries
+            .lock()
+            .keys()
+            .map(|(name, _)| name.clone())
+            .collect()
     }
 
     /// Returns `true` if the cache holds no entries.
@@ -80,10 +84,7 @@ impl SkillPreviewCache {
 
 impl PreviewCache for SkillPreviewCache {
     fn get(&self, key: &str, width: usize) -> Option<Vec<Line<'static>>> {
-        self.entries
-            .lock()
-            .get(&(key.to_owned(), width))
-            .cloned()
+        self.entries.lock().get(&(key.to_owned(), width)).cloned()
     }
 
     fn insert(&self, key: String, width: usize, lines: Vec<Line<'static>>) {
@@ -110,11 +111,7 @@ mod tests {
     #[test]
     fn insert_then_get_returns_stored_lines() {
         let cache = SkillPreviewCache::new();
-        cache.insert(
-            "bash".to_owned(),
-            80,
-            vec![line("rendered bash preview")],
-        );
+        cache.insert("bash".to_owned(), 80, vec![line("rendered bash preview")]);
         let got = cache.get("bash", 80).expect("entry should exist");
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].spans.len(), 1);

@@ -1,5 +1,7 @@
 //! Lifecycle command structs - async execution requests for setup/teardown.
 
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::{CommandMsg, SessionId};
@@ -52,6 +54,21 @@ pub struct RunSessionTeardown {
 pub struct PersistSession {
     /// The session to persist.
     pub session_id: SessionId,
+}
+
+/// Request to set a session's working directory.
+///
+/// Sent by the CWD input popup and CWD selector instead of mutating state
+/// directly. The session-persistence actor applies the cwd and emits
+/// `SessionCwdChanged`, which triggers re-discovery of skills, prompts, and
+/// context files for the new cwd.
+#[derive(Debug, Clone, Serialize, Deserialize, CommandMsg)]
+#[cmd("session")]
+pub struct SetSessionCwd {
+    /// The session whose cwd is being set.
+    pub session_id: SessionId,
+    /// The new working directory.
+    pub cwd: PathBuf,
 }
 
 /// Result of an async teardown shell command, sent back to the session actor.

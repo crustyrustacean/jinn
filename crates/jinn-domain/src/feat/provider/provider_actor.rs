@@ -123,6 +123,7 @@ impl ProviderActor {
             | Command::CloseSession(..)
             | Command::ArchiveSession(..)
             | Command::PersistSession(..)
+            | Command::SetSessionCwd(..)
             | Command::FinishSessionTeardown(..)
             | Command::FinishSessionSetup(..)
             | Command::CancelLifecycleCommand(..)

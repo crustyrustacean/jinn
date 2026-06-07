@@ -77,7 +77,6 @@ impl AppPaths {
         self.home_dir = home;
     }
 
-
     // -- Derived paths -------------------------------------------------------
 
     /// Session database parent directory (`~/.local/share/jinn`).

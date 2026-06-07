@@ -9,30 +9,6 @@ use std::path::{Path, PathBuf};
 
 use crate::feat::persona::Persona;
 
-/// Builds the three cwd-driven re-scan commands for a session.
-///
-/// Emits `ScanSkills`, `RescanPromptTemplates`, and `ScanContextFiles` for the
-/// given session. Callers fire these on the async scan actors after a cwd change,
-/// session switch, or session load; each actor reads the session's cwd and walks
-/// the bounded ancestor chain (exclusive `$HOME` or inclusive VCS root) off-thread.
-#[must_use]
-pub fn scan_commands_for_session(session_id: &crate::SessionId) -> Vec<crate::protocol::Command> {
-    use crate::feat::context::protocol::command::ScanContextFiles;
-    use crate::feat::provider::protocol::command::RescanPromptTemplates;
-    use crate::feat::skills::ScanSkills;
-    vec![
-        crate::protocol::Command::ScanSkills(ScanSkills {
-            session_id: session_id.clone(),
-        }),
-        crate::protocol::Command::RescanPromptTemplates(RescanPromptTemplates {
-            session_id: session_id.clone(),
-        }),
-        crate::protocol::Command::ScanContextFiles(ScanContextFiles {
-            session_id: session_id.clone(),
-        }),
-    ]
-}
-
 /// Candidates for project context files, checked in order.
 const CONTEXT_FILE_CANDIDATES: &[&str] = &["AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
 
@@ -456,30 +432,5 @@ mod tests {
         // Then the parent's file is found.
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].content, "parent sync context");
-    }
-
-    #[rstest::rstest]
-    fn scan_commands_for_session_emits_all_three_tagged_with_session_id() {
-        // Given a session id.
-        use crate::protocol::SessionId;
-        let id = SessionId::new();
-
-        // When building the scan commands.
-        let commands = scan_commands_for_session(&id);
-
-        // Then exactly three commands are emitted.
-        assert_eq!(commands.len(), 3);
-        // And all carry the given session id.
-        assert!(commands.iter().all(|c| command_session_id(c) == &id));
-    }
-
-    fn command_session_id(command: &crate::protocol::Command) -> &crate::protocol::SessionId {
-
-        match command {
-            crate::protocol::Command::ScanSkills(c) => &c.session_id,
-            crate::protocol::Command::RescanPromptTemplates(c) => &c.session_id,
-            crate::protocol::Command::ScanContextFiles(c) => &c.session_id,
-            _ => panic!("expected a scan command, got {command:?}"),
-        }
     }
 }

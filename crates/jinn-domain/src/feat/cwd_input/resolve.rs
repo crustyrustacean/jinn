@@ -124,10 +124,7 @@ mod tests {
     #[rstest]
     fn empty_input_is_empty() {
         let dir = tempdir().unwrap();
-        assert_eq!(
-            resolve_cwd_input("", dir.path()),
-            CwdResolution::Empty
-        );
+        assert_eq!(resolve_cwd_input("", dir.path()), CwdResolution::Empty);
     }
 
     #[rstest]
@@ -171,7 +168,10 @@ mod tests {
         fs::create_dir_all(&sub).unwrap();
         // from dir, go into sibling/sub then back up one with ..
         let res = resolve_cwd_input("sibling/sub/../.", dir.path());
-        assert_eq!(res, CwdResolution::Ok(canonicalize(&dir.path().join("sibling"))));
+        assert_eq!(
+            res,
+            CwdResolution::Ok(canonicalize(&dir.path().join("sibling")))
+        );
     }
 
     #[rstest]
@@ -194,22 +194,30 @@ mod tests {
         let target = home.path().join(&name);
         fs::create_dir_all(&target).unwrap();
         // SAFETY: single-threaded test; env var mutation is isolated to this test.
-        unsafe { std::env::set_var("HOME", home.path()); }
+        unsafe {
+            std::env::set_var("HOME", home.path());
+        }
         let res = resolve_cwd_input(&format!("~/{name}"), Path::new("/some/unrelated/cwd"));
         assert_eq!(res, CwdResolution::Ok(canonicalize(&target)));
         // SAFETY: see above.
-        unsafe { std::env::remove_var("HOME"); }
+        unsafe {
+            std::env::remove_var("HOME");
+        }
     }
 
     #[rstest]
     fn bare_tilde_resolves_to_home() {
         let home = tempdir().unwrap();
         // SAFETY: single-threaded test; env var mutation is isolated to this test.
-        unsafe { std::env::set_var("HOME", home.path()); }
+        unsafe {
+            std::env::set_var("HOME", home.path());
+        }
         let res = resolve_cwd_input("~", Path::new("/some/unrelated/cwd"));
         assert_eq!(res, CwdResolution::Ok(canonicalize(home.path())));
         // SAFETY: see above.
-        unsafe { std::env::remove_var("HOME"); }
+        unsafe {
+            std::env::remove_var("HOME");
+        }
     }
 
     #[rstest]
@@ -224,5 +232,3 @@ mod tests {
         std::fs::canonicalize(p).expect("test fixture dir must canonicalize")
     }
 }
-
-

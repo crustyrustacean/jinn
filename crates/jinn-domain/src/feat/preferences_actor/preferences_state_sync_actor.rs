@@ -101,8 +101,8 @@ mod tests {
     use crate::feat::preferences_actor::protocol::event::PreferencesUpdated;
     use crate::feat::preferences_actor::user_preferences::UserPreferences;
     use crate::feat::preferences_actor::user_preferences::{
-        AutoPruneConfig, BashConfig, CompactionConfig,
-        CwdSelectorConfig, MinimapConfig, OpenrouterWebSearchConfig, WebFetchConfig,
+        AutoPruneConfig, BashConfig, CompactionConfig, CwdSelectorConfig, MinimapConfig,
+        OpenrouterWebSearchConfig, WebFetchConfig,
     };
     use crate::protocol::Event;
 
