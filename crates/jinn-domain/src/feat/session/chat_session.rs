@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
 use crate::feat::chat_input::ChatInputBoxState;
-use crate::feat::context::strategy::types::StrategyState;
+
 use crate::feat::session::chat_history::ChatHistory;
 use crate::feat::session::phase_machine::PhaseKind;
 use crate::feat::session::profile::SessionProfile;
@@ -27,7 +27,7 @@ use crate::feat::session::token_stats::TokenRecord;
 use crate::feat::ui::chat_log::visual_item::VisualItem;
 use crate::protocol::{
     ChangeSource, ChatEntry, ChatEntryId, ChatEntryKind, ContextOverride, PinPosition,
-    PromptStrategyId, SessionId,
+    SessionId,
 };
 
 /// Error returned when a streaming operation fails.
@@ -174,11 +174,7 @@ pub struct SessionCore {
     /// OWNER: session-actor (set at session creation).
     #[serde(default)]
     pub(crate) parent_session: Option<SessionId>,
-    /// Per-strategy persistent state. Keyed by strategy ID so switching
-    /// strategies preserves previous state for when the user switches back.
-    /// OWNER: context-actor (reads/writes during RestoreStrategyState, SwitchPromptStrategy).
-    #[serde(default)]
-    pub(crate) strategy_state: HashMap<PromptStrategyId, StrategyState>,
+
     /// Generic blob storage for future subsystems.
     #[serde(default)]
     pub(crate) blobs: HashMap<String, JsonValue>,
@@ -240,7 +236,7 @@ impl Default for SessionCore {
             cwd: std::path::PathBuf::from("."),
             token_ledger: Vec::new(),
             parent_session: None,
-            strategy_state: HashMap::new(),
+
             blobs: HashMap::new(),
             lifecycle_name: None,
             lifecycle_args: Vec::new(),
@@ -430,21 +426,6 @@ impl ChatSessionState {
         }
     }
 
-    /// Create a new session with a specific prompt strategy.
-    #[must_use]
-    pub fn new_with_strategy(strategy_id: PromptStrategyId) -> Self {
-        Self {
-            core: SessionCore {
-                profile: SessionProfile::from_config(
-                    crate::feat::provider_infra::NO_PROVIDER_ID.to_owned(),
-                    strategy_id,
-                    crate::feat::session::profile::DEFAULT_SLIDING_WINDOW_SIZE,
-                ),
-                ..SessionCore::default()
-            },
-            ui: SessionUi::default(),
-        }
-    }
 
     /// Create a new session with a specific profile (model + strategy).
     #[must_use]
@@ -1313,15 +1294,7 @@ impl ChatSessionState {
         self.core.ephemeral.message_queue.drain()
     }
 
-    /// Switch the active prompt strategy for this session.
-    pub fn switch_strategy(&mut self, strategy_id: PromptStrategyId) {
-        self.core.profile.strategy = strategy_id;
-    }
 
-    /// The currently active prompt strategy.
-    pub fn active_strategy(&self) -> &PromptStrategyId {
-        &self.core.profile.strategy
-    }
 
     /// Read-only access to the session profile.
     pub fn profile(&self) -> &SessionProfile {
@@ -1388,6 +1361,8 @@ impl ChatSessionState {
     /// ToolResult from the `skill` tool whose content begins with `<skill name="X"`.
     pub fn loaded_skills(&self) -> HashSet<String> {
         use crate::feat::session::chat_entry::ChatEntryKind;
+        use crate::feat::skills::parse_loaded_skill_name;
+
         let mut out = HashSet::new();
         for entry in self.history() {
             if !entry.is_pinned() {
@@ -1404,15 +1379,11 @@ impl ChatSessionState {
             if tool_name != "skill" {
                 continue;
             }
-            // content starts with `<skill name="X"` — extract X.
-            let prefix = "<skill name=\"";
-            let Some(rest) = content.strip_prefix(prefix) else {
+            // Skill bodies are pinned as `<skill name="X" ...>` — extract X.
+            let Some(skill_name) = parse_loaded_skill_name(content) else {
                 continue;
             };
-            let Some(end) = rest.find('\"') else {
-                continue;
-            };
-            out.insert(rest[..end].to_owned());
+            out.insert(skill_name.to_owned());
         }
         out
     }
@@ -2396,15 +2367,6 @@ impl ChatSessionState {
         self.core.updated_at = Timestamp::now();
     }
 
-    /// Per-strategy state for this session.
-    pub fn strategy_state(&self) -> &HashMap<PromptStrategyId, StrategyState> {
-        &self.core.strategy_state
-    }
-
-    /// Mutable access to per-strategy state.
-    pub fn strategy_state_mut(&mut self) -> &mut HashMap<PromptStrategyId, StrategyState> {
-        &mut self.core.strategy_state
-    }
 
     /// Generic blob storage for future subsystems.
     pub fn blobs(&self) -> &HashMap<String, JsonValue> {

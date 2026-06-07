@@ -580,3 +580,95 @@ fn resolve_selected_entry_id_returns_real_session_and_entry_ids() {
         "entry_id should be the real pinned entry ID, not a default"
     );
 }
+
+// --- Pinned skill display tests ---
+
+use crate::feat::session::tool_result_status::ToolResultStatus;
+
+/// Build an AppState with one pinned tool-result entry.
+fn state_with_pinned_tool_result(name: &str, content: &str) -> AppState {
+    let mut state = AppState::default();
+    let entry = ChatEntry::tool_result("call-1", name, content, ToolResultStatus::Success);
+    let entry_id = entry.id.clone();
+    state.active_session_mut().push_entry(entry);
+    state.active_session_mut().pin_entry(&entry_id, PinPosition::Top);
+    state
+}
+
+/// Join all rendered rows into one string for substring assertions.
+fn joined_render(state: &AppState) -> String {
+    let mut section = PinsSection;
+    render_rows(&mut section, state, 50, 10).join("\n")
+}
+
+#[rstest::rstest]
+fn pins_skill_result_shows_summary_label_without_raw_xml() {
+    // Given a pinned skill tool result with well-formed XML content.
+    let state = state_with_pinned_tool_result(
+        "skill",
+        "<skill name=\"phased-task-loop\" location=\"/x\">body</skill>",
+    );
+
+    // When rendering the pins section.
+    let rendered = joined_render(&state);
+
+    // Then the summary label shows the icon and name, with no raw XML.
+    assert!(
+        rendered.contains('\u{1F9E9}'),
+        "skill pin should show the puzzle icon: {rendered}"
+    );
+    assert!(
+        rendered.contains("phased-task-loop"),
+        "skill pin should show the skill name: {rendered}"
+    );
+    assert!(
+        !rendered.contains("<skill"),
+        "skill pin should not show raw XML: {rendered}"
+    );
+    assert!(
+        !rendered.contains("location="),
+        "skill pin should not show the location attribute: {rendered}"
+    );
+}
+
+#[rstest::rstest]
+fn pins_skill_result_malformed_content_uses_fallback_label() {
+    // Given a pinned skill tool result with malformed (non-skill) content.
+    let state = state_with_pinned_tool_result("skill", "not a skill xml");
+
+    // When rendering the pins section.
+    let rendered = joined_render(&state);
+
+    // Then the fallback label shows the icon and (skill), with no panic.
+    assert!(
+        rendered.contains('\u{1F9E9}'),
+        "malformed skill pin should still show the icon: {rendered}"
+    );
+    assert!(
+        rendered.contains("(skill)"),
+        "malformed skill pin should show the fallback label: {rendered}"
+    );
+}
+
+#[rstest::rstest]
+fn pins_non_skill_tool_result_unchanged() {
+    // Given a pinned non-skill tool result.
+    let state = state_with_pinned_tool_result("read", "file contents here");
+
+    // When rendering the pins section.
+    let rendered = joined_render(&state);
+
+    // Then the non-skill rendering is unchanged: check icon, tool name, content.
+    assert!(
+        rendered.contains('\u{2705}'),
+        "non-skill success result should show the check icon: {rendered}"
+    );
+    assert!(
+        rendered.contains("read"),
+        "non-skill result should show the tool name: {rendered}"
+    );
+    assert!(
+        rendered.contains("file contents here"),
+        "non-skill result should show the raw content: {rendered}"
+    );
+}

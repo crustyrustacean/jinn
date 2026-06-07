@@ -958,7 +958,6 @@ impl ActorSystemBuilder {
                 state: state.clone(),
                 csv_path: Some(b.csv_path.clone()),
                 plan: Some(b.plan),
-                user_preferences_storage: user_preferences_storage.clone(),
             },
         ));
     }

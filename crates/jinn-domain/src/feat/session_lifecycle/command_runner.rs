@@ -9,6 +9,8 @@ use std::path::PathBuf;
 use error_stack::Report;
 use wherror::Error;
 
+use crate::common::process_kill::kill_process_tree;
+
 /// Errors that can occur when running a lifecycle command.
 #[derive(Debug, Error)]
 pub enum LifecycleCommandError {
@@ -153,12 +155,16 @@ pub type SpawnTeardownResult = Result<
     Report<LifecycleCommandError>,
 >;
 
-/// Kill the process inside a [`SharedChild`], if it is still present.
+/// Kill the process tree inside a [`SharedChild`], if it is still present.
+///
+/// Terminates the child _and its entire descendant tree_ (e.g. backgrounded
+/// `make build &` or `npm dev &` jobs spawned by the lifecycle command) via the
+/// cross-platform [`kill_process_tree`] helper.
 pub fn kill_shared_child(child_arc: &SharedChild) {
     // blocking_lock is OK here because this is called from a synchronous handler.
     let mut guard = child_arc.blocking_lock();
     if let Some(mut child) = guard.take() {
-        let _ = child.start_kill();
+        kill_process_tree(&mut child);
     }
 }
 
@@ -177,14 +183,24 @@ pub fn kill_shared_child(child_arc: &SharedChild) {
 pub fn spawn_setup_command(command: &str, shell: &str) -> SpawnSetupResult {
     use error_stack::ResultExt as _;
 
-    let mut child = tokio::process::Command::new(shell)
-        .arg("-c")
-        .arg(command)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .change_context(LifecycleCommandError::ExecutionFailed)
-        .attach("failed to spawn lifecycle command")?;
+    let mut child = {
+        let mut cmd = tokio::process::Command::new(shell);
+        cmd.arg("-c")
+            .arg(command)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        // Place the child in its own process group on Unix so that
+        // `kill_process_tree` can atomically signal the whole group with
+        // `kill(-pgid)`. Windows ignores this (it has no process-group
+        // signalling analogue); its tree kill is enumerative via `kill_tree`.
+        #[cfg(unix)]
+        cmd.process_group(0);
+
+        cmd.spawn()
+            .change_context(LifecycleCommandError::ExecutionFailed)
+            .attach("failed to spawn lifecycle command")?
+    };
 
     // Take pipes before wrapping child.
     let stdout_pipe = child.stdout.take();
@@ -279,14 +295,22 @@ pub fn spawn_setup_command(command: &str, shell: &str) -> SpawnSetupResult {
 pub fn spawn_teardown_command(command: &str, shell: &str) -> SpawnTeardownResult {
     use error_stack::ResultExt as _;
 
-    let mut child = tokio::process::Command::new(shell)
-        .arg("-c")
-        .arg(command)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .change_context(LifecycleCommandError::ExecutionFailed)
-        .attach("failed to spawn lifecycle command")?;
+    let mut child = {
+        let mut cmd = tokio::process::Command::new(shell);
+        cmd.arg("-c")
+            .arg(command)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        // Same process-group rationale as `spawn_setup_command` — see that
+        // function for the Unix/Windows split.
+        #[cfg(unix)]
+        cmd.process_group(0);
+
+        cmd.spawn()
+            .change_context(LifecycleCommandError::ExecutionFailed)
+            .attach("failed to spawn lifecycle command")?
+    };
 
     // Take pipes before wrapping child.
     let stdout_pipe = child.stdout.take();
@@ -616,5 +640,61 @@ mod tests {
 
         // Then the command succeeds (stdout is ignored).
         assert!(result.is_ok());
+    }
+
+    // --- Process-tree kill tests ---
+
+    /// Regression test: `kill_shared_child` must terminate not just the direct
+    /// child (the shell) but also backgrounded grandchildren, via the process-group
+    /// signal. Before the refactor, `kill_shared_child` called only `start_kill()`,
+    /// which orphans grandchildren on every platform.
+    #[cfg(unix)]
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn kill_shared_child_terminates_grandchildren() {
+        use std::process::Stdio;
+
+        // Given a shell child that backgrounds a long-running `sleep` (the
+        // grandchild) and itself exits, so only the grandchild would survive
+        // a naive single-process kill.
+        let mut cmd = tokio::process::Command::new("/bin/sh");
+        cmd.arg("-c")
+            .arg("sleep 65 &")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .process_group(0);
+        let child = cmd.spawn().expect("spawn should succeed");
+        let shared: SharedChild = std::sync::Arc::new(tokio::sync::Mutex::new(Some(child)));
+
+        // Give the shell a moment to launch the backgrounded grandchild.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        // When killing the shared child's tree. `kill_shared_child` uses a
+        // blocking lock and is documented as called from a synchronous
+        // handler — mirror that context via `spawn_blocking` so the test does
+        // not block the async runtime thread.
+        {
+            let shared = shared.clone();
+            tokio::task::spawn_blocking(move || kill_shared_child(&shared))
+                .await
+                .expect("kill task should complete");
+        }
+
+        // Then give the kernel a moment to reap the grandchild.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        // Verify no 'sleep 60' grandchild survived.
+        let output = tokio::process::Command::new("pgrep")
+            .arg("-f")
+            .arg("sleep 65")
+            .output()
+            .await
+            .expect("pgrep should run");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.trim().is_empty(),
+            "expected no 'sleep 65' grandchildren, but found: {stdout}"
+        );
     }
 }

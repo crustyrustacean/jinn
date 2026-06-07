@@ -89,6 +89,10 @@ pub fn run_migrations(conn: &mut SqliteConnection) -> Result<(), Report<SessionS
         migrate_v14(conn)?;
         record_version(conn, 14, "add_context_history")?;
     }
+    if current < 15 {
+        migrate_v15(conn)?;
+        record_version(conn, 15, "drop_strategy_state_column")?;
+    }
     Ok(())
 }
 
@@ -155,9 +159,9 @@ fn migrate_v0(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErro
          title TEXT,\
          updated_at TEXT NOT NULL,\
          profile TEXT NOT NULL DEFAULT '{}',\
-         strategy_state TEXT NOT NULL DEFAULT '{}',\
          blobs TEXT NOT NULL DEFAULT '{}',\
-         parent_session TEXT DEFAULT NULL)",
+         parent_session TEXT DEFAULT NULL,\
+         strategy_state TEXT NOT NULL DEFAULT '{}')"
     )
     .execute(conn)
     .change_context(SessionStoreError)
@@ -440,6 +444,64 @@ fn migrate_v14(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreErr
     Ok(())
 }
 
+/// Drops the now-unused `strategy_state` column from `sessions`.
+/// Context-management strategies were replaced by the history-worker architecture
+/// (auto-prune and compaction workers derive state at runtime). The column feeds no
+/// code path and is removed to align the schema with the Rust types.
+///
+/// Implemented via the SQLite-recommended 12-step table rebuild rather than
+/// `ALTER TABLE ... DROP COLUMN`, because the latter requires SQLite >= 3.35 and
+/// the linked (system) SQLite version is not pinned. The rebuild works on any version.
+fn migrate_v15(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
+    sql_query(
+        "CREATE TABLE sessions_new (\
+         id TEXT PRIMARY KEY,\
+         title TEXT,\
+         updated_at TEXT NOT NULL,\
+         profile TEXT NOT NULL DEFAULT '{}',\
+         blobs TEXT NOT NULL DEFAULT '{}',\
+         parent_session TEXT DEFAULT NULL,\
+         cwd TEXT NOT NULL DEFAULT '.',\
+         created_at TEXT NOT NULL DEFAULT '',\
+         archived BOOLEAN NOT NULL DEFAULT FALSE,\
+         lifecycle_name TEXT DEFAULT NULL,\
+         lifecycle_args TEXT NOT NULL DEFAULT '[]',\
+         lifecycle_script_state TEXT NOT NULL DEFAULT 'nothing_ran',\
+         metadata TEXT,\
+         is_workflow BOOLEAN NOT NULL DEFAULT FALSE,\
+         judge_meta TEXT)",
+    )
+    .execute(conn)
+    .change_context(SessionStoreError)
+    .attach("v15: create sessions_new without strategy_state")?;
+
+    sql_query(
+        "INSERT INTO sessions_new (\
+         id, title, updated_at, profile, blobs, parent_session, cwd, created_at,\
+         archived, lifecycle_name, lifecycle_args, lifecycle_script_state, metadata,\
+         is_workflow, judge_meta) \
+         SELECT \
+         id, title, updated_at, profile, blobs, parent_session, cwd, created_at,\
+         archived, lifecycle_name, lifecycle_args, lifecycle_script_state, metadata,\
+         is_workflow, judge_meta FROM sessions",
+    )
+    .execute(conn)
+    .change_context(SessionStoreError)
+    .attach("v15: copy sessions into sessions_new")?;
+
+    sql_query("DROP TABLE sessions")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("v15: drop old sessions table")?;
+
+    sql_query("ALTER TABLE sessions_new RENAME TO sessions")
+        .execute(conn)
+        .change_context(SessionStoreError)
+        .attach("v15: rename sessions_new to sessions")?;
+
+    Ok(())
+}
+
 fn migrate_v12(conn: &mut SqliteConnection) -> Result<(), Report<SessionStoreError>> {
     sql_query(
         "ALTER TABLE session_history ADD COLUMN context_override TEXT NOT NULL DEFAULT 'default'",
@@ -494,7 +556,7 @@ mod tests {
                 .load(&mut conn)
                 .expect("query migrations");
 
-        assert_eq!(rows.len(), 15);
+        assert_eq!(rows.len(), 16);
         assert_eq!(rows[0].version, 0);
         assert_eq!(rows[0].name, "create_initial_schema");
         assert_eq!(rows[1].version, 1);
@@ -548,7 +610,7 @@ mod tests {
             .load(&mut conn)
             .expect("query count");
 
-        assert_eq!(rows[0].count, 15);
+        assert_eq!(rows[0].count, 16);
     }
 
     /// Applies migrations up to (and including) `target` version.
@@ -611,6 +673,14 @@ mod tests {
             migrate_v12(conn).expect("v12");
             record_version(conn, 12, "replace_ignored_with_context_override").expect("record v12");
         }
+        if target >= 13 {
+            migrate_v13(conn).expect("v13");
+            record_version(conn, 13, "add_judge_meta_column").expect("record v13");
+        }
+        if target >= 14 {
+            migrate_v14(conn).expect("v14");
+            record_version(conn, 14, "add_context_history").expect("record v14");
+        }
     }
 
     /// Verifies that each migration guard uses `<` not `<=`.
@@ -632,7 +702,7 @@ mod tests {
             count: i64,
         }
 
-        for target_version in 0..=13_i32 {
+        for target_version in 0..=14_i32 {
             let (_dir, mut conn) = make_conn();
 
             // Build the database at exactly `target_version`.
@@ -648,8 +718,8 @@ mod tests {
                 .load(&mut conn)
                 .expect("query count");
             assert_eq!(
-                rows[0].count, 15,
-                "at target_version={target_version}: expected 15 migration rows, no duplicates"
+                rows[0].count, 16,
+                "at target_version={target_version}: expected 16 migration rows, no duplicates"
             );
         }
     }
@@ -695,7 +765,7 @@ mod tests {
 
         // Given a database with sessions containing mixed strategy state and profile.
         let (_dir, mut conn) = make_conn();
-        run_migrations(&mut conn).unwrap(); // run through v9
+        apply_migrations_up_to(&mut conn, 9); // build at v9, before v10 rewrites strategy_state
 
         // Insert a session with passthrough strategy state and sliding_window profile strategy.
         sql_query(
@@ -742,7 +812,7 @@ mod tests {
 
         // Given a database with a session having no compaction key in strategy_state.
         let (_dir, mut conn) = make_conn();
-        run_migrations(&mut conn).unwrap();
+        apply_migrations_up_to(&mut conn, 9); // build at v9, before v10 rewrites strategy_state
 
         sql_query(
             "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, strategy_state, blobs, lifecycle_script_state) \
@@ -768,5 +838,53 @@ mod tests {
             serde_json::from_str(&rows[0].strategy_state).expect("parse state");
         assert!(state_map.contains_key("compaction"));
         assert!(!state_map.contains_key("passthrough"));
+    }
+
+    #[test]
+    fn migrate_v15_drops_strategy_state_column() {
+        #[derive(QueryableByName)]
+        struct ColumnRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            name: String,
+        }
+
+        #[derive(QueryableByName)]
+        struct IdRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            id: String,
+        }
+
+        // Given a database built to v14 (strategy_state column still present) with a session in it.
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 14);
+        sql_query(
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, strategy_state, blobs, lifecycle_script_state) \
+             VALUES ('keep-me', 'Survivor', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
+             '{}', '{}', '{}', 'nothing_ran')",
+        )
+        .execute(&mut conn)
+        .expect("insert pre-v15 session");
+
+        // When running migration v15.
+        migrate_v15(&mut conn).expect("migrate v15");
+
+        // Then the sessions table no longer has a strategy_state column.
+        let cols: Vec<ColumnRow> = sql_query("PRAGMA table_info(sessions)")
+            .load(&mut conn)
+            .expect("query table_info");
+        assert!(
+            !cols.iter().any(|c| c.name == "strategy_state"),
+            "strategy_state column should be dropped; found columns: {:?}",
+            cols.iter().map(|c| &c.name).collect::<Vec<_>>()
+        );
+
+        // And the session row survived the table rebuild.
+        let rows: Vec<IdRow> = sql_query("SELECT id FROM sessions")
+            .load(&mut conn)
+            .expect("query sessions");
+        assert!(
+            rows.iter().any(|r| r.id == "keep-me"),
+            "session 'keep-me' must survive the v15 table rebuild"
+        );
     }
 }

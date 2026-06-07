@@ -501,8 +501,7 @@ fn confirm_session_lifecycle(state: &mut AppState) -> IntentResult {
         state.frontend.arg_input = crate::common::app_state::ArgInputState {
             lifecycle_name,
             template_display,
-            input: String::new(),
-            cursor_pos: 0,
+            text: crate::common::line_input::LineInput::new(),
         };
         state
             .frontend
@@ -969,6 +968,26 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].name, "phased-task-loop");
         assert_eq!(items[1].name, "web-coder");
+    }
+
+    #[rstest::rstest]
+    fn opening_skill_picker_preserves_preview_cache() {
+        use jinn_selection_widget::PreviewCache;
+
+        // Given a populated cache (simulating prior viewing).
+        let mut state = setup_state_with_skills();
+        state.frontend.caches.skill_preview_cache.write().insert(
+            "web-coder".to_owned(),
+            80,
+            vec![ratatui::text::Line::raw("rendered")],
+        );
+        assert_eq!(state.frontend.caches.skill_preview_cache.read().len(), 1);
+
+        // When the skill picker is opened.
+        handle_open_picker(&mut state, PickerKind::Skill);
+
+        // Then the cache is preserved (bodies haven't changed).
+        assert_eq!(state.frontend.caches.skill_preview_cache.read().len(), 1);
     }
 
     #[rstest::rstest]

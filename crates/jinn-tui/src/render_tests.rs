@@ -228,3 +228,31 @@ fn gutter_area_is_not_selectable() {
         .find_for_position(content.x, content.y + 1);
     assert!(found.is_none(), "gutter area should not be selectable");
 }
+
+#[rstest::rstest]
+fn cwd_input_popup_renders_and_is_selectable() {
+    // Given a TuiApp rendered with CwdInput scope.
+    let mut app = render_test_app();
+    app.core
+        .state
+        .write()
+        .frontend
+        .scope_stack
+        .push(FocusScope::CwdInput);
+    let (mut terminal, _area) = setup_term(80, 24);
+
+    // When rendering.
+    terminal
+        .draw(|frame| {
+            app.render(frame);
+        })
+        .unwrap();
+
+    // Then the cwd popup rect is registered as selectable.
+    let popup_rect = jinn_domain::feat::cwd_input::render::cwd_input_popup_rect(frame_area(80, 24));
+    let probe = app
+        .selectable_rects
+        .find_for_position(popup_rect.x + 1, popup_rect.y + 1);
+    assert!(probe.is_some(), "cwd input popup rect should be selectable");
+    assert_eq!(probe.unwrap(), popup_rect);
+}

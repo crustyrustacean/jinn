@@ -247,8 +247,15 @@ pub enum Intent {
     /// Delete the grapheme before the cursor in rename input.
     RenameDeleteGrapheme,
     /// Delete the grapheme after the cursor in rename input.
-    /// Delete the grapheme after the cursor in rename input.
     RenameDeleteForward,
+
+    // --- CWD Input (type a path) ---
+    /// Open the cwd input popup (type a directory path).
+    OpenCwdInput,
+    /// Confirm the cwd input - resolve, validate, and apply.
+    CwdInputConfirm,
+    /// Cancel the cwd input popup.
+    CwdInputLeave,
 
     // --- CWD Selection ---
     /// Change the session's working directory via an external picker.
@@ -374,6 +381,9 @@ impl std::fmt::Display for Intent {
             Intent::RenameCursorRight => write!(f, "rename cursor right"),
             Intent::RenameDeleteGrapheme => write!(f, "rename delete"),
             Intent::RenameDeleteForward => write!(f, "rename forward delete"),
+            Intent::OpenCwdInput => write!(f, "change cwd"),
+            Intent::CwdInputConfirm => write!(f, "cwd input confirm"),
+            Intent::CwdInputLeave => write!(f, "cwd input leave"),
 
             Intent::ChangeCwd { root } => write!(f, "change cwd ({root})"),
             Intent::TriggerPlugin { description, .. } => write!(f, "{description}"),
