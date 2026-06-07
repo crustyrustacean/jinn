@@ -192,11 +192,11 @@ mod tests {
         let popup_area = cwd_input_popup_rect(area);
         let mut found = false;
         for x in popup_area.x..(popup_area.x + popup_area.width).min(buffer.area().width) {
-            if let Some(cell) = buffer.cell((x, popup_area.y)) {
-                if cell.symbol() == "C" || cell.symbol() == "h" || cell.symbol() == "a" {
-                    found = true;
-                    break;
-                }
+            if let Some(cell) = buffer.cell((x, popup_area.y))
+                && (cell.symbol() == "C" || cell.symbol() == "h" || cell.symbol() == "a")
+            {
+                found = true;
+                break;
             }
         }
         assert!(found, "title text should appear in the top border");
@@ -224,16 +224,14 @@ mod tests {
         let mut found_check = false;
         let success_color = state.frontend.theme.success;
         for x in popup_area.x..(popup_area.x + popup_area.width).min(buffer.area().width) {
-            if let Some(cell) = buffer.cell((x, footer_y)) {
-                if cell.symbol() == "✓" {
-                    assert_eq!(
-                        cell.style().fg,
-                        Some(success_color),
-                        "check should be green (theme.success)"
-                    );
-                    found_check = true;
-                    break;
-                }
+            if let Some(cell) = buffer.cell((x, footer_y)) && cell.symbol() == "✓" {
+                assert_eq!(
+                    cell.style().fg,
+                    Some(success_color),
+                    "check should be green (theme.success)"
+                );
+                found_check = true;
+                break;
             }
         }
         assert!(found_check, "green check should appear in the footer for a valid dir");
@@ -260,16 +258,14 @@ mod tests {
         let error_color = state.frontend.theme.error_text;
         let mut found_x = false;
         for x in popup_area.x..(popup_area.x + popup_area.width).min(buffer.area().width) {
-            if let Some(cell) = buffer.cell((x, footer_y)) {
-                if cell.symbol() == "✗" {
-                    assert_eq!(
-                        cell.style().fg,
-                        Some(error_color),
-                        "x should be red (theme.error_text)"
-                    );
-                    found_x = true;
-                    break;
-                }
+            if let Some(cell) = buffer.cell((x, footer_y)) && cell.symbol() == "✗" {
+                assert_eq!(
+                    cell.style().fg,
+                    Some(error_color),
+                    "x should be red (theme.error_text)"
+                );
+                found_x = true;
+                break;
             }
         }
         assert!(found_x, "red x should appear in the footer for a bad path");
@@ -296,11 +292,12 @@ mod tests {
         let muted_color = state.frontend.theme.muted_text;
         let mut found_hint = false;
         for x in popup_area.x..(popup_area.x + popup_area.width).min(buffer.area().width) {
-            if let Some(cell) = buffer.cell((x, footer_y)) {
-                if cell.style().fg == Some(muted_color) && cell.symbol() != " " {
-                    found_hint = true;
-                    break;
-                }
+            if let Some(cell) = buffer.cell((x, footer_y))
+                && cell.style().fg == Some(muted_color)
+                && cell.symbol() != " "
+            {
+                found_hint = true;
+                break;
             }
         }
         assert!(found_hint, "muted hint should appear for empty input");
