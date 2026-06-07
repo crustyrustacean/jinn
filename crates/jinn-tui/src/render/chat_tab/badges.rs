@@ -32,9 +32,15 @@ pub(super) fn render_badges(frame: &mut Frame<'_>, input_area: Rect, ctx: &Rende
         return;
     };
 
-    // The active session is what the user is currently looking at.
+    // The active session is what the user is currently looking at. `mode` lets a
+    // plugin gate its presentation on the current scope (e.g. dim a hotkey legend
+    // outside Input mode). The host provides the data; the plugin decides styling.
     let sid = ctx.state.session.active_session_id().clone();
-    let badge_ctx = serde_json::json!({ "active_session_id": sid.to_string() });
+    let mode = ctx.state.frontend.scope_stack.current().mode();
+    let badge_ctx = serde_json::json!({
+        "active_session_id": sid.to_string(),
+        "mode": mode.to_string(),
+    });
 
     // Typed loop: each plugin contributes zero or more directives. Malformed
     // returns are silently dropped (see `call_hooks_typed`).
