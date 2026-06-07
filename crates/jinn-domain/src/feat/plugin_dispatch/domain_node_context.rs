@@ -163,6 +163,7 @@ impl DomainNodeContext {
         source_session_id: &SessionId,
         user_prompt: String,
         system_prompt: Option<String>,
+        persist: bool,
     ) -> Result<String, Report<DomainContextError>> {
         // 1. Read source session ONLY for provider+model (no history clone).
         let provider_model = {
@@ -184,9 +185,11 @@ impl DomainNodeContext {
             skip_context_files: true,
         };
 
-        // 4. New session ID; mark as workflow; inherit provider+model; record parent.
+        // 4. New session ID; mark automated; inherit provider+model; record parent;
+        //    honor the caller's persistence intent.
         session.core.session_id = SessionId::new();
         session.core.is_automated = true;
+        session.core.persist = persist;
         session.core.ephemeral = SessionCoreEphemeral::default();
         session.core.assembly_overrides = Some(overrides);
         session.core.parent_session = Some(source_session_id.clone());
@@ -325,6 +328,7 @@ mod tests {
             &source_id,
             "rewrite me".to_owned(),
             Some("be concise".to_owned()),
+            false,
         );
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
@@ -388,6 +392,7 @@ mod tests {
             &missing_id,
             "x".to_owned(),
             None,
+            false,
         );
         // Pin and poll once to drive to the error before any await point.
         futures::pin_mut!(fut);
@@ -414,7 +419,7 @@ mod tests {
             .set_active(source_id.clone());
 
         // When the one-shot runs (parking on its response channel).
-        let fut = ctx.send_llm_request_oneshot(&source_id, "rewrite me".to_owned(), None);
+        let fut = ctx.send_llm_request_oneshot(&source_id, "rewrite me".to_owned(), None, false);
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
         let mut poll_cx = std::task::Context::from_waker(&waker);
@@ -431,4 +436,66 @@ mod tests {
             "one-shot must not call set_active; the user's chat view is unchanged",
         );
     }
+
+    #[tokio::test]
+    async fn oneshot_request_default_persist_is_false() {
+        // Given a source session and a one-shot call with persist=false (default).
+        let (ctx, _rx) = make_ctx_with_channel();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+
+        let fut = ctx.send_llm_request_oneshot(
+            &source_id,
+            "rewrite me".to_owned(),
+            None,
+            false,
+        );
+        futures::pin_mut!(fut);
+        let waker = futures::task::noop_waker();
+        let mut poll_cx = std::task::Context::from_waker(&waker);
+        let _ = fut.as_mut().poll(&mut poll_cx);
+
+        // Find the new session by scanning for the automated one with this parent.
+        let guard = ctx.state.read();
+        let new = guard
+            .session
+            .sessions()
+            .values()
+            .find(|s| s.core.is_automated && s.core.parent_session.as_ref() == Some(&source_id))
+            .expect("one-shot session created");
+        assert!(
+            !new.core.persist,
+            "persist=false request must produce a non-persistent session"
+        );
+    }
+
+    #[tokio::test]
+    async fn oneshot_request_persist_true_round_trips() {
+        // Given a source session and a one-shot call with persist=true.
+        let (ctx, _rx) = make_ctx_with_channel();
+        let source_id = seed_source_session(&ctx, "ollama/llama3");
+
+        let fut = ctx.send_llm_request_oneshot(
+            &source_id,
+            "rewrite me".to_owned(),
+            None,
+            true,
+        );
+        futures::pin_mut!(fut);
+        let waker = futures::task::noop_waker();
+        let mut poll_cx = std::task::Context::from_waker(&waker);
+        let _ = fut.as_mut().poll(&mut poll_cx);
+
+        let guard = ctx.state.read();
+        let new = guard
+            .session
+            .sessions()
+            .values()
+            .find(|s| s.core.is_automated && s.core.parent_session.as_ref() == Some(&source_id))
+            .expect("one-shot session created");
+        assert!(
+            new.core.persist,
+            "persist=true request must produce a persistent session"
+        );
+    }
 }
+

@@ -220,10 +220,15 @@ the proper constructors (`enqueue_user_message` for user entries, etc.).
 
 | Request name   | Payload                           | Returns         |
 | -------------- | --------------------------------- | --------------- |
-| `llm_oneshot`  | `{ session_id, system, prompt }`  | `{ text }`      |
+| `llm_oneshot`  | `{ session_id, system, prompt, persist }`  | `{ text }`      |
 
 `llm_oneshot` runs a history-less LLM call inheriting only the session's
 provider+model (no chat history). Used by prompt enrichment.
+
+`persist` (optional, default `false`) controls whether the one-shot session is
+written to the SQLite store. Transient by default; set `true` for reviewable
+runs (e.g. a judge/eval). Either way the one-shot never becomes the active chat
+view and (when `persist=false`) leaves no trace in history.
 
 ---
 
@@ -280,7 +285,7 @@ right columns.**
 | Sync hook name fired from `IntentHandler::handle` or a renderer        | (1) `res/plugins/meta/plugin_ctx.lua` — new `OnXxxCtx` subclass. (2) §3 hook lifecycle table. (3) The matching call site's ctx_json shape. | Sync ctx typed in editor; doc reflects fire source.                |
 | `Intent::TriggerPlugin` variant or `KeyCategory::Plugin` (`crates/jinn-domain`/`jinn-tui`) | (1) `res/plugins/meta/plugin_ctx.lua` — document the `keybinds` table contract (keys, action, description, scope). (2) §3 hook lifecycle (plugin-declared action hooks fired via `fire_async_hook`). | Plugin keybind declaration contract visible to authors.             |
 | `fire_async_hook` / `set_chat_input` verbs (`src/plugin_wiring.rs`)       | (1) `res/plugins/meta/plugin_ctx.lua` — `PluginVerb` alias + payload classes. (2) §7 verb catalog.                           | New verbs typed + catalogued.                                       |
-| `llm_oneshot` request name (`src/plugin_wiring.rs::handle_plugin_request`) | `res/plugins/meta/plugin_ctx.lua` — document the request name + its `{ session_id, system, prompt }` → `{ text }` contract.  | One-shot LLM request shape discoverable.                            |
+| `llm_oneshot` request name (`src/plugin_wiring.rs::handle_plugin_request`) | `res/plugins/meta/plugin_ctx.lua` — document the request name + its `{ session_id, system, prompt, persist }` → `{ text }` contract.  | One-shot LLM request shape discoverable.                            |
 
 ---
 

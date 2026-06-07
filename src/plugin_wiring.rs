@@ -244,16 +244,20 @@ pub async fn handle_plugin_request(
         "llm_oneshot" => {
             // History-less one-shot LLM request: inherits only the source session's
             // provider+model. Request shape:
-            //   { session_id, system: Option<String>, prompt: String }
+            //   { session_id, system: Option<String>, prompt: String, persist: Option<bool> }
+            // persist defaults to false — one-shots are transient unless the caller
+            // explicitly asks to keep them (e.g. a judge run).
             #[derive(serde::Deserialize)]
             struct LlmOneshotPayload {
                 session_id: SessionId,
                 system: Option<String>,
                 prompt: String,
+                #[serde(default)]
+                persist: Option<bool>,
             }
             match serde_json::from_value::<LlmOneshotPayload>(data.clone()) {
                 Ok(p) => match domain_ctx
-                    .send_llm_request_oneshot(&p.session_id, p.prompt, p.system)
+                    .send_llm_request_oneshot(&p.session_id, p.prompt, p.system, p.persist.unwrap_or(false))
                     .await
                 {
                     Ok(text) => serde_json::json!({ "text": text }),
