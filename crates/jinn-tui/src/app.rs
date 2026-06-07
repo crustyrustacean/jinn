@@ -137,12 +137,10 @@ impl TuiApp {
                             "key event received"
                         );
 
-
                         let intent_opt = self.which_key.handle_key(protocol_key);
                         let Some(intent) = intent_opt else {
                             return;
                         };
-
 
                         self.route_intent(intent);
                     }
@@ -254,14 +252,11 @@ impl TuiApp {
         // via the generic plugin::fire_async command path. The toggle hook itself writes
         // plugin_data (visible to both VMs); we just kick off the async fire here.
         if let Intent::TriggerPlugin {
-            action,
-            session_id,
-            ..
+            action, session_id, ..
         } = intent.clone()
         {
-            let sid = session_id.or_else(|| {
-                Some(self.core.state.read().session.active_session_id().clone())
-            });
+            let sid = session_id
+                .or_else(|| Some(self.core.state.read().session.active_session_id().clone()));
             let payload = serde_json::json!({
                 "hook": action,
                 "session_id": sid,
@@ -279,7 +274,6 @@ impl TuiApp {
             });
             return;
         }
-
 
         // Step 4: Send commands to core channel.
         for cmd in &commands {
