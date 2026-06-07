@@ -63,6 +63,31 @@ impl App {
         self.runtime.handle().clone()
     }
 
+    /// Runs a runner to completion, then shuts down the session store.
+    ///
+    /// The store shutdown folds the WAL into `sessions.db` (a
+    /// `wal_checkpoint(TRUNCATE)`) so that a clean exit leaves a
+    /// self-contained, up-to-date database. It runs on the live runtime
+    /// after the runner has returned, at which point the actor system has
+    /// already drained via `coordinated_shutdown`, so no competing writers
+    /// remain.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the runner fails or the store shutdown fails.
+    fn run_and_shutdown(
+        &self,
+        runner: crate::runner::Runner,
+        store: &jinn_domain::SessionStoreService,
+    ) -> Result<(), Report<AppError>> {
+        runner.run().change_context(AppError)?;
+        self.runtime
+            .block_on(store.shutdown())
+            .change_context(AppError)
+            .attach("session store shutdown (WAL checkpoint) failed")?;
+        Ok(())
+    }
+
     /// Dispatches the CLI command to the appropriate runner.
     ///
     /// # Errors
@@ -222,9 +247,10 @@ impl App {
                         s
                     },
                 }));
-                runner.run().change_context(AppError)?;
+                self.run_and_shutdown(runner, &session_store)?;
             }
             Commands::Headless { command, .. } => {
+                let store_for_shutdown = session_store.clone();
                 let (core, _services, actor_host, _plugins) =
                     actor_wiring::create_core_with_actor_host(
                         &self.handle(),
@@ -264,7 +290,7 @@ impl App {
                     None => {}
                 }
                 let runner = Runner::Headless(Box::new(headless));
-                runner.run().change_context(AppError)?;
+                self.run_and_shutdown(runner, &store_for_shutdown)?;
             }
             Commands::Fetch { subcommand } => {
                 use jinn_cli::cli::FetchCommands;
@@ -303,6 +329,11 @@ impl App {
                             .attach("invalid task glob pattern")?;
                         tracing::info!(pairs = plan.pairs.len(), "built bench plan");
 
+                        let session_store = SessionStoreService::new(Arc::new(
+                            SqliteSessionStore::open_or_create(&db_path)
+                                .change_context(AppError)?,
+                        ));
+                        let store_for_shutdown = session_store.clone();
                         let (core, services, actor_host, plugins) =
                             actor_wiring::create_core_with_actor_host(
                                 &self.handle(),
@@ -310,10 +341,7 @@ impl App {
                                 provider_registry,
                                 resolved_api_keys,
                                 config_storage,
-                                SessionStoreService::new(Arc::new(
-                                    SqliteSessionStore::open_or_create(&db_path)
-                                        .change_context(AppError)?,
-                                )),
+                                session_store,
                                 user_preferences_storage.clone(),
                                 Some(csv),
                                 Some(plan),
@@ -359,7 +387,7 @@ impl App {
                                 s
                             },
                         }));
-                        runner.run().change_context(AppError)?;
+                        self.run_and_shutdown(runner, &store_for_shutdown)?;
                     }
                     BenchCommands::Show { csv } => {
                         jinn_bench::show::show_results(&csv).map_err(|e| {
@@ -376,6 +404,7 @@ impl App {
                             SqliteSessionStore::open_or_create(&db_path)
                                 .change_context(AppError)?,
                         ));
+                        let store_for_shutdown = session_store.clone();
                         let (core, services, actor_host, plugins) =
                             actor_wiring::create_core_with_actor_host(
                                 &self.handle(),
@@ -429,7 +458,7 @@ impl App {
                                 s
                             },
                         }));
-                        runner.run().change_context(AppError)?;
+                        self.run_and_shutdown(runner, &store_for_shutdown)?;
                     }
                 }
             }
