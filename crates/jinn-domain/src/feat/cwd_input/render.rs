@@ -24,14 +24,14 @@ const POPUP_MIN_WIDTH: u16 = 30;
 ///
 /// The popup is centered horizontally and placed one-third down the screen.
 /// It is tall enough for the title border, the input line, and the
-/// live-validation footer: `border(2) + input(1) + footer(1) = 5` rows.
+/// live-validation footer: `border(2) + input(1) + footer(1) = 4` rows.
 #[must_use]
 pub fn cwd_input_popup_rect(area: Rect) -> Rect {
     let popup_width = ((f32::from(area.width) * (1.0 - 2.0 * POPUP_H_PAD_FRAC)).ceil() as u16)
         .max(POPUP_MIN_WIDTH)
         .min(area.width);
 
-    let popup_height = 5u16.min(area.height); // border(2) + input(1) + footer(1)
+    let popup_height = 4u16.min(area.height); // border(2) + input(1) + footer(1)
 
     // Integer division is intentional - we're computing cell positions for centering.
     #[expect(clippy::integer_division, reason = "cell positions are integers")]
@@ -168,9 +168,9 @@ mod tests {
         // When computing the popup rect.
         let popup = cwd_input_popup_rect(area);
 
-        // Then the popup is 5 rows tall: border(2) + input(1) + footer(1) + ... wait, 2 borders.
-        // Actually border(2) means top+bottom = 2, plus input(1) + footer(1) = 4 inner needs, so 5.
-        assert_eq!(popup.height, 5);
+        // Then the popup is exactly 4 rows tall: border top/bottom (2)
+        // + input line (1) + validation footer (1). No blank row.
+        assert_eq!(popup.height, 4);
     }
 
     #[rstest::rstest]

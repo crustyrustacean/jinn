@@ -365,7 +365,7 @@ impl std::fmt::Display for Intent {
             Intent::RenameCursorRight => write!(f, "rename cursor right"),
             Intent::RenameDeleteGrapheme => write!(f, "rename delete"),
             Intent::RenameDeleteForward => write!(f, "rename forward delete"),
-            Intent::OpenCwdInput => write!(f, "open cwd input"),
+            Intent::OpenCwdInput => write!(f, "change cwd"),
             Intent::CwdInputConfirm => write!(f, "cwd input confirm"),
             Intent::CwdInputLeave => write!(f, "cwd input leave"),
 

@@ -132,7 +132,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .describe_group_with_category("gc", "context", KeyCategory::Context)
             .bind("<leader>sl", Intent::OpenPicker { kind: PickerKind::SessionLifecycle }, KeyCategory::General)
             .bind("<leader>sc", Intent::OpenPicker { kind: PickerKind::CompactionModel }, KeyCategory::Model)
-            .describe_group_with_category("cd", "change directory", KeyCategory::General)
+            .describe_group_with_category("<leader>c", "change", KeyCategory::General)
             .bind("<leader>cd", Intent::OpenCwdInput, KeyCategory::General)
             .bind("gg", Intent::ScrollToTop, KeyCategory::Navigation)
             .bind("G", Intent::ScrollToBottom, KeyCategory::Navigation)
