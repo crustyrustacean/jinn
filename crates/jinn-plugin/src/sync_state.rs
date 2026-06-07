@@ -17,6 +17,7 @@ use wherror::Error;
 use crate::PluginData;
 use crate::bindings;
 use crate::command::PluginCommand;
+use jinn_domain::feat::plugin_dispatch::PluginHookSite;
 
 /// Stored hook data for a loaded plugin.
 pub struct PluginHooks {
@@ -177,9 +178,14 @@ impl<'a> SyncHook<'a> {
 }
 
 impl SyncHook<'_> {
+    /// The name of the plugin that owns this hook.
+    pub(crate) fn plugin_name(&self) -> &str {
+        &self.plugin_name
+    }
     /// Call this hook with context data and deserialize the return value.
     ///
     /// # Type Parameters
+
     ///
     /// - `T` — the context struct (must be `Serialize`)
     /// - `R` — the expected return type (must be `DeserializeOwned`)
@@ -193,6 +199,8 @@ impl SyncHook<'_> {
     /// Panics if `ctx_data` serializes to a non-object JSON value (e.g. an array
     /// or scalar). All call sites pass struct-typed contexts, so this is a
     /// programming-error invariant rather than a recoverable failure.
+
+
     pub fn call<T: Serialize, R: DeserializeOwned>(
         &self,
         ctx_data: &T,
@@ -356,7 +364,11 @@ impl jinn_domain::feat::plugin_dispatch::PluginSyncHooks for SyncPlugins {
                 match h.call::<serde_json::Value, serde_json::Value>(ctx) {
                     Ok(v) => (!v.is_null()).then_some(v),
                     Err(e) => {
-                        tracing::warn!(hook, error = %e, "sync hook errored; dropped");
+                        let report = e.attach(PluginHookSite {
+                            plugin: h.plugin_name().to_string(),
+                            hook: hook.to_string(),
+                        });
+                        tracing::error!(hook, error = ?report, "plugin hook failed");
                         None
                     }
                 }
