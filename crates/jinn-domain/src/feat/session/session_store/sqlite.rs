@@ -555,7 +555,7 @@ impl From<PersistableCore> for SessionCore {
             session_state: SessionState::Loaded, // overridden by TryFrom<SessionLoadContext> from archived column
             lifecycle_script_state: core.lifecycle_script_state,
             ephemeral: SessionCoreEphemeral::default(),
-            is_automated: false,       // set from DB column after deserialization
+            is_automated: false,      // set from DB column after deserialization
             assembly_overrides: None, // runtime-only, never persisted
             has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed
             task_list: core.task_list,
@@ -632,7 +632,6 @@ impl TryFrom<&ChatSessionState> for NewSessionRow {
             is_automated: *is_automated,
             persist: *persist,
         })
-
     }
 }
 
@@ -715,7 +714,6 @@ impl TryFrom<SessionLoadContext> for ChatSessionState {
                     .unwrap_or_default(),
                 is_automated: false,
                 persist: true, // default; PersistableCore overlay sets the real value
-
 
                 assembly_overrides: None, // runtime-only, set later if needed
                 has_interacted: false, // restored sessions get mark_interacted() in handle_session_load_completed

@@ -127,11 +127,7 @@ impl IntentHandler {
             "intent": intent.to_string(),
         });
 
-        for outcome in call_hooks_typed::<InterceptOutcome>(
-            plugins,
-            "on_submit_intercept",
-            &ctx,
-        ) {
+        for outcome in call_hooks_typed::<InterceptOutcome>(plugins, "on_submit_intercept", &ctx) {
             match outcome {
                 InterceptOutcome::Block => result.commands.clear(),
                 InterceptOutcome::Pass => {}
@@ -163,7 +159,6 @@ impl IntentHandler {
         reason = "exhaustive match on all Intent variants"
     )]
     fn handle_inner(intent: &Intent, state: &mut AppState) -> IntentResult {
-
         // Clear ignore sweep state when the user performs any action other than
         // pressing x. This ensures the sweep only continues during consecutive
         // x presses within 100ms.
@@ -591,8 +586,6 @@ impl IntentHandler {
             Intent::ChangeCwd { root } => {
                 crate::feat::navigation::intent::handle_change_cwd(state, *root)
             }
-
-
         }
     }
 }
@@ -705,7 +698,8 @@ mod tests {
             &Intent::PasteText {
                 text: "hello".into(),
             },
-            &mut state, None,
+            &mut state,
+            None,
         );
 
         // Then the buffer is empty and no commands are emitted.
@@ -727,7 +721,8 @@ mod tests {
             &Intent::PasteText {
                 text: "hello\nworld".into(),
             },
-            &mut state, None,
+            &mut state,
+            None,
         );
 
         // Then the buffer has the pasted text.
@@ -1018,7 +1013,8 @@ mod tests {
             &Intent::PasteText {
                 text: "hello".into(),
             },
-            &mut state, None,
+            &mut state,
+            None,
         );
 
         // Then it doesn't panic and completes (paste is handled by picker).
@@ -1045,7 +1041,8 @@ mod tests {
             &Intent::PasteText {
                 text: " new".into(),
             },
-            &mut state, None,
+            &mut state,
+            None,
         );
 
         // Then rename input received the paste.
@@ -1280,207 +1277,208 @@ mod tests {
     }
 }
 
+/// Tests for sync plugin interception (`on_submit_intercept`).
+///
+/// The hook fires only for submit-family intents (`Intent::SubmitMessage`);
+/// see the `matches!` guard in `handle`. These tests cover the submit path:
+/// block clears commands, pass is a no-op, malformed returns are dropped
+/// with no panic, and `None` (no plugins) is a pass-through. Non-submit
+/// intents are covered separately in `intercept_scope_tests`.
+#[cfg(test)]
+mod intercept_tests {
+    use crate::common::app_state::AppState;
+    use crate::feat::intent::IntentHandler;
+    use crate::feat::plugin_dispatch::PluginSyncHooks;
+    use crate::protocol::{Intent, SessionId};
+    use serde_json::{Value, json};
 
-    /// Tests for sync plugin interception (`on_submit_intercept`).
-    ///
-    /// The hook fires only for submit-family intents (`Intent::SubmitMessage`);
-    /// see the `matches!` guard in `handle`. These tests cover the submit path:
-    /// block clears commands, pass is a no-op, malformed returns are dropped
-    /// with no panic, and `None` (no plugins) is a pass-through. Non-submit
-    /// intents are covered separately in `intercept_scope_tests`.
-    #[cfg(test)]
-    mod intercept_tests {
-        use crate::common::app_state::AppState;
-        use crate::feat::intent::IntentHandler;
-        use crate::feat::plugin_dispatch::PluginSyncHooks;
-        use crate::protocol::{Intent, SessionId};
-        use serde_json::{json, Value};
+    /// Stub `PluginSyncHooks` returning a canned `Vec<Value>` for any hook.
+    /// Models the behaviour a Lua plugin would produce: a block, a pass,
+    /// or malformed JSON (dropped silently).
+    struct StubPlugins(Vec<Value>);
 
-        /// Stub `PluginSyncHooks` returning a canned `Vec<Value>` for any hook.
-        /// Models the behaviour a Lua plugin would produce: a block, a pass,
-        /// or malformed JSON (dropped silently).
-        struct StubPlugins(Vec<Value>);
-
-        impl PluginSyncHooks for StubPlugins {
-            fn call_hooks(&self, _hook: &str, _ctx: &Value) -> Vec<Value> {
-                self.0.clone()
-            }
-        }
-
-        /// AppState seeded with an active session containing the given input text.
-        fn state_with_input(text: &str) -> AppState {
-            let mut state = AppState::default();
-            // Replace the default active session's id with a known one and seed text.
-            state.active_chat_input_mut().replace_all(text.to_owned());
-            state
-        }
-
-        #[test]
-        fn none_plugins_passes_through_unchanged() {
-            // Given a SubmitMessage intent with input text.
-            let mut state = state_with_input("hello");
-
-            // When handle is called with no plugins.
-            let result =
-                IntentHandler::handle(&Intent::SubmitMessage, &mut state, None);
-
-            // Then the normal submit commands are produced (not blocked).
-            assert!(!result.commands.is_empty(), "submit should enqueue a message");
-        }
-
-        #[test]
-        fn block_outcome_clears_commands() {
-            // Given a stub plugin that returns {action:"block"}.
-            let plugins = StubPlugins(vec![json!({ "action": "block" })]);
-            let mut state = state_with_input("hello");
-
-            // When handle runs the interception loop.
-            let result =
-                IntentHandler::handle(&Intent::SubmitMessage, &mut state, Some(&plugins));
-
-            // Then no commands are emitted (the submit was blocked).
-            assert!(result.commands.is_empty(), "block must clear commands");
-        }
-
-        #[test]
-        fn pass_outcome_leaves_commands_unchanged() {
-            // Given a stub plugin that returns {action:"pass"}.
-            let plugins = StubPlugins(vec![json!({ "action": "pass" })]);
-            let baseline = {
-                let mut s = state_with_input("hello");
-                IntentHandler::handle(&Intent::SubmitMessage, &mut s, None).commands.len()
-            };
-            let mut state = state_with_input("hello");
-
-            // When handle runs the interception loop.
-            let result = IntentHandler::handle(
-                &Intent::SubmitMessage,
-                &mut state,
-                Some(&plugins),
-            );
-
-            // Then the command count matches the unintercepted baseline.
-            assert_eq!(
-                result.commands.len(),
-                baseline,
-                "pass must be a no-op"
-            );
-        }
-
-        #[test]
-        fn malformed_outcome_dropped_without_panic() {
-            // Given a stub plugin that returns a value that cannot deserialize
-            // into InterceptOutcome (missing the `action` tag).
-            let plugins = StubPlugins(vec![json!({ "not_an_outcome": true })]);
-            let mut state = state_with_input("hello");
-
-            // When handle runs the interception loop.
-            let result = IntentHandler::handle(
-                &Intent::SubmitMessage,
-                &mut state,
-                Some(&plugins),
-            );
-
-            // Then the malformed return is dropped (pass-through) with no panic.
-            assert!(!result.commands.is_empty(), "malformed outcome degrades to pass-through");
-        }
-
-        // SessionId import kept to anchor the ctx shape; the stub ignores ctx,
-        // but real plugins will receive {session_id, input_text, intent}.
-        #[test]
-        fn ctx_carries_session_id_and_input_text() {
-            let _id = SessionId::new();
-            // (Shape is asserted by the production `apply_interceptions` builder;
-            // here we only confirm the type is in scope for documentation.)
+    impl PluginSyncHooks for StubPlugins {
+        fn call_hooks(&self, _hook: &str, _ctx: &Value) -> Vec<Value> {
+            self.0.clone()
         }
     }
 
-    /// Tests that `on_submit_intercept` is gated to submit-family intents.
+    /// AppState seeded with an active session containing the given input text.
+    fn state_with_input(text: &str) -> AppState {
+        let mut state = AppState::default();
+        // Replace the default active session's id with a known one and seed text.
+        state.active_chat_input_mut().replace_all(text.to_owned());
+        state
+    }
+
+    #[test]
+    fn none_plugins_passes_through_unchanged() {
+        // Given a SubmitMessage intent with input text.
+        let mut state = state_with_input("hello");
+
+        // When handle is called with no plugins.
+        let result = IntentHandler::handle(&Intent::SubmitMessage, &mut state, None);
+
+        // Then the normal submit commands are produced (not blocked).
+        assert!(
+            !result.commands.is_empty(),
+            "submit should enqueue a message"
+        );
+    }
+
+    #[test]
+    fn block_outcome_clears_commands() {
+        // Given a stub plugin that returns {action:"block"}.
+        let plugins = StubPlugins(vec![json!({ "action": "block" })]);
+        let mut state = state_with_input("hello");
+
+        // When handle runs the interception loop.
+        let result = IntentHandler::handle(&Intent::SubmitMessage, &mut state, Some(&plugins));
+
+        // Then no commands are emitted (the submit was blocked).
+        assert!(result.commands.is_empty(), "block must clear commands");
+    }
+
+    #[test]
+    fn pass_outcome_leaves_commands_unchanged() {
+        // Given a stub plugin that returns {action:"pass"}.
+        let plugins = StubPlugins(vec![json!({ "action": "pass" })]);
+        let baseline = {
+            let mut s = state_with_input("hello");
+            IntentHandler::handle(&Intent::SubmitMessage, &mut s, None)
+                .commands
+                .len()
+        };
+        let mut state = state_with_input("hello");
+
+        // When handle runs the interception loop.
+        let result = IntentHandler::handle(&Intent::SubmitMessage, &mut state, Some(&plugins));
+
+        // Then the command count matches the unintercepted baseline.
+        assert_eq!(result.commands.len(), baseline, "pass must be a no-op");
+    }
+
+    #[test]
+    fn malformed_outcome_dropped_without_panic() {
+        // Given a stub plugin that returns a value that cannot deserialize
+        // into InterceptOutcome (missing the `action` tag).
+        let plugins = StubPlugins(vec![json!({ "not_an_outcome": true })]);
+        let mut state = state_with_input("hello");
+
+        // When handle runs the interception loop.
+        let result = IntentHandler::handle(&Intent::SubmitMessage, &mut state, Some(&plugins));
+
+        // Then the malformed return is dropped (pass-through) with no panic.
+        assert!(
+            !result.commands.is_empty(),
+            "malformed outcome degrades to pass-through"
+        );
+    }
+
+    // SessionId import kept to anchor the ctx shape; the stub ignores ctx,
+    // but real plugins will receive {session_id, input_text, intent}.
+    #[test]
+    fn ctx_carries_session_id_and_input_text() {
+        let _id = SessionId::new();
+        // (Shape is asserted by the production `apply_interceptions` builder;
+        // here we only confirm the type is in scope for documentation.)
+    }
+}
+
+/// Tests that `on_submit_intercept` is gated to submit-family intents.
+///
+/// A stub that counts every `call_hooks` invocation proves the hook never
+/// fires for non-submit intents (the original bug: every keystroke triggered
+/// an enrichment one-shot once the toggle was armed).
+#[cfg(test)]
+mod intercept_scope_tests {
+    use crate::common::app_state::AppState;
+    use crate::feat::intent::IntentHandler;
+    use crate::feat::plugin_dispatch::PluginSyncHooks;
+    use crate::protocol::Intent;
+    use serde_json::{Value, json};
+    use std::cell::Cell;
+
+    /// Plugin stub that records whether its hook was ever consulted.
     ///
-    /// A stub that counts every `call_hooks` invocation proves the hook never
-    /// fires for non-submit intents (the original bug: every keystroke triggered
-    /// an enrichment one-shot once the toggle was armed).
-    #[cfg(test)]
-    mod intercept_scope_tests {
-        use crate::common::app_state::AppState;
-        use crate::feat::intent::IntentHandler;
-        use crate::feat::plugin_dispatch::PluginSyncHooks;
-        use crate::protocol::Intent;
-        use serde_json::{json, Value};
-        use std::cell::Cell;
+    /// It would return `{action:"block"}` for any hook, so a *fired* hook
+    /// would clear commands. These tests assert it is never consulted.
+    struct CountingPlugins {
+        calls: Cell<usize>,
+    }
 
-        /// Plugin stub that records whether its hook was ever consulted.
-        ///
-        /// It would return `{action:"block"}` for any hook, so a *fired* hook
-        /// would clear commands. These tests assert it is never consulted.
-        struct CountingPlugins {
-            calls: Cell<usize>,
+    impl PluginSyncHooks for CountingPlugins {
+        fn call_hooks(&self, _hook: &str, _ctx: &Value) -> Vec<Value> {
+            self.calls.set(self.calls.get() + 1);
+            vec![json!({ "action": "block" })]
         }
+    }
 
-        impl PluginSyncHooks for CountingPlugins {
-            fn call_hooks(&self, _hook: &str, _ctx: &Value) -> Vec<Value> {
-                self.calls.set(self.calls.get() + 1);
-                vec![json!({ "action": "block" })]
-            }
-        }
+    #[test]
+    fn submit_message_does_fire_interception() {
+        // Given a block-returning plugin and a submit intent.
+        let plugins = CountingPlugins {
+            calls: Cell::new(0),
+        };
+        let mut state = AppState::default();
+        state
+            .active_chat_input_mut()
+            .replace_all("hello".to_owned());
 
-        #[test]
-        fn submit_message_does_fire_interception() {
-            // Given a block-returning plugin and a submit intent.
-            let plugins = CountingPlugins { calls: Cell::new(0) };
-            let mut state = AppState::default();
-            state.active_chat_input_mut().replace_all("hello".to_owned());
+        // When handling the submit.
+        let result = IntentHandler::handle(&Intent::SubmitMessage, &mut state, Some(&plugins));
 
-            // When handling the submit.
-            let result = IntentHandler::handle(
-                &Intent::SubmitMessage,
-                &mut state,
-                Some(&plugins),
-            );
+        // Then the hook fired and the submit was blocked.
+        assert_eq!(plugins.calls.get(), 1, "submit must consult the hook");
+        assert!(
+            result.commands.is_empty(),
+            "block must clear submit commands"
+        );
+    }
 
-            // Then the hook fired and the submit was blocked.
-            assert_eq!(plugins.calls.get(), 1, "submit must consult the hook");
-            assert!(result.commands.is_empty(), "block must clear submit commands");
-        }
+    #[test]
+    fn insert_char_does_not_fire_interception() {
+        // Given a block-returning plugin (which must be ignored).
+        let plugins = CountingPlugins {
+            calls: Cell::new(0),
+        };
+        let mut state = AppState::default();
 
-        #[test]
-        fn insert_char_does_not_fire_interception() {
-            // Given a block-returning plugin (which must be ignored).
-            let plugins = CountingPlugins { calls: Cell::new(0) };
-            let mut state = AppState::default();
+        // When inserting a character with the toggle effectively armed.
+        let _result =
+            IntentHandler::handle(&Intent::InsertChar { ch: 'i' }, &mut state, Some(&plugins));
 
-            // When inserting a character with the toggle effectively armed.
-            let _result = IntentHandler::handle(
-                &Intent::InsertChar { ch: 'i' },
-                &mut state,
-                Some(&plugins),
-            );
+        // Then the hook never fired and the character reached the buffer.
+        assert_eq!(
+            plugins.calls.get(),
+            0,
+            "insert-char must not fire interception"
+        );
+        assert_eq!(
+            state.active_chat_input().text(),
+            "i",
+            "the character must still be inserted into the buffer",
+        );
+    }
 
-            // Then the hook never fired and the character reached the buffer.
-            assert_eq!(plugins.calls.get(), 0, "insert-char must not fire interception");
-            assert_eq!(
-                state.active_chat_input().text(),
-                "i",
-                "the character must still be inserted into the buffer",
-            );
-        }
+    #[test]
+    fn quit_does_not_fire_interception() {
+        // Given a block-returning plugin (which must be ignored).
+        let plugins = CountingPlugins {
+            calls: Cell::new(0),
+        };
+        let mut state = AppState::default();
 
-        #[test]
-        fn quit_does_not_fire_interception() {
-            // Given a block-returning plugin (which must be ignored).
-            let plugins = CountingPlugins { calls: Cell::new(0) };
-            let mut state = AppState::default();
+        // When quitting with the toggle effectively armed.
+        let _result = IntentHandler::handle(&Intent::Quit, &mut state, Some(&plugins));
 
-            // When quitting with the toggle effectively armed.
-            let _result = IntentHandler::handle(&Intent::Quit, &mut state, Some(&plugins));
-
-            // Then the hook never fired, yet quit still propagated.
-            assert_eq!(plugins.calls.get(), 0, "quit must not fire interception");
-            assert!(
-                state.frontend.should_quit,
-                "quit must still set should_quit even with the toggle armed",
-            );
-        }
+        // Then the hook never fired, yet quit still propagated.
+        assert_eq!(plugins.calls.get(), 0, "quit must not fire interception");
+        assert!(
+            state.frontend.should_quit,
+            "quit must still set should_quit even with the toggle armed",
+        );
+    }
 
     #[cfg(test)]
     mod intercept_ctx_tests {
@@ -1488,7 +1486,7 @@ mod tests {
         use crate::feat::intent::IntentHandler;
         use crate::feat::plugin_dispatch::PluginSyncHooks;
         use crate::protocol::Intent;
-        use serde_json::{json, Value};
+        use serde_json::{Value, json};
         use std::cell::RefCell;
 
         /// Plugin stub that captures the ctx JSON handed to its hook.
@@ -1510,20 +1508,24 @@ mod tests {
         #[test]
         fn submit_intercept_ctx_carries_typed_text_not_empty() {
             // Given a capturing plugin and a populated input buffer.
-            let plugins = CapturingPlugins { seen_ctx: RefCell::new(None) };
+            let plugins = CapturingPlugins {
+                seen_ctx: RefCell::new(None),
+            };
             let mut state = AppState::default();
-            state.active_chat_input_mut().replace_all("hello world".to_owned());
+            state
+                .active_chat_input_mut()
+                .replace_all("hello world".to_owned());
 
             // When handling the submit.
-            let _ = IntentHandler::handle(
-                &Intent::SubmitMessage,
-                &mut state,
-                Some(&plugins),
-            );
+            let _ = IntentHandler::handle(&Intent::SubmitMessage, &mut state, Some(&plugins));
 
             // Then the hook saw the user's typed text, not the empty buffer
             // left behind after submit handling reset it.
-            let seen = plugins.seen_ctx.borrow().clone().expect("hook must have fired");
+            let seen = plugins
+                .seen_ctx
+                .borrow()
+                .clone()
+                .expect("hook must have fired");
             assert_eq!(
                 seen.get("input_text").and_then(Value::as_str),
                 Some("hello world"),
@@ -1531,4 +1533,4 @@ mod tests {
             );
         }
     }
-    }
+}

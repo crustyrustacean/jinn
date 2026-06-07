@@ -375,7 +375,6 @@ impl PluginDispatchActor {
         if new_phase == PhaseKind::Idle && self.domain_ctx.has_pending(session_id) {
             let response = self.extract_last_assistant_text(session_id);
             self.domain_ctx.resolve_completed(session_id, response);
-
         }
 
         let hook = match new_phase {
@@ -484,21 +483,23 @@ fn into_error<E: std::fmt::Display>(e: E) -> Report<PluginDispatchActorError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::actor::protocol::dynamic_command::DynamicCommand;
     use crate::common::actor::context::ActorContext;
     use crate::common::actor::message_sink::RecordingSink;
+    use crate::common::actor::protocol::dynamic_command::DynamicCommand;
     use crate::common::app_state::AppState;
     use crate::feat::attached_plugin::PluginRunState;
-    use crate::feat::session::chat_session::ChatSessionState;
-    use crate::feat::plugin_dispatch::plugin_fire::{PluginFire, PluginFireError, PluginFireService};
+    use crate::feat::plugin_dispatch::plugin_fire::{
+        PluginFire, PluginFireError, PluginFireService,
+    };
     use crate::feat::plugin_system::SessionRegistryId;
+    use crate::feat::session::chat_session::ChatSessionState;
     use error_stack::Report;
 
     use crate::feat::session::chat_entry::ChatEntry;
     use tokio::sync::oneshot;
 
-    use tokio::sync::Notify;
     use std::sync::Arc;
+    use tokio::sync::Notify;
 
     fn make_actor() -> (
         PluginDispatchActor,
@@ -519,9 +520,11 @@ mod tests {
                 services: Services::new(),
                 state,
                 startup_session_id: session_id.to_string(),
-                domain_ctx: std::sync::Arc::new(DomainNodeContext::new(Services::new(), State::new(AppState::default()))),
+                domain_ctx: std::sync::Arc::new(DomainNodeContext::new(
+                    Services::new(),
+                    State::new(AppState::default()),
+                )),
             },
-
             &mut ctx,
         );
         (actor, sink, ctx, session_id)
@@ -777,8 +780,6 @@ mod tests {
         }
     }
 
-
-
     #[async_trait::async_trait]
     impl PluginFire for BlockingPluginFire {
         async fn fire_async_json(
@@ -807,7 +808,6 @@ mod tests {
             _hook: &str,
             _ctx: &Value,
         ) -> Result<Vec<Value>, Report<PluginFireError>> {
-
             self.gate.notified().await;
             Ok(vec![])
         }
@@ -818,7 +818,6 @@ mod tests {
             _hook: &str,
             _ctx: &Value,
         ) -> Result<Vec<Value>, Report<PluginFireError>> {
-
             self.gate.notified().await;
             Ok(vec![])
         }
@@ -864,7 +863,8 @@ mod tests {
         // Given an actor whose lifecycle fire blocks until released.
         let gate = Arc::new(Notify::new());
         let fire = BlockingPluginFire::new(gate.clone());
-        let (actor, _ctx) = make_actor_with_plugin_fire(Arc::new(fire.clone()) as Arc<dyn PluginFire>);
+        let (actor, _ctx) =
+            make_actor_with_plugin_fire(Arc::new(fire.clone()) as Arc<dyn PluginFire>);
 
         // When firing on_session_created. With the spawn fix this returns
         // immediately even though the fire parks on the gate; with the old
@@ -877,18 +877,18 @@ mod tests {
         // proving the actor loop is free, not serialised behind the fire.
         // (With the inline-await version this second call would hang until
         // the gate is released, breaking the 500ms timeout.)
-        let second = tokio::time::timeout(
-            std::time::Duration::from_millis(500),
-            async {
-                // Give the spawned fire time to park on the gate.
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                actor.handle_event(Event::SessionCreated(SessionCreated {
-                    session_id: SessionId::new(),
-                }));
-            },
-        )
+        let second = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+            // Give the spawned fire time to park on the gate.
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            actor.handle_event(Event::SessionCreated(SessionCreated {
+                session_id: SessionId::new(),
+            }));
+        })
         .await;
-        assert!(second.is_ok(), "second event handled while a lifecycle fire is parked");
+        assert!(
+            second.is_ok(),
+            "second event handled while a lifecycle fire is parked"
+        );
 
         // Cleanup: release the gate so spawned tasks complete (no leaked tasks).
         gate.notify_waiters();
@@ -899,7 +899,8 @@ mod tests {
         // Given an actor whose lifecycle fire blocks until released.
         let gate = Arc::new(Notify::new());
         let fire = BlockingPluginFire::new(gate.clone());
-        let (actor, _ctx) = make_actor_with_plugin_fire(Arc::new(fire.clone()) as Arc<dyn PluginFire>);
+        let (actor, _ctx) =
+            make_actor_with_plugin_fire(Arc::new(fire.clone()) as Arc<dyn PluginFire>);
 
         // When firing on_turn_end (Idle phase → on_turn_end hook). With the
         // spawn fix this returns immediately; the inline-await version would block.
@@ -911,20 +912,20 @@ mod tests {
 
         // Then a second phase change is handled within the gate window,
         // proving the actor loop is free.
-        let second = tokio::time::timeout(
-            std::time::Duration::from_millis(500),
-            async {
-                // Give the spawned fire time to park on the gate.
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                actor.handle_event(Event::SessionPhaseChanged(SessionPhaseChanged {
-                    session_id: SessionId::new(),
-                    old_phase: PhaseKind::Idle,
-                    new_phase: PhaseKind::Sending,
-                }));
-            },
-        )
+        let second = tokio::time::timeout(std::time::Duration::from_millis(500), async {
+            // Give the spawned fire time to park on the gate.
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            actor.handle_event(Event::SessionPhaseChanged(SessionPhaseChanged {
+                session_id: SessionId::new(),
+                old_phase: PhaseKind::Idle,
+                new_phase: PhaseKind::Sending,
+            }));
+        })
         .await;
-        assert!(second.is_ok(), "second phase change handled while a lifecycle fire is parked");
+        assert!(
+            second.is_ok(),
+            "second phase change handled while a lifecycle fire is parked"
+        );
 
         // Cleanup: release the gate so spawned tasks complete.
         gate.notify_waiters();
@@ -986,12 +987,9 @@ mod tests {
         }));
 
         // Then the pending one-shot resolves synchronously, within the gate window.
-        let resolved = tokio::time::timeout(
-            std::time::Duration::from_millis(500),
-            rx,
-        )
-        .await
-        .expect("resolve_completed fired synchronously, not gated behind the spawned fire");
+        let resolved = tokio::time::timeout(std::time::Duration::from_millis(500), rx)
+            .await
+            .expect("resolve_completed fired synchronously, not gated behind the spawned fire");
         assert_eq!(resolved.as_deref(), Ok("enriched text"));
 
         // Cleanup: release the gate so the parked fire completes.
