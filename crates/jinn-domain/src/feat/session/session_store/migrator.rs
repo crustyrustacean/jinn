@@ -949,4 +949,150 @@ mod tests {
             "session 'keep-me' must survive the v15 table rebuild"
         );
     }
+
+    #[test]
+    fn v15_rebuild_preserves_session_history_rows() {
+        #[derive(QueryableByName)]
+        struct CountRow {
+            #[diesel(sql_type = diesel::sql_types::BigInt)]
+            count: i64,
+        }
+
+        // Given a v14 database with a session linked to an entry via session_history,
+        // and the connection running with foreign_keys=ON — as the production
+        // bootstrap connection does.
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 14);
+        sql_query("PRAGMA foreign_keys=ON")
+            .execute(&mut conn)
+            .expect("FK on");
+        seed_session_with_children(&mut conn);
+
+        // When running migrations (applies v15, the DROP TABLE sessions rebuild).
+        run_migrations(&mut conn).expect("run_migrations");
+
+        // Then the session_history junction row survived the rebuild.
+        // Before the FK-safe fix, DROP TABLE sessions cascaded ON DELETE CASCADE
+        // into session_history and wiped every junction row.
+        let rows: Vec<CountRow> =
+            sql_query("SELECT COUNT(*) AS count FROM session_history")
+                .load(&mut conn)
+                .expect("count session_history");
+        assert_eq!(rows[0].count, 1, "session_history junction row must survive v15 rebuild");
+    }
+
+    #[test]
+    fn v15_rebuild_preserves_token_ledger_rows() {
+        #[derive(QueryableByName)]
+        struct CountRow {
+            #[diesel(sql_type = diesel::sql_types::BigInt)]
+            count: i64,
+        }
+
+        // Given a v14 database with a token_ledger row for a session,
+        // and the connection running with foreign_keys=ON.
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 14);
+        sql_query("PRAGMA foreign_keys=ON")
+            .execute(&mut conn)
+            .expect("FK on");
+        seed_session_with_children(&mut conn);
+
+        // When running migrations (applies v15).
+        run_migrations(&mut conn).expect("run_migrations");
+
+        // Then the token_ledger row survived the rebuild.
+        // token_ledger also has ON DELETE CASCADE on sessions, so the same
+        // DROP TABLE cascade would have wiped it before the fix.
+        let rows: Vec<CountRow> =
+            sql_query("SELECT COUNT(*) AS count FROM token_ledger")
+                .load(&mut conn)
+                .expect("count token_ledger");
+        assert_eq!(rows[0].count, 1, "token_ledger row must survive v15 rebuild");
+    }
+
+    /// Seeds a v14 database with one session, one entry, one session_history
+    /// junction row linking them, and one token_ledger row.
+    ///
+    /// Call after `apply_migrations_up_to(conn, 14)`.
+    fn seed_session_with_children(conn: &mut SqliteConnection) {
+        sql_query(
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, strategy_state, blobs, lifecycle_script_state) \
+             VALUES ('s-1', 'T', '2024-01-01T00:00:00Z', '2024-01-01T00:00:00Z', '.', \
+             '{}', '{}', '{}', 'nothing_ran')",
+        )
+        .execute(conn)
+        .expect("seed session");
+        sql_query(
+            "INSERT INTO entries (id, timestamp, kind) VALUES ('e-1', '2024-01-01T00:00:00Z', '\"User\"')",
+        )
+        .execute(conn)
+        .expect("seed entry");
+        sql_query(
+            "INSERT INTO session_history (session_id, entry_id, ordinal) VALUES ('s-1', 'e-1', 0)",
+        )
+        .execute(conn)
+        .expect("seed junction");
+        sql_query(
+            "INSERT INTO token_ledger (session_id, timestamp, tokens_sent, tokens_received) \
+             VALUES ('s-1', '2024-01-01T00:00:00Z', 10, 20)",
+        )
+        .execute(conn)
+        .expect("seed ledger");
+    }
+
+    #[test]
+    fn run_migrations_preserves_child_rows_and_leaves_fk_clean() {
+        #[derive(QueryableByName)]
+        struct CountRow {
+            #[diesel(sql_type = diesel::sql_types::BigInt)]
+            count: i64,
+        }
+
+        #[derive(QueryableByName)]
+        struct FkRow {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            table: String,
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            rowid: String,
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            refer: String,
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            parent: String,
+        }
+
+        // Given a v14 database with FK=ON and a full session (junction + ledger).
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 14);
+        sql_query("PRAGMA foreign_keys=ON")
+            .execute(&mut conn)
+            .expect("FK on");
+        seed_session_with_children(&mut conn);
+
+        // When running the full migration suite.
+        run_migrations(&mut conn).expect("run_migrations");
+
+        // Then both child tables retain their row.
+        let history: Vec<CountRow> =
+            sql_query("SELECT COUNT(*) AS count FROM session_history")
+                .load(&mut conn)
+                .expect("count session_history");
+        assert_eq!(history[0].count, 1, "session_history row preserved");
+
+        let ledger: Vec<CountRow> =
+            sql_query("SELECT COUNT(*) AS count FROM token_ledger")
+                .load(&mut conn)
+                .expect("count token_ledger");
+        assert_eq!(ledger[0].count, 1, "token_ledger row preserved");
+
+        // And foreign_key_check reports no violations on the final state.
+        let violations: Vec<FkRow> = sql_query("PRAGMA foreign_key_check")
+            .load(&mut conn)
+            .expect("foreign_key_check");
+        assert!(
+            violations.is_empty(),
+            "foreign_key_check must be clean after migrations; found: {:?}",
+            violations.iter().map(|v| v.table.as_str()).collect::<Vec<_>>()
+        );
+    }
 }
