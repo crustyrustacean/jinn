@@ -21,7 +21,7 @@ use crate::feat::session_lifecycle::protocol::command::{
 use crate::feat::session_lifecycle::protocol::event::{
     SessionSetupCompleted, SessionTeardownFinished,
 };
-use crate::protocol::{ChatEntry, Command, Event, PromptStrategyId};
+use crate::protocol::{ChatEntry, Command, Event};
 
 use super::super::SessionPersistenceActor;
 
@@ -1045,16 +1045,10 @@ impl SessionPersistenceActor {
                 .last_model
                 .clone()
                 .unwrap_or_else(|| crate::feat::provider_infra::NO_PROVIDER_ID.to_owned());
-            let strategy = prefs
-                .last_strategy
-                .as_deref()
-                .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
-            let sliding_window_size = prefs.context_sliding_window.size;
+
             ChatSessionState::new_with_profile(
                 crate::feat::session::profile::SessionProfile::from_config(
                     model,
-                    strategy,
-                    sliding_window_size,
                 ),
             )
         };

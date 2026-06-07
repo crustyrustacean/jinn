@@ -26,7 +26,7 @@ diesel::table! {
         title -> Nullable<Text>,
         updated_at -> Text,
         profile -> Text,
-        strategy_state -> Text,
+
         blobs -> Text,
         parent_session -> Nullable<Text>,
         cwd -> Text,

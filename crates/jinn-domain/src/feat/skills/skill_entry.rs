@@ -117,6 +117,9 @@ impl SkillEntry {
 }
 
 impl PreviewContent for SkillEntry {
+    fn cache_key(&self) -> Option<String> {
+        Some(self.name.clone())
+    }
     fn preview_lines(&self, width: usize) -> Vec<Line<'static>> {
         if self.body.is_empty() {
             return Vec::new();
@@ -289,6 +292,11 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
+    fn cache_key_returns_skill_name() {
+        let entry = make_entry("my-skill", "desc", true);
+        assert_eq!(entry.cache_key().as_deref(), Some("my-skill"));
+    }
     #[rstest::rstest]
     fn preview_lines_empty_for_empty_body() {
         // Given a skill entry with an empty body.

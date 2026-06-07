@@ -49,13 +49,6 @@ reserve_tokens = 20000
 # Fallback context window size (in tokens) when the provider does not report one.
 fallback_context_window = 150000
 
-# ---------------------------------------------------------------------------
-# Sliding-window context budget
-# ---------------------------------------------------------------------------
-
-[context_sliding_window]
-# Number of recent turns kept verbatim when budgeting the context window.
-size = 5
 
 # ---------------------------------------------------------------------------
 # Provider request retry policy

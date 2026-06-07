@@ -28,7 +28,6 @@ use jinn_domain::feat::session::token_stats::TokenStats;
 use jinn_domain::feat::session_lifecycle::builtin::{BuiltinId, LifecycleCommand};
 use jinn_domain::feat::session_lifecycle::protocol::command::RunSessionSetup;
 use jinn_domain::feat::session_lifecycle::protocol::event::SessionSetupCompleted;
-use jinn_domain::protocol::PromptStrategyId;
 use jinn_domain::protocol::{ChatEntry, Command, Event, SessionId};
 use jinn_domain::{Actor, ActorContext, ActorEnvelope, NoDirectMsg, State};
 
@@ -66,8 +65,7 @@ pub struct BenchActor {
     plan: Option<BenchPlan>,
     /// Index into `plan.pairs` for the next pair to start.
     current_pair_index: usize,
-    /// Preferences storage for loading bench-related preferences.
-    user_preferences_storage: jinn_domain::UserPreferencesStorageService,
+
 }
 
 /// Dependencies for [`BenchActor`].
@@ -78,8 +76,7 @@ pub struct BenchActorDeps {
     pub csv_path: Option<PathBuf>,
     /// The execution plan. If `None`, the actor is passive.
     pub plan: Option<BenchPlan>,
-    /// Preferences storage for loading bench-related preferences.
-    pub user_preferences_storage: jinn_domain::UserPreferencesStorageService,
+
 }
 
 impl Actor for BenchActor {
@@ -115,7 +112,7 @@ impl Actor for BenchActor {
             task_lookup,
             plan,
             current_pair_index: 0,
-            user_preferences_storage: deps.user_preferences_storage,
+
         };
 
         // If we have a plan, start the first pair immediately.
@@ -169,29 +166,19 @@ impl BenchActor {
             .expect("index checked above");
         self.current_pair_index += 1;
 
-        // Load preferences from service (outside state lock).
-        let prefs = self.user_preferences_storage.read();
 
         let session_id = {
             let mut state = self.state.write();
 
-            // Use preferences for strategy, token budget, etc.
-            let strategy = prefs
-                .last_strategy
-                .as_deref()
-                .map_or_else(PromptStrategyId::passthrough, PromptStrategyId::new);
+            // Use preferences for token budget, etc.
             let persona_name = state
                 .context
                 .active_persona
                 .as_ref()
                 .map_or_else(|| "coding-assistant".to_owned(), |p| p.name.clone());
-            let sliding_window_size = prefs.context_sliding_window.size;
-
             let mut new_session = ChatSessionState::new_with_profile(SessionProfile::new(
                 model.clone(),
-                strategy,
                 persona_name,
-                sliding_window_size,
                 std::collections::HashSet::new(),
                 std::collections::HashSet::new(),
             ));
@@ -605,13 +592,6 @@ mod tests {
     use super::*;
     use crate::orchestrator::build_plan;
 
-    /// Create a test preferences storage with defaults.
-    fn test_prefs_storage() -> jinn_domain::UserPreferencesStorageService {
-        jinn_domain::common::services::test_services::TestServices::builder()
-            .build()
-            .user_preferences_storage
-    }
-
     /// Create a minimal test state with a session that has a bench lifecycle.
     fn test_state_with_session() -> (State, SessionId) {
         test_state_with_named_session("hello-world")
@@ -648,7 +628,6 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -683,7 +662,6 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -712,7 +690,6 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -748,7 +725,6 @@ mod tests {
                 state,
                 csv_path: Some(csv_path.clone()),
                 plan: Some(plan),
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink.clone()),
         );
@@ -805,7 +781,6 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -838,7 +813,6 @@ mod tests {
                 state: state.clone(),
                 csv_path: Some(csv_path.clone()),
                 plan: None,
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -891,7 +865,6 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -931,7 +904,6 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink.clone()),
         );
@@ -988,7 +960,6 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink.clone()),
         );
@@ -1039,7 +1010,6 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink.clone()),
         );
@@ -1116,7 +1086,6 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: Some(plan),
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ctx,
         );
@@ -1164,7 +1133,6 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink.clone()),
         );
@@ -1228,7 +1196,6 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink.clone()),
         );
@@ -1298,7 +1265,6 @@ mod tests {
                 state,
                 csv_path: Some(csv_path),
                 plan: Some(plan),
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -1345,7 +1311,6 @@ mod tests {
                 state,
                 csv_path: Some(csv_path),
                 plan: Some(plan),
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -1386,7 +1351,6 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -1440,7 +1404,6 @@ mod tests {
                 state,
                 csv_path: Some(csv_path.clone()),
                 plan: None,
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -1512,7 +1475,6 @@ mod tests {
                 state,
                 csv_path: Some(csv_path.clone()),
                 plan: None,
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -1573,7 +1535,6 @@ mod tests {
                 state,
                 csv_path: None,
                 plan: None,
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink),
         );
@@ -1648,7 +1609,6 @@ mod tests {
                 state: state.clone(),
                 csv_path: None,
                 plan: Some(plan),
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink.clone()),
         );
@@ -1734,7 +1694,6 @@ mod tests {
                 state: state.clone(),
                 csv_path: None,
                 plan: Some(plan),
-                user_preferences_storage: test_prefs_storage(),
             },
             &mut ActorContext::new("test", sink.clone()),
         );

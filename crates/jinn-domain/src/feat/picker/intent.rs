@@ -976,6 +976,26 @@ mod tests {
     }
 
     #[rstest::rstest]
+    fn opening_skill_picker_preserves_preview_cache() {
+        use jinn_selection_widget::PreviewCache;
+
+        // Given a populated cache (simulating prior viewing).
+        let mut state = setup_state_with_skills();
+        state.frontend.caches.skill_preview_cache.write().insert(
+            "web-coder".to_owned(),
+            80,
+            vec![ratatui::text::Line::raw("rendered")],
+        );
+        assert_eq!(state.frontend.caches.skill_preview_cache.read().len(), 1);
+
+        // When the skill picker is opened.
+        handle_open_picker(&mut state, PickerKind::Skill);
+
+        // Then the cache is preserved (bodies haven't changed).
+        assert_eq!(state.frontend.caches.skill_preview_cache.read().len(), 1);
+    }
+
+    #[rstest::rstest]
     fn load_skill_picker_entries_marks_disabled() {
         // Given state with "web-coder" disabled.
         let mut state = setup_state_with_skills();
