@@ -33,7 +33,7 @@ impl SessionPersistenceActor {
         payload: &EnqueueUserMessage,
         ctx: &ActorContext,
     ) {
-        tracing::info!(session = %payload.session_id, "DIAG handle_enqueue_user_message: ENTERED");
+
         let (action, assembly_overrides) = {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
@@ -323,7 +323,7 @@ impl SessionPersistenceActor {
         payload: &PushChatEntry,
         ctx: &ActorContext,
     ) {
-        tracing::info!(session = %payload.session_id, "DIAG handle_push_chat_entry: ENTERED");
+
         {
             let mut state = self.state.write();
             let session = state.session_mut_or_create(&payload.session_id);
