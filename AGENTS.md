@@ -554,26 +554,19 @@ When modifying any of the Rust touchpoints below, also update the matching Lua /
 
 Read the `justfile` to determine what additional tooling is related to this project. Prioritize running commands from the `justfile` instead of manual invocation.
 
-### Version Control
+### Project Commands
 
-This project uses **Fossil** for version control.
+Skills refer to commands by **role**; the table below resolves each role to this project's actual command.
 
-- `fossil commit -m "<message>"` — commit changes
-- `fossil status` — check working tree status
-- `fossil diff` — view unstaged changes
-- `fossil timeline` — view commit history
-- `fossil merge trunk` — sync latest changes with your branch
-
-### Build & Test Commands
-
-These are the commands used by the project. Always prefer these over raw `cargo` invocations.
-
-| Purpose         | Command        | Notes                                                                            |
-| --------------- | -------------- | -------------------------------------------------------------------------------- |
-| Compile check   | `just check`   | `cargo check --workspace` — fast compilation without codegen                     |
-| Full test suite | `just test`    | `cargo text --workspace` + e2e tests — **all tests must pass before committing** |
-| Lint            | `just lint`    |                                                                                  |
-| Format fix      | `just fmt-fix` |                                                                                  |
+| Role | Command | Description |
+|------|---------|-------------|
+| `vcs` | Fossil | This project uses Fossil for version control (`fossil status`, `fossil diff`, `fossil timeline`, ...). |
+| `check` | `just check` | `cargo check --workspace` — fast compilation without codegen. |
+| `test` | `just test` | `cargo test --workspace` + e2e tests — **all tests must pass before committing**. |
+| `lint` | `just lint` | Lint checks. |
+| `format` | `just fmt-fix` | Apply formatting fixes. |
+| `commit` | `fossil commit -m "<message>"` | Commit changes. |
+| `sync-trunk` | `fossil merge trunk` | Sync latest changes with your branch (resolve conflicts, re-test, commit). |
 
 ### Plan Directory
 
