@@ -64,17 +64,31 @@ impl IntentHandler {
         // Capture active session ID before processing for diff-after check.
         let prev_active = state.session.active_session_id().clone();
 
+        // Capture the session id and user input text BEFORE handle_inner mutates
+        // state. Submit handling clears the chat-input buffer as a side effect, so a
+        // post-mutation read would hand the plugin an empty string. These snapshots
+        // are only consumed when interception actually fires (submit intents).
+        let captured_session_id = state.session.active_session_id().clone();
+        let captured_input_text = state.active_chat_input().text().to_owned();
+
         // Process the intent and get the result.
         let mut result = Self::handle_inner(intent, state);
 
         // Sync plugin interception: plugins may block/replace/pass the
         // submit's commands. Fires only for submit-family intents (the
         // hook is named `on_submit_intercept`); other intents pass through
-        // untouched.
+        // untouched. Uses the pre-mutation snapshots so the plugin sees
+        // the user's actual typed text, not the cleared buffer.
         if matches!(intent, Intent::SubmitMessage)
             && let Some(p) = plugins
         {
-            result = Self::apply_interceptions(intent, state, p, result);
+            result = Self::apply_interceptions(
+                intent,
+                p,
+                &captured_session_id,
+                &captured_input_text,
+                result,
+            );
         }
 
         // If the active session changed, emit ActiveSessionChanged event.
@@ -98,14 +112,15 @@ impl IntentHandler {
     /// `warn!` so a buggy plugin degrades rather than stalls.
     fn apply_interceptions(
         intent: &Intent,
-        state: &AppState,
         plugins: &dyn crate::feat::plugin_dispatch::PluginSyncHooks,
+        session_id: &crate::protocol::SessionId,
+        input_text: &str,
         mut result: IntentResult,
     ) -> IntentResult {
         use crate::feat::plugin_dispatch::{InterceptOutcome, call_hooks_typed};
 
-        let session_id = state.session.active_session_id().clone();
-        let input_text = state.active_chat_input().text().to_owned();
+        // `input_text` and `session_id` are captured before submit handling clears
+        // the buffer. Do NOT re-read state here \u2014 the buffer is empty by now.
         let ctx = serde_json::json!({
             "session_id": session_id,
             "input_text": input_text,
@@ -1439,4 +1454,54 @@ mod tests {
                 "quit must still set should_quit even with the toggle armed",
             );
         }
+
+    #[cfg(test)]
+    mod intercept_ctx_tests {
+        use crate::common::app_state::AppState;
+        use crate::feat::intent::IntentHandler;
+        use crate::feat::plugin_dispatch::PluginSyncHooks;
+        use crate::protocol::Intent;
+        use serde_json::{json, Value};
+        use std::cell::RefCell;
+
+        /// Plugin stub that captures the ctx JSON handed to its hook.
+        ///
+        /// This proves the regression where `apply_interceptions` re-read
+        /// the (already-reset) chat input buffer, so the plugin saw `""`
+        /// instead of the user's typed text.
+        struct CapturingPlugins {
+            seen_ctx: RefCell<Option<Value>>,
+        }
+
+        impl PluginSyncHooks for CapturingPlugins {
+            fn call_hooks(&self, _hook: &str, ctx: &Value) -> Vec<Value> {
+                *self.seen_ctx.borrow_mut() = Some(ctx.clone());
+                vec![json!({ "action": "block" })]
+            }
+        }
+
+        #[test]
+        fn submit_intercept_ctx_carries_typed_text_not_empty() {
+            // Given a capturing plugin and a populated input buffer.
+            let plugins = CapturingPlugins { seen_ctx: RefCell::new(None) };
+            let mut state = AppState::default();
+            state.active_chat_input_mut().replace_all("hello world".to_owned());
+
+            // When handling the submit.
+            let _ = IntentHandler::handle(
+                &Intent::SubmitMessage,
+                &mut state,
+                Some(&plugins),
+            );
+
+            // Then the hook saw the user's typed text, not the empty buffer
+            // left behind after submit handling reset it.
+            let seen = plugins.seen_ctx.borrow().clone().expect("hook must have fired");
+            assert_eq!(
+                seen.get("input_text").and_then(Value::as_str),
+                Some("hello world"),
+                "the plugin ctx must carry the pre-reset buffer text",
+            );
+        }
+    }
     }
