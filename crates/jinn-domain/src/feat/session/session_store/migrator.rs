@@ -992,18 +992,15 @@ mod tests {
         let names: Vec<_> = cols.iter().map(|c| c.name.clone()).collect::<Vec<_>>();
         assert!(
             names.iter().any(|n| n == "is_automated"),
-            "is_automated column should exist; found: {:?}",
-            names
+            "is_automated column should exist; found: {names:?}"
         );
         assert!(
             names.iter().any(|n| n == "persist"),
-            "persist column should exist; found: {:?}",
-            names
+            "persist column should exist; found: {names:?}"
         );
         assert!(
             !names.iter().any(|n| n == "is_workflow"),
-            "is_workflow column should be gone; found: {:?}",
-            names
+            "is_workflow column should be gone; found: {names:?}"
         );
 
         // And the values carried over: wf→is_automated=TRUE, norm→is_automated=FALSE, persist=TRUE for both.
@@ -1022,24 +1019,7 @@ mod tests {
 
     #[test]
     fn migrate_v16_preserves_session_data() {
-        // Given a v15 database with a fully-populated session row.
-        let (_dir, mut conn) = make_conn();
-        apply_migrations_up_to(&mut conn, 15);
-        sql_query(
-            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \n
-             parent_session, lifecycle_name, lifecycle_args, archived, lifecycle_script_state, \n
-             metadata, is_workflow) \n
-             VALUES ('full', 'Full Session', '2024-02-02T00:00:00Z', '2024-02-01T00:00:00Z', '/home', \n
-             '{\"k\":\"v\"}', '{\"b\":1}', 'parent-1', 'judge', '[\"arg\"]', TRUE, \n
-             'ran_once', '{\"m\":1}', FALSE)",
-        )
-        .execute(&mut conn)
-        .expect("insert full session");
-
-        // When running migration v16.
-        migrate_v16(&mut conn).expect("migrate v16");
-
-        // Then every non-renamed column round-trips intact.
+        // Struct used to verify every non-renamed column round-trips.
         #[derive(QueryableByName)]
         struct FullRow {
             #[diesel(sql_type = diesel::sql_types::Text)]
@@ -1063,6 +1043,26 @@ mod tests {
             #[diesel(sql_type = diesel::sql_types::Text)]
             lifecycle_script_state: String,
         }
+
+        // Given a v15 database with a fully-populated session row.
+
+        let (_dir, mut conn) = make_conn();
+        apply_migrations_up_to(&mut conn, 15);
+        sql_query(
+            "INSERT INTO sessions (id, title, updated_at, created_at, cwd, profile, blobs, \n
+             parent_session, lifecycle_name, lifecycle_args, archived, lifecycle_script_state, \n
+             metadata, is_workflow) \n
+             VALUES ('full', 'Full Session', '2024-02-02T00:00:00Z', '2024-02-01T00:00:00Z', '/home', \n
+             '{\"k\":\"v\"}', '{\"b\":1}', 'parent-1', 'judge', '[\"arg\"]', TRUE, \n
+             'ran_once', '{\"m\":1}', FALSE)",
+        )
+        .execute(&mut conn)
+        .expect("insert full session");
+
+        // When running migration v16.
+        migrate_v16(&mut conn).expect("migrate v16");
+
+
         let rows: Vec<FullRow> = sql_query(
             "SELECT id, title, updated_at, created_at, cwd, parent_session, lifecycle_name, \n
              lifecycle_args, archived, lifecycle_script_state FROM sessions WHERE id = 'full'",
