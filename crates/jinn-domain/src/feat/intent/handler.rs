@@ -334,7 +334,7 @@ impl IntentHandler {
             Intent::ToggleWhichkey => feat::global::intent::handle_toggle_whichkey(state),
             Intent::ToggleAuditPopup => feat::global::intent::handle_toggle_audit_popup(state),
             Intent::NormalEscape => feat::chat_input::intent::handle_normal_escape(state),
-            Intent::NoOp => IntentResult::empty(),
+            Intent::NoOp | Intent::TriggerPlugin { .. } => IntentResult::empty(),
 
             // --- Picker ---
             Intent::OpenPicker { kind } => feat::picker::intent::handle_open_picker(state, *kind),
@@ -580,10 +580,7 @@ impl IntentHandler {
                 crate::feat::navigation::intent::handle_change_cwd(state, *root)
             }
 
-            // Plugin keybind triggers are fired by the TUI layer (`route_intent`),
-            // which has access to the plugin actor via `Services`. The domain handler
-            // produces no commands here.
-            Intent::TriggerPlugin { .. } => IntentResult::empty(),
+
         }
     }
 }

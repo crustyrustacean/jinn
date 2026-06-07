@@ -313,6 +313,8 @@ mod tests {
 
     #[tokio::test]
     async fn oneshot_inherits_provider_model_and_emits_enqueue() {
+        use std::future::Future as _;
+
         let (ctx, rx) = make_ctx_with_channel();
         let source_id = seed_source_session(&ctx, "ollama/llama3");
 
@@ -327,7 +329,7 @@ mod tests {
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
         let mut poll_cx = std::task::Context::from_waker(&waker);
-        use std::future::Future as _;
+
         assert!(matches!(
             fut.as_mut().poll(&mut poll_cx),
             std::task::Poll::Pending,
@@ -372,6 +374,8 @@ mod tests {
 
     #[rstest::rstest]
     fn oneshot_fails_when_source_session_missing() {
+        use std::future::Future as _;
+
         // No #[tokio::test] needed: the error returns before the first .await.
         let (ctx, _rx) = make_ctx_with_channel();
         let missing_id = SessionId::new();
@@ -384,7 +388,7 @@ mod tests {
         futures::pin_mut!(fut);
         let waker = futures::task::noop_waker();
         let mut cx = std::task::Context::from_waker(&waker);
-        use std::future::Future as _;
+
         match fut.poll(&mut cx) {
             std::task::Poll::Ready(Err(e)) => {
                 let s = format!("{e:?}");

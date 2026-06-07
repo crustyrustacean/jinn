@@ -373,11 +373,10 @@ impl PluginDispatchActor {
         // A workflow session is one spawned by DomainNodeContext::send_llm_request_oneshot;
         // it has is_workflow=true and a pending sender in domain_ctx. Extract the last
         // assistant entry text and resolve the awaiting coroutine.
-        if new_phase == PhaseKind::Idle {
-            if self.domain_ctx.has_pending(&session_id) {
-                let response = self.extract_last_assistant_text(&session_id);
-                self.domain_ctx.resolve_completed(&session_id, response);
-            }
+        if new_phase == PhaseKind::Idle && self.domain_ctx.has_pending(&session_id) {
+            let response = self.extract_last_assistant_text(&session_id);
+            self.domain_ctx.resolve_completed(&session_id, response);
+
         }
 
         let hook = match new_phase {
@@ -441,12 +440,9 @@ impl PluginDispatchActor {
         }
 
         let payload = match serde_json::from_value::<FireAsyncPayload>(payload.clone()) {
-            Ok(p) => {
-                tracing::info!(hook = %p.hook, session_id = %p.session_id, "PLUGTRACE: actor received plugin::fire_async command");
-                p
-            }
+            Ok(p) => p,
             Err(e) => {
-                tracing::warn!(error = %e, "PLUGTRACE: plugin::fire_async payload malformed; dropped");
+                tracing::warn!(error = %e, "plugin::fire_async payload malformed; dropped");
                 return;
             }
         };
