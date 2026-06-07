@@ -67,10 +67,14 @@ impl IntentHandler {
         // Process the intent and get the result.
         let mut result = Self::handle_inner(intent, state);
 
-        // Sync plugin interception: let plugins block/replace/pass the
-        // produced commands (generic over all intents).
-        if let Some(p) = plugins {
-            result = Self::apply_interceptions(intent, state, p, result);
+        // Sync plugin interception: plugins may block/replace/pass the
+        // submit's commands. Fires only for submit-family intents (the
+        // hook is named `on_submit_intercept`); other intents pass through
+        // untouched.
+        if matches!(intent, Intent::SubmitMessage) {
+            if let Some(p) = plugins {
+                result = Self::apply_interceptions(intent, state, p, result);
+            }
         }
 
         // If the active session changed, emit ActiveSessionChanged event.
@@ -87,9 +91,11 @@ impl IntentHandler {
 
     /// Apply sync plugin interceptions to the produced commands.
     ///
-    /// Generic over all intents: plugins may `block` (clear commands), `pass`
-    /// (no-op), or `replace` (swap in new commands). Malformed returns are
-    /// dropped with a `warn!` so a buggy plugin degrades rather than stalls.
+    /// Fires only for submit-family intents: the call site in [`handle`](Self::handle)
+    /// guards on `Intent::SubmitMessage`, so by the time this runs the intent is
+    /// always a submit. Plugins may `block` (clear commands), `pass` (no-op), or
+    /// `replace` (swap in new commands). Malformed returns are dropped with a
+    /// `warn!` so a buggy plugin degrades rather than stalls.
     fn apply_interceptions(
         intent: &Intent,
         state: &AppState,
@@ -1232,10 +1238,14 @@ mod tests {
     }
 }
 
+
     /// Tests for sync plugin interception (`on_submit_intercept`).
     ///
-    /// Covers: block clears commands, pass is a no-op, malformed returns are
-    /// dropped with no panic, and `None` (no plugins) is a pass-through.
+    /// The hook fires only for submit-family intents (`Intent::SubmitMessage`);
+    /// see the `matches!` guard in `handle`. These tests cover the submit path:
+    /// block clears commands, pass is a no-op, malformed returns are dropped
+    /// with no panic, and `None` (no plugins) is a pass-through. Non-submit
+    /// intents are covered separately in `intercept_scope_tests`.
     #[cfg(test)]
     mod intercept_tests {
         use crate::common::app_state::AppState;
@@ -1340,5 +1350,93 @@ mod tests {
             let _id = SessionId::new();
             // (Shape is asserted by the production `apply_interceptions` builder;
             // here we only confirm the type is in scope for documentation.)
+        }
+    }
+
+    /// Tests that `on_submit_intercept` is gated to submit-family intents.
+    ///
+    /// A stub that counts every `call_hooks` invocation proves the hook never
+    /// fires for non-submit intents (the original bug: every keystroke triggered
+    /// an enrichment one-shot once the toggle was armed).
+    #[cfg(test)]
+    mod intercept_scope_tests {
+        use crate::common::app_state::AppState;
+        use crate::feat::intent::IntentHandler;
+        use crate::feat::plugin_dispatch::PluginSyncHooks;
+        use crate::protocol::Intent;
+        use serde_json::{json, Value};
+        use std::cell::Cell;
+
+        /// Plugin stub that records whether its hook was ever consulted.
+        ///
+        /// It would return `{action:"block"}` for any hook, so a *fired* hook
+        /// would clear commands. These tests assert it is never consulted.
+        struct CountingPlugins {
+            calls: Cell<usize>,
+        }
+
+        impl PluginSyncHooks for CountingPlugins {
+            fn call_hooks(&self, _hook: &str, _ctx: &Value) -> Vec<Value> {
+                self.calls.set(self.calls.get() + 1);
+                vec![json!({ "action": "block" })]
+            }
+        }
+
+        #[test]
+        fn submit_message_does_fire_interception() {
+            // Given a block-returning plugin and a submit intent.
+            let plugins = CountingPlugins { calls: Cell::new(0) };
+            let mut state = AppState::default();
+            state.active_chat_input_mut().replace_all("hello".to_owned());
+
+            // When handling the submit.
+            let result = IntentHandler::handle(
+                &Intent::SubmitMessage,
+                &mut state,
+                Some(&plugins),
+            );
+
+            // Then the hook fired and the submit was blocked.
+            assert_eq!(plugins.calls.get(), 1, "submit must consult the hook");
+            assert!(result.commands.is_empty(), "block must clear submit commands");
+        }
+
+        #[test]
+        fn insert_char_does_not_fire_interception() {
+            // Given a block-returning plugin (which must be ignored).
+            let plugins = CountingPlugins { calls: Cell::new(0) };
+            let mut state = AppState::default();
+
+            // When inserting a character with the toggle effectively armed.
+            let _result = IntentHandler::handle(
+                &Intent::InsertChar { ch: 'i' },
+                &mut state,
+                Some(&plugins),
+            );
+
+            // Then the hook never fired and the character reached the buffer.
+            assert_eq!(plugins.calls.get(), 0, "insert-char must not fire interception");
+            assert_eq!(
+                state.active_chat_input().text(),
+                "i",
+                "the character must still be inserted into the buffer",
+            );
+        }
+
+        #[test]
+        fn quit_does_not_fire_interception() {
+            // Given a block-returning plugin (which must be ignored).
+            let plugins = CountingPlugins { calls: Cell::new(0) };
+            let mut state = AppState::default();
+
+            // When quitting with the toggle effectively armed.
+            let _result = IntentHandler::handle(&Intent::Quit, &mut state, Some(&plugins));
+
+            // Then the hook never fired, yet quit still propagated.
+            assert_eq!(plugins.calls.get(), 0, "quit must not fire interception");
+            assert!(
+                state.frontend.should_quit,
+                "quit must still set should_quit even with the toggle armed",
+            );
         }
     }
