@@ -203,9 +203,9 @@ fn toggle_input_mode_flips_queue_to_steer() {
 
 #[rstest::rstest]
 fn toggle_input_mode_is_sticky_across_submissions() {
-    // Given Steer mode with text typed.
+    // Given default (Steer) mode with text typed.
     let mut state = AppState::default();
-    crate::feat::chat_input::intent::handle_toggle_input_mode(&mut state);
+
     state.active_chat_input_mut().insert_text("h");
 
     // When submitting while Idle (falls back to enqueue).
@@ -238,9 +238,9 @@ fn queue_submit_always_enqueues() {
 fn steer_submit_while_busy_routes_to_steer(
     #[values(PhaseKind::Streaming, PhaseKind::Sending)] phase: PhaseKind,
 ) {
-    // Given Steer mode + a non-Idle phase with text typed.
+    // Given default (Steer) mode + a non-Idle phase with text typed.
     let mut state = AppState::default();
-    crate::feat::chat_input::intent::handle_toggle_input_mode(&mut state);
+
     match phase {
         PhaseKind::Streaming => state.session.active_session_mut().begin_streaming(),
         PhaseKind::Sending => state.session.active_session_mut().begin_sending(),
@@ -273,9 +273,9 @@ fn steer_submit_while_busy_routes_to_steer(
 
 #[test]
 fn steer_submit_while_idle_falls_back_to_enqueue() {
-    // Given Steer mode + Idle phase with text typed.
+    // Given default (Steer) mode + Idle phase with text typed.
     let mut state = AppState::default();
-    crate::feat::chat_input::intent::handle_toggle_input_mode(&mut state);
+
     state.active_chat_input_mut().insert_text("h");
 
     // Sanity check phase is Idle.
