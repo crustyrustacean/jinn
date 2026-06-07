@@ -842,6 +842,8 @@ fn save_blocking(
         }
 
 
+
+
         Ok(())
     })
     .change_context(SessionStoreError)
@@ -1600,5 +1602,48 @@ mod tests {
             loaded.history()[0].context_history.is_empty(),
             "fresh entry should have no audit events"
         );
+    }
+
+    // ── Save-path isolation: no global orphan cleanup ───────────────────
+
+    /// Regression for the Phase 2 fix: `save_blocking` previously ended every
+    /// transaction with a global `DELETE FROM entries WHERE id NOT IN
+    /// (SELECT entry_id FROM session_history)`. When `session_history` was
+    /// transiently empty (as after migrate_v15's cascade), the next save wiped
+    /// every entry in the database. This test proves saving one session can no
+    /// longer delete an entry that belongs to no `session_history` row.
+    #[test]
+    fn save_blocking_does_not_delete_orphaned_entries_when_history_is_empty() {
+        use crate::schema::entries;
+
+        // Given a migrated database with FK=ON holding one orphan entry that no
+        // `session_history` row references.
+        let dir = tempfile::tempdir().expect("temp dir");
+        let db_path = dir.path().join("sessions.db");
+        let database_url = db_path.to_string_lossy().to_string();
+        let mut conn = SqliteConnection::establish(&database_url)
+            .expect("establish");
+        sql_query("PRAGMA foreign_keys=ON").execute(&mut conn).expect("fk on");
+        migrator::run_migrations(&mut conn).expect("migrations");
+        sql_query(
+            "INSERT INTO entries (id, timestamp, kind) \
+             VALUES ('orphan-1', '2024-01-01T00:00:00Z', '\"User\"')",
+        )
+        .execute(&mut conn)
+        .expect("seed orphan entry");
+
+        // And an empty session_history (the post-cascade state).
+        // When saving a fresh session with no entries.
+        let fresh = ChatSessionState::new();
+        save_blocking(&mut conn, &fresh).expect("save");
+
+        // Then the orphan entry survives: `session_history` being empty for
+        // this session did not trigger a global cleanup.
+        let survivor: i64 = entries::table
+            .filter(entries::id.eq("orphan-1"))
+            .count()
+            .get_result(&mut conn)
+            .expect("count");
+        assert_eq!(survivor, 1, "orphan entry must survive a save on another session");
     }
 }
