@@ -48,32 +48,92 @@ use jinn_domain::{
     wait_for_system_ready,
 };
 
-/// Creates an `AppCore` with all actors registered and the async forwarding task started.
+/// The fixed (required) inputs to actor-system construction.
 ///
-/// After spawning all actors, blocks the calling thread until the actor system
-/// signals readiness (or times out after 3 seconds).
-#[expect(
-    clippy::too_many_arguments,
-    reason = "TODO: refactor to options struct"
-)]
-pub fn create_core_with_actor_host(
-    handle: &tokio::runtime::Handle,
-    llm_service: LlmServiceFactoryService,
-    provider_registry: ProviderRegistryService,
-    api_keys: ApiKeysService,
-    config_storage: ConfigStorageService,
-    session_store: SessionStoreService,
-    user_preferences_storage: UserPreferencesStorageService,
-    bench_csv_path: Option<std::path::PathBuf>,
-    bench_plan: Option<jinn_bench::orchestrator::BenchPlan>,
-    bench_artifact_dir: Option<std::path::PathBuf>,
-    paths: jinn_domain::AppPaths,
-) -> (
-    AppCore,
-    Services,
-    ActorHostService,
-    jinn_plugin::SyncPlugins,
-) {
+/// These are needed for every launch; the only opt-in beyond them is
+/// [`ActorSystemBuilder::with_bench_actor`].
+#[derive(Clone)]
+pub struct ActorSystemBuilderArgs {
+    /// Tokio runtime handle actors are spawned onto.
+    pub handle: tokio::runtime::Handle,
+    /// LLM service factory.
+    pub llm_service: LlmServiceFactoryService,
+    /// Provider registry service.
+    pub provider_registry: ProviderRegistryService,
+    /// Resolved API keys.
+    pub api_keys: ApiKeysService,
+    /// Config storage service.
+    pub config_storage: ConfigStorageService,
+    /// Session store service. Caller-built (e.g. `SqliteSessionStore`).
+    pub session_store: SessionStoreService,
+    /// User preferences storage service.
+    pub user_preferences_storage: UserPreferencesStorageService,
+    /// Application paths.
+    pub paths: jinn_domain::AppPaths,
+}
+
+/// Opt-in bench inputs, set via [`ActorSystemBuilder::with_bench_actor`].
+pub struct BenchInputs {
+    /// Path to the bench CSV output.
+    pub csv_path: std::path::PathBuf,
+    /// The bench plan (model × task pairs).
+    pub plan: jinn_bench::orchestrator::BenchPlan,
+    /// Optional artifact directory.
+    pub artifact_dir: Option<std::path::PathBuf>,
+}
+
+/// Builds the actor system: spawns all actors and assembles the actor host.
+///
+/// Construct with [`ActorSystemBuilder::new`], optionally add bench via
+/// [`ActorSystemBuilder::with_bench_actor`], then call
+/// [`ActorSystemBuilder::build`]. After spawning all actors, `build` blocks
+/// the calling thread until the actor system signals readiness (3s timeout).
+pub struct ActorSystemBuilder {
+    args: ActorSystemBuilderArgs,
+    bench: Option<BenchInputs>,
+}
+
+impl ActorSystemBuilder {
+    /// Create a builder with the given fixed inputs. No bench actor.
+    #[must_use]
+    pub fn new(args: ActorSystemBuilderArgs) -> Self {
+        Self { args, bench: None }
+    }
+
+    /// Opt-in: register the bench actor with the given plan.
+    #[must_use]
+    pub fn with_bench_actor(
+        mut self,
+        csv_path: std::path::PathBuf,
+        plan: jinn_bench::orchestrator::BenchPlan,
+        artifact_dir: Option<std::path::PathBuf>,
+    ) -> Self {
+        self.bench = Some(BenchInputs { csv_path, plan, artifact_dir });
+        self
+    }
+
+    /// Spawn all actors, build the host, start the forwarding task, and wait
+    /// for readiness.
+    pub fn build(self) -> (
+        AppCore,
+        Services,
+        ActorHostService,
+        jinn_plugin::SyncPlugins,
+    ) {
+        let ActorSystemBuilderArgs {
+            handle,
+            llm_service,
+            provider_registry,
+            api_keys,
+            config_storage,
+            session_store,
+            user_preferences_storage,
+            paths,
+        } = self.args;
+        // Body passes `handle` as `&tokio::runtime::Handle`; rebind as a ref.
+        let handle: &tokio::runtime::Handle = &handle;
+        let bench = self.bench;
+
     // Create channel first - actors need the sender, but AppCore needs services
     // which needs the actor host which needs actors. Break the cycle by creating
     // the channel independently.
@@ -377,7 +437,7 @@ pub fn create_core_with_actor_host(
                     jinn_domain::feat::session_lifecycle::builtin::BuiltinRegistry::new();
                 jinn_bench::bench_tasks::register_bench_tasks(
                     &mut registry,
-                    bench_artifact_dir.as_deref(),
+                    bench.as_ref().and_then(|b| b.artifact_dir.as_deref()),
                 );
                 registry
             },
@@ -887,7 +947,7 @@ pub fn create_core_with_actor_host(
     ));
 
     // ── Bench actor (conditional) ─────────────────────────────────────────
-    if bench_csv_path.is_some() {
+    if let Some(b) = bench {
         actors.push(spawn::<jinn_bench::bench_actor::BenchActor>(
             "bench",
             &sink,
@@ -896,8 +956,8 @@ pub fn create_core_with_actor_host(
             &shutdown_tracker,
             jinn_bench::bench_actor::BenchActorDeps {
                 state: state.clone(),
-                csv_path: bench_csv_path.clone(),
-                plan: bench_plan,
+                csv_path: Some(b.csv_path.clone()),
+                plan: Some(b.plan),
                 user_preferences_storage: user_preferences_storage.clone(),
             },
         ));
@@ -931,4 +991,5 @@ pub fn create_core_with_actor_host(
     ));
 
     (core, services, actor_host_service, sync_plugins)
+}
 }

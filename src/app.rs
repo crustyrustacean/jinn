@@ -165,20 +165,18 @@ impl App {
                 return Ok(());
             }
             Commands::Tui => {
-                let (core, services, actor_host, _plugins) =
-                    actor_wiring::create_core_with_actor_host(
-                        &self.handle(),
-                        llm_service.clone(),
-                        provider_registry.clone(),
-                        resolved_api_keys.clone(),
-                        config_storage.clone(),
-                        session_store.clone(),
-                        user_preferences_storage.clone(),
-                        None,
-                        None,
-                        None,
-                        jinn_domain::AppPaths::default(),
-                    );
+                let (core, services, actor_host, _plugins) = actor_wiring::ActorSystemBuilder::new(
+                    actor_wiring::ActorSystemBuilderArgs {
+                        handle: self.handle(),
+                        llm_service: llm_service.clone(),
+                        provider_registry: provider_registry.clone(),
+                        api_keys: resolved_api_keys.clone(),
+                        config_storage: config_storage.clone(),
+                        session_store: session_store.clone(),
+                        user_preferences_storage: user_preferences_storage.clone(),
+                        paths: jinn_domain::AppPaths::default(),
+                    },
+                ).build();
                 let paths = &services.paths;
                 load_prompt_templates(
                     &core.state,
@@ -229,20 +227,18 @@ impl App {
                 runner.run().change_context(AppError)?;
             }
             Commands::Headless { command, .. } => {
-                let (core, _services, actor_host, _plugins) =
-                    actor_wiring::create_core_with_actor_host(
-                        &self.handle(),
-                        llm_service.clone(),
+                let (core, _services, actor_host, _plugins) = actor_wiring::ActorSystemBuilder::new(
+                    actor_wiring::ActorSystemBuilderArgs {
+                        handle: self.handle(),
+                        llm_service: llm_service.clone(),
                         provider_registry,
-                        resolved_api_keys,
+                        api_keys: resolved_api_keys,
                         config_storage,
                         session_store,
-                        user_preferences_storage.clone(),
-                        None,
-                        None,
-                        None,
-                        jinn_domain::AppPaths::default(),
-                    );
+                        user_preferences_storage: user_preferences_storage.clone(),
+                        paths: jinn_domain::AppPaths::default(),
+                    },
+                ).build();
                 load_prompt_templates(
                     &core.state,
                     &_services.paths.prompts_dir(),
@@ -311,23 +307,23 @@ impl App {
                             .attach("invalid task glob pattern")?;
                         tracing::info!(pairs = plan.pairs.len(), "built bench plan");
 
-                        let (core, services, actor_host, plugins) =
-                            actor_wiring::create_core_with_actor_host(
-                                &self.handle(),
+                        let (core, services, actor_host, plugins) = actor_wiring::ActorSystemBuilder::new(
+                            actor_wiring::ActorSystemBuilderArgs {
+                                handle: self.handle(),
                                 llm_service,
                                 provider_registry,
-                                resolved_api_keys,
+                                api_keys: resolved_api_keys,
                                 config_storage,
-                                SessionStoreService::new(Arc::new(
+                                session_store: SessionStoreService::new(Arc::new(
                                     SqliteSessionStore::open_or_create(&db_path)
                                         .change_context(AppError)?,
                                 )),
-                                user_preferences_storage.clone(),
-                                Some(csv),
-                                Some(plan),
-                                artifact_dir,
-                                jinn_domain::AppPaths::default(),
-                            );
+                                user_preferences_storage: user_preferences_storage.clone(),
+                                paths: jinn_domain::AppPaths::default(),
+                            },
+                        )
+                            .with_bench_actor(csv, plan, artifact_dir)
+                            .build();
                         let paths = &services.paths;
                         load_prompt_templates(
                             &core.state,
@@ -388,20 +384,18 @@ impl App {
                             SqliteSessionStore::open_or_create(&db_path)
                                 .change_context(AppError)?,
                         ));
-                        let (core, services, actor_host, plugins) =
-                            actor_wiring::create_core_with_actor_host(
-                                &self.handle(),
-                                llm_service.clone(),
-                                provider_registry.clone(),
-                                resolved_api_keys.clone(),
-                                config_storage.clone(),
+                        let (core, services, actor_host, plugins) = actor_wiring::ActorSystemBuilder::new(
+                            actor_wiring::ActorSystemBuilderArgs {
+                                handle: self.handle(),
+                                llm_service: llm_service.clone(),
+                                provider_registry: provider_registry.clone(),
+                                api_keys: resolved_api_keys.clone(),
+                                config_storage: config_storage.clone(),
                                 session_store,
-                                user_preferences_storage.clone(),
-                                None,
-                                None,
-                                None,
-                                jinn_domain::AppPaths::default(),
-                            );
+                                user_preferences_storage: user_preferences_storage.clone(),
+                                paths: jinn_domain::AppPaths::default(),
+                            },
+                        ).build();
                         let paths = &services.paths;
                         load_prompt_templates(
                             &core.state,
