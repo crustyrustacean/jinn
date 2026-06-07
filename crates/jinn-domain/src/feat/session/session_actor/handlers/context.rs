@@ -470,8 +470,6 @@ mod tests {
 
     // --- on_prompt_templates_loaded ---
 
-
-
     // --- handle_load_persona_picker_entries ---
 
     #[rstest::rstest]

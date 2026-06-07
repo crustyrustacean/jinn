@@ -243,7 +243,6 @@ pub fn handle_arg_input_paste(state: &mut AppState, text: &str) -> IntentResult 
     IntentResult::empty()
 }
 
-
 /// Look up a lifecycle by name in the user preferences.
 fn find_lifecycle<'a>(state: &'a AppState, name: &str) -> Option<&'a SessionLifecycle> {
     state

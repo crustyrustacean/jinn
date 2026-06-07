@@ -158,7 +158,8 @@ mod tests {
     #[rstest::rstest]
     fn legacy_json_without_disabled_skills_deserializes_to_empty_set() {
         // Given JSON from an older version that lacks disabled_skills.
-        let json = r#"{"model":"ollama/llama3","persona_name":"coding-assistant","disabled_tools":[]}"#;
+        let json =
+            r#"{"model":"ollama/llama3","persona_name":"coding-assistant","disabled_tools":[]}"#;
 
         // When deserialized.
         let profile: SessionProfile = serde_json::from_str(json).expect("deserialize");

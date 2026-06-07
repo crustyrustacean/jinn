@@ -6,14 +6,14 @@
 //! [`crate::feat::rename_session_input::render`], adding a footer line.
 
 use crate::common::render_ctx::RenderCtx;
+use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
-use ratatui::Frame;
 use unicode_segmentation::UnicodeSegmentation;
 
-use super::resolve::{resolve_cwd_input, CwdResolution};
+use super::resolve::{CwdResolution, resolve_cwd_input};
 
 /// Horizontal padding fraction for the popup (20% each side).
 const POPUP_H_PAD_FRAC: f32 = 0.20;
@@ -224,7 +224,9 @@ mod tests {
         let mut found_check = false;
         let success_color = state.frontend.theme.success;
         for x in popup_area.x..(popup_area.x + popup_area.width).min(buffer.area().width) {
-            if let Some(cell) = buffer.cell((x, footer_y)) && cell.symbol() == "✓" {
+            if let Some(cell) = buffer.cell((x, footer_y))
+                && cell.symbol() == "✓"
+            {
                 assert_eq!(
                     cell.style().fg,
                     Some(success_color),
@@ -234,7 +236,10 @@ mod tests {
                 break;
             }
         }
-        assert!(found_check, "green check should appear in the footer for a valid dir");
+        assert!(
+            found_check,
+            "green check should appear in the footer for a valid dir"
+        );
     }
 
     #[rstest::rstest]
@@ -258,7 +263,9 @@ mod tests {
         let error_color = state.frontend.theme.error_text;
         let mut found_x = false;
         for x in popup_area.x..(popup_area.x + popup_area.width).min(buffer.area().width) {
-            if let Some(cell) = buffer.cell((x, footer_y)) && cell.symbol() == "✗" {
+            if let Some(cell) = buffer.cell((x, footer_y))
+                && cell.symbol() == "✗"
+            {
                 assert_eq!(
                     cell.style().fg,
                     Some(error_color),
@@ -303,4 +310,3 @@ mod tests {
         assert!(found_hint, "muted hint should appear for empty input");
     }
 }
-

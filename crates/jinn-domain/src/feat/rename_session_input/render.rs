@@ -99,7 +99,10 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "My Session".to_owned(), cursor_pos: 10 },
+            text: crate::common::line_input::LineInput {
+                input: "My Session".to_owned(),
+                cursor_pos: 10,
+            },
         };
         let (mut terminal, area) = setup_term(80, 24);
 
@@ -142,7 +145,10 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Hello World".to_owned(), cursor_pos: 11 },
+            text: crate::common::line_input::LineInput {
+                input: "Hello World".to_owned(),
+                cursor_pos: 11,
+            },
         };
         let (mut terminal, area) = setup_term(80, 24);
 
@@ -179,7 +185,10 @@ mod tests {
             .scope_stack
             .push(FocusScope::RenameSessionInput);
         state.frontend.rename_session_input = RenameSessionInputState {
-            text: crate::common::line_input::LineInput { input: "Test".to_owned(), cursor_pos: 4 },
+            text: crate::common::line_input::LineInput {
+                input: "Test".to_owned(),
+                cursor_pos: 4,
+            },
         };
         let (mut terminal, area) = setup_term(80, 24);
 

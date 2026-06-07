@@ -14,9 +14,9 @@ pub mod user_preferences_storage;
 mod preferences_actor_tests;
 
 pub use user_preferences::{
-    AutoPruneConfig, BashConfig, CompactionConfig, InitDefaultConfigError,
-    InitOutcome, MinimapConfig, OpenrouterWebSearchConfig, RequestRetryConfig,
-    UserPreferences, init_default_config_to, preferences_path,
+    AutoPruneConfig, BashConfig, CompactionConfig, InitDefaultConfigError, InitOutcome,
+    MinimapConfig, OpenrouterWebSearchConfig, RequestRetryConfig, UserPreferences,
+    init_default_config_to, preferences_path,
 };
 pub use user_preferences_storage::{
     FilesystemUserPreferencesStorage, InMemoryUserPreferencesStorage, UserPreferencesStorageService,

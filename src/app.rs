@@ -586,8 +586,6 @@ mod tests {
 
     use super::*;
 
-
-
     #[rstest::rstest]
     fn load_compaction_prompt_populates_state() {
         // Given a user dir with a compaction prompt file.
