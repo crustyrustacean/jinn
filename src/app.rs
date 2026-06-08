@@ -121,7 +121,6 @@ impl App {
         // Initial factory is the no-provider sentinel until actors resolve the real one.
         let llm_service = LlmServiceFactoryService::new(Arc::new(NoProvidersAvailableFactory));
 
-
         // Create the session store - uses --db-path if provided, otherwise
         // the platform default. The --db-path flag lets users point the TUI
         // at a bench database to inspect results after a bench run.
@@ -296,8 +295,7 @@ impl App {
                         let db_path = db_path.as_ref().unwrap();
 
                         let session_store = SessionStoreService::new(Arc::new(
-                            SqliteSessionStore::open_or_create(db_path)
-                                .change_context(AppError)?,
+                            SqliteSessionStore::open_or_create(db_path).change_context(AppError)?,
                         ));
                         let store_for_shutdown = session_store.clone();
                         let (core, services, actor_host, plugins) =
@@ -335,8 +333,7 @@ impl App {
                         let db_path = db_path.as_ref().unwrap();
 
                         let session_store = SessionStoreService::new(Arc::new(
-                            SqliteSessionStore::open_or_create(db_path)
-                                .change_context(AppError)?,
+                            SqliteSessionStore::open_or_create(db_path).change_context(AppError)?,
                         ));
                         let store_for_shutdown = session_store.clone();
                         let (core, services, actor_host, plugins) =
