@@ -49,58 +49,19 @@ use super::is_within_min_age;
 /// Number of edit/write operations on the same file required before pruning the prior read.
 const WRITE_THRESHOLD: usize = 2;
 
-/// Tool names that modify files and count toward the forward-pruning threshold.
-const MODIFY_TOOLS: &[&str] = &["edit", "write"];
+use super::edit_read::{extract_path_from_arguments, find_matching_result, is_modify_tool};
 
-/// Returns true if the tool name is a file-modifying tool (edit or write).
-fn is_modify_tool(name: &str) -> bool {
-    MODIFY_TOOLS.contains(&name)
-}
-
-/// Read-edit-write auto-prune worker.
+/// Read-edit auto-prune worker.
 ///
-/// For each `read` tool call in history:
-/// - **Backward**: prunes all prior `edit`/`write` ToolCall+ToolResult pairs
-///   on the same file.
-/// - **Forward**: once [`WRITE_THRESHOLD`] subsequent `edit`/`write` calls
-///   on the same file have occurred, prunes the read ToolCall+ToolResult.
+/// For each `read` tool call, counts subsequent `edit`/`write` calls on the same
+/// file. Once the count reaches `config.threshold`, the read call+result are marked
+/// [`ForcedExclude`] — the file has changed enough that the read contents are stale.
+///
+/// [`ForcedExclude`]: crate::feat::session::chat_entry::ContextOverride::ForcedExclude
 #[derive(Clone)]
 pub struct ReadEditAutoPruneWorker {
     /// Configuration for the read-edit auto-prune strategy.
     pub config: ReadEditAutoPruneConfig,
-}
-
-/// Extract the `path` field from a tool call's JSON arguments string.
-///
-/// Returns `None` if the arguments cannot be parsed or the `path` field is
-/// missing or not a string.
-fn extract_path_from_arguments(arguments: &str) -> Option<String> {
-    let value: serde_json::Value = serde_json::from_str(arguments).ok()?;
-    value
-        .get("path")?
-        .as_str()
-        .map(std::borrow::ToOwned::to_owned)
-}
-
-/// Walk forward from a ToolCall at `call_idx` to find its matching ToolResult.
-///
-/// Returns `Some((result_entry_id, result_index))` if a match is found.
-/// Returns `None` if no result exists (pending/orphaned).
-fn find_matching_result(
-    history: &[ChatEntry],
-    call_idx: usize,
-    tool_call_id: &str,
-) -> Option<(crate::feat::session::chat_entry::ChatEntryId, usize)> {
-    // ToolResults appear after their ToolCall, so scan forward only.
-    for (j, entry) in history.iter().enumerate().skip(call_idx + 1) {
-        if let ChatEntryKind::ToolResult { id, .. } = &entry.kind
-            && id == tool_call_id
-        {
-            return Some((entry.id.clone(), j));
-        }
-    }
-    // No matching result found — the call is still pending or orphaned.
-    None
 }
 
 /// Walk backward from a read tool call at `read_index` and prune all
@@ -350,6 +311,7 @@ mod tests {
             config: ReadEditAutoPruneConfig {
                 enabled: true,
                 min_age,
+                threshold: 2,
             },
         }
     }
