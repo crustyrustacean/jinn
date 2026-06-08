@@ -53,7 +53,7 @@ age_stale = "red"
 scroll_indicator_bg = "black"
 
 # Input mode badge (queue vs steer)
-input_mode_queue = [116, 116, 116]
+input_mode_queue = [0, 255, 100]
 input_mode_steer = [202, 92, 230]
 
 # Info popup (audit, debug)

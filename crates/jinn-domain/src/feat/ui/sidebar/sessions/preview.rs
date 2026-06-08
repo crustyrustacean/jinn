@@ -8,7 +8,6 @@
 //! A footer at the bottom shows keybinds across two lines and the session's
 //! active cwd and provider/model on the same line.
 
-
 use std::collections::HashMap;
 
 use ratatui::Frame;
@@ -352,9 +351,7 @@ fn render_model_line(
 
     let style = Style::default().fg(theme.muted_text);
     let cwd_len = UnicodeSegmentation::graphemes(cwd_display.as_str(), true).count();
-    let padding_len = available
-        .saturating_sub(cwd_len)
-        .saturating_sub(model_len);
+    let padding_len = available.saturating_sub(cwd_len).saturating_sub(model_len);
     let padding = " ".repeat(padding_len);
 
     let spans = vec![
