@@ -891,10 +891,7 @@ pub struct UserPreferences {
     /// Format: `{provider_name}/{model}` (e.g., `"ollama/llama3"`).
     #[serde(default)]
     pub last_model: Option<String>,
-    /// The strategy ID of the last strategy selected from the strategy picker.
-    /// Format: strategy name (e.g., `"sliding_window"`).
-    #[serde(default)]
-    pub last_strategy: Option<String>,
+
     /// Maximum number of lines to display for tool entries in the chat log.
     /// `None` means use the built-in default (5 lines).
     #[serde(default)]
@@ -1168,9 +1165,9 @@ mod tests {
         // Given default preferences.
         let prefs = UserPreferences::default();
 
-        // Then last_model, last_strategy, tool_entry_max_lines, and min_collapse_count are None.
+        // Then last_model, tool_entry_max_lines, and min_collapse_count are None.
         assert!(prefs.last_model.is_none());
-        assert!(prefs.last_strategy.is_none());
+
         assert!(prefs.tool_entry_max_lines.is_none());
         assert!(prefs.min_collapse_count.is_none());
     }
@@ -1186,7 +1183,7 @@ mod tests {
 
         // Then defaults are returned.
         assert!(prefs.last_model.is_none());
-        assert!(prefs.last_strategy.is_none());
+
         assert!(prefs.tool_entry_max_lines.is_none());
         // And the file is created.
         assert!(path.exists());
@@ -1298,12 +1295,10 @@ mod tests {
 
     #[rstest::rstest]
     fn save_then_load_round_trips() {
-        // Given preferences with a last_model and last_strategy.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
             last_model: Some("ollama/llama3".to_owned()),
-            last_strategy: Some("sliding_window".to_owned()),
             tool_entry_max_lines: None,
             min_collapse_count: None,
             theme_name: None,
@@ -1328,30 +1323,24 @@ mod tests {
 
         // Then the round-tripped data matches.
         assert_eq!(reloaded.last_model.as_deref(), Some("ollama/llama3"));
-        assert_eq!(reloaded.last_strategy.as_deref(), Some("sliding_window"));
     }
 
     #[rstest::rstest]
     fn load_parses_toml_content() {
-        // Given a TOML file with last_model and last_strategy.
         let dir = TempDir::new().expect("temp dir");
         let path = dir.path().join(PREFS_FILE_NAME);
         std::fs::write(
             &path,
-            r#"last_model = "openrouter/anthropic/claude-sonnet-4-20250514"
-last_strategy = "sliding_window""#,
+            r#"last_model = "openrouter/anthropic/claude-sonnet-4-20250514""#,
         )
         .expect("write");
-
         // When loading.
         let prefs = load_preferences_from(&path).expect("load");
 
-        // Then last_model and last_strategy are parsed.
         assert_eq!(
             prefs.last_model.as_deref(),
             Some("openrouter/anthropic/claude-sonnet-4-20250514")
         );
-        assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
     }
 
     #[rstest::rstest]
@@ -1366,7 +1355,6 @@ last_strategy = "sliding_window""#,
 
         // Then defaults are returned (all fields None).
         assert!(prefs.last_model.is_none());
-        assert!(prefs.last_strategy.is_none());
         assert!(prefs.tool_entry_max_lines.is_none());
     }
 
@@ -1377,7 +1365,6 @@ last_strategy = "sliding_window""#,
         let path = dir.path().join("nested").join("dir").join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
             last_model: Some("test/model".to_owned()),
-            last_strategy: None,
             tool_entry_max_lines: None,
             min_collapse_count: None,
             theme_name: None,
@@ -1410,7 +1397,6 @@ last_strategy = "sliding_window""#,
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
             last_model: None,
-            last_strategy: None,
             tool_entry_max_lines: Some(10),
             min_collapse_count: None,
             theme_name: None,
@@ -1444,7 +1430,6 @@ last_strategy = "sliding_window""#,
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
             last_model: None,
-            last_strategy: None,
             tool_entry_max_lines: None,
             min_collapse_count: None,
             theme_name: None,
@@ -1504,7 +1489,6 @@ last_strategy = "sliding_window""#,
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
             last_model: None,
-            last_strategy: None,
             tool_entry_max_lines: None,
             min_collapse_count: None,
             theme_name: None,
@@ -1860,7 +1844,6 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         std::fs::write(
             &path,
             "last_model = \"openrouter/anthropic/claude-sonnet-4-20250514\"\n\
-             last_strategy = \"sliding_window\"\n\
              sidebar_width = 42\n",
         )
         .expect("write");
@@ -1872,7 +1855,6 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
             prefs.last_model.as_deref(),
             Some("openrouter/anthropic/claude-sonnet-4-20250514")
         );
-        assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
         assert_eq!(prefs.sidebar_width, Some(42));
     }
 
@@ -1884,7 +1866,6 @@ teardown_command = "~/.config/jinn/scripts/fossil-cleanup.sh $1"
         let path = dir.path().join(PREFS_FILE_NAME);
         let prefs = UserPreferences {
             last_model: Some("ollama/llama3".to_owned()),
-            last_strategy: None,
             tool_entry_max_lines: Some(99),
             min_collapse_count: None,
             theme_name: None,

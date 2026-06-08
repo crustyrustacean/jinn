@@ -192,7 +192,6 @@ mod tests {
             .user_preferences_storage
             .save(&UserPreferences {
                 last_model: Some("sample/sample".to_owned()),
-                last_strategy: None,
                 tool_entry_max_lines: None,
                 min_collapse_count: None,
                 theme_name: None,
@@ -417,7 +416,6 @@ mod tests {
             .user_preferences_storage
             .save(&UserPreferences {
                 last_model: Some("wrong-model".to_owned()),
-                last_strategy: None,
                 tool_entry_max_lines: None,
                 min_collapse_count: None,
                 theme_name: None,

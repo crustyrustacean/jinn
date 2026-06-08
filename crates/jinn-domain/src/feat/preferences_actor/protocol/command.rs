@@ -14,8 +14,7 @@ use crate::protocol::CommandMsg;
 pub enum PreferenceUpdate {
     /// Set the last model preference.
     SetLastModel(Option<String>),
-    /// Set the last strategy preference.
-    SetLastStrategy(Option<String>),
+
     /// Set the active theme name.
     SetTheme(Option<String>),
     /// Set the active persona name.
@@ -33,7 +32,7 @@ impl PreferenceUpdate {
     pub fn apply(&self, prefs: &mut UserPreferences) {
         match self {
             Self::SetLastModel(v) => prefs.last_model.clone_from(v),
-            Self::SetLastStrategy(v) => prefs.last_strategy.clone_from(v),
+
             Self::SetTheme(v) => prefs.theme_name.clone_from(v),
             Self::SetPersona(v) => prefs.persona_name.clone_from(v),
             Self::SetSidebarWidth(v) => prefs.sidebar_width.clone_from(v),

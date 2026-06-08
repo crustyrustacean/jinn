@@ -255,7 +255,6 @@ mod tests {
         let storage = InMemoryUserPreferencesStorage::new();
         let prefs = UserPreferences {
             last_model: Some("ollama/llama3".to_owned()),
-            last_strategy: None,
             tool_entry_max_lines: None,
             min_collapse_count: None,
             theme_name: None,
@@ -314,7 +313,6 @@ mod tests {
 
         let prefs = UserPreferences {
             last_model: Some("test/model".to_owned()),
-            last_strategy: None,
             tool_entry_max_lines: None,
             min_collapse_count: None,
             theme_name: None,
@@ -350,7 +348,6 @@ mod tests {
         let service = UserPreferencesStorageService::new(Arc::new(storage));
         let prefs = UserPreferences {
             last_model: Some("ollama/llama3".to_owned()),
-            last_strategy: None,
             tool_entry_max_lines: None,
             min_collapse_count: None,
             theme_name: None,
@@ -386,7 +383,6 @@ mod tests {
         let service = UserPreferencesStorageService::new(Arc::new(storage));
         let prefs = UserPreferences {
             last_model: Some("ollama/llama3".to_owned()),
-            last_strategy: None,
             tool_entry_max_lines: None,
             min_collapse_count: None,
             theme_name: None,
@@ -409,7 +405,6 @@ mod tests {
         // When saving new preferences.
         let updated = UserPreferences {
             last_model: Some("openrouter/gpt-4".to_owned()),
-            last_strategy: None,
             tool_entry_max_lines: None,
             min_collapse_count: None,
             theme_name: None,
@@ -441,7 +436,6 @@ mod tests {
         let service = UserPreferencesStorageService::new(Arc::new(storage));
         let prefs = UserPreferences {
             last_model: Some("ollama/llama3".to_owned()),
-            last_strategy: None,
             tool_entry_max_lines: None,
             min_collapse_count: None,
             theme_name: None,
