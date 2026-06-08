@@ -249,18 +249,23 @@ impl TuiApp {
         };
 
         // TriggerPlugin: TUI-only intent. Fire the plugin's named action on the async VM
-        // via the generic plugin::fire_async command path. The toggle hook itself writes
-        // plugin_data (visible to both VMs); we just kick off the async fire here.
+        // via the generic plugin::fire_async command path. The action hook itself writes
+        // plugin_data (visible to both VMs); we just kick off the async fire here, passing
+        // the current draft so action hooks (e.g. on_enrich) can act on it.
         if let Intent::TriggerPlugin {
             action, session_id, ..
         } = intent.clone()
         {
-            let sid = session_id
-                .or_else(|| Some(self.core.state.read().session.active_session_id().clone()));
+            let (sid, text) = {
+                let state = self.core.state.read();
+                let sid = session_id.unwrap_or_else(|| state.session.active_session_id().clone());
+                let text = state.active_chat_input().text().to_owned();
+                (sid, text)
+            };
             let payload = serde_json::json!({
                 "hook": action,
                 "session_id": sid,
-                "text": "",
+                "text": text,
             });
 
             let _ = self.core.sender().send(AppMsg::Command {

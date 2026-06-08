@@ -86,9 +86,15 @@ It fires only for `Intent::SubmitMessage`; other intents (insert-char, quit,
 scroll, …) are never intercepted. This is a deliberate scoping choice — the
 original generic-over-all-intents design caused a keystroke flood once a toggle
 was armed.
-`on_chat_input_badges_render` lets a plugin return a **single** badge directive
-(`{ slot, text, style? }`) drawn in the consistent chat-input badge location,
-or `nil` when there is nothing to draw.
+`on_chat_input_badges_render` lets a plugin return a **single** badge directive drawn
+right-aligned on the input box's bottom border row (same row as the `[QUEUE]`/`[STEER]`
+mode badge), or `nil` when there is nothing to draw. The directive shape is
+`{ slot, segments = { { text, style? } } }`: an ordered list of styled runs rendered
+left-to-right. `style` is a string from the badge style vocabulary — flat ratatui colors
+(`"yellow"`, `"cyan"`, `"green"`, `"red"`, `"bold"`) or theme-derived colors
+(`"accent_action"` for hotkeys, `"muted_text"`). The badge ctx also carries `mode`
+(the current scope mode as a lowercase string); plugins branch on it to apply their own
+styling (the host applies no mode-aware styling to plugin content).
 
 ### Plugin-defined async action hooks
 
@@ -96,8 +102,10 @@ A plugin may also define its own named async hooks fired on demand via the
 `fire_async_hook` verb (see §7) or the `Intent::TriggerPlugin` keybind path.
 These are not lifecycle events; they are plugin-specific action handlers
 invoked from the render thread and executed on the plugin-async thread.
-Example: `prompt_enrichment` defines `on_toggle_enrich` (keybind action) and
-`on_enrich` (fired by `on_submit_intercept` via `fire_async_hook`).
+Example: `prompt_enrichment` defines `on_enrich` (keybind action for `<M-e>`) which runs
+an LLM one-shot rewrite of the current draft and writes it back via `set_chat_input`.
+Its `on_chat_input_badges_render` hook returns a persistent `[Enrich]` hotkey legend
+whose `E` uses `accent_action` only while in Input mode.
 
 ---
 
@@ -177,10 +185,12 @@ receives the same shape.
 | ------------------------ | ---------------- | ----------------------------------------------------------------------- |
 | `session_id`             | string           | From the incoming ctx_json.                                             |
 | `plugin_name`            | string           | Set by builder. Used by self-targeting emits like `disable_plugin`.     |
-| `plugin_data`            | any (JSON value) | This plugin's data from the shared `PluginData` store; `null` if unset. |
+| `plugin_data`            | any (JSON value) | This plugin's entry from the shared `PluginData` store (a **snapshot** taken at hook entry); `null` if unset. For the live value after an `await`, async hooks use `get_plugin_data()`. |
 | `emit(verb, data)`       | function         | Fire-and-forget domain command. Sync closure; pushes onto kanal.        |
 | `request(name, data)`    | function         | Async coroutine; yields until the named handler responds.               |
-| `set_plugin_data(value)` | function         | Replaces this plugin's entry in the shared `PluginData` store.          |
+| `set_plugin_data(value)` | function         | Replaces this plugin's entry in the shared `PluginData` store. Async-only.          |
+| `merge_plugin_data(value)` | function       | Shallow-merges top-level keys into this plugin's `PluginData` entry (untouched keys preserved). Async-only. |
+| `get_plugin_data()`      | function         | Returns this plugin's **current** entry from the live store (re-reads each call). Async-only; use after an `await` to see writes from other fires. |
 
 Additional fields can be added to the ctx_json at the actor's fire site
 (`fire_on_phase_changed` etc) or at the sync hook call site. Those flow into ctx
@@ -220,7 +230,13 @@ the proper constructors (`enqueue_user_message` for user entries, etc.).
 
 | Request name   | Payload                           | Returns         |
 | -------------- | --------------------------------- | --------------- |
-| `llm_oneshot`  | `{ session_id, system, prompt, persist, disable_tool_loop, timeout_ms }`  | `{ text }`      |
+| `llm_oneshot`  | `{ session_id, system, prompt, persist, disable_tool_loop, timeout_ms }`  | `{ ok: true, value: { text } }` on success, `{ ok: false, error }` on failure |
+
+`ctx.request` always returns a **result envelope**: `{ ok = true, value = <response> }`
+on success, or `{ ok = false, error = "<message>" }` on any failure (LLM error,
+malformed payload, unknown request name). Hooks must inspect `result.ok` before
+reading `result.value`. A failed request does not raise a Lua error; the error is
+carried in `result.error` for the hook to surface (e.g. push a transient chat entry).
 
 `llm_oneshot` runs a history-less LLM call inheriting only the session's
 provider+model (no chat history). Used by prompt enrichment.
@@ -245,13 +261,14 @@ view and (when `persist=false`) leaves no trace in history.
 
 ---
 
-## 8. Plugin Data (`ctx.plugin_data` / `ctx.set_plugin_data`)
+## 8. Plugin Data (`ctx.plugin_data` / `ctx.get_plugin_data` / `ctx.set_plugin_data` / `ctx.merge_plugin_data`)
 
 Cross-context, in-memory only. Backed by `PluginData(Arc<DashMap<String, Value>>)`
 in `crates/jinn-plugin/src/plugin_data.rs`. Keyed by plugin name.
 
-- Async hooks write via `ctx.set_plugin_data(value)`.
-- Sync hooks read from `ctx.plugin_data` (auto-injected by `build_sync_ctx`).
+- Async hooks write via `ctx.set_plugin_data(value)` (full replace) or `ctx.merge_plugin_data(value)` (shallow top-level merge; use it to update one field without a read-modify-write round-trip).
+- Async hooks read **current** state via `ctx.get_plugin_data()` (re-reads the shared store; needed after an `await` so a hook observes writes from other fires — the `ctx.plugin_data` field is frozen at hook entry).
+- Sync hooks read from `ctx.plugin_data` (auto-injected by `build_sync_ctx`; already current at entry since sync hooks never `await`).
 - **Not persisted to disk.** Restarting the app wipes it.
 - Each plugin sees only its own entry.
 

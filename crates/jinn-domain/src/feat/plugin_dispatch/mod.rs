@@ -33,4 +33,6 @@ pub use domain_node_context::DomainNodeContext;
 pub use picker_entry::PluginPickerEntry;
 pub use plugin_fire::{PluginFire, PluginFireError, PluginFireService};
 pub use plugin_sync::{PluginSyncCall, PluginSyncCallError, PluginSyncCallService};
-pub use plugin_sync_hooks::{BadgeDirective, InterceptOutcome, PluginSyncHooks, call_hooks_typed};
+pub use plugin_sync_hooks::{
+    BadgeDirective, BadgeSegment, InterceptOutcome, PluginSyncHooks, call_hooks_typed,
+};

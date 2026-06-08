@@ -22,6 +22,8 @@
 ---@field emit fun(verb: PluginVerb, data: table) Fire-and-forget emit a domain command.
 ---@field request fun(name: string, data: table): any Blocking request to a named handler.
 ---@field set_plugin_data fun(data: any) Replace this plugin's persistent state.
+---@field merge_plugin_data fun(data: any) Shallow-merge top-level keys into this plugin's persistent state (async-only).
+---@field get_plugin_data fun(): any Re-read this plugin's **current** persistent state (live; async-only). Use after an `await` — `plugin_data` is a frozen snapshot taken at hook entry.
 
 -- ─── Per-hook ctx classes ──────────────────────────────────────────
 --
@@ -58,11 +60,20 @@
 ---
 ---@class OnChatInputBadgesRenderCtx : PluginCtx
 ---Sync hook fired by the chat-input renderer each frame. A plugin returns a
----single badge directive (`{ slot, text, style? }`) drawn into the consistent
----chat-input badge location, or `nil` when it has nothing to draw. Runs on the
----render-thread (sync) Lua state.
+---single badge directive drawn right-aligned on the input box's bottom border
+---row (same row as the `[QUEUE]`/`[STEER]` mode badge), or `nil` when it has
+---nothing to draw. Runs on the render-thread (sync) Lua state.
+---
+---The directive shape is `{ slot = "input_badge", segments = { { text, style? } } }`:
+---an ordered list of styled runs rendered left-to-right. `style` is a string
+---from the host's badge style vocabulary: flat ratatui colors (`"yellow"`,
+---`"cyan"`, `"green"`, `"red"`, `"bold"`) or theme-derived colors
+---(`"accent_action"` for hotkeys, `"muted_text"`). One style per segment; the
+---host does not apply any mode-aware styling — the plugin decides which
+---segments are highlighted.
 ---
 ---@field active_session_id string The session currently in focus.
+---@field mode string The current scope mode as a lowercase string (`"input"`, `"normal"`, ...). Plugins branch on it to style their own content.
 
 -- ─── Verb payload shapes ───────────────────────────────────────────
 
@@ -128,9 +139,16 @@
 ---  tool loop. If false (default), the one-shot inherits the full tool
 ---  catalog the session would normally see.
 ---@field timeout_ms number|nil Hard upper bound on the await, in milliseconds.
----  Defaults to 30000. On expiry, the one-shot session is hard-cancelled
----  (no background token burn) and the request returns an error to the hook.
+---  (no background token burn) and the request returns an error envelope
+---  to the hook.
 ---  SQLite store; defaults to false (transient). Set true for reviewable
 ---  runs (e.g. a judge/eval).
+---
+--- Result envelope: `ctx.request` always returns an object of the shape
+---   `{ ok = true, value = <response> }`   on success, or
+---   `{ ok = false, error = "<message>" }` on any failure
+--- (LLM error, malformed payload, unknown request name). Inspect `result.ok`
+--- before reading `result.value`.
+---
 ---@class LlmOneshotResponse
 ---@field text string The model's response text.
