@@ -75,14 +75,26 @@ pub enum InterceptOutcome {
 /// Declarative render directive from `on_chat_input_badges_render`.
 ///
 /// Rust owns the slot layout and a constrained style vocabulary; the plugin
-/// declares `slot`, `text`, and an optional `style`.
+/// declares `slot` and a list of styled segments drawn left-to-right within it.
 #[derive(Debug, Clone, serde::Deserialize, PartialEq, Eq)]
 pub struct BadgeDirective {
-    /// Named location, e.g. `"input_badge"` or `"input_spinner"`.
+    /// Named location, e.g. `"input_badge"`.
     pub slot: String,
-    /// Text to render in the slot.
+    /// Styled segments drawn left-to-right within the slot.
+    #[serde(default)]
+    pub segments: Vec<BadgeSegment>,
+}
+
+/// One styled run within a [`BadgeDirective`].
+///
+/// `style` names a constrained vocabulary entry resolved by the host against
+/// the active theme (e.g. `"accent_action"`, `"muted_text"`, `"yellow"`);
+/// `None` yields the default style.
+#[derive(Debug, Clone, serde::Deserialize, PartialEq, Eq)]
+pub struct BadgeSegment {
+    /// Text for this run.
     pub text: String,
-    /// Optional constrained style name (e.g. `"yellow"`, `"cyan"`).
+    /// Optional constrained style name.
     #[serde(default)]
     pub style: Option<String>,
 }
@@ -189,20 +201,31 @@ mod tests {
     }
 
     #[test]
-    fn badge_directive_deserializes_with_optional_style() {
-        let with_style: BadgeDirective = serde_json::from_value(serde_json::json!({
+    fn badge_directive_deserializes_segments_with_styles() {
+        let d: BadgeDirective = serde_json::from_value(serde_json::json!({
             "slot": "input_badge",
-            "text": "E",
-            "style": "yellow"
+            "segments": [
+                { "text": "[", "style": "muted_text" },
+                { "text": "E", "style": "accent_action" },
+                { "text": "nrich]" }
+            ]
         }))
         .unwrap();
-        assert_eq!(with_style.slot, "input_badge");
-        assert_eq!(with_style.style.as_deref(), Some("yellow"));
+        assert_eq!(d.slot, "input_badge");
+        assert_eq!(d.segments.len(), 3);
+        assert_eq!(d.segments[0].text, "[");
+        assert_eq!(d.segments[0].style.as_deref(), Some("muted_text"));
+        assert_eq!(d.segments[1].text, "E");
+        assert_eq!(d.segments[1].style.as_deref(), Some("accent_action"));
+        assert_eq!(d.segments[2].text, "nrich]");
+        assert!(d.segments[2].style.is_none());
+    }
 
-        let no_style: BadgeDirective =
-            serde_json::from_value(serde_json::json!({ "slot": "input_spinner", "text": "*" }))
-                .unwrap();
-        assert!(no_style.style.is_none());
+    #[test]
+    fn badge_directive_defaults_segments_to_empty_when_absent() {
+        let d: BadgeDirective =
+            serde_json::from_value(serde_json::json!({ "slot": "input_badge" })).unwrap();
+        assert!(d.segments.is_empty());
     }
 
     #[test]

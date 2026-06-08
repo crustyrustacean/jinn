@@ -32,7 +32,7 @@ pub enum KeyCategory {
     Input,
     /// Context strategy and prompt template management.
     Context,
-    /// Plugin-declared keybinds (e.g. toggle prompt enrichment).
+    /// Plugin-declared keybinds (e.g. enrich prompt on tap).
     Plugin,
 }
 
@@ -502,7 +502,7 @@ mod tests {
             "plugin keybinds must group under KeyCategory::Plugin"
         );
         assert_eq!(
-            me.description, "toggle prompt enrichment",
+            me.description, "enrich prompt",
             "which-key help derives its text from this description"
         );
     }

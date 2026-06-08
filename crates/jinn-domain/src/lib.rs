@@ -43,7 +43,7 @@ pub use common::tui_signals::TuiSignals;
 pub use common::{AppUiRegistry, register_all_ui_elements};
 pub use feat::context::prompt_template::PromptTemplateStore;
 pub use feat::plugin_dispatch::{
-    BadgeDirective, InterceptOutcome, PluginSyncHooks, call_hooks_typed,
+    BadgeDirective, BadgeSegment, InterceptOutcome, PluginSyncHooks, call_hooks_typed,
 };
 pub use feat::provider_infra::NO_PROVIDER_ID;
 
