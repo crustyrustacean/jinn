@@ -12,7 +12,7 @@
 //! [`HistoryWorker`]: crate::feat::history_worker::worker_trait::HistoryWorker
 //! [`HistoryWorkerActor`]: crate::feat::history_worker::actor::HistoryWorkerActor
 
-pub mod anchor_radius;
+pub mod anchored_assistant;
 pub mod broken_edit;
 pub mod consecutive_reads;
 pub mod double_edit;
@@ -25,7 +25,7 @@ pub mod tool_age_window;
 pub mod trivial_assistant;
 pub(crate) use min_age::is_within_min_age;
 
-pub use anchor_radius::AnchorRadiusAutoPruneWorker;
+pub use anchored_assistant::AnchoredAssistantAutoPruneWorker;
 pub use broken_edit::BrokenEditAutoPruneWorker;
 pub use consecutive_reads::ConsecutiveReadsAutoPruneWorker;
 pub use double_edit::DoubleEditAutoPruneWorker;

@@ -939,12 +939,12 @@ impl ActorSystemBuilder {
             }
         }
 
-        // Auto-prune worker: anchor-radius context pruning.
+        // Auto-prune worker: anchored-assistant context pruning.
         // Prunes large (>80 token) Assistant entries whose index distance to the
         // nearest anchor entry (first index, last index, or any User entry)
         // exceeds a configurable radius.
         {
-            use jinn_domain::feat::auto_prune_worker::AnchorRadiusAutoPruneWorker;
+            use jinn_domain::feat::auto_prune_worker::AnchoredAssistantAutoPruneWorker;
             use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
             use jinn_domain::feat::history_worker::actor::{
                 HistoryWorkerActor, HistoryWorkerActorDeps,
@@ -957,14 +957,14 @@ impl ActorSystemBuilder {
                 .clone();
 
             if config.enabled {
-                actors.push(spawn::<HistoryWorkerActor<AnchorRadiusAutoPruneWorker>>(
-                    "history-worker-auto-prune-anchor-radius",
+                actors.push(spawn::<HistoryWorkerActor<AnchoredAssistantAutoPruneWorker>>(
+                    "history-worker-auto-prune-anchored-assistant",
                     &sink,
                     handle,
                     &counter,
                     &shutdown_tracker,
                     HistoryWorkerActorDeps {
-                        worker: AnchorRadiusAutoPruneWorker {
+                        worker: AnchoredAssistantAutoPruneWorker {
                             config,
                             token_cache: entry_token_cache.clone(),
                             counter: TiktokenCounter::o200k_base(),
