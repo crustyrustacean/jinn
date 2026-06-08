@@ -134,7 +134,6 @@ pub enum ConfigCommands {
 pub enum BenchCommands {
     /// Run benchmark tasks through the actor pipeline.
     Run {
-
         /// Model(s) to benchmark (e.g., `openai/gpt-4o`). At least one required.
         #[arg(long, required = true)]
         model: Vec<String>,
@@ -170,9 +169,7 @@ pub enum BenchCommands {
     },
 
     /// Launch the TUI pointed at a bench database for inspection.
-    Tui {
-
-    },
+    Tui {},
 }
 
 #[cfg(test)]
@@ -192,7 +189,14 @@ mod tests {
     // Then Cli.log_file captures the override.
     #[test]
     fn log_file_flag_global_overrides() {
-        let cli = Cli::parse_from(["jinn", "--db-path", "/tmp/test.db", "--log-file", "/tmp/x.log", "tui"]);
+        let cli = Cli::parse_from([
+            "jinn",
+            "--db-path",
+            "/tmp/test.db",
+            "--log-file",
+            "/tmp/x.log",
+            "tui",
+        ]);
         assert_eq!(
             cli.log_file.as_deref(),
             Some(std::path::Path::new("/tmp/x.log"))
@@ -205,14 +209,10 @@ mod tests {
     fn log_dir_flag_removed() {
         // In debug mode, missing --db-path would trigger first,
         // so provide a dummy path.
-        let result = Cli::try_parse_from([
-            "jinn",
-            "--db-path", "/tmp/test.db",
-            "--log-dir", "/tmp",
-        ]);
+        let result =
+            Cli::try_parse_from(["jinn", "--db-path", "/tmp/test.db", "--log-dir", "/tmp"]);
         assert!(result.is_err());
     }
-
 
     // Given --log-file scoped to the headless subcommand (old shape).
     // Then clap rejects it: the flag is global now, not a subcommand arg.
@@ -220,7 +220,8 @@ mod tests {
     fn headless_scoped_log_file_removed() {
         let result = Cli::try_parse_from([
             "jinn",
-            "--db-path", "/tmp/test.db",
+            "--db-path",
+            "/tmp/test.db",
             "headless",
             "--log-file",
             "/tmp/x.log",
@@ -236,7 +237,8 @@ mod tests {
     fn log_file_flag_works_with_headless() {
         let cli = Cli::parse_from([
             "jinn",
-            "--db-path", "/tmp/test.db",
+            "--db-path",
+            "/tmp/test.db",
             "--log-file",
             "/tmp/x.log",
             "headless",
@@ -276,7 +278,7 @@ mod tests {
         let cli = Cli::parse_from(["jinn", "--db-path", "/tmp/test.db"]);
         // Then db_path_opt returns the path.
         assert_eq!(
-            cli.db_path_opt().map(|p| p.as_path()),
+            cli.db_path_opt().map(std::path::PathBuf::as_path),
             Some(std::path::Path::new("/tmp/test.db"))
         );
     }
