@@ -368,7 +368,7 @@ impl PluginDispatchActor {
     }
 
     fn fire_on_phase_changed(&self, session_id: &SessionId, new_phase: PhaseKind) {
-        // Workflow session completed: resolve any pending plugin LLM one-shot oneshot.
+        // Plugin session completed: resolve any pending plugin LLM one-shot oneshot.
         // Automated sessions are spawned by DomainNodeContext::send_llm_request_oneshot;
         // it has is_automated=true and a pending sender in domain_ctx. Extract the last
         // assistant entry text and resolve the awaiting coroutine.

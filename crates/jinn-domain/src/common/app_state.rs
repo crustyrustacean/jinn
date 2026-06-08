@@ -43,11 +43,7 @@ pub struct AppState {
     pub provider: ProviderState,
     /// Frontend / UI state - owned by IntentHandler.
     pub frontend: FrontendState,
-    // /// Active workflow tracking for UI (dead state from old WorkflowController).
-    // pub active_workflow: Option<(
-    //     crate::protocol::SessionId,
-    //     String,
-    // ),>,
+
     /// Discovered Lua plugins from both user and system plugin directories.
     /// OWNER: startup (actor_wiring) writes once; picker intent handler reads.
     pub discovered_plugins: Vec<DiscoveredPlugin>,
