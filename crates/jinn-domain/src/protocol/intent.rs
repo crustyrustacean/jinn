@@ -439,10 +439,10 @@ mod tests {
     fn trigger_plugin_display_returns_description() {
         let intent = Intent::TriggerPlugin {
             plugin_name: "prompt_enrichment".into(),
-            action: "on_toggle_enrich".into(),
-            description: "toggle prompt enrichment".into(),
+            action: "on_enrich".into(),
+            description: "enrich prompt".into(),
             session_id: None,
         };
-        assert_eq!(intent.to_string(), "toggle prompt enrichment");
+        assert_eq!(intent.to_string(), "enrich prompt");
     }
 }

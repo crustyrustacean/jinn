@@ -60,7 +60,7 @@ function M.on_enrich(ctx)
             return
         end
 
-        local d = normalize(ctx.plugin_data)
+        local d = normalize(ctx.get_plugin_data())
 
         -- Capture the generation so we can detect supersession mid-flight.
         local gen = (d.generation or 0) + 1
@@ -78,7 +78,7 @@ function M.on_enrich(ctx)
         })
 
         -- Re-read plugin_data in case it changed during the await (re-trigger).
-        local cur = normalize(ctx.plugin_data)
+        local cur = normalize(ctx.get_plugin_data())
         if cur.generation ~= gen then
             -- Superseded by a newer enrichment: drop the stale result.
             cur.status = "idle"
@@ -99,7 +99,7 @@ function M.on_enrich(ctx)
 
     if not ok then
         -- Never leave the spinner stuck on. Always restore idle on any error.
-        local cur = normalize(ctx.plugin_data)
+        local cur = normalize(ctx.get_plugin_data())
         cur.status = "idle"
         ctx.set_plugin_data(cur)
         -- Surface the error for debugging without crashing the actor.

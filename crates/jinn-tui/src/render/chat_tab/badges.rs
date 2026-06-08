@@ -37,12 +37,7 @@ pub(super) fn render_badges(frame: &mut Frame<'_>, input_area: Rect, ctx: &Rende
     // The active session is what the user is currently looking at. `mode` lets a
     // plugin gate its presentation on the current scope (e.g. dim a hotkey legend
     // outside Input mode). The host provides the data; the plugin decides styling.
-    let sid = ctx.state.session.active_session_id().clone();
-    let mode = ctx.state.frontend.scope_stack.current().mode();
-    let badge_ctx = serde_json::json!({
-        "active_session_id": sid.to_string(),
-        "mode": mode.to_string(),
-    });
+    let badge_ctx = build_badge_ctx(ctx);
 
     // Typed loop: each plugin contributes zero or more directives. Malformed
     // returns are silently dropped (see `call_hooks_typed`).
@@ -50,6 +45,20 @@ pub(super) fn render_badges(frame: &mut Frame<'_>, input_area: Rect, ctx: &Rende
 
     let theme = &ctx.state.frontend.theme;
     draw_directives(frame.buffer_mut(), input_area, &directives, theme);
+}
+
+/// Builds the JSON ctx handed to `on_chat_input_badges_render`.
+///
+/// `active_session_id` is what the user is currently looking at; `mode` lets a
+/// plugin gate its presentation on the current scope (e.g. dim a hotkey legend
+/// outside Input mode). The host provides the data; the plugin decides styling.
+fn build_badge_ctx(ctx: &RenderCtx) -> serde_json::Value {
+    let sid = ctx.state.session.active_session_id().clone();
+    let mode = ctx.state.frontend.scope_stack.current().mode();
+    serde_json::json!({
+        "active_session_id": sid.to_string(),
+        "mode": mode.to_string(),
+    })
 }
 
 /// Draws the directives right-aligned on the input box's bottom border row.
@@ -79,8 +88,15 @@ fn draw_directives(
     // Bottom border row; rightmost cell at the input area's right edge.
     let row_y = input_area.bottom().saturating_sub(1);
     let right = input_area.right().saturating_sub(1);
-    let start_x = right.saturating_sub(width.saturating_sub(1)).max(input_area.x);
-    let area = Rect { x: start_x, y: row_y, width, height: 1 };
+    let start_x = right
+        .saturating_sub(width.saturating_sub(1))
+        .max(input_area.x);
+    let area = Rect {
+        x: start_x,
+        y: row_y,
+        width,
+        height: 1,
+    };
     Paragraph::new(line).render(area, buf);
 }
 
@@ -95,7 +111,10 @@ fn build_badge_line(directives: &[BadgeDirective], theme: &Theme) -> Option<Line
             spans.push(Span::raw(" "));
         }
         spans.extend(d.segments.iter().map(|seg| {
-            Span::styled(seg.text.clone(), style_from_name(seg.style.as_deref(), theme))
+            Span::styled(
+                seg.text.clone(),
+                style_from_name(seg.style.as_deref(), theme),
+            )
         }));
     }
     if spans.is_empty() {
@@ -126,7 +145,7 @@ fn style_from_name(name: Option<&str>, theme: &Theme) -> Style {
 mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
     use super::*;
-    use jinn_domain::BadgeSegment;
+    use jinn_domain::{AppState, BadgeSegment, FocusScope};
 
     fn buffer(w: u16, h: u16) -> Buffer {
         let area = Rect::new(0, 0, w, h);
@@ -157,7 +176,10 @@ mod tests {
         let input_area = Rect::new(0, 1, 20, 1);
         let directives = vec![BadgeDirective {
             slot: "input_badge".to_owned(),
-            segments: vec![BadgeSegment { text: "Hi".to_owned(), style: None }],
+            segments: vec![BadgeSegment {
+                text: "Hi".to_owned(),
+                style: None,
+            }],
         }];
         // When drawing.
         draw_directives(&mut buf, input_area, &directives, &theme());
@@ -176,11 +198,17 @@ mod tests {
         let directives = vec![
             BadgeDirective {
                 slot: "input_badge".to_owned(),
-                segments: vec![BadgeSegment { text: "A".to_owned(), style: None }],
+                segments: vec![BadgeSegment {
+                    text: "A".to_owned(),
+                    style: None,
+                }],
             },
             BadgeDirective {
                 slot: "input_spinner".to_owned(),
-                segments: vec![BadgeSegment { text: "B".to_owned(), style: None }],
+                segments: vec![BadgeSegment {
+                    text: "B".to_owned(),
+                    style: None,
+                }],
             },
         ];
         // When drawing.
@@ -199,9 +227,18 @@ mod tests {
         let directives = vec![BadgeDirective {
             slot: "input_badge".to_owned(),
             segments: vec![
-                BadgeSegment { text: "[".to_owned(), style: Some("muted_text".to_owned()) },
-                BadgeSegment { text: "E".to_owned(), style: Some("accent_action".to_owned()) },
-                BadgeSegment { text: "]".to_owned(), style: Some("muted_text".to_owned()) },
+                BadgeSegment {
+                    text: "[".to_owned(),
+                    style: Some("muted_text".to_owned()),
+                },
+                BadgeSegment {
+                    text: "E".to_owned(),
+                    style: Some("accent_action".to_owned()),
+                },
+                BadgeSegment {
+                    text: "]".to_owned(),
+                    style: Some("muted_text".to_owned()),
+                },
             ],
         }];
         let t = theme();
@@ -240,5 +277,17 @@ mod tests {
         );
         assert_eq!(style_from_name(Some("unknown"), &t), Style::default());
         assert_eq!(style_from_name(None, &t), Style::default());
+    }
+
+    #[test]
+    fn badge_ctx_carries_current_mode_string() {
+        // Given an Input-mode state.
+        let mut state = AppState::default();
+        state.frontend.scope_stack.push(FocusScope::Input);
+        let ctx = RenderCtx::new(&state);
+        // When building the badge ctx.
+        let v = build_badge_ctx(&ctx);
+        // Then mode is the lowercase scope-mode string.
+        assert_eq!(v["mode"], serde_json::json!("input"));
     }
 }

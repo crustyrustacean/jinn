@@ -487,6 +487,23 @@ fn build_async_ctx(
         ctx.set("set_plugin_data", set_data_fn)?;
     }
 
+    // ctx.get_plugin_data() — reads the live shared DashMap.
+    //
+    // Unlike the frozen `ctx.plugin_data` field (a snapshot taken at hook
+    // entry), this re-reads the store on every call, so an async hook can
+    // observe writes that landed after an `await` — e.g. a supersession
+    // counter bumped by a concurrent fire. Returns an empty table when no
+    // data is set, so Lua callers can index it directly.
+    {
+        let pd = plugin_data.clone();
+        let pname = plugin_name.to_owned();
+        let get_data_fn = lua.create_function(move |lua, (): ()| {
+            let json = pd.get(&pname).unwrap_or_else(|| serde_json::json!({}));
+            bindings::json_to_lua_value(lua, &json)
+        })?;
+        ctx.set("get_plugin_data", get_data_fn)?;
+    }
+
     // Suppress unused warning for PathBuf import (kept for future use).
     let _: Option<PathBuf> = None;
 
