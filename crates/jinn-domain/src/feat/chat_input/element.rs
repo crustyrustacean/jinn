@@ -58,9 +58,9 @@ impl UiElement for ChatInputBoxElement {
                 InputMode::Queue => state.active_session().queue_len(),
                 InputMode::Steer => state.active_session().steering_buffer().len(),
             };
-            // Word + surrounding text color: primary_text for Queue, magenta for Steer.
+            // Word + surrounding text color: input_mode_queue for Queue, input_mode_steer for Steer.
             let word_color = match mode {
-                InputMode::Queue => theme.primary_text,
+                InputMode::Queue => theme.input_mode_queue,
                 InputMode::Steer => theme.input_mode_steer,
             };
             // The `Q` (hotkey mnemonic) is always the orange accent.
