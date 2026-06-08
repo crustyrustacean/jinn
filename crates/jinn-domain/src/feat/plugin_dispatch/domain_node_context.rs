@@ -1,4 +1,4 @@
-//! Domain context for Lua workflow LLM access.
+//! Domain context for Lua plugin LLM access.
 //!
 //! Provides `send_llm_request_cloned` so Lua scripts can call `ctx.llm()`
 //! through the existing session infrastructure. Also provides `send_command`
@@ -27,7 +27,7 @@ use crate::protocol::{Command, SessionId};
 #[error(debug)]
 pub struct DomainContextError;
 
-/// Domain context for Lua workflow LLM access.
+/// Domain context for Lua plugin LLM access.
 ///
 /// Provides:
 /// - `send_command` - emit domain commands through the actor channel
@@ -123,7 +123,7 @@ impl DomainNodeContext {
         // 3. Generate new session ID (clone must NOT share ID with source)
         session.core.session_id = SessionId::new();
 
-        // 4. Mark as workflow, reset ephemeral
+        // 4. Mark as plugin session, reset ephemeral
         session.core.is_automated = true;
         session.core.ephemeral = SessionCoreEphemeral::default();
         session.core.assembly_overrides = Some(overrides);
@@ -158,7 +158,7 @@ impl DomainNodeContext {
             Ok(Ok(response)) => Ok(response),
             Ok(Err(message)) => Err(Report::new(DomainContextError).attach(message)),
             Err(_) => {
-                Err(Report::new(DomainContextError).attach("cloned workflow LLM request cancelled"))
+                Err(Report::new(DomainContextError).attach("cloned plugin LLM request cancelled"))
             }
         }
     }
@@ -168,7 +168,7 @@ impl DomainNodeContext {
     /// session (default `SessionCore`, empty history) — no inherited chat history, profile
     /// skills, or tools. Used by plugin enrichment (`ctx.request("llm_oneshot", ...)`).
     ///
-    /// The completion is resolved by the plugin-dispatch actor when this workflow session
+    /// The completion is resolved by the plugin-dispatch actor when this plugin session
     /// transitions to `Idle` (see `SessionPhaseChanged` handler).
     ///
     /// # Errors
@@ -392,7 +392,7 @@ mod tests {
         );
 
         // Exactly one command should be emitted: an EnqueueUserMessage for the
-        // NEW (workflow) session — not the source session.
+        // NEW (plugin) session — not the source session.
         let msg = rx.recv().expect("expected one AppMsg");
         let new_session_id = match msg {
             AppMsg::Command {
@@ -406,7 +406,7 @@ mod tests {
             "one-shot must create a fresh session, not reuse the source"
         );
 
-        // The new workflow session inherits the source's provider+model, has no
+        // The new plugin session inherits the source's provider+model, has no
         // history, is marked is_automated, and records the source as parent.
         let guard = ctx.state.read();
         let new = guard
