@@ -952,7 +952,7 @@ impl ActorSystemBuilder {
 
             let (config, trivial_max_tokens) = {
                 let prefs = user_preferences_storage.read();
-                let cfg = prefs.auto_prune.anchor_radius.clone();
+                let cfg = prefs.auto_prune.anchored_assistant.clone();
                 let max_tokens = prefs.auto_prune.trivial_assistant.max_tokens as u32;
                 (cfg, max_tokens)
             };
