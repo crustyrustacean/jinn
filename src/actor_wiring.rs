@@ -950,11 +950,12 @@ impl ActorSystemBuilder {
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-            let config = user_preferences_storage
-                .read()
-                .auto_prune
-                .anchor_radius
-                .clone();
+            let (config, trivial_max_tokens) = {
+                let prefs = user_preferences_storage.read();
+                let cfg = prefs.auto_prune.anchor_radius.clone();
+                let max_tokens = prefs.auto_prune.trivial_assistant.max_tokens as u32;
+                (cfg, max_tokens)
+            };
 
             if config.enabled {
                 actors.push(spawn::<HistoryWorkerActor<AnchoredAssistantAutoPruneWorker>>(
@@ -966,6 +967,7 @@ impl ActorSystemBuilder {
                     HistoryWorkerActorDeps {
                         worker: AnchoredAssistantAutoPruneWorker {
                             config,
+                            min_candidate_tokens: trivial_max_tokens + 1,
                             token_cache: entry_token_cache.clone(),
                             counter: TiktokenCounter::o200k_base(),
                         },
