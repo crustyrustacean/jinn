@@ -47,9 +47,6 @@ use crate::protocol::SessionId;
 
 /// Minimum token count for an `Assistant` entry to be a prune candidate.
 ///
-/// Entries at or below this threshold are owned by
-/// [`TrivialAssistantAutoPruneWorker`](super::TrivialAssistantAutoPruneWorker).
-const MIN_CANDIDATE_TOKENS: u32 = 81;
 
 /// Anchored-assistant auto-prune worker.
 ///
@@ -58,6 +55,11 @@ const MIN_CANDIDATE_TOKENS: u32 = 81;
 pub struct AnchoredAssistantAutoPruneWorker {
     /// Configuration for the anchor-radius strategy.
     pub config: AnchorRadiusAutoPruneConfig,
+    /// Minimum token count for an entry to be considered a pruning candidate.
+    /// Entries at or below this threshold are owned by
+    /// [`TrivialAssistantAutoPruneWorker`](super::TrivialAssistantAutoPruneWorker).
+    /// Derived from `trivial_assistant.max_tokens + 1` at wiring time.
+    pub min_candidate_tokens: u32,
     /// Shared per-session, per-entry token-count cache. Cheap clone (inner is
     /// `Arc`-shared).
     pub token_cache: super::HistoryWorkerChatEntryTokenCache,
@@ -167,6 +169,7 @@ fn build_prune_mutations(
     history: &[ChatEntry],
     radius: usize,
     min_age: usize,
+    min_candidate_tokens: u32,
     session_id: &SessionId,
     token_cache: &super::HistoryWorkerChatEntryTokenCache,
     counter: &TiktokenCounter,
@@ -218,7 +221,7 @@ fn build_prune_mutations(
             token_cache.get_or_insert_with(session_id, &entry.id, || counter.count(text) as u32);
 
         // Skip small entries — owned by TrivialAssistantAutoPruneWorker.
-        if tokens < MIN_CANDIDATE_TOKENS {
+        if tokens < min_candidate_tokens {
             continue;
         }
 
@@ -274,6 +277,7 @@ impl HistoryWorker for AnchoredAssistantAutoPruneWorker {
             &history,
             self.config.radius,
             self.config.min_age,
+            self.min_candidate_tokens,
             session_id,
             &self.token_cache,
             &self.counter,
@@ -297,6 +301,11 @@ mod tests {
     use crate::feat::preferences_actor::user_preferences::AnchorRadiusAutoPruneConfig;
     use crate::feat::session::chat_entry::ChatEntry;
     use crate::feat::session::chat_entry::ChatEntryId;
+
+
+    /// Tests use 81 as the hard-coded threshold (trivial_assistant default max_tokens=80 + 1).
+    const TEST_MIN_CANDIDATE_TOKENS: u32 = 81;
+
     use crate::protocol::SessionId;
 
     // ------------------------------------------------------------------
@@ -317,9 +326,11 @@ mod tests {
                 radius,
                 min_age,
             },
+            min_candidate_tokens: 81,
             token_cache: super::super::HistoryWorkerChatEntryTokenCache::new(),
             counter: TiktokenCounter::o200k_base(),
         }
+
     }
 
     /// Build a trivial (≤80 tiktoken tokens) assistant entry.
@@ -763,7 +774,7 @@ mod tests {
         );
         let cached_count = cached.expect("checked Some");
         assert!(
-            cached_count >= MIN_CANDIDATE_TOKENS,
+            cached_count >= TEST_MIN_CANDIDATE_TOKENS,
             "large_assistant helper must produce >80 tokens, got {cached_count}"
         );
     }
@@ -799,7 +810,7 @@ mod tests {
             .get(&session_id, &asst_id)
             .expect("first evaluate must populate cache");
         assert!(
-            cached >= MIN_CANDIDATE_TOKENS,
+            cached >= TEST_MIN_CANDIDATE_TOKENS,
             "real token count must be >80, got {cached}"
         );
 
@@ -807,7 +818,7 @@ mod tests {
         w.token_cache.insert(
             session_id.clone(),
             asst_id.clone(),
-            MIN_CANDIDATE_TOKENS - 1,
+            TEST_MIN_CANDIDATE_TOKENS - 1,
         );
 
         // Reset context_override on a fresh history copy so the worker
