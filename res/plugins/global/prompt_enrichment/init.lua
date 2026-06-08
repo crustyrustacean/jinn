@@ -40,9 +40,7 @@ function M.on_enrich(ctx)
             return
         end
 
-        local d = ctx.get_plugin_data()
-        d.status = "enriching"
-        ctx.set_plugin_data(d)
+        ctx.merge_plugin_data({ status = "enriching" })
 
         local result = ctx.request("llm_oneshot", {
             session_id = ctx.session_id,
@@ -53,23 +51,25 @@ function M.on_enrich(ctx)
             timeout_ms = 30000,    -- bound a genuinely stuck model; hard-cancels the one-shot session
         })
 
-        if type(result) == "table" and type(result.text) == "string" and result.text ~= "" then
+        if not result.ok then
+            -- Surface the error so the user knows enrichment failed.
+            ctx.emit("push_chat_entry", {
+                session_id = ctx.session_id,
+                kind = { transient = result.error },
+            })
+        elseif result.value.text ~= "" then
             ctx.emit("set_chat_input", {
                 session_id = ctx.session_id,
-                text = result.text,
+                text = result.value.text,
             })
         end
 
-        local cur = ctx.get_plugin_data()
-        cur.status = "idle"
-        ctx.set_plugin_data(cur)
+        ctx.merge_plugin_data({ status = "idle" })
     end)
 
     if not ok then
         -- Restore idle and surface the failure without crashing the fire.
-        local cur = ctx.get_plugin_data()
-        cur.status = "idle"
-        ctx.set_plugin_data(cur)
+        ctx.merge_plugin_data({ status = "idle" })
         ctx.emit("push_chat_entry", {
             session_id = ctx.session_id,
             kind = { transient = "enrichment failed" },
