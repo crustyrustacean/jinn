@@ -116,7 +116,7 @@ pub(crate) fn assemble_entry_line(
             assemble_session_line(entry, is_selected, max_title_len, throbber_state, theme)
         }
         SessionEntryKind::Plugin { enabled } => {
-            assemble_workflow_line(enabled, entry, is_selected, max_title_len, theme)
+            assemble_plugin_line(enabled, entry, is_selected, max_title_len, theme)
         }
     }
 }
@@ -153,7 +153,7 @@ fn assemble_session_line(
 /// Plugin entries are informational children of a session. They show the
 /// plugin label with a lightning bolt icon prefix. Disabled plugins get an additional
 /// DIM modifier on the title.
-fn assemble_workflow_line(
+fn assemble_plugin_line(
     enabled: bool,
     entry: &SessionEntry,
     is_selected: bool,
