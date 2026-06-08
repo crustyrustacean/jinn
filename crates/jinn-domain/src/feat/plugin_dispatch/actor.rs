@@ -373,7 +373,7 @@ impl PluginDispatchActor {
         // it has is_automated=true and a pending sender in domain_ctx. Extract the last
         // assistant entry text and resolve the awaiting coroutine.
         if new_phase == PhaseKind::Idle && self.domain_ctx.has_pending(session_id) {
-            let response = self.extract_last_assistant_text(session_id);
+            let response = self.resolve_response_for_session(session_id);
             self.domain_ctx.resolve_completed(session_id, response);
         }
 
@@ -436,6 +436,23 @@ impl PluginDispatchActor {
                 _ => None,
             })
             .unwrap_or_default()
+    }
+    /// Determine the one-shot outcome to resolve the pending sender with.
+    ///
+    /// Reads the session's last entry: if it's an `Error`, the one-shot failed
+    /// and the error message is surfaced (the session actor pushes a `ChatEntry::error`
+    /// before transitioning to `Idle`). Otherwise the last assistant entry text is
+    /// the successful response (empty string if there is none).
+    fn resolve_response_for_session(&self, session_id: &SessionId) -> Result<String, String> {
+        let guard = self.state.read();
+        let Some(session) = guard.session.get(session_id) else {
+            return Ok(String::new());
+        };
+        let last = session.history().iter().next_back();
+        match last.map(|entry| &entry.kind) {
+            Some(ChatEntryKind::Error(message)) => Err(message.clone()),
+            _ => Ok(self.extract_last_assistant_text(session_id)),
+        }
     }
 
     /// Handle the generic `plugin::fire_async` dynamic command: route an
@@ -964,7 +981,7 @@ mod tests {
             Services::new(),
             State::new(AppState::default()),
         ));
-        let (tx, rx) = oneshot::channel::<String>();
+        let (tx, rx) = oneshot::channel::<Result<String, String>>();
         domain_ctx.insert_pending(session_id.clone(), tx);
 
         let actor = PluginDispatchActor::activate(
@@ -990,7 +1007,7 @@ mod tests {
         let resolved = tokio::time::timeout(std::time::Duration::from_millis(500), rx)
             .await
             .expect("resolve_completed fired synchronously, not gated behind the spawned fire");
-        assert_eq!(resolved.as_deref(), Ok("enriched text"));
+        assert_eq!(resolved, Ok(Ok("enriched text".to_owned())));
 
         // Cleanup: release the gate so the parked fire completes.
         gate.notify_waiters();
