@@ -131,6 +131,12 @@ impl AppPaths {
             .join(format!("{APP_NAME}.log"))
     }
 
+    /// App state file (`~/.local/state/jinn/state.toml` on Linux).
+    #[must_use]
+    pub fn state_file_path(&self) -> PathBuf {
+        self.state_dir.join(APP_NAME).join("state.toml")
+    }
+
     /// Themes directory (`~/.config/jinn/themes`).
     #[must_use]
     pub fn themes_dir(&self) -> PathBuf {
@@ -442,6 +448,19 @@ mod tests {
         assert_eq!(
             paths.log_path(),
             root.path().join("state").join("jinn").join("jinn.log")
+        );
+    }
+
+    #[rstest::rstest]
+    fn state_file_path_under_state_dir_in_new_in() {
+        // Given an AppPaths rooted in a temp dir.
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let paths = AppPaths::new_in(root.path());
+
+        // Then state_file_path is root/state/jinn/state.toml.
+        assert_eq!(
+            paths.state_file_path(),
+            root.path().join("state").join("jinn").join("state.toml")
         );
     }
 
