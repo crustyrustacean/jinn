@@ -133,7 +133,6 @@ mod tests {
         // When receiving PreferencesUpdated with a model and strategy.
         let prefs = UserPreferences {
             last_model: Some("ollama/llama3".to_owned()),
-            last_strategy: Some("sliding_window".to_owned()),
             tool_entry_max_lines: None,
             min_collapse_count: None,
             theme_name: None,
@@ -166,10 +165,7 @@ mod tests {
             guard.frontend.preferences.last_model.as_deref(),
             Some("ollama/llama3")
         );
-        assert_eq!(
-            guard.frontend.preferences.last_strategy.as_deref(),
-            Some("sliding_window")
-        );
+
     }
 
     #[rstest::rstest]
@@ -179,7 +175,6 @@ mod tests {
         let (mut actor, state, ctx) = create_actor();
         let first = UserPreferences {
             last_model: Some("ollama/llama3".to_owned()),
-            last_strategy: None,
             tool_entry_max_lines: None,
             min_collapse_count: None,
             theme_name: None,
@@ -209,7 +204,6 @@ mod tests {
         // When receiving a second PreferencesUpdated.
         let second = UserPreferences {
             last_model: Some("openrouter/gpt-4".to_owned()),
-            last_strategy: Some("sliding_window".to_owned()),
             tool_entry_max_lines: None,
             min_collapse_count: None,
             theme_name: None,
@@ -242,10 +236,7 @@ mod tests {
             guard.frontend.preferences.last_model.as_deref(),
             Some("openrouter/gpt-4")
         );
-        assert_eq!(
-            guard.frontend.preferences.last_strategy.as_deref(),
-            Some("sliding_window")
-        );
+
     }
 
     #[rstest::rstest]
@@ -268,7 +259,7 @@ mod tests {
         // Then preferences remain at defaults.
         let guard = state.read();
         assert!(guard.frontend.preferences.last_model.is_none());
-        assert!(guard.frontend.preferences.last_strategy.is_none());
+
     }
 
     #[rstest::rstest]
@@ -301,7 +292,6 @@ mod tests {
         // When receiving PreferencesUpdated with persona_name = "writer".
         let prefs = UserPreferences {
             last_model: None,
-            last_strategy: None,
             tool_entry_max_lines: None,
             min_collapse_count: None,
             theme_name: None,

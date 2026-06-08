@@ -13,8 +13,6 @@
 # Last model chosen in the model picker.
 # last_model = "provider/model-name"
 
-# Last strategy chosen in the strategy picker.
-# last_strategy = "balanced"
 
 # Sidebar column width in characters.
 # sidebar_width = 30

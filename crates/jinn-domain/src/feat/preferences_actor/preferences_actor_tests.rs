@@ -70,92 +70,6 @@ async fn set_last_model_overwrites_previous() {
     assert_eq!(prefs.last_model.as_deref(), Some("openrouter/gpt-4"));
 }
 
-#[rstest::rstest]
-#[tokio::test]
-async fn set_last_model_preserves_last_strategy() {
-    // Given a preferences actor with a saved strategy.
-    let (mut actor, _sink, ctx) = create_actor();
-    actor
-        .handle(
-            ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
-                updates: vec![PreferenceUpdate::SetLastStrategy(Some(
-                    "sliding_window".into(),
-                ))],
-            })),
-            &ctx,
-        )
-        .await;
-
-    // When sending UpdatePreferences with SetLastModel.
-    actor
-        .handle(
-            ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
-                updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
-            })),
-            &ctx,
-        )
-        .await;
-
-    // Then last_strategy is preserved.
-    let prefs = actor.services.user_preferences_storage.read();
-    assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
-    assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn set_last_strategy_saves_to_storage() {
-    // Given a preferences actor.
-    let (mut actor, _sink, ctx) = create_actor();
-
-    // When sending UpdatePreferences with SetLastStrategy.
-    actor
-        .handle(
-            ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
-                updates: vec![PreferenceUpdate::SetLastStrategy(Some(
-                    "sliding_window".into(),
-                ))],
-            })),
-            &ctx,
-        )
-        .await;
-
-    // Then the storage contains the strategy as last_strategy.
-    let prefs = actor.services.user_preferences_storage.read();
-    assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
-}
-
-#[rstest::rstest]
-#[tokio::test]
-async fn set_last_strategy_preserves_last_model() {
-    // Given a preferences actor with a saved model.
-    let (mut actor, _sink, ctx) = create_actor();
-    actor
-        .handle(
-            ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
-                updates: vec![PreferenceUpdate::SetLastModel(Some("ollama/llama3".into()))],
-            })),
-            &ctx,
-        )
-        .await;
-
-    // When sending UpdatePreferences with SetLastStrategy.
-    actor
-        .handle(
-            ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
-                updates: vec![PreferenceUpdate::SetLastStrategy(Some(
-                    "sliding_window".into(),
-                ))],
-            })),
-            &ctx,
-        )
-        .await;
-
-    // Then last_model is preserved.
-    let prefs = actor.services.user_preferences_storage.read();
-    assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
-    assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
-}
 
 #[rstest::rstest]
 #[tokio::test]
@@ -169,7 +83,7 @@ async fn batch_diffs_apply_all_at_once() {
             ActorEnvelope::Command(Command::UpdatePreferences(UpdatePreferences {
                 updates: vec![
                     PreferenceUpdate::SetLastModel(Some("ollama/llama3".into())),
-                    PreferenceUpdate::SetLastStrategy(Some("sliding_window".into())),
+
                 ],
             })),
             &ctx,
@@ -179,7 +93,7 @@ async fn batch_diffs_apply_all_at_once() {
     // Then both fields are persisted.
     let prefs = actor.services.user_preferences_storage.read();
     assert_eq!(prefs.last_model.as_deref(), Some("ollama/llama3"));
-    assert_eq!(prefs.last_strategy.as_deref(), Some("sliding_window"));
+
 }
 
 #[rstest::rstest]
@@ -257,5 +171,5 @@ async fn ignores_unrelated_commands() {
     // Then no preferences were saved (still defaults).
     let prefs = actor.services.user_preferences_storage.read();
     assert!(prefs.last_model.is_none());
-    assert!(prefs.last_strategy.is_none());
+
 }

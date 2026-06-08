@@ -13,7 +13,7 @@ use super::super::SessionPersistenceActor;
 impl SessionPersistenceActor {
     /// Applies config defaults to the default session profile on startup.
     ///
-    /// Loads user preferences and applies `last_model` and `last_strategy`
+    /// Loads user preferences and applies `last_model`
     /// to the default session, then sends an `UpdatePreferences` command so
     /// the preferences pipeline handles persistence and state sync.
     ///
