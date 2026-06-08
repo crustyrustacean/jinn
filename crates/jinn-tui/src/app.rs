@@ -258,8 +258,7 @@ impl TuiApp {
         {
             let (sid, text) = {
                 let state = self.core.state.read();
-                let sid = session_id
-                    .unwrap_or_else(|| state.session.active_session_id().clone());
+                let sid = session_id.unwrap_or_else(|| state.session.active_session_id().clone());
                 let text = state.active_chat_input().text().to_owned();
                 (sid, text)
             };

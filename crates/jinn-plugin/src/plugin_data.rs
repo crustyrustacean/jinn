@@ -1,8 +1,13 @@
 //! Shared plugin data store — cross-context persistent state for plugins.
 //!
 //! Plugins that need to share data between async and sync hooks use this
-//! store. Async hooks write via `ctx.set_plugin_data(value)`. Sync hooks
-//! read from `ctx.plugin_data` (automatically injected before each call).
+//! store, which is live across all clones (`Arc<DashMap>`).
+//!
+//! - Async hooks write via `ctx.set_plugin_data(value)` and read **current**
+//!   state via `ctx.get_plugin_data()` (re-reads the store; use after an
+//!   `await` to observe writes from other fires).
+//! - Sync hooks read from `ctx.plugin_data` (auto-injected before each call;
+//!   already current at entry since sync hooks never `await`).
 //!
 //! Keyed by plugin name. Each plugin sees only its own data.
 

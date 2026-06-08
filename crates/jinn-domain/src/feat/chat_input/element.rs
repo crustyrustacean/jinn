@@ -238,7 +238,6 @@ fn render_mode_badge(frame: &mut Frame<'_>, area: Rect, badge_line: Line<'_>) {
     frame.render_widget(Paragraph::new(badge_line), badge_area);
 }
 
-
 /// Converts a grapheme offset within a wrapped line to a display column.
 ///
 /// Sums the display widths of graphemes from the start of the wrapped line
