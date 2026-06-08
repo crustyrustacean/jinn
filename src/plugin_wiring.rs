@@ -460,6 +460,27 @@ mod tests {
     }
 
     #[test]
+    fn push_chat_entry_error_kind_translates() {
+        let sink = test_sink();
+        let cmd = PluginCommand {
+            plugin_name: "test-plugin".to_owned(),
+            name: "push_chat_entry".to_owned(),
+            data: serde_json::json!({
+                "session_id": "test-session",
+                "kind": { "error": "enrichment failed" },
+            }),
+        };
+        handle_plugin_command(cmd, &*sink);
+        let cmds = captured(&sink);
+        assert_eq!(cmds.len(), 1);
+        if let Command::PushChatEntry(pce) = &cmds[0] {
+            assert_eq!(pce.entry.kind_str(), "error");
+        } else {
+            panic!("expected PushChatEntry");
+        }
+    }
+
+    #[test]
     fn push_chat_entry_unknown_kind_returns_error() {
         let cmd = PluginCommand {
             plugin_name: "test-plugin".to_owned(),

@@ -29,7 +29,7 @@ M.keybinds = {
 --- Runs an LLM one-shot on the current draft, then writes the enriched text
 --- back into the chat input.
 ---
---- Wrapped in pcall so an error degrades to a transient chat entry instead
+--- Wrapped in pcall so an error degrades to an error chat entry instead
 --- of aborting the whole fire (run_hooks_fire propagates a raised error, skipping
 --- any plugins scheduled after this one).
 ---
@@ -55,7 +55,7 @@ function M.on_enrich(ctx)
             -- Surface the error so the user knows enrichment failed.
             ctx.emit("push_chat_entry", {
                 session_id = ctx.session_id,
-                kind = { transient = result.error },
+                kind = { error = result.error },
             })
         elseif result.value.text ~= "" then
             ctx.emit("set_chat_input", {
@@ -72,7 +72,7 @@ function M.on_enrich(ctx)
         ctx.merge_plugin_data({ status = "idle" })
         ctx.emit("push_chat_entry", {
             session_id = ctx.session_id,
-            kind = { transient = "enrichment failed" },
+            kind = { error = "enrichment failed" },
         })
     end
 end
