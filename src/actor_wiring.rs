@@ -68,6 +68,9 @@ pub struct ActorSystemBuilderArgs {
     pub session_store: SessionStoreService,
     /// User preferences storage service.
     pub user_preferences_storage: UserPreferencesStorageService,
+    /// App state storage service.
+    pub app_state_storage:
+        jinn_domain::feat::preferences_actor::AppStateStorageService,
     /// Application paths.
     pub paths: jinn_domain::AppPaths,
 }
@@ -134,6 +137,7 @@ impl ActorSystemBuilder {
             config_storage,
             session_store,
             user_preferences_storage,
+            app_state_storage,
             paths,
         } = self.args;
         // Body passes `handle` as `&tokio::runtime::Handle`; rebind as a ref.
@@ -243,6 +247,7 @@ impl ActorSystemBuilder {
             config_storage: config_storage.clone(),
             session_store: session_store.clone(),
             user_preferences_storage: user_preferences_storage.clone(),
+            app_state_storage: app_state_storage.clone(),
             plugins: jinn_domain::feat::plugin_dispatch::PluginFireService::new(
                 std::sync::Arc::new(async_plugins.clone())
                     as std::sync::Arc<dyn jinn_domain::feat::plugin_dispatch::PluginFire>,

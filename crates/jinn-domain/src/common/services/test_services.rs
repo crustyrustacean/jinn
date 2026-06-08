@@ -10,7 +10,8 @@ use crate::feat::plugin_dispatch::{
 };
 use crate::feat::plugin_system::{SessionPluginRegistry, SessionPluginRegistryService};
 use crate::feat::preferences_actor::{
-    InMemoryUserPreferencesStorage, UserPreferencesStorageService,
+    AppStateStorageService, InMemoryAppStateStorage, InMemoryUserPreferencesStorage,
+    UserPreferencesStorageService,
 };
 use crate::feat::provider_infra::{
     ApiKeys, ApiKeysService, ConfigStorageService, FakeLlmServiceFactory, InMemoryConfigStorage,
@@ -249,6 +250,13 @@ impl TestServices {
                 // Populate the cache so test code that calls .read() works.
                 // InMemoryUserPreferencesStorage returns Ok(default) when empty.
                 svc.reload().expect("test prefs storage initial reload");
+                svc
+            },
+            app_state_storage: {
+                let svc = AppStateStorageService::new(Arc::new(
+                    InMemoryAppStateStorage::new(),
+                ));
+                svc.reload().expect("test app state storage initial reload");
                 svc
             },
             plugins: PluginFireService::new(Arc::new(NoopPluginFire) as Arc<dyn PluginFire>),
