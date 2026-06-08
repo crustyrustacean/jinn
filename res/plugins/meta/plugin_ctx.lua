@@ -22,6 +22,7 @@
 ---@field emit fun(verb: PluginVerb, data: table) Fire-and-forget emit a domain command.
 ---@field request fun(name: string, data: table): any Blocking request to a named handler.
 ---@field set_plugin_data fun(data: any) Replace this plugin's persistent state.
+---@field merge_plugin_data fun(data: any) Shallow-merge top-level keys into this plugin's persistent state (async-only).
 ---@field get_plugin_data fun(): any Re-read this plugin's **current** persistent state (live; async-only). Use after an `await` — `plugin_data` is a frozen snapshot taken at hook entry.
 
 -- ─── Per-hook ctx classes ──────────────────────────────────────────
@@ -138,9 +139,16 @@
 ---  tool loop. If false (default), the one-shot inherits the full tool
 ---  catalog the session would normally see.
 ---@field timeout_ms number|nil Hard upper bound on the await, in milliseconds.
----  Defaults to 30000. On expiry, the one-shot session is hard-cancelled
----  (no background token burn) and the request returns an error to the hook.
+---  (no background token burn) and the request returns an error envelope
+---  to the hook.
 ---  SQLite store; defaults to false (transient). Set true for reviewable
 ---  runs (e.g. a judge/eval).
+---
+--- Result envelope: `ctx.request` always returns an object of the shape
+---   `{ ok = true, value = <response> }`   on success, or
+---   `{ ok = false, error = "<message>" }` on any failure
+--- (LLM error, malformed payload, unknown request name). Inspect `result.ok`
+--- before reading `result.value`.
+---
 ---@class LlmOneshotResponse
 ---@field text string The model's response text.

@@ -237,6 +237,11 @@ fn translate_command(cmd: &PluginCommand) -> Result<Command, Report<PluginWiring
 /// Handle a request from an async hook's `ctx.request(name, data)` call.
 ///
 /// Returns a JSON response value. Unknown requests return null.
+/// Handle a request from an async hook's `ctx.request(name, data)` call.
+///
+/// Returns a result envelope: `{ ok: true, value }` on success, or
+/// `{ ok: false, error }` on any failure (LLM error, malformed payload,
+/// unknown request name).
 pub async fn handle_plugin_request(
     name: &str,
     data: &serde_json::Value,
@@ -279,28 +284,38 @@ pub async fn handle_plugin_request(
                     )
                     .await
                 {
-                    Ok(text) => serde_json::json!({ "text": text }),
+                    Ok(text) => request_ok(serde_json::json!({ "text": text })),
                     Err(e) => {
                         tracing::warn!(error = %e, "llm_oneshot request failed");
-                        serde_json::Value::Null
+                        request_err(e)
                     }
                 },
                 Err(e) => {
                     tracing::warn!(error = %e, "llm_oneshot malformed payload");
-                    serde_json::Value::Null
+                    request_err(e)
                 }
             }
         }
         "llm" => {
             // Full-context LLM (future use): not wired in this phase.
             tracing::warn!(name, "full-context llm request handler not yet wired");
-            serde_json::Value::Null
+            request_err("full-context llm request handler not yet wired")
         }
         _ => {
             tracing::warn!(name, "unknown plugin request");
-            serde_json::Value::Null
+            request_err(format_args!("unknown request: {name}"))
         }
     }
+}
+
+/// Wrap a success value in the `ctx.request` result envelope.
+fn request_ok(value: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({ "ok": true, "value": value })
+}
+
+/// Wrap an error in the `ctx.request` result envelope.
+fn request_err(error: impl std::fmt::Display) -> serde_json::Value {
+    serde_json::json!({ "ok": false, "error": error.to_string() })
 }
 
 /// Build a command dispatcher closure suitable for `PluginSystem::new`.

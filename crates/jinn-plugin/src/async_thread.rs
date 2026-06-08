@@ -419,8 +419,7 @@ async fn run_single_hook(
 
 /// Build the ctx table for an async hook call.
 ///
-/// Includes data fields from `ctx_json`, `plugin_data`, `ctx.emit()`,
-/// `ctx.request()`, and `ctx.set_plugin_data()`.
+/// `ctx.request()`, `ctx.set_plugin_data()`, and `ctx.merge_plugin_data()`.
 fn build_async_ctx(
     lua: &Lua,
     ctx_json: &serde_json::Value,
@@ -485,6 +484,23 @@ fn build_async_ctx(
             Ok(())
         })?;
         ctx.set("set_plugin_data", set_data_fn)?;
+    }
+
+    // ctx.merge_plugin_data(value) — shallow-merges into the shared DashMap.
+    //
+    // Top-level keys in `value` overwrite the stored value's same keys;
+    // other top-level keys are untouched. Lets an async hook update one
+    // field (e.g. `status`) without a read-modify-write round-trip. See
+    // `PluginData::merge` for merge semantics.
+    {
+        let pd = plugin_data.clone();
+        let pname = plugin_name.to_owned();
+        let merge_data_fn = lua.create_function(move |lua, value: mlua::Value| {
+            let json = bindings::value_to_json(lua, &value).unwrap_or_default();
+            pd.merge(&pname, json);
+            Ok(())
+        })?;
+        ctx.set("merge_plugin_data", merge_data_fn)?;
     }
 
     // ctx.get_plugin_data() — reads the live shared DashMap.
