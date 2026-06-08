@@ -25,41 +25,22 @@ M.keybinds = {
     },
 }
 
---- Normalize the plugin_data table, ensuring the expected fields exist.
---- plugin_data is a full-replace store, so we always read the current value
---- (defaulting to a fresh table) and write back a complete object.
----
----@param current any The current plugin_data (may be nil on first call).
----@return table data A table with status (string).
-local function normalize(current)
-    local d = current or {}
-    if type(d) ~= "table" then
-        d = {}
-    end
-    if type(d.status) ~= "string" then
-        d.status = "idle"
-    end
-    return d
-end
-
---- Async hook fired via Intent::TriggerPlugin when <M-e> is pressed, and via the
---- generic fire_async_hook handoff. Runs an LLM one-shot (history-less,
---- inheriting the session's provider+model), then writes the enriched text
+--- Async hook fired via Intent::TriggerPlugin when <M-e> is pressed.
+--- Runs an LLM one-shot on the current draft, then writes the enriched text
 --- back into the chat input.
 ---
---- All work is wrapped in pcall so an error degrades to clearing the spinner
---- without crashing anything.
+--- Wrapped in pcall so an error degrades to a transient chat entry instead
+--- of aborting the whole fire (run_hooks_fire propagates a raised error, skipping
+--- any plugins scheduled after this one).
 ---
----@param ctx PluginCtx
+--- @param ctx PluginCtx
 function M.on_enrich(ctx)
-    local ok, err = pcall(function()
-        -- Empty draft: nothing to enrich. Bail before any LLM call.
-        if type(ctx.text) ~= "string" or ctx.text == "" then
+    local ok = pcall(function()
+        if ctx.text == "" then
             return
         end
 
-        local d = normalize(ctx.get_plugin_data())
-
+        local d = ctx.get_plugin_data()
         d.status = "enriching"
         ctx.set_plugin_data(d)
 
@@ -67,37 +48,32 @@ function M.on_enrich(ctx)
             session_id = ctx.session_id,
             system = ENRICH_PROMPT,
             prompt = ctx.text,
-            persist = false, -- one-shot enrichment is transient; never write to the store
+            persist = false,       -- one-shot enrichment is transient; never write to the store
             disable_tool_loop = true, -- enrichment is a pure text rewrite; never run tool loops
-            timeout_ms = 30000, -- bound a genuinely stuck model; hard-cancels the one-shot session
+            timeout_ms = 30000,    -- bound a genuinely stuck model; hard-cancels the one-shot session
         })
 
-        -- Read current plugin_data for the post-call status update.
-        local cur = normalize(ctx.get_plugin_data())
-
-        if result and type(result.text) == "string" and result.text ~= "" then
+        if type(result) == "table" and type(result.text) == "string" and result.text ~= "" then
             ctx.emit("set_chat_input", {
                 session_id = ctx.session_id,
                 text = result.text,
             })
         end
 
+        local cur = ctx.get_plugin_data()
         cur.status = "idle"
         ctx.set_plugin_data(cur)
     end)
 
     if not ok then
-        -- Never leave the spinner stuck on. Always restore idle on any error.
-        local cur = normalize(ctx.get_plugin_data())
+        -- Restore idle and surface the failure without crashing the fire.
+        local cur = ctx.get_plugin_data()
         cur.status = "idle"
         ctx.set_plugin_data(cur)
-        -- Surface the error for debugging without crashing the actor.
-        if ctx.emit then
-            ctx.emit("push_chat_entry", {
-                session_id = ctx.session_id,
-                kind = { transient = "enrichment failed" },
-            })
-        end
+        ctx.emit("push_chat_entry", {
+            session_id = ctx.session_id,
+            kind = { transient = "enrichment failed" },
+        })
     end
 end
 
