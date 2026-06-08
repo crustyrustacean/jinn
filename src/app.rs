@@ -121,17 +121,12 @@ impl App {
         // Initial factory is the no-provider sentinel until actors resolve the real one.
         let llm_service = LlmServiceFactoryService::new(Arc::new(NoProvidersAvailableFactory));
 
-        // Guard: --db-path cannot be used with bench subcommands.
-        if matches!(&cli.command, Some(Commands::Bench { .. })) && cli.db_path.is_some() {
-            return Err(Report::new(AppError)
-                .attach("--db-path cannot be used with bench subcommands. Use 'bench tui <db_path>' instead"));
-        }
 
         // Create the session store - uses --db-path if provided, otherwise
         // the platform default. The --db-path flag lets users point the TUI
         // at a bench database to inspect results after a bench run.
         let session_store = {
-            let store = match &cli.db_path {
+            let store = match cli.db_path_opt() {
                 Some(path) => SqliteSessionStore::open_or_create(path),
                 None => SqliteSessionStore::new(),
             };
@@ -185,6 +180,8 @@ impl App {
             }
             svc
         };
+
+        let db_path = cli.db_path_opt().cloned();
 
         match cli.command.unwrap_or(Commands::Tui) {
             Commands::Completions { shell } => {
@@ -267,13 +264,17 @@ impl App {
             }
 
             Commands::Bench { subcommand } => {
-                if cli.db_path.is_some() {
-                    return Err(Report::new(AppError)
-                        .attach("--db-path cannot be used with bench subcommands. Use 'bench tui <db_path>' instead"));
+                match &subcommand {
+                    BenchCommands::Run { .. } | BenchCommands::Tui {} => {
+                        if db_path.is_none() {
+                            return Err(Report::new(AppError)
+                                .attach("--db-path is required for bench commands"));
+                        }
+                    }
+                    BenchCommands::Show { .. } | BenchCommands::Compare { .. } => {}
                 }
                 match subcommand {
                     BenchCommands::Run {
-                        db_path,
                         model,
                         task,
                         csv,
@@ -291,8 +292,11 @@ impl App {
                             .attach("invalid task glob pattern")?;
                         tracing::info!(pairs = plan.pairs.len(), "built bench plan");
 
+                        // Safe: validated above that --db-path is present.
+                        let db_path = db_path.as_ref().unwrap();
+
                         let session_store = SessionStoreService::new(Arc::new(
-                            SqliteSessionStore::open_or_create(&db_path)
+                            SqliteSessionStore::open_or_create(db_path)
                                 .change_context(AppError)?,
                         ));
                         let store_for_shutdown = session_store.clone();
@@ -326,9 +330,12 @@ impl App {
                             error_stack::Report::new(AppError).attach(e.to_string())
                         })?;
                     }
-                    BenchCommands::Tui { db_path } => {
+                    BenchCommands::Tui {} => {
+                        // Safe: validated above that --db-path is present.
+                        let db_path = db_path.as_ref().unwrap();
+
                         let session_store = SessionStoreService::new(Arc::new(
-                            SqliteSessionStore::open_or_create(&db_path)
+                            SqliteSessionStore::open_or_create(db_path)
                                 .change_context(AppError)?,
                         ));
                         let store_for_shutdown = session_store.clone();
