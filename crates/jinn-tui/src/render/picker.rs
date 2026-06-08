@@ -60,7 +60,7 @@ fn render_session_lifecycle_picker(frame: &mut Frame<'_>, area: Rect, ctx: &Rend
     jinn_domain::feat::session_lifecycle::render::render_session_lifecycle_picker(frame, area, ctx);
 }
 
-/// Renders the workflow picker overlay (delegates to domain render).
+/// Renders the plugin picker overlay (delegates to domain render).
 fn render_plugin_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
     jinn_domain::feat::picker::render::render_plugin_picker(frame, area, ctx);
 }

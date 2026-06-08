@@ -521,7 +521,7 @@ fn confirm_session_lifecycle(state: &mut AppState) -> IntentResult {
     )
 }
 
-/// Confirms the selected workflow, starts it, and switches to the Workflow tab.
+/// Confirms the selected plugin, starts it, and switches to the Plugin tab.
 fn confirm_plugin(state: &mut AppState) -> IntentResult {
     let Some(entry) = state.frontend.plugin_picker().selected_item() else {
         return IntentResult::empty();
@@ -1098,7 +1098,7 @@ mod tests {
         assert_eq!(state.frontend.skill_picker().selection(), 1);
     }
 
-    // --- Workflow picker tests ---
+    // --- Plugin picker tests ---
 
     fn setup_state_with_plugins() -> AppState {
         use crate::common::app_state::DiscoveredPlugin;
@@ -1129,7 +1129,7 @@ mod tests {
         // Given state with two discovered plugins.
         let mut state = setup_state_with_plugins();
 
-        // When loading workflow picker entries.
+        // When loading plugin picker entries.
         load_plugin_picker_entries(&mut state);
 
         // Then the picker has two entries matching the plugins.
@@ -1157,7 +1157,7 @@ mod tests {
             .session
             .set_active(state.session.active_session_id().clone());
 
-        // When loading workflow picker entries.
+        // When loading plugin picker entries.
         load_plugin_picker_entries(&mut state);
 
         // Then the picker is empty.
@@ -1166,8 +1166,8 @@ mod tests {
     }
 
     #[rstest::rstest]
-    fn confirm_plugin_emits_attach_workflow_with_lua_config() {
-        // Given a workflow picker populated with plugins.
+    fn confirm_plugin_emits_attach_plugin_with_lua_config() {
+        // Given a plugin picker populated with plugins.
         let mut state = setup_state_with_plugins();
         load_plugin_picker_entries(&mut state);
         // Select the second entry (consensus).
@@ -1192,7 +1192,7 @@ mod tests {
 
     #[rstest::rstest]
     fn confirm_plugin_pops_picker_scope() {
-        // Given a workflow picker with a Picker scope on the stack.
+        // Given a plugin picker with a Picker scope on the stack.
         let mut state = setup_state_with_plugins();
         load_plugin_picker_entries(&mut state);
         // Select an entry.
