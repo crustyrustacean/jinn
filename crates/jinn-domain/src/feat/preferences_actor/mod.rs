@@ -4,6 +4,8 @@
 //! for reading and writing user preferences across app restarts. The preferences
 //! actor subscribes to provider switch events and persists the last-used model.
 
+pub mod app_state_actor;
+pub mod app_state_sync_actor;
 pub mod app_state_file;
 pub mod app_state_storage;
 pub mod preferences_actor;

@@ -228,6 +228,79 @@ fn model_line_shows_no_model_selected_when_unset() {
 }
 
 // ---------------------------------------------------------------------------
+// CWD display tests
+// ---------------------------------------------------------------------------
+
+#[rstest::rstest]
+fn cwd_shows_on_model_line() {
+    // Given a session with a cwd and a model.
+    let mut session = ChatSessionState::new();
+    session.set_cwd(std::path::PathBuf::from("/home/user/jinn"));
+    session.set_model("ollama/llama3".to_owned());
+
+    // When rendering the preview.
+    let (buffer, popup_area) = render_preview(&session, 80, 40);
+
+    // Then the bottom inner row contains both the cwd and model.
+    let model_y = popup_area.y + popup_area.height - 2;
+    let row = buffer_row(&buffer, model_y, popup_area.x + popup_area.width);
+    assert!(
+        row.contains("jinn"),
+        "model line should contain cwd 'jinn', got: {row}"
+    );
+    assert!(
+        row.contains("(ollama)/llama3"),
+        "model line should contain model '(ollama)/llama3', got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn cwd_left_truncated_when_long() {
+    // Given a session with a very long cwd.
+    let mut session = ChatSessionState::new();
+    let long_cwd = "/very/long/path/that/should/be/truncated/to/fit/the/popup/jinn";
+    session.set_cwd(std::path::PathBuf::from(long_cwd));
+    session.set_model("ollama/llama3".to_owned());
+
+    // When rendering the preview.
+    let (buffer, popup_area) = render_preview(&session, 80, 40);
+
+    // Then the bottom inner row shows the cwd left-truncated with '…'.
+    let model_y = popup_area.y + popup_area.height - 2;
+    let row = buffer_row(&buffer, model_y, popup_area.x + popup_area.width);
+    assert!(
+        row.contains('\u{2026}'),
+        "model line should contain '…' when cwd is truncated, got: {row}"
+    );
+    assert!(
+        row.contains("jinn"),
+        "truncated cwd should preserve trailing 'jinn', got: {row}"
+    );
+}
+
+#[rstest::rstest]
+fn cwd_shows_with_no_model_selected() {
+    // Given a session with a cwd but no model.
+    let mut session = ChatSessionState::new();
+    session.set_cwd(std::path::PathBuf::from("/home/user/jinn"));
+
+    // When rendering the preview.
+    let (buffer, popup_area) = render_preview(&session, 80, 40);
+
+    // Then the bottom inner row shows both cwd and 'no model selected'.
+    let model_y = popup_area.y + popup_area.height - 2;
+    let row = buffer_row(&buffer, model_y, popup_area.x + popup_area.width);
+    assert!(
+        row.contains("jinn"),
+        "model line should contain cwd 'jinn', got: {row}"
+    );
+    assert!(
+        row.contains("no model selected"),
+        "model line should contain 'no model selected', got: {row}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Regression tests: cursor-relative positioning with 2-row gap
 // ---------------------------------------------------------------------------
 
