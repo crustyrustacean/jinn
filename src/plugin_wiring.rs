@@ -287,7 +287,7 @@ pub async fn handle_plugin_request(
                     Ok(text) => request_ok(serde_json::json!({ "text": text })),
                     Err(e) => {
                         tracing::warn!(error = %e, "llm_oneshot request failed");
-                        request_err(e)
+                        request_err(format_args!("{e:?}"))
                     }
                 },
                 Err(e) => {
