@@ -47,10 +47,8 @@ end
 --- inheriting the session's provider+model), then writes the enriched text
 --- back into the chat input.
 ---
---- A generation counter guards against stale overwrites: if the user re-triggers
---- enrichment while this call is in-flight, the stale result is dropped. All work
---- is wrapped in pcall so an error degrades to clearing the spinner without
---- crashing anything.
+--- All work is wrapped in pcall so an error degrades to clearing the spinner
+--- without crashing anything.
 ---
 ---@param ctx PluginCtx
 function M.on_enrich(ctx)
@@ -62,9 +60,6 @@ function M.on_enrich(ctx)
 
         local d = normalize(ctx.get_plugin_data())
 
-        -- Capture the generation so we can detect supersession mid-flight.
-        local gen = (d.generation or 0) + 1
-        d.generation = gen
         d.status = "enriching"
         ctx.set_plugin_data(d)
 
@@ -77,14 +72,8 @@ function M.on_enrich(ctx)
             timeout_ms = 30000, -- bound a genuinely stuck model; hard-cancels the one-shot session
         })
 
-        -- Re-read plugin_data in case it changed during the await (re-trigger).
+        -- Read current plugin_data for the post-call status update.
         local cur = normalize(ctx.get_plugin_data())
-        if cur.generation ~= gen then
-            -- Superseded by a newer enrichment: drop the stale result.
-            cur.status = "idle"
-            ctx.set_plugin_data(cur)
-            return
-        end
 
         if result and type(result.text) == "string" and result.text ~= "" then
             ctx.emit("set_chat_input", {
