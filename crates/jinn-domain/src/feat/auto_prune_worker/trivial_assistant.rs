@@ -770,7 +770,7 @@ mod tests {
     #[test]
     fn anchored_assistant_worker_reads_external_cache_writes() {
         use crate::feat::auto_prune_worker::anchored_assistant::AnchoredAssistantAutoPruneWorker;
-        use crate::feat::preferences_actor::user_preferences::AnchorRadiusAutoPruneConfig;
+        use crate::feat::preferences_actor::user_preferences::AnchoredAssistantAutoPruneConfig;
 
         let shared_cache = HistoryWorkerChatEntryTokenCache::new();
         let session_id = SessionId::new();
@@ -788,7 +788,7 @@ mod tests {
         };
 
         let anchored = AnchoredAssistantAutoPruneWorker {
-            config: AnchorRadiusAutoPruneConfig {
+            config: AnchoredAssistantAutoPruneConfig {
                 enabled: true,
                 radius: 5,
                 min_age: 0,

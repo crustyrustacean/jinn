@@ -40,7 +40,7 @@ use std::sync::Arc;
 use crate::feat::auto_prune_worker::is_within_min_age;
 use crate::feat::context::strategy::token_estimator::{TiktokenCounter, TokenCounter};
 use crate::feat::history_worker::worker_trait::HistoryWorker;
-use crate::feat::preferences_actor::user_preferences::AnchorRadiusAutoPruneConfig;
+use crate::feat::preferences_actor::user_preferences::AnchoredAssistantAutoPruneConfig;
 use crate::feat::session::chat_entry::{ChangeSource, ChatEntry, ChatEntryKind, ContextOverride};
 use crate::feat::session::history_mutation::HistoryMutation;
 use crate::protocol::SessionId;
@@ -54,7 +54,7 @@ use crate::protocol::SessionId;
 #[derive(Clone)]
 pub struct AnchoredAssistantAutoPruneWorker {
     /// Configuration for the anchor-radius strategy.
-    pub config: AnchorRadiusAutoPruneConfig,
+    pub config: AnchoredAssistantAutoPruneConfig,
     /// Minimum token count for an entry to be considered a pruning candidate.
     /// Entries at or below this threshold are owned by
     /// [`TrivialAssistantAutoPruneWorker`](super::TrivialAssistantAutoPruneWorker).
@@ -298,7 +298,7 @@ mod tests {
     #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "test code")]
 
     use super::*;
-    use crate::feat::preferences_actor::user_preferences::AnchorRadiusAutoPruneConfig;
+    use crate::feat::preferences_actor::user_preferences::AnchoredAssistantAutoPruneConfig;
     use crate::feat::session::chat_entry::ChatEntry;
     use crate::feat::session::chat_entry::ChatEntryId;
 
@@ -321,7 +321,7 @@ mod tests {
     /// Build a worker with the given radius and `min_age`.
     fn worker_with_min_age(radius: usize, min_age: usize) -> AnchoredAssistantAutoPruneWorker {
         AnchoredAssistantAutoPruneWorker {
-            config: AnchorRadiusAutoPruneConfig {
+            config: AnchoredAssistantAutoPruneConfig {
                 enabled: true,
                 radius,
                 min_age,
