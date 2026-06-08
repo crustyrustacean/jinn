@@ -619,29 +619,29 @@ fn render_queue_badge_in_queue_mode() {
 
     // Then the bottom border shows [Q:QUEUE] starting at x=2 (aligned with the cursor
     // column), exposing the `─` border line in columns 0 and 1. The leading `Q` is the
-    // orange accent_action; everything else is primary_text.
+    // orange accent_action; everything else is input_mode_queue.
     let buffer = terminal.backend().buffer().clone();
     let theme = default_theme();
     let border0_cell = buffer.cell((0, 2)).expect("cell should exist");
     assert_eq!(border0_cell.symbol(), "─");
     let border1_cell = buffer.cell((1, 2)).expect("cell should exist");
     assert_eq!(border1_cell.symbol(), "─");
-    // [ at x=2 — primary_text
+    // [ at x=2 — input_mode_queue
     let bracket_cell = buffer.cell((2, 2)).expect("cell should exist");
     assert_eq!(bracket_cell.symbol(), "[");
-    assert_eq!(bracket_cell.style().fg, Some(theme.primary_text));
+    assert_eq!(bracket_cell.style().fg, Some(theme.input_mode_queue));
     // Q at x=3 — accent_action (orange hotkey)
     let q_cell = buffer.cell((3, 2)).expect("cell should exist");
     assert_eq!(q_cell.symbol(), "Q");
     assert_eq!(q_cell.style().fg, Some(theme.accent_action));
-    // : at x=4 — primary_text
+    // : at x=4 — input_mode_queue
     let colon_cell = buffer.cell((4, 2)).expect("cell should exist");
     assert_eq!(colon_cell.symbol(), ":");
-    assert_eq!(colon_cell.style().fg, Some(theme.primary_text));
-    // ] at x=10 — primary_text
+    assert_eq!(colon_cell.style().fg, Some(theme.input_mode_queue));
+    // ] at x=10 — input_mode_queue
     let close_cell = buffer.cell((10, 2)).expect("cell should exist");
     assert_eq!(close_cell.symbol(), "]");
-    assert_eq!(close_cell.style().fg, Some(theme.primary_text));
+    assert_eq!(close_cell.style().fg, Some(theme.input_mode_queue));
 }
 
 #[rstest::rstest]
@@ -769,29 +769,29 @@ fn render_queue_badge_shows_queue_count_when_nonzero() {
 
     // Then the badge shows [Q:QUEUE · 2] (13 display cells), starting at x=2
     // (aligned with the cursor column). The `Q` is accent_action (orange);
-    // everything else is primary_text (regular text).
+    // everything else is input_mode_queue.
     let buffer = terminal.backend().buffer().clone();
     let theme = default_theme();
-    // [ at x=2 — primary_text
+    // [ at x=2 — input_mode_queue
     let bracket_cell = buffer.cell((2, 2)).expect("cell should exist");
     assert_eq!(bracket_cell.symbol(), "[");
-    assert_eq!(bracket_cell.style().fg, Some(theme.primary_text));
+    assert_eq!(bracket_cell.style().fg, Some(theme.input_mode_queue));
     // Q at x=3 — accent_action
     let q_cell = buffer.cell((3, 2)).expect("cell should exist");
     assert_eq!(q_cell.symbol(), "Q");
     assert_eq!(q_cell.style().fg, Some(theme.accent_action));
-    // · at x=11 — primary_text
+    // · at x=11 — input_mode_queue
     let dot_cell = buffer.cell((11, 2)).expect("cell should exist");
     assert_eq!(dot_cell.symbol(), "·");
-    assert_eq!(dot_cell.style().fg, Some(theme.primary_text));
-    // 2 at x=13 — primary_text
+    assert_eq!(dot_cell.style().fg, Some(theme.input_mode_queue));
+    // 2 at x=13 — input_mode_queue
     let count_cell = buffer.cell((13, 2)).expect("cell should exist");
     assert_eq!(count_cell.symbol(), "2");
-    assert_eq!(count_cell.style().fg, Some(theme.primary_text));
-    // ] at x=14 — primary_text
+    assert_eq!(count_cell.style().fg, Some(theme.input_mode_queue));
+    // ] at x=14 — input_mode_queue
     let close_bracket_cell = buffer.cell((14, 2)).expect("cell should exist");
     assert_eq!(close_bracket_cell.symbol(), "]");
-    assert_eq!(close_bracket_cell.style().fg, Some(theme.primary_text));
+    assert_eq!(close_bracket_cell.style().fg, Some(theme.input_mode_queue));
 }
 
 #[rstest::rstest]
