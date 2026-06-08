@@ -6,15 +6,16 @@
 //! just above the sessions section. Displays the last 5 entries rendered using
 //! the same entry pipeline as the real chat log, truncated to the last 20 lines.
 //! A footer at the bottom shows keybinds across two lines and the session's
-//! active provider/model.
+//! active cwd and provider/model on the same line.
 
 use std::collections::HashMap;
 
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Rect};
+use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::common::app_state::{AppState, FocusScope};
 use crate::common::render_ctx::RenderCtx;
@@ -288,11 +289,13 @@ fn render_keybinds_bar(frame: &mut Frame<'_>, inner_area: Rect, theme: &Theme) {
     frame.render_widget(Paragraph::new(Line::from(line2_spans)), line2_area);
 }
 
-/// Renders the provider/model status line at the very bottom of the popup.
+/// Renders the cwd and provider/model status line at the very bottom of the popup.
 ///
-/// Shows the model in the same format as the main status bar:
-/// `({provider})/{model}` or `"no model selected"` when unset.
-/// Right-aligned using `muted_text` style.
+/// Shows the cwd left-aligned and the model right-aligned on the same line.
+/// Long cwd paths are left-truncated with a `…` prefix to fit available space.
+/// Model display uses the same format as the main status bar:
+/// `({provider})/{model}` or `no model selected` when unset.
+/// Both use `muted_text` style.
 fn render_model_line(
     frame: &mut Frame<'_>,
     inner_area: Rect,
@@ -308,7 +311,7 @@ fn render_model_line(
     };
 
     let model = session.model();
-    let display = if model == NO_PROVIDER_ID {
+    let model_display = if model == NO_PROVIDER_ID {
         "no model selected".to_owned()
     } else if let Some((provider, model_suffix)) = model.split_once('/') {
         format!("({provider})/{model_suffix}")
@@ -316,9 +319,47 @@ fn render_model_line(
         model.to_owned()
     };
 
+    let cwd_raw = session.cwd().to_string_lossy();
+    let model_len = UnicodeSegmentation::graphemes(model_display.as_str(), true).count();
+    let available = usize::from(inner_area.width);
+    let min_gap = 2;
+
+    let cwd_display = {
+        let max_cwd_len = available.saturating_sub(model_len).saturating_sub(min_gap);
+        if max_cwd_len == 0 {
+            String::new()
+        } else {
+            let cwd_graphemes: Vec<&str> =
+                UnicodeSegmentation::graphemes(cwd_raw.as_ref(), true).collect();
+            if cwd_graphemes.len() <= max_cwd_len {
+                cwd_raw.into_owned()
+            } else {
+                let take = max_cwd_len - 1; // 1 for the '…' prefix
+                let truncated: String = cwd_graphemes
+                    .iter()
+                    .rev()
+                    .take(take)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .copied()
+                    .rev()
+                    .collect();
+                format!("\u{2026}{truncated}")
+            }
+        }
+    };
+
     let style = Style::default().fg(theme.muted_text);
-    let line = Paragraph::new(Line::from(Span::styled(display, style))).alignment(Alignment::Right);
-    frame.render_widget(line, line_area);
+    let cwd_len = UnicodeSegmentation::graphemes(cwd_display.as_str(), true).count();
+    let padding_len = available.saturating_sub(cwd_len).saturating_sub(model_len);
+    let padding = " ".repeat(padding_len);
+
+    let spans = vec![
+        Span::styled(cwd_display, style),
+        Span::styled(padding, style),
+        Span::styled(model_display, style),
+    ];
+    frame.render_widget(Paragraph::new(Line::from(spans)), line_area);
 }
 
 /// Builds the preview content lines from the session's last entries.
