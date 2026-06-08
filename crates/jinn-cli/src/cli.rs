@@ -19,14 +19,38 @@ pub struct Cli {
     pub log_file: Option<PathBuf>,
 
     /// Session database file. Defaults to the platform data directory.
-    /// Use this to inspect a bench database after a run, e.g.
+    ///
+    /// In debug builds this flag is **required** to prevent accidental use
+    /// of the production database during development.
+    #[cfg(debug_assertions)]
+    #[arg(long, value_hint = clap::ValueHint::FilePath)]
+    pub db_path: PathBuf,
+
+    /// Session database file. Defaults to the platform data directory.
+    ///
+    /// Use `--db-path` to inspect a bench database after a run, e.g.
     /// `jinn --db-path ./bench.db/sessions.db`.
+    #[cfg(not(debug_assertions))]
     #[arg(long, value_hint = clap::ValueHint::FilePath)]
     pub db_path: Option<PathBuf>,
 
     /// The subcommand to run. If omitted, launches the TUI.
     #[command(subcommand)]
     pub command: Option<Commands>,
+}
+
+impl Cli {
+    /// Returns the database path if provided (always `Some` in debug builds).
+    pub fn db_path_opt(&self) -> Option<&PathBuf> {
+        #[cfg(debug_assertions)]
+        {
+            Some(&self.db_path)
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            self.db_path.as_ref()
+        }
+    }
 }
 
 /// Available subcommands.
@@ -110,9 +134,6 @@ pub enum ConfigCommands {
 pub enum BenchCommands {
     /// Run benchmark tasks through the actor pipeline.
     Run {
-        /// Database file path for bench sessions (isolated from user's real database).
-        #[arg(value_hint = clap::ValueHint::FilePath)]
-        db_path: PathBuf,
 
         /// Model(s) to benchmark (e.g., `openai/gpt-4o`). At least one required.
         #[arg(long, required = true)]
@@ -150,9 +171,7 @@ pub enum BenchCommands {
 
     /// Launch the TUI pointed at a bench database for inspection.
     Tui {
-        /// Database file to open.
-        #[arg(value_hint = clap::ValueHint::FilePath)]
-        db_path: PathBuf,
+
     },
 }
 
