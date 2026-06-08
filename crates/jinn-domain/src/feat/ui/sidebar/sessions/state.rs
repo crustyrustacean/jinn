@@ -32,7 +32,7 @@ pub struct SessionsSectionState {
 
 #[derive(Clone)]
 pub(crate) struct SessionEntry {
-    /// Whether this entry represents a session or a workflow.
+    /// Whether this entry represents a session or a plugin.
     pub(crate) kind: SessionEntryKind,
     pub(crate) id: SessionId,
     pub(crate) title: String,
@@ -175,14 +175,14 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
         );
     }
 
-    // Post-DFS pass: insert workflow child entries under each session.
+    // Post-DFS pass: insert plugin child entries under each session.
     // For each Session entry, find where its subtree ends, then insert
-    // workflow entries for each attached workflow.
+    // plugin entries for each attached plugin.
     insert_workflow_entries(state, &mut result);
 
     result
 }
-/// Post-DFS pass that inserts workflow child entries under their parent sessions.
+/// Post-DFS pass that inserts plugin child entries under their parent sessions.
 ///
 /// After the DFS builds the session tree, this function scans the result list
 /// and for each `Session` entry, looks up its `attached_plugins` from state.
@@ -191,12 +191,11 @@ pub(crate) fn sorted_open_sessions(state: &AppState) -> Vec<SessionEntry> {
 /// `is_last_child`) is computed to maintain visual consistency.
 ///
 /// Sessions that previously were the last child of *their* parent but now have
-/// workflow children appended need their own `is_last_child` unchanged (they remain
-/// last among *session* siblings). The workflow entries become their new children at
+/// plugin children appended need their own `is_last_child` unchanged (they remain
+/// last among *session* siblings). The plugin entries become their new children at
 /// depth + 1.
 fn insert_workflow_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
-    // Collect (insert_index, session_id, workflows) for each session with workflows.
-    // We scan the result list and find the boundary where each session's subtree ends.
+    // Collect (insert_index, session_id, plugins) for each session with plugins.
     let mut insertions: Vec<(
         usize,
         SessionId,
@@ -221,15 +220,15 @@ fn insert_workflow_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
             .position(|e| e.depth <= session_depth)
             .map_or(entries.len(), |p| i + 1 + p);
 
-        // Look up attached workflows for this session.
+        // Look up attached plugins for this session.
         let Some(session) = state.session.get(&session_id) else {
             i = subtree_end;
             continue;
         };
 
-        let workflows = session.core.attached_plugins.clone();
-        if !workflows.is_empty() {
-            insertions.push((subtree_end, session_id, workflows));
+        let plugins = session.core.attached_plugins.clone();
+        if !plugins.is_empty() {
+            insertions.push((subtree_end, session_id, plugins));
         }
 
         i = subtree_end;
@@ -260,10 +259,10 @@ fn insert_workflow_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
         let parent_continues = !parent.is_last_child;
         workflow_continuations.push(parent_continues);
 
-        let wf_count = workflows.len();
+        let plugin_count = workflows.len();
         for (j, ap) in workflows.into_iter().enumerate() {
-            let is_last = j == wf_count - 1;
-            let wf_entry = SessionEntry {
+            let is_last = j == plugin_count - 1;
+            let plugin_entry = SessionEntry {
                 kind: SessionEntryKind::Plugin {
                     enabled: ap.enabled,
                 },
@@ -278,7 +277,7 @@ fn insert_workflow_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
                 ancestor_continuations: workflow_continuations.clone(),
                 is_last_child: is_last,
             };
-            entries.insert(insert_idx + j, wf_entry);
+            entries.insert(insert_idx + j, plugin_entry);
         }
 
         // Fix is_last_child of the parent's last *real* child if the parent previously had children.

@@ -148,10 +148,10 @@ fn assemble_session_line(
     Line::from(spans)
 }
 
-/// Renders a workflow entry line (lightning bolt icon + space + tree + dimmed title).
+/// Renders a plugin entry line (lightning bolt icon + space + tree + dimmed title).
 ///
-/// Workflow entries are informational children of a session. They show the
-/// plugin label with a lightning bolt icon prefix. Disabled workflows get an additional
+/// Plugin entries are informational children of a session. They show the
+/// plugin label with a lightning bolt icon prefix. Disabled plugins get an additional
 /// DIM modifier on the title.
 fn assemble_workflow_line(
     enabled: bool,
@@ -162,7 +162,7 @@ fn assemble_workflow_line(
 ) -> Line<'static> {
     // Lightning bolt icon replaces the throbber indicator.
     let icon = Span::styled("\u{26A1}", Style::default().fg(theme.muted_text));
-    // No arrow for workflows — they are never active.
+    // No arrow for plugins — they are never active.
     let no_arrow = Span::raw(" ");
     let tree = tree_prefix(entry);
     let tree_len = tree.graphemes(true).count();
