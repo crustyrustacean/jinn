@@ -64,8 +64,8 @@ pub struct PickerStates {
     /// OWNER: IntentHandler (lifecycle picker navigation).
     pub session_lifecycle_picker: jinn_selection_widget::SelectionState<SessionLifecycleEntry>,
 
-    /// Workflow picker state (items, filter text, selection index).
-    /// OWNER: IntentHandler (workflow picker navigation, entries populated from `AppState.discovered_plugins`).
+    /// Plugin picker state (items, filter text, selection index).
+    /// OWNER: IntentHandler (plugin picker navigation, entries populated from `AppState.discovered_plugins`).
     pub plugin_picker: jinn_selection_widget::SelectionState<PluginPickerEntry>,
 
     /// Compaction model picker state (items, filter text, selection index).
@@ -146,11 +146,12 @@ pub trait PickerExt {
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<SessionLifecycleEntry>;
 
-    // --- Workflow picker ---
+    // --- Plugin picker ---
 
-    /// Read-only access to the workflow picker state.
+    /// Read-only access to the plugin picker state.
     fn plugin_picker(&self) -> &jinn_selection_widget::SelectionState<PluginPickerEntry>;
-    /// Mutable access to the workflow picker state.
+
+    /// Mutable access to the plugin picker state.
     fn plugin_picker_mut(
         &mut self,
     ) -> &mut jinn_selection_widget::SelectionState<PluginPickerEntry>;
