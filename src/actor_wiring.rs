@@ -760,6 +760,29 @@ impl ActorSystemBuilder {
             }
         }
 
+        // Auto-prune worker: edit→read context pruning.
+        {
+            use jinn_domain::feat::auto_prune_worker::EditReadAutoPruneWorker;
+            use jinn_domain::feat::history_worker::actor::{
+                HistoryWorkerActor, HistoryWorkerActorDeps,
+            };
+
+            let config = user_preferences_storage.read().auto_prune.edit_read.clone();
+
+            if config.enabled {
+                actors.push(spawn::<HistoryWorkerActor<EditReadAutoPruneWorker>>(
+                    "history-worker-auto-prune-edit-read",
+                    &sink,
+                    handle,
+                    &counter,
+                    &shutdown_tracker,
+                    HistoryWorkerActorDeps {
+                        worker: EditReadAutoPruneWorker { config },
+                    },
+                ));
+            }
+        }
+
         // Auto-prune worker: regex-based tool call pruning.
         {
             use jinn_domain::feat::auto_prune_worker::RegexAutoPruneWorker;
@@ -982,38 +1005,42 @@ impl ActorSystemBuilder {
             }
         }
 
-        // Auto-prune worker: anchor-radius context pruning.
+        // Auto-prune worker: anchored-assistant context pruning.
         // Prunes large (>80 token) Assistant entries whose index distance to the
         // nearest anchor entry (first index, last index, or any User entry)
         // exceeds a configurable radius.
         {
-            use jinn_domain::feat::auto_prune_worker::AnchorRadiusAutoPruneWorker;
+            use jinn_domain::feat::auto_prune_worker::AnchoredAssistantAutoPruneWorker;
             use jinn_domain::feat::context::strategy::token_estimator::TiktokenCounter;
             use jinn_domain::feat::history_worker::actor::{
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-            let config = user_preferences_storage
-                .read()
-                .auto_prune
-                .anchor_radius
-                .clone();
+            let (config, trivial_max_tokens) = {
+                let prefs = user_preferences_storage.read();
+                let cfg = prefs.auto_prune.anchored_assistant.clone();
+                let max_tokens = prefs.auto_prune.trivial_assistant.max_tokens as u32;
+                (cfg, max_tokens)
+            };
 
             if config.enabled {
-                actors.push(spawn::<HistoryWorkerActor<AnchorRadiusAutoPruneWorker>>(
-                    "history-worker-auto-prune-anchor-radius",
-                    &sink,
-                    handle,
-                    &counter,
-                    &shutdown_tracker,
-                    HistoryWorkerActorDeps {
-                        worker: AnchorRadiusAutoPruneWorker {
-                            config,
-                            token_cache: entry_token_cache.clone(),
-                            counter: TiktokenCounter::o200k_base(),
+                actors.push(
+                    spawn::<HistoryWorkerActor<AnchoredAssistantAutoPruneWorker>>(
+                        "history-worker-auto-prune-anchored-assistant",
+                        &sink,
+                        handle,
+                        &counter,
+                        &shutdown_tracker,
+                        HistoryWorkerActorDeps {
+                            worker: AnchoredAssistantAutoPruneWorker {
+                                config,
+                                min_candidate_tokens: trivial_max_tokens + 1,
+                                token_cache: entry_token_cache.clone(),
+                                counter: TiktokenCounter::o200k_base(),
+                            },
                         },
-                    },
-                ));
+                    ),
+                );
             }
         }
         // Sidebar state actor - keeps sidebar cursor in sync after session removal.

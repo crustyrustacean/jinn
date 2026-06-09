@@ -53,14 +53,14 @@ pub fn render_theme_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
     widget.render(frame, area);
 }
 
-/// Renders the workflow picker overlay using [`SelectionWidget`].
+/// Renders the plugin picker overlay using [`SelectionWidget`].
 ///
 /// Telescope-style layout: bordered popup with filter input at top,
-/// horizontal separator, scrollable workflow entries.
+/// horizontal separator, scrollable plugin entries.
 pub fn render_plugin_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCtx) {
     let state = ctx.state;
     let widget = SelectionWidget::new(state.frontend.plugin_picker())
-        .title(Line::from(" Workflows "))
+        .title(Line::from(" Plugins "))
         .title_style(Style::default().fg(state.frontend.theme.popup_title))
         .footer(Line::from(" Enter to run, ESC to cancel "));
     widget.render(frame, area);
