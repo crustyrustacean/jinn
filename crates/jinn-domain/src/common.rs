@@ -1,5 +1,6 @@
 //! Shared infrastructure - actor framework, services, core coordination, state.
 
+pub mod actor_deps;
 pub mod actor;
 pub mod actor_host;
 pub mod app_info;

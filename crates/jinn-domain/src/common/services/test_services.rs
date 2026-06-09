@@ -3,6 +3,7 @@ use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use error_stack::Report;
+use kameo::actor::Spawn;
 use tokio::runtime::{Handle, Runtime};
 
 use crate::common::services::{NoopPluginFire, NoopPluginSyncCall, NoopSessionPluginRegistry};
@@ -229,6 +230,15 @@ impl TestServices {
             let rx = actor_rx.to_async();
             while rx.recv().await.is_ok() {}
         });
+        let bus = {
+            let bus_actor = kameo_actors::message_bus::MessageBus::new(
+                kameo_actors::DeliveryStrategy::BestEffort,
+            );
+            let bus_ref = kameo_actors::message_bus::MessageBus::spawn(bus_actor);
+            super::bus_service::BusService::new(bus_ref)
+        };
+        let bridge = crate::common::bridge::Bridge::new(bus.actor_ref().clone());
+
         Services {
             paths,
             handle,
@@ -269,8 +279,8 @@ impl TestServices {
             )
                 as Arc<dyn SessionPluginRegistry>),
             tempdir,
-            bus: None,
-            bridge: None,
+            bus,
+            bridge,
         }
     }
 }
