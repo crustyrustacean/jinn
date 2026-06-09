@@ -84,7 +84,7 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
         let mut mutations = Vec::new();
 
         for i in 0..history.len() {
-            let entry = &history[i];
+            let Some(entry) = history.get(i) else { continue };
 
             // Only interested in "edit" tool calls.
             let tool_call_id = match &entry.kind {

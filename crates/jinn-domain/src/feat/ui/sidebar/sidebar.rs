@@ -65,7 +65,7 @@ impl Sidebar {
         // Render all sections except the last top-down.
         let mut y_offset = 0u16;
         for (i, section) in self.sections.iter_mut().enumerate() {
-            let height = heights[i];
+            let height = heights.get(i).copied().unwrap_or(0);
             if i == n - 1 {
                 break; // handle last section separately
             }
@@ -87,7 +87,7 @@ impl Sidebar {
         // Render the last section (Sessions) anchored to the bottom.
         if n > 0 {
             let last_idx = n - 1;
-            let height = heights[last_idx];
+            let height = heights.get(last_idx).copied().unwrap_or(0);
             if height > 0 {
                 let bottom_y = area.height.saturating_sub(height);
                 let section_y = bottom_y.max(y_offset);

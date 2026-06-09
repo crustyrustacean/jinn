@@ -66,11 +66,10 @@ impl ShutdownTracker {
 
     /// Configures the tracker for shutdown: populates the pending set
     /// from the given actor names and stores the oneshot sender.
-    pub fn begin(
-        &self,
-        names: impl Iterator<Item = String>,
-        completion_tx: tokio::sync::oneshot::Sender<()>,
-    ) {
+    pub fn begin<I>(&self, names: I, completion_tx: tokio::sync::oneshot::Sender<()>)
+    where
+        I: Iterator<Item = String>,
+    {
         let mut inner = self.inner.lock();
         inner.active = true;
         inner.pending = names.collect();

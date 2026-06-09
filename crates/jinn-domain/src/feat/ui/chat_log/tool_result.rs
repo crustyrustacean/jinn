@@ -93,7 +93,7 @@ fn to_lines_collapsed(
     } else {
         // Long content - show last N lines, then indicator at the bottom.
         let remaining = all_lines.len() - max;
-        for line_text in &all_lines[remaining..] {
+        for line_text in all_lines.get(remaining..).unwrap_or(&[]) {
             lines.push(Line::from(Span::styled(
                 truncate_to_width(line_text, ctx.content_width as usize),
                 style,

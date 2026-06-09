@@ -13,6 +13,8 @@ use super::hash::{
 };
 use std::fmt::Write;
 
+use unicode_segmentation::UnicodeSegmentation;
+
 // ─── Constants ──────────────────────────────────────────────────────────
 
 /// Context lines around mismatches in error messages.
@@ -428,12 +430,9 @@ pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<Edi
     // Apply spans
     let mut result = content.to_owned();
     for span in &spans {
-        result = format!(
-            "{}{}{}",
-            &result[..span.start],
-            span.replacement,
-            &result[span.end..]
-        );
+        let before = result.get(..span.start).unwrap_or_default();
+        let after = result.get(span.end..).unwrap_or_default();
+        result = format!("{}{}{}", before, span.replacement, after);
     }
 
     // Compute changed range
@@ -724,7 +723,7 @@ fn find_exact_unique_match(content: &str, old_text: &str) -> Option<(usize, usiz
     let mut matches = Vec::new();
     let mut from = 0;
     while from + old_text.len() <= content.len() {
-        let Some(idx) = content[from..].find(old_text) else {
+        let Some(idx) = content.get(from..).and_then(|s| s.find(old_text)) else {
             break;
         };
         let abs = from + idx;
@@ -800,7 +799,8 @@ fn describe_edit(edit: &HashlineEdit) -> String {
         }
         HashlineEdit::ReplaceText { old_text, .. } => {
             let preview = if old_text.len() > 32 {
-                format!("{}...", &old_text[..29])
+                let truncated: String = old_text.graphemes(true).take(29).collect();
+                format!("{truncated}...")
             } else {
                 old_text.replace('\n', "\\n")
             };

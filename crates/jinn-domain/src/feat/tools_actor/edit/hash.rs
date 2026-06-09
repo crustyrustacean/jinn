@@ -30,9 +30,9 @@ pub(crate) static DICT: std::sync::LazyLock<[String; 256]> = std::sync::LazyLock
     let mut table: [String; 256] = core::array::from_fn(|_| String::new());
     let mut i = 0;
     while i < 256 {
-        let hi = nibble_bytes[i >> 4] as char;
-        let lo = nibble_bytes[i & 0x0f] as char;
-        table[i] = format!("{hi}{lo}");
+        let hi = char::from(*nibble_bytes.get(i >> 4).expect("i >> 4 < 16"));
+        let lo = char::from(*nibble_bytes.get(i & 0x0f).expect("i & 0x0f < 16"));
+        *table.get_mut(i).expect("i < 256") = format!("{hi}{lo}");
         i += 1;
     }
     table
@@ -91,7 +91,7 @@ pub fn compute_line_hash(line_num: usize, line: &str) -> &str {
     hasher.write(normalized.as_bytes());
     let sum = hasher.finish();
     let lo = sum as u8;
-    &DICT[lo as usize]
+    DICT.get(lo as usize).expect("u8 always fits in 256-entry table")
 }
 
 /// Returns `true` if the line contains at least one letter or digit.
@@ -156,7 +156,7 @@ pub fn parse_anchor(ref_str: &str) -> Result<Anchor, String> {
 
     let line: usize = line_str
         .parse()
-        .map_err(|_| format!("[E_BAD_REF] Line number must be >= 1 in \"{ref_str}\"."))?;
+        .map_err(|_e| format!("[E_BAD_REF] Line number must be >= 1 in \"{ref_str}\"."))?;
     if line < 1 {
         return Err(format!(
             "[E_BAD_REF] Line number must be >= 1 in \"{ref_str}\"."

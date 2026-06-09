@@ -52,16 +52,23 @@ pub(crate) fn sort_entries_tree_aware(entries: &mut Vec<SessionTreeEntry>) {
         .iter()
         .map(|&root_idx| {
             let max_ts = compute_subtree_max(root_idx, &children_map, entries);
-            (entries[root_idx].session_id.clone(), max_ts)
+            let root = entries.get(root_idx).expect("index from enumerate");
+            (root.session_id.clone(), max_ts)
         })
         .collect();
 
     // 5 & 6. Sort roots: session_state ascending (Loaded < Archived → Loaded first), then tree-max updated_at descending.
     roots.sort_by(|&a, &b| {
-        entries[a]
+        let entry_a = entries.get(a).expect("index from enumerate");
+        let entry_b = entries.get(b).expect("index from enumerate");
+        entry_a
             .session_state
-            .cmp(&entries[b].session_state)
-            .then_with(|| tree_max[&entries[b].session_id].cmp(&tree_max[&entries[a].session_id]))
+            .cmp(&entry_b.session_state)
+            .then_with(|| {
+                let max_b = tree_max.get(&entry_b.session_id).expect("key from entries");
+                let max_a = tree_max.get(&entry_a.session_id).expect("key from entries");
+                max_b.cmp(max_a)
+            })
     });
 
     // 7. Flatten in DFS order, sorting children by updated_at descending.
@@ -78,8 +85,9 @@ fn compute_subtree_max(
     children_map: &HashMap<SessionId, Vec<usize>>,
     entries: &[SessionTreeEntry],
 ) -> jiff::Timestamp {
-    let mut max_ts = entries[idx].updated_at;
-    if let Some(children) = children_map.get(&entries[idx].session_id) {
+    let entry = entries.get(idx).expect("index from enumerate");
+    let mut max_ts = entry.updated_at;
+    if let Some(children) = children_map.get(&entry.session_id) {
         for &child_idx in children {
             let child_max = compute_subtree_max(child_idx, children_map, entries);
             max_ts = max_ts.max(child_max);
@@ -96,9 +104,14 @@ fn emit_tree(
     entries: &[SessionTreeEntry],
     result: &mut Vec<SessionTreeEntry>,
 ) {
-    result.push(entries[idx].clone());
-    if let Some(mut children) = children_map.get(&entries[idx].session_id).cloned() {
-        children.sort_by(|&a, &b| entries[b].updated_at.cmp(&entries[a].updated_at));
+    let entry = entries.get(idx).expect("index from enumerate");
+    result.push(entry.clone());
+    if let Some(mut children) = children_map.get(&entry.session_id).cloned() {
+        children.sort_by(|&a, &b| {
+            let ca = entries.get(a).expect("index from enumerate");
+            let cb = entries.get(b).expect("index from enumerate");
+            cb.updated_at.cmp(&ca.updated_at)
+        });
         for &child_idx in &children {
             emit_tree(child_idx, children_map, entries, result);
         }

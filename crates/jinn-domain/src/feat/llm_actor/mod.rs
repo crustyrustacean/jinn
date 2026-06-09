@@ -294,7 +294,7 @@ impl LlmActor {
                             tracing::info!(
                                 session_id = ?sid,
                                 token_len = token.len(),
-                                token_preview = %&token[..token.len().min(50)],
+                                token_preview = %token.get(..token.len().min(50)).unwrap_or_default(),
                                 "LLM ACTOR StreamEvent::Text"
                             );
                             accumulated_text.push_str(&token);
@@ -333,7 +333,7 @@ impl LlmActor {
                             tracing::info!(
                                 session_id = ?sid,
                                 token_len = token.len(),
-                                token_preview = %&token[..token.len().min(50)],
+                                token_preview = %token.get(..token.len().min(50)).unwrap_or_default(),
                                 "LLM ACTOR StreamEvent::Reasoning"
                             );
                             accumulated_thinking.push_str(&token);

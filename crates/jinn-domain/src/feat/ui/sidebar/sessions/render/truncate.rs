@@ -10,7 +10,8 @@ pub(crate) fn truncate_str(s: &str, max_len: usize) -> String {
     if graphemes.len() <= max_len {
         return s.to_owned();
     }
-    let mut result: String = graphemes[..max_len.saturating_sub(1)].concat();
+    let truncated = graphemes.get(..max_len.saturating_sub(1)).unwrap_or(&[]);
+    let mut result: String = truncated.concat();
     result.push('…');
     result
 }

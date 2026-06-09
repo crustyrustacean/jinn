@@ -29,9 +29,9 @@ const ID_CHARSET: &[u8] = b"abcdefghijklmnqrsuvwxyz0123456789";
 fn generate_id_chars() -> [u8; 3] {
     let mut rng = rand::rng();
     [
-        ID_CHARSET[rng.random_range(0..ID_CHARSET.len())],
-        ID_CHARSET[rng.random_range(0..ID_CHARSET.len())],
-        ID_CHARSET[rng.random_range(0..ID_CHARSET.len())],
+        *ID_CHARSET.get(rng.random_range(0..ID_CHARSET.len())).expect("range bounded by ID_CHARSET.len()"),
+        *ID_CHARSET.get(rng.random_range(0..ID_CHARSET.len())).expect("range bounded by ID_CHARSET.len()"),
+        *ID_CHARSET.get(rng.random_range(0..ID_CHARSET.len())).expect("range bounded by ID_CHARSET.len()"),
     ]
 }
 
@@ -862,7 +862,7 @@ impl TaskList {
         }
 
         if let Some(active) = self.active_phase() {
-            // Safety: active_phase() implies has_pending_work(), which implies
+            // active_phase() implies has_pending_work(), which implies
             // at least one task with TaskStatus::Pending.
             let next_task = active
                 .tasks

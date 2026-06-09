@@ -37,7 +37,10 @@ impl AttachedPlugin {
     /// Construct a new attachment with `enabled = true`, `run_state = Idle`,
     /// and `label = name`.
     #[must_use]
-    pub fn new(name: impl Into<String>) -> Self {
+    pub fn new<S>(name: S) -> Self
+    where
+        S: Into<String>,
+    {
         let name = name.into();
         let label = name.clone();
         Self {

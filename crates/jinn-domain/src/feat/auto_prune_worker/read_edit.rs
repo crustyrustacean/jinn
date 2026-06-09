@@ -93,7 +93,7 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
         let history_len = history.len();
 
         for i in 0..history_len {
-            let entry = &history[i];
+            let Some(entry) = history.get(i) else { continue };
 
             // Only interested in "read" tool calls with a parseable file path.
             let (tool_call_id, read_path) = match &entry.kind {

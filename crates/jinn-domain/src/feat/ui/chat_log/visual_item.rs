@@ -64,7 +64,7 @@ pub fn build_visual_items(
 
     let mut i = 0;
     while i < len {
-        let entry = &history[i];
+        let Some(entry) = history.get(i) else { break };
 
         // Is this entry eligible for collapsing?
         if !entry.is_in_context() && entry.pin_position.is_none() && i < protected_start {
@@ -75,7 +75,7 @@ pub fn build_visual_items(
             i += block_count;
 
             // Check if the user has expanded this block, or the block is too small to collapse.
-            let block_representative_id = &history[block_start].id;
+            let block_representative_id = &history.get(block_start).expect("block_start < len").id;
             if shown_ignored_blocks.contains(block_representative_id)
                 || block_count < min_collapse_count
             {

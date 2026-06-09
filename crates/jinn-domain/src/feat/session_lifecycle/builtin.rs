@@ -206,7 +206,10 @@ impl BuiltinRegistry {
     }
 
     /// Registers a builtin handler under the given id.
-    pub fn register(&mut self, id: impl Into<BuiltinId>, handler: Arc<dyn BuiltinHandler>) {
+    pub fn register<I>(&mut self, id: I, handler: Arc<dyn BuiltinHandler>)
+    where
+        I: Into<BuiltinId>,
+    {
         self.handlers.insert(id.into(), handler);
     }
 

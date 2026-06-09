@@ -9,4 +9,4 @@
 /// Tracks which section has keyboard focus. Scope entry/exit is managed
 /// by the [`ScopeStack`](crate::common::app_state::ScopeStack) on `FrontendState`.
 #[derive(Debug, Clone, Default)]
-pub struct SidebarState {}
+pub struct SidebarState;

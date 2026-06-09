@@ -49,13 +49,13 @@ pub fn kill_process_tree(child: &mut tokio::process::Child) {
 /// pgid instructs the kernel to deliver SIGKILL to the entire group,
 /// atomically killing all descendants.
 ///
-/// SAFETY: `libc::kill` is safe when the PID argument is valid. The group id
-/// is a real OS PID captured at spawn. The negative argument targets the
-/// process group rather than a single process.
 #[cfg(unix)]
 fn kill_process_group_unix(pid: u32) {
     let group_id = pid as libc::pid_t;
     if group_id > 0 {
+        // SAFETY: `libc::kill` is safe when the PID argument is valid. The group id
+        // is a real OS PID captured at spawn. The negative argument targets the
+        // process group rather than a single process.
         let _ = unsafe { libc::kill(-group_id, libc::SIGKILL) };
     }
 }

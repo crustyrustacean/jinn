@@ -127,7 +127,7 @@ fn distances_to_nearest_anchors(
         let _ = insertion;
         return (Some(0), Some(0));
     }
-    // SAFETY: we just verified binary_search returned Err, so insertion fits.
+    // binary_search returned Err, so insertion fits.
     let Err(insertion) = anchor_indices.binary_search(&idx) else {
         unreachable!("handled above");
     };

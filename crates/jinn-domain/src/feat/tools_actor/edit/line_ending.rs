@@ -22,7 +22,7 @@ pub enum LineEnding {
 /// or `(content, None)` if no BOM.
 pub fn strip_bom(content: &str) -> (&str, Option<&str>) {
     if let Some(stripped) = content.strip_prefix('\u{feff}') {
-        (stripped, Some(&content[..3]))
+        (stripped, content.get(..3))
     } else {
         (content, None)
     }

@@ -57,9 +57,12 @@ pub fn handle_scroll_to_top(state: &mut AppState) -> IntentResult {
         let mut idx = 0;
         let max = items.len();
         while idx < max {
-            let selectable = match items[idx] {
-                VisualItem::CollapsedIgnoredBlock { .. } => true,
-                VisualItem::Entry(hist_idx) => !history[hist_idx].is_empty_assistant(),
+            let selectable = match items.get(idx) {
+                Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
+                Some(VisualItem::Entry(hist_idx)) => history
+                    .get(*hist_idx)
+                    .is_some_and(|e| !e.is_empty_assistant()),
+                None => false,
             };
             if selectable {
                 break;
@@ -82,7 +85,7 @@ pub fn handle_scroll_to_bottom(state: &mut AppState) -> IntentResult {
     if items.is_empty() {
         // Fallback: walk history backwards when visual items not yet computed.
         for i in (0..history.len()).rev() {
-            if !history[i].is_empty_assistant() {
+            if history.get(i).is_some_and(|e| !e.is_empty_assistant()) {
                 state.active_session_mut().set_selected_entry_index(i);
                 break;
             }
@@ -90,18 +93,24 @@ pub fn handle_scroll_to_bottom(state: &mut AppState) -> IntentResult {
     } else {
         let mut idx = items.len().saturating_sub(1);
         while idx > 0 {
-            let selectable = match items[idx] {
-                VisualItem::CollapsedIgnoredBlock { .. } => true,
-                VisualItem::Entry(hist_idx) => !history[hist_idx].is_empty_assistant(),
+            let selectable = match items.get(idx) {
+                Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
+                Some(VisualItem::Entry(hist_idx)) => history
+                    .get(*hist_idx)
+                    .is_some_and(|e| !e.is_empty_assistant()),
+                None => false,
             };
             if selectable {
                 break;
             }
             idx = idx.saturating_sub(1);
         }
-        let selectable = match items[idx] {
-            VisualItem::CollapsedIgnoredBlock { .. } => true,
-            VisualItem::Entry(hist_idx) => !history[hist_idx].is_empty_assistant(),
+        let selectable = match items.get(idx) {
+            Some(VisualItem::CollapsedIgnoredBlock { .. }) => true,
+            Some(VisualItem::Entry(hist_idx)) => history
+                .get(*hist_idx)
+                .is_some_and(|e| !e.is_empty_assistant()),
+            None => false,
         };
         if selectable {
             state.active_session_mut().set_selected_entry_index(idx);
