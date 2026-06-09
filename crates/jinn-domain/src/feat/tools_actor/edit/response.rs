@@ -33,9 +33,9 @@ pub enum AnchorBlock {
     /// A formatted anchor block with fresh hashes.
     Block {
         text: String,
-        #[allow(dead_code)]
+        #[allow(dead_code, reason = "kept for future use")]
         start: usize,
-        #[allow(dead_code)]
+        #[allow(dead_code, reason = "kept for future use")]
         end: usize,
     },
     /// Anchors omitted because the span was too large.
@@ -239,7 +239,7 @@ mod tests {
     #[rstest::rstest]
     fn build_anchor_block_omits_for_large_span() {
         // Given a 20-line result with changes spanning 15 lines.
-        #[allow(clippy::format_collect)]
+        #[allow(clippy::format_collect, reason = "format in map is intentional")]
         let content: String = (1..=20).map(|i| format!("line {i}\n")).collect();
 
         // When building the anchor block.

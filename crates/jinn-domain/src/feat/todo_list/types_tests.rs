@@ -1,4 +1,6 @@
 //! Tests for the task list data model.
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::string_slice, reason = "test code")]
+
 //!
 //! BDD-style tests following AGENTS.md conventions.
 //! Each test covers a single behavior.

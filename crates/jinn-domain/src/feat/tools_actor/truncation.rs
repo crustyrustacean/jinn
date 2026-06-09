@@ -234,7 +234,7 @@ fn truncate_string_from_end(s: &str, max_bytes: usize) -> String {
 }
 
 /// Format a byte count as a human-readable size string.
-#[allow(clippy::cast_precision_loss)]
+#[allow(clippy::cast_precision_loss, reason = "loss is negligible for UI calculations")]
 pub fn format_size(bytes: usize) -> String {
     if bytes < 1024 {
         format!("{bytes}B")

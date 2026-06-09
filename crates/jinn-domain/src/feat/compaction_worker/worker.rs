@@ -328,7 +328,7 @@ impl CompactionWorker {
     ///
     /// `pub(crate)` for testing - the real entry points are [`evaluate`] (trait)
     /// and [`evaluate_for_session`] (trigger-based).
-    #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+    #[allow(clippy::too_many_lines, clippy::too_many_arguments, reason = "handler reads best as a single unit")]
     pub(crate) async fn evaluate_with_config(
         &self,
         history: &[ChatEntry],
@@ -461,7 +461,7 @@ fn resolve_context_limit(
 }
 
 /// Generate a summary using the LLM.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "handler signature matches actor protocol")]
 async fn generate_summary(
     services: &Services,
     runtime_handle: &Handle,

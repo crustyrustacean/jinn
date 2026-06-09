@@ -463,7 +463,7 @@ impl TaskList {
     /// # Panics
     ///
     /// Panics if internal invariants are violated (source/reference found but then missing).
-    #[allow(clippy::needless_pass_by_value)]
+    #[allow(clippy::needless_pass_by_value, reason = "ownership semantics required by trait")]
     pub fn postpone_task(
         &mut self,
         source_task_id: &TaskId,

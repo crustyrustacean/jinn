@@ -817,7 +817,7 @@ impl Default for WebFetchConfig {
 const DEFAULT_BASH_DEFAULT_TIMEOUT_SECS: u64 = 180;
 
 // serde default fns must return the field type (Option<u64>) even when always Some.
-#[allow(clippy::unnecessary_wraps)]
+#[allow(clippy::unnecessary_wraps, reason = "trait contract requires Result return")]
 fn default_bash_default_timeout_secs() -> Option<u64> {
     Some(DEFAULT_BASH_DEFAULT_TIMEOUT_SECS)
 }

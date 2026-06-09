@@ -142,6 +142,7 @@ pub fn render_task_list_picker(frame: &mut Frame<'_>, area: Rect, ctx: &RenderCt
 
 #[cfg(test)]
 mod tests {
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::string_slice, clippy::uninlined_format_args, reason = "test code")]
     use super::*;
     use crate::common::app_state::{AppState, FocusScope};
     use crate::common::render_ctx::RenderCtx;

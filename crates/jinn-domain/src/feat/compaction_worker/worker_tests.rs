@@ -1,4 +1,6 @@
 //! Integration tests for [`CompactionWorker`] using `FakeLlmServiceFactory`.
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::string_slice, reason = "test code")]
+
 //!
 //! Tests cover the full `evaluate_with_config` pipeline: boundary finding,
 //! token accumulation, LLM summarization, and mutation production.

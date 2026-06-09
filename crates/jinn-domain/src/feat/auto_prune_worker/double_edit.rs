@@ -97,7 +97,7 @@ struct EditWritePair {
 
 #[async_trait::async_trait]
 impl HistoryWorker for DoubleEditAutoPruneWorker {
-    #[allow(clippy::unnecessary_literal_bound)]
+    #[allow(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
     fn name(&self) -> &str {
         "auto-prune-double-edit"
     }

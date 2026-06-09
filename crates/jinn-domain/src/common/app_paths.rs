@@ -18,7 +18,7 @@ use super::app_info::APP_NAME;
 ///
 /// Construct once at init and share via `Services.paths`.
 #[derive(Debug, Clone)]
-#[allow(clippy::struct_field_names)]
+#[allow(clippy::struct_field_names, reason = "names match domain terminology")]
 pub struct AppPaths {
     /// `~/.config/jinn` - providers.toml, prompts/, personas/, plugins/, themes/, jinn.toml
     config_dir: PathBuf,

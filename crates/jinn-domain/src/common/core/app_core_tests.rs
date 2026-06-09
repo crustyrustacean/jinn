@@ -1,7 +1,8 @@
 #![allow(
     clippy::expect_used,
     clippy::indexing_slicing,
-    clippy::match_wildcard_for_single_variants
+    clippy::match_wildcard_for_single_variants,
+    reason = "test code"
 )]
 
 use super::app_core::*;
