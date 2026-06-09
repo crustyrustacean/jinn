@@ -582,9 +582,15 @@ impl LlmActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
-    use super::*;
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::session::SessionState;
+    use super::*;
 
     use crate::common::app_state::AppState;
     use crate::common::state::State;
@@ -595,7 +601,7 @@ mod tests {
         let factory = LlmServiceFactoryService::new(Arc::new(FakeLlmServiceFactory::new(vec![])));
         LlmActor {
             factory,
-            services: crate::common::services::Services::new(),
+            services: crate::common::services::Services::new_fake(),
             _state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
@@ -825,7 +831,7 @@ mod tests {
         ])));
         let mut actor = LlmActor {
             factory,
-            services: crate::common::services::Services::new(),
+            services: crate::common::services::Services::new_fake(),
             _state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
@@ -891,7 +897,7 @@ mod tests {
         ])));
         let mut actor = LlmActor {
             factory,
-            services: crate::common::services::Services::new(),
+            services: crate::common::services::Services::new_fake(),
             _state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
@@ -937,7 +943,7 @@ mod tests {
         ])));
         let mut actor = LlmActor {
             factory,
-            services: crate::common::services::Services::new(),
+            services: crate::common::services::Services::new_fake(),
             _state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),
@@ -977,7 +983,7 @@ mod tests {
         ])));
         let mut actor = LlmActor {
             factory,
-            services: crate::common::services::Services::new(),
+            services: crate::common::services::Services::new_fake(),
             _state: State::new(AppState::default()),
             tasks: HashMap::new(),
             sessions: HashMap::new(),

@@ -211,7 +211,13 @@ pub async fn load_session_picker_items_from_store(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use crate::common::app_state::AppState;
     use crate::common::services::test_services::TestServices;
     use crate::feat::session::chat_session::ChatSessionState;
@@ -264,7 +270,7 @@ mod tests {
     #[tokio::test]
     async fn load_session_entries_returns_empty_on_error() {
         // Given a test Services (with fake session store that returns empty).
-        let services = crate::common::services::Services::new();
+        let services = crate::common::services::Services::new_fake();
 
         // When loading session entries.
         let entries = load_session_entries(&services, &default_theme()).await;

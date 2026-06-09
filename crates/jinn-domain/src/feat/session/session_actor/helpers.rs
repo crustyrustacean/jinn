@@ -52,7 +52,7 @@ pub(super) fn test_actor() -> super::SessionPersistenceActor {
 
     super::SessionPersistenceActor {
         state: State::new(AppState::default()),
-        services: crate::common::services::Services::new(),
+        services: crate::common::services::Services::new_fake(),
         counter: TiktokenCounter::o200k_base(),
         builtin_registry: crate::feat::session_lifecycle::builtin::BuiltinRegistry::new(),
         shell: "/bin/sh".to_owned(),

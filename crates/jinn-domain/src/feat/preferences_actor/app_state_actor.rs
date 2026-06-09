@@ -53,11 +53,7 @@ impl Actor for AppStateActor {
 
 impl AppStateActor {
     /// Processes a batch of state diffs: load, apply, save, emit.
-    fn handle_update_app_state(
-        &self,
-        payload: &UpdateAppState,
-        ctx: &ActorContext,
-    ) {
+    fn handle_update_app_state(&self, payload: &UpdateAppState, ctx: &ActorContext) {
         let mut state = self.services.app_state_storage.read();
         for update in &payload.updates {
             update.apply(&mut state);
@@ -74,7 +70,13 @@ impl AppStateActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use std::sync::Arc;
 
     use crate::common::actor::{
@@ -94,11 +96,10 @@ mod tests {
         let mut ctx = ActorContext::new("app-state", sink.clone() as Arc<dyn MessageSink>);
 
         let storage = InMemoryAppStateStorage::new();
-        let mut services = Services::new();
-        let svc =
-            crate::feat::preferences_actor::app_state_storage::AppStateStorageService::new(
-                Arc::new(storage),
-            );
+        let mut services = Services::new_fake();
+        let svc = crate::feat::preferences_actor::app_state_storage::AppStateStorageService::new(
+            Arc::new(storage),
+        );
         svc.reload().expect("test app state storage initial reload");
         services.app_state_storage = svc;
 
@@ -172,10 +173,7 @@ mod tests {
 
         // When handling an unrelated command.
         actor
-            .handle(
-                ActorEnvelope::Command(Command::RefreshModels),
-                &ctx,
-            )
+            .handle(ActorEnvelope::Command(Command::RefreshModels), &ctx)
             .await;
 
         // Then no events were emitted.
@@ -185,7 +183,6 @@ mod tests {
         let loaded = services.app_state_storage.read();
         assert!(loaded.last_model.is_none());
     }
-
 
     #[rstest::rstest]
     #[tokio::test]

@@ -27,7 +27,8 @@ pub struct TestHarness {
 impl TestHarness {
     /// Create a new harness with a fresh `MessageBus`.
     pub async fn new() -> Self {
-        let bus = kameo_actors::message_bus::MessageBus::new(kameo_actors::DeliveryStrategy::BestEffort);
+        let bus =
+            kameo_actors::message_bus::MessageBus::new(kameo_actors::DeliveryStrategy::BestEffort);
         let bus_ref = Spawn::spawn(bus);
         let bus = BusService::new(bus_ref.clone());
         Self { bus, bus_ref }
@@ -67,7 +68,7 @@ impl TestHarness {
     /// This creates a `Services::new()` and replaces its bus with the harness bus,
     /// so actors use the same bus the test is publishing to.
     pub fn actor_deps(&self) -> crate::common::actor_deps::ActorDeps {
-        let mut services = crate::Services::new();
+        let mut services = crate::Services::new_fake();
         services.bus = self.bus.clone();
         crate::common::actor_deps::ActorDeps { services }
     }
@@ -87,12 +88,18 @@ pub async fn await_recorded<M: Clone + Send + 'static>(
 ) -> Vec<M> {
     let deadline = tokio::time::Instant::now() + timeout;
     loop {
-        let recorded: Vec<M> = recorder.ask(GetRecorded::new()).await.expect("get recorded");
+        let recorded: Vec<M> = recorder
+            .ask(GetRecorded::new())
+            .await
+            .expect("get recorded");
         if recorded.len() >= min_count {
             return recorded;
         }
         if tokio::time::Instant::now() >= deadline {
-            return recorder.ask(GetRecorded::new()).await.expect("get recorded");
+            return recorder
+                .ask(GetRecorded::new())
+                .await
+                .expect("get recorded");
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
@@ -125,10 +132,7 @@ impl<M: Send + 'static> kameo::Actor for Recorder<M> {
     type Args = ();
     type Error = kameo::error::Infallible;
 
-    async fn on_start(
-        _args: Self::Args,
-        _actor_ref: ActorRef<Self>,
-    ) -> Result<Self, Self::Error> {
+    async fn on_start(_args: Self::Args, _actor_ref: ActorRef<Self>) -> Result<Self, Self::Error> {
         Ok(Self {
             messages: Vec::new(),
         })
