@@ -10,11 +10,11 @@ use error_stack::{Report, ResultExt};
 use jinn_cli::Cli;
 use jinn_domain::ApiKeys;
 use jinn_domain::ApiKeysService;
+use jinn_domain::AppStateStorageService;
 use jinn_domain::ConfigStorageService;
+use jinn_domain::FilesystemAppStateStorage;
 use jinn_domain::FilesystemConfigStorage;
 use jinn_domain::FilesystemUserPreferencesStorage;
-use jinn_domain::AppStateStorageService;
-use jinn_domain::FilesystemAppStateStorage;
 use jinn_domain::LlmServiceFactoryService;
 use jinn_domain::NoProvidersAvailableFactory;
 use jinn_domain::ProviderRegistry;
@@ -186,7 +186,8 @@ impl App {
         };
 
         let app_state_storage = {
-            let backend = FilesystemAppStateStorage::new(jinn_domain::AppPaths::default().state_file_path());
+            let backend =
+                FilesystemAppStateStorage::new(jinn_domain::AppPaths::default().state_file_path());
             let svc = AppStateStorageService::new(Arc::new(backend));
             if let Err(report) = svc.reload() {
                 tracing::error!("failed to load app state");
@@ -226,7 +227,7 @@ impl App {
                 let runner = Runner::Tui(Box::new(app));
                 self.run_and_shutdown(runner, &session_store)?;
             }
-        #[cfg(debug_assertions)]
+            #[cfg(debug_assertions)]
             Commands::Headless { command, .. } => {
                 let store_for_shutdown = session_store.clone();
                 let (core, _services, actor_host, _plugins) =

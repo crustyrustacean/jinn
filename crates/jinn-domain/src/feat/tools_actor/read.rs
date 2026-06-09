@@ -228,7 +228,9 @@ fn apply_offset_limit(content: &str, offset: Option<usize>, limit: Option<usize>
     }
 
     let sliced = if let Some(limit) = limit {
-        lines.get(start..total_lines.min(start + limit)).unwrap_or(&[])
+        lines
+            .get(start..total_lines.min(start + limit))
+            .unwrap_or(&[])
     } else {
         lines.get(start..).unwrap_or(&[])
     };
@@ -243,7 +245,14 @@ fn apply_offset_limit(content: &str, offset: Option<usize>, limit: Option<usize>
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, clippy::format_collect, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::format_collect,
+        reason = "test code"
+    )]
     use super::*;
     use std::path::PathBuf;
 

@@ -1,4 +1,11 @@
-#![allow(clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+#![allow(
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unimplemented,
+    clippy::unreachable,
+    clippy::indexing_slicing,
+    reason = "test code"
+)]
 
 use std::path::PathBuf;
 

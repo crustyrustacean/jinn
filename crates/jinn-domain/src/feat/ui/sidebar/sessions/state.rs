@@ -76,7 +76,10 @@ struct SessionTree {
 ///
 /// Resolves effective parents (direct or visual), patches `parent_id` fields,
 /// sorts roots descending by `created_at` and children ascending.
-fn build_session_tree(entries: Vec<SessionEntry>, visual_parents: &HashMap<SessionId, SessionId>) -> SessionTree {
+fn build_session_tree(
+    entries: Vec<SessionEntry>,
+    visual_parents: &HashMap<SessionId, SessionId>,
+) -> SessionTree {
     let mut entry_map: HashMap<SessionId, SessionEntry> =
         entries.into_iter().map(|e| (e.id.clone(), e)).collect();
 
@@ -169,7 +172,6 @@ fn dfs_flatten(tree: &SessionTree) -> Vec<SessionEntry> {
 
     result
 }
-
 
 /// are not in the `SessionMap` and thus excluded automatically.
 ///
@@ -327,12 +329,12 @@ fn insert_plugin_entries(state: &AppState, entries: &mut Vec<SessionEntry>) {
             for k in (0..insert_idx).rev() {
                 if let Some(e) = entries.get(k)
                     && e.depth == plugin_depth
-                        && e.parent_id.as_ref() == Some(&parent_id)
-                        && matches!(e.kind, SessionEntryKind::Session)
-                    {
-                        entries.get_mut(k).expect("k < insert_idx").is_last_child = false;
-                        break;
-                    }
+                    && e.parent_id.as_ref() == Some(&parent_id)
+                    && matches!(e.kind, SessionEntryKind::Session)
+                {
+                    entries.get_mut(k).expect("k < insert_idx").is_last_child = false;
+                    break;
+                }
             }
         }
     }

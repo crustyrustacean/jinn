@@ -160,12 +160,7 @@ impl SessionPersistenceActor {
     ) {
         let assembled = {
             let guard = self.state.read();
-            assemble_prompt(
-                &guard,
-                session_id,
-                &self.counter,
-                assembly_overrides,
-            )
+            assemble_prompt(&guard, session_id, &self.counter, assembly_overrides)
         };
 
         let (old_phase, new_phase) = {
@@ -247,12 +242,7 @@ impl SessionPersistenceActor {
                 session.finish_sending_via_machine();
                 (old_phase, session.phase())
             };
-            super::super::helpers::emit_phase_changed(
-                ctx,
-                &event.session_id,
-                old_phase,
-                new_phase,
-            );
+            super::super::helpers::emit_phase_changed(ctx, &event.session_id, old_phase, new_phase);
             return;
         }
 
@@ -267,17 +257,19 @@ impl SessionPersistenceActor {
                 .flatten()
         };
 
-        self.assemble_and_send_continuation(
-            &event.session_id,
-            assembly_overrides.as_ref(),
-            ctx,
-        );
+        self.assemble_and_send_continuation(&event.session_id, assembly_overrides.as_ref(), ctx);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::super::super::helpers::{test_actor, test_context};
     use crate::feat::provider::protocol::event::{StreamCompleted, StreamCompletedReason};
     use crate::feat::session::phase_machine::PhaseKind;

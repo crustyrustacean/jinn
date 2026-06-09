@@ -71,11 +71,7 @@ impl OnRetry for PushEntryOnRetry {
 ///
 /// Used at every point where an LLM operation fails and the session needs
 /// to be notified of the error terminal state.
-fn emit_stream_error(
-    sink: &Arc<dyn MessageSink>,
-    session_id: &SessionId,
-    message: String,
-) {
+fn emit_stream_error(sink: &Arc<dyn MessageSink>, session_id: &SessionId, message: String) {
     let _ = sink.send_command(Command::PushChatEntry(PushChatEntry {
         session_id: session_id.clone(),
         entry: ChatEntry::error(message),
@@ -160,8 +156,6 @@ async fn process_stream_events(
     sid: &SessionId,
     model_id: &str,
 ) -> bool {
-    use crate::feat::provider::protocol::event::StreamToken;
-    use crate::protocol::ChatEntry;
 
     let mut accumulated_text = String::new();
     let mut accumulated_thinking = String::new();
@@ -181,8 +175,7 @@ async fn process_stream_events(
                         "LLM ACTOR StreamEvent::Text"
                     );
                     accumulated_text.push_str(&token);
-                    let parsed = match parser.parse_reasoning_streaming_incremental(&token)
-                    {
+                    let parsed = match parser.parse_reasoning_streaming_incremental(&token) {
                         Ok(r) => r,
                         Err(e) => {
                             tracing::warn!(
@@ -271,12 +264,10 @@ async fn process_stream_events(
                     };
                     if stop_reason == StopReason::ToolUse {
                         // Emit ExecuteToolBatch for the orchestrator.
-                        let _ = sink.send_command(Command::ExecuteToolBatch(
-                            ExecuteToolBatch {
-                                session_id: sid.clone(),
-                                tool_calls: accumulated_tool_calls.clone(),
-                            },
-                        ));
+                        let _ = sink.send_command(Command::ExecuteToolBatch(ExecuteToolBatch {
+                            session_id: sid.clone(),
+                            tool_calls: accumulated_tool_calls.clone(),
+                        }));
 
                         // Emit StreamCompleted with ToolUse reason so the session
                         // actor knows the stream ended due to tool calls.
@@ -303,18 +294,17 @@ async fn process_stream_events(
                     }
                     break;
                 }
-                StreamEvent::Error { error_type: _, message } => {
+                StreamEvent::Error {
+                    error_type: _,
+                    message,
+                } => {
                     stream_ended_normally = true;
                     tracing::error!(
                         session_id = ?sid,
                         error = %message,
                         "LLM stream error event"
                     );
-                    emit_stream_error(
-                        sink,
-                        sid,
-                        format!("LLM stream error: {message}"),
-                    );
+                    emit_stream_error(sink, sid, format!("LLM stream error: {message}"));
                     break;
                 }
             },
@@ -334,8 +324,7 @@ async fn process_stream_events(
         emit_stream_error(
             sink,
             sid,
-            "LLM stream ended unexpectedly. The connection may have been interrupted."
-                .to_owned(),
+            "LLM stream ended unexpectedly. The connection may have been interrupted.".to_owned(),
         );
     }
 
@@ -410,9 +399,11 @@ impl LlmActor {
                 }
                 Err(e) => {
                     tracing::error!(err = ?e, provider_id = %pid, "failed to create per-request factory");
-                    emit_stream_error(&ctx.sink(), &session_id, format!(
-                        "LLM factory creation failed for {pid}: {e:?}"
-                    ));
+                    emit_stream_error(
+                        &ctx.sink(),
+                        &session_id,
+                        format!("LLM factory creation failed for {pid}: {e:?}"),
+                    );
                     return;
                 }
             }
@@ -542,9 +533,15 @@ impl LlmActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
-    use super::*;
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::session::SessionState;
+    use super::*;
 
     use crate::common::app_state::AppState;
     use crate::common::state::State;

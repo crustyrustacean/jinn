@@ -359,7 +359,6 @@ fn confirm_provider(state: &mut AppState) -> IntentResult {
     ])
 }
 
-
 /// Confirms the selected persona and sets it as active.
 fn confirm_persona(state: &mut AppState) -> IntentResult {
     let Some(entry) = state.frontend.persona_picker().selected_item() else {
@@ -716,7 +715,13 @@ pub fn handle_refresh_skills(state: &mut AppState) -> IntentResult {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
     use crate::feat::session::ChatSessionState;
     use crate::feat::todo_list::TaskStatus;

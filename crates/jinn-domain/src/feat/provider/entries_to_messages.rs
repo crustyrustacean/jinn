@@ -48,9 +48,7 @@ fn push_tool_call_message(messages: &mut Vec<LlmMessage>, tool_call: ToolCall) {
 fn error_to_user_message(text: &str, context_override: ContextOverride) -> LlmMessage {
     let content = match context_override {
         ContextOverride::ForcedInclude => {
-            format!(
-                "The user has shared the following output for you to address:\n\n{text}"
-            )
+            format!("The user has shared the following output for you to address:\n\n{text}")
         }
         // Default and ForcedExclude (unreachable here; already
         // filtered by is_in_context). Pin alone does not trigger

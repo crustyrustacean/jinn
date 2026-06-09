@@ -71,7 +71,10 @@ fn find_failed_edit_result(
 
 #[async_trait::async_trait]
 impl HistoryWorker for BrokenEditAutoPruneWorker {
-    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "lifetime elision makes bound redundant"
+    )]
     fn name(&self) -> &str {
         "auto-prune-broken-edit"
     }
@@ -84,7 +87,9 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
         let mut mutations = Vec::new();
 
         for i in 0..history.len() {
-            let Some(entry) = history.get(i) else { continue };
+            let Some(entry) = history.get(i) else {
+                continue;
+            };
 
             // Only interested in "edit" tool calls.
             let tool_call_id = match &entry.kind {
@@ -150,7 +155,13 @@ impl HistoryWorker for BrokenEditAutoPruneWorker {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
 
     use super::*;
     use crate::feat::preferences_actor::user_preferences::BrokenEditAutoPruneConfig;

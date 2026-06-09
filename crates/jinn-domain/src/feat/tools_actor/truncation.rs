@@ -190,7 +190,14 @@ pub fn truncate_tail(content: &str, max_lines: usize, max_bytes: usize) -> Trunc
         // Reconstruct with the partial first line.
         let partial = truncate_string_from_end(lines.last().unwrap_or(&""), max_bytes);
         if output_lines_arr.len() > 1 {
-            format!("{}\n{}", partial, output_lines_arr.get(1..).map(|s| s.join("\n")).unwrap_or_default())
+            format!(
+                "{}\n{}",
+                partial,
+                output_lines_arr
+                    .get(1..)
+                    .map(|s| s.join("\n"))
+                    .unwrap_or_default()
+            )
         } else {
             partial
         }
@@ -234,7 +241,10 @@ fn truncate_string_from_end(s: &str, max_bytes: usize) -> String {
 }
 
 /// Format a byte count as a human-readable size string.
-#[expect(clippy::cast_precision_loss, reason = "loss is negligible for UI calculations")]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "loss is negligible for UI calculations"
+)]
 pub fn format_size(bytes: usize) -> String {
     if bytes < 1024 {
         format!("{bytes}B")
@@ -247,7 +257,13 @@ pub fn format_size(bytes: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
 
     // --- truncate_head ---

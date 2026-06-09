@@ -175,7 +175,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, clippy::float_cmp, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        clippy::float_cmp,
+        reason = "test code"
+    )]
     use super::*;
     use crate::feat::session::chat_session::ChatSessionState;
     use jiff::Timestamp;

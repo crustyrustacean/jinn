@@ -141,7 +141,13 @@ impl ProviderInitActor {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use std::sync::Arc;
 
     use crate::AppState;
@@ -150,7 +156,6 @@ mod tests {
     };
     use crate::common::services::Services;
     use crate::common::state::State;
-
 
     use crate::feat::provider_infra::ProviderEntry;
     use crate::init::EnvironmentLoaded;
@@ -187,10 +192,12 @@ mod tests {
         // Set up app state with a last_model.
         services
             .app_state_storage
-            .save(&crate::feat::preferences_actor::app_state_file::AppStateFile {
-                last_model: Some("sample/sample".to_owned()),
-                ..Default::default()
-            })
+            .save(
+                &crate::feat::preferences_actor::app_state_file::AppStateFile {
+                    last_model: Some("sample/sample".to_owned()),
+                    ..Default::default()
+                },
+            )
             .expect("save app state");
 
         // Set up registry with a sample provider.
@@ -396,10 +403,12 @@ mod tests {
         // Set up app state with a last_model (should be ignored since session has explicit model).
         services
             .app_state_storage
-            .save(&crate::feat::preferences_actor::app_state_file::AppStateFile {
-                last_model: Some("sample/sample".to_owned()),
-                ..Default::default()
-            })
+            .save(
+                &crate::feat::preferences_actor::app_state_file::AppStateFile {
+                    last_model: Some("sample/sample".to_owned()),
+                    ..Default::default()
+                },
+            )
             .expect("save app state");
 
         let config = crate::feat::provider_infra::ProvidersConfig {

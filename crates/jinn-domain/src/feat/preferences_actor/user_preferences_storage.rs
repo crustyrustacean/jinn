@@ -229,7 +229,13 @@ impl std::fmt::Debug for dyn UserPreferencesStorage {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
     use crate::common::app_info::PREFS_FILE_NAME;
     use crate::feat::preferences_actor::RequestRetryConfig;
@@ -431,7 +437,6 @@ mod tests {
             bash: BashConfig::default(),
         };
         service.save(&prefs).expect("save");
-
 
         // When reloading.
         let reloaded = service.reload().expect("reload");

@@ -281,7 +281,9 @@ fn validate_anchor(
         });
         return;
     }
-    let Some(&line_content) = file_lines.get(anchor.line - 1) else { return; };
+    let Some(&line_content) = file_lines.get(anchor.line - 1) else {
+        return;
+    };
     let actual = compute_line_hash(anchor.line, line_content);
     if actual != anchor.hash && !seen.contains(&anchor.line) {
         seen.insert(anchor.line);
@@ -334,7 +336,9 @@ pub fn format_mismatch_error(mismatches: &[HashMismatch], file_lines: &[&str]) -
         }
         prev = num;
 
-        let Some(&content) = file_lines.get(num - 1) else { continue; };
+        let Some(&content) = file_lines.get(num - 1) else {
+            continue;
+        };
         let h = compute_line_hash(num, content);
         if mismatch_lines.contains(&num) {
             let _ = writeln!(out, ">>> {num:>width$}#{h}|{content}");
@@ -393,7 +397,10 @@ fn build_edit_plan(
     spans.retain(|s| {
         let key = format!(
             "{}:{}:{}:{}",
-            s.kind, s.start_line, s.end_line, s.replacement_lines.join("\\n")
+            s.kind,
+            s.start_line,
+            s.end_line,
+            s.replacement_lines.join("\\n")
         );
         seen_keys.insert(key)
     });
@@ -418,7 +425,11 @@ fn build_edit_plan(
         }
     });
 
-    Ok(EditPlan { spans, warnings, noop_edits })
+    Ok(EditPlan {
+        spans,
+        warnings,
+        noop_edits,
+    })
 }
 
 /// Rebuilds the file by applying sorted spans to the original lines.
@@ -438,7 +449,10 @@ fn rebuild_file_from_spans(
             "replace" => {
                 while cursor < span.start_line {
                     output_lines.push(
-                        file_lines.get(cursor - 1).expect("cursor bounded by len").to_string(),
+                        file_lines
+                            .get(cursor - 1)
+                            .expect("cursor bounded by len")
+                            .to_string(),
                     );
                     cursor += 1;
                 }
@@ -448,7 +462,10 @@ fn rebuild_file_from_spans(
             "append" => {
                 while cursor <= span.start_line && cursor <= file_lines.len() {
                     output_lines.push(
-                        file_lines.get(cursor - 1).expect("cursor bounded by len").to_string(),
+                        file_lines
+                            .get(cursor - 1)
+                            .expect("cursor bounded by len")
+                            .to_string(),
                     );
                     cursor += 1;
                 }
@@ -457,7 +474,10 @@ fn rebuild_file_from_spans(
             "prepend" => {
                 while cursor < span.start_line {
                     output_lines.push(
-                        file_lines.get(cursor - 1).expect("cursor bounded by len").to_string(),
+                        file_lines
+                            .get(cursor - 1)
+                            .expect("cursor bounded by len")
+                            .to_string(),
                     );
                     cursor += 1;
                 }
@@ -469,7 +489,10 @@ fn rebuild_file_from_spans(
 
     while cursor <= file_lines.len() {
         output_lines.push(
-            file_lines.get(cursor - 1).expect("cursor bounded by len").to_string(),
+            file_lines
+                .get(cursor - 1)
+                .expect("cursor bounded by len")
+                .to_string(),
         );
         cursor += 1;
     }
@@ -527,8 +550,7 @@ pub fn apply_hashline_edits(content: &str, edits: &[HashlineEdit]) -> Result<Edi
         has_terminal_newline,
     )?;
 
-    let result =
-        rebuild_file_from_spans(&file_lines, &plan.spans, has_terminal_newline);
+    let result = rebuild_file_from_spans(&file_lines, &plan.spans, has_terminal_newline);
 
     let changed_range = compute_changed_line_range(content, &result);
 
@@ -630,7 +652,9 @@ fn resolve_replace_span(
     let end_line = end.map_or(start_line, |a| a.line);
 
     // NOOP check
-    let original = ctx.file_lines.get(start_line - 1..end_line.min(ctx.file_lines.len()))?;
+    let original = ctx
+        .file_lines
+        .get(start_line - 1..end_line.min(ctx.file_lines.len()))?;
     let original: Vec<&str> = original.to_vec();
     if original.len() == lines.len() && original.iter().zip(lines.iter()).all(|(a, b)| a == b) {
         return ctx.record_noop(
@@ -652,7 +676,8 @@ fn resolve_replace_span(
         start_line,
         end_line,
         replacement_lines: lines.to_vec(),
-    })}
+    })
+}
 
 /// Resolves an `Append` edit (insert after `pos`, or at EOF) to a line-range span.
 fn resolve_append_span(
@@ -704,7 +729,6 @@ fn resolve_append_span(
 
 /// Resolves a `Prepend` edit (insert before `pos`, or at BOF) to a line-range span.
 fn resolve_prepend_span(
-
     ctx: &mut ResolveCtx<'_>,
     pos: Option<&Anchor>,
     lines: &[String],
@@ -729,14 +753,16 @@ fn resolve_prepend_span(
         end_line: start_line,
         replacement_lines: lines.to_vec(),
     })
-
 }
 
 /// Resolves a `ReplaceText` edit (unique-text swap) to a line-range span.
 ///
 /// Unlike the other resolvers this can fail when `old_text` is absent or
 /// not unique, so it keeps the `Result` return.
-#[expect(clippy::expect_used, reason = "line offsets from line_number_at_byte are valid indices")]
+#[expect(
+    clippy::expect_used,
+    reason = "line offsets from line_number_at_byte are valid indices"
+)]
 fn resolve_replace_text_span(
     ctx: &mut ResolveCtx<'_>,
     old_text: &str,
@@ -768,12 +794,29 @@ fn resolve_replace_text_span(
         Some((byte_start, byte_end)) => {
             let start_line = line_number_at_byte(ctx.line_starts, byte_start);
             let end_line = line_number_at_byte(ctx.line_starts, byte_end);
-            let prefix_len = byte_start - ctx.line_starts.get(start_line - 1).expect("start_line from line_number_at_byte");
-            let suffix_start = byte_end - ctx.line_starts.get(end_line - 1).expect("end_line from line_number_at_byte");
-            let first_line_prefix = ctx.file_lines.get(start_line - 1).expect("start_line from line_number_at_byte").get(..prefix_len).expect("prefix_len is byte offset within line");
-            let last_line_suffix = ctx.file_lines.get(end_line - 1).expect("end_line from line_number_at_byte").get(suffix_start..).expect("suffix_start is byte offset within line");
-            let full_replacement =
-                format!("{first_line_prefix}{new_text}{last_line_suffix}");
+            let prefix_len = byte_start
+                - ctx
+                    .line_starts
+                    .get(start_line - 1)
+                    .expect("start_line from line_number_at_byte");
+            let suffix_start = byte_end
+                - ctx
+                    .line_starts
+                    .get(end_line - 1)
+                    .expect("end_line from line_number_at_byte");
+            let first_line_prefix = ctx
+                .file_lines
+                .get(start_line - 1)
+                .expect("start_line from line_number_at_byte")
+                .get(..prefix_len)
+                .expect("prefix_len is byte offset within line");
+            let last_line_suffix = ctx
+                .file_lines
+                .get(end_line - 1)
+                .expect("end_line from line_number_at_byte")
+                .get(suffix_start..)
+                .expect("suffix_start is byte offset within line");
+            let full_replacement = format!("{first_line_prefix}{new_text}{last_line_suffix}");
             let replacement_lines: Vec<String> =
                 full_replacement.split('\n').map(String::from).collect();
             Ok(Some(ResolvedSpan {
@@ -787,8 +830,6 @@ fn resolve_replace_text_span(
         }
     }
 }
-
-
 
 /// Returns the 1-indexed line number containing the given byte offset.
 ///
@@ -897,63 +938,65 @@ fn describe_edit(edit: &HashlineEdit) -> String {
 fn assert_no_conflicting_spans(spans: &[ResolvedSpan]) -> Result<(), String> {
     for (i, left) in spans.iter().enumerate() {
         for right in spans.iter().skip(i + 1) {
+            // Two inserts at same boundary
+            let left_is_insert = left.kind == "append" || left.kind == "prepend";
+            let right_is_insert = right.kind == "append" || right.kind == "prepend";
+            if left_is_insert && right_is_insert {
+                if left.start_line == right.start_line && left.kind == right.kind {
+                    return Err(format!(
+                        "[E_EDIT_CONFLICT] Conflicting edits in a single request: edit {} ({}) and edit {} ({}) target the same insertion boundary.",
+                        left.index, left.label, right.index, right.label
+                    ));
+                }
+                continue;
+            }
 
-        // Two inserts at same boundary
-        let left_is_insert = left.kind == "append" || left.kind == "prepend";
-        let right_is_insert = right.kind == "append" || right.kind == "prepend";
-        if left_is_insert && right_is_insert {
-            if left.start_line == right.start_line && left.kind == right.kind {
+            // Two replaces that overlap
+            if left.kind == "replace" && right.kind == "replace" {
+                if left.start_line <= right.end_line && right.start_line <= left.end_line {
+                    return Err(format!(
+                        "[E_EDIT_CONFLICT] Conflicting edits in a single request: edit {} ({}) and edit {} ({}) overlap on the same original line range.",
+                        left.index, left.label, right.index, right.label
+                    ));
+                }
+                continue;
+            }
+
+            // Insert inside a replace
+            let (replace_span, insert_span) = if left.kind == "replace" {
+                (left, right)
+            } else {
+                (right, left)
+            };
+
+            // For prepend: start_line is the line it inserts before. If that line is
+            // within [replace.start_line, replace.end_line], it's a conflict.
+            // For append: start_line is the line it inserts after. If that line is
+            // within [replace.start_line, replace.end_line) (exclusive end), it's a conflict.
+            // Append after the replace's end_line is allowed — it inserts after the range.
+            let inside = if insert_span.kind == "append" {
+                insert_span.start_line >= replace_span.start_line
+                    && insert_span.start_line < replace_span.end_line
+            } else {
+                insert_span.start_line >= replace_span.start_line
+                    && insert_span.start_line <= replace_span.end_line
+            };
+            if inside {
                 return Err(format!(
-                    "[E_EDIT_CONFLICT] Conflicting edits in a single request: edit {} ({}) and edit {} ({}) target the same insertion boundary.",
+                    "[E_EDIT_CONFLICT] Conflicting edits in a single request: edit {} ({}) and edit {} ({}) cannot be applied together because one inserts inside a replaced original range.",
                     left.index, left.label, right.index, right.label
                 ));
             }
-            continue;
-        }
-
-        // Two replaces that overlap
-        if left.kind == "replace" && right.kind == "replace" {
-            if left.start_line <= right.end_line && right.start_line <= left.end_line {
-                return Err(format!(
-                    "[E_EDIT_CONFLICT] Conflicting edits in a single request: edit {} ({}) and edit {} ({}) overlap on the same original line range.",
-                    left.index, left.label, right.index, right.label
-                ));
-            }
-            continue;
-        }
-
-        // Insert inside a replace
-        let (replace_span, insert_span) = if left.kind == "replace" {
-            (left, right)
-        } else {
-            (right, left)
-        };
-
-        // For prepend: start_line is the line it inserts before. If that line is
-        // within [replace.start_line, replace.end_line], it's a conflict.
-        // For append: start_line is the line it inserts after. If that line is
-        // within [replace.start_line, replace.end_line) (exclusive end), it's a conflict.
-        // Append after the replace's end_line is allowed — it inserts after the range.
-        let inside = if insert_span.kind == "append" {
-            insert_span.start_line >= replace_span.start_line
-                && insert_span.start_line < replace_span.end_line
-        } else {
-            insert_span.start_line >= replace_span.start_line
-                && insert_span.start_line <= replace_span.end_line
-        };
-        if inside {
-            return Err(format!(
-                "[E_EDIT_CONFLICT] Conflicting edits in a single request: edit {} ({}) and edit {} ({}) cannot be applied together because one inserts inside a replaced original range.",
-                left.index, left.label, right.index, right.label
-            ));
-        }
         }
     }
     Ok(())
 }
 
 /// Computes the first and last changed line numbers between original and result.
-#[expect(clippy::items_after_statements, reason = "helper placement after main logic")]
+#[expect(
+    clippy::items_after_statements,
+    reason = "helper placement after main logic"
+)]
 fn compute_changed_line_range(original: &str, result: &str) -> (Option<usize>, Option<usize>) {
     if original == result {
         return (None, None);
@@ -1031,7 +1074,13 @@ fn line_number_at_byte(line_starts: &[usize], byte: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
 
     fn anchor(line: usize, hash: impl AsRef<str>) -> Anchor {
@@ -1309,7 +1358,6 @@ mod tests {
         assert!(result.unwrap_err().contains("E_EDIT_CONFLICT"));
     }
 
-
     // ─── crash regression & multi-span interaction tests ──────────
 
     #[rstest::rstest]
@@ -1555,4 +1603,3 @@ mod tests {
         crate::feat::tools_actor::edit::hash::compute_line_hash(line_num, line).to_owned()
     }
 }
-

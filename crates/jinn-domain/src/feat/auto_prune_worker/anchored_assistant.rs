@@ -134,7 +134,9 @@ fn distances_to_nearest_anchors(
     };
 
     // Preceding anchor = anchor_indices[insertion - 1] if insertion > 0.
-    let d_back = insertion.checked_sub(1).and_then(|i| anchor_indices.get(i).map(|&a| idx - a));
+    let d_back = insertion
+        .checked_sub(1)
+        .and_then(|i| anchor_indices.get(i).map(|&a| idx - a));
     // Following anchor = anchor_indices[insertion] if insertion < len.
     let d_fwd = anchor_indices
         .get(insertion)
@@ -268,7 +270,10 @@ fn build_prune_mutations(ctx: &PruneCtx<'_>) -> Vec<HistoryMutation> {
 
 #[async_trait::async_trait]
 impl HistoryWorker for AnchoredAssistantAutoPruneWorker {
-    #[expect(clippy::unnecessary_literal_bound, reason = "lifetime elision makes bound redundant")]
+    #[expect(
+        clippy::unnecessary_literal_bound,
+        reason = "lifetime elision makes bound redundant"
+    )]
     fn name(&self) -> &str {
         "auto-prune-anchored-assistant"
     }
@@ -300,7 +305,13 @@ impl HistoryWorker for AnchoredAssistantAutoPruneWorker {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
 
     use super::*;
     use crate::feat::preferences_actor::user_preferences::AnchoredAssistantAutoPruneConfig;
