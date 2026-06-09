@@ -62,7 +62,10 @@ pub fn handle_select_next(state: &mut AppState) -> IntentResult {
 ///
 /// If the cursor is on the first visible entry, pages the viewport up first,
 /// then moves the cursor back by exactly 1. Clamps at entry 0 - no wrapping.
-#[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
+#[expect(
+    clippy::else_if_without_else,
+    reason = "no-op on fallthrough is intentional"
+)]
 pub fn handle_select_prev(state: &mut AppState) -> IntentResult {
     validator::validate_chat_entry_select_prev(state);
     let session = state.active_session_mut();
@@ -155,12 +158,16 @@ pub fn handle_toggle_ignored_block(state: &mut AppState) -> IntentResult {
     let entry_id = match items.get(vi_idx) {
         Some(VisualItem::CollapsedIgnoredBlock { start, .. }) => {
             // Block is collapsed → expand it.
-            let Some(entry) = history.get(*start) else { return IntentResult::empty() };
+            let Some(entry) = history.get(*start) else {
+                return IntentResult::empty();
+            };
             entry.id.clone()
         }
         Some(VisualItem::Entry(hist_idx)) => {
             // Entry might be in an expanded ignored block → collapse it.
-            let Some(entry) = history.get(*hist_idx) else { return IntentResult::empty() };
+            let Some(entry) = history.get(*hist_idx) else {
+                return IntentResult::empty();
+            };
             if entry.is_in_context() {
                 return IntentResult::empty();
             }
@@ -243,8 +250,8 @@ pub fn handle_ignore_selected(state: &mut AppState) -> IntentResult {
 /// Fresh press of `x`: validate, toggle the entry, capture sweep state,
 /// propagate shown blocks, advance cursor.
 fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
-    use crate::feat::session_lifecycle::protocol::command::PersistSession;
     use crate::feat::context::protocol::event::ContextOverrideChanged;
+    use crate::feat::session_lifecycle::protocol::command::PersistSession;
 
     // If cursor is on a collapsed block, skip past it before validation.
     // Validation calls selected_entry() which returns None for collapsed blocks.
@@ -296,10 +303,15 @@ fn handle_fresh_toggle(state: &mut AppState) -> IntentResult {
     )
 }
 
-
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use crate::common::app_state::AppState;
     use crate::feat::context::protocol::command::PinChatEntry;
     use crate::feat::session::chat_entry::ChangeSource;

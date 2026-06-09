@@ -132,7 +132,12 @@ pub fn kill_process_group_by_pid(pid: u32) {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        reason = "test code"
+    )]
     #[cfg(unix)]
     use super::*;
 

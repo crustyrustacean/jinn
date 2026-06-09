@@ -1,4 +1,10 @@
-#![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+#![allow(
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unreachable,
+    clippy::indexing_slicing,
+    reason = "test code"
+)]
 
 use crate::feat::context::prompt_template::store::{MAX_FUZZY_RESULTS, PromptTemplateStore};
 use crate::protocol::PromptTemplate;

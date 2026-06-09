@@ -7,7 +7,10 @@
 //! other system prompt content.
 
 mod loader;
-#[expect(clippy::module_inception, reason = "persona/mod.rs is the public API, persona/ is implementation")]
+#[expect(
+    clippy::module_inception,
+    reason = "persona/mod.rs is the public API, persona/ is implementation"
+)]
 mod persona;
 mod persona_entry;
 pub mod persona_scan_actor;

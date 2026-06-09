@@ -244,7 +244,10 @@ fn section_has_cursor(id: SidebarSectionId, state: &AppState) -> bool {
 /// Retains the leaving section's cursor position. If the target section has no
 /// cursor (never visited), calls [`receive_cursor`] as fallback.
 /// If the target has a retained cursor, ensures scroll offset is valid.
-#[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
+#[expect(
+    clippy::else_if_without_else,
+    reason = "no-op on fallthrough is intentional"
+)]
 pub fn jump_to_section(direction: &SidebarIntent, state: &mut AppState) {
     let focused = state
         .frontend

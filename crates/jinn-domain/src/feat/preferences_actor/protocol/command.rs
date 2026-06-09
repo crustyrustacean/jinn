@@ -12,8 +12,6 @@ use crate::protocol::CommandMsg;
 /// variant must be added here.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PreferenceUpdate {
-
-
     /// Set the compaction model (provider/model for summarization).
     /// `None` means fall back to the session model.
     SetCompactionModel(Option<String>),
@@ -23,8 +21,6 @@ impl PreferenceUpdate {
     /// Applies this diff to the given preferences in place.
     pub fn apply(&self, prefs: &mut UserPreferences) {
         match self {
-
-
             Self::SetCompactionModel(v) => prefs.compaction.model.clone_from(v),
         }
     }
@@ -44,7 +40,13 @@ pub struct UpdatePreferences {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
 
     use super::*;
 

@@ -9,7 +9,10 @@ use super::MAX_VISIBLE_SESSIONS;
 /// Adjusts scroll offset to ensure the selected index is visible within the window.
 ///
 /// If no index is selected, does nothing.
-#[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
+#[expect(
+    clippy::else_if_without_else,
+    reason = "no-op on fallthrough is intentional"
+)]
 pub fn scroll_to_cursor(state: &mut AppState) {
     let Some(index) = state.frontend.sessions_section.selected_index else {
         return;

@@ -120,9 +120,10 @@ pub fn scan_personas_merged(user_dir: &Path, system_dir: &Path) -> Vec<Persona> 
         if seen.contains(&persona.name) {
             // Replace the system persona with the user version.
             if let Some(pos) = personas.iter().position(|p| p.name == persona.name)
-                && let Some(slot) = personas.get_mut(pos) {
-                    *slot = persona;
-                }
+                && let Some(slot) = personas.get_mut(pos)
+            {
+                *slot = persona;
+            }
         } else {
             seen.insert(persona.name.clone());
             personas.push(persona);
@@ -135,7 +136,13 @@ pub fn scan_personas_merged(user_dir: &Path, system_dir: &Path) -> Vec<Persona> 
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
     use std::path::PathBuf;
 

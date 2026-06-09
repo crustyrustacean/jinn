@@ -69,8 +69,7 @@ pub struct ActorSystemBuilderArgs {
     /// User preferences storage service.
     pub user_preferences_storage: UserPreferencesStorageService,
     /// App state storage service.
-    pub app_state_storage:
-        jinn_domain::feat::preferences_actor::AppStateStorageService,
+    pub app_state_storage: jinn_domain::feat::preferences_actor::AppStateStorageService,
     /// Application paths.
     pub paths: jinn_domain::AppPaths,
 }
@@ -689,7 +688,6 @@ impl ActorSystemBuilder {
                 HistoryWorkerActor, HistoryWorkerActorDeps,
             };
 
-
             actors.push(spawn::<HistoryWorkerActor<CompactionWorker>>(
                 "history-worker-compaction",
                 &sink,
@@ -697,11 +695,7 @@ impl ActorSystemBuilder {
                 &counter,
                 &shutdown_tracker,
                 HistoryWorkerActorDeps {
-                    worker: CompactionWorker::new(
-                        services.clone(),
-                        handle.clone(),
-                        state.clone(),
-                    ),
+                    worker: CompactionWorker::new(services.clone(), handle.clone(), state.clone()),
                 },
             ));
         }
@@ -712,7 +706,6 @@ impl ActorSystemBuilder {
                 CompactionTriggerActor, CompactionTriggerActorDeps, CompactionWorker,
             };
 
-
             actors.push(spawn::<CompactionTriggerActor>(
                 "compaction-trigger",
                 &sink,
@@ -720,11 +713,7 @@ impl ActorSystemBuilder {
                 &counter,
                 &shutdown_tracker,
                 CompactionTriggerActorDeps {
-                    worker: CompactionWorker::new(
-                        services.clone(),
-                        handle.clone(),
-                        state.clone(),
-                    ),
+                    worker: CompactionWorker::new(services.clone(), handle.clone(), state.clone()),
                 },
             ));
         }

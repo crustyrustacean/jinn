@@ -55,7 +55,15 @@ impl EntryTokenCache {
 
 #[cfg(test)]
 mod tests {
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic, clippy::unreachable, clippy::string_slice, clippy::uninlined_format_args, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::string_slice,
+        clippy::uninlined_format_args,
+        reason = "test code"
+    )]
     use super::*;
     use crate::protocol::ChatEntry;
 

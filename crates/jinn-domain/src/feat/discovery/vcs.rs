@@ -36,7 +36,14 @@ pub fn is_vcs_root(dir: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::create_dir, clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::create_dir,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
 
     #[rstest::rstest]

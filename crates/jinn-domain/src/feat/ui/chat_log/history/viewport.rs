@@ -8,7 +8,10 @@ pub(crate) struct ScrollState {
 }
 
 /// Compute scroll offset, blank count, max offset, and scroll-to-selected adjustment.
-#[expect(clippy::else_if_without_else, reason = "no-op on fallthrough is intentional")]
+#[expect(
+    clippy::else_if_without_else,
+    reason = "no-op on fallthrough is intentional"
+)]
 pub(crate) fn compute_scroll(
     area_height: u16,
     total_wrapped: u16,
@@ -76,7 +79,13 @@ pub(crate) fn find_visible_indices(
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+    #![allow(
+        clippy::expect_used,
+        clippy::panic,
+        clippy::unreachable,
+        clippy::indexing_slicing,
+        reason = "test code"
+    )]
     use super::*;
 
     // --- compute_scroll: scroll-to-selected logic ---

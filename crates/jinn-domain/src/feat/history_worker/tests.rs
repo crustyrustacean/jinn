@@ -3,7 +3,13 @@
 //! Tests cover the full lifecycle: worker evaluates history snapshot → produces
 //! mutations → actor submits them via command bus.
 
-#![allow(clippy::expect_used, clippy::panic, clippy::unreachable, clippy::indexing_slicing, reason = "test code")]
+#![allow(
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unreachable,
+    clippy::indexing_slicing,
+    reason = "test code"
+)]
 
 use std::sync::Arc;
 

@@ -77,7 +77,6 @@ impl DiscoverActor {
         }
     }
 
-
     /// Discovers models for a single provider entry.
     ///
     /// Validates the entry (has models, valid backend, API key), constructs the
@@ -112,11 +111,7 @@ impl DiscoverActor {
 
         let result: Result<Vec<ModelInfo>, Report<LlmServiceError>> = match backend {
             Backend::Anthropic => {
-                let svc = AnthropicService::new(
-                    placeholder_model.clone(),
-                    api_key,
-                    None,
-                );
+                let svc = AnthropicService::new(placeholder_model.clone(), api_key, None);
                 svc.list_models().await
             }
             Backend::Google => {
@@ -174,7 +169,8 @@ impl DiscoverActor {
         );
 
         for entry in &entries {
-            match Self::discover_provider_models(entry, &self.services.api_keys, &models_dev).await {
+            match Self::discover_provider_models(entry, &self.services.api_keys, &models_dev).await
+            {
                 Ok(models) => {
                     results.insert(entry.name.clone(), models);
                 }
