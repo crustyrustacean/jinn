@@ -153,7 +153,7 @@ pub fn truncate_to_width(s: &str, max_width: usize) -> String {
     if graphemes.len() <= max_width {
         s.to_owned()
     } else {
-        graphemes[..max_width].iter().copied().collect()
+        graphemes.get(..max_width).map(|g| g.iter().copied().collect()).unwrap_or_else(|| s.to_owned())
     }
 }
 

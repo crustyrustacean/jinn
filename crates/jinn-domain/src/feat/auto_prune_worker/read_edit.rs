@@ -122,7 +122,7 @@ impl HistoryWorker for ReadEditAutoPruneWorker {
                 continue;
             };
 
-            let result_protected = history[result_idx].is_protected_from_prune();
+            let result_protected = history.get(result_idx).is_some_and(|e| e.is_protected_from_prune());
 
             // Count how many edit/write calls to the same file appear after
             // this read. Once the threshold is reached, the read is stale.

@@ -260,7 +260,7 @@ impl<'a> HistoryRender<'a> {
         for (vi_idx, item) in self.visual_items.iter().enumerate() {
             match item {
                 VisualItem::Entry(hist_idx) => {
-                    let entry = &self.history[*hist_idx];
+                    let entry = self.history.get(*hist_idx).expect("hist_idx from visual_items");
                     let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
 
                     if let Some(hit) = cache.get(entry, is_expanded, self.content_width) {
@@ -403,12 +403,12 @@ impl<'a> HistoryRender<'a> {
         let cursor_color = self.theme.focus_accent;
 
         for &vi_idx in &self.visible_indices {
-            let (entry_start, _entry_end) = self.entry_line_ranges[vi_idx];
+            let (entry_start, _entry_end) = self.entry_line_ranges.get(vi_idx).copied().expect("vi_idx from visible_indices");
             let abs_entry_start = entry_start + self.scroll.blank_count as u16;
 
-            match &self.visual_items[vi_idx] {
-                VisualItem::Entry(hist_idx) => {
-                    let entry = &self.history[*hist_idx];
+            match self.visual_items.get(vi_idx) {
+                Some(VisualItem::Entry(hist_idx)) => {
+                    let entry = self.history.get(*hist_idx).expect("hist_idx from visual_items");
                     let is_selected = self.selected_idx == Some(vi_idx);
                     let is_expanded = self.state.active_session().is_entry_expanded(&entry.id);
                     let max_lines = self
@@ -467,7 +467,7 @@ impl<'a> HistoryRender<'a> {
                     self.content_lines.extend(entry_content_lines);
                     self.gutter_lines.extend(entry_gutter_lines);
                 }
-                VisualItem::CollapsedIgnoredBlock { count, .. } => {
+                Some(VisualItem::CollapsedIgnoredBlock { count, .. }) => {
                     let is_selected = self.selected_idx == Some(vi_idx);
 
                     // Content: gray summary line.
@@ -490,6 +490,7 @@ impl<'a> HistoryRender<'a> {
                         self.lines_before_viewport += viewport_top.saturating_sub(abs_entry_start);
                     }
                 }
+                None => {}
             }
         }
     }

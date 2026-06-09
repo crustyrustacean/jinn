@@ -108,8 +108,9 @@ fn try_parse_dollar(graphemes: &[&str], i: usize) -> Option<(Param, usize)> {
     let current = *graphemes.get(i)?;
     if current != "$" { return None; }
     let next = *graphemes.get(i + 1)?;
-    if next.len() == 1 && next.as_bytes()[0].is_ascii_digit() && next != "0" {
-        let n = (next.as_bytes()[0] - b'0') as usize;
+    let Some(&first_byte) = next.as_bytes().get(0) else { return None };
+    if next.len() == 1 && first_byte.is_ascii_digit() && first_byte != b'0' {
+        let n = (first_byte - b'0') as usize;
         Some((Param::Positional(n), 2))
     } else if next == "@" || next == "*" {
         Some((Param::Splat, 2))

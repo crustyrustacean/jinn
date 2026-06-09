@@ -133,7 +133,7 @@ fn distances_to_nearest_anchors(
     };
 
     // Preceding anchor = anchor_indices[insertion - 1] if insertion > 0.
-    let d_back = insertion.checked_sub(1).map(|i| idx - anchor_indices[i]);
+    let d_back = insertion.checked_sub(1).and_then(|i| anchor_indices.get(i).map(|&a| idx - a));
     // Following anchor = anchor_indices[insertion] if insertion < len.
     let d_fwd = anchor_indices
         .get(insertion)

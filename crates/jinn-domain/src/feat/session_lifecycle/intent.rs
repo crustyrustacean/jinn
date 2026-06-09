@@ -266,8 +266,8 @@ pub fn handle_session_rerun_setup(state: &mut AppState) -> IntentResult {
 
     let index = state.frontend.sessions_section.selected_index.unwrap();
     let sessions = sorted_open_sessions(state);
-    let target_id = sessions[index].id.clone();
-
+    let Some(target_session) = sessions.get(index) else { return IntentResult::empty() };
+    let target_id = target_session.id.clone();
     let (setup_command, lifecycle_args) = {
         let session = state.session.get(&target_id);
         let Some(session) = session else {

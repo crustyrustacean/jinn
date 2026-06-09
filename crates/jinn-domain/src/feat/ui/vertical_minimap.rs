@@ -102,7 +102,10 @@ fn compute_visible_entries(state: &AppState) -> Vec<VisibleEntry> {
             }
             let ignored = match item {
                 VisualItem::CollapsedIgnoredBlock { .. } => false,
-                VisualItem::Entry(hist_idx) => !history[*hist_idx].is_in_context(),
+                VisualItem::Entry(hist_idx) => {
+                    let entry = history.get(*hist_idx).expect("hist_idx from visual_items");
+                    !entry.is_in_context()
+                }
             };
             let token_count = if ignored {
                 None
@@ -110,7 +113,7 @@ fn compute_visible_entries(state: &AppState) -> Vec<VisibleEntry> {
                 match item {
                     VisualItem::CollapsedIgnoredBlock { .. } => None,
                     VisualItem::Entry(hist_idx) => {
-                        let entry = &history[*hist_idx];
+                        let entry = history.get(*hist_idx).expect("hist_idx from visual_items");
                         token_cache.get(&entry.id)
                     }
                 }
@@ -180,7 +183,7 @@ pub fn render_vertical_minimap(
     for row in 0..viewport_height {
         let block_index = selected_block as isize + row as isize - midpoint as isize;
         if block_index >= 0 && (block_index as usize) < total_blocks {
-            let entry = &visible[block_index as usize];
+            let entry = visible.get(block_index as usize)?;
             let span = match entry.token_count {
                 Some(count) => Span::styled(
                     FULL_BLOCK.to_owned(),
@@ -279,7 +282,7 @@ fn compute_token_sum_in_range(state: &AppState, start: usize, end: usize) -> Opt
     let end = end.min(history.len());
     let start = start.min(end);
     let mut sum: u32 = 0;
-    for entry in &history[start..end] {
+    for entry in history.get(start..end).unwrap_or(&[]) {
         if entry.is_in_context()
             && let Some(count) = token_cache.get(&entry.id)
         {

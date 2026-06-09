@@ -149,7 +149,7 @@ fn build_age_window_mutations(
     let mut mutations = Vec::new();
 
     for i in 0..prune_region_start {
-        let entry = &history[i];
+        let Some(entry) = history.get(i) else { continue };
 
         // Only ToolCalls in the prune region are candidates.
         let tool_call_id = match &entry.kind {

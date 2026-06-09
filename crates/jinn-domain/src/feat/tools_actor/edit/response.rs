@@ -98,7 +98,7 @@ pub fn build_anchor_block(
         return AnchorBlock::Omitted;
     };
 
-    let region: Vec<&str> = visible[range.start - 1..range.end].to_vec();
+    let region: Vec<&str> = visible.get(range.start.saturating_sub(1)..range.end).unwrap_or_default().to_vec();
     let formatted = format_hashline_region(&region, range.start);
 
     let block_text = format!("--- Anchors {}-{} ---\n{formatted}", range.start, range.end);

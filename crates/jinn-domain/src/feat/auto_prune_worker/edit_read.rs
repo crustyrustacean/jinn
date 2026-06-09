@@ -98,7 +98,7 @@ impl HistoryWorker for EditReadAutoPruneWorker {
         let history_len = history.len();
 
         for i in 0..history_len {
-            let entry = &history[i];
+            let Some(entry) = history.get(i) else { continue };
 
             // Only interested in "read" tool calls with a parseable file path.
             let read_path = match &entry.kind {
@@ -151,7 +151,7 @@ fn prune_backward(
     let history_len = history.len();
     // Walk backward from the read to find prior edit/write calls on the same file.
     for j in (0..read_index).rev() {
-        let back_entry = &history[j];
+        let Some(back_entry) = history.get(j) else { continue };
 
         // Only interested in edit/write tool calls targeting the same file path.
         let back_call_id = match &back_entry.kind {
@@ -181,7 +181,7 @@ fn prune_backward(
 
         let back_result_protected = back_result
             .as_ref()
-            .is_some_and(|(_, k)| history[*k].is_protected_from_prune());
+            .is_some_and(|(_, k)| history.get(*k).is_some_and(|e| e.is_protected_from_prune()));
 
         // Skip if both call and result are protected — nothing to do.
         if back_call_protected && back_result_protected {

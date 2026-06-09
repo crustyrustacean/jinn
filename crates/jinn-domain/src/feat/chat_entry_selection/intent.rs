@@ -154,11 +154,12 @@ pub fn handle_toggle_ignored_block(state: &mut AppState) -> IntentResult {
     let entry_id = match items.get(vi_idx) {
         Some(VisualItem::CollapsedIgnoredBlock { start, .. }) => {
             // Block is collapsed → expand it.
-            history[*start].id.clone()
+            let Some(entry) = history.get(*start) else { return IntentResult::empty() };
+            entry.id.clone()
         }
         Some(VisualItem::Entry(hist_idx)) => {
             // Entry might be in an expanded ignored block → collapse it.
-            let entry = &history[*hist_idx];
+            let Some(entry) = history.get(*hist_idx) else { return IntentResult::empty() };
             if entry.is_in_context() {
                 return IntentResult::empty();
             }

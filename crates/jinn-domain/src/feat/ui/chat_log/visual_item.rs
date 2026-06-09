@@ -103,12 +103,14 @@ fn push_entry_indices(items: &mut Vec<VisualItem>, start: usize, count: usize) {
 /// Count contiguous ignored entries starting at `start`, stopping at the first
 /// protected or in-context entry.
 fn find_ignored_block_end(history: &[ChatEntry], start: usize, protected_start: usize) -> usize {
-    history[start..]
-        .iter()
-        .take_while(|e| !e.is_in_context() && e.pin_position.is_none())
-        .enumerate()
-        .take_while(|(i, _)| start + i < protected_start)
-        .count()
+    history.get(start..)
+        .map(|slice| slice
+            .iter()
+            .take_while(|e| !e.is_in_context() && e.pin_position.is_none())
+            .enumerate()
+            .take_while(|(i, _)| start + i < protected_start)
+            .count())
+        .unwrap_or(0)
 }
 
 /// Find the visual-item index for a given entry ID.
