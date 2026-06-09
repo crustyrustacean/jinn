@@ -36,6 +36,8 @@ pub enum KeyCategory {
     Plugin,
     /// Sidebar sections
     Sidebar,
+    /// Chat history
+    ChatHistory,
 }
 
 /// Builds and returns the full keymap with all scope bindings.
@@ -146,19 +148,19 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("<c-w>", Intent::SidebarResizeEnter, KeyCategory::Navigation)
             // Minimap navigation
             // Pin selected entry
-            .bind("p", Intent::ChatEntryPinSelected, KeyCategory::Context)
+            .bind("p", Intent::ChatEntryPinSelected, KeyCategory::ChatHistory)
             // Ignore/un-ignore selected entry
-            .bind("x", Intent::ChatEntryIgnoreSelected, KeyCategory::Context)
+            .bind("x", Intent::ChatEntryIgnoreSelected, KeyCategory::ChatHistory)
             // Expand/collapse tool entry
-            .bind("e", Intent::ExpandToolEntry, KeyCategory::Navigation)
+            .bind("e", Intent::ExpandToolEntry, KeyCategory::ChatHistory)
             // Toggle audit popup for the selected entry
-            .bind("a", Intent::ToggleAuditPopup, KeyCategory::Navigation)
+            .bind("a", Intent::ToggleAuditPopup, KeyCategory::ChatHistory)
             // Toggle ignored block visibility
-            .bind("h", Intent::ToggleIgnoredBlockVisibility, KeyCategory::Navigation)
+            .bind("h", Intent::ToggleIgnoredBlockVisibility, KeyCategory::ChatHistory)
             // Fork session from selected entry
-            .bind("f", Intent::ForkFromEntry, KeyCategory::General)
+            .bind("f", Intent::ForkFromEntry, KeyCategory::ChatHistory)
             // Yank (copy) selected entry to clipboard
-            .bind("y", Intent::YankSelectedEntry, KeyCategory::Navigation)
+            .bind("y", Intent::YankSelectedEntry, KeyCategory::ChatHistory)
             // Session creation
             .bind("n", Intent::SessionNew, KeyCategory::General)
             .bind("N", Intent::SessionNewWithLifecycle, KeyCategory::General)
@@ -178,7 +180,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             add_sidebar_base(b);
             b
             // Persona-specific actions
-            .bind("c", Intent::SidebarPersonaEdit, KeyCategory::Context);
+            .bind("c", Intent::SidebarPersonaEdit, KeyCategory::Sidebar);
         })
         // Sidebar - Pins section
         .scope(Scope::SidebarPins, |b| {
@@ -206,7 +208,7 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
             .bind("r", Intent::SidebarRenameSession, KeyCategory::Sidebar)
             .bind("a", Intent::SidebarSessionArchive, KeyCategory::Sidebar)
             .bind("c", Intent::SidebarSessionContinue, KeyCategory::Sidebar)
-            .bind("s", Intent::SidebarSessionRerunSetup, KeyCategory::General)
+            .bind("s", Intent::SidebarSessionRerunSetup, KeyCategory::Sidebar)
 
             // i activates session and enters insert mode
             .bind("i", Intent::SidebarConfirmInsert, KeyCategory::Sidebar)
@@ -334,9 +336,9 @@ pub fn init() -> Keymap<KeyEvent, Scope, Intent, KeyCategory> {
     // SidebarResize scope - adjusting sidebar width.
     keymap.scope(Scope::SidebarResize, |b| {
         b
-        .bind("h", Intent::SidebarResizeExpand, KeyCategory::Navigation)
-        .bind("l", Intent::SidebarResizeContract, KeyCategory::Navigation)
-        .bind("<esc>", Intent::SidebarResizeLeave, KeyCategory::General)
+        .bind("h", Intent::SidebarResizeExpand, KeyCategory::Sidebar)
+        .bind("l", Intent::SidebarResizeContract, KeyCategory::Sidebar)
+        .bind("<esc>", Intent::SidebarResizeLeave, KeyCategory::Sidebar)
         .bind("<c-c>", Intent::Quit, KeyCategory::General);
     });
 

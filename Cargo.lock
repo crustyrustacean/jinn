@@ -1842,7 +1842,7 @@ dependencies = [
 
 [[package]]
 name = "jinn"
-version = "0.63.0"
+version = "0.64.0"
 dependencies = [
  "async-trait",
  "clap",
@@ -1875,7 +1875,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-bench"
-version = "0.63.0"
+version = "0.64.0"
 dependencies = [
  "comfy-table",
  "csv",
@@ -1899,7 +1899,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-cli"
-version = "0.63.0"
+version = "0.64.0"
 dependencies = [
  "clap",
  "clap-verbosity-flag",
@@ -1908,7 +1908,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-domain"
-version = "0.63.0"
+version = "0.64.0"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
@@ -1960,7 +1960,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-e2e"
-version = "0.63.0"
+version = "0.64.0"
 dependencies = [
  "crossterm",
  "cucumber",
@@ -1978,7 +1978,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-plugin"
-version = "0.63.0"
+version = "0.64.0"
 dependencies = [
  "async-trait",
  "dashmap",
@@ -1999,7 +1999,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-protocol-derive"
-version = "0.63.0"
+version = "0.64.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2009,7 +2009,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-provider"
-version = "0.63.0"
+version = "0.64.0"
 dependencies = [
  "async-trait",
  "error-stack",
@@ -2030,7 +2030,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-selection-widget"
-version = "0.63.0"
+version = "0.64.0"
 dependencies = [
  "fuzzy-matcher",
  "jinn-testutil",
@@ -2041,14 +2041,14 @@ dependencies = [
 
 [[package]]
 name = "jinn-testutil"
-version = "0.63.0"
+version = "0.64.0"
 dependencies = [
  "ratatui",
 ]
 
 [[package]]
 name = "jinn-theme"
-version = "0.63.0"
+version = "0.64.0"
 dependencies = [
  "anstyle",
  "anstyle-lossy",
@@ -2064,7 +2064,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-tui"
-version = "0.63.0"
+version = "0.64.0"
 dependencies = [
  "arboard",
  "crossterm",
@@ -2092,7 +2092,7 @@ dependencies = [
 
 [[package]]
 name = "jinn-web-fetch"
-version = "0.63.0"
+version = "0.64.0"
 dependencies = [
  "async-trait",
  "headless_chrome",
