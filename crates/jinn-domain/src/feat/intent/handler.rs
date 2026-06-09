@@ -463,6 +463,12 @@ impl IntentHandler {
                 }
                 feat::ui::sidebar::sessions::handle_session_teardown(state)
             }
+            Intent::SidebarSessionRerunSetup => {
+                if selected_entry_is_automated(state) {
+                    return IntentResult::empty();
+                }
+                feat::session_lifecycle::intent::handle_session_rerun_setup(state)
+            }
             Intent::SidebarSessionArchive => {
                 if selected_entry_is_automated(state) {
                     return IntentResult::empty();
