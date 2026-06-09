@@ -90,13 +90,26 @@ end
 ---@param ctx OnChatInputBadgesRenderCtx
 ---@return table? directive `{ slot, segments = { { text, style } } }` or nil
 function M.on_chat_input_badges_render(ctx)
+    local pd = ctx.plugin_data or {}
+    if pd.status == "enriching" then
+        return {
+            slot = "input_badge",
+            segments = {
+                { text = "[",       style = "muted_text" },
+                { text = "Working", style = "streaming" },
+                { text = "]",       style = "muted_text" },
+            },
+        }
+    end
+
     local e_style = (ctx.mode == "input") and "accent_action" or "muted_text"
     return {
         slot = "input_badge",
         segments = {
             { text = "[",      style = "muted_text" },
             { text = "E",      style = e_style },
-            { text = "nrich]", style = "muted_text" },
+            { text = "nrich", style = "muted_text" },
+            { text = "]",      style = "muted_text" },
         },
     }
 end
