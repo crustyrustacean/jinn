@@ -66,15 +66,13 @@
 ---
 ---The directive shape is `{ slot = "input_badge", segments = { { text, style? } } }`:
 ---an ordered list of styled runs rendered left-to-right. `style` is a string
----from the host's badge style vocabulary: flat ratatui colors (`"yellow"`,
----`"cyan"`, `"green"`, `"red"`, `"bold"`) or theme-derived colors
----(`"accent_action"` for hotkeys, `"muted_text"`). One style per segment; the
----host does not apply any mode-aware styling — the plugin decides which
----segments are highlighted.
+---matching a key in `theme_styles` (e.g. `"streaming"`, `"accent_action"`,
+---`"muted_text"`). One style per segment; the host does not apply any
+---mode-aware styling — the plugin decides which segments are highlighted.
 ---
 ---@field active_session_id string The session currently in focus.
 ---@field mode string The current scope mode as a lowercase string (`"input"`, `"normal"`, ...). Plugins branch on it to style their own content.
-
+---@field theme_styles table<string, string> A flat dictionary of every theme field name mapped to itself. Pass any key as a segment's `style` to resolve it against the active theme. Examples: `"streaming"`, `"accent_action"`, `"muted_text"`, `"error_text"`, etc.
 -- ─── Verb payload shapes ───────────────────────────────────────────
 
 ---@alias PluginVerb

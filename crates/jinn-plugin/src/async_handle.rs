@@ -284,6 +284,11 @@ impl AsyncPluginHandle {
         Ok(())
     }
 
+    /// Set a plugin's data (replaces the entire value).
+    pub fn set_plugin_data(&self, plugin_name: String, value: serde_json::Value) {
+        self.plugin_data.set(plugin_name, value);
+    }
+
     /// Get a snapshot of a plugin's data.
     #[must_use]
     pub fn get_plugin_data(&self, plugin_name: &str) -> Option<serde_json::Value> {
